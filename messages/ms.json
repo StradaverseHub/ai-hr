@@ -10718,7 +10718,12 @@
         "firstScheduleConsentLabel": "Pekerja telah bersetuju mengambil hari ini sebagai cuti sebagai ganti bayaran kerja lebih masa berkanun.",
         "firstScheduleBlocked": "Pekerja ini berada dalam Jadual Pertama dan syarikatnya tidak membenarkan Kredit Cuti sebagai ganti bayaran kerja lebih masa berkanun. Ubah dalam tab Peraturan terlebih dahulu.",
         "extendedShort": "Ini hari bekerja biasa. Hanya {minutes} minit selepas waktu tamat syif yang dijadualkan dikira untuk pekerja ini, iaitu di bawah ambang setengah hari syarikat, jadi tarikh ini tidak boleh memperoleh Kredit Cuti.",
-        "extendedEarned": "Pekerja ini bekerja {minutes} minit yang dikira selepas waktu tamat syif yang dijadualkan, yang memperoleh {days} hari. Jumlah kredit ditetapkan pada angka itu dan tidak boleh diubah di sini."
+        "extendedEarned": "Pekerja ini bekerja {minutes} minit yang dikira selepas waktu tamat syif yang dijadualkan, yang memperoleh {days} hari. Jumlah kredit ditetapkan pada angka itu dan tidak boleh diubah di sini.",
+        "descriptionRows": "Kreditkan hari yang telah dikerjakan oleh pekerja. Kredit ditambah serta-merta.",
+        "help": "Tambah satu baris bagi setiap tarikh bekerja, berserta masanya. Empat jam yang layak memberi setengah hari, lapan jam sehari penuh, mengikut peraturan syarikat pekerja. Lihat menunjukkan rekod kehadiran. Kredit ditambah serta-merta — tiada langkah pengurus.",
+        "pickEmployeeFirst": "Pilih pekerja terlebih dahulu.",
+        "checkingEmployee": "Menyemak pekerja ini…",
+        "ownRecord": "Anda tidak boleh menambah Kredit Cuti pada rekod anda sendiri. Pentadbir HR lain mesti melakukannya."
       },
       "rulesIntro": "Siapa boleh memperoleh Kredit Cuti, cara ia diperoleh dan tempoh kredit bertahan, mengikut syarikat. Perubahan di sini terpakai kepada kredit yang diberikan selepasnya; kredit yang sudah diberikan mengekalkan tarikh luputnya."
     },

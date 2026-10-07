@@ -67,8 +67,6 @@ import { isReplacementRequestEligibleTx } from './replacement-eligibility';
 import {
   accrueExtendedWorkdayToilTx,
   accrueSelfDeclaredToilTx,
-  eligibleExtendedMinutes,
-  extendedHoursCreditDays,
   extendedHoursDayForEmploymentTx,
   extendedHoursPolicyForCompanyTx,
   LeaveCreditSectionMismatchError,
@@ -88,7 +86,7 @@ import {
 // reason this file can return that the notice map has no entry for fails to typecheck; see that file's
 // header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
 import type { ReplacementUnavailableReason } from '../lib/replacement-availability';
-import type { ExtendedHoursTiers } from '../lib/extended-hours';
+import { leaveCreditWindowCredit, type ExtendedHoursTiers } from '../lib/extended-hours';
 
 const STD_DAY_MINUTES = 480; // 8h — the same standard-day convention core/toil.ts and payroll use
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -583,7 +581,8 @@ export async function submitReplacementLeaveRequest(
      *
      * `eligibleExtendedMinutes` and `extendedHoursCreditDays` are the ladder the owner described
      * ("4 hours … 0.5 day, 8 hours … 1.0 day"), and running a second copy of it here is what the whole of
-     * lib/extended-hours.ts exists to prevent.
+     * lib/extended-hours.ts exists to prevent. r406 — both are now reached through ONE wrapper,
+     * `leaveCreditWindowCredit`, which also owns the floor decision; HR's `grantLeaveCreditRows` calls it too.
      *
      * ⚠️ `shiftEnd: null` AND `actualClockOut: null` ARE THE RULE, NOT MISSING DATA. On these three day
      * types the employee was never scheduled to be there, so there is nothing for the window to be "after"
@@ -603,13 +602,16 @@ export async function submitReplacementLeaveRequest(
     if (aWindowLines.length > 0) {
       const tiers = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
       for (const l of aWindowLines) {
-        const minutes = eligibleExtendedMinutes({
+        // r406 — through `leaveCreditWindowCredit`, the one window → days step HR's grant shares. A Section A
+        // line is a non-working day by definition (a working day is refused below), so no floor applies.
+        const { countedMinutes, days } = leaveCreditWindowCredit({
+          ordinaryWorkingDay: false,
           claimStart: l.fromTime!,
           claimEnd: l.toTime!,
           shiftEnd: null,
           actualClockOut: null,
+          tiers,
         });
-        const { countedMinutes, days } = extendedHoursCreditDays(minutes, tiers);
         if (days <= 0)
           throw new ToilExtendedHoursBelowThresholdError(l.workedDate, countedMinutes, tiers.extendedHalfDayMinutes);
         aDerived.push({
@@ -633,13 +635,15 @@ export async function submitReplacementLeaveRequest(
         // is the whole of the arithmetic now that the owner has reversed the measured cap and the clock-out
         // clip, so anything this file added on top would make the submit screen and the approval disagree
         // about the same window. The two stored times below are the approver's reference, not a ceiling.
-        const minutes = eligibleExtendedMinutes({
+        // r406 — the shared window → days step; `day.kind === 'workday'` was just asserted, so floored.
+        const { countedMinutes, days } = leaveCreditWindowCredit({
+          ordinaryWorkingDay: true,
           claimStart: l.fromTime!,
           claimEnd: l.toTime!,
           shiftEnd: day.shiftEnd,
           actualClockOut: day.actualClockOut,
+          tiers: extended,
         });
-        const { countedMinutes, days } = extendedHoursCreditDays(minutes, extended);
         if (days <= 0)
           throw new ToilExtendedHoursBelowThresholdError(l.workedDate, countedMinutes, extended.extendedHalfDayMinutes);
         bDerived.push({

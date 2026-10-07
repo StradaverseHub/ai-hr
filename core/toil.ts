@@ -52,6 +52,12 @@ import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isAttendanceTrace, type AttendanceTraceV1 } from './attendance-trace';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
+// r406 952129bb — HR's row-grant: the roster adjudication (pure) and the approved-overtime read the employee's
+// form already shows. Neither module imports this file, so both are static.
+import { adjudicateDayTypes, isLeaveCreditDayType } from '../lib/leave-credit-day-type';
+import { approvedOvertimeForDateTx, assertNoPendingClaimForGrantTx, type ApprovedOvertimeOnDate } from './credit-ot-overlap';
+import type { ExtendedHoursTiers } from '../lib/extended-hours';
+import type { LeaveCreditRowInput } from './leave-credit-request';
 
 export class ToilDisabledError extends Error {
   constructor(msg = 'Time off in lieu is not enabled.') {
@@ -723,8 +729,9 @@ export function extendedMinutesAfterShiftEnd(p: { otMinutes: number | null; calc
 // as they type, so the arithmetic has to run in the browser too, and this file is server-only (db/client).
 // A second copy in the component would have been the alternative, and two implementations of "240 minutes is
 // half a day, rounded down, capped at one" agree only until a company changes a threshold. See that file.
-import { eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
-export { eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
+import { extendedHoursCreditDays, leaveCreditWindowCredit } from '../lib/extended-hours';
+// r406 — `leaveCreditWindowCredit` joins the re-export: the one Leave Credit row window → days step.
+export { eligibleExtendedMinutes, extendedHoursCreditDays, leaveCreditWindowCredit } from '../lib/extended-hours';
 
 /** r336 · the extended-hours policy a company has, with r334's defaults for a company that has no row. */
 export async function extendedHoursPolicyForCompanyTx(tx: Tx, companyId: string): Promise<ExtendedHoursPolicy> {
@@ -999,6 +1006,13 @@ export async function bankToilCreditTx(
      * validates it (never before the date worked); omitted ⇒ `resolveExpiry` from the approval, as before.
      */
     expiresOnOverride?: string;
+    /**
+     * r406 952129bb · AUDIT ONLY — the evidence behind an HR row-grant (`grantLeaveCreditRows`): the window HR
+     * entered, the counted minutes the tier was decided from, and the overtime minutes this credit suppresses.
+     * Written onto the `toil.accrued` payload and read by nothing that computes; the register has no window
+     * columns, and a credit that cannot say what it was derived from cannot be reconciled.
+     */
+    auditDetail?: { claimStart: string; claimEnd: string; eligibleMinutes: number; overtimeSuppressedMinutes: number };
   },
 ): Promise<AccrueToilResult> {
   // 2 · the company policy must be enabled.
@@ -1211,6 +1225,7 @@ export async function bankToilCreditTx(
       ...(eligible ? { firstScheduleConsent: true } : {}),
       ...(premiumEquivalentWarning ? { premiumEquivalentWarning: true } : {}),
       ...(p.viaAutoApproval ? { viaAutoApproval: true } : {}),
+      ...(p.auditDetail ? { hrGrant: p.auditDetail } : {}),
     },
   });
 
@@ -1449,15 +1464,18 @@ export async function accrueExtendedWorkdayToilTx(
   // AND NONE IS APPLIED BELOW: `eligibleExtendedMinutes` is the whole of the arithmetic (r353, see its
   // header), and re-applying a ceiling of this path's own would be the reversed rule coming back in one
   // file out of three.
-  const eligibleMinutes = eligibleExtendedMinutes({
+  // Gate 4 — the tiers. `extendedHoursCreditDays` is r334's, unmodified: break and grace come off first,
+  // then 0.5 from the half-day figure and 1.0 from the full-day figure, rounded down, one day the cap.
+  // r406 — Gates 3 and 4 run through `leaveCreditWindowCredit`, the one window → days step the employee
+  // submit and HR's `grantLeaveCreditRows` share; Gate 2 above is what makes `ordinaryWorkingDay` true.
+  const { countedMinutes, days } = leaveCreditWindowCredit({
+    ordinaryWorkingDay: true,
     claimStart: p.claimStart,
     claimEnd: p.claimEnd,
     shiftEnd: day.shiftEnd,
     actualClockOut: day.actualClockOut,
+    tiers: policy,
   });
-  // Gate 4 — the tiers. `extendedHoursCreditDays` is r334's, unmodified: break and grace come off first,
-  // then 0.5 from the half-day figure and 1.0 from the full-day figure, rounded down, one day the cap.
-  const { countedMinutes, days } = extendedHoursCreditDays(eligibleMinutes, policy);
   if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(p.workedDate, countedMinutes, policy.extendedHalfDayMinutes);
 
   const res = await bankToilCreditTx(tx, ctx, {
@@ -2343,6 +2361,335 @@ export async function grantLeaveCredit(
       expiresOnOverride: expiresOn,
     });
     return { ...result, workedDayKind: kind, overtimeSuppressedMinutes: overtime };
+  });
+}
+
+/**
+ * r406 952129bb · THE ROSTER'S DAY KIND FOR EACH DATE, INSIDE A TRANSACTION THE CALLER ALREADY HOLDS.
+ * `leaveCreditRosterKinds` (core/leave-credit-request.ts) is this in its own transaction; HR's row-grant needs
+ * the same answer inside the ONE transaction that also mints the credits, so the loop lives here once.
+ */
+export async function leaveCreditRosterKindsTx(
+  tx: Tx,
+  employmentId: string,
+  dates: readonly string[],
+): Promise<Map<string, ToilWorkedDayKind>> {
+  const out = new Map<string, ToilWorkedDayKind>();
+  for (const d of new Set(dates)) out.set(d, await resolveWorkedDayKindTx(tx, employmentId, d));
+  return out;
+}
+
+/** r406 · what HR's Add Leave Credit form needs once an employee is picked. Courtesy only; the grant re-checks. */
+export type LeaveCreditGrantContext = {
+  /** The company's tier ladder — the figures every row's credit is derived from. */
+  tiers: ExtendedHoursTiers;
+  /** The extended-hours switch: whether an ORDINARY working day can earn a credit at all. */
+  ordinaryDayAllowed: boolean;
+  policyEnabled: boolean;
+  firstSchedule: boolean;
+  allowFirstSchedule: boolean;
+  /** The picked employee is the signed-in HR person. The grant refuses it; the form says so first. */
+  ownRecord: boolean;
+};
+
+export async function leaveCreditGrantContext(
+  ctx: SessionContext,
+  p: { employmentId: string; today?: string },
+): Promise<LeaveCreditGrantContext> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  const today = p.today ?? todayInKualaLumpur();
+  return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    const [emp] = await tx
+      .select({ companyId: employment.companyId, country: company.country, personId: employment.personId })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new LeaveCreditError('That employee could not be found.');
+    const [row] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
+    const tiers = await extendedHoursPolicyForCompanyTx(tx, emp.companyId);
+    return {
+      tiers: {
+        extendedHalfDayMinutes: tiers.extendedHalfDayMinutes,
+        extendedFullDayMinutes: tiers.extendedFullDayMinutes,
+        extendedBreakMinutes: tiers.extendedBreakMinutes,
+        extendedGraceMinutes: tiers.extendedGraceMinutes,
+      },
+      ordinaryDayAllowed: tiers.extendedHoursEnabled,
+      policyEnabled: row?.enabled === true,
+      firstSchedule: await firstScheduleEligibleTx(tx, { employmentId: p.employmentId, country: emp.country, asOf: today }),
+      allowFirstSchedule: row?.allowFirstScheduleEligible === true,
+      ownRecord: ctx.personId != null && emp.personId != null && ctx.personId === emp.personId,
+    };
+  });
+}
+
+/**
+ * r406 · ONE DATE'S FACTS FOR HR's FORM, for the PICKED employee — the same view the employee's own form reads
+ * (roster kind, shift, clock-in/out, approved overtime), plus the two HR-only facts: ⚠️ MONEY the overtime
+ * minutes already recorded (a credit stops them being paid) and whether the date already holds a credit.
+ * Admin for the employee's company only; read-only, and NOT the control.
+ */
+export type LeaveCreditGrantDayFacts = Awaited<ReturnType<typeof extendedHoursDayForEmploymentTx>> & {
+  approvedOtPlan: ApprovedOvertimeOnDate | null;
+  overtimeMinutes: number;
+  alreadyCredited: boolean;
+};
+
+export async function leaveCreditGrantDayFacts(
+  ctx: SessionContext,
+  p: { employmentId: string; workedDate: string },
+): Promise<LeaveCreditGrantDayFacts> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
+  return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, p.workedDate);
+    const [dupe] = await tx
+      .select({ id: toilAccrual.id })
+      .from(toilAccrual)
+      .where(
+        and(
+          eq(toilAccrual.employmentId, p.employmentId),
+          eq(toilAccrual.workedDate, p.workedDate),
+          ne(toilAccrual.status, 'reversed'),
+        ),
+      )
+      .limit(1);
+    return {
+      ...day,
+      approvedOtPlan: await approvedOvertimeForDateTx(tx, p.employmentId, p.workedDate),
+      overtimeMinutes: await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
+      alreadyCredited: dupe != null,
+    };
+  });
+}
+
+export type GrantLeaveCreditRowsResult = {
+  rows: {
+    workedDate: string;
+    accrualId: string;
+    workedDayKind: ToilWorkedDayKind;
+    daysCredited: number;
+    eligibleMinutes: number;
+    /** ⚠️ MONEY: overtime minutes on this date whose pay this credit has just suppressed (0 if none). */
+    overtimeSuppressedMinutes: number;
+  }[];
+  totalDays: number;
+  /** ⚠️ MONEY: the sum over every row. */
+  overtimeSuppressedMinutes: number;
+  /** The dates whose overtime this grant suppressed, ascending. */
+  overtimeDates: string[];
+  expiresOn: string;
+};
+
+/**
+ * r406 952129bb · + ADD LEAVE CREDIT, AS ROWS — HR enters the employee's own Leave Credit form, and the credit
+ * is granted DIRECTLY (source `hr_manual_grant`, HR as the actor), not submitted on the employee's behalf and
+ * self-approved.
+ *
+ * WHY DIRECT, NOT SUBMIT-ON-BEHALF. The employee path is a REQUEST: it is gated on the employee-request switch
+ * and on the request-eligibility criteria, and it waits for a line manager. HR is the approver. Routing HR
+ * through it would refuse HR in every company with employee requests off (one of the three enabled companies
+ * on production), and would record the employee as the requester of a claim they never made.
+ *
+ * WHAT IS SHARED WITH THE EMPLOYEE PATH, AND IS THE POINT. Every row's credit comes from
+ * `leaveCreditWindowCredit` — the same function the employee's submit, the ordinary-day approval and the screen
+ * run — against the employee's own company tiers. For identical rows HR banks exactly what the employee would
+ * have been approved for (test/r406-hr-leave-credit-rows.test.ts pins that parity and its non-vacuity). r334's
+ * old HR rule — "an ordinary working day's credit must EQUAL the measured tier" — is NOT applied: the owner's
+ * rule (r353/r358) is that the entered window is the claim, and the attendance is shown beside each date.
+ *
+ * THE REFUSALS, all before anything is written and all in ONE transaction (a refusal on any row grants none):
+ *  · admin, for the employee's company (`assertAdminForEmploymentTx`), never on their own record;
+ *  · the `toil` module (adding a credit is a new obligation);
+ *  · a reason; at least one row; each row a valid date not in the future, a day type, a non-empty window;
+ *    no date twice;
+ *  · every date inside the employment's service;
+ *  · the posted day type equals the roster's (`adjudicateDayTypes`) — the form fills it from the roster, so a
+ *    mismatch is a stale or tampered post;
+ *  · an ordinary working day only behind the company's extended-hours switch;
+ *  · a window below the half-day threshold earns nothing and is refused, naming the shortfall;
+ *  · a date that already holds an unreversed credit;
+ *  · ⚠️ MONEY — a date with recorded overtime once payroll for its month (or the next) has started: the credit
+ *    would suppress overtime a run may already have paid (`payrollStartedForDateTx`, as `grantLeaveCredit`);
+ *  · and, inside `bankToilCreditTx`, the policy switch, the double-bank guard and the First Schedule floor.
+ *
+ * NOT CHECKED, deliberately and like `grantLeaveCredit`: the employee-request switch and the request
+ * eligibility criteria (those govern the employee's REQUEST, not HR), and an open overtime CLAIM on the date
+ * (`assertNoOvertimeClaimForDatesTx`) — payroll's EXCLUDE_TOIL_BANKED_DAYS excludes a credited day's overtime
+ * whatever its origin, and HR is warned of recorded overtime before saving.
+ *
+ * ⚠️ MONEY · `dayType: null` and `otMinutes` = the COUNTED minutes, exactly as both employee paths bank them:
+ * `convertAmountFor` then values an unused credit on the ORP × remaining-days fallback rather than pricing a
+ * rounded-down tier as exact statutory cash. Expiry always follows the company rule from the approval instant
+ * (no typed override on this form).
+ */
+export async function grantLeaveCreditRows(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    rows: readonly LeaveCreditRowInput[];
+    reason: string;
+    firstScheduleConsent?: boolean;
+    /** Injected for tests; the tenant-local date the "not in the future" check is judged against. */
+    today?: string;
+    approvedOn?: Date;
+  },
+): Promise<GrantLeaveCreditRowsResult> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  assertModuleEnabled(ctx, 'toil');
+  const today = p.today ?? todayInKualaLumpur();
+  const reason = p.reason?.trim();
+  if (!reason) throw new LeaveCreditError('A reason is required when adding a Leave Credit.');
+  if (!p.rows || p.rows.length === 0) throw new LeaveCreditError('Add at least one date worked.');
+  for (const r of p.rows) {
+    if (!ISO_DATE.test(r.workedDate ?? '')) throw new LeaveCreditError('Enter the date worked for every row.');
+    if (r.workedDate > today) throw new LeaveCreditError(`The date worked cannot be in the future (${r.workedDate}).`);
+    if (!isLeaveCreditDayType(r.dayType)) throw new LeaveCreditError(`Choose a day type for ${r.workedDate}.`);
+    if (!r.claimStart || !r.claimEnd) throw new LeaveCreditError(`Enter the start and end time worked on ${r.workedDate}.`);
+    // The employee path's rule, for its reason: an end before the start is a night shift, not a typo, but an
+    // empty window is nothing at all (lib/extended-hours.ts — a zero window must never roll to 1440 minutes).
+    if (r.claimStart === r.claimEnd) throw new LeaveCreditError(`The start and end time for ${r.workedDate} are the same.`);
+  }
+  const dates = p.rows.map((r) => r.workedDate);
+  const repeated = [...new Set(dates.filter((d, i) => dates.indexOf(d) !== i))];
+  if (repeated.length > 0) throw new LeaveCreditError(`Each date can be entered only once: ${repeated.join(', ')}.`);
+  const approvedOn = p.approvedOn ?? new Date();
+
+  return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    const [emp] = await tx
+      .select({
+        companyId: employment.companyId,
+        country: company.country,
+        personId: employment.personId,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new LeaveCreditError('That employee could not be found.');
+    assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
+    const outside = dates.filter((d) => d < emp.hiredOn || (emp.terminatedOn != null && d > emp.terminatedOn));
+    if (outside.length > 0) {
+      throw new LeaveCreditError(
+        `The date worked must fall within this employee's service (${emp.hiredOn} onwards${emp.terminatedOn ? `, until ${emp.terminatedOn}` : ''}): ${outside.join(', ')}.`,
+      );
+    }
+
+    // The roster adjudicates the posted day type — the same pure rule the employee's submit runs.
+    const kinds = await leaveCreditRosterKindsTx(tx, p.employmentId, dates);
+    const mismatches = adjudicateDayTypes(
+      p.rows.map((r) => ({ workedDate: r.workedDate, dayType: r.dayType })),
+      kinds,
+    );
+    if (mismatches.length > 0) {
+      // Dynamic, for the reason `resolveWorkedDayKindTx` imports the attendance facade dynamically: a static
+      // import of core/leave-credit-request here would close a module cycle (it imports this file).
+      const { LeaveCreditDayTypeMismatchError } = await import('./leave-credit-request');
+      throw new LeaveCreditDayTypeMismatchError(mismatches);
+    }
+
+    const tiers = await extendedHoursPolicyForCompanyTx(tx, emp.companyId);
+    const ordinary = p.rows.filter((r) => kinds.get(r.workedDate) === 'workday').map((r) => r.workedDate);
+    if (ordinary.length > 0 && !tiers.extendedHoursEnabled) throw new ToilOrdinaryWorkingDayError(ordinary);
+
+    // ── THE DERIVATION — `leaveCreditWindowCredit`, shared with the employee paths. Nothing typed is a figure.
+    const derived: { row: LeaveCreditRowInput; kind: ToilWorkedDayKind; countedMinutes: number; days: number }[] = [];
+    for (const r of p.rows) {
+      const kind = kinds.get(r.workedDate)!;
+      const workingDay = kind === 'workday';
+      const day = workingDay ? await extendedHoursDayForEmploymentTx(tx, p.employmentId, r.workedDate) : null;
+      const { countedMinutes, days } = leaveCreditWindowCredit({
+        ordinaryWorkingDay: workingDay,
+        claimStart: r.claimStart!,
+        claimEnd: r.claimEnd!,
+        shiftEnd: day?.shiftEnd ?? null,
+        actualClockOut: day?.actualClockOut ?? null,
+        tiers,
+      });
+      if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(r.workedDate, countedMinutes, tiers.extendedHalfDayMinutes);
+      derived.push({ row: r, kind, countedMinutes, days });
+    }
+
+    // The duplicate guard, every offending date at once (bankToilCreditTx re-checks per row).
+    const already = await tx
+      .select({ workedDate: toilAccrual.workedDate })
+      .from(toilAccrual)
+      .where(
+        and(eq(toilAccrual.employmentId, p.employmentId), inArray(toilAccrual.workedDate, dates), ne(toilAccrual.status, 'reversed')),
+      )
+      .orderBy(asc(toilAccrual.workedDate));
+    if (already.length > 0) {
+      throw new LeaveCreditError(`This employee already has a Leave Credit for ${already.map((a) => a.workedDate).join(', ')}.`);
+    }
+
+    // ⚠️ MONEY (r406 verify D1/D3) — a pending overtime claim or pending Leave Credit request on these dates.
+    await assertNoPendingClaimForGrantTx(tx, p.employmentId, dates);
+
+    // ⚠️ MONEY — the overtime each credit will suppress, and the payroll-started refusal, per row.
+    const overtimeByDate = new Map<string, number>();
+    const payrollBlocked: string[] = [];
+    for (const r of p.rows) {
+      const ot = await overtimeMinutesOnTx(tx, p.employmentId, r.workedDate);
+      overtimeByDate.set(r.workedDate, ot);
+      if (ot > 0 && (await payrollStartedForDateTx(tx, r.workedDate))) payrollBlocked.push(r.workedDate);
+    }
+    if (payrollBlocked.length > 0) {
+      throw new LeaveCreditError(
+        `${payrollBlocked.join(', ')} ${payrollBlocked.length === 1 ? 'has' : 'have'} overtime recorded, and payroll for that month has already been started. A credit for a day with overtime can only be added before its payroll is started, or it could pay the day twice — as overtime and as leave. If that payroll is still a draft, delete it, add the credit, then start the payroll again.`,
+      );
+    }
+
+    const out: GrantLeaveCreditRowsResult['rows'] = [];
+    let expiresOn = '';
+    for (const d of derived) {
+      const overtime = overtimeByDate.get(d.row.workedDate) ?? 0;
+      const res = await bankToilCreditTx(tx, ctx, {
+        employmentId: p.employmentId,
+        workedDate: d.row.workedDate,
+        companyId: emp.companyId,
+        country: emp.country,
+        // ⚠️ MONEY — NULL, as both employee paths: see the header.
+        dayType: null,
+        workedDayKind: d.kind,
+        otMinutes: d.countedMinutes,
+        declaredDays: d.days,
+        approvedOn,
+        // No employee request behind an HR credit; the worked day is the only date in evidence.
+        requestedOn: d.row.workedDate,
+        firstScheduleConsent: p.firstScheduleConsent === true,
+        source: 'hr_manual_grant',
+        note: reason,
+        auditDetail: {
+          claimStart: d.row.claimStart!,
+          claimEnd: d.row.claimEnd!,
+          eligibleMinutes: d.countedMinutes,
+          overtimeSuppressedMinutes: overtime,
+        },
+      });
+      expiresOn = res.expiresOn;
+      out.push({
+        workedDate: d.row.workedDate,
+        accrualId: res.accrualId,
+        workedDayKind: d.kind,
+        daysCredited: res.daysCredited,
+        eligibleMinutes: d.countedMinutes,
+        overtimeSuppressedMinutes: overtime,
+      });
+    }
+    const overtimeDates = out.filter((r) => r.overtimeSuppressedMinutes > 0).map((r) => r.workedDate).sort();
+    return {
+      rows: out,
+      totalDays: round2(out.reduce((s, r) => s + r.daysCredited, 0)),
+      overtimeSuppressedMinutes: out.reduce((s, r) => s + r.overtimeSuppressedMinutes, 0),
+      overtimeDates,
+      expiresOn,
+    };
   });
 }
 

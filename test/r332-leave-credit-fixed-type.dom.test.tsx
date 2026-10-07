@@ -9,7 +9,9 @@
  * a real `FormData` built from the real form, not against the markup.
  *
  * WHY THE VISIBLE BOX IS NOT THE ONE CARRYING THE NAME. The HR-side dialog
- * (components/leave/leave-credit-add-dialog.tsx) posts NOTHING for its fixed leave type — the service knows.
+ * (components/leave/leave-credit-add-dialog.tsx until r406; since r406 HR mounts THIS table through
+ * components/leave/leave-credit-grant-dialog.tsx, and `grantLeaveCreditRows` ignores the posted id) posts
+ * nothing the service reads for its fixed leave type — the service knows.
  * This one deliberately still posts the resolved id, because `replacement_leave_request.leave_type_id` is
  * populated on the rows already in production and nulling it on new rows would quietly change stored data
  * nobody asked to change. `disabled` + a separate hidden input is what makes both true at once.

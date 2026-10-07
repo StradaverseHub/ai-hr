@@ -10718,7 +10718,12 @@
         "firstScheduleConsentLabel": "The employee has agreed to take this day as leave instead of statutory overtime pay.",
         "firstScheduleBlocked": "This employee is within the First Schedule and their company does not allow a Leave Credit in place of statutory overtime pay. Change that in the Rules tab first.",
         "extendedShort": "This is an ordinary working day. Only {minutes} minute(s) past the scheduled shift end counted for this employee, which is below the company’s half-day threshold, so this date cannot earn a Leave Credit.",
-        "extendedEarned": "This employee worked {minutes} counted minute(s) past the scheduled shift end, which earns {days} day. The credit amount is fixed at that figure and cannot be changed here."
+        "extendedEarned": "This employee worked {minutes} counted minute(s) past the scheduled shift end, which earns {days} day. The credit amount is fixed at that figure and cannot be changed here.",
+        "descriptionRows": "Credit a day an employee worked. The credit is added immediately.",
+        "help": "Add one row for each date worked, with the times. Four eligible hours earn half a day, eight a full day, by the employee’s company rule. View shows the attendance on record. The credit is added immediately — there is no manager step.",
+        "pickEmployeeFirst": "Choose the employee first.",
+        "checkingEmployee": "Checking this employee…",
+        "ownRecord": "You cannot add a Leave Credit on your own record. Another HR administrator must do it."
       },
       "rulesIntro": "Who can earn a Leave Credit, how it is earned and how long a credit lasts, per company. A change here applies to credits granted after it; a credit already granted keeps its expiry date."
     },

@@ -19,7 +19,7 @@ import th from '../messages/th.json';
 import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-import { LeaveCreditAddDialog, type LeaveCreditPreviewView } from '../components/leave/leave-credit-add-dialog';
+import { LeaveCreditGrantDialog, type LeaveCreditGrantContextView } from '../components/leave/leave-credit-grant-dialog';
 import { LeaveCreditReverseDialog } from '../components/leave/leave-credit-reverse-dialog';
 import { ReplacementLeaveRequestDialog } from '../components/leave/replacement-leave-request-dialog';
 
@@ -30,40 +30,62 @@ const unresolved = (text: string) => /MISSING_MESSAGE|admin\.leaveCredit\.|repla
 const lc = (loc: Locale) => (CATALOGUES[loc] as unknown as { admin: { leaveCredit: Record<string, unknown> } }).admin.leaveCredit;
 const lcAdd = (loc: Locale) => lc(loc).add as Record<string, string>;
 
-const PREVIEW: LeaveCreditPreviewView = {
-  workedDayKind: 'rest_day',
-  eligibleDay: true,
-  overtimeMinutes: 480,
-  defaultExpiresOn: '2026-12-16',
+/**
+ * ⚠️ r406 952129bb — THE ADD DIALOG THESE CASES DROVE IS GONE, AND WHAT IT PINNED IS RE-PINNED ON ITS
+ * REPLACEMENT. components/leave/leave-credit-add-dialog.tsx (one date, typed days, typed expiry) was
+ * replaced by components/leave/leave-credit-grant-dialog.tsx: the employee's Leave Credit table in HR mode
+ * plus an Employee picker. The r299/r334 claims, and where each went:
+ *   · "shows the day kind" — the row's Day Type cell, from the roster, exactly as on the employee's form;
+ *   · ⚠️ "the overtime warning, with the hours" — now PER ROW (`leave-credit-row-overtime`), same key;
+ *   · "the First Schedule agreement, required" — the table's consent checkbox, with HR's own label;
+ *   · "pre-fills the rule's expiry" — RETIRED with the field: the expiry always follows the company rule now
+ *     (the approved plan's GOOD TO KNOW), so there is nothing on the form to pre-fill;
+ *   · r334 "PINS the credit amount to the tier" — there is no amount field any more: the credit is DERIVED
+ *     from the window on every row, by the same function as the employee's request
+ *     (test/r406-hr-leave-credit-rows.test.ts pins the parity against the database);
+ *   · "a First-Schedule employee whose company does not allow it is blocked, not asked" — kept, below.
+ */
+const TIERS = { extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extendedBreakMinutes: 0, extendedGraceMinutes: 0 };
+const CONTEXT: LeaveCreditGrantContextView = {
+  tiers: TIERS,
+  ordinaryDayAllowed: true,
   policyEnabled: true,
   firstSchedule: true,
   allowFirstSchedule: true,
-  alreadyCredited: false,
-  // r334 · the extended-hours question does not arise on a rest day, which is what this base fixture is.
-  // Left in its OFF shape on purpose so every assertion below still describes the pre-r334 dialog exactly.
-  extendedHoursEnabled: false,
-  extendedHoursMinutes: null,
-  extendedHoursDays: null,
+  ownRecord: false,
 };
+const restDayFacts = (overtimeMinutes: number) => async () => ({
+  kind: 'rest_day' as const,
+  shiftStart: null,
+  shiftEnd: null,
+  actualClockIn: '08:00:00',
+  actualClockOut: '17:00:00',
+  measuredExtendedMinutes: 0,
+  approvedOtPlan: null,
+  overtimeMinutes,
+  alreadyCredited: false,
+});
 
-function renderAdd(locale: Locale, preview: LeaveCreditPreviewView) {
-  const previewAction = vi.fn(async () => preview);
+function renderGrant(locale: Locale, context: LeaveCreditGrantContextView, overtimeMinutes = 480) {
+  const contextAction = vi.fn(async () => context);
+  const dayFactsAction = vi.fn(restDayFacts(overtimeMinutes));
   const utils = render(
     <NextIntlClientProvider locale={locale} messages={CATALOGUES[locale]}>
-      <LeaveCreditAddDialog
+      <LeaveCreditGrantDialog
         employees={[{ id: 'emp-1', label: 'EMP-0001 — Aisyah Rahman' }]}
         today="2026-09-17"
+        replacementType={{ id: 'rl', name: 'Replacement Leave' }}
         submitAction={vi.fn()}
-        previewAction={previewAction}
+        contextAction={contextAction}
+        dayFactsAction={dayFactsAction}
       />
     </NextIntlClientProvider>,
   );
-  return { ...utils, previewAction };
+  return { ...utils, contextAction, dayFactsAction };
 }
 
-async function openAndPick(dateInput = '2026-08-06') {
+async function openAndPick(dateInput = '2026-08-09') {
   fireEvent.click(screen.getByTestId('leave-credit-add'));
-  // Pick the employee through the combobox's own list.
   const trigger = await waitFor(() => {
     const el = screen.getByRole('dialog').querySelector('button[aria-haspopup="listbox"]');
     if (!el) throw new Error('combobox trigger not rendered');
@@ -72,133 +94,81 @@ async function openAndPick(dateInput = '2026-08-06') {
   fireEvent.click(trigger);
   // The combobox commits on mousedown (so it beats its own outside-click close), not on click.
   fireEvent.mouseDown(await screen.findByRole('option', { name: 'EMP-0001 — Aisyah Rahman' }));
-  const date = document.querySelector('input[name="workedDate"]') as HTMLInputElement;
+  // The rows open once the employee's context has arrived (the table remounts for the picked employee).
+  const date = await waitFor(() => {
+    const el = screen.getAllByLabelText(en.replacementRequest.workedDate)[0] as HTMLInputElement;
+    if (el.disabled) throw new Error('rows still closed');
+    return el;
+  });
   await act(async () => {
     fireEvent.change(date, { target: { value: dateInput } });
   });
 }
 
-describe('+ Add Leave Credit', () => {
-  for (const locale of LOCALES) {
-    it(`[${locale}] shows the day kind, the overtime warning, the First Schedule agreement and the rule's expiry`, async () => {
-      const { previewAction } = renderAdd(locale, PREVIEW);
-      await openAndPick();
-      await waitFor(() => expect(screen.getByTestId('leave-credit-preview')).toBeTruthy());
-      expect(previewAction).toHaveBeenCalledWith({ employmentId: 'emp-1', workedDate: '2026-08-06' });
-      const dialog = screen.getByRole('dialog');
-      const text = dialog.textContent ?? '';
-      expect(unresolved(text), `${locale}: ${text.slice(0, 200)}`).toBe(false);
-      const copy = lc(locale);
-      expect(text).toContain((copy.dayKind as Record<string, string>).restDay);
-      // ⚠️ MONEY: the overtime warning, with the hours.
-      expect(text).toContain(String((copy.add as Record<string, string>).overtime).replace('{hours}', '8'));
-      expect(text).toContain((copy.add as Record<string, string>).firstScheduleConsentLabel);
-      expect((dialog.querySelector('input[name="firstScheduleConsent"]') as HTMLInputElement).required).toBe(true);
-      expect((dialog.querySelector('input[name="expiresOn"]') as HTMLInputElement).value).toBe('2026-12-16');
-      expect((dialog.querySelector('input[name="expiresOn"]') as HTMLInputElement).min).toBe('2026-08-06');
-    });
-  }
-
-  // ── r334 928f0454 · EXTENDED HOURS ON A WORKING DAY, in every locale ────────────────────────────────
-  //
-  // THIS IS THE §8 RENDER CHECK FOR THE DIALOG, and it is here rather than on a curled page for a reason
-  // that is a property of the component and not a convenience: the dialog body is a Radix `Dialog.Portal`
-  // that mounts only on open, so it is not in the server HTML at all — fetching the Leave Credit page and
-  // grepping it would prove nothing about these strings. Rendering it per locale and reading the dialog's
-  // own textContent is the equivalent check, and `unresolved()` above is what catches a MISSING_MESSAGE or
-  // an unformatted ICU placeholder.
-  const EXTENDED_EARNED = {
-    ...PREVIEW,
-    workedDayKind: 'workday' as const,
-    eligibleDay: true,
-    overtimeMinutes: 240,
-    extendedHoursEnabled: true,
-    extendedHoursMinutes: 240,
-    extendedHoursDays: 0.5,
-  };
-
-  for (const locale of LOCALES) {
-    it(`[${locale}] r334: names the extended hours, the tier, and PINS the credit amount`, async () => {
-      renderAdd(locale, EXTENDED_EARNED);
-      await openAndPick();
-      await waitFor(() => expect(screen.getByTestId('leave-credit-preview')).toBeTruthy());
-      const dialog = screen.getByRole('dialog');
-      const text = dialog.textContent ?? '';
-      expect(unresolved(text), `${locale}: ${text.slice(0, 200)}`).toBe(false);
-      // The ICU message really formatted — an unsubstituted `{minutes}` would survive `unresolved`.
-      expect(text).not.toMatch(/\{minutes\}|\{days\}/);
-      expect(text).toContain('240');
-      // The credit is the measured tier and HR cannot retype it; `readOnly`, never `disabled`, or the
-      // field would post nothing and the save would fail its own required-amount check.
-      const days = dialog.querySelector('input[name="days"]') as HTMLInputElement;
-      expect(days.value).toBe('0.5');
-      expect(days.readOnly).toBe(true);
-      expect(days.disabled).toBe(false);
-      expect((screen.getByRole('button', { name: lcAdd(locale).submit }) as HTMLButtonElement).disabled).toBe(false);
-    });
-  }
-
-  for (const locale of LOCALES) {
-    it(`[${locale}] r334: a working day that fell short says how far, and the save stays disabled`, async () => {
-      renderAdd(locale, {
-        ...PREVIEW,
-        workedDayKind: 'workday',
-        eligibleDay: false,
-        overtimeMinutes: 180,
-        firstSchedule: false,
-        extendedHoursEnabled: true,
-        extendedHoursMinutes: 180,
-        extendedHoursDays: null,
-      });
-      await openAndPick();
-      const dialog = await waitFor(() => screen.getByRole('dialog'));
-      await waitFor(() => expect(screen.getByTestId('leave-credit-preview')).toBeTruthy());
-      const text = dialog.textContent ?? '';
-      expect(unresolved(text), `${locale}: ${text.slice(0, 200)}`).toBe(false);
-      expect(text).not.toMatch(/\{minutes\}|\{days\}/);
-      expect(text).toContain('180');
-      // The "wrong kind of day" sentence must NOT be the one shown: the day is the right kind, it simply
-      // did not run long enough, and telling HR to pick a rest day would be wrong advice.
-      const lcx = CATALOGUES[locale] as unknown as { admin: { leaveCredit: { add: Record<string, string> } } };
-      expect(text).not.toContain(lcx.admin.leaveCredit.add.workingDay);
-      expect((screen.getByRole('button', { name: lcAdd(locale).submit }) as HTMLButtonElement).disabled).toBe(true);
-    });
-  }
-
-  it('r334: with the company switch OFF, an ordinary working day still shows the pre-r334 sentence', async () => {
-    renderAdd('en', {
-      ...PREVIEW,
-      workedDayKind: 'workday',
-      eligibleDay: false,
-      overtimeMinutes: 0,
-      firstSchedule: false,
-      extendedHoursEnabled: false,
-      extendedHoursMinutes: null,
-      extendedHoursDays: null,
-    });
-    await openAndPick('2026-08-03');
-    await waitFor(() => expect(screen.getByText(en.admin.leaveCredit.add.workingDay)).toBeTruthy());
-    // And the credit field is HR's again, as it has always been on this form.
-    const days = document.querySelector('input[name="days"]') as HTMLInputElement;
-    expect(days.readOnly).toBe(false);
+describe('+ Add Leave Credit — the employee’s form, plus an Employee picker', () => {
+  it('before an employee is picked the rows are closed and the button says why', () => {
+    renderGrant('en', CONTEXT);
+    fireEvent.click(screen.getByTestId('leave-credit-add'));
+    const dialog = screen.getByRole('dialog');
+    expect(screen.getByTestId('leave-credit-employee-picker')).toBeTruthy();
+    expect((screen.getAllByLabelText(en.replacementRequest.workedDate)[0] as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId('leave-credit-add-row') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+    expect(dialog.textContent).toContain(en.admin.leaveCredit.add.pickEmployeeFirst);
+    // HR's labels, not the employee's: "Add credit", never "Send to manager".
+    expect(screen.getByTestId('leave-credit-submit').textContent).toBe(en.admin.leaveCredit.add.submit);
+    expect(dialog.textContent).not.toContain(en.replacementRequest.submit);
+    expect(dialog.textContent).toContain(en.admin.leaveCredit.add.descriptionRows);
+    expect(screen.getByTestId('leave-credit-helper').textContent).toBe(en.admin.leaveCredit.add.help);
   });
 
-  it('refuses an ordinary working day before save — the submit is disabled and the reason is shown', async () => {
-    renderAdd('en', { ...PREVIEW, workedDayKind: 'workday', eligibleDay: false, overtimeMinutes: 0, firstSchedule: false });
-    await openAndPick('2026-08-03');
-    await waitFor(() => expect(screen.getByText(en.admin.leaveCredit.add.workingDay)).toBeTruthy());
-    const submit = screen.getByRole('button', { name: en.admin.leaveCredit.add.submit }) as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
-    // No overtime ⇒ no overtime sentence (the warning is not boilerplate).
-    expect(screen.queryByText(/overtime recorded/)).toBeNull();
+  for (const locale of LOCALES) {
+    it(`[${locale}] after the pick: the day kind from the roster, the per-row overtime warning, HR's consent label`, async () => {
+      const { contextAction, dayFactsAction } = renderGrant(locale, CONTEXT);
+      await openAndPick();
+      expect(contextAction).toHaveBeenCalledWith('emp-1');
+      await waitFor(() => expect(dayFactsAction).toHaveBeenCalledWith('2026-08-09', 'emp-1'));
+      const dialog = screen.getByRole('dialog');
+      const copy = CATALOGUES[locale] as unknown as { replacementRequest: { dayKind: Record<string, string> } };
+      await waitFor(() =>
+        expect((screen.getAllByTestId('leave-credit-day-type')[0].querySelector('span')?.textContent ?? '').trim()).toBe(
+          copy.replacementRequest.dayKind.restDay,
+        ),
+      );
+      // ⚠️ MONEY: the overtime warning, with the hours, on the row.
+      expect(screen.getByTestId('leave-credit-row-overtime').textContent).toBe(lcAdd(locale).overtime.replace('{hours}', '8'));
+      expect(dialog.textContent).toContain(lcAdd(locale).firstScheduleConsentLabel);
+      expect((dialog.querySelector('input[name="firstScheduleConsent"]') as HTMLInputElement).required).toBe(true);
+      // The picked employee is POSTED, once.
+      const posted = dialog.querySelectorAll('input[name="employmentId"]');
+      expect(posted).toHaveLength(1);
+      expect((posted[0] as HTMLInputElement).value).toBe('emp-1');
+      // The removed fields are really gone.
+      for (const gone of ['days', 'expiresOn', 'remarks']) expect(dialog.querySelector(`[name="${gone}"]`), gone).toBeNull();
+      expect(unresolved(dialog.textContent ?? ''), `${locale}: ${(dialog.textContent ?? '').slice(0, 200)}`).toBe(false);
+    });
+  }
+
+  it('no overtime on the date ⇒ no overtime sentence (the warning is not boilerplate)', async () => {
+    renderGrant('en', CONTEXT, 0);
+    await openAndPick();
+    await waitFor(() => expect(screen.getAllByTestId('leave-credit-day-type-source')).toHaveLength(1));
+    expect(screen.queryByTestId('leave-credit-row-overtime')).toBeNull();
   });
 
   it('a First-Schedule employee whose company does not allow it is blocked, not asked', async () => {
-    renderAdd('en', { ...PREVIEW, allowFirstSchedule: false });
+    renderGrant('en', { ...CONTEXT, allowFirstSchedule: false });
     await openAndPick();
-    await waitFor(() => expect(screen.getByText(en.admin.leaveCredit.add.firstScheduleBlocked)).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('leave-credit-grant-refusal').textContent).toBe(en.admin.leaveCredit.add.firstScheduleBlocked));
     expect(document.querySelector('input[name="firstScheduleConsent"]')).toBeNull();
-    expect((screen.getByRole('button', { name: en.admin.leaveCredit.add.submit }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('HR’s own record is refused on the form, before the save refuses it', async () => {
+    renderGrant('en', { ...CONTEXT, firstSchedule: false, ownRecord: true });
+    await openAndPick();
+    await waitFor(() => expect(screen.getByTestId('leave-credit-grant-refusal').textContent).toBe(en.admin.leaveCredit.add.ownRecord));
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -325,6 +295,13 @@ describe('The employee’s Leave Credit request', () => {
       expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
       expect(screen.getByTestId('leave-credit-ordinary-earns-nothing'), 'and the row says why').toBeTruthy();
       expect(unresolved(dialog.textContent ?? '')).toBe(false);
+      // r406 — THE SAME TABLE, NOT IN HR MODE: no picker, nothing posted as `employmentId` (the action reads
+      // the session's own), the employee's own submit label and the facts action asked with the date alone.
+      expect(screen.queryByTestId('leave-credit-employee-picker')).toBeNull();
+      expect(dialog.querySelector('input[name="employmentId"]')).toBeNull();
+      expect(screen.getByTestId('leave-credit-submit').textContent).toBe(rr.submit as string);
+      expect(screen.queryByTestId('leave-credit-row-overtime')).toBeNull();
+      for (const call of dayFactsAction.mock.calls) expect(call).toHaveLength(1);
     });
   }
 });

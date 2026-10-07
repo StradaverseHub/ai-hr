@@ -230,3 +230,43 @@ export function eligibleExtendedMinutes(p: {
 }): number {
   return assessExtendedClaim(p).minutes;
 }
+
+/**
+ * r406 952129bb · ONE LEAVE CREDIT ROW'S WINDOW → DAYS. THE ONLY PLACE A CLAIMED WINDOW BECOMES A CREDIT.
+ *
+ * ⚠️ MONEY. A Leave Credit suppresses the worked day's overtime pay (core/payroll.ts EXCLUDE_TOIL_BANKED_DAYS)
+ * and, for a First-Schedule employee, converts to cash on expiry. Until r406 the window → days step was
+ * written out at FOUR call sites — the screen's `derive`, the employee submit's non-working-day loop, the
+ * same submit's ordinary-day loop, and the ordinary-day approval (`accrueExtendedWorkdayToilTx`) — each a
+ * pair of calls to the two functions above, each deciding the shift-end floor for itself. HR's + Add Leave
+ * Credit (`grantLeaveCreditRows`) is a fifth, and the item is "a day worked earns the same credit whether
+ * the employee asks for it or HR enters it". Five copies of a two-line rule agree until one of them is
+ * edited; one function cannot disagree with itself.
+ *
+ * `ordinaryWorkingDay` IS THE ONE THING THE DAY TYPE DECIDES (`flooredByScheduledShiftEnd`): on an ordinary
+ * working day the window is floored at the scheduled shift end, because the hours before it were already
+ * rostered; on a rest day, off day or public holiday the whole entered window is the claim, so the shift end
+ * and clock-out are DROPPED HERE rather than trusted to every caller to pass null. Callers pass the day's
+ * facts as they have them and the rule decides what reaches `assessExtendedClaim`.
+ *
+ * Returns the counted minutes, the tier (0 / 0.5 / 1) and the clock-out warning the screen prints. A tier
+ * of 0 is NOT refused here — this file is pure and server and browser both read it; each server caller
+ * refuses it with `ToilExtendedHoursBelowThresholdError`, the screen blocks its submit.
+ */
+export function leaveCreditWindowCredit(p: {
+  ordinaryWorkingDay: boolean;
+  claimStart: string;
+  claimEnd: string;
+  shiftEnd: string | null;
+  actualClockOut: string | null;
+  tiers: ExtendedHoursTiers;
+}): { countedMinutes: number; days: number; exceedsClockOut: boolean } {
+  const assessed = assessExtendedClaim({
+    claimStart: p.claimStart,
+    claimEnd: p.claimEnd,
+    shiftEnd: p.ordinaryWorkingDay ? p.shiftEnd : null,
+    actualClockOut: p.ordinaryWorkingDay ? p.actualClockOut : null,
+  });
+  const { countedMinutes, days } = extendedHoursCreditDays(assessed.minutes, p.tiers);
+  return { countedMinutes, days, exceedsClockOut: assessed.exceedsClockOut };
+}

@@ -135,7 +135,11 @@ describe('The pages gate on the module — with the wind-down exception on Credi
     expect(src).toContain('const showCredits = moduleOn || windDown;');
     expect(src).toMatch(/\{!showCredits \? \(\s*<Card className="p-4" data-testid="leave-credit-module-off">/);
     // + Add Leave Credit is offered only with the module (the service refuses without it regardless).
-    expect(src).toMatch(/actions=\{\s*moduleOn \? \(\s*<LeaveCreditAddDialog/);
+    // r406 (952129bb) — UPDATED, NOT LOOSENED: the Add dialog is now the employee's Leave Credit form plus an
+    // Employee picker (components/leave/leave-credit-grant-dialog.tsx). This read `<LeaveCreditAddDialog`; the
+    // property — offered only with the module — is the same.
+    expect(src).toMatch(/actions=\{\s*moduleOn \? \(\s*<LeaveCreditGrantDialog/);
+    expect(src).not.toContain('LeaveCreditAddDialog');
     // The sweeps are on this tab, NOT behind the module.
     expect(src).toContain('<form action={runToilExpiryAction}>');
     expect(src).toContain('<form action={closeReplacementLeaveYearAction}>');
