@@ -78,6 +78,9 @@ describe('r395 — the seeded org exercises every branch (expected visibility, b
     // midT: a terminated subordinate. underMidT: only reachable through the terminated midT. bemp: company B
     // under an A root. termleaf: terminated. superseded / expired / endsToday / future: not a live line.
     for (const n of ['midT', 'underMidT', 'bemp', 'termleaf', 'superseded', 'expired', 'endsToday', 'future']) expect(v, n).not.toContain(n);
+    // fxUnderMid / dlgUnderMid: a functional and a delegate line MANAGED BY the intermediate mid — reachable only
+    // through the walk's recursive step, which must follow administrative lines alone.
+    for (const n of ['fxUnderMid', 'dlgUnderMid']) expect(v, n).not.toContain(n);
   });
   it('A1 manager: an A2 report is in, an A report is out (the clamp is to the ROOT manager company)', async () => {
     const v = await visibleNames(ctxByName('A1 manager (clamp)'));

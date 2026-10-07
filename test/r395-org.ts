@@ -185,6 +185,13 @@ export async function seedOrg() {
   // Delegate line: subordinate = delegator (mid), manager = delegate. Not visibility either.
   await hire('delegate', C.A, D.misc);
   await line(E.mid, E.delegate, { type: 'delegate' });
+  // Parent's verification (r395): non-administrative lines whose MANAGER is an INTERMEDIATE of the live chain
+  // (mid). Only the recursive step of the manager walk can reach these, so they pin its own line-type filter:
+  // without them a walk that followed functional/delegate lines from depth 2 down passed every test.
+  await hire('fxUnderMid', C.A, D.misc);
+  await line(E.fxUnderMid, E.mid, { type: 'functional' });
+  await hire('dlgUnderMid', C.A, D.misc);
+  await line(E.dlgUnderMid, E.mid, { type: 'delegate' });
   // A1 manager: A2 report IN (A2 descends from A1), A report OUT (A does not descend from A1).
   await hire('a1mgr', C.A1, D.a1m);
   await hire('a2sub', C.A2, D.miscA2);
