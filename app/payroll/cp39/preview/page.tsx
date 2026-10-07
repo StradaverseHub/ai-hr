@@ -218,7 +218,7 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
         <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileAmount')}</div>
           <div className="text-base font-semibold tabular-nums">RM {money(form.totalAmount)}</div>
-          <div className="text-xs text-muted-foreground">{t('tileEmployer', { ref: form.employerNo || '—' })}</div>
+          <div className="text-xs text-muted-foreground">{t('tileEmployer', { ref: form.employerNo ? `E ${form.employerNo}` : '—' })}</div>
         </div>
       </div>
   );

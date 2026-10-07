@@ -210,6 +210,8 @@ describe('the employer number prints ONE "E", on the cover and on every sheet', 
     ['E 908915-10', '908915-10'],
     ['e 9089151 10', '9089151 10'],
     ['  E  0094573909 ', '0094573909'],
+    ['E-0094573909', '0094573909'],
+    ['e - 908915-10', '908915-10'],
     ['0094573909', '0094573909'],
   ])('%j prints as %j', (stored, printed) => {
     expect(cp39EmployerNoForForm(stored)).toBe(printed);

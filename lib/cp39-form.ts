@@ -391,7 +391,8 @@ export function formatMyIc(ic: string | null | undefined): string {
  * stored. A value that does not begin with an E is untouched.
  */
 export function cp39EmployerNoForForm(stored: unknown): string {
-  return str(stored).trim().replace(/^[Ee]\s*/, '').trim();
+  // One leading E with any space or hyphen after it ("E 9089151-10", "E-0094573909"): the form prints the E itself.
+  return str(stored).trim().replace(/^[Ee][\s-]*/, '').trim();
 }
 
 /**
