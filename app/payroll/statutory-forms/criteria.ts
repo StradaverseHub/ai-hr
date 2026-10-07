@@ -124,7 +124,8 @@ export function reportDestination(
 /**
  * r407 (item 4f45f9b0) — THE `cycles` CRITERION, FOR EVERY MONTHLY FORM FILED PER PAYROLL CYCLE.
  *
- * Borang A is the first; SOCSO Borang 8A and LHDN CP39 reuse this as written. The contract, end to end:
+ * Borang A was the first (r407) and LHDN CP39 joined it (r409, item 79f3f64d); SOCSO Borang 8A is next. The
+ * contract, end to end:
  *
  *   1. The pack declares `runSelection: { action }` on the report (only where `generate` honours
  *      `runSeqs`). `reportDestination` above then adds `{ kind: 'cycles', field: 'run' }`.

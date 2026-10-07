@@ -354,6 +354,9 @@ export function money(amount: number): string {
 /**
  * 7ee14bbc — a MyKad number the way the card itself prints it: `860208105128` → `860208-10-5128`.
  *
+ * ⚠️ r409 (item 79f3f64d) — THE REVIEW SCREEN ONLY. Until r409 the drawn CP39 printed this too; it now prints
+ * digits (`cp39IcForForm`, below), as LHDN's own CP39 instructions write the number.
+ *
  * ⚠️ RENDER ONLY. THIS MUST NEVER BE APPLIED ON THE WAY INTO A FILE. The e-Data PCB upload
  * (`localization/my/cp39-file.ts`) is a fixed-width 57/136-character machine format whose identity-card
  * field is TWELVE characters; two dashes make fourteen, and `alpha()` pads or the record length check

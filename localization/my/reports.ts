@@ -387,7 +387,7 @@ export type ReportDef = {
    * statutory return. `action` is the screen the step's Continue opens (the form's own preview), which
    * runs the server-side "is there anything to file" gate and sends a refusal back to the step.
    * `app/payroll/statutory-forms/criteria.ts` turns this into the `cycles` criterion; my.borang-a declares
-   * it now, my.borang-8a and my.cp39 are expected to next.
+   * it (r407) and my.cp39 (r409, item 79f3f64d); my.borang-8a is expected to next.
    */
   runSelection?: { action: string };
   /**

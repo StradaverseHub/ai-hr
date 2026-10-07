@@ -17,8 +17,9 @@ import { pcbPaymentsForYear } from '@/core/pcb-payment';
 import { recordPcbPaymentAction } from '../../pcb-payment-actions';
 
 /**
- * e0cd4583 — the CP39 review screen: pick a payroll cycle month, check the statement, fill in the
- * preparer block, then download it two ways.
+ * e0cd4583 — the CP39 review screen: check the statement for the company, month and payroll cycles chosen
+ * on the criteria step, fill in the preparer block, then download it (the drawn statement, its text twin
+ * and the e-Data PCB upload file).
  *
  * "FILTER → PREVIEW (auto-filled data shown, the preparer block and payment fields editable) → DOWNLOAD"
  * is the request's own workflow, and it is why this screen exists beside the generic [formId] figures
@@ -197,26 +198,26 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
   // viewer's side panel at 20rem.
   const tiles = (
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border monolith:rounded-none">
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileMonth')}</div>
-          <div className="text-lg font-semibold">
+          <div className="text-base font-semibold">
             {form.deductionMonth} {form.deductionYear}
           </div>
           <div className="text-xs text-muted-foreground">{t('tileMonthHint')}</div>
         </div>
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tilePcb')}</div>
-          <div className="text-lg font-semibold tabular-nums">RM {money(form.totalPcb)}</div>
+          <div className="text-base font-semibold tabular-nums">RM {money(form.totalPcb)}</div>
           <div className="text-xs text-muted-foreground">{t('tilePcbHint', { count: form.pcbEmployees })}</div>
         </div>
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileCp38')}</div>
-          <div className="text-lg font-semibold tabular-nums">RM {money(form.totalCp38)}</div>
+          <div className="text-base font-semibold tabular-nums">RM {money(form.totalCp38)}</div>
           <div className="text-xs text-muted-foreground">{t('tileCp38Hint', { count: form.cp38Employees })}</div>
         </div>
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileAmount')}</div>
-          <div className="text-lg font-semibold tabular-nums">RM {money(form.totalAmount)}</div>
+          <div className="text-base font-semibold tabular-nums">RM {money(form.totalAmount)}</div>
           <div className="text-xs text-muted-foreground">{t('tileEmployer', { ref: form.employerNo || '—' })}</div>
         </div>
       </div>
@@ -438,9 +439,10 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                     {/* Not an error state: there is no old-IC field to be missing. Rendered as a neutral
                         dash rather than the red one a genuinely absent value gets. */}
                     <td className="px-3 py-2 text-muted-foreground">{r.oldIc || '—'}</td>
-                    {/* 7ee14bbc — DASHED HERE AND ON THE DRAWN PAGE, NOWHERE ELSE. `formatMyIc` touches
-                        neither the stored value nor the e-Data PCB upload file, whose identity-card
-                        field is twelve characters wide. What the operator checks here is what prints. */}
+                    {/* 7ee14bbc / r409 — DASHED HERE, ON THE SCREEN, AND NOWHERE ELSE. A person reading the
+                        number checks it more easily in the card's own grouping. Since r409 the drawn page
+                        prints the twelve digits LHDN's instructions write (`cp39IcForForm`), the text twin
+                        and the e-Data PCB file print digits too, and `formatMyIc` touches none of them. */}
                     <td className="px-3 py-2 font-mono text-xs">
                       {r.newIc ? formatMyIc(r.newIc) : <span className="text-red-600">—</span>}
                     </td>

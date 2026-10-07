@@ -175,8 +175,8 @@ export async function loadCp39Form(p: {
 
   const base = cp39FormFrom({ header: result.meta.formHeader, rows: result.rows });
   // The operator's preparer block and print date, applied to the FORM rather than passed into the read,
-  // so `ReportParams` stays {companyId, periodKey} and the pack never learns about a per-generation
-  // input. An invalid date is ignored rather than throwing: this is a render path and a junk query
+  // so the pack never learns about a per-generation PRESENTATION input. (The payroll cycles are not one:
+  // they change which payslips are read, so they ride `ReportParams.runSeqs` above, since r409.) An invalid date is ignored rather than throwing: this is a render path and a junk query
   // string must not 500 the review screen.
   const form = withPaymentInstrument(
     withPreparer(base, {
