@@ -14221,6 +14221,7 @@
     "cardEmpty": "No notices right now.",
     "cardViewAll": "View all notices",
     "cardNewCount": "{count} new",
+    "cardUnreadWord": "New",
     "popupRead": "Read notice",
     "popupDismiss": "Close"
   },

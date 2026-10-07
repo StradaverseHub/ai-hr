@@ -43,6 +43,10 @@ import { DashboardCustomizer, type CustomizerCard } from '@/components/dashboard
 import { saveDashboardLayoutAction, resetDashboardLayoutAction } from '@/app/dashboard-layout-actions';
 import { BUILTIN_ROLE_DASHBOARD_CARDS, type DashboardLayout } from '@/lib/dashboard-layout';
 import { NoticeBoardCardSlot } from '@/components/notice/notice-surfaces';
+// r401 — Monolith step 4: the theme decides how the SAME data is drawn, never which data is read.
+import { currentUiTheme } from '@/lib/ui-theme-server';
+import { MonoPageHeader, Note } from '@/components/monolith';
+import { MONOLITH_SECTION_KEYS, monolithDashboardBlocks } from '@/app/dashboard-monolith';
 
 const rm = (n: unknown) =>
   n == null
@@ -586,6 +590,66 @@ export default async function DashboardPage({
     defaultDisplay: c.defaultDisplay,
     employeeSelectable: c.employeeSelectable,
   }));
+
+  // r401 — MONOLITH (docs/design/monolith/reference/P-Dashboard.dc.html). Same reads, same values, same
+  // customizer and saved layout; only the drawing differs, so the branch sits here, after every read. The
+  // Classic return below is untouched.
+  if ((await currentUiTheme()) === 'monolith') {
+    const monolithBlocks = monolithDashboardBlocks({
+      role,
+      t,
+      tEmployeeStatus,
+      admin,
+      stats,
+      att,
+      hires,
+      events,
+      activity,
+      breakdownRows: orderTree(breakdown),
+      breakdownTotal: breakdown.reduce((sum, c) => sum + c.headcount, 0),
+      empBalances,
+      empTaskCount,
+      mgrAwayCount,
+      mgrApprovals,
+      mgrReminders,
+      todayIso,
+      nowMs,
+      rm,
+      daysAway: (iso) => daysAway(iso, todayMs, t),
+      joinedAgo: (iso) => joinedAgo(iso, todayMs, t),
+      noticeBoard: <NoticeBoardCardSlot s={s} monolith />,
+    });
+    const todayLong = new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Asia/Kuala_Lumpur',
+    }).format(now);
+    return (
+      <div className="mx-auto max-w-[100rem] space-y-6">
+        {unavailableModule && (
+          <Note warn label={tModule('title')} title={tModule('body', { module: unavailableModule.name })} />
+        )}
+        <MonoPageHeader
+          kicker={`${
+            scopeIds.length >= allowedCount
+              ? t('overviewAll')
+              : t('overviewScoped', { count: scopeIds.length, total: allowedCount })
+          } · ${todayLong}`}
+          title={t('title')}
+        />
+        <DashboardCustomizer
+          cards={customizerCards}
+          blocks={monolithBlocks}
+          layout={savedLayout ?? { selected: [], order: [] }}
+          saveAction={saveDashboardLayoutAction}
+          resetAction={resetDashboardLayoutAction}
+          sectionKeys={[...MONOLITH_SECTION_KEYS]}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">

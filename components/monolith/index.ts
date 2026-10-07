@@ -10,3 +10,5 @@ export { Section, type SectionTab } from './section';
 export { HairlineTable, HairlineList, type HairlineRow, type HairlineListItem } from './table';
 export { Steps, Ruler, type Step, type StepState, type Tick } from './steps';
 export { Field, Switch, type SwitchProps } from './field';
+export { MonoPageHeader } from './page-header';
+export { OrdinalSection, SectionOrdinalProvider, useSectionOrdinal } from './section-ordinal';

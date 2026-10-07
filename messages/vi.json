@@ -14221,6 +14221,7 @@
     "cardEmpty": "Hiện không có thông báo nào.",
     "cardViewAll": "Xem tất cả thông báo",
     "cardNewCount": "{count} mới",
+    "cardUnreadWord": "Mới",
     "popupRead": "Đọc thông báo",
     "popupDismiss": "Đóng"
   },

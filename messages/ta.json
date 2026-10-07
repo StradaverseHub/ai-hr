@@ -14221,6 +14221,7 @@
     "cardEmpty": "தற்போது அறிவிப்புகள் இல்லை.",
     "cardViewAll": "அனைத்து அறிவிப்புகளையும் பார்",
     "cardNewCount": "{count} புதியது",
+    "cardUnreadWord": "புதியது",
     "popupRead": "அறிவிப்பைப் படி",
     "popupDismiss": "மூடு"
   },

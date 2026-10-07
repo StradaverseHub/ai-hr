@@ -32,20 +32,22 @@ export function LeaveBalanceCard({
   const selected = balances.find((b) => b.leaveTypeId === selectedId) ?? balances[0] ?? null;
 
   return (
-    <Card className="h-full p-5">
+    // r401 — Monolith: drawn as the dashboard board's stat `.cell` (no rule on top, mono label, 36px mono figure,
+    // an underlined select). Appended `monolith:` classes only; Classic's strings are unchanged.
+    <Card className="h-full p-5 monolith:flex monolith:flex-col monolith:gap-1.5 monolith:border-t-0 monolith:px-0 monolith:pt-4 monolith:pb-[18px]">
       <div className="flex items-center justify-between gap-2">
         <Link
           href={href}
-          className="text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+          className="text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:tracking-[0.12em] monolith:text-mid monolith:hover:text-ink"
         >
           {t('leaveBalance')}
         </Link>
       </div>
       {balances.length === 0 ? (
-        <div className="mt-2 text-sm text-muted-foreground">{t('noLeaveTypes')}</div>
+        <div className="mt-2 text-sm text-muted-foreground monolith:mt-0 monolith:text-[13px] monolith:text-mid">{t('noLeaveTypes')}</div>
       ) : (
         <>
-          <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">
+          <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums monolith:mt-0 monolith:font-mono monolith:text-[28px] monolith:font-medium monolith:leading-none monolith:tracking-[-0.03em] monolith:text-ink">
             {/* 4a1abc4a: the dashboard's headline balance is the SAME `available` figure the /leave cards
                 and the balance grid show, so it prints the same way. `daysRemaining` used to be an ICU
                 plural whose `#` formatted the raw number ("12.5 days remaining") — the drift the reporter
@@ -67,7 +69,7 @@ export function LeaveBalanceCard({
             aria-label={t('selectLeaveType')}
             value={selectedId}
             onChange={(e) => setSelectedId(e.currentTarget.value)}
-            className="mt-2 h-8 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="mt-2 h-8 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 monolith:mt-1 monolith:h-9 monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-ink monolith:bg-transparent monolith:px-0 monolith:text-[13px] monolith:focus:ring-0 monolith:focus-visible:outline-2"
           >
             {balances.map((b) => (
               <option key={b.leaveTypeId} value={b.leaveTypeId}>

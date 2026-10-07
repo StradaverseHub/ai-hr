@@ -14221,6 +14221,7 @@
     "cardEmpty": "ขณะนี้ไม่มีประกาศ",
     "cardViewAll": "ดูประกาศทั้งหมด",
     "cardNewCount": "ใหม่ {count} รายการ",
+    "cardUnreadWord": "ใหม่",
     "popupRead": "อ่านประกาศ",
     "popupDismiss": "ปิด"
   },

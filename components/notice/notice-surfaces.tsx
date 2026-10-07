@@ -28,7 +28,7 @@ import { NoticePopup } from './notice-popup';
  */
 
 /** The dashboard's Notice Board card. Returns null when the viewer has no employment. */
-export async function NoticeBoardCardSlot({ s }: { s: SessionContext }) {
+export async function NoticeBoardCardSlot({ s, monolith = false }: { s: SessionContext; monolith?: boolean }) {
   const t = await getTranslations('notices');
   const me = await viewerEmployment(s);
   if (!me) return null;
@@ -43,6 +43,8 @@ export async function NoticeBoardCardSlot({ s }: { s: SessionContext }) {
       emptyLabel={t('cardEmpty')}
       viewAllLabel={t('cardViewAll')}
       newCountLabel={t('cardNewCount', { count: unread })}
+      // r401 — the Monolith dashboard draws this card as a numbered section; Classic passes nothing.
+      monolith={monolith ? { unreadWord: t('cardUnreadWord') } : undefined}
     />
   );
 }

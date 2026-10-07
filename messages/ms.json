@@ -14221,6 +14221,7 @@
     "cardEmpty": "Tiada notis buat masa ini.",
     "cardViewAll": "Lihat semua notis",
     "cardNewCount": "{count} baharu",
+    "cardUnreadWord": "Baharu",
     "popupRead": "Baca notis",
     "popupDismiss": "Tutup"
   },

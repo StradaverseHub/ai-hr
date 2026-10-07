@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { Card, SectionHeader } from '@/components/ui';
+import { HairlineList, OrdinalSection } from '@/components/monolith';
 
 export type NoticeCardItem = { id: string; title: string; unread: boolean };
 
@@ -22,6 +23,7 @@ export function NoticeBoardCard({
   emptyLabel,
   viewAllLabel,
   newCountLabel,
+  monolith,
 }: {
   items: NoticeCardItem[];
   unread: number;
@@ -30,7 +32,43 @@ export function NoticeBoardCard({
   viewAllLabel: string;
   /** Already interpolated, e.g. "3 new" — the count is resolved server-side with the rest of the copy. */
   newCountLabel: string;
+  /**
+   * r401 — the Monolith dashboard (docs/design/monolith/reference/P-Dashboard.dc.html): a numbered section with
+   * hairline rows and the unread state as a WORD, never the dot alone (README §8). Absent → today's card.
+   */
+  monolith?: { unreadWord: string };
 }) {
+  if (monolith) {
+    return (
+      <OrdinalSection
+        label={unread > 0 ? `${title} · ${newCountLabel}` : title}
+        right={
+          <Link href="/notices" className="text-ink underline-offset-4 hover:text-signal-text">
+            {viewAllLabel}
+          </Link>
+        }
+      >
+        {items.length === 0 ? (
+          <p className="m-0 text-[14px] text-mid">{emptyLabel}</p>
+        ) : (
+          <HairlineList
+            label={title}
+            className="[&_li]:grid-cols-[minmax(0,1fr)_auto] [&_li>span:first-child]:hidden"
+            items={items.map((n) => ({
+              key: n.id,
+              title: (
+                <Link href={`/notices/${n.id}`} className="block truncate text-ink no-underline hover:text-signal-text">
+                  {n.title}
+                </Link>
+              ),
+              right: n.unread ? monolith.unreadWord : undefined,
+              tone: 'signal' as const,
+            }))}
+          />
+        )}
+      </OrdinalSection>
+    );
+  }
   return (
     <Card>
       <SectionHeader title={unread > 0 ? `${title} · ${newCountLabel}` : title} />

@@ -14221,6 +14221,7 @@
     "cardEmpty": "暂无公告。",
     "cardViewAll": "查看全部公告",
     "cardNewCount": "{count} 条新公告",
+    "cardUnreadWord": "新",
     "popupRead": "阅读公告",
     "popupDismiss": "关闭"
   },
