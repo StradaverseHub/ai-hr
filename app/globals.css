@@ -446,3 +446,9 @@ label[data-edited-field='true'] > span:first-child::after {
     box-shadow: none !important;
   }
 }
+
+/* r399 — the navigation shell (components/route-loading.tsx) fades in only after 150 ms, so a load that
+   finishes sooner shows nothing extra; once shown it eases in over 200 ms. Reduced motion: no fade. */
+@keyframes route-loading-in { from { opacity: 0; } to { opacity: 1; } }
+.route-loading { animation: route-loading-in 200ms ease-out 150ms both; }
+@media (prefers-reduced-motion: reduce) { .route-loading { animation: none; } }
