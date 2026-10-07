@@ -130,7 +130,7 @@ export function StatutoryPdfViewer({
             <a
               href={pdfUrl}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
               className="text-sm text-primary underline-offset-4 hover:underline monolith:border-b monolith:border-ink monolith:text-ink monolith:no-underline"
             >
               {openInNewTabLabel}
