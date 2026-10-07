@@ -222,9 +222,9 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
         expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
       }
     }
-    // Borang A is the one that declares it today — pinned, so a refactor that dropped the declaration
-    // cannot quietly turn the cycle box off.
-    expect(monthly.filter((r) => r.runSelection).map((r) => r.id)).toEqual(['my.borang-a']);
+    // Borang A (r407) and Borang 8A (r408) declare it today — pinned, so a refactor that dropped either
+    // declaration cannot quietly turn the cycle box off.
+    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-a']);
   });
 
   it('asks an ANNUAL report for company and year, and never a month', () => {

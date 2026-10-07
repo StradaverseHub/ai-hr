@@ -61,16 +61,16 @@ import { MY_REPORTS } from '../localization/my/reports';
 import { BORANG_8A_COLUMNS } from '../localization/my/borang-8a';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import {
-  BORANG_8A_AMOUNT_HEAD,
   BORANG_8A_HEADINGS,
-  BORANG_8A_HEAD_PAD,
   BORANG_8A_HEAD_SIZE,
   BORANG_8A_NAME_CELL,
+  BORANG_8A_SHEET,
+  BORANG_8A_STATUS_HEAD,
   borang8AFilename,
   borang8ANameLines,
   renderBorang8APdf,
-  wrapTo,
 } from '../lib/borang-8a-pdf';
+import { submissionDueFor } from '../core/reporting';
 import { PERKESO_FILE_LINE_LENGTH } from '../lib/perkeso-socso-file';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import en from '../messages/en.json';
@@ -186,8 +186,19 @@ describe('the no-offset rule', () => {
    */
   it('has no month arithmetic in either half, and the read derives its period through the rule', () => {
     expect(READ_SRC).toContain('contributionPeriodFor(params.periodKey)');
-    const SHIFT = /\b(month|mm|m)\s*[+-]\s*1\b|setMonth\(|addMonths|getMonth\(\)\s*[+-]/i;
-    expect(SHIFT.test(LIB), 'lib/borang-8a.ts must contain no month shift').toBe(false);
+    const SHIFT = /\b(month|mm|m)\s*[+-]\s*1\b|setMonth\(|addMonths|get(UTC)?Month\(\)\s*[+-]/i;
+    // r408 — THE DEADLINE IS THE ONE PLACE A DATE LANDS IN THE NEXT MONTH (the 15th of the following month,
+    // PERKESO 2025 booklet). It is cut out of the scan BY NAME, and the cut must be found and substantial —
+    // a renamed function would otherwise make this exemption swallow nothing, or everything (r373).
+    const a = LIB.indexOf('export function paymentDueDateFor(');
+    const b = LIB.indexOf('\n}\n', a);
+    expect(a, 'paymentDueDateFor not found').toBeGreaterThanOrEqual(0);
+    expect(b, 'paymentDueDateFor has no end').toBeGreaterThan(a);
+    const deadline = LIB.slice(a, b);
+    expect(deadline.length, 'the exempted slice is the deadline function and nothing else').toBeGreaterThan(200);
+    expect(deadline.length).toBeLessThan(800);
+    const rest = LIB.slice(0, a) + LIB.slice(b);
+    expect(SHIFT.test(rest), 'lib/borang-8a.ts must contain no month shift outside the deadline').toBe(false);
     expect(SHIFT.test(READ_SRC), 'localization/my/borang-8a.ts must contain no month shift').toBe(false);
     // …and the form carries BOTH keys, so a divergence would be visible on the document itself rather
     // than only in a test.
@@ -197,31 +208,41 @@ describe('the no-offset rule', () => {
 });
 
 describe('the payment deadline', () => {
-  /** The specimen: a 07/2026 form says "tidak lewat daripada 31/07/2026". */
+  /**
+   * r408 (item e74af58c) — THE 15TH OF THE FOLLOWING MONTH. PERKESO's 2025 employer booklet ("Tempoh
+   * Pembayaran Caruman"): "caruman bulan Januari 2025 hendaklah dibayar tidak lewat daripada 15 Februari
+   * 2025". THIS PIN WAS WRONG until r408: it asserted the last day of the contribution month, which was the
+   * temporary relief of Pekeliling Majikan Bil. 4/2020 for April–September 2020 contributions only, copied
+   * off a vendor's filled specimen.
+   */
   it.each([
-    ['2026-07', '31/07/2026'],
-    ['2026-02', '28/02/2026'],
-    ['2024-02', '29/02/2024'], // a leap February — the one month a hardcoded 28 gets wrong
-    ['2026-04', '30/04/2026'],
-    ['2026-12', '31/12/2026'],
-  ])('%s is due on %s — the LAST DAY of the contribution month', (period, due) => {
+    ['2025-01', '15/02/2025'], // the booklet's own worked example
+    ['2026-07', '15/08/2026'],
+    ['2026-02', '15/03/2026'],
+    ['2026-11', '15/12/2026'],
+    ['2026-12', '15/01/2027'], // ACROSS A YEAR END — the month AND the year roll
+    ['2027-01', '15/02/2027'],
+  ])('%s is due on %s — the 15th of the month after the contribution month', (period, due) => {
     expect(paymentDueDateFor(period)).toBe(due);
   });
 
-  /**
-   * NOT THE 15TH OF THE FOLLOWING MONTH. That is the ASSIST deadline the combined SOCSO+EIS return carries
-   * (`dueDayOfNextMonth: 15`), and printing it on this form would move the deadline two weeks later.
-   */
-  it('is never the 15th-of-next-month rule the ASSIST listing beside it uses', () => {
-    for (const p of ['2026-01', '2026-07', '2026-12']) {
+  it('is never the last day of the contribution month (the 2020 relief), and never moves the form’s month', () => {
+    for (const p of ['2026-01', '2026-04', '2026-07', '2026-12']) {
       const due = paymentDueDateFor(p);
-      expect(due.slice(0, 2), p).not.toBe('15');
-      // The month printed in the deadline is the CONTRIBUTION month, not the one after it.
-      expect(due.slice(3, 5)).toBe(p.slice(5, 7));
-      expect(due.slice(6)).toBe(p.slice(0, 4));
+      expect(due.slice(0, 2), p).toBe('15');
+      // The form is still STAMPED with the contribution month itself: only the deadline is in the next one.
+      expect(contributionPeriodFor(p)).toBe(p);
+      expect(contributionMonthLabel(p)).toBe(`${p.slice(5, 7)} / ${p.slice(0, 4)}`);
     }
-    // The catalog entry must NOT declare a dueDayOfNextMonth, or the shelf would print the wrong date.
-    expect(MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.submission!.dueDayOfNextMonth).toBeNull();
+  });
+
+  it('agrees with the shelf: the catalog declares day 15, and the shelf’s own date is the form’s date', () => {
+    const day = MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.submission!.dueDayOfNextMonth;
+    expect(day).toBe(15);
+    for (const p of ['2026-07', '2026-12']) {
+      const iso = submissionDueFor(p, day, '2026-01-01').dueBy!;
+      expect(`${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`, p).toBe(paymentDueDateFor(p));
+    }
   });
 });
 
@@ -308,7 +329,7 @@ const HEADER: Record<string, string> = {
   contributionMonth: '07 / 2026',
   contributionPeriodKey: '2026-07',
   payrollPeriodKey: '2026-07',
-  paymentDueDate: '31/07/2026',
+  paymentDueDate: '15/08/2026',
 };
 
 describe('the header contract between the read and the renderer', () => {
@@ -384,12 +405,17 @@ describe('the typed STATUS column', () => {
     expect(statusOverridesFrom(q).get('a')).toBe('X'.repeat(12));
   });
 
-  it('overlays only the rows it names, and invents no code list', () => {
-    const rows = [row({ employmentId: 'a', contribution: 1 }), row({ employmentId: 'b', contribution: 2 })];
-    const out = applyStatusOverrides(rows, new Map([['b', 'BERHENTI']]));
-    expect(out.map((r) => r.status)).toEqual(['', 'BERHENTI']);
-    // The read itself never derives a status — PERKESO's code list is not in the specimen and is not invented.
-    expect(READ_SRC).toContain("status: ''");
+  /**
+   * r408 — THIS USED TO PIN "the read never derives a status" (`status: ''`). PERKESO's code list IS on
+   * page 2 of the agency's blank, so the read derives B / H / M now (see the derivation cases below) and a
+   * typed S or T still overlays only the row it names.
+   */
+  it('overlays only the rows it names, over whatever the read derived', () => {
+    const rows = [row({ employmentId: 'a', contribution: 1, status: 'B' }), row({ employmentId: 'b', contribution: 2 })];
+    const out = applyStatusOverrides(rows, new Map([['b', 'T']]));
+    expect(out.map((r) => r.status)).toEqual(['B', 'T']);
+    expect(READ_SRC).toContain('status: borang8AStatusFor(a, periodKey)');
+    expect(code('localization/my/borang-8a.ts')).not.toContain("status: ''");
   });
 
   it('is what the review screen submits, under the prefix the loader reads', () => {
@@ -401,7 +427,7 @@ describe('the typed STATUS column', () => {
 describe('the plain-text twin', () => {
   const form = borang8AFrom({
     header: HEADER,
-    rows: [row({ employmentId: 'a', contribution: 202.35, startDate: '14072026', status: 'BARU' })],
+    rows: [row({ employmentId: 'a', contribution: 202.35, startDate: '14072026', status: 'B' })],
   });
   const text = borang8ATextExport(form);
 
@@ -409,7 +435,7 @@ describe('the plain-text twin', () => {
     expect(text).toContain('B3201005082P');
     expect(text).toContain('ENGENIOUS SOLUTIONS SDN BHD');
     expect(text).toContain('07 / 2026');
-    expect(text).toContain('31/07/2026');
+    expect(text).toContain('15/08/2026');
     expect(text).toContain('ANG PEI YEE');
     expect(text).toContain('202.35');
     expect(text).toContain('Jumlah muka surat ini');
@@ -420,6 +446,21 @@ describe('the plain-text twin', () => {
   it('says on its face that it is not PERKESO artwork', () => {
     expect(text).toMatch(/NOT PERKESO ARTWORK/i);
     expect(PDF_SRC).toContain('bukan borang rasmi PERKESO');
+  });
+
+  /**
+   * r408 (item e74af58c) — "PERKESO PUBLISHES NO BLANK FORM" WAS FALSE, and it was printed on every sheet.
+   * PERKESO publishes the blank 8A (and 8B) on its website. The sentence is gone from the printed footer,
+   * the text twin and the comments that asserted it; its message key is RETIRED, not deleted.
+   */
+  it('no longer claims PERKESO publishes no blank form — on the page, in the text, or in the comments', () => {
+    const CLAIM = /PERKESO publishes no|PERKESO does not publish|publishes no blank (Borang 8A|page for this form)/i;
+    expect(text).not.toMatch(CLAIM);
+    for (const f of ['lib/borang-8a.ts', 'lib/borang-8a-pdf.ts', 'localization/my/borang-8a.ts', 'localization/my/reports.ts', 'app/payroll/statutory-forms/page.tsx']) {
+      // Lines that QUOTE the retired claim to correct it carry "r408"; nothing else may say it.
+      const asserting = read(f).split('\n').filter((l) => CLAIM.test(l) && !/r408|was false|used to|FALSE/i.test(l));
+      expect(asserting, f).toEqual([]);
+    }
   });
 
   it('names the blocks that are left blank on purpose', () => {
@@ -444,7 +485,7 @@ describe('the plain-text twin', () => {
     expect(text).toContain('PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A)');
     // 2 — one title line, the month and year in their own boxes under bulan / tahun.
     expect(PDF_SRC).toContain("'CARUMAN GAJI BULAN'");
-    expect(PDF_SRC).toContain("TR('BORANG 8A'");
+    expect(PDF_SRC).toContain("T('BORANG 8A'");
     for (const cap of ["'bulan'", "'tahun'"]) expect(PDF_SRC).toContain(cap);
     expect(text).toContain('CARUMAN GAJI BULAN 07 / 2026');
     // 3 — the four-field row, relabelled, with the contribution month no longer in it.
@@ -460,17 +501,19 @@ describe('the plain-text twin', () => {
     expect(text).toContain(sentence);
     // 6 — the collecting agent's box, with both of its fields.
     for (const l of ['Kegunaan Ejen Pemungut', 'Cop', 'No. Slip Bayaran']) expect(PDF_SRC).toContain(l);
-    // 7 and 8 — the merged date column and the two full column names.
-    expect(BORANG_8A_HEADINGS.map((h) => h.parts[0])).toEqual([
-      'TARIKH MULA/BERHENTI KERJA',
-      'STATUS',
-      'NO. KAD PENGENALAN',
-      'NAMA PEKERJA (MENGIKUT KAD PENGENALAN)',
+    // 7 and 8 — the merged date column and the two full column names, in the agency's own lines (r408).
+    expect(BORANG_8A_HEADINGS.map((h) => h.lines.map((l) => l.text).join(' '))).toEqual([
+      'TARIKH MULA/BERHENTI KERJA (hhbbtttt) (1)',
+      '(2)',
+      'NO. KAD PENGENALAN (3)',
+      'NAMA PEKERJA (MENGIKUT KAD PENGENALAN) (4)',
+      'CARUMAN (5)',
     ]);
+    expect(BORANG_8A_STATUS_HEAD.text).toBe('STATUS');
     // 9 — the payment block, in the reporter's order, with the signature box split into three.
     expect(PDF_SRC).toContain('Kaedah Pembayaran (Sila tandakan (x))');
     expect(text).toContain('Kaedah Pembayaran (Sila tandakan (x))');
-    const opts = [...PDF_SRC.matchAll(/\['(Tunai|Kiriman Wang|Cek|Lain-lain)', \d+, \d+\]/g)].map((m) => m[1]);
+    const opts = BORANG_8A_SHEET.ticks.map((t) => t.label.replace(/\s*\.+$/, '').replace(/\s+/g, ' '));
     expect(opts).toEqual(['Tunai', 'Kiriman Wang', 'Cek', 'Lain-lain']);
     for (const f of ['Tandatangan', 'Nama', 'No. Tel &', 'No. Cek / Kiriman Wang']) expect(PDF_SRC).toContain(f);
   });
@@ -490,88 +533,49 @@ describe('the plain-text twin', () => {
   });
 
   /**
-   * THE OVERFLOW BUG, PINNED MECHANICALLY RATHER THAN BY EYE.
-   *
-   * pdf-lib does not clip text: a heading wider than its column prints straight into its neighbour, which
-   * is what "(1) Tarikh Berhenti(2) Status" was. It was found by rasterising the page and looking at it,
-   * and nothing else could see it. This embeds the REAL Helvetica-Bold and measures every wrapped line
-   * against the column it will be drawn in — so widening a heading, narrowing a column, or bumping the
-   * point size fails here instead of on a filed form. A single word longer than its own column cannot be
-   * wrapped by anything, and that is the case this really catches.
+   * THE OVERFLOW BUG, PINNED MECHANICALLY RATHER THAN BY EYE — re-pinned in r408 against the AGENCY'S
+   * columns. pdf-lib does not clip text, so a heading wider than its column prints into its neighbour ("(1)
+   * Tarikh Berhenti(2) Status" did, once). Every heading line is measured at the real Helvetica-Bold metrics
+   * against the column it is centred in, at the agency's 6pt.
    */
-  it('wraps every column heading inside its own column, at the real font metrics', async () => {
+  it('sets every column heading inside its own agency column, at the real font metrics', async () => {
     const doc = await PDFDocument.create();
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    let measured = 0;
     for (const h of BORANG_8A_HEADINGS) {
-      const maxW = h.col.w - BORANG_8A_HEAD_PAD;
-      expect(maxW, `${h.key}: column must leave room for a heading`).toBeGreaterThan(0);
-      for (const part of h.parts) {
-        for (const l of wrapTo(part, maxW, BORANG_8A_HEAD_SIZE, bold)) {
-          expect(bold.widthOfTextAtSize(l, BORANG_8A_HEAD_SIZE), `${h.key}: "${l}"`).toBeLessThanOrEqual(maxW);
-        }
+      for (const l of h.lines) {
+        const w = bold.widthOfTextAtSize(l.text, BORANG_8A_HEAD_SIZE);
+        expect(w, `${h.key}: "${l.text}"`).toBeLessThanOrEqual(h.col.w - 2);
+        // …and on a baseline inside the heading band, above the first employee row.
+        expect(l.y, `${h.key}: "${l.text}"`).toBeGreaterThan(BORANG_8A_SHEET.headBottom);
+        expect(l.y + BORANG_8A_HEAD_SIZE).toBeLessThan(BORANG_8A_SHEET.table.top);
+        measured += 1;
       }
     }
+    expect(measured, 'the scan must actually measure the headings').toBeGreaterThan(10);
   });
 
   /**
-   * THE ONE HEADING THE WRAP TEST ABOVE STRUCTURALLY CANNOT SEE.
-   *
-   * "CARUMAN (5)" is not in BORANG_8A_HEADINGS because it does not belong to a column — it SPANS the RM and
-   * SEN columns — and the test above only ever measures a line against its own column's width, never
-   * against where a vertical rule actually falls. So the first draft of this round ruled COL.sen.x through
-   * the full height of the heading band in the same loop as every other column edge, and printed the
-   * divider straight through the word, between its 'A' and its 'N': 33.4pt of CARUMAN centred at 521.14
-   * spans 504.4..537.9, and the divider stands at 533. It printed on EVERY sheet and was found by
-   * rasterising the page — exactly the defect class this round claims to have eliminated.
-   *
-   * A spanned heading needs a spanned cell. This measures that, at the real font metrics.
+   * THE AMOUNT HEADING — the one that spans two cells. r407's version of this ruled an RM/SEN divider
+   * through CARUMAN; the agency's page has NO divider in the heading band at all, only the split rule under
+   * "CARUMAN (5)". So: CARUMAN and (5) sit above the split rule, RM and SEN below it, and the per-row digit
+   * boxes start below the heading band — nothing is ruled through a word.
    */
-  it('never rules the RM/SEN divider through the heading that spans them', async () => {
+  it('keeps CARUMAN (5) above the split rule and RM / SEN below it, with no rule through either', async () => {
     const doc = await PDFDocument.create();
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-    const A = BORANG_8A_AMOUNT_HEAD;
-    // Helvetica's cap height is 0.717em; 0.75 is the conservative rounding for a clearance check.
-    const capH = BORANG_8A_HEAD_SIZE * 0.75;
-
-    for (const s of A.spanning) {
-      const w = bold.widthOfTextAtSize(s.text, BORANG_8A_HEAD_SIZE);
-      const lo = A.span.x + A.span.w / 2 - w / 2;
-      expect(lo, `${s.text}: starts inside the spanned cell`).toBeGreaterThanOrEqual(A.span.x);
-      expect(lo + w, `${s.text}: ends inside the spanned cell`).toBeLessThanOrEqual(A.span.x + A.span.w);
-      // It MAY straddle the divider — that is what "spanned" means. What it may never do is straddle a
-      // divider that is RULED across its baseline, so anything crossing must sit above the split rule.
-      if (lo < A.divider && lo + w > A.divider) {
-        expect(s.dy, `${s.text}: straddles the divider, so it must sit above the split rule`).toBeGreaterThan(
-          A.splitDy,
-        );
-      }
-    }
-    // 'CARUMAN' is the case that fires: if a future edit stops it straddling, the branch above goes untaken
-    // and quietly stops testing anything. Pin that it is still the real case.
-    const caruman = A.spanning.find((s) => s.text === 'CARUMAN')!;
-    const cw = bold.widthOfTextAtSize(caruman.text, BORANG_8A_HEAD_SIZE);
-    expect(A.span.x + A.span.w / 2 - cw / 2).toBeLessThan(A.divider);
-    expect(A.span.x + A.span.w / 2 + cw / 2).toBeGreaterThan(A.divider);
-
-    // The sub-heads under the split rule get a column each, and must stay inside it and clear of the rule.
-    for (const u of A.under) {
-      const w = bold.widthOfTextAtSize(u.text, BORANG_8A_HEAD_SIZE);
-      const lo = u.col.x + u.col.w / 2 - w / 2;
-      expect(lo, `${u.text}: starts inside its own column`).toBeGreaterThanOrEqual(u.col.x);
-      expect(lo + w, `${u.text}: ends inside its own column`).toBeLessThanOrEqual(u.col.x + u.col.w);
-      expect(u.dy + capH, `${u.text}: sits clear below the split rule`).toBeLessThan(A.splitDy);
-    }
-    // The spanning lines clear the split rule from above, and each other.
-    const bottom = Math.min(...A.spanning.map((s) => s.dy));
-    expect(bottom, 'the lowest spanning line clears the split rule').toBeGreaterThan(A.splitDy + 1);
-    // …and the whole block fits the shortest heading band the layout can produce (one row per line, 8pt
-    // apiece, plus 5pt of padding), so a column that needs fewer lines cannot crop CARUMAN off the top.
-    const shortestBand = (A.spanning.length + 1) * 8 + 5;
-    expect(Math.max(...A.spanning.map((s) => s.dy)) + capH).toBeLessThanOrEqual(shortestBand);
-
-    // The geometry above is only true of the drawn page if the draw reads it. Both rules do.
-    expect(PDF_SRC).toContain('hline(headBot + A.splitDy, A.span.x, RIGHT)');
-    expect(PDF_SRC).toContain('x === BORANG_8A_AMOUNT_HEAD.divider ? headBot + BORANG_8A_AMOUNT_HEAD.splitDy : ey');
+    const S = BORANG_8A_SHEET;
+    const amount = BORANG_8A_HEADINGS.find((h) => h.key === 'amount')!;
+    for (const l of amount.lines) expect(l.y, l.text).toBeGreaterThan(S.amountSplit + 1);
+    // RM and SEN (7pt) sit between the heading band's foot and the split rule.
+    expect(548.6).toBeGreaterThan(S.headBottom);
+    expect(548.6 + 7 * 0.72).toBeLessThan(S.amountSplit);
+    // CARUMAN is centred on the amount column and inside it.
+    const w = bold.widthOfTextAtSize('CARUMAN', BORANG_8A_HEAD_SIZE);
+    expect((amount.col.x + amount.col.w / 2) - w / 2).toBeGreaterThan(S.columns.amount);
+    // The only verticals in the heading band are the five column edges.
+    expect(PDF_SRC).toContain('for (const x of [C.status, C.ic, C.name, C.amount]) vline(x, S.rows.bottom, tb.top);');
+    expect(PDF_SRC).toContain('hline(S.amountSplit, C.amount, C.end);');
   });
 
   /**
@@ -606,8 +610,8 @@ describe('the plain-text twin', () => {
     }
     // A name that DOES fit is never broken or truncated: the reporter's own specimen prints whole.
     expect(borang8ANameLines('ENGENIOUS SOLUTIONS SDN BHD', bold)).toEqual(['ENGENIOUS SOLUTIONS SDN BHD']);
-    // …and the draw goes through the clip rather than round it, which is what the defect was.
-    expect(PDF_SRC).toContain('TClip(l, nx, ay, nw, nsize, bold)');
+    // …and the draw goes through the bounded lines rather than round them, which is what the defect was.
+    expect(PDF_SRC).toContain('for (const l of borang8ANameLines(form.employerName, bold))');
     expect(PDF_SRC).not.toContain('T(form.employerName');
   });
 
@@ -850,8 +854,14 @@ describe('the review screen’s own words', () => {
     expect(hint).toMatch(/we hold no blank/i);
     // …and the shared chip does not speak for any agency's publishing decisions.
     expect(hint).not.toMatch(/agency publishes|publishes no blank/i);
-    // The per-form message may still make the stronger claim, because there it is sourced.
-    expect((en.payroll.borang8a as Record<string, string>).notArtwork).toMatch(/PERKESO publishes no blank/i);
+    // r408 — the per-form claim "PERKESO publishes no blank Borang 8A" was FALSE. Its key is RETIRED (never
+    // deleted), and the sentence that replaced it on the screen makes no claim about PERKESO's publishing.
+    const ns = en.payroll.borang8a as Record<string, string>;
+    expect(ns.notArtwork).toMatch(/^\[retired r408 — /);
+    expect(ns.notArtworkDrawn).toBeTruthy();
+    expect(ns.notArtworkDrawn).not.toMatch(/publishes no|does not publish/i);
+    expect(PREVIEW_CODE).toContain("t('notArtworkDrawn')");
+    expect(PREVIEW_CODE).not.toContain("t('notArtwork')");
   });
 });
 

@@ -141,7 +141,9 @@ const WL_STATUS: Record<string, string> = {
  * 8ca344bf ADDS `agency-layout`, BETWEEN `official` AND `figures` — and its POSITION in this order is the
  * point, not decoration. The legend is read top to bottom as a ladder of how close a form is to the
  * agency's own document, and Borang 8A sits exactly there: every box where the agency's form puts it, on
- * our paper, because PERKESO publishes no blank page to print onto. Filing it under `figures` would have
+ * our paper. (r408: this used to add "because PERKESO publishes no blank page to print onto", which was
+ * false — PERKESO publishes one. We draw its page 1 rather than print onto a 2013 file whose guidance page
+ * quotes old limits; the status is about what we hold and print, not about the agency.) Filing it under `figures` would have
  * been the false modesty that makes the ladder useless; filing it under `official` is the false claim the
  * whole vocabulary exists to prevent.
  *

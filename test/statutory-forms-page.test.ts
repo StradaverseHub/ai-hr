@@ -109,20 +109,20 @@ describe('the pack declares where each form is filed, and by when', () => {
   });
 
   /**
-   * 8ca344bf — BORANG 8A'S DEADLINE IS NOT `dueDayOfNextMonth`, AND THE NULL IS DELIBERATE.
+   * 8ca344bf — BORANG 8A'S DEADLINE. ⚠️ r408 (item e74af58c) REVERSED THIS, AND THE REVERSAL IS SOURCED.
    *
-   * `submissionDueFor` models "day N of the month AFTER the period" and nothing else. This form's deadline
-   * is the LAST DAY OF THE CONTRIBUTION MONTH ITSELF, two weeks earlier than the ASSIST 15th. Writing 15
-   * here to make the shelf card show something would print the wrong statutory date on a screen an
-   * operator files against — the exact failure the Form E null exists to prevent. The real deadline is
-   * computed by `paymentDueDateFor` and printed ON THE FORM, which is where the specimen carries it.
+   * This case used to pin `dueDayOfNextMonth: null`, on the belief that the 8A's deadline was the LAST DAY
+   * OF THE CONTRIBUTION MONTH, which `submissionDueFor` cannot express. That belief came off a vendor's
+   * filed specimen and was PERKESO's temporary 2020 relief (Pekeliling Majikan Bil. 4/2020, April–September
+   * 2020 contributions only). PERKESO's own 2025 employer booklet: due "tidak lewat daripada 15 hari bulan
+   * bagi caruman bulan sebelumnya" — exactly what this field models. The card and the form now agree, and
+   * the half that still stands is kept: the SOCSO+EIS listing beside it keeps its 15 too.
    */
-  it('leaves Borang 8A’s deadline unset here, because its rule is not the one this field models', () => {
+  it('gives Borang 8A the 15th-of-next-month deadline PERKESO publishes, the same as the ASSIST listing', () => {
     const b8a = byId.get('my.borang-8a')!;
     expect(b8a.submission?.body).toBe('perkeso');
     expect(b8a.submission?.agency).toBe('PERKESO');
-    expect(b8a.submission?.dueDayOfNextMonth).toBeNull();
-    // …and the SOCSO+EIS listing beside it keeps the ASSIST deadline it always had.
+    expect(b8a.submission?.dueDayOfNextMonth).toBe(15);
     expect(byId.get('my.socso-eis')!.submission?.dueDayOfNextMonth).toBe(15);
   });
 });
@@ -850,8 +850,8 @@ describe('the four pins', () => {
     //
     // 8ca344bf ADDED `agency-layout` TO THAT LIST AND NOT TO THE LINE ABOVE, WHICH IS THE WHOLE POINT.
     // The Borang 8A specimen we built against is another payroll vendor's DevExpress output, not PERKESO
-    // artwork, and PERKESO publishes no blank page — so the form is drawn to the agency's layout on our
-    // own paper and says so. `my.cp22` remains the ONLY `official` entry, deliberately: it is the claim
+    // artwork. (r408: PERKESO DOES publish a blank 8A; the form is still drawn to the agency's page 1 on
+    // our own paper rather than printed onto that 2013 file, and says so.) `my.cp22` remains the ONLY `official` entry, deliberately: it is the claim
     // that costs the most if it is untrue.
     for (const e of [...MY_REPORTS, ...MY_STATUTORY_LINKS]) {
       if (e.fidelity && e.id !== 'my.cp22') {
