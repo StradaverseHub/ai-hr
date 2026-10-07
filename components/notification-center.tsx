@@ -231,7 +231,8 @@ export function NotificationCenter({
           // The button's aria-label carries the full count; this text is its visible form.
           <span aria-hidden className="whitespace-nowrap">
             <span className={total > 0 ? 'tabular-nums text-signal-text' : 'tabular-nums'}>{total > 99 ? '99+' : total}</span>{' '}
-            {t('countWord', { count: total })}
+            {/* Below sm only the number shows: a phone's top line cannot carry the word as well. */}
+            <span className="hidden sm:inline">{t('countWord', { count: total })}</span>
           </span>
         ) : (
           <>

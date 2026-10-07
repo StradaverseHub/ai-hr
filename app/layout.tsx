@@ -170,7 +170,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       className={`${fontVariables} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background monolith:p-0!">
+      <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background! monolith:p-0!">
         <NextIntlClientProvider>
         <Providers>
         {/* r398 — the theme the shell's structural branches render on the server (components/ui-theme-context.tsx);

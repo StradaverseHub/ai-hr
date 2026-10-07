@@ -31,6 +31,7 @@ export function ShellRoutePath() {
  * The live dot and the viewer's clock, pushed to the right of the top line. The time is the BROWSER's own
  * (the person reading it is the one it is for) and is rendered only after mount: a server-rendered minute
  * would hydrate against a different one. It ticks every 15 s, and the dot is the only thing that animates.
+ * Below sm it is not shown: a phone's top line has room for the path, the scope and the account, not a clock.
  */
 export function ShellLiveClock() {
   const monolith = useIsMonolith();
@@ -48,7 +49,7 @@ export function ShellLiveClock() {
     ? new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hour12: false }).format(now)
     : '';
   return (
-    <span className="ml-auto inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap text-mid" data-shell-clock>
+    <span className="ml-auto hidden shrink-0 items-center gap-2.5 whitespace-nowrap text-mid sm:inline-flex" data-shell-clock>
       <span aria-hidden className="monolith-dot" />
       {t('live')}
       <time className="tabular-nums" suppressHydrationWarning>
