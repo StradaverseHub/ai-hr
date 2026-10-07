@@ -1,3 +1,22 @@
+## r401 — 2026-10-07 · main@d28945c795313726cf04acb46bfde6a4bdf65738 · migration none
+
+**Scope.** Monolith rollout STEP 4a: Dashboard and My Profile drawn to their boards. No board item. Built on box (state ok, built_ref d28945c7, stale_build 0); **the service restart was not run by this session** (classifier refused the remote write) — production serves the r400 build until `sudo systemctl restart aihr`.
+
+**Decisions.**
+- One server reader of the theme cookie, `lib/ui-theme-server.ts` `currentUiTheme()`; default only outside a request scope, any other error rethrown.
+- Dashboard: every read first, then a separate Monolith tree (`app/dashboard-monolith.tsx`); the Classic return is untouched. Same card keys, so saved layouts carry over; sections are numbered by the user's working order.
+- My Profile: only the head and clock-in block branch; tabs and cards are one tree with appended `monolith:` classes. Classic paints identically (0 px diff on three users), but its DOM class strings now carry the appended tokens.
+- Board elements with no data source were left out (tower and panel, greeting, streaks, "230 in now", approval table, footer sweep; orb; Annual leave and Reviews cells).
+- **Moving baselines retired.** `test/r400-monolith-primitives.test.ts` compared against `main:` and went red ON MAIN the moment r400 merged (5 failures, reproduced on main); `test/r398-monolith-shell.test.ts` had the same flaw and was comparing main with itself, i.e. nothing. Both now pin a pre-feature commit (32ae1ccd, f79f0259 = a04fe36d^2). A ref that moves cannot be a baseline.
+- `test/tp1-relief-redesign.test.ts` matched another employee's marker "9999" across the whole row JSON; a random uuid beginning 9999172f turned the gate red. Now matched on the amount field.
+
+**Gate.** 20 chunks, 1202 of 1202 counted; chunks 2 and 4 each one red (r291 detached-deploy timing, 0 assertions; the tp1 uuid collision, fixed); both files re-run green. Verifier: no blocking defects.
+
+**Not done / owed.**
+- "Last payslip" cell picks one row by `desc(payPeriod), runSeq`: with two runs or two companies in the newest month the pick is arbitrary and its sub line does not name the run type. Fix in the next Monolith round.
+- Other My Profile tabs restyled but not screenshotted; customize mode tested in jsdom only; the 390px Monolith top bar overlap predates this round.
+- Non-English copy for `me.lastPayslip` / `notices.cardUnreadWord` is unreviewed.
+
 ## r400 — 2026-10-07 · main@9219e4c7155e2afa88bc9c20a6f224874730aa74 · migration none
 
 **Scope.** Monolith rollout STEP 3, the primitives (README §4, components.md). No board item. APIs kept; rendering only.
