@@ -381,11 +381,12 @@ export const MONO_LEFT_CLS =
 /** components/notification-center.tsx — the trigger button, Classic footprint + Monolith suffix. */
 export const BELL_CLS =
   'relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink';
-/** components/sidebar.tsx — the Monolith rail is hidden below 900px (v4 `max-[900px]` is `width < 900px`; `max-[899px]` left it showing AT 899, which this sweep caught). */
-export const MONO_RAIL_CLS = 'monolith:max-[900px]:hidden!';
+/** components/sidebar.tsx — the Monolith rail follows CLASSIC's breakpoints (visible from sm). r398's first cut hid
+ *  it below 900px per the README, but nothing else opens navigation at those widths, so a tablet had none. */
+export const MONO_RAIL_CLS = '';
 
 const monoHeaderWidthFor = (viewport: number) =>
-  viewport >= 900 ? viewport - 232 - 44 - 48 : viewport - 16 - 16;
+  viewport >= 900 ? viewport - 232 - 44 - 48 : viewport >= 640 ? viewport - 232 - 16 - 16 : viewport - 16 - 16;
 
 function MonolithShell({ account }: { account: ReactNode }) {
   return (
