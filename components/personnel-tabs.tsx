@@ -39,6 +39,7 @@ export function ClientTabs<K extends string>({
   ariaLabel = 'Sections',
   selectRef,
   onTabChange,
+  monolithTxt = false,
 }: {
   tabs: { key: K; label: string }[];
   panels: Partial<Record<K, ReactNode>>;
@@ -66,6 +67,13 @@ export function ClientTabs<K extends string>({
    * on the tab it was left on. Fires only on a real switch (`commitTab`), never on the initial render.
    */
   onTabChange?: (key: K) => void;
+  /**
+   * r401 — OPT-IN Monolith look for the strip (My Profile's board, docs/design/monolith/reference/
+   * P-MyProfile.dc.html): no pill bar, the tabs as underlined text buttons, the current one in ink. Every
+   * class it adds is `monolith:`-scoped, so Classic is unchanged; screens that do not pass it (Personnel)
+   * keep today's strip in both themes until their own step-4 slice.
+   */
+  monolithTxt?: boolean;
 }) {
   const initial = defaultTab && tabs.some((tab) => tab.key === defaultTab) ? defaultTab : tabs[0]?.key;
   const [active, setActive] = useState<K | undefined>(initial);
@@ -171,7 +179,11 @@ export function ClientTabs<K extends string>({
     <div ref={shellRef} className="space-y-6">
       <nav
         aria-label={ariaLabel}
-        className="flex flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]"
+        className={cn(
+          'flex flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]',
+          monolithTxt &&
+            'monolith:gap-x-[22px] monolith:gap-y-1 monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-hairline monolith:bg-transparent monolith:p-0 monolith:shadow-none',
+        )}
       >
         {tabs.map((tab) => (
           <button
@@ -186,6 +198,12 @@ export function ClientTabs<K extends string>({
               active === tab.key
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              monolithTxt &&
+                'monolith:-mb-px monolith:min-h-10 monolith:rounded-none monolith:border-b monolith:bg-transparent monolith:px-0.5 monolith:py-0 monolith:text-[14px] monolith:font-medium monolith:hover:bg-transparent',
+              monolithTxt &&
+                (active === tab.key
+                  ? 'monolith:border-ink monolith:text-ink'
+                  : 'monolith:border-transparent monolith:text-mid monolith:hover:border-signal-text monolith:hover:text-signal-text'),
             )}
           >
             {tab.label}

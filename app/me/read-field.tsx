@@ -1,5 +1,21 @@
 import { Card, Field, SectionHeader, inputCls } from '@/components/ui';
+import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
+
+/**
+ * r401 — MONOLITH (docs/design/monolith/reference/P-MyProfile.dc.html, README §4 "Spec grids are the read-only
+ * form"). Appended `monolith:` utilities only, so Classic renders exactly as before. In Monolith a read-only
+ * field reads as the board's `.kv` pair: a mono label over a 500-weight value on a hairline, no box. The value
+ * stays a disabled, unnamed input (the Personnel idiom above), only drawn without its box.
+ */
+const MONO_READ_VALUE =
+  'monolith:h-auto monolith:min-h-10 monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-hairline monolith:bg-transparent monolith:px-0 monolith:text-[15px] monolith:font-medium monolith:text-ink monolith:opacity-100 monolith:shadow-none monolith:disabled:cursor-default';
+/** The section head on My Profile in Monolith: a mono index-style label, no rule under it, flush left. */
+export const MONO_ME_SECTION_HEAD =
+  'monolith:border-b-0 monolith:px-0 monolith:pt-3 monolith:pb-2 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid';
+/** Every field label inside a card: DM Mono, uppercase, mid (`.fd > .mono`). */
+const MONO_LABELS =
+  'monolith:[&_label>span:first-child]:font-mono monolith:[&_label>span:first-child]:text-[11px] monolith:[&_label>span:first-child]:font-normal monolith:[&_label>span:first-child]:uppercase monolith:[&_label>span:first-child]:tracking-[0.12em] monolith:[&_label>span:first-child]:text-mid';
 
 /**
  * MY PROFILE — the read-only field, the read-only card, and nothing else.
@@ -67,9 +83,9 @@ export function ReadField({
   const shown = value == null || value === '' ? notSet : value;
   return (
     <Field label={label} className={className}>
-      <input value={shown} disabled readOnly aria-readonly="true" title={title} className={inputCls} />
+      <input value={shown} disabled readOnly aria-readonly="true" title={title} className={cn(inputCls, MONO_READ_VALUE)} />
       {pending ? (
-        <p className="mt-1 flex flex-wrap items-baseline gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+        <p className="mt-1 flex flex-wrap items-baseline gap-1 text-[11px] text-amber-700 dark:text-amber-400 monolith:text-signal-text">
           <span className="font-medium">{pending.label}</span>
           <span className="font-semibold">{pending.value}</span>
         </p>
@@ -88,8 +104,10 @@ export function ReadField({
 export function ReadCard({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
     <Card id={id}>
-      <SectionHeader title={title} />
-      <div className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
+      <SectionHeader title={title} className={MONO_ME_SECTION_HEAD} />
+      <div className={cn('grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4', 'monolith:gap-x-5 monolith:gap-y-4 monolith:px-0 monolith:pt-1', MONO_LABELS)}>
+        {children}
+      </div>
     </Card>
   );
 }
@@ -98,7 +116,7 @@ export function ReadCard({ title, children, id }: { title: string; children: Rea
 export function ReadGroup({ legend, children }: { legend: string; children: ReactNode }) {
   return (
     <fieldset className="col-span-full">
-      <legend className="mb-2 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <legend className="mb-2 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground monolith:border-t monolith:border-ink monolith:pt-2.5 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:tracking-[0.12em] monolith:text-ink">
         {legend}
       </legend>
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
