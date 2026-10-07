@@ -8027,7 +8027,14 @@
       "statutoryUnsavedDiscard": "ละทิ้งและออก",
       "statutoryUnsavedSave": "บันทึกและออก",
       "statutoryCardSetUp": "ตั้งค่าแล้ว",
-      "statutoryCardNotSetUp": "ยังไม่ได้ตั้งค่า"
+      "statutoryCardNotSetUp": "ยังไม่ได้ตั้งค่า",
+      "viewAddress": "ที่อยู่",
+      "viewSectionPayrollGroup": "เงินเดือนและกลุ่มบริษัท",
+      "viewNoBankProfiles": "ไม่มีบัญชีธนาคารในระบบ",
+      "viewNoParent": "ไม่มี (บริษัทแม่สูงสุดของกลุ่ม)",
+      "viewNoStatutoryPack": "ไม่มีชุดข้อกำหนดตามกฎหมายสำหรับ {country} จึงไม่มีหมายเลขทางกฎหมายให้แสดง",
+      "viewCycleInactive": "\"{name}\" ไม่ใช่รอบที่ใช้งานอยู่แล้ว",
+      "viewReadOnlyNote": "อ่านอย่างเดียว กดแก้ไขเพื่อเปลี่ยนรายละเอียดเหล่านี้"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",

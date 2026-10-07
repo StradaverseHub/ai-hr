@@ -8027,7 +8027,14 @@
       "statutoryUnsavedDiscard": "Bỏ & Rời đi",
       "statutoryUnsavedSave": "Lưu & Rời đi",
       "statutoryCardSetUp": "Đã thiết lập",
-      "statutoryCardNotSetUp": "Chưa thiết lập"
+      "statutoryCardNotSetUp": "Chưa thiết lập",
+      "viewAddress": "Địa chỉ",
+      "viewSectionPayrollGroup": "Bảng lương và tập đoàn",
+      "viewNoBankProfiles": "Chưa có tài khoản ngân hàng nào.",
+      "viewNoParent": "Không có (công ty gốc của tập đoàn)",
+      "viewNoStatutoryPack": "Chưa cài gói pháp định cho {country}, nên không có mã số pháp định nào để hiển thị.",
+      "viewCycleInactive": "\"{name}\" không còn là chu kỳ đang hoạt động.",
+      "viewReadOnlyNote": "Chỉ xem. Nhấn Sửa để thay đổi các thông tin này."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

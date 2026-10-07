@@ -122,18 +122,20 @@ export function selectCompanyRows(
 }
 
 /**
- * The table body. Every row's name links to that company's own maintenance page — the redesign's
- * whole point is that editing opens a page, not an accordion.
+ * The table body. Every row's name links to that company's own page — its read-only view since
+ * 7a595a02; the redesign's whole point is that a company opens a page, not an accordion.
  *
  * ── THE ACTIONS COLUMN (item 3c2f55d7 rev 2) ──────────────────────────────────────────────────────
  * The single "Open" link became View · Edit · Archive, which is what the reporter asked for and what
  * every other admin listing in the product offers.
  *
- * View and Edit deliberately go to the SAME address. /admin/organization/[companyId] is both the
- * company's record and its editor — there is no read-only rendering of it, and inventing one would be a
- * new screen with its own permissions rather than the UI change this item is. Two captions over one
- * route is the honest version of that: whichever word the reader reaches for, they land where the work
- * is done. If a genuine read-only view is ever built, only the `view` href changes.
+ * ⚠️ 7a595a02 (r403) — View and Edit NO LONGER go to the same address. 3c2f55d7 rev 2 pointed both at
+ * the editor because no read-only rendering existed, and said that if one were built "only the `view`
+ * href changes". It was built: /admin/organization/[companyId]/view shows the company as text, with an
+ * Edit button into the editor. View goes there, and so does the company's NAME — the reporter's plan
+ * says opening a company must never land in a form, so entering edit mode is always a deliberate Edit.
+ * Edit is unchanged. The view sits in the SAME permissions column and behind the same guard, so this is
+ * not a new capability: whoever reaches the row can open both.
  *
  * Archive is a FORM, not a link: it is a write, and it posts to the same `archiveCompanyAction` the
  * company's own page uses. `archived` is posted as an explicit "true"/"false" string rather than by the
@@ -176,7 +178,7 @@ export function CompanyRows({
         <tr key={r.id} className={r.archived ? 'opacity-60 hover:bg-muted/40' : 'hover:bg-muted/40'}>
           <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.code ?? '—'}</td>
           <td className="px-3 py-2">
-            <Link href={`${basePath}/${r.id}`} className="font-medium text-foreground hover:text-primary">
+            <Link href={`${basePath}/${r.id}/view`} className="font-medium text-foreground hover:text-primary">
               {r.name}
             </Link>
           </td>
@@ -198,7 +200,7 @@ export function CompanyRows({
           </td>
           <td className="px-3 py-2">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-              <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
+              <Link href={`${basePath}/${r.id}/view`} className="text-primary underline underline-offset-2">
                 {labels.view}
               </Link>
               <span aria-hidden className="text-border">

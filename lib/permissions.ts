@@ -400,11 +400,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     // is compared against the guarded page.tsx files actually on disk, in both directions, so a stale
     // entry fails test/function-access.test.ts exactly as a missing one does — and that is a
     // FULL-GATE-only failure, easy to ship and hard to notice.
+    //
+    // 7a595a02 (r403) — FIVE again: /admin/organization/[companyId]/view, the company as text with an
+    // Edit button into the maintenance page. Same scopedAdmin() and the same adminOnly 404 as that page,
+    // and the same column for the reason above — viewing a company is not a capability separate from
+    // maintaining it, and no permission changes.
     routes: [
       '/admin/organization',
       '/admin/organization/new',
       '/admin/organization/[companyId]',
       '/admin/organization/[companyId]/statutory',
+      '/admin/organization/[companyId]/view',
     ],
   },
   {

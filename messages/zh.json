@@ -8027,7 +8027,14 @@
       "statutoryUnsavedDiscard": "放弃并离开",
       "statutoryUnsavedSave": "保存并离开",
       "statutoryCardSetUp": "已设置",
-      "statutoryCardNotSetUp": "未设置"
+      "statutoryCardNotSetUp": "未设置",
+      "viewAddress": "地址",
+      "viewSectionPayrollGroup": "薪资与集团",
+      "viewNoBankProfiles": "没有已登记的银行账户。",
+      "viewNoParent": "无（集团根公司）",
+      "viewNoStatutoryPack": "{country} 未安装法定组件，因此没有可显示的法定识别号。",
+      "viewCycleInactive": "“{name}”已不再是有效的周期。",
+      "viewReadOnlyNote": "只读。如需更改这些信息，请点击“编辑”。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
