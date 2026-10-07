@@ -508,8 +508,12 @@ describe('the criteria each form asks for', () => {
     expect(d.action).toBe('/payroll/cp8d/preview');
     expect(d.criteria.map((c) => c.kind)).toEqual(['company', 'year']);
     expect(REGISTERED_ROUTES.has('/payroll/cp8d/preview')).toBe(true);
-    // A monthly form can never be sent to an annual preview, nor an annual one given cycles.
-    expect(reportDestination('x', 'month', null, { action: '/y' }).action).toBe('/payroll/statutory-forms/x');
+    // An annual form is never given cycles. ⚠️ r412 (item e74af58c) — UPDATED, NOT DELETED: a MONTHLY form
+    // with its own preview and no cycles (Borang 8B) now continues to that preview with company, year and
+    // month; a monthly form that declares cycles still continues to its cycles action, never the preview.
+    expect(reportDestination('x', 'month', null, { action: '/y' }).action).toBe('/y');
+    expect(reportDestination('x', 'month', null, { action: '/y' }).criteria.map((c) => c.kind)).toEqual(['company', 'year', 'month']);
+    expect(reportDestination('x', 'month', { action: '/c' }, { action: '/y' }).action).toBe('/c');
     expect(reportDestination('x', 'year', { action: '/y' }, null).criteria.map((c) => c.kind)).toEqual(['company', 'year']);
   });
 
@@ -563,18 +567,23 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const catalog = (l: string) => JSON.parse(read(`messages/${l}.json`)) as { payroll: Record<string, Record<string, string>> };
 
 describe('CP22A is labelled as what it is, and CP22B is recorded as not applicable', () => {
-  const cp22a = MY_PLANNED_FORMS.find((p) => p.id === 'lhdn.cp22a')!;
+  // ⚠️ r413 (item 79f3f64d, step 2) — CP22A WAS BUILT, SO IT IS NO LONGER A PLANNED ROW. It left
+  // MY_PLANNED_FORMS for MY_STATUTORY_LINKS (`my.cp22a`, its own `link_cp22a` keys), and r409's planned pair
+  // `planned_lhdn_cp22a_cessation(_hint)` is retired in turn. What this case protects is unchanged: CP22A
+  // is labelled as the private-sector cessation notice, and no code names a retired key.
+  const cp22a = MY_STATUTORY_LINKS.find((p) => p.id === 'my.cp22a')!;
 
-  it('the planned CP22A uses the NEW keys, and nothing in the app names the old pair', () => {
-    expect(cp22a.labelKey).toBe('planned_lhdn_cp22a_cessation');
-    expect(cp22a.hintKey).toBe('planned_lhdn_cp22a_cessation_hint');
+  it('the CP22A uses its own built-form keys, and nothing in the app names a retired pair', () => {
+    expect(MY_PLANNED_FORMS.some((p) => p.id === 'lhdn.cp22a')).toBe(false);
+    expect(cp22a.labelKey).toBe('link_cp22a');
+    expect(cp22a.hintKey).toBe('link_cp22a_hint');
     for (const dir of ['app', 'components', 'core', 'lib', 'localization']) {
       const hits: string[] = [];
       const walk = (d: string) => {
         for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) {
           const p = path.join(d, e.name);
           if (e.isDirectory()) walk(p);
-          else if (/\.(ts|tsx)$/.test(e.name) && /'planned_lhdn_cp22a(_hint)?'/.test(read(p))) hits.push(p);
+          else if (/\.(ts|tsx)$/.test(e.name) && /'planned_lhdn_cp22a(_cessation)?(_hint)?'/.test(read(p))) hits.push(p);
         }
       };
       walk(dir);
@@ -586,12 +595,15 @@ describe('CP22A is labelled as what it is, and CP22B is recorded as not applicab
     const sf = catalog(l).payroll.statutoryForms;
     expect(sf.planned_lhdn_cp22a).toMatch(/^\[retired r409/);
     expect(sf.planned_lhdn_cp22a_hint).toMatch(/^\[retired r409/);
-    expect(sf.planned_lhdn_cp22a_cessation).toMatch(/^CP22A/);
-    expect(sf.planned_lhdn_cp22a_cessation_hint.length).toBeGreaterThan(40);
-    expect(`${sf.planned_lhdn_cp22a_cessation} ${sf.planned_lhdn_cp22a_cessation_hint}`).not.toMatch(/clearance/i);
+    // r413 — the r409 planned pair is retired in its turn; the built form's pair is the real label now.
+    expect(sf.planned_lhdn_cp22a_cessation).toMatch(/^\[retired r413/);
+    expect(sf.planned_lhdn_cp22a_cessation_hint).toMatch(/^\[retired r413/);
+    expect(sf.link_cp22a).toMatch(/^CP22A/);
+    expect(sf.link_cp22a_hint.length).toBeGreaterThan(40);
+    expect(`${sf.link_cp22a} ${sf.link_cp22a_hint} ${sf.desc_cp22a}`).not.toMatch(/clearance/i);
     if (l !== 'en') {
       const en = catalog('en').payroll.statutoryForms;
-      expect(sf.planned_lhdn_cp22a_cessation_hint, `${l} is still English`).not.toBe(en.planned_lhdn_cp22a_cessation_hint);
+      expect(sf.link_cp22a_hint, `${l} is still English`).not.toBe(en.link_cp22a_hint);
     }
     for (const k of ['refusal_cycles_no_deductions', 'refusal_year_no_payroll']) expect(sf[k], `${l} ${k}`).toBeTruthy();
     for (const k of ['cyclesAll', 'viewerBack', 'previewBlocked']) expect(catalog(l).payroll.cp39Form[k], `${l} ${k}`).toBeTruthy();

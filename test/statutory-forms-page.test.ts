@@ -25,7 +25,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from '../localization/my/reports';
+import { MY_OFFICIAL_ARTWORK, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from '../localization/my/reports';
 import { myPack } from '../localization/my';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { payrollPack } from '../packs/payroll';
@@ -100,10 +100,15 @@ describe('the pack declares where each form is filed, and by when', () => {
    */
   it('keeps SOCSO and EIS on ONE combined return, which is still the only combined one', () => {
     const perkeso = MY_REPORTS.filter((r) => r.submission?.body === 'perkeso');
-    expect(perkeso.map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.socso-eis']);
+    // r412 (item e74af58c, step 2) — Borang 8B and the EIS (SIP) contribution schedule JOINED the shelf.
+    expect(perkeso.map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-8b', 'my.sip-contribution', 'my.socso-eis']);
     // The combined SOCSO+EIS return has not been split, and nothing else claims to be one.
-    const combined = perkeso.filter((r) => r.label.includes('EIS'));
+    // r412 — UPDATED, NOT LOOSENED: "claims to be the COMBINED return" is a label naming BOTH SOCSO and EIS.
+    // The SIP schedule names EIS alone — it is an EIS-only document — and is pinned below never to name SOCSO.
+    const combined = perkeso.filter((r) => r.label.includes('EIS') && r.label.includes('SOCSO'));
     expect(combined.map((r) => r.id)).toEqual(['my.socso-eis']);
+    expect(MY_REPORTS.find((r) => r.id === 'my.sip-contribution')!.label).not.toContain('SOCSO');
+    expect(MY_REPORTS.find((r) => r.id === 'my.borang-8b')!.label).not.toContain('EIS');
     // Borang 8A carries no EIS and is not offered as the combined return under another name.
     expect(MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.label).not.toContain('EIS');
   });
@@ -169,9 +174,12 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // year, so there is no company-wide table for a ReportDef to generate.
     // ⚠️ r402 (item f3cf2444) — THE PAIRS BECAME ONE ENTRY EACH. `my.ea.en`/`my.ea.ms` are `my.ea` and
     // `my.pcb2ii.en`/`my.pcb2ii.ms` are `my.pcb2ii`, each with a Version choice; the former ids redirect.
+    // r413 (item 79f3f64d, step 2) — `my.cp22a` JOINED this list, from MY_PLANNED_FORMS, a door for the
+    // same reason TP1 is: one person's notice, no company-wide table for a ReportDef to generate.
     expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
       'my.borang-e',
       'my.cp22',
+      'my.cp22a',
       'my.ea',
       'my.pcb2ii',
       'my.tp1',
@@ -207,11 +215,13 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // below, so deleting an entry from here without building it cannot pass as this same migration.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
       'epf.borang-bbcb',
-      'perkeso.borang-8b',
-      'perkeso.sip',
+      // r412 (item e74af58c, step 2) — `perkeso.borang-8b` LEFT (built: `my.borang-8b`, same shelfOrder 3), and
+      // `perkeso.sip` ("SIP Forms") LEFT: its contribution schedule is built (`my.sip-contribution`, shelfOrder
+      // 4) and what stays unbuilt — SIP 2 / SIP 2A — is planned under its own name, `perkeso.sip-2`.
       'perkeso.employee-registration',
+      'perkeso.sip-2',
       'lhdn.cp21',
-      'lhdn.cp22a',
+      // r413 — `lhdn.cp22a` LEFT, built, to MY_STATUTORY_LINKS as `my.cp22a` at the same shelfOrder 10.
       'lhdn.cp39a',
     ]);
     for (const p of MY_PLANNED_FORMS) {
@@ -576,10 +586,15 @@ describe('the report table is shared, not copied', () => {
 });
 
 describe('CP22 / CP22A live with the statutory forms now', () => {
-  it('render on Statutory Forms, under an anchor the catalog entry points at', () => {
+  // r413 (item 79f3f64d, step 2) — THE SHELF ROWS MOVED, THE WORKLIST DID NOT. CP22 and CP22A now open the
+  // event-selection screen (the plan's "choose the Company, then pick the employee"); the worklist and the
+  // month view still render at the foot of Statutory Forms under the same anchor, which is what keeps the
+  // `?companyId=…#worklist` bookmarks (and the Reports page's pointer below) resolving.
+  it('render on Statutory Forms under their anchor, and the shelf rows open the event-selection screen', () => {
     expect(PAGE).toContain('complianceWorklist');
     expect(PAGE).toContain('id="worklist"');
-    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')?.href).toContain('#worklist');
+    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22');
+    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22a')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22a');
   });
 
   it('are gone from Reports — but the page says where they went', () => {
@@ -596,10 +611,14 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
    * `openForm` changes the action on EVERY row on the screen — the EA row above included. So the catalog
    * entry names its own action key, and every other row falls back to the shared label.
    */
-  it('says "Open worklist" on the CP22 row only, without touching any other row’s wording', () => {
+  // ⚠️ r413 (item 79f3f64d, step 2) — "OPEN WORKLIST" IS RETIRED, AND THE CASE MOVES RATHER THAN BEING
+  // DELETED. The CP22 row no longer scrolls to the worklist: it opens the choose-the-employee screen and
+  // ends at the form, which is the EA's shape (r242), so it says the SHARED `openForm` — as CP22A does. The
+  // mechanism this case protects (each row names its own action or falls back) is unchanged.
+  it('names each row’s action from the catalog — CP22 and CP22A say "Open form", as the EA does', () => {
     const cp22 = MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')!;
-    expect(cp22.actionLabelKey).toBe('openWorklist');
-    expect(en.payroll.statutoryForms.openWorklist).toBe('Open worklist');
+    expect(cp22.actionLabelKey).toBe('openForm');
+    expect(en.payroll.statutoryForms.openWorklist).toMatch(/^\[retired r413/);
     // 587ee719 — each entry still names its OWN action or falls back, which is the mechanism this test
     // exists to protect. "Open worklist" stays CP22's alone; Borang E declares none and renders the
     // shared label.
@@ -630,14 +649,18 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
       // href opens the screen where a person is chosen, and that screen IS the destination — the record
       // is edited and printed there, not on a further page.
       ['my.tp3', 'openEmployeeList'],
-      ['my.cp22', 'openWorklist'],
+      ['my.cp22', 'openForm'],
+      ['my.cp22a', 'openForm'],
     ]);
     // …and the shared key is REUSED rather than duplicated: no EA-only "Open form" wording of its own.
     expect(en.payroll.statutoryForms.openEmployeeList).toBe('Open employee list');
     expect(Object.keys(en.payroll.statutoryForms).filter((k) => /^openForm/.test(k))).toEqual(['openForm']);
     expect(PAGE).toContain("t((l.actionLabelKey ?? 'openForm')");
-    // The row title is untouched — the fix that was NOT applied.
-    expect(en.payroll.statutoryForms.link_cp22).toBe('CP22 / CP22A notices');
+    // r413 — the CP22 row's TITLE did change, deliberately: CP22A has its own card, so "CP22 / CP22A notices"
+    // became untrue. The old key is retired (never deleted) and the row names a new one.
+    expect(cp22.labelKey).toBe('link_cp22_new');
+    expect(en.payroll.statutoryForms.link_cp22).toMatch(/^\[retired r413/);
+    expect(en.payroll.statutoryForms.link_cp22_new).toBe('CP22 — notice of a new employee');
     expect(en.payroll.statutoryForms.openForm).toBe('Open form');
   });
 
@@ -766,7 +789,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
 
   /**
    * ⚠️ AND IT MAY NEVER BE `official`. A blank copy of OUR rendering is still our rendering: `public/forms/`
-   * holds exactly one genuine agency artwork and it is the CP22's. The pair of EA rows keeps saying
+   * holds only the agency artwork on `MY_OFFICIAL_ARTWORK` (CP22, CP22A) and no C.P.8A. The EA row keeps saying
    * `agency-layout`, and the blank download does not move them.
    */
   it('the blank EA does not promote either EA row’s fidelity', () => {
@@ -777,9 +800,9 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   });
 
   /**
-   * The action hangs off the worklist ROWS, because the document is per employee. CP22A gets no button:
-   * the leaver notice is a later round, and a button that produced the joiner form for a leaver would be
-   * worse than the dash that sits there now — that half is unchanged.
+   * The action hangs off the worklist ROWS, because the document is per employee. (Until r413 a CP22A row
+   * got a dash, because a button that produced the joiner form for a leaver would have been worse; r413
+   * built the leaver's own form, so the row opens THAT.)
    *
    * 88076362 REVERSED THE OTHER HALF. This used to assert the row linked straight to `/pdf`, and that WAS
    * the reporter's complaint: "you press Download beside a new joiner and a finished form arrives; there
@@ -787,11 +810,16 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
    * is one press further on. The `/pdf` route still exists and still works on its own — it is what the
    * review screen's own Download button points at — so its existence stays pinned here.
    */
-  it('opens the CP22 review screen from every new-hire row, and nothing on the CP22A rows', () => {
+  // ⚠️ r413 (item 79f3f64d, step 2) — THE CP22A HALF IS REVERSED, AND THE CASE MOVES WITH IT. CP22A is
+  // built, so a leaver row now opens the CP22A viewer — its OWN form, never the joiner's — instead of the
+  // dash; `cp22aNotYet` is retired. The joiner half is unchanged.
+  it('opens the CP22 review screen from every new-hire row, and the CP22A viewer from every leaver row', () => {
     expect(PAGE).toContain('/payroll/cp22/${w.employmentId}/preview');
     expect(PAGE).toContain("w.form === 'CP22'");
     expect(PAGE).toContain("tCp22('reviewLink')");
-    expect(PAGE).toContain("tCp22('cp22aNotYet')");
+    expect(PAGE).not.toContain("tCp22('cp22aNotYet')");
+    expect(PAGE).toContain('/payroll/cp22a/${w.employmentId}/preview');
+    expect(en.payroll.cp22.cp22aNotYet).toMatch(/^\[retired r413/);
     // The row must NOT go straight to the document any more — that is the behaviour this round removed.
     expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/pdf');
     expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/preview/page.tsx'))).toBe(true);
@@ -837,24 +865,40 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
  */
 describe('the four pins', () => {
   /** (a) "Official form" is a claim about GOVERNMENT ARTWORK. Exactly one entry may make it. */
-  it('a — exactly one catalog entry claims fidelity "official", and it is my.cp22', () => {
+  /**
+   * ⚠️ r413 (item 79f3f64d, step 2) — "EXACTLY ONE, AND IT IS my.cp22" BECAME A WHITELIST, DELIBERATELY AND
+   * NOT LOOSER. The claim this pin protects is that `official` means the agency's OWN artwork is on disk and
+   * mapped. CP22A [Pin.1/2023] is the second form for which that is true, so the list is
+   * `MY_OFFICIAL_ARTWORK`, held both ways: every official entry is listed, every listed entry is official,
+   * every listed artwork and field map exists, and EVERY file in `public/forms/` belongs to a listed entry —
+   * so neither a chip nor a file can be added without the other. The artworks' bytes are pinned by sha256
+   * in test/cp22-fields.test.ts / test/r413-cp22a.test.ts.
+   */
+  it('a — only the forms on the official-artwork whitelist claim "official", and each brings its artwork', () => {
     const official = [
       ...MY_REPORTS.filter((r) => r.fidelity === 'official').map((r) => r.id),
       ...MY_STATUTORY_LINKS.filter((l) => l.fidelity === 'official').map((l) => l.id),
-    ];
-    expect(official).toEqual(['my.cp22']);
-    // …and the claim is true: the artwork and its field map are both on disk.
-    expect(fs.existsSync(path.join(ROOT, 'public/forms/cp22-pin-1-2021.pdf'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'lib/cp22-fields.ts'))).toBe(true);
+    ].sort();
+    expect(official).toEqual(MY_OFFICIAL_ARTWORK.map((o) => o.id).sort());
+    expect(official).toEqual(['my.cp22', 'my.cp22a']);
+    // …and the claim is true: each artwork and its field map are both on disk.
+    for (const o of MY_OFFICIAL_ARTWORK) {
+      expect(fs.existsSync(path.join(ROOT, o.artwork)), o.artwork).toBe(true);
+      expect(fs.existsSync(path.join(ROOT, o.fieldMap)), o.fieldMap).toBe(true);
+    }
+    // …and nothing in public/forms/ is there without an entry that says what it is.
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).sort()).toEqual(
+      MY_OFFICIAL_ARTWORK.map((o) => path.basename(o.artwork)).sort(),
+    );
     // Every other entry that declares anything declares one of the three honest statuses.
     //
     // 8ca344bf ADDED `agency-layout` TO THAT LIST AND NOT TO THE LINE ABOVE, WHICH IS THE WHOLE POINT.
     // The Borang 8A specimen we built against is another payroll vendor's DevExpress output, not PERKESO
     // artwork. (r408: PERKESO DOES publish a blank 8A; the form is still drawn to the agency's page 1 on
-    // our own paper rather than printed onto that 2013 file, and says so.) `my.cp22` remains the ONLY `official` entry, deliberately: it is the claim
+    // our own paper rather than printed onto that 2013 file, and says so.) `official` stays the whitelist's alone, deliberately: it is the claim
     // that costs the most if it is untrue.
     for (const e of [...MY_REPORTS, ...MY_STATUTORY_LINKS]) {
-      if (e.fidelity && e.id !== 'my.cp22') {
+      if (e.fidelity && !MY_OFFICIAL_ARTWORK.some((o) => o.id === e.id)) {
         expect(['agency-layout', 'figures', 'draft-file'], `${e.id}`).toContain(e.fidelity);
       }
     }
@@ -864,8 +908,8 @@ describe('the four pins', () => {
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /8a/i.test(f))).toEqual([]);
     // 9c8dad7a — AND BORANG A, WHICH IS THE SECOND MEMBER OF `agency-layout` AND NOT A THIRD STATUS.
     // Same argument, different agency: the reporter's EPF specimen is the same vendor's DevExpress output
-    // and KWSP publishes no blank Borang A either, so there is no artwork on disk for it to have been
-    // drawn onto. Forms sharing ONE value is what stops the vocabulary growing a status per form.
+    // and we hold no KWSP blank either (r411: whether KWSP publishes one was never checked, so it is no
+    // longer claimed), so there is no artwork on disk for it to have been drawn onto. Forms sharing ONE value is what stops the vocabulary growing a status per form.
     expect(MY_REPORTS.find((r) => r.id === 'my.borang-a')!.fidelity).toBe('agency-layout');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /borang/i.test(f))).toEqual([]);
     // c99e8358 — AND THE CP39, WHICH IS THE THIRD MEMBER. This line used to read
@@ -891,8 +935,8 @@ describe('the four pins', () => {
     // references and its column order — the agency's arrangement on our page, which is what this value
     // means. The specimen it was checked against is the reporter's attachment, whose PDF Producer is
     // Microsoft Word 2019 (r202 measured it) rather than an agency press, and it is NOT on disk in
-    // either forms directory: `public/forms/` still holds exactly one genuine artwork and it is the
-    // CP22's, so `official` is refused here for the same reason it is refused everywhere else.
+    // either forms directory: `public/forms/` holds only the whitelisted agency artwork (CP22, CP22A), so
+    // `official` is refused here for the same reason it is refused everywhere else.
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.tp1')!.fidelity).toBe('agency-layout');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /tp\W?1/i.test(f))).toEqual([]);
     expect(read('lib/tp1-pdf.ts')).toContain('described as the official form');
@@ -904,12 +948,18 @@ describe('the four pins', () => {
       [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'agency-layout').map((e) => e.id).sort(),
     // r323 — the two PCB 2(II) rows are 'agency-layout' on the same honest reasoning: lib/pcb2ii-pdf.ts is
     // OUR typesetting of LHDN's sheet from the specimens attached to 72b100cd, not a facsimile of their
-    // PDF. The assertion above — exactly one 'official' entry, and it is my.cp22 — is what this protects.
+    // PDF. The assertion above — `official` only for the artwork whitelist — is what this protects.
     // df35d60d — `my.tp3` is 'agency-layout' on the same honest reasoning: lib/tp3-pdf.ts is OUR
     // typesetting of LHDN's TP3 from the specimen attached to the item, not a facsimile of their PDF.
     ).toEqual([
       'my.borang-8a',
+      // r412 — Borang 8B is drawn to PERKESO's own blank 8B (the 8A's measured geometry). The EIS (SIP)
+      // schedule is deliberately NOT here: it follows a vendor's report, not an agency form, so it is
+      // `figures` (pinned in test/r412-sip-borang-8b.test.ts).
+      'my.borang-8b',
       'my.borang-a',
+      // r411 — BBCD, drawn to the reporter's October sample on our paper; we hold no KWSP blank.
+      'my.borang-bbcd',
       'my.cp39',
       // r402 — one entry each (was `.en` / `.ms`).
       'my.ea',
@@ -1011,7 +1061,9 @@ describe('what the shelves say about the forms that are not built', () => {
    * missing — the printable form — shipped in 7ad37961. r224 only stopped the shelf saying otherwise.)
    */
   const NEVER_BUILT = [
-    'BBCB', 'Borang 8B', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
+    // r412 (item e74af58c, step 2) — 'Borang 8B' LEFT this list: it was BUILT (`my.borang-8b`). SIP 2 / SIP 2A
+    // stay: the EIS contribution schedule that was built is not a registration form.
+    'BBCB', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
     'HRDF Contribution', 'PTPTN Deduction', 'Tabung Haji Deduction', 'Union Fee',
   ];
 

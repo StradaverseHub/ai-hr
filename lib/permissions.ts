@@ -1183,6 +1183,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       // revoke. Its FOUR siblings under /payroll/cp22 (the [employmentId] pdf and text downloads, batch and
       // blank) are route handlers, not guarded pages, so they are not listed — the check walks page.tsx.
       '/payroll/cp22/[employmentId]/preview',
+      // r413 (item 79f3f64d, step 2): the CP22A viewer — one leaver's notice on LHDN's own page, framed, with
+      // the four boxes only the operator can answer. Same scopedAdmin key as the CP22 review screen above
+      // and for the same reason: it shows one named person's IC, TIN, address and year's pay. Its `pdf`
+      // sibling is a route handler, not a guarded page. Registered for test/function-access.test.ts.
+      '/payroll/cp22a/[employmentId]/preview',
+      // r413 (item 79f3f64d, step 2): the event-selection screen for forms about one person (CP22, CP22A) —
+      // Company, then the people the event happened to, with a name search. Same scopedAdmin key as the
+      // directory that links to it: it lists names with joining or leaving dates. Its `continue` sibling is
+      // a route handler (a redirect), not a guarded page. Registered for test/function-access.test.ts.
+      '/payroll/statutory-forms/event',
       // 8ca344bf: the Borang 8A review step, between the PERKESO shelf's figures screen and the two
       // downloads. Same scopedAdmin key as the directory that links to it and as the [formId] screen above
       // — it lists every employee's name, IC and SOCSO contribution for the month, so it is admin-scoped
@@ -1192,6 +1202,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they are not
       // listed — the check walks page.tsx.
       '/payroll/borang-8a/preview',
+      // r412 (item e74af58c, step 2): the EIS (SIP) contribution schedule and Borang 8B previews — each the
+      // form in the shared viewer and its download. Same scopedAdmin key as the Borang 8A preview above: the
+      // SIP schedule lists every employee's name, IC and EIS contribution, and the 8B names the company's
+      // PERKESO signatory. Registered here because test/function-access.test.ts checks reverse completeness;
+      // their `pdf` siblings are route handlers, and `shared.ts` / `query.ts` plain modules, so not listed.
+      '/payroll/sip-contribution/preview',
+      '/payroll/borang-8b/preview',
       // 9c8dad7a: the Borang A review step, between the EPF shelf's figures screen and the THREE downloads
       // (the drawn form, its readable text twin and the i-Akaun upload file). Same scopedAdmin key as the
       // directory that links to it and as the [formId] screen above — it lists every employee's name,
@@ -1202,6 +1219,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // file downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they
       // are not listed — the check walks page.tsx.
       '/payroll/borang-a/preview',
+      // r411 (item 4f45f9b0): the BBCD preview — Borang A's payment cover, from the same Open Form path and
+      // the same payroll read. Same scopedAdmin key as the Borang A preview beside it: it frames the
+      // company's EPF reference, its month's contribution total and its signatory's name and IC. Its
+      // sibling /payroll/borang-bbcd/pdf is a route handler, not a guarded page.
+      '/payroll/borang-bbcd/preview',
       // e0cd4583: the CP39 review step, between the LHDN shelf's figures screen and the two downloads
       // (the drawn monthly PCB statement and its readable text twin). Same scopedAdmin key as the
       // directory that links to it and as the [formId] screen above — it lists every employee's name,

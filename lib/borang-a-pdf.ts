@@ -2,9 +2,11 @@
  * 9c8dad7a / cc9f9420 — draw a Borang A, A4 portrait, with pdf-lib (pure JS, no WASM/native, so no Next
  * bundler friction). Mirrors lib/ea-pdf.ts, which is the house pattern for a form we draw from scratch.
  *
- * ⚠️ THIS IS NOT KWSP ARTWORK, AND THE PAGE SAYS SO. The reporter's specimen is a FILLED output from
- * another payroll vendor's engine (DevExpress v23.2.5), not an agency page, and KWSP publishes no blank
- * Borang A to print onto — so there is nothing to overlay and every rule, box and heading below is drawn.
+ * ⚠️ THIS IS NOT KWSP ARTWORK, AND THE PAGE SAYS SO. The reporter's specimens are FILLED outputs from
+ * other payroll vendors' engines (DevExpress v23.2.5 in August, another HRMS in October), not agency pages,
+ * and we hold no KWSP blank to print onto — so there is nothing to overlay and every rule, box and heading
+ * below is drawn. (r411: this used to add that KWSP publishes no blank Borang A. Nobody here checked that,
+ * so it is no longer claimed — on the page, in the text twin or here.)
  * The catalog entry stays `agency-layout` and may never become `official`: there is nothing official to
  * be faithful to, and claiming otherwise on a statutory document is the one thing this repo has refused
  * twice. test/statutory-forms-page.test.ts pins it.
@@ -28,9 +30,8 @@
  *   • TWO payment ticks (Wang Tunai; Cek / Kiriman Wang / Wang Pos / Draf Bank) with the instrument's
  *     number line under the second, as the specimen prints them;
  *   • a RULED member table — every column and row has its lines — with the two-level CARUMAN heading;
- *   • the brought-forward and carried-forward rows on EVERY sheet. Where there is nothing to carry (into
- *     sheet one, out of the last sheet) the row is drawn and its cells are EMPTY — never 0.00, which would
- *     assert that money was carried;
+ *   • the brought-forward row (r411: from sheet 2 onwards ONLY, and NO carried-forward row on any sheet —
+ *     see the r411 block below);
  *   • the foot in the specimen's three columns: the representative's block with the place to sign beside
  *     "Tandatangan Wakil Majikan", the Cop Rasmi Majikan box, and CATATAN; PERINGATAN under all three.
  * The "Bulan Upah" line beside Tarikh DiCetak is GONE (the specimen has none); the payroll month stays in
@@ -42,13 +43,18 @@
  * no field for it, the row loop below never addresses `COL.nk`, and the test extracts the drawn text
  * positions out of the rendered PDF and asserts nothing lands in that band. Do not "finish" this column.
  *
- * ── PAGINATION IS THE PART THAT GOES WRONG SILENTLY ───────────────────────────────────────────────
- * The employer header repeats on every sheet. Sheet 2 onward opens with "Jumlah yang dibawa dari
- * mukasurat terdahulu (jika ada)" and every sheet but the last closes with "Jumlah yang dibawa ke
- * mukasurat seterusnya (jika ada)"; the last closes with JUMLAH (RM). Those carry rows print the
- * CONTRIBUTION COLUMNS ONLY — the specimen leaves Upah blank on both — and the arithmetic that makes them
- * add up lives in `paginateBorangA`, where it is asserted at one, two and three pages without a PDF in
- * sight.
+ * ── r411 (item 4f45f9b0, the October sample): THE CARRY ROWS AND JUMLAH, AS THE SAMPLE PRINTS THEM ──
+ * The reporter's October KWSP 6 (pages 1 and 35 of 35) settles three things the August specimen could
+ * not, because it was one page long:
+ *   • "Jumlah yang dibawa dari mukasurat terdahulu (jika ada)" opens sheet 2 ONWARDS. Sheet 1 has no
+ *     brought-forward row at all — r407 drew an empty one there.
+ *   • There is NO carried-forward row on any sheet: page 1 ends at member row 20 and page 35 opens with
+ *     the brought-forward row. r407 drew "…dibawa ke mukasurat seterusnya" on every sheet.
+ *   • JUMLAH (RM) on the last sheet is ONE figure — employer + employee, the same money as the header's
+ *     Amaun Caruman — written across both CARUMAN cells, with the label in the UPAH cell. There is no wage
+ *     total on the form. r407 printed three figures (Upah, Majikan, Pekerja).
+ * The brought-forward row prints the CONTRIBUTION COLUMNS ONLY (the sample leaves Upah blank) and its
+ * arithmetic lives in `paginateBorangA`, asserted at one, two and three pages without a PDF in sight.
  *
  * DRAWN EMPTY, ON PURPOSE: No. Rujukan Borang A, the payment-method ticks and their reference line, the
  * representative's own Tarikh, the signature, Cop Rasmi Majikan and Cop Agen Kutipan. Those are manual
@@ -164,17 +170,20 @@ const CATATAN_X = COP_R + 8;
  * asserts the pure module's number never exceeds it. Overprinting the CATATAN block is invisible to tsc,
  * to the suite, to `next build` and to a 200 — a PDF that overlaps itself is still a valid PDF.
  *
- * r407 — `firstRowTop` is the top EDGE of the row band (the brought-forward row's top), and the carry-in
- * row is paid for on EVERY sheet now, because it is drawn on every sheet. `columns` and `frameBottom` are
- * published so the tests read the renderer's geometry instead of restating it.
+ * r407 — `firstRowTop` is the top EDGE of the row band (the brought-forward row's top). `columns` and
+ * `frameBottom` are published so the tests read the renderer's geometry instead of restating it.
+ *
+ * r411 — the carry-in row is drawn from sheet 2 only, but its height is STILL RESERVED on every sheet:
+ * `paginateBorangA` takes one rows-per-page for the whole form, and a sheet 1 that held one row more would
+ * renumber every sheet after it. The totals block is the JUMLAH row alone now (no carried-forward row).
  */
 export const BORANG_A_SHEET_GEOMETRY = {
   pageHeight: H,
   rowHeight: ROW_H,
   firstRowTop: HEAD_BOT,
   carryInHeight: ROW_H,
-  /** Carried-forward row plus the JUMLAH row. */
-  totalsBlockHeight: 2 * ROW_H,
+  /** The JUMLAH row. r411: there is no carried-forward row any more. */
+  totalsBlockHeight: ROW_H,
   tableFloor: TABLE_FLOOR,
   tableTop: TABLE_TOP,
   frameBottom: FRAME_BOT,
@@ -402,29 +411,29 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     vline(COL.employee, HEAD_BOT, TABLE_TOP - HEAD_ROW);
 
     /**
-     * A CARRY ROW: one merged cell from the margin through UPAH (the specimen prints no wage on either
-     * carry row) holding the label, then the two contribution cells. `values` null ⇒ the cells are drawn
-     * EMPTY: there is nothing to carry, and 0.00 would assert that there was.
+     * THE BROUGHT-FORWARD ROW: one merged cell from the margin through UPAH (the sample prints no wage on
+     * it) holding the label, then the two contribution cells. Only ever drawn WITH values — r411 draws it
+     * from sheet 2 onwards, where there is always something carried in.
      */
-    const carryRow = (top: number, label: string, values: [number, number] | null) => {
+    const carryRow = (top: number, label: string, values: [number, number]) => {
       const y = base(top);
       atR(label, COL.employer - 4, y, 7.5, bold);
-      if (values) {
-        atFitR(money(values[0]), COL.employee - 3, y, COL.employee - COL.employer - 6, 8.5, bold);
-        atFitR(money(values[1]), COL.end - 3, y, COL.end - COL.employee - 6, 8.5, bold);
-      }
+      atFitR(money(values[0]), COL.employee - 3, y, COL.employee - COL.employer - 6, 8.5, bold);
+      atFitR(money(values[1]), COL.end - 3, y, COL.end - COL.employee - 6, 8.5, bold);
       hline(M, RIGHT, top - ROW_H);
       for (const x of [M, COL.employer, COL.employee, COL.end]) vline(x, top - ROW_H, top);
     };
 
-    // ── Brought forward — EVERY sheet. Empty on sheet one. ──────────────────────────────────────────
+    // ── Brought forward — SHEET 2 ONWARDS ONLY (r411, the October sample). ─────────────────────────
+    // Sheet 1 has nothing to bring forward and the sample draws no row there; r407 drew an empty one.
     let top = HEAD_BOT;
-    carryRow(
-      top,
-      'Jumlah yang dibawa dari mukasurat terdahulu (jika ada)',
-      pageData.sheet > 1 ? [pageData.carryInEmployer, pageData.carryInEmployee] : null,
-    );
-    top -= ROW_H;
+    if (pageData.sheet > 1) {
+      carryRow(top, 'Jumlah yang dibawa dari mukasurat terdahulu (jika ada)', [
+        pageData.carryInEmployer,
+        pageData.carryInEmployee,
+      ]);
+      top -= ROW_H;
+    }
 
     // ── Rows ────────────────────────────────────────────────────────────────────────────────────────
     // Bil runs across the WHOLE form, not per sheet: it is the numbering a KWSP counter reads down.
@@ -461,24 +470,29 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     }
     hline(M, RIGHT, top, 0.9);
 
-    // ── Carried forward — EVERY sheet. Empty on the last, where JUMLAH carries the total. ───────────
-    carryRow(
-      top,
-      'Jumlah yang dibawa ke mukasurat seterusnya (jika ada)',
-      last ? null : [pageData.carryOutEmployer, pageData.carryOutEmployee],
-    );
-    top -= ROW_H;
+    // ── NO carried-forward row, on any sheet (r411, the October sample). ────────────────────────────
 
     // ── JUMLAH (RM), on the last sheet only ─────────────────────────────────────────────────────────
     // Repeating it is how a multi-page form gets filed with the grand total mistaken for a page total.
+    //
+    // r411 — ONE FIGURE, as the October sample prints it: employer + employee (`totalContribution`, the
+    // very number in the header's Amaun Caruman box), centred across the two CARUMAN cells, with the label
+    // in the UPAH cell. NO WAGE TOTAL: the sample prints none, and the form's total is the contribution.
     if (last) {
       const y = base(top);
-      atR('JUMLAH (RM)', COL.wage - 4, y, 9, bold);
-      atFitR(money(form.totalWage), COL.employer - 3, y, COL.employer - COL.wage - 6, 9, bold);
-      atFitR(money(form.totalEmployer), COL.employee - 3, y, COL.employee - COL.employer - 6, 9, bold);
-      atFitR(money(form.totalEmployee), COL.end - 3, y, COL.end - COL.employee - 6, 9, bold);
-      hline(COL.name, RIGHT, top - ROW_H, 1.1);
-      for (const x of [COL.name, COL.wage, COL.employer, COL.employee, COL.end]) vline(x, top - ROW_H, top);
+      // In the UPAH cell, as the sample prints it; it SHRINKS to fit that cell rather than spill into NAMA.
+      atFitR('JUMLAH (RM)', COL.employer - 3, y, COL.employer - COL.wage - 6, 8.5, bold);
+      const jumlah = safe(money(form.totalContribution));
+      const jumlahSize = fitSize(jumlah, COL.end - COL.employer - 8, 9, bold);
+      page.drawText(jumlah, {
+        x: (COL.employer + COL.end) / 2 - bold.widthOfTextAtSize(jumlah, jumlahSize) / 2,
+        y,
+        size: jumlahSize,
+        font: bold,
+        color: ink,
+      });
+      hline(COL.wage, RIGHT, top - ROW_H, 1.1);
+      for (const x of [COL.wage, COL.employer, COL.end]) vline(x, top - ROW_H, top);
       top -= ROW_H;
     }
 
@@ -559,8 +573,7 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     hline(M, RIGHT, by + 9, 0.6, hair);
     const band = [
       'Susun atur kami sendiri, dilukis mengikut Borang A — bukan borang rasmi KWSP.',
-      'Our own layout, drawn to match Borang A. KWSP publishes no blank form to print onto, so this is not ' +
-        'the agency’s own page. The CATATAN notes and the PERINGATAN sentence are TRANSCRIBED from a filled ' +
+      'Our own layout, drawn to match Borang A. The CATATAN notes and the PERINGATAN sentence are TRANSCRIBED from a filled ' +
         'Borang A produced by another payroll system, not taken from a KWSP page, and the English line under ' +
         'PERINGATAN is our own translation. Upah is the wage EPF was charged on and the contributions are ' +
         'taken from the payroll run, never recalculated.',

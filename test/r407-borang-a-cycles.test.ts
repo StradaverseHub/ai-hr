@@ -286,7 +286,13 @@ describe('the drawn page totals reconcile to the rows drawn on it', () => {
   const inColumn = (sheet: Drawn[], left: number, right: number, y: number) =>
     sheet.filter((d) => d.x > left && d.x < right && Math.abs(d.y - y) < 0.01 && /^[\d,]+\.\d\d$/.test(d.text));
 
-  it.each([1, 2, 3])('at %s sheet(s): carried in + this sheet = carried out, and JUMLAH = every row', async (sheets) => {
+  /**
+   * r411 (item 4f45f9b0, the October sample) — THIS CASE USED TO PIN r407's carry rows on EVERY sheet and a
+   * three-figure JUMLAH. The sample reverses both: the brought-forward row from sheet 2 ONLY, NO
+   * carried-forward row anywhere, and ONE JUMLAH figure (employer + employee) equal to the header's Amaun
+   * Caruman. Updated, not deleted: the reconciliation it exists for is the same.
+   */
+  it.each([1, 2, 3])('at %s sheet(s): brought forward = every row before it, and the ONE JUMLAH = every row = Amaun', async (sheets) => {
     const rows = Array.from({ length: BORANG_A_ROWS_PER_PAGE * (sheets - 1) + 7 }, (_, i) => rowN(i));
     const form = borangAFrom({ header, rows });
     expect(form.pages).toHaveLength(sheets);
@@ -295,57 +301,63 @@ describe('the drawn page totals reconcile to the rows drawn on it', () => {
     let carried = { er: 0, ee: 0 };
     let allEr = 0;
     let allEe = 0;
-    let allWage = 0;
     for (const [n, sheet] of drawn.entries()) {
       const isLast = n === drawn.length - 1;
-      const bfLabel = sheet.find((d) => d.text.startsWith('Jumlah yang dibawa dari'))!;
-      const cfLabel = sheet.find((d) => d.text.startsWith('Jumlah yang dibawa ke'))!;
-      // THE CARRY ROWS ARE ON EVERY SHEET.
-      expect(bfLabel, `sheet ${n + 1} has no brought-forward row`).toBeDefined();
-      expect(cfLabel, `sheet ${n + 1} has no carried-forward row`).toBeDefined();
-      const bfEr = inColumn(sheet, COL.employer, COL.employee, bfLabel.y);
-      const bfEe = inColumn(sheet, COL.employee, COL.end, bfLabel.y);
-      const cfEr = inColumn(sheet, COL.employer, COL.employee, cfLabel.y);
-      const cfEe = inColumn(sheet, COL.employee, COL.end, cfLabel.y);
-      // BLANK, NEVER 0.00: nothing is carried INTO sheet one, nothing OUT of the last sheet.
-      if (n === 0) expect([...bfEr, ...bfEe].map((d) => d.text), 'sheet 1 brought forward').toEqual([]);
-      else {
+      const bfLabel = sheet.find((d) => d.text.startsWith('Jumlah yang dibawa dari'));
+      // NO carried-forward row on ANY sheet.
+      expect(sheet.some((d) => d.text.startsWith('Jumlah yang dibawa ke')), `sheet ${n + 1} has a C/F row`).toBe(false);
+      if (n === 0) {
+        // Sheet 1 has NO brought-forward row at all (r407 drew an empty one).
+        expect(bfLabel, 'sheet 1 has a brought-forward row').toBeUndefined();
+      } else {
+        expect(bfLabel, `sheet ${n + 1} has no brought-forward row`).toBeDefined();
+        const bfEr = inColumn(sheet, COL.employer, COL.employee, bfLabel!.y);
+        const bfEe = inColumn(sheet, COL.employee, COL.end, bfLabel!.y);
         expect(sen(num(bfEr[0].text))).toBe(sen(carried.er));
         expect(sen(num(bfEe[0].text))).toBe(sen(carried.ee));
+        // …and no wage is brought forward.
+        expect(inColumn(sheet, COL.wage, COL.employer, bfLabel!.y)).toEqual([]);
       }
-      // The rows on this sheet, read back off the drawn page by their member numbers' baselines.
       const rowYs = sheet.filter((d) => /^1000\d{4}$/.test(d.text)).map((d) => d.y);
       expect(rowYs.length).toBe(form.pages[n].rows.length);
       let er = 0;
       let ee = 0;
       for (const y of rowYs) {
-        const w = inColumn(sheet, COL.wage, COL.employer, y);
         const a = inColumn(sheet, COL.employer, COL.employee, y);
         const b = inColumn(sheet, COL.employee, COL.end, y);
-        expect([w.length, a.length, b.length]).toEqual([1, 1, 1]);
-        allWage += num(w[0].text);
+        expect([a.length, b.length]).toEqual([1, 1]);
         er += num(a[0].text);
         ee += num(b[0].text);
       }
       allEr += er;
       allEe += ee;
       carried = { er: carried.er + er, ee: carried.ee + ee };
-      if (isLast) {
-        expect([...cfEr, ...cfEe].map((d) => d.text), 'last sheet carried forward').toEqual([]);
-        const jumlah = sheet.find((d) => d.text === 'JUMLAH (RM)')!;
-        expect(jumlah).toBeDefined();
-        expect(sen(num(inColumn(sheet, COL.wage, COL.employer, jumlah.y)[0].text))).toBe(sen(allWage));
-        expect(sen(num(inColumn(sheet, COL.employer, COL.employee, jumlah.y)[0].text))).toBe(sen(allEr));
-        expect(sen(num(inColumn(sheet, COL.employee, COL.end, jumlah.y)[0].text))).toBe(sen(allEe));
-        // …and the header strip's Amaun Caruman is the same money.
-        expect(sheet.some((d) => d.text === money(form.totalContribution))).toBe(true);
-      } else {
-        expect(sen(num(cfEr[0].text))).toBe(sen(carried.er));
-        expect(sen(num(cfEe[0].text))).toBe(sen(carried.ee));
+      const jumlah = sheet.find((d) => d.text === 'JUMLAH (RM)');
+      if (!isLast) {
+        expect(jumlah, `JUMLAH on sheet ${n + 1} of ${sheets}`).toBeUndefined();
+        continue;
       }
+      expect(jumlah).toBeDefined();
+      // ONE figure on the JUMLAH row, and it sits across the two CARUMAN cells — none in UPAH.
+      const onRow = sheet.filter((d) => Math.abs(d.y - jumlah!.y) < 0.01 && /^[\d,]+\.\d\d$/.test(d.text));
+      expect(onRow.map((d) => d.text), 'JUMLAH row figures').toHaveLength(1);
+      expect(onRow[0].x).toBeGreaterThan(COL.employer);
+      expect(inColumn(sheet, COL.wage, COL.employer, jumlah!.y), 'a wage total is drawn').toEqual([]);
+      // = every row on every sheet, to the sen …
+      expect(sen(num(onRow[0].text))).toBe(sen(allEr + allEe));
+      // … = the header strip's Amaun Caruman, drawn on this very sheet.
+      expect(onRow[0].text).toBe(money(form.totalContribution));
+      expect(sheet.filter((d) => d.text === money(form.totalContribution)).length).toBe(2);
     }
     expect(sen(allEr)).toBe(sen(form.totalEmployer));
     expect(sen(allEe)).toBe(sen(form.totalEmployee));
+  });
+
+  it('draws no wage total anywhere on the form (the October sample prints none)', async () => {
+    const rows = Array.from({ length: BORANG_A_ROWS_PER_PAGE + 3 }, (_, i) => rowN(i));
+    const form = borangAFrom({ header, rows });
+    const drawn = await drawnPages(form);
+    expect(drawn.flat().some((d) => d.text === money(form.totalWage))).toBe(false);
   });
 
   it('prints no "0.00" anywhere on a one-row form — every empty box is empty', async () => {

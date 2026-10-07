@@ -143,8 +143,10 @@ describe('the main screen is a directory: no company, year or month gates the fo
    * bookmark people hold is `?companyId=…#worklist`, so the anchor and the parameter both have to survive
    * a round whose whole point is removing the filter bar above them.
    */
+  // r413 (item 79f3f64d, step 2) — the CP22 ROW now opens the event-selection screen (one press, no
+  // placeholder, so still not templated); the WORKLIST it used to scroll to stays at its anchor.
   it('keeps the CP22 worklist reachable at its own anchor', () => {
-    expect(linkById.get('my.cp22')?.href).toBe('/payroll/statutory-forms#worklist');
+    expect(linkById.get('my.cp22')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22');
     expect(TEMPLATED.test(linkById.get('my.cp22')!.href)).toBe(false);
     expect(DIRECTORY).toContain('id="worklist"');
     expect(DIRECTORY).toContain('complianceWorklist');
@@ -182,9 +184,10 @@ describe('every registered form reaches the directory, with the status it alread
    * quietly does — a shared caption acquires a new subject the moment a new member joins the set.
    * `my.cp22` remains the ONLY `official` row, which is the claim that costs the most if it is untrue.
    */
+  // r413 — CP22A was BUILT on LHDN's own artwork and joined the official whitelist; no existing form moved.
   it('moves no form between fidelity statuses', () => {
     const official = [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'official');
-    expect(official.map((e) => e.id)).toEqual(['my.cp22']);
+    expect(official.map((e) => e.id)).toEqual(['my.cp22', 'my.cp22a']);
     // r402 — one EA entry since the per-language pair merged; its status is unchanged.
     expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout']);
   });
@@ -212,19 +215,34 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
     const monthly = MY_REPORTS.filter((r) => r.submission && r.periodKind === 'month');
     expect(monthly.length).toBeGreaterThan(0);
     for (const r of monthly) {
-      const d = reportDestination(r.id, r.periodKind, r.runSelection);
+      // r412 — read the way the step reads it, `preview` included: a monthly form with its own preview and no
+      // cycles (Borang 8B) continues there with company, year and month.
+      const d = reportDestination(r.id, r.periodKind, r.runSelection, r.preview);
       if (r.runSelection) {
         expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month', 'cycles']);
         expect(d.criteria.find((c) => c.kind === 'cycles')!.field, r.id).toBe('run');
         expect(d.action, r.id).toBe(r.runSelection.action);
       } else {
         expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month']);
-        expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
+        expect(d.action, r.id).toBe(r.preview ? r.preview.action : `/payroll/statutory-forms/${r.id}`);
       }
     }
-    // Borang A (r407), Borang 8A (r408) and CP39 (r409) declare it today — pinned, so a refactor that dropped
-    // any declaration cannot quietly turn the cycle box off.
-    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39']);
+    // Borang A (r407), Borang 8A (r408), CP39 (r409), BBCD (r411) and the EIS (SIP) schedule (r412) declare it today —
+    // pinned, so a refactor that dropped any declaration cannot quietly turn the cycle box off.
+    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual([
+      'my.borang-8a',
+      'my.borang-a',
+      'my.borang-bbcd',
+      'my.cp39',
+      'my.sip-contribution',
+    ]);
+    // r412 — and exactly one monthly form continues to its own preview WITHOUT cycles: Borang 8B.
+    expect(monthly.filter((r) => r.preview && !r.runSelection).map((r) => r.id)).toEqual(['my.borang-8b']);
+    expect(reportDestination('x', 'month', null, { action: '/p' }).action).toBe('/p');
+    // `runSelection` wins when both are declared.
+    expect(reportDestination('x', 'month', { action: '/c' }, { action: '/p' }).action).toBe('/c');
+    // An event form is offered neither.
+    expect(reportDestination('x', 'event', null, { action: '/p' }).action).toBe('/payroll/statutory-forms/x');
   });
 
   it('asks an ANNUAL report for company and year, and never a month', () => {
@@ -343,7 +361,8 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
   it('sends a templated entry to the criteria step and an un-templated one straight through', () => {
     for (const l of MY_STATUTORY_LINKS) {
       const templated = TEMPLATED.test(l.href);
-      expect(templated, `${l.id} ${l.href}`).toBe(l.id !== 'my.cp22');
+      // r413 — CP22 and CP22A open the event-selection screen in one press: no placeholder.
+      expect(templated, `${l.id} ${l.href}`).toBe(!l.event);
     }
     expect(criteriaHref('my.cp39')).toBe('/payroll/statutory-forms/open?form=my.cp39');
     expect(DIRECTORY).toContain('TEMPLATED.test(l.href) ? criteriaHref(l.id) : l.href');

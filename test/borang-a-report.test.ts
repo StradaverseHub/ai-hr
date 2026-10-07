@@ -30,6 +30,8 @@ import { reportPreview } from '../core/reporting';
 import { listFilableRunsForPeriod } from '../core/payroll-view';
 import { BORANG_A_HEADER_KEYS, borangAFrom, money } from '../lib/borang-a';
 import { renderBorangAPdf } from '../lib/borang-a-pdf';
+import { borangBbcdFrom } from '../lib/borang-bbcd';
+import { renderBorangBbcdPdf } from '../lib/borang-bbcd-pdf';
 import { borangAFileReadiness, buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
 
 /** r407 — every string a rendered PDF drew (pdf-lib's Flate content streams, WinAnsi hex strings). */
@@ -816,6 +818,69 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
     expect(texts).not.toContain(money(salary + BONUS));
     expect(texts).toContain(money(row.employer));
     expect(texts).toContain(money(row.employee));
+  });
+
+  /**
+   * r411 (item 4f45f9b0) — THE BBCD'S AMAUN CARUMAN IS THE BORANG A TOTAL, for every selection. Measured
+   * against the stored payslips, not only against the form it is projected from: a projection that agreed
+   * with a Borang A that had itself drifted would agree with the wrong number. Each selection is also drawn,
+   * and the drawn Amaun Caruman box is read back off the page.
+   */
+  it('r411 — the BBCD amount equals the Borang A total for all, regular-only and bonus-only selections', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    const slips = await owner.db
+      .select({ statutory: schema.payslip.statutory, runSeq: schema.payrollBatch.runSeq })
+      .from(schema.payslip)
+      .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+      .where(and(eq(schema.payrollBatch.companyId, b.companyId), eq(schema.payrollBatch.payPeriod, '2026-07')));
+    const storedSen = (seqs: number[]) =>
+      slips
+        .filter((x) => seqs.includes(x.runSeq))
+        .reduce((acc, x) => {
+          const st = (x.statutory ?? {}) as Record<string, number>;
+          return acc + Math.round(Number(st.epfEmployer ?? 0) * 100) + Math.round(Number(st.epfEmployee ?? 0) * 100);
+        }, 0);
+    const amounts: Record<string, number> = {};
+    for (const [label, sel, seqs] of [
+      ['all', undefined, [regularSeq, bonusSeq]],
+      ['regular', [regularSeq], [regularSeq]],
+      ['bonus', [bonusSeq], [bonusSeq]],
+    ] as const) {
+      const r = await view(a, sel ? [...sel] : undefined);
+      const form = borangAFrom({ header: r.meta.formHeader!, rows: r.rows });
+      const bbcd = borangBbcdFrom(form);
+      expect(bbcd.amount, label).toBe(form.totalContribution);
+      expect(Math.round(bbcd.amount * 100), `${label}: the stored payslips`).toBe(storedSen([...seqs]));
+      expect(storedSen([...seqs]), label).toBeGreaterThan(0);
+      // ON THE PAGE: the BBCD box and the Borang A box print the same string.
+      const bbcdTexts = drawnTexts(Buffer.from(await renderBorangBbcdPdf(bbcd)));
+      const baTexts = drawnTexts(Buffer.from(await renderBorangAPdf(form)));
+      expect(bbcdTexts.filter((t) => /^[\d,]+\.\d\d$/.test(t)), label).toEqual([money(form.totalContribution)]);
+      expect(baTexts, label).toContain(money(bbcd.amount));
+      amounts[label] = Math.round(bbcd.amount * 100);
+    }
+    // The three are three different numbers, and the parts add up to the whole.
+    expect(amounts.regular).not.toBe(amounts.bonus);
+    expect(amounts.regular + amounts.bonus).toBe(amounts.all);
+  });
+
+  it('r411 — ticking every cycle draws the very same BBCD bytes as no selection', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    const draw = async (sel?: number[]) => {
+      const r = await view(a, sel);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-12T02:00:00Z'));
+      try {
+        return Buffer.from(await renderBorangBbcdPdf(borangBbcdFrom(borangAFrom({ header: r.meta.formHeader!, rows: r.rows }))));
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    const [x, y, z] = [await draw(), await draw([regularSeq, bonusSeq]), await draw([bonusSeq])];
+    expect(x.byteLength).toBeGreaterThan(1000);
+    expect(x.equals(y), 'Select All drew a different BBCD from no selection').toBe(true);
+    // …and the comparison can tell two BBCDs apart: a bonus-only one is different bytes.
+    expect(x.equals(z)).toBe(false);
   });
 
   it('leaves out an employee the selected cycles never paid, and keeps them for the ones that did', async () => {

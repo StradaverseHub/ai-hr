@@ -15,7 +15,8 @@
  * DRAWN, not printed onto: lib/borang-8a-pdf.ts reproduces page 1's boxes, measured from that file, and
  * deliberately leaves out page 2, the OCR ids and the logo. The catalog entry stays `agency-layout` — the
  * layout is the agency's, the paper is ours — and never `official`, which in this codebase means the
- * government's own page and belongs to `my.cp22` alone. The blank is NOT committed to `public/forms/`.
+ * government's own page and belongs only to `MY_OFFICIAL_ARTWORK` (CP22, CP22A). The blank is NOT
+ * committed to `public/forms/`.
  *
  * ── THE NO-OFFSET RULE, AND WHY IT IS A RULE RATHER THAN A DEFAULT ─────────────────────────────────
  * A Borang 8A's contribution month IS the payroll month. KWSP's Borang A, for the same payroll cycle, is

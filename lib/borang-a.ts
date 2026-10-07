@@ -30,10 +30,11 @@
  * ── WHY THIS FORM IS NOT `official` ───────────────────────────────────────────────────────────────
  * The specimen (attachment 2d7d4467, "EPF Borang A.pdf", 93,258 bytes, PDF 1.6, one A4 page, producer
  * "Developer Express Inc. DXperience v23.2.5") is a FILLED OUTPUT from another payroll vendor's engine.
- * It is not KWSP artwork, it carries no form fields, and KWSP publishes no blank Borang A to print onto.
- * So there is nothing to overlay: the page is drawn, and the catalog entry declares `agency-layout` —
- * never `official`, which in this codebase means the government's own published page and belongs to
- * `my.cp22` alone. test/statutory-forms-page.test.ts pins that.
+ * It is not KWSP artwork and it carries no form fields, and we hold no KWSP blank to print onto
+ * (r411: this used to say KWSP publishes none, which nobody here checked). So there is nothing to
+ * overlay: the page is drawn, and the catalog entry declares `agency-layout` —
+ * never `official`, which in this codebase means the government's own published page and belongs only to
+ * the forms in `MY_OFFICIAL_ARTWORK` (CP22, CP22A). test/statutory-forms-page.test.ts pins that.
  */
 
 /** One employee's line on the form — the specimen's own columns, in its own order. */
@@ -79,8 +80,12 @@ export type BorangARow = {
  * from the rows on the sheet and never apportioned from the form total, which is what makes the
  * no-double-counting property assertable at 1, 2 and 3 pages.
  *
- * The specimen leaves UPAH BLANK on both carry rows — only the two contribution columns carry forward —
+ * The specimen leaves UPAH BLANK on the carry row — only the two contribution columns carry forward —
  * so no carry-in/out wage figure exists here to be printed by mistake.
+ *
+ * r411 (item 4f45f9b0, the October sample) — ONLY THE CARRY-IN IS PRINTED, and only from sheet 2: there is
+ * no carried-forward row on any sheet. `carryOut*` stays because it IS the next sheet's carry-in, and the
+ * chain is what the tests assert; it is simply not drawn.
  */
 export type BorangAPage = {
   sheet: number;
@@ -181,8 +186,9 @@ export const BORANG_A_ROWS_PER_PAGE = 20;
  *
  * ⚠️ PROVENANCE, BECAUSE IT DECIDES WHAT MAY BE CHANGED HERE. These sentences are TRANSCRIBED from the
  * reporter's specimen, which is a filled Borang A produced by another payroll vendor's reporting engine
- * (DevExpress v23.2.5) — not a KWSP page. KWSP publishes no blank Borang A, so this is the closest thing
- * to the agency's own wording anybody on this project has been able to obtain, and it is second-hand.
+ * (DevExpress v23.2.5) — not a KWSP page. We hold no KWSP blank (r411: whether KWSP publishes one was
+ * never checked, and is no longer claimed), so this is the closest thing to the agency's own wording
+ * anybody on this project has been able to obtain, and it is second-hand.
  * The drawn page says exactly that at its foot. If a real KWSP 6 sheet ever arrives, the sentences below
  * are swapped word for word and NOTHING ELSE MOVES — that is why they are an exported array rather than
  * string literals scattered through the renderer.
@@ -507,8 +513,8 @@ export function borangATextExport(form: BorangAForm): string {
   L.push('BORANG A — CARUMAN BULANAN KWSP (EPF)');
   L.push(`KWSP 6 — ${BORANG_A_CITATION}`);
   L.push('');
-  L.push('NOT KWSP ARTWORK. Our own layout, drawn to match the agency form. KWSP publishes no blank');
-  L.push('Borang A to print onto. Check every figure before you key or file it.');
+  L.push('NOT KWSP ARTWORK. Our own layout, drawn to match the agency form, not the agency\'s own page.');
+  L.push('Check every figure before you key or file it.');
   L.push('');
   field('No. Rujukan Majikan', form.employerRef);
   // DRAWN EMPTY ON THE PAGE, AND EMPTY HERE. KWSP issues this reference; payroll cannot know it, and a
@@ -552,7 +558,8 @@ export function borangATextExport(form: BorangAForm): string {
     );
     L.push('-'.repeat(119));
     if (page.sheet > 1) {
-      // Contribution columns only — the specimen leaves Upah blank on both carry rows.
+      // Contribution columns only — the sample leaves Upah blank on the brought-forward row. Sheet 2 onwards
+      // only, as the drawn page (r411).
       L.push(
         pad('', 5) +
           pad('Jumlah yang dibawa dari mukasurat terdahulu (jika ada)', 75) +
@@ -576,22 +583,10 @@ export function borangATextExport(form: BorangAForm): string {
     }
     if (page.rows.length === 0) L.push('(tiada pekerja / no employees)');
     L.push('-'.repeat(119));
-    if (page.sheet < page.of) {
-      L.push(
-        pad('', 5) +
-          pad('Jumlah yang dibawa ke mukasurat seterusnya (jika ada)', 75) +
-          padL('', 13) +
-          padL(money(page.carryOutEmployer), 13) +
-          padL(money(page.carryOutEmployee), 13),
-      );
-    } else {
-      L.push(
-        pad('', 5) +
-          pad('JUMLAH (RM)', 75) +
-          padL(money(form.totalWage), 13) +
-          padL(money(form.totalEmployer), 13) +
-          padL(money(form.totalEmployee), 13),
-      );
+    // r411 (the October sample) — NO carried-forward line on any sheet, and ONE JUMLAH figure on the last:
+    // employer + employee, the header's Amaun Caruman, under the two CARUMAN columns. No wage total.
+    if (page.sheet === page.of) {
+      L.push(pad('', 5) + pad('', 75) + padL('JUMLAH (RM)', 13) + padL(money(form.totalContribution), 26));
     }
     L.push('');
   }

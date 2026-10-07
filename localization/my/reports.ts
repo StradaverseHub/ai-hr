@@ -39,6 +39,10 @@ import { borang8AReport } from './borang-8a';
 // this shelf reads) and registers here like every other form. The two files share NO code: their
 // contribution-month rules are opposites, and a shared helper is how one acquires the other's.
 import { borangAReport } from './borang-a';
+// r412 (item e74af58c, step 2) — the EIS (SIP) contribution schedule is the Borang 8A read re-shaped (no second
+// read, no EIS arithmetic), and Borang 8B reads the employer header only. Both register here like every form.
+import { sipContributionReport } from './sip-contribution';
+import { borang8BReport } from './borang-8b';
 // e0cd4583 — the CP39 PRINTED form's extra header and per-employee fields. NOT a second generator and
 // NOT a second catalogue entry: `cp39()` below merges these into the rows and meta it already returns,
 // so the LHDN shelf keeps ONE CP39 card with ONE readiness gate.
@@ -193,8 +197,12 @@ export type ReportSubmission = {
  * under the name of a form LHDN would not accept — which is the single failure this whole item guards
  * against. So every entry declares its fidelity, the card renders it, and the button has to match:
  *
- *   `official`   — the agency's own published artwork, filled from payroll. Today: `my.cp22` and
- *                  NOTHING else (public/forms/cp22-pin-1-2021.pdf, mapped in lib/cp22-fields.ts).
+ *   `official`   — the agency's own published artwork, filled from payroll. ONLY the forms named in
+ *                  `MY_OFFICIAL_ARTWORK` (below), each with its artwork in `public/forms/` and its field
+ *                  map in `lib/`. r413 turned "my.cp22 and nothing else" into that WHITELIST, deliberately
+ *                  and without loosening it: CP22A [Pin.1/2023] is the second form filled on LHDN's own
+ *                  page, and a form joins the list only with its artwork and its map, which the test
+ *                  (test/statutory-forms-page.test.ts, "the four pins" a) holds both ways.
  *   `figures`    — every number the form needs, complete, in OUR layout rather than the agency's page.
  *   `draft-file` — built to the layout an agency publishes for portal upload, never yet accepted BY
  *                  that portal, so it stays marked draft until it has been.
@@ -214,7 +222,7 @@ export type ReportSubmission = {
  *                     form's own module, where the evidence is.
  *
  * WHY IT HAD TO EXIST RATHER THAN REUSING EITHER NEIGHBOUR. `official` is a claim about GOVERNMENT
- * ARTWORK and is `my.cp22`'s alone — the Borang 8A is our own drawing of the agency's page 1 (r408
+ * ARTWORK and belongs only to the forms in `MY_OFFICIAL_ARTWORK` — the Borang 8A is our own drawing of the agency's page 1 (r408
  * measured it from PERKESO's published 2013 blank, which we do not print onto and do not hold in
  * `public/forms/`); claiming `official` for it would be the exact untrue claim this whole vocabulary exists
  * to prevent. `figures` is equally wrong in
@@ -231,6 +239,22 @@ export type ReportSubmission = {
  * which has no href and no action key at all, so the type itself makes an action impossible.
  */
 export type FormFidelity = 'official' | 'agency-layout' | 'figures' | 'draft-file';
+
+/**
+ * r413 (item 79f3f64d, step 2) — THE WHITELIST OF FORMS FILLED ON THE AGENCY'S OWN ARTWORK.
+ *
+ * The only entries that may say `fidelity: 'official'`. Each names the government file it is printed on
+ * (in `public/forms/`, unaltered, sha256-pinned by its own test) and the field map measured from that file.
+ * It replaces a test that read "exactly one official entry, and it is my.cp22": that sentence was true of
+ * one form, and the claim it protected — `official` means the agency's own page — is what this list keeps.
+ * test/statutory-forms-page.test.ts holds it both ways: every `official` entry is listed here, every entry
+ * here is `official`, every artwork exists, and every file in `public/forms/` belongs to an entry here. A
+ * form joins by bringing its artwork and its map, never by having its chip changed.
+ */
+export const MY_OFFICIAL_ARTWORK: readonly { id: string; edition: string; artwork: string; fieldMap: string }[] = [
+  { id: 'my.cp22', edition: 'CP22 [Pin.1/2021]', artwork: 'public/forms/cp22-pin-1-2021.pdf', fieldMap: 'lib/cp22-fields.ts' },
+  { id: 'my.cp22a', edition: 'CP22A [Pin.1/2023]', artwork: 'public/forms/cp22a-pin-1-2023.pdf', fieldMap: 'lib/cp22a-fields.ts' },
+];
 
 /** What comes out of a form, for the chips on its card. `file` is the agency upload file (draft). */
 export type FormOutput = 'pdf' | 'xlsx' | 'csv' | 'print' | 'file';
@@ -363,6 +387,16 @@ export type StatutoryFormLink = {
    * week. Declared on the entry, so no screen writes down a form id.
    */
   formerIds?: { id: string; version: string }[];
+  /**
+   * r413 (item 79f3f64d, step 2) — A FORM ABOUT ONE PERSON, OPENED ON THE PEOPLE THE EVENT HAPPENED TO.
+   *
+   * CP22 (a new employee) and CP22A (an employee leaving) are filed per event, not per period. Their href
+   * opens `/payroll/statutory-forms/event`, which lists the company's people with that event — the
+   * compliance worklist's own window and statuses, narrowed to `form` — with a name search; the person
+   * chosen continues to `previewPath` with `{employmentId}` substituted. Declared HERE, beside the href, so
+   * the selection screen names no form: it reads the entry and draws whatever event it declares.
+   */
+  event?: { form: 'CP22' | 'CP22A'; previewPath: string };
 };
 
 export type ReportDef = {
@@ -377,7 +411,7 @@ export type ReportDef = {
   descriptionKey?: string;
   /** 587ee719 — what this report produces, as chips. */
   outputs?: FormOutput[];
-  /** 587ee719 — see `FormFidelity`. `official` is `my.cp22`'s and nothing else's. */
+  /** 587ee719 — see `FormFidelity`. `official` only for an entry in `MY_OFFICIAL_ARTWORK`. */
   fidelity?: FormFidelity;
   /** 587ee719 — position within its body shelf. See `StatutoryFormLink.shelfOrder`. */
   shelfOrder?: number;
@@ -397,8 +431,12 @@ export type ReportDef = {
    *
    * The yearly counterpart of `runSelection`, without the cycles: a year has no payroll cycle, so the step
    * asks for Company and Year only and Continue opens `action` — the form shown in the shared viewer, then
-   * downloaded — instead of the generic figures screen. Declared ONLY by a `periodKind: 'year'` report
-   * (`reportDestination` ignores it on any other); my.cp8d declares it.
+   * downloaded — instead of the generic figures screen. my.cp8d declares it.
+   *
+   * r412 (item e74af58c) — ALSO HONOURED ON A MONTHLY REPORT THAT DECLARES NO `runSelection`: the step asks
+   * Company, Year and Month and Continue opens `action`. my.borang-8b declares it (an under-paid month, drawn
+   * from no payroll run, so a cycle box would be a control that does nothing). `reportDestination` ignores
+   * it on an 'event' report, and `runSelection` wins on a monthly one that declares both.
    */
   preview?: { action: string };
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
@@ -1512,6 +1550,13 @@ export type EaStatement = {
     fromYear: number;
     /** Pay items with Part B money on this form and no EA line, by code. Empty = nothing to warn about. */
     unmapped: { code: string; name: string }[];
+    /**
+     * r413 (item 79f3f64d, step 2) — the EA boxes at least one pay item in the catalogue is MAPPED to,
+     * sorted. Additive and read by the CP22A alone: a routing-only box (gratuity, compensation, ESOS…)
+     * whose figure is 0 means "none paid" only when something could have reached it; with no mapped pay
+     * item the CP22A prints its line BLANK, never 0.00. Empty when the statement has no payslips.
+     */
+    mappedFields?: EaField[];
   };
 };
 
@@ -1630,7 +1675,23 @@ export async function eaStatement(
   ctx: SessionContext,
   // r367 — `now` is the injectable clock for `formDate` and nothing else. Optional, so every existing
   // caller (core/reporting.ts, the two PDF routes, the country-pack facade) is unchanged.
-  p: { employmentId: string; year: string; companyId?: string; now?: Date },
+  //
+  // r413 (item 79f3f64d, step 2) — `throughPeriod` and `processedOnly` are the CP22A's two narrowings, and
+  // NOTHING ELSE passes them, so every EA surface is byte-unchanged. A CP22A states the pay "so far" from
+  // processed payroll only, up to the cessation month (`yyyy-mm`, inclusive); the EA itself has always read
+  // every batch of the year, drafts included, and keeps doing so. `applyOverrides: false` skips the
+  // ea_override layer: an override is HR's amendment to the WHOLE year's EA figure, and laying a full-year
+  // amount over a part-year statement would print a number its own "hingga" date contradicts. Defaults to
+  // true, so the EA is unchanged.
+  p: {
+    employmentId: string;
+    year: string;
+    companyId?: string;
+    now?: Date;
+    throughPeriod?: string;
+    processedOnly?: boolean;
+    applyOverrides?: boolean;
+  },
 ): Promise<EaStatement | null> {
   return withTenant(ctx, async (tx) => {
     const [info] = await tx
@@ -1843,6 +1904,9 @@ export async function eaStatement(
           // THE FIX. A payslip belongs to the company whose batch paid it, and no later transfer rewrites
           // that — so this join is company-true for closed years as well as the current one.
           eq(payrollBatch.companyId, employerId),
+          // r413 — the CP22A's narrowings; absent for every EA caller (see the parameter note above).
+          ...(p.throughPeriod ? [lte(payrollBatch.payPeriod, p.throughPeriod)] : []),
+          ...(p.processedOnly ? [inArray(payrollBatch.status, ['processed', 'closed'] as const)] : []),
         ),
       )
       // r351 — AN EXPLICIT ORDERING, because D.6 below takes "the LAST month's relief snapshot" and
@@ -2009,12 +2073,17 @@ export async function eaStatement(
     let routingActive = Number(p.year) >= EA_ROUTING_FROM_YEAR;
     /** Pay items whose money reached this form but which no one has mapped — the reporter's §7/§8. */
     const unmappedPayItems = new Map<string, string>();
+    const mappedFields = new Set<EaField>();
     if (slips.length) {
       const catalogue = await tx
         .select({ code: payComponent.code, name: payComponent.name, eaLine: payComponent.eaFormLine })
         .from(payComponent);
       const lineOf = new Map(catalogue.map((c) => [c.code, c.eaLine]));
       const nameOf = new Map(catalogue.map((c) => [c.code, c.name]));
+      for (const c of catalogue) {
+        const field = c.eaLine ? (EA_LINE_TO_FIELD as Readonly<Record<string, EaField>>)[c.eaLine] : undefined;
+        if (field) mappedFields.add(field);
+      }
       routingActive ||= hasCompleteHistoricalEaProvenance(slips, lineOf);
       const routing = accumulateEaRouting(slips.flatMap((slip) => storedComponentLines(slip.statutory)), lineOf, EA_LINE_TO_FIELD, routingActive);
       Object.assign(routed, routing.deltas);
@@ -2125,7 +2194,7 @@ export async function eaStatement(
     //
     // Every override row that exists today was written in a single-company world, so this is byte-identical
     // for them. Keying the table by company is the follow-up that makes a past employer's form amendable.
-    const overridesApply = employerId === info.companyId;
+    const overridesApply = employerId === info.companyId && p.applyOverrides !== false;
     const ovRows = overridesApply
       ? await tx
           .select({ field: eaOverride.field, amount: eaOverride.amount, reason: eaOverride.reason })
@@ -2222,6 +2291,7 @@ export async function eaStatement(
         unmapped: [...unmappedPayItems.entries()]
           .map(([code, name]) => ({ code, name }))
           .sort((a, b) => a.code.localeCompare(b.code)),
+        mappedFields: [...mappedFields].sort(),
       },
     };
   });
@@ -2249,9 +2319,9 @@ export const MY_REPORTS: ReportDef[] = [
   // needs, complete, in OUR layout) now understates what comes off the printer.
   //
   // ⚠️ AND NOT ONE STEP FURTHER. The specimen is another payroll system's rendering of the agency's
-  // page, not LHDN's own artwork; it is deliberately NOT in `public/forms/`, which still holds one file
-  // and it is the CP22. `official` stays `my.cp22` alone. The drawn page and its text twin both say on
-  // their face that the paper is ours. Understating is safe; overstating is the single failure this
+  // page, not LHDN's own artwork; it is deliberately NOT in `public/forms/`, which holds only the agency
+  // files listed in `MY_OFFICIAL_ARTWORK` (CP22 and, since r413, CP22A) — no CP39. The drawn page and its
+  // text twin both say on their face that the paper is ours. Understating is safe; overstating is the single failure this
   // vocabulary exists to prevent.
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
     descriptionKey: 'desc_cp39', fidelity: 'agency-layout', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
@@ -2278,8 +2348,9 @@ export const MY_REPORTS: ReportDef[] = [
   // filing deadline for the same body. (Borang 8A carries 15 too since r408: PERKESO's own 2025 booklet
   // puts its deadline on the 15th of the following month.)
   //
-  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
-  // vendor's DevExpress output and KWSP publishes no blank page.
+  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimens are other
+  // vendors' outputs and we hold no KWSP blank (r411: the claim that KWSP publishes none was never
+  // checked and is no longer made).
   //
   // `outputs` carries `file` as well as `pdf`/`print`: item 3aae0789 is the i-Akaun upload file, built
   // from the SAME rows as the drawn page, behind its own route.
@@ -2289,6 +2360,25 @@ export const MY_REPORTS: ReportDef[] = [
     // `borangAReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
     runSelection: { action: '/payroll/borang-a/preview' },
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
+  // r411 (item 4f45f9b0) — BBCD, "Borang Bayaran Caruman Bulanan - Pita/Disket": the one-page cover for the
+  // month's Borang A payment, laid out like the reporter's October sample.
+  //
+  // `generate: borangAReport`, AND THAT IS THE POINT, NOT A SHORTCUT. A BBCD has no figures of its own: its
+  // Amaun Caruman is the Borang A total for the same company, month and payroll cycles (its own CATATAN 2:
+  // "Jumlah cek mesti sama dengan jumlah Borang BBCD"). Its preview and PDF route call `loadBorangA` and
+  // project the built form (lib/borang-bbcd.ts), so the two documents share one read and one number. The
+  // generic figures screen, if it is ever opened for this id, shows that same Borang A read.
+  //
+  // `runSelection` — Open Form asks for the payroll cycles, and Continue opens the BBCD itself.
+  // `fidelity: 'agency-layout'`: drawn to the sample's arrangement on our paper; the sample is another
+  // payroll system's print, and we hold no KWSP blank. `outputs`: the drawn page only.
+  //
+  // `shelfOrder: 4`, after the planned "Borang BBCB" (3), which keeps its slot: whether the reporter's
+  // "BBCB" was this form is THEIRS to confirm, and is not settled by this entry.
+  { id: 'my.borang-bbcd', label: 'BBCD — Borang Bayaran Caruman Bulanan (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borangAReport,
+    descriptionKey: 'desc_borang_bbcd', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 4,
+    runSelection: { action: '/payroll/borang-bbcd/preview' },
+    submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'KWSP / Ejen Kutipan KWSP', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.
   // Same rule as EPF above: this is not "Borang 8A" and is not offered as one.
@@ -2319,6 +2409,33 @@ export const MY_REPORTS: ReportDef[] = [
   { id: 'my.borang-8a', label: 'Borang 8A — monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borang8AReport,
     descriptionKey: 'desc_borang_8a', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 2,
     runSelection: { action: '/payroll/borang-8a/preview' },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
+  // r412 (item e74af58c, step 2) — BORANG 8B, built. It LEFT MY_PLANNED_FORMS (`perkeso.borang-8b`) and joined
+  // this list at the same shelfOrder 3 it held there. PERKESO's PER. 44D form for contributions UNDER-paid
+  // for an earlier month: the header (employer, the underpaid month, the PERKESO signatory) is filled; every
+  // employee line and amount stays blank, because core/back-pay.ts charges arrears in the month paid and the
+  // system therefore holds no underpayment record. See localization/my/borang-8b.ts.
+  //
+  // `dueDayOfNextMonth: null` — PERKESO's own 8B sentence ends "…yang dilantik" and names NO deadline.
+  // NO `runSelection`: the form is not drawn from a payroll run, so a cycle box would be a control that does
+  // nothing. `preview` instead: the criteria step asks Company, Year and Month, and Continue opens the form.
+  // `fidelity: 'agency-layout'`, never 'official' — the 8A's reasons, and the 8A's measured geometry.
+  { id: 'my.borang-8b', label: 'Borang 8B — under-paid contributions (PERKESO)', cadence: 'event', scope: 'period', periodKind: 'month', generate: borang8BReport,
+    descriptionKey: 'desc_borang_8b', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 3,
+    preview: { action: '/payroll/borang-8b/preview' },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO / collection agent', dueDayOfNextMonth: null } },
+  // r412 (item e74af58c, step 2) — THE EIS (SIP) MONTHLY CONTRIBUTION SCHEDULE, built. It takes the slot the
+  // planned "SIP Forms" entry held (shelfOrder 4); SIP 2 / SIP 2A — the registration forms — stay planned
+  // below. Laid out like the reporter's sample, which is another payroll system's report and NOT a PERKESO
+  // form — so `fidelity: 'figures'`, NOT `agency-layout`: the shared agency-layout caption says "drawn box for
+  // box to match the agency's own form", which is untrue of a vendor's report, and a shared caption may say
+  // only what is true of every member (CLAUDE.md §8). Rasterising the criteria step caught it.
+  //
+  // `runSelection` — `sipContributionReport` IS the Borang 8A read (which honours `runSeqs`) re-shaped, so
+  // the cycle box is real. `dueDayOfNextMonth: 15`: EIS is paid with SOCSO, on the 8A's date.
+  { id: 'my.sip-contribution', label: 'EIS (SIP) monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: sipContributionReport,
+    descriptionKey: 'desc_sip_contribution', fidelity: 'figures', outputs: ['pdf', 'print'], shelfOrder: 4,
+    runSelection: { action: '/payroll/sip-contribution/preview' },
     submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
   //
@@ -2409,9 +2526,8 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // means, and `figures` (every number the form needs, complete, in OUR layout) now understates it.
   //
   // ⚠️ AND IT MAY NEVER BE `official`. The specimen is a VENDOR's rendering (Producer = Developer Express
-  // DXperience v23.2.5), not LHDN artwork; it is deliberately not in `public/forms/`, which still holds
-  // exactly one genuine artwork, and `my.cp22` is still the only entry in this catalogue that says
-  // `official`. The shared `agency-layout` chip says "we hold no blank from the agency to print onto",
+  // DXperience v23.2.5), not LHDN artwork; it is deliberately not in `public/forms/`, which holds only the
+  // agency files in `MY_OFFICIAL_ARTWORK` (no C.P.8A among them), and only those entries say `official`. The shared `agency-layout` chip says "we hold no blank from the agency to print onto",
   // which `public/forms/` answers for the C.P.8A too — nothing here claims what LHDN publishes
   // (AGENTS 28b).
   //
@@ -2489,7 +2605,7 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
    *
    * `fidelity: 'agency-layout'`, never 'official'. This is our typesetting of LHDN's form from the
    * specimens the reporter attached, not a facsimile of their PDF — the same honest label Borang A,
-   * Borang 8A and the EA carry. CP22 is the only 'official' row in this catalogue and a test pins that.
+   * Borang 8A and the EA carry. `official` is reserved for `MY_OFFICIAL_ARTWORK`, and a test pins that.
    */
   //
   // r402 (item f3cf2444) — ONE ENTRY, A VERSION CHOICE. The same merge as the EA above: `my.pcb2ii.en` and
@@ -2571,7 +2687,7 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
    * own wording, numbering (Sections A–F, C1–C17, D1), legal references and column order — which is what
    * this value means. The specimen it was checked against is the reporter's attachment, whose PDF
    * Producer is Microsoft Word 2019 rather than an agency press, and it is not in `public/forms/`, which
-   * still holds exactly one genuine artwork and it is the CP22's.
+   * holds only the agency artwork named in `MY_OFFICIAL_ARTWORK` (no TP1).
    */
   {
     id: 'my.tp1',
@@ -2607,8 +2723,8 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
    * `fidelity: 'agency-layout'`, never 'official'. lib/tp3-pdf.ts draws the form from scratch to LHDN's
    * own wording, numbering (Sections A-E, C1-C5, D1-D17), legal reference, NOTE block and column layout
    * — which is what this value means. The specimen it was checked against is the reporter's own
-   * attachment, and it is not in `public/forms/`, which still holds exactly one genuine artwork and it
-   * is the CP22's.
+   * attachment, and it is not in `public/forms/`, which holds only the agency artwork named in
+   * `MY_OFFICIAL_ARTWORK` (no TP3).
    */
   {
     id: 'my.tp3',
@@ -2623,33 +2739,61 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     outputs: ['pdf'],
     shelfOrder: 2,
   },
-  // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they are a worklist
-  // rather than a form you pick a month for. It renders on the Statutory Forms landing page itself.
-  // d3a9383c: the row now says "Open worklist" (which is what the href does) and carries a second action —
-  // the blank fillable CP22. The per-joiner document hangs off the worklist ROWS, not off this shelf entry.
+  // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they open on the people the
+  // event happened to rather than on a month. (d3a9383c's "Open worklist" row, which scrolled to the foot of
+  // the directory, is superseded by r413's event-selection screen below; the blank fillable CP22 stays the
+  // row's second action.)
   //
-  // 587ee719 — `fidelity: 'official'` HERE AND NOWHERE ELSE. CP22 is the only form in this catalog drawn
-  // on the agency's own published page (public/forms/cp22-pin-1-2021.pdf; 53 areas mapped in
-  // lib/cp22-fields.ts, 38 pre-filled and 15 left blank by design). A second `official` in this catalog
-  // is a test failure, deliberately: it is the claim that costs the most if it is untrue.
+  // 587ee719 — `fidelity: 'official'`: drawn on the agency's own published page
+  // (public/forms/cp22-pin-1-2021.pdf; 53 areas mapped in lib/cp22-fields.ts, 38 pre-filled and 15 left
+  // blank by design). r413: no longer the ONLY official row — CP22A below is the second — and `official`
+  // is now the whitelist `MY_OFFICIAL_ARTWORK`; an `official` outside it is a test failure, deliberately.
   //
   // 88076362 — the edition changed under this entry and the entry did not: LHDN superseded Pin. 1/2020
-  // with the two-page [Pin.1/2021], so `official` now means THAT page. The shelf position, the fidelity
-  // and the assertion that it is the only 'official' row are all unchanged.
+  // with the two-page [Pin.1/2021], so `official` now means THAT page.
+  //
+  // r413 (item 79f3f64d, step 2) — CP22 MOVED ONTO THE EVENT-SELECTION SCREEN, ITS DOCUMENT UNCHANGED. The
+  // row used to scroll to the worklist at the foot of the directory ("Open worklist"); it now opens the
+  // shared choose-the-employee screen for forms about one person, whose Continue lands on the SAME review
+  // screen the worklist row opens (`/payroll/cp22/{id}/preview`) — so the PDF is byte-identical, which
+  // test/r413-event-select.test.ts proves. Its title and hint stop saying "CP22 / CP22A", because CP22A is
+  // its own card now (`link_cp22`/`link_cp22_hint` retired, never deleted). The worklist and the month view
+  // at the foot of the directory are untouched and still reachable at `#worklist`.
   {
     id: 'my.cp22',
-    labelKey: 'link_cp22',
-    hintKey: 'link_cp22_hint',
+    labelKey: 'link_cp22_new',
+    hintKey: 'link_cp22_new_hint',
     descriptionKey: 'desc_cp22',
     body: 'lhdn',
     cadence: 'event',
-    href: '/payroll/statutory-forms#worklist',
-    actionLabelKey: 'openWorklist',
+    href: '/payroll/statutory-forms/event?form=my.cp22',
+    actionLabelKey: 'openForm',
     secondaryHref: '/payroll/cp22/blank',
     secondaryLabelKey: 'link_cp22_blank',
     fidelity: 'official',
     outputs: ['pdf', 'print'],
     shelfOrder: 9,
+    event: { form: 'CP22', previewPath: '/payroll/cp22/{employmentId}/preview' },
+  },
+  // r413 (item 79f3f64d, step 2) — CP22A, BUILT. It LEFT MY_PLANNED_FORMS and joined this list at the same
+  // shelfOrder 10 it held there — a link and not a ReportDef, for the reason TP1, TP3 and the EA are: it is
+  // one person's notice, so there is no company-wide table for a `generate` to produce. Filled on LHDN's
+  // own CP22A [Pin.1/2023] (public/forms/cp22a-pin-1-2023.pdf, mapped in lib/cp22a-fields.ts), so it is the
+  // second member of `MY_OFFICIAL_ARTWORK`. Opens on the same event-selection screen as CP22, listing the
+  // company's leavers.
+  {
+    id: 'my.cp22a',
+    labelKey: 'link_cp22a',
+    hintKey: 'link_cp22a_hint',
+    descriptionKey: 'desc_cp22a',
+    body: 'lhdn',
+    cadence: 'event',
+    href: '/payroll/statutory-forms/event?form=my.cp22a',
+    actionLabelKey: 'openForm',
+    fidelity: 'official',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 10,
+    event: { form: 'CP22A', previewPath: '/payroll/cp22a/{employmentId}/preview' },
   },
 ];
 
@@ -2685,9 +2829,16 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // 8ca344bf — `perkeso.borang-8a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list
   // and joined MY_REPORTS at the same shelfOrder 2, which is exactly the path this type's doc-comment
   // describes. Its two message keys went with it; the shelf and this screen were not touched.
-  { id: 'perkeso.borang-8b', labelKey: 'planned_perkeso_borang_8b', hintKey: 'planned_perkeso_borang_8b_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 3 },
-  { id: 'perkeso.sip', labelKey: 'planned_perkeso_sip', hintKey: 'planned_perkeso_sip_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 4 },
+  // r412 (item e74af58c, step 2) — `perkeso.borang-8b` STOOD HERE and is deliberately gone: it was BUILT, so it
+  // left this list and joined MY_REPORTS as `my.borang-8b` at the same shelfOrder 3. And `perkeso.sip` ("SIP
+  // Forms") stood here at shelfOrder 4: its monthly half — the EIS contribution schedule — is BUILT and took
+  // that slot as `my.sip-contribution`. What it named that is NOT built is SIP 2 / SIP 2A, the EIS
+  // registration forms, and those STAY planned, by their own name, below. The retired message keys are
+  // marked "[retired r412 …]" in every locale rather than deleted.
   { id: 'perkeso.employee-registration', labelKey: 'planned_perkeso_employee_registration', hintKey: 'planned_perkeso_employee_registration_hint', body: 'perkeso', cadence: 'event', shelfOrder: 5 },
+  // r412 — SIP 2 / SIP 2A stay planned (the approved plan): PERKESO's forms date from 2017 and still print the
+  // old RM4,000 wage limit, and PERKESO's 2025 guide registers employees through the ASSIST portal.
+  { id: 'perkeso.sip-2', labelKey: 'planned_perkeso_sip_2', hintKey: 'planned_perkeso_sip_2_hint', body: 'perkeso', cadence: 'event', shelfOrder: 6 },
   // r224 — `lhdn.tp1` STOOD HERE and is deliberately gone: it was BUILT (the declaration screen at
   // /payroll/transactions/tp1 and the drawn form at lib/tp1-pdf.ts), so it left this list and joined
   // MY_STATUTORY_LINKS as `my.tp1` at the same shelfOrder 1, exactly as the two Borangs did before it.
@@ -2703,12 +2854,9 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // TP1, Borang A and Borang 8A each took before them. Their four planned_* message keys went with them.
   // (r402 merged that pair into the one entry `my.pcb2ii` at shelfOrder 5; the ids redirect.)
   { id: 'lhdn.cp21', labelKey: 'planned_lhdn_cp21', hintKey: 'planned_lhdn_cp21_hint', body: 'lhdn', cadence: 'event', shelfOrder: 8 },
-  // r409 (item 79f3f64d) — NEW KEYS, BECAUSE THE OLD ONES SAID THE WRONG THING. `planned_lhdn_cp22a` called
-  // CP22A "tax clearance on cessation". That label was ours and it was wrong: on LHDN's own form CP22A is the
-  // notice a PRIVATE-SECTOR employer gives when an employee stops working (resignation, retirement, death).
-  // The old pair is retired in all six catalogues, not deleted (a key dropped from `en` alone keeps
-  // rendering from the others). Still planned: it is built in step 2 of the same item.
-  { id: 'lhdn.cp22a', labelKey: 'planned_lhdn_cp22a_cessation', hintKey: 'planned_lhdn_cp22a_cessation_hint', body: 'lhdn', cadence: 'event', shelfOrder: 10 },
+  // r413 (item 79f3f64d, step 2) — `lhdn.cp22a` STOOD HERE and is deliberately gone: it was BUILT, so it
+  // left this list and joined MY_STATUTORY_LINKS as `my.cp22a` at the same shelfOrder 10. Its r409 keys
+  // (`planned_lhdn_cp22a_cessation` and its hint) are retired in all six catalogues, not deleted.
   // CP39A STAYS PLANNED. We hold no current LHDN CP39A and it is not on LHDN's form download page; the
   // reporter is asked to send the official form as a request of its own (item 79f3f64d's plan).
   { id: 'lhdn.cp39a', labelKey: 'planned_lhdn_cp39a', hintKey: 'planned_lhdn_cp39a_hint', body: 'lhdn', cadence: 'monthly', shelfOrder: 12 },

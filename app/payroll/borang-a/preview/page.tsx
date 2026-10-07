@@ -171,7 +171,7 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
   const provenance = (
     <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs monolith:rounded-none monolith:border-hairline monolith:bg-transparent">
       <span className="font-medium">{t('notArtworkTitle')}</span>{' '}
-      <span className="text-muted-foreground">{t('notArtwork')}</span>
+      <span className="text-muted-foreground">{t('notArtworkDrawn')}</span>
     </div>
   );
 
@@ -387,24 +387,16 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
               ))}
             </tbody>
             <tfoot className="border-t-2 border-border bg-muted/30 text-sm font-semibold">
-              {form.pages.length > 1 &&
-                form.pages.map((p) => (
-                  <tr key={p.sheet}>
-                    <td colSpan={4} className="px-4 py-2">
-                      {t('pageCarry', { sheet: p.sheet, of: p.of })}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{money(p.pageWage)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{money(p.carryOutEmployer)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{money(p.carryOutEmployee)}</td>
-                  </tr>
-                ))}
+              {/* r411 (4f45f9b0) — THE SAME TOTALS AS THE PRINTED FORM ABOVE IT: no carried-forward rows and
+                  one JUMLAH, the employer's and the employee's contributions together, across the two
+                  contribution columns, as the reporter's October KWSP 6 sample prints it. */}
               <tr>
-                <td colSpan={4} className="px-4 py-2">
+                <td colSpan={5} className="px-4 py-2 text-right">
                   {t('grandTotal')}
                 </td>
-                <td className="px-4 py-2 text-right tabular-nums">{money(form.totalWage)}</td>
-                <td className="px-4 py-2 text-right tabular-nums">{money(form.totalEmployer)}</td>
-                <td className="px-4 py-2 text-right tabular-nums">{money(form.totalEmployee)}</td>
+                <td colSpan={2} className="px-4 py-2 text-right tabular-nums" data-testid="borang-a-review-jumlah">
+                  {money(form.totalContribution)}
+                </td>
               </tr>
             </tfoot>
           </table>

@@ -129,6 +129,7 @@ const WL_STATUS: Record<string, string> = {
   overdue: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   due_soon: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   upcoming: 'bg-muted text-muted-foreground',
+  on_notice: 'bg-muted text-muted-foreground',
 };
 
 /**
@@ -291,6 +292,8 @@ export default async function StatutoryFormsPage({
   // d3a9383c — the CP22 document's own labels. Its own namespace rather than more keys on this screen's:
   // they describe a FORM, and CP22A will want the same set when it is built.
   const tCp22 = await getTranslations('payroll.cp22');
+  // r413 — the CP22A's own namespace, for the leaver rows' link title.
+  const tCp22a = await getTranslations('payroll.cp22a');
   const locale = await getLocale();
   // Month NAMES, in the viewer's language, from Intl rather than twelve translated keys per locale —
   // the same `Intl.DateTimeFormat(locale, …)` the roster and scheduled-actions screens use. UTC so a
@@ -792,7 +795,7 @@ export default async function StatutoryFormsPage({
                     <td className="px-4 py-2.5">{w.form}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{w.reason}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{w.eventDate}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{w.dueBy}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{w.dueBy ?? <span data-due-on-notice className="font-sans">{t('dueOnNotice')}</span>}</td>
                     <td className="px-4 py-2.5">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${WL_STATUS[w.status]}`}
@@ -801,8 +804,8 @@ export default async function StatutoryFormsPage({
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {/* CP22 ONLY. The CP22A leaver notice is a later round and this row says so plainly
-                          rather than offering a button that would download the wrong form. */}
+                      {/* r413 — BOTH forms now. A joiner row opens the CP22 review screen; a leaver row
+                          opens the CP22A in the shared viewer (it said "not built yet" until step 2). */}
                       {w.form === 'CP22' ? (
                         /* 88076362 — the REVIEW screen, not the download. The reporter's whole complaint
                            was that pressing this produced a finished form with nowhere to check it
@@ -816,9 +819,13 @@ export default async function StatutoryFormsPage({
                           {tCp22('reviewLink')}
                         </Link>
                       ) : (
-                        <span className="text-muted-foreground" title={tCp22('cp22aNotYet')}>
-                          —
-                        </span>
+                        <Link
+                          href={`/payroll/cp22a/${w.employmentId}/preview`}
+                          title={tCp22a('worklistLinkTitle')}
+                          className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
+                        >
+                          {tCp22('reviewLink')}
+                        </Link>
                       )}
                     </td>
                   </tr>
