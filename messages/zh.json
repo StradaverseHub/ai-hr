@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "为新员工办理 PERKESO 登记。尚未构建。",
       "planned_lhdn_cp21": "CP21 — 员工离开马来西亚",
       "planned_lhdn_cp21_hint": "员工即将离开马来西亚的通知。尚未构建。",
-      "planned_lhdn_cp22a": "CP22A — 离职税务清缴",
-      "planned_lhdn_cp22a_hint": "需要 CP22A 的离职者已在本页下方的 CP22 / CP22A 待办清单中标出，但该通知本身尚未构建。",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — 欠款补发的扣税",
       "planned_lhdn_cp39a_hint": "补发款项的扣税报表。尚未构建。",
       "fidelity_agency_layout": "机构版式",
@@ -4607,7 +4607,11 @@
       "cycles_partial": "您漏选了至少一个薪资周期。表格只会包含所勾选的周期，且表格上没有注明每一行来自哪个周期的栏位。",
       "refusal_cycles_no_runs": "该公司和月份没有已处理的薪资，因此未生成任何内容。",
       "refusal_cycles_no_data": "所选薪资周期中没有此表格的已处理缴款，因此未生成任何内容。",
-      "refusal_cycles_invalid": "薪资周期的选择无效，请重新选择。"
+      "refusal_cycles_invalid": "薪资周期的选择无效，请重新选择。",
+      "planned_lhdn_cp22a_cessation": "CP22A — 员工离职通知（私营部门）",
+      "planned_lhdn_cp22a_cessation_hint": "私营部门雇主在员工停止工作时（辞职、退休或身故）向 LHDN 提交的通知。需要该通知的离职者已在本页下方的 CP22 / CP22A 待办清单中标出，但该通知本身尚未构建。",
+      "refusal_cycles_no_deductions": "在您选择的发薪周期中没有任何人被扣除 PCB 或 CP38，因此未生成 CP39。",
+      "refusal_year_no_payroll": "该公司在您选择的年份没有已处理的薪资，因此未生成任何内容。"
     },
     "ea": {
       "backToReports": "报表",
@@ -7069,7 +7073,10 @@
       "pcbPaymentKindCp38": "CP38（分期指示）",
       "pcbPaymentReceiptRef": "收据／银行单据／交易号码",
       "pcbPaymentPaidOn": "缴付日期",
-      "pcbPaymentSave": "保存"
+      "pcbPaymentSave": "保存",
+      "cyclesAll": "所有发薪周期",
+      "viewerBack": "更改选择",
+      "previewBlocked": "补齐上方列出的缺漏后，报表会显示在这里。"
     },
     "pcbDetail": {
       "exemptionHeading": "免税信息",
@@ -7790,6 +7797,17 @@
       "runTypeOffCycle": "额外周期",
       "runTypeBonus": "奖金",
       "runTypeAdjustment": "调整"
+    },
+    "cp8dPreview": {
+      "title": "E 表格 / CP8D — 年度申报（LHDN）",
+      "viewerBack": "更改选择",
+      "tileYear": "年份",
+      "tileEmployees": "包含的员工",
+      "notArtworkTitle": "这是我们的版式，不是 LHDN 的 E 表格。",
+      "notArtwork": "该 PDF 是当年每位员工的 CP8D 明细表，采用我们自己的栏目版式：与“下载 PDF”按钮保存的是同一个文件。它不是 LHDN 的 E 表格或 CP8D 模板。请通过 e-Filing（E 表格）申报。",
+      "partATitle": "E 表格 A 部分人数",
+      "partAHint": "根据与明细表相同的薪资计算。它们列在这里，不会打印在 PDF 上。",
+      "figuresLink": "打开数字表（并记录本次生成）"
     }
   },
   "admin": {

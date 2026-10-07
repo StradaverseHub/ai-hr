@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "Đăng ký PERKESO cho nhân viên mới. Chưa xây dựng.",
       "planned_lhdn_cp21": "CP21 — nhân viên rời Malaysia",
       "planned_lhdn_cp21_hint": "Thông báo nhân viên sắp rời Malaysia. Chưa xây dựng.",
-      "planned_lhdn_cp22a": "CP22A — thanh toán thuế khi chấm dứt hợp đồng",
-      "planned_lhdn_cp22a_hint": "Những người nghỉ việc cần CP22A đã được đánh dấu trên danh sách công việc CP22 / CP22A ở phía dưới màn hình này, nhưng bản thông báo thì chưa xây dựng.",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — khấu trừ thuế trên khoản truy lĩnh",
       "planned_lhdn_cp39a_hint": "Bản kê thuế đã khấu trừ trên các khoản truy lĩnh. Chưa xây dựng.",
       "fidelity_agency_layout": "Bố cục của cơ quan",
@@ -4607,7 +4607,11 @@
       "cycles_partial": "Bạn đã bỏ ra ít nhất một kỳ trả lương. Biểu mẫu chỉ gồm các kỳ đã chọn và không có ô nào cho biết mỗi dòng thuộc kỳ nào.",
       "refusal_cycles_no_runs": "Không có bảng lương đã xử lý cho công ty và tháng này, nên không có gì được tạo.",
       "refusal_cycles_no_data": "Các kỳ trả lương đã chọn không có khoản đóng góp đã xử lý nào cho biểu mẫu này, nên không có gì được tạo.",
-      "refusal_cycles_invalid": "Lựa chọn kỳ trả lương không hợp lệ. Hãy chọn lại."
+      "refusal_cycles_invalid": "Lựa chọn kỳ trả lương không hợp lệ. Hãy chọn lại.",
+      "planned_lhdn_cp22a_cessation": "CP22A — thông báo nhân viên nghỉ việc (khu vực tư nhân)",
+      "planned_lhdn_cp22a_cessation_hint": "Thông báo mà chủ lao động khu vực tư nhân gửi LHDN khi một nhân viên thôi việc: từ chức, nghỉ hưu hoặc qua đời. Những người nghỉ việc cần thông báo này đã được đánh dấu trên danh sách công việc CP22 / CP22A ở phía dưới màn hình này, nhưng bản thông báo thì chưa được xây dựng.",
+      "refusal_cycles_no_deductions": "Không ai bị khấu trừ PCB hoặc CP38 trong các kỳ lương bạn đã chọn, nên không có CP39 nào được tạo.",
+      "refusal_year_no_payroll": "Không có bảng lương đã xử lý của công ty này trong năm bạn đã chọn, nên không có gì được tạo."
     },
     "ea": {
       "backToReports": "Báo cáo",
@@ -7069,7 +7073,10 @@
       "pcbPaymentKindCp38": "CP38 (lệnh trả góp)",
       "pcbPaymentReceiptRef": "Số biên lai / phiếu ngân hàng / giao dịch",
       "pcbPaymentPaidOn": "Ngày nộp",
-      "pcbPaymentSave": "Lưu"
+      "pcbPaymentSave": "Lưu",
+      "cyclesAll": "Tất cả kỳ lương",
+      "viewerBack": "Đổi lựa chọn",
+      "previewBlocked": "Bản kê sẽ hiển thị ở đây khi các thiếu sót liệt kê ở trên được bổ sung."
     },
     "pcbDetail": {
       "exemptionHeading": "Thông tin miễn thuế",
@@ -7790,6 +7797,17 @@
       "runTypeOffCycle": "Ngoài chu kỳ",
       "runTypeBonus": "Thưởng",
       "runTypeAdjustment": "Điều chỉnh"
+    },
+    "cp8dPreview": {
+      "title": "Mẫu E / CP8D — tờ khai hằng năm (LHDN)",
+      "viewerBack": "Đổi lựa chọn",
+      "tileYear": "Năm",
+      "tileEmployees": "Số nhân viên",
+      "notArtworkTitle": "Bố cục của chúng tôi, không phải Mẫu E của LHDN.",
+      "notArtwork": "Tệp PDF là bảng CP8D theo từng nhân viên của năm, theo bố cục cột của chúng tôi: chính là tệp mà nút Tải PDF lưu. Đây không phải mẫu Form E hay CP8D của LHDN. Nộp qua e-Filing (Mẫu E).",
+      "partATitle": "Số lượng nhân viên Mẫu E Phần A",
+      "partAHint": "Được tính từ cùng bảng lương với bảng kê. Chúng được liệt kê ở đây và không được in trên PDF.",
+      "figuresLink": "Mở bảng số liệu (và ghi nhận lần tạo này)"
     }
   },
   "admin": {

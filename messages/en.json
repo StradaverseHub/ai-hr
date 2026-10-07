@@ -4911,8 +4911,8 @@
       "planned_perkeso_employee_registration_hint": "PERKESO registration for a new employee. Not built.",
       "planned_lhdn_cp21": "CP21 — employee leaving Malaysia",
       "planned_lhdn_cp21_hint": "Notification that an employee is leaving Malaysia. Not built.",
-      "planned_lhdn_cp22a": "CP22A — tax clearance on cessation",
-      "planned_lhdn_cp22a_hint": "Leavers needing a CP22A are already flagged on the CP22 / CP22A worklist further down this screen, but the notice itself is not built.",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — tax deduction on arrears",
       "planned_lhdn_cp39a_hint": "The statement of tax deducted on arrear payments. Not built.",
       "fidelity_agency_layout": "Agency layout",
@@ -5010,7 +5010,11 @@
       "cycles_partial": "You have left out at least one payroll cycle. The form will carry only the cycles you ticked, and it has no box that says which cycle a line came from.",
       "refusal_cycles_no_runs": "There is no processed payroll for this company and month, so nothing was produced.",
       "refusal_cycles_no_data": "No processed contributions for this form in the payroll cycles you picked, so nothing was produced.",
-      "refusal_cycles_invalid": "The payroll cycle selection was not valid. Pick the cycles again."
+      "refusal_cycles_invalid": "The payroll cycle selection was not valid. Pick the cycles again.",
+      "planned_lhdn_cp22a_cessation": "CP22A — notice of an employee leaving (private sector)",
+      "planned_lhdn_cp22a_cessation_hint": "The notice a private-sector employer sends LHDN when an employee stops working: resignation, retirement or death. Leavers who need one are flagged on the CP22 / CP22A worklist further down this screen, but the notice itself is not built yet.",
+      "refusal_cycles_no_deductions": "Nobody had PCB or CP38 deducted in the payroll cycles you picked, so no CP39 was produced.",
+      "refusal_year_no_payroll": "There is no processed payroll for this company in the year you picked, so nothing was produced."
     },
     "ea": {
       "backToReports": "Reports",
@@ -7069,7 +7073,10 @@
       "pcbPaymentKindCp38": "CP38 (instalment instruction)",
       "pcbPaymentReceiptRef": "Receipt / bank slip / transaction no.",
       "pcbPaymentPaidOn": "Payment date",
-      "pcbPaymentSave": "Save"
+      "pcbPaymentSave": "Save",
+      "cyclesAll": "All payroll cycles",
+      "viewerBack": "Change selection",
+      "previewBlocked": "The statement is shown here once the gaps listed above are filled."
     },
     "pcbDetail": {
       "exemptionHeading": "Exemption Information",
@@ -7790,6 +7797,17 @@
       "runTypeOffCycle": "Off-cycle",
       "runTypeBonus": "Bonus",
       "runTypeAdjustment": "Adjustment"
+    },
+    "cp8dPreview": {
+      "title": "Form E / CP8D — annual return (LHDN)",
+      "viewerBack": "Change selection",
+      "tileYear": "Year",
+      "tileEmployees": "Employees included",
+      "notArtworkTitle": "Our layout, not LHDN’s Form E.",
+      "notArtwork": "The PDF is the CP8D per-employee schedule for the year, in our own column layout: the same file the Download PDF button saves. It is not LHDN’s Form E or CP8D template. File through e-Filing (Form E).",
+      "partATitle": "Form E Part A head counts",
+      "partAHint": "Worked out from the same payroll as the schedule. They are listed here and are not printed on the PDF.",
+      "figuresLink": "Open the figures table (and record this generation)"
     }
   },
   "admin": {

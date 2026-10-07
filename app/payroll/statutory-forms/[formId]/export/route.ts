@@ -34,11 +34,11 @@ const FORMATS: ReportFormat[] = ['csv', 'xlsx', 'pdf'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** RFC 5987 Content-Disposition: an ASCII-safe fallback plus a UTF-8-encoded `filename*`. */
-function contentDisposition(base: string, ext: string): string {
+function contentDisposition(base: string, ext: string, disposition: 'attachment' | 'inline' = 'attachment'): string {
   const full = `${base}.${ext}`;
   const ascii = full.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
   const encoded = encodeURIComponent(full).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+  return `${disposition}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ formId: string }> }) {
@@ -84,7 +84,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ formId: 
     return new Response(new Uint8Array(bytes), {
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': contentDisposition(data.filename, ext),
+        // r409 (item 79f3f64d) — THE PREVIEW IS THIS ROUTE, ASKED TO SHOW RATHER THAN SAVE (the Borang A
+        // route's r407 rule). Form E / CP8D's viewer frames `…&format=pdf&disposition=inline`: the same
+        // read, the same serializer, the same bytes — only this header differs. Inline for a PDF only; any
+        // other value, or any other format, saves.
+        'Content-Disposition': contentDisposition(
+          data.filename,
+          ext,
+          format === 'pdf' && url.searchParams.get('disposition') === 'inline' ? 'inline' : 'attachment',
+        ),
       },
     });
   } catch (e) {

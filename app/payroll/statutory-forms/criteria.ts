@@ -91,13 +91,21 @@ export function reportDestination(
   reportId: string,
   periodKind: 'month' | 'year' | 'event',
   runSelection?: { action: string } | null,
+  preview?: { action: string } | null,
 ): ParsedDestination {
   // r407 (item 4f45f9b0) — a MONTHLY form whose pack declares `runSelection` also asks for the payroll
   // cycles, and its Continue opens the form's own preview instead of the generic figures screen. Monthly
   // only: a cycle is a run of ONE month, and an annual form offered one would be a question with no answer.
   const cycles = periodKind === 'month' && runSelection ? runSelection : null;
+  // r409 (item 79f3f64d) — an ANNUAL form whose pack declares `preview` continues to that preview, with
+  // Company and Year and nothing else. Annual only, for the same reason in reverse.
+  const annualPreview = periodKind === 'year' && preview ? preview : null;
   return {
-    action: cycles ? cycles.action : `/payroll/statutory-forms/${encodeURIComponent(reportId)}`,
+    action: cycles
+      ? cycles.action
+      : annualPreview
+        ? annualPreview.action
+        : `/payroll/statutory-forms/${encodeURIComponent(reportId)}`,
     criteria: [
       { kind: 'company', field: 'companyId' },
       { kind: 'year', field: 'year' },
@@ -134,7 +142,16 @@ export function reportDestination(
 export const CYCLES_ENDPOINT = '/payroll/payment-submission/runs';
 
 /** Why the Continue gate sent the operator back. The step shows the matching sentence, nothing else. */
-export const CYCLES_REFUSALS = ['cycles_no_runs', 'cycles_no_data', 'cycles_invalid'] as const;
+export const CYCLES_REFUSALS = [
+  'cycles_no_runs',
+  'cycles_no_data',
+  'cycles_invalid',
+  // r409 (item 79f3f64d) — CP39: the ticked cycles ran, and nobody on them had PCB or CP38 deducted. A
+  // statement of deductions with no deduction on it is not filed; "contributions" would be the wrong word.
+  'cycles_no_deductions',
+  // r409 — an ANNUAL form (Form E / CP8D): no processed payroll in the year chosen. No month, no cycle.
+  'year_no_payroll',
+] as const;
 export type CyclesRefusal = (typeof CYCLES_REFUSALS)[number];
 
 /** The refusal named on the URL, allowlisted — an unknown value shows nothing rather than echoing. */
@@ -154,7 +171,7 @@ export function runQueryPairs(runSeqs: readonly number[] | undefined): { name: s
  */
 export function cyclesRefusalHref(
   formId: string,
-  p: { companyId: string; year: string; month: string; runSeqs?: readonly number[] },
+  p: { companyId: string; year: string; month?: string; runSeqs?: readonly number[] },
   reason: CyclesRefusal,
 ): string {
   // `refusal`, NOT `error`: `?error=` is the house channel for server-action failures, which
@@ -166,9 +183,11 @@ export function cyclesRefusalHref(
 /** The criteria step for `formId`, re-opened on criteria already chosen — the preview's "Change selection". */
 export function criteriaReturnHref(
   formId: string,
-  p: { companyId: string; year: string; month: string; runSeqs?: readonly number[] },
+  p: { companyId: string; year: string; month?: string; runSeqs?: readonly number[] },
 ): string {
-  const q = new URLSearchParams({ form: formId, companyId: p.companyId, year: p.year, month: p.month });
+  // r409 — `month` is optional: an annual form's step has no Month box, so its way back carries none.
+  const q = new URLSearchParams({ form: formId, companyId: p.companyId, year: p.year });
+  if (p.month) q.set('month', p.month);
   for (const { name, value } of runQueryPairs(p.runSeqs)) q.append(name, value);
   return `/payroll/statutory-forms/open?${q.toString()}`;
 }

@@ -94,6 +94,8 @@ const REFUSAL_KEY = {
   cycles_no_runs: 'refusal_cycles_no_runs',
   cycles_no_data: 'refusal_cycles_no_data',
   cycles_invalid: 'refusal_cycles_invalid',
+  cycles_no_deductions: 'refusal_cycles_no_deductions',
+  year_no_payroll: 'refusal_year_no_payroll',
 } as const;
 
 const FIDELITY_KEY: Record<string, string> = {
@@ -161,7 +163,7 @@ export default async function StatutoryFormCriteriaPage({
   // for something the destination does not take.
   const parsed = link
     ? parseDestination(link.href)
-    : reportDestination(report!.id, report!.periodKind, report!.runSelection);
+    : reportDestination(report!.id, report!.periodKind, report!.runSelection, report!.preview);
 
   /**
    * THE PERIOD THIS STEP ARRIVES SHOWING — the last one that has actually HAPPENED, never "now".
@@ -174,9 +176,12 @@ export default async function StatutoryFormCriteriaPage({
    * C.P.8A rows). No form id is written down here, which is the point: Form TP1 resolves to nothing and
    * keeps the year in progress precisely because its destination is not one of this pack's reports.
    */
-  const target = catalog.reports.find(
-    (r) => r.id === destinationReportId(parsed.action, link?.populationReportId),
-  );
+  // r409 — a REPORT is its own target. Its destination path no longer always names it (a form with its own
+  // preview continues to `/payroll/cp39/preview`, not `/payroll/statutory-forms/my.cp39`), and resolving it
+  // from that path would lose the annual filing-season rule for Form E / CP8D.
+  const target = report
+    ? catalog.reports.find((r) => r.id === report.id)
+    : catalog.reports.find((r) => r.id === destinationReportId(parsed.action, link?.populationReportId));
   const defaults = defaultCriteria(today, parsed.criteria, target);
   // r407 — criteria handed back by a refused Continue win over the defaults, when they are well formed.
   const backCompany = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : '';
@@ -200,7 +205,8 @@ export default async function StatutoryFormCriteriaPage({
   const hint = link ? t(link.hintKey as 'link_cp22_hint') : null;
   const fidelity = (report ? report.fidelity : link!.fidelity) ?? null;
   // r407 — a form filed per payroll cycle CONTINUES to its preview; it does not generate on this press.
-  const continues = parsed.criteria.some((c) => c.kind === 'cycles');
+  // r409 — and so does an annual form with its own preview (Form E / CP8D): Continue, look, then download.
+  const continues = parsed.criteria.some((c) => c.kind === 'cycles') || Boolean(report?.preview);
   const buttonLabel = t((continues ? 'criteria_continue' : (link?.criteriaLabelKey ?? 'criteria_generate')) as 'criteria_generate');
   const backHref = `/payroll/statutory-forms${sp.body ? `?body=${encodeURIComponent(sp.body)}` : ''}`;
   const field = (kind: CriterionKind) => parsed.criteria.find((c) => c.kind === kind);

@@ -95,6 +95,8 @@ export type StatutoryReportCard = {
   shelfOrder: number | null;
   /** r407 (item 4f45f9b0) — see `ReportDef.runSelection`. Null for a form not filed per payroll cycle. */
   runSelection: { action: string } | null;
+  /** r409 (item 79f3f64d) — see `ReportDef.preview`. Null for a form that opens the generic figures screen. */
+  preview: { action: string } | null;
 };
 
 function reportCard(r: ReportDef): StatutoryReportCard {
@@ -116,6 +118,7 @@ function reportCard(r: ReportDef): StatutoryReportCard {
     fidelity: r.fidelity ?? null,
     shelfOrder: r.shelfOrder ?? null,
     runSelection: r.runSelection ?? null,
+    preview: r.preview ?? null,
   };
 }
 

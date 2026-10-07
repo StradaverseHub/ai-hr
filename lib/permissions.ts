@@ -1212,6 +1212,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // siblings under /payroll/cp39 (the pdf and text downloads, and shared.ts) are route handlers and a
       // plain module, not guarded pages, so they are not listed — the check walks page.tsx.
       '/payroll/cp39/preview',
+      // r409 (item 79f3f64d): the Form E / CP8D preview — Company and Year, then the annual return in the
+      // shared viewer and its three downloads. Same scopedAdmin key as the [formId] figures screen it sits
+      // beside: it lists every employee's name and identifier gaps and frames their annual remuneration.
+      // Registered here because test/function-access.test.ts checks reverse completeness.
+      '/payroll/cp8d/preview',
       // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
       // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
       // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports

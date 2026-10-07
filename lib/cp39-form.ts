@@ -375,6 +375,41 @@ export function formatMyIc(ic: string | null | undefined): string {
 }
 
 /**
+ * r409 (item 79f3f64d) — THE EMPLOYER NUMBER AS THE FORM PRINTS IT: without the "E".
+ *
+ * ⚠️ THE FORM ALREADY PRINTS THE "E". The specimen's No. Majikan box has a bold `E` printed BESIDE it
+ * (lib/cp39-form-pdf.ts draws it on the cover and on every sheet), and the box takes the digits. Six of
+ * nine companies on production stored `lhdn_employer_no` WITH the prefix ("E 908915-10",
+ * "E0094573909"), so their statements read "E E0094573909" — the employer number with the letter twice.
+ *
+ * Applied HERE, in `cp39FormFrom`, and NOT in the read: the stored value is the operator's and is left as
+ * typed, and the e-Data PCB upload file (`localization/my/cp39-file.ts`) has its own `digits()` that never
+ * saw the problem. One leading E or e and any whitespace around it go; everything after it is printed as
+ * stored. A value that does not begin with an E is untouched.
+ */
+export function cp39EmployerNoForForm(stored: unknown): string {
+  return str(stored).trim().replace(/^[Ee]\s*/, '').trim();
+}
+
+/**
+ * r409 (item 79f3f64d) — THE IDENTITY CARD NUMBER AS THE FORM PRINTS IT: digits only.
+ *
+ * ⚠️ THIS REVERSES 7ee14bbc's DASHES ON THE DRAWN PAGE. LHDN's own CP39 instructions write the No. K/P Baru
+ * as twelve digits with no separators, and the reporter's sample does the same. `formatMyIc` STAYS — it is
+ * how the review SCREEN shows the number to a person checking it — but it no longer reaches the PDF.
+ *
+ * CONSERVATIVE, like `formatMyIc`: a value that is a twelve-digit MyKad once its dashes and spaces are
+ * removed is printed as those twelve digits; anything else (a passport, a foreign identifier, an eleven-
+ * digit typo) is printed exactly as stored, because rearranging an identifier we cannot recognise onto a
+ * tax document is worse than leaving it alone.
+ */
+export function cp39IcForForm(stored: unknown): string {
+  const v = str(stored).trim();
+  const digits = v.replace(/[\s-]/g, '');
+  return /^\d{12}$/.test(digits) ? digits : v;
+}
+
+/**
  * 7ee14bbc — WHICH ROWS THE STATEMENT PRINTS: the ones that were actually deducted something.
  *
  * ⚠️ THE DEFECT THIS FIXES IS A DISAGREEMENT INSIDE ONE DOCUMENT. `pcbEmployees` / `cp38Employees` have
@@ -571,7 +606,8 @@ export function missingCp39FormHeader(header: Record<string, unknown> | null | u
     'deductionYear',
     'printedOn',
   ] as const;
-  return required.filter((k) => !str(h[k]).trim());
+  // r409 — the employer number is judged AS IT WILL PRINT: a stored "E" and nothing else is a blank box.
+  return required.filter((k) => !(k === 'employerNo' ? cp39EmployerNoForForm(h[k]) : str(h[k]).trim()));
 }
 
 /**
@@ -613,13 +649,16 @@ export function cp39FormFrom(p: {
     // then. The read supplies it (localization/my/cp39-form.ts) precisely so the duplicate-tax-number
     // warning can tell one person's two employments from two people.
     personId: str(r.personId),
+    // r409 — PRINTED AS STORED. No prefix stripped, no spaces moved: the tax reference is the operator's
+    // and LHDN's, and this model has no business normalising it (the e-Data file does its own).
     tin: str(r.tin ?? r.taxNo),
     name: str(r.name),
     // Read, not hardcoded, so the read stays the single source of the value and this file has no opinion
     // about where it came from. Both columns are REAL since migration 0450; blank here means the staff
     // record has none, not that the system cannot hold one. See the field docs above.
     oldIc: str(r.oldIc),
-    newIc: str(r.newIc ?? r.ic),
+    // r409 — DIGITS ONLY, as LHDN writes it. See `cp39IcForForm`; the screen re-dashes with `formatMyIc`.
+    newIc: cp39IcForForm(r.newIc ?? r.ic),
     employeeNo: str(r.employeeNo),
     passport: str(r.passport),
     countryCode: str(r.countryCode),
@@ -634,7 +673,8 @@ export function cp39FormFrom(p: {
   const totalPcb = round2(pages.reduce((a, pg) => a + pg.pagePcb, 0));
   const totalCp38 = round2(pages.reduce((a, pg) => a + pg.pageCp38, 0));
   return {
-    employerNo: str(h.employerNo),
+    // r409 — WITHOUT THE "E": the form prints that letter beside the box itself. See `cp39EmployerNoForForm`.
+    employerNo: cp39EmployerNoForForm(h.employerNo),
     registrationNo: str(h.registrationNo),
     employerName: str(h.employerName),
     // One string per line. The read joins with '\n' because ReportResult.meta values are scalars.
@@ -738,7 +778,9 @@ export function withPaymentInstrument(
 
 /** Filename for a download: employer number + deduction month, safe for a Content-Disposition. */
 export function cp39FormFilename(form: Cp39Form, ext: 'pdf' | 'txt'): string {
-  const ref = (form.employerNo || 'EMP').replace(/[^A-Za-z0-9]+/g, '');
+  // r409 — `form.employerNo` no longer carries the "E" (`cp39EmployerNoForForm`); the filename puts it back,
+  // so a download is named the same whether or not the operator typed the prefix into Organization.
+  const ref = form.employerNo ? `E${form.employerNo.replace(/[^A-Za-z0-9]+/g, '')}` : 'EMP';
   const period = form.deductionPeriodKey.replace('-', '');
   return `cp39-${ref}-${period}.${ext}`;
 }

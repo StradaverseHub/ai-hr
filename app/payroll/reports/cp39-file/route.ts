@@ -7,6 +7,7 @@ import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { cp39FileForBatch, Cp39NotReadyError } from '@/localization/my/cp39-file';
 import { recordFileReport } from '@/core/reporting';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
 
 export async function GET(req: Request) {
   const s = await getSession();
@@ -18,8 +19,15 @@ export async function GET(req: Request) {
   if (!UUID.test(companyId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)) {
     return new Response('A valid companyId (uuid) and periodKey (YYYY-MM) are required', { status: 400 });
   }
+  // r409 (item 79f3f64d) — THE PAYROLL CYCLES THE CP39 REVIEW WAS OPENED FOR. The review screen's e-Data
+  // button carries the criteria step's `run` values, and this route used to drop them and build the whole
+  // month — a filtered review downloading an unfiltered upload file. `cp39FileForBatch` has honoured
+  // `runSeqs` since r372 (Payment Submission); absent ⇒ undefined ⇒ the whole month, as every older link
+  // is. An invalid selection is REFUSED, never dropped, through the one shared parser.
+  const selection = parseRunSelection(url.searchParams);
+  if (!selection.ok) return new Response(selection.reason, { status: 422 });
   try {
-    const file = await cp39FileForBatch(s, { companyId, periodKey });
+    const file = await cp39FileForBatch(s, { companyId, periodKey, runSeqs: selection.runSeqs });
     await recordFileReport(s, {
       companyId,
       reportType: 'my.cp39-file',
