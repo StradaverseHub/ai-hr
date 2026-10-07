@@ -109,7 +109,7 @@ async function leaveTypeRow(o: {
   visibleToEmployee?: boolean;
   archived?: boolean;
   essViewConfig?: Record<string, boolean>;
-  role?: string;
+  role?: 'annual';
 }) {
   const [row] = await owner.db
     .insert(schema.leaveType)
