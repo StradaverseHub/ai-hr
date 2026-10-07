@@ -293,8 +293,8 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
    * The base commit's core/reporting.ts is written beside the current one (so its relative imports resolve
    * to this tree's modules) and imported as it stood. Its cp22aParticulars and employeeEaStatement and
    * this branch's are run on the same record. Equal objects, and byte-identical CP22A PDFs.
-   * NON-VACUITY: change `lines[3] = r2(b.bonus + b.directorFee)` in lhdnYearSoFar to `r2(b.bonus)` with a
-   * director fee on a slip, or drop the capAt cap, and the CP22A comparison fails.
+   * NON-VACUITY: drop the `capAt` cap in lhdnYearSoFar (`const to = periodEnd;`) and the "April processed"
+   * comparison fails; skip the line-6 rule there and the "employer bears tax" comparison fails.
    */
   it('cp22aParticulars, its rendered PDF and the EA are identical to the base commit’s', async () => {
     const tmp = path.join(ROOT, 'core', `__r415_baseline_reporting_${process.pid}.ts`);
