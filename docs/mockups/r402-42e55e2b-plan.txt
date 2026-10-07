@@ -1,0 +1,49 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Employees can see their leave on My Leave, but not the full balance breakdown HR sees in Leave Config > Employee Leave Inquiry > Employee Balances: entitlement, earned to date, brought forward, taken, pending, adjustments, shared days, forfeited, balance and available balance, as at a chosen date. When an employee asks "why is my balance 9 days?", only HR can see the answer.
+
+WHAT WE'LL CHANGE
+
+- A new item, "Leave Details", under My Leave, after Leave Credit History.
+
+- The page shows the title "Leave Details" with the line "Your balance for every leave type, as at the date you choose", then a strip with the employee's own Employee No., name and company and a small "View only · your own record" label.
+
+- Controls: an "As at" date (today by default), a "Search leave code" box, Apply, and "Download Excel" on the right.
+
+- The table has exactly HR's columns, in HR's order: Leave Code, Entitlement Year, Entitlement, Earned to Date, Brought Forward, Taken, Pending Approval, Adjustment, Share, Pending Share, Overutilized, Forfeited BF, Balance, Available Balance, Date, Explanation. The (i) notes beside leave names, the "EL" tag under Share and Pending Share, and bold Balance and Available Balance are the same as HR's. On a phone the table scrolls sideways with Leave Code fixed on the left.
+
+- Every figure comes from the same calculation as HR's Employee Balances, so for the same employee and the same As at date the two screens show the same numbers.
+
+- Each row's "Explain" opens the same step-by-step explanation HR sees, worded to the employee ("you" rather than "this employee").
+
+- Leave types with nothing at all (no entitlement, nothing taken, nothing pending and nothing available) are left out, as in your sample where CGL, EXM and GD are hidden. A retired leave type that still holds days is shown.
+
+- "Download Excel" saves the same columns and figures as the table on screen, for the employee's own record only, as at the chosen date, named LeaveDetails_<EmployeeNo>_<AsAtDate>.xlsx.
+
+- The page always shows the person who is logged in. There is no employee search and no company filter, and changing the web address cannot show or download anyone else's balances. There are no Edit or Adjust actions and no Employee Leave Record tab.
+
+WHAT YOU'LL GET
+
+Employees can answer their own "how many days do I have, and why" questions, with figures that always agree with what HR sees.
+
+GOOD TO KNOW
+
+- One difference from your sample: Emergency Leave (EL) will not appear as its own row for employees, because in your Leave Types settings Emergency Leave is set to be hidden from employees, and Leave Details follows that setting as My Leave does. Switch "show to employees" on for Emergency Leave and its row appears. Its days still show in Annual Leave's Share column either way. If you want it shown regardless of that setting, reject this plan and say so.
+
+- Leave Details also follows your Leave Types settings for which figures employees may see. In your current setup every figure in the table is visible, so nothing is blanked. If you later hide a figure from employees, that cell shows a dash.
+
+- Leave codes and the Taken figure are plain text here; on HR's screen they open Employee Leave Record, which employees do not have.
+
+- This only changes what's shown on screen. We're not touching how anything is calculated.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: HR screen app/leave/employee-balances/page.tsx (scopedAdmin) rows from app/leave/employee-balances/rows.ts employeeBalanceRows(ctx, employmentId, asOf, locale, opts) → leaveBalances(includeHidden, includeArchived, includeIneligible, asOf) + leaveEntitlementBreakdown(derivation:true) → deriveBalanceRow (essView emptied). Export app/leave/employee-balances/export/route.ts (20 columns). Production: ANNUAL archived; EL visible_to_employee=false; CGL/EXM/GD all-zero for the sample employee. RLS does NOT confine HR/managers to their own rows: self-scope comes from myEmployment(session), never a request parameter.
+
+employeeBalanceRows gains audience 'hr' or 'self'; 'hr' byte-identical (pin it). 'self': includeHidden false, includeIneligible false, includeArchived true, real essView, drop rows whose every figure incl. available is 0/null, derivation true. Shared table body components/leave/balance-inquiry-table.tsx (mode hr or self: links only in hr; Explain voice). New app/leave/details/page.tsx (scopedSession(); employmentId from myEmployment; never reads emp; empty state when none; asOf validated as HR's). New app/leave/details/export/route.ts: session employment only, ignores ?emp, xlsx, EXACTLY the 16 on-screen columns (owner's words: "same columns and figures as the table on screen"), filename LeaveDetails_<employeeCode>_<asOf>. Explain: EntitlementBreakdown applyEssConfig + derivation, voice 'self' swapping the 7 HR-voiced keys for leave.breakdown.explainSelf. (6 locales). Nav: 4th child of LEAVE_SELF_NAV (packs/leave/index.ts) with a NEW nav.leaveDetails key (leave.details.title is the request dialog's title — do not reuse); update test/leave-pack.test.ts:153 exact children. lib/permissions.ts: add '/leave/details' to the existing leave column's routes (precedent /leave/credit). Render with the Monolith primitives (HairlineTable) where it fits.
+
+Tests: PARITY (load-bearing): self rows == HR rows filtered by the same visibility rule, field for field, ≥2 asOf dates, a pool borrower, an archived type with days, a prorated type, BF; non-vacuity by dropping derivation or asOf on one side. SCOPE: page and export with ?emp=<colleague> under employee, manager and HR sessions return the session's own rows; filename uses the session's code. Visibility: hidden, ineligible and all-zero types absent; archived with balance present. Export columns == screen columns. function-access passes. Render check. No migration.

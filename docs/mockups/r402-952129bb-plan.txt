@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+HR's "+ Add Leave Credit" pop-up and the employee's "Leave Credit request" pop-up are two different forms that work out the credit in two different ways. On the employee form you add one row per date, choose the day type, enter the start and end times, and the credit is worked out for you (4 hours earns half a day, 8 hours a full day). On the HR form you pick one date and type the number of days yourself. So the same day worked can be credited differently depending on who enters it.
+
+WHAT WE'LL CHANGE
+
+- "+ Add Leave Credit" opens the employee's form itself: the same rows, Day Type, Start Time, End Time, Eligible Hours and Credit columns, "+ Add date", "View day-by-day details", Reason, and the total credit at the bottom.
+
+- HR's form has one extra box at the top, Employee ("Search by name or Employee ID"), because HR has to say whose credit it is. The rows open once an employee is chosen, and the day type, shift and attendance shown are that employee's.
+
+- Every row's credit is worked out by exactly the same rule as the employee's request, using that employee's company rule.
+
+- Because HR is the one approving, the credit is added straight away. The button reads "Add credit" instead of "Send to manager", and the note at the top says the credit is added immediately.
+
+- Each credit is recorded as added by HR, with the HR person's name, as HR credits are recorded in the Leave Credit list today.
+
+- From now on, any change made to the employee's form appears on the HR form automatically, because it is the same form.
+
+WHAT YOU'LL GET
+
+One form and one calculation for leave credits: a day worked earns the same credit whether the employee asks for it or HR enters it, and HR can now enter several dates at once.
+
+GOOD TO KNOW
+
+- Three things the old HR form allowed will go, because the employee form does not have them: typing the number of days by hand (the credit now comes from the hours), typing a different expiry date (it now always follows your company's Leave Credit rule), and the separate Remarks box (Reason stays). If HR needs any of these back, reject this plan and say which.
+
+- For an ordinary working day, HR's credit used to be tied to the extra hours measured from attendance. It will now follow the hours entered, exactly as the employee's request does. Attendance is still shown beside each date for reference.
+
+- The safeguards against paying a day twice stay on the HR form: if the date already has overtime recorded, the form warns that the overtime will no longer be paid once the day is credited, and a credit is still refused if that month's payroll has already started.
+
+- As today, HR cannot add a credit to their own record, and HR can add credits even in a company where employees are not allowed to request them.
+
+- Credits HR adds appear in Leave Config > Leave Credit as today. They do not appear in the employee's own Leave Credit History, which lists the employee's requests - that is unchanged.
+
+- No change to existing records - every credit already given keeps working exactly as it does now.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: HR dialog components/leave/leave-credit-add-dialog.tsx → grantLeaveCreditAction (app/admin/leave-config/leave-credit/actions.ts:50) → core/toil.ts grantLeaveCredit (~2233). Employee dialog components/leave/replacement-leave-request-dialog.tsx around components/leave/leave-credit-request-table.tsx → submitLeaveCreditRequestAction (app/leave/credit/actions.ts:78) → core/leave-credit-request.ts submitLeaveCreditRequest → core/replacement-request.ts submitReplacementLeaveRequest (pending, manager-approved). Derivations differ (replacement-request.ts:603-650 window→days on every day type; toil.ts ordinary day must equal the measured tier). Production toil_policy: 2 companies employee requests on, 1 enabled with requests OFF, 12 disabled.
+
+DECISION: HR keeps a DIRECT grant (immediate, source hr_manual_grant, HR as actor), not submit-on-behalf + auto-approve. Kernel: extract the per-row window→days derivation into one exported function used by the employee submit, approval-time re-derivation, and a new grantLeaveCreditRows(ctx,{employmentId,rows,reason,firstScheduleConsent,today}) (isAdminCtx, module toil, assertAdminForEmploymentTx, assertNotOwnRecord, service dates, adjudicateDayTypes + leaveCreditRosterKinds, per-row overtime + payrollStartedForDateTx refusal, duplicate guard, bankToilCreditTx source hr_manual_grant with expiry from policy, ONE transaction, return overtimeSuppressedMinutes). Re-export via packs/leave/service. Do NOT apply the old measured-tier equality. grep grantLeaveCredit callers before retiring it. UI: LeaveCreditRequestTable gains an HR subject mode (employee picker, per-employee context fetched after pick via an admin action, HR labels, overtime note); the employee mount at app/leave/page.tsx renders byte-identically; delete leave-credit-add-dialog.tsx after grepping importers. One consent value ('on'). Messages six locales; retire unused add. keys.
+
+MONEY-ADJACENT (overtime suppression): parent hand-verifies. Tests: kernel parity (HR grant days == employee approved days for identical rows, rest 4h→0.5, 8h→1, ordinary floored at shift end; non-vacuity: change the shared ladder in a copy, both paths move); HR refusals (own record, outside service, overtime + payroll started, duplicate, day-type mismatch; a company with employee requests off still allows HR); source hr_manual_grant + HR actor in audit; update r299-leave-credit-screens and r343-leave-credit-single-table pins; DOM: HR mode shows the picker, employee mode does not. No migration.

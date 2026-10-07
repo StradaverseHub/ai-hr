@@ -1,0 +1,39 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+In Admin > Organisation, every company has a View and an Edit button, but both open the same editable page. Someone who only wants to check a company's details lands in a form where one stray change and a Save alters the company record, and the View button adds nothing.
+
+WHAT WE'LL CHANGE
+
+- View opens a new read-only page for the company. Everything is shown as plain text, under the same three tabs: General (logo, company information, contact details, default payroll cycle, parent company), Bank Account and Statutory.
+
+- The read-only page has no boxes to type into and no Save, Upload, Remove, Archive or Delete buttons.
+
+- An Edit button at the top right of the read-only page opens the current editable page, for when you do mean to change something.
+
+- Clicking a company's name in the list also opens the read-only page, so going into edit mode is always a deliberate Edit.
+
+- Edit in the list works exactly as it does now.
+
+WHAT YOU'LL GET
+
+Checking a company's details can no longer change them by accident, and changing them becomes a deliberate step.
+
+GOOD TO KNOW
+
+- Who can open these pages does not change: the same HR administrators who can see Organisation today can open both View and Edit. This prevents accidents rather than restricting people. If some users should be able to view companies but never edit them, that would be a separate request.
+
+- If you'd rather the company name kept opening the editable page, reject this plan and say so.
+
+- No change to existing records - everything already saved keeps working exactly as it does now.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: app/admin/organization/company-rows.tsx:179/201/207 — name, View and Edit all href basePath/<id>; the docblock at :132-136 says only the view href changes when a read-only view exists; test/organization-list-detail.test.ts:581-586 pins the identical hrefs (UPDATE it). Editor: [companyId]/page.tsx → components/company-panel.tsx (no read-only mode). Precedent: app/admin/payroll-config/[companyId]/page.tsx (read-only + Edit → ./edit).
+
+New app/admin/organization/[companyId]/view/page.tsx: server component, scopedAdmin(), same 404 refusal as [companyId]/page.tsx:66-73; same reads (statutory via packFor, bank profiles, statutory authorities, payroll cycles if payroll on) rendered as dl/text; tabs as ?tab= links validated by isCompanyPanelTab; PageHeader action Edit → /admin/organization/<id>. Imports NO CompanyPanel and NO server action. lib/permissions.ts: add '/admin/organization/[companyId]/view' to the existing organization column's routes (no new column, no permission change). company-rows.tsx: View and name hrefs → /view; Edit unchanged. Messages in six locales. Theme: render with the Monolith primitives (components/monolith Kv/Section) — Classic falls back to their Classic rendering.
+
+Tests: updated list pin (View/name → /view, Edit unchanged); view page 404s out of scope; a source guard that the view page has no <form, <input, name= and no import from ../../actions (assert the file was read and is substantial); function-access passes. Non-vacuity: point View back at the editor in a copy and watch the pin fail. Render check on a round-scoped port. No migration.

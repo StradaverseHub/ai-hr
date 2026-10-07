@@ -1,0 +1,61 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+FIRST, TWO CORRECTIONS
+
+- Our Borang 8A prints the wrong payment deadline. It says the contribution must be paid by the last day of the same month. PERKESO's own 2025 guide says it is due by the 15th of the following month. The "last day of the month" rule was a temporary PERKESO relief for April to September 2020 only (Pekeliling Majikan Bil. 4 Tahun 2020). We will fix this first.
+
+- The bottom of our Borang 8A says PERKESO publishes no blank form. That is wrong: PERKESO's website has the blank 8A and 8B, as your links show. We will remove that sentence and redraw our page to follow PERKESO's own artwork.
+
+THE SITUATION TODAY
+
+Borang 8A already works. It runs to as many sheets as needed, numbers them 1/2, 2/2 and so on, and adds up each sheet. Today you choose company, year and month, then go through a figures table and a separate review screen before you see the form. You cannot choose which payroll cycles it covers, and the Status column is always empty. Borang 8B, the EIS (SIP) contribution schedule and the SIP 2 / SIP 2A registration forms are not built.
+
+WHAT WE'LL CHANGE
+
+- One standard path for the PERKESO forms: Open Form, choose Company, Year, Month and Payroll Cycle, press Continue, see the full form, then download it. This is the same path as EA and Borang A.
+
+- Payroll Cycle lists only the cycles that were actually processed for that company and month. You can tick one, several or Select All. Select All is ticked when the screen opens, and the form contains only the cycles you tick.
+
+- If there is nothing to report, you stay on the selection screen with a clear message, and no blank form is produced.
+
+- The preview shows the actual PDF across the full width of the screen at its true A4 shape. The download is the very same file.
+
+- Borang 8A is redrawn to follow PERKESO's published form box by box. The deadline is corrected. The Status column now fills itself: B for someone who joined that month, H for someone who left that month, and M for a death. S (sick leave under PERKESO) and T (unpaid leave for the whole month) can still be typed in by hand, because the system does not record them.
+
+- New: the EIS (SIP) monthly contribution schedule, laid out like your sample. It lists each employee's EIS contribution for the month, employer and employee shares together, with a total.
+
+- New: Borang 8B. It opens with your company details and the month filled in. The employee lines and the underpaid amounts are left for you to fill in, because the system holds no record of an underpayment (see Good to know).
+
+WHAT YOU'LL GET
+
+Every PERKESO form opens the same way. You see exactly what you are about to download, only the payroll cycles you chose are included, and Borang 8A follows PERKESO's own page with the right deadline.
+
+GOOD TO KNOW
+
+- We will deliver this in two steps under this one approval. First the new path and the corrected Borang 8A. Then the EIS schedule and Borang 8B.
+
+- SIP 2 and SIP 2A are not built in this plan. PERKESO's forms date from 2017 and still print the old RM4,000 wage limit (today it is RM6,000), and PERKESO's 2025 guide says employees are now registered through the ASSIST portal. If your PERKESO office still asks for the paper SIP 2 or SIP 2A, raise a new request saying so and we will plan them on their own.
+
+- Your SIP sample is a report printed from another payroll system, not a PERKESO form, and it has no declaration or signature section. We will follow its layout and will not add sections it does not have.
+
+- When back pay is paid, the system charges SOCSO in the month it is actually paid. So it has no record of an amount that was underpaid for an earlier month, and we will not invent one. That is why Borang 8B's lines stay for you to fill in.
+
+- A month's Borang 8A is one return to PERKESO. If you tick only some cycles, the form covers only those cycles, and the screen shows which cycles you chose. Choosing only a bonus cycle is refused, as today, because SOCSO is charged on the monthly salary run.
+
+- Borang 8A stays our own drawing of PERKESO's layout, matched box by box, rather than being printed onto PERKESO's file. That file dates from 2013 and its second page still quotes old contribution limits, so we copy the layout, not the page.
+
+- Some boxes stay blank because the records do not hold them: the payment method and cheque number, the signature and stamp, and the collection agent's boxes. The screen names each one before you download.
+
+- No contribution, payroll or rate calculation changes.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Depends on f3cf2444's shared viewer (components/statutory-pdf-viewer.tsx) and on the 'cycles' criterion built for 4f45f9b0; whichever ships first owns the criterion, the other consumes it. Reuse r372 run selection: parseRunSelection, run-picker, listFilableRunsForPeriod via packs/payroll/service; run_seq is the URL key, cycle name the label. No-data refusal moves onto open/page.tsx. Preview is an inline PDF route serving the download's bytes (EA pattern, ea/preview/route.ts), one gate.
+Step 1, 8A: paymentDueDateFor = 15th of the next month (2026-12 gives 15/01/2027), citing the PERKESO 2025 booklet; Pekeliling 4/2020 was temporary (Apr-Sep 2020 contributions) and is cited in the comment; update test/borang-8a.test.ts whose pin is wrong. Status B/H/M derived in localization/my/borang-8a.ts (B join in month, H termination in month not death, M termination_type death); S and T stay as the st_ override. Retire (do not delete) the "publishes no blank form" keys and remove the comment claims in lib/borang-8a.ts, reports.ts and statutory-forms/page.tsx; grep computed keys first. Redraw to agency boxes measured from PERKESO's 8A PDF (A4). Fidelity stays agency-layout; the only-one-official guard is untouched by this item. Do not reproduce page 2 guidance (2013, RM3,000 ceiling), the OCR form ids or the logo.
+Step 2: lib/borang-8b-pdf.ts (8A geometry, PER. 44D title, rows blank, operator picks the underpaid month); lib/sip-contribution-pdf.ts from the 8A read's eisEmployer + eisEmployee, Kod Majikan = socso_employer_code on every row, Bulan Carum MMYYYY, Total, page totals and n/N. Both leave MY_PLANNED_FORMS and join MY_REPORTS at their shelfOrder; keys in all 6 locales. SIP 2 / 2A stay in MY_PLANNED_FORMS.
+The SIP sample attachment holds real ICs and names: never commit it or any crop of it.
+No migration.
+Tests: page totals reconcile to the sum of runs at 1, 2 and 3 sheets; 20 rows per sheet; bonus-only refusal; Select All produces the same bytes as no selection; status derivation including a death fixture; due date across a year end; non-vacuity by reverting each fix in a copy; any source-slice guard asserts its slice was found and is long.
+Render check: drive the kernel (db:seed has no payslips) on a fixture month with 25+ employees, a regular and a bonus run, a joiner and a leaver; rasterise and compare with PERKESO's 8A and 8B pages.

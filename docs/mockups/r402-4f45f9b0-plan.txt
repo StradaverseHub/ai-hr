@@ -1,0 +1,55 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+A CORRECTION WE OWE YOU
+
+When we built payroll cycle selection for Payment Submission, our plan told you that picking a single cycle "will often show a smaller, more correct wage figure than picking All". That was wrong, and we are withdrawing it. Picking All gives the correct monthly wage, and picking only some cycles gives the wage for just those cycles. Neither choice is more correct than the other; they answer different questions.
+
+ONE THING FIRST
+
+The two sample files your request mentions - "KWSP 6 - Borang A Sample" and "KWSP BBCD Sample" - did not arrive with this request: nothing is attached to it. This plan therefore follows the KWSP 6 sample you sent us in August for Borang A, and leaves Borang BBCB out until its sample arrives (more below).
+
+THE SITUATION TODAY
+
+Under Payroll > Statutory Forms > EPF (KWSP), Borang A asks for Company, Year and Month, then takes you through a figures screen and a review screen before you can download. There is no way to choose which payroll cycles go into the form, and you cannot see the drawn form itself until you have downloaded it. The printed Borang A carries the right figures, but its layout still differs from the KWSP 6 sample in several places: the member table has no ruled lines, the "brought forward / carried forward" rows only appear on longer forms, and the payment and signature areas are arranged differently.
+
+WHAT WE'LL CHANGE
+
+- Open Form on Borang A will ask for Company, Year, Month and Payroll Cycle. The cycle list shows only the processed cycles for that company and month. You can tick one, several, or Select All.
+
+- Continue checks your choice. If there are no processed EPF contributions for it, you stay on the same screen with a clear message, and no empty form is produced.
+
+- Preview then shows the actual Borang A inside the system, across the full width of the screen and at its true proportions, in the same full-screen viewer we are building for EA and PCB 2(II).
+
+- The check for anyone missing an EPF member number stays beside the preview, exactly as it works today.
+
+- Download gives you the very same form you previewed, built from the same cycles you picked. The text copy and the i-Akaun upload file follow your cycle choice too.
+
+- Borang A is redrawn to follow the KWSP 6 sample box by box: the ruled member table, the brought-forward and carried-forward rows on every sheet, the employer name and address labels in the left margin, the two payment ticks with the cheque / EFT / TT line, and the signature, employer stamp and collection-agent boxes where the sample puts them.
+
+- Every figure on the form still comes from processed payroll. Anything payroll does not hold - the Borang A reference number, the payment method and cheque number, the signature, the date and the stamps - is left blank for you to fill in by hand, as on the sample.
+
+WHAT YOU'LL GET
+
+One clear path for Borang A - choose, continue, look, download - with the payroll cycles you pick really deciding what is on the form, and a printed form laid out like KWSP 6.
+
+GOOD TO KNOW
+
+- We're not touching how EPF is calculated. The amounts on the form are the ones payroll processing already worked out.
+
+- If you pick only a bonus cycle, the wage column shows the bonus wage for that cycle, not the month's salary - this already works correctly today and stays that way.
+
+- If your new Borang A sample differs from the August one, attach it when you reply and we will follow it instead.
+
+- Borang BBCB is not part of this plan. Its sample did not arrive, and we could not find a form by that name (or "BBCD") on KWSP's published lists, so we cannot tell which form it is. It stays on the EPF shelf marked "not built yet". Please send it as a new request with the sample attached and we will plan it straight away.
+
+- The form is still our drawing of the KWSP 6 layout, not KWSP's own printed artwork (KWSP does not publish a blank one), so the small note at the foot of the form saying so stays.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: 4f45f9b0 has 0 attachments (production feedback_attachment). The August specimen is "EPF Borang A.pdf" on 9c8dad7a/d21e667e/cc9f9420 (a vendor rendering; fidelity stays agency-layout). EPF shelf: my.epf, my.borang-a (reports.ts:2203, generate borangAReport, localization/my/borang-a.ts:149), epf.borang-bbcb planned (reports.ts:2592). Flow today: open (Company/Year/Month) → [formId] → /payroll/borang-a/preview (HTML review; PDF/text/file routes, pdf attachment-only). One loader: loadBorangA (app/payroll/borang-a/shared.ts) via reportPreview. "Cycle" = payroll_batch.run_seq (NOT NULL, unique per period); label = payroll_cycle name via payslipCycleLabel; selection as repeated run= params (absent = all). r373 built listFilableRunsForPeriod, GET /payroll/payment-submission/runs, the RunPicker, borangAReport params.runSeqs with scopedMonthWagesFrom stream decomposition (do not just filter the query). DEFECT to fix: preview/page.tsx:319-323 download forms drop run= (filtered review → whole-month PDF/text/file).
+
+Part A (workflow): criteria.ts 'cycles' criterion declared only by reports whose generator honours runSeqs (my.borang-a now; my.borang-8a and my.cp39 later — build it generically); RunPicker moved to components/ with a shared namespace (all-ticked submits no run params); Continue gate server-side (zero filable runs or a selection with no EPF payslip → back to open with an error; reuse loadBorangA outcomes no-batch/selection-empty/invalid); a preview disposition of the same PDF bytes shown in the f3cf2444 viewer, review table and readiness list kept; run values carried as hidden inputs into all three downloads. Part B (redraw, lib/borang-a-pdf.ts): ruled grid, carry rows always drawn (empty, never 0.00), left-margin labels, two-tick payment band, signature/stamp positions; drop the extra "Bulan Upah" line (payroll month stays in the footer line); re-measure BORANG_A_SHEET_GEOMETRY and borangASheetRowCapacity and keep ROWS_PER_PAGE <= capacity; N K always empty; CATATAN/PERINGATAN unchanged. Part C (BBCB) BLOCKED — no sample, identity UNKNOWN; no code.
+
+Depends on f3cf2444's viewer (sequence it first). STATUTORY: every printed figure from processed payroll; absent sources blank, never 0.00. Tests: totals with cycles ticked equal the sum of selected runs to the sen against payslip statutory EPF; bonus-only wage = bonus increment (r373 case via the new door); empty selection refused with no PDF bytes; all ticked → no run params and PDF byte-identical to unfiltered; layout raster check of ruled lines and carry rows on a one-page form (assert slices found and long); downloads honour the selection (non-vacuity: drop the hidden run inputs in a copy). Render check by driving the kernel (db:seed has no payslips): regular + bonus run for one company-month with EPF employer no., address and signatory; render all cycles / regular only / bonus only, rasterise and look; fixture ends with process.exit(0). New pages need SCREENS routes. No migration.

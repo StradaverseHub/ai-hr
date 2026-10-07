@@ -1,0 +1,61 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+FIRST, A CORRECTION
+
+The system labels CP22A "tax clearance on cessation". That label is ours, and it is wrong. On LHDN's own forms, CP22A is the notice a private-sector employer sends when someone stops working. CP22B is the same notice for government agencies only ("Agensi Kerajaan" is printed in its title). So CP22B is not a tax-clearance form, and a private company never files it. We will fix the label and build CP22A properly.
+
+THE SITUATION TODAY
+
+CP39 is already drawn to LHDN's CP39 layout, the same layout as your sample. CP22 is filled in on LHDN's own page. Form E / CP8D has a figures screen. But each one opens differently, there is no payroll cycle choice, and CP21 and CP22A are not built. We also found two faults on CP39: the employer number can print "E" twice, and identity card numbers print with dashes where LHDN's own instructions write digits only.
+
+WHAT WE'LL CHANGE
+
+- Monthly form (CP39): Open Form, choose Company, Year, Month and Payroll Cycle, press Continue, see the full form, then download it. This is the same path as EA, Borang A and Borang 8A. Select All is ticked when the screen opens.
+
+- Yearly form (Form E / CP8D): choose Company and Year only, then preview and download. A month or a cycle means nothing on a yearly return, so they are not asked for.
+
+- Forms about one person (CP22 for a new employee, CP22A for someone leaving, CP21 for someone leaving Malaysia): choose the Company, then pick the employee from a list of people who recently joined or are about to leave, with a name search, then preview and download. CP21 lists all current staff, because the system does not know who is leaving the country.
+
+- If there is nothing to report, you stay on the selection screen with a clear message, and no blank form is produced.
+
+- CP39: the employer number prints once, and identity card numbers print as digits only, as LHDN's instructions show.
+
+- New: CP22A, filled in on LHDN's own 2023 form. It covers resignation, retirement and death, and fills in the year's pay so far, tax deducted, zakat and EPF from processed payroll.
+
+- New: CP21, filled in on LHDN's own 2025 form. You type the departure details, and the rest comes from the staff and payroll records.
+
+- The preview shows the actual PDF across the full width of the screen at its true shape. The download is the very same file.
+
+WHAT YOU'LL GET
+
+All LHDN forms open the same way. Each one asks only for what that form needs, and you always see the exact document before you download it.
+
+GOOD TO KNOW
+
+- We will deliver this in three steps under this one approval. First the new path, the CP39 fixes and the corrected label. Then CP22A. Then CP21.
+
+- CP22B will not be built, because it is only for government agencies. If one of your companies is a government agency, raise a new request saying which one.
+
+- CP39A will not be built yet. We could not find LHDN's current CP39A form, and it is not on LHDN's form download page. Please send the official CP39A as a new request and we will plan it on its own.
+
+- Your CP39 sample is a print from another payroll system, of the same LHDN layout we already use. We follow LHDN's form, not that system's page breaks, so our sheets hold 26 people where the sample holds 21.
+
+- On CP22A, the pay so far covers only the payrolls already processed. The form is due 30 days before the last day of work, usually before the final pay is run, so the period printed ends at the last processed payroll, not the last day of work.
+
+- Some boxes stay blank because the records do not hold them: the departure details and place of birth on CP21, the retirement type, the separation scheme and the legal representative on CP22A, the children's relief amount, and pay types the system does not keep separately (such as gratuity and benefits in kind). They print empty, never as 0.00, and the screen names each one before you download.
+
+- No PCB, MTD, EPF, SOCSO or payroll calculation changes.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Depends on f3cf2444's shared viewer and the 'cycles' criterion (shared with 4f45f9b0 and e74af58c).
+Step 1: CP39 joins the cycles workflow (it already filters by runSeqs, r372). my.cp8d preview with year only. CP39 fixes in lib/cp39-form.ts cp39FormFrom, not in the read: strip a leading E/e and whitespace from lhdn_employer_no (6 of 9 on production carry it), pinned on cover and every sheet by counting E tokens in rendered text; a digits-only IC on the form, formatMyIc stays for screens. Tax number printed as stored. Retire planned_lhdn_cp22a and its hint (wrong "tax clearance" wording), add new keys in 6 locales; grep computed keys first. CP22B recorded as government-agency, not applicable; CP39A stays in MY_PLANNED_FORMS.
+Event selection: generalise the complianceWorklist window (hires last 60 days; cessations 60 days back to 90 ahead) with a name search; CP22 moves onto it unchanged in output.
+Step 2, CP22A: copy LHDN's cp22a Pin.1/2023 PDF to public/forms (US Letter 612x792; keep its own page size). Field map in the lib/cp22-fields.ts pattern with an UNFILLABLE list and reasons. Section B from the EA engine (eaStatement / ea-routing) limited to payslips with pay_period up to the cessation month; hingga = end of last processed period; unmapped items blank, not 0.00. D2/D3/D4 = sums of statutory.pcb / zakat / epfEmployee. A13b blank (MTD vs annual child schedules differ; do not quote a figure). A2 mapping: retired Bersara, death Meninggal dunia, else Berhenti kerja. Routes /payroll/cp22a/[employmentId]/{preview,pdf} following app/payroll/cp22. Fidelity official: change the only-one-official guard in test/statutory-forms-page.test.ts and the reports.ts comment deliberately into a whitelist of forms drawn on agency artwork.
+Step 3, CP21 Pin.1/2025 (A4, 2 pages) the same way; departure fields typed and carried in the query string like lib/cp22-review.ts; nothing stored.
+The CP39 sample attachment holds real names and ICs: never commit it.
+No migration in any step.
+Tests: YTD sums on a fixture with two years and a mid-year leaver; death / retirement / resign mapping; blank-not-zero on unmapped items; page count; every prefilled false field empty in output; single E; digits-only IC; non-vacuity by reverting each fix in a copy.
+Render check: drive the kernel (db:seed has no payslips); rasterise and compare with LHDN's CP22A and CP21 pages.

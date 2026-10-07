@@ -1,0 +1,43 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+On Payroll > Statutory Forms, the EA form and the PCB 2(II) form each appear twice - once for English and once for Bahasa Malaysia - so the Income Tax shelf shows four cards for two forms. The EA cards also carry a "Blank form and field register" button that you no longer need. When you open a form, the first step sits in a narrow box in the middle of the screen, and Preview opens the form in a separate browser tab instead of inside the system.
+
+WHAT WE'LL CHANGE
+
+- Form C.P.8A (EA) becomes one card, and PCB 2(II) becomes one card, each with a single Open Form button.
+
+- After Open Form, the first step asks for Company, Year and a new Version choice: English or Bahasa Malaysia. English is picked to start with.
+
+- The Version you pick opens the existing form in that language - the same English and Bahasa Malaysia forms you use today, unchanged.
+
+- The "Blank form and field register" button is removed from the EA card, with nothing put in its place. The EA forms themselves and everything they use stay exactly as they are.
+
+- Preview now opens the form inside the system, across the full width of the screen, with the form name and the Version choice along the top so you can switch language without starting again. The form is scaled to fit the width, never stretched, so its proportions, borders and margins stay correct.
+
+- The first step (Company, Year, Version) also uses the full screen width instead of a narrow box.
+
+WHAT YOU'LL GET
+
+Two cards instead of four on the Income Tax shelf, one obvious way into each form, and a larger, clearer view of the form before you download it.
+
+GOOD TO KNOW
+
+- We're not touching how anything is calculated, what data goes into the forms, the Selected Date, the authorised signatory, numbering, the PDF or the Download button. Only the list, the version choice and how the form is shown on screen change.
+
+- Links you may have bookmarked to the old English or Bahasa Malaysia cards still work: they open the merged form with that language already chosen.
+
+- On some phones and tablets a browser shows only the first page of a form inside a page, so the viewer also offers an "Open in new tab" link.
+
+- If you would rather keep Preview opening in its own browser tab as it does today, and only want the cards merged, reject this plan and say so.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: catalogue localization/my/reports.ts — my.ea.en (2342-2362), my.ea.ms (2364-2384), my.pcb2ii.en (2405-2418), my.pcb2ii.ms (2420-2433); EA entries carry secondaryHref /payroll/ea/blank, tertiaryHref /payroll/ea/field-register, extrasLabelKey link_ea_more ("Blank form and field register"). Flow: card → app/payroll/statutory-forms/open/page.tsx (max-w-3xl, criteria.ts parseDestination) → ea/page.tsx or pcb2ii/page.tsx (entry matched by href prefix + lang) → picker; Preview opens a new tab (employee-picker.tsx formTarget _blank; ea/shared.ts inline). next.config.ts CSP frame-ancestors 'self', object-src 'none' → a same-origin iframe is allowed, embed/object are not. statutory_report holds no my.ea/my.pcb2ii rows.
+
+Catalogue: one my.ea and one my.pcb2ii with href ...&lang={lang}; shelfOrder 3 and 5; drop secondary/tertiary/extrasLabelKey from EA. KEEP the /payroll/ea/blank and /payroll/ea/field-register routes and lib/ea-field-register.ts as unlinked endpoints (reporter: do not remove underlying data). criteria.ts: CriterionKind 'version' for {lang}, options declared on the entry (versions: [{value:'en'},{value:'ms'}]) with a test that every {lang} entry declares them; open/page.tsx renders it and goes full width. Old ids (open?form=my.ea.en etc.) redirect to the merged id with that version preselected; no lang → en, never the viewer's UI language. Viewer: components/statutory-pdf-viewer.tsx, header (form name, Version select re-submitting with the other lang, Download, Back), body an iframe of the EXISTING inline preview route at A4 aspect, plus an Open in new tab link; the picker's Preview targets the viewer instead of _blank. Built here first; the EPF/SOCSO/LHDN items reuse it. Messages: link_ea, link_pcb2ii, new hint/descriptions/version labels in six locales; RETIRE link_ea_en/ms, link_pcb2ii_en/ms, link_ea_hint, desc_ea_en/ms, desc_pcb2ii_en/ms, link_ea_more, the link_ea_blank and link_ea_register keys (grep computed keys). Prose sweep: reports.ts:2280-2440, statutory-forms/page.tsx:400-440, [formId]/page.tsx:56, lib/ea-pdf.ts:29/317. New page.tsx needs a SCREENS route in the existing payroll column of lib/permissions.ts.
+
+Tests: update (do not delete) test/statutory-forms-page.test.ts (173-176, 618-624, 656, 716-770, 776, 787, 898, 927-930, 1189) and test/statutory-forms-criteria-858a1128.test.ts (234, 251, 266-269) — this deliberately reverses r220/r242 (record it). New: one EA and one PCB 2(II) card on the lhdn shelf; merged EA card renders no blank/register link; open?form=my.ea&lang=ms carries lang=ms to picker and preview; old ids redirect with the right version; the viewer iframe src equals the existing preview route + params. Non-vacuity: revert the catalogue in a copy and watch the shelf test fail. Render check needs payslips (db:seed has none): drive the kernel through packs/payroll/service; render the viewer in both versions and look. No migration.
