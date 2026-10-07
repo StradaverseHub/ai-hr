@@ -24,7 +24,8 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { checkIn, checkOut } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
+import { ClaimOverlapError } from '../core/credit-ot-overlap';
 import { assignDefaultShift, assignShift, createShift, setRestDay } from '../core/roster';
 import { createBatch } from '../core/payroll';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -286,6 +287,38 @@ describe('r406 · HR refusals — each writes nothing', () => {
     const ok = await grantLeaveCreditRows(ctx, { employmentId: e.employmentId, rows: [rows[0]], reason: 'Cover', today: TODAY });
     expect(ok.overtimeSuppressedMinutes).toBe(0);
     expect(await accruals(e.employmentId)).toHaveLength(1);
+  });
+
+  it('⚠️ a PENDING overtime claim or Leave Credit request on the date refuses the grant (verify D1/D3)', async () => {
+    await setToilPolicy(adminCtx(b), policy());
+    const e = await hire();
+    const asEmployee: SessionContext = { ...ctx, personId: e.personId };
+    // A pending overtime claim is not in attendance yet: no per-row warning, no payroll check — refused.
+    await requestAttendanceCorrection(asEmployee, { employmentId: e.employmentId, date: OFF_DAY, requestedOtMinutes: 120, reason: 'Stayed late' });
+    const ot = await refusal(grantLeaveCreditRows(ctx, { employmentId: e.employmentId, rows: [ROWS[1]], reason: 'Cover', today: TODAY }));
+    expect(ot).toBeInstanceOf(ClaimOverlapError);
+    expect(ot!.message).toContain(OFF_DAY);
+    // A pending Leave Credit request of the employee's own — its approval would fail on the double-bank guard.
+    await submitLeaveCreditRequest(ctx, { employmentId: e.employmentId, rows: [ROWS[0]], reason: 'Mine', today: TODAY });
+    const own = await refusal(grantLeaveCreditRows(ctx, { employmentId: e.employmentId, rows: [ROWS[0]], reason: 'Cover', today: TODAY }));
+    expect(own).toBeInstanceOf(ClaimOverlapError);
+    expect(own!.message).toContain(REST_DAY);
+    expect(await accruals(e.employmentId)).toHaveLength(0);
+    // CONTROL — a date with neither goes through.
+    const ok = await grantLeaveCreditRows(ctx, { employmentId: e.employmentId, rows: [{ workedDate: QUIET_REST_DAY, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' }], reason: 'Cover', today: TODAY });
+    expect(ok.totalDays).toBe(1);
+  });
+
+  it('⚠️ after an HR credit, overtime can no longer be claimed for that date (it would be approved and never paid)', async () => {
+    await setToilPolicy(adminCtx(b), policy());
+    const e = await hire();
+    const asEmployee: SessionContext = { ...ctx, personId: e.personId };
+    await grantLeaveCreditRows(ctx, { employmentId: e.employmentId, rows: [ROWS[1]], reason: 'Cover', today: TODAY });
+    const err = await refusal(requestAttendanceCorrection(asEmployee, { employmentId: e.employmentId, date: OFF_DAY, requestedOtMinutes: 120, reason: 'Stayed late' }));
+    expect(err).toBeInstanceOf(ClaimOverlapError);
+    expect(err!.message).toMatch(/already credited/);
+    // CONTROL — another date is still claimable.
+    await expect(requestAttendanceCorrection(asEmployee, { employmentId: e.employmentId, date: QUIET_REST_DAY, requestedOtMinutes: 120, reason: 'Stayed late' })).resolves.toBeDefined();
   });
 
   it('duplicate — a date already credited, and a date posted twice', async () => {

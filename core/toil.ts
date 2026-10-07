@@ -55,7 +55,7 @@ import { isAdmin } from '../lib/authz';
 // r406 952129bb — HR's row-grant: the roster adjudication (pure) and the approved-overtime read the employee's
 // form already shows. Neither module imports this file, so both are static.
 import { adjudicateDayTypes, isLeaveCreditDayType } from '../lib/leave-credit-day-type';
-import { approvedOvertimeForDateTx, type ApprovedOvertimeOnDate } from './credit-ot-overlap';
+import { approvedOvertimeForDateTx, assertNoPendingClaimForGrantTx, type ApprovedOvertimeOnDate } from './credit-ot-overlap';
 import type { ExtendedHoursTiers } from '../lib/extended-hours';
 import type { LeaveCreditRowInput } from './leave-credit-request';
 
@@ -2627,6 +2627,9 @@ export async function grantLeaveCreditRows(
     if (already.length > 0) {
       throw new LeaveCreditError(`This employee already has a Leave Credit for ${already.map((a) => a.workedDate).join(', ')}.`);
     }
+
+    // ⚠️ MONEY (r406 verify D1/D3) — a pending overtime claim or pending Leave Credit request on these dates.
+    await assertNoPendingClaimForGrantTx(tx, p.employmentId, dates);
 
     // ⚠️ MONEY — the overtime each credit will suppress, and the payroll-started refusal, per row.
     const overtimeByDate = new Map<string, number>();
