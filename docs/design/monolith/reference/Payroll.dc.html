@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Payroll</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.navl.off{color:#B8B5AC;cursor:not-allowed}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 22px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .2s}
+.pill:hover{transform:translateY(-1px);color:#F2F0EB}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font-size:14px;min-height:40px}
+.sw input{position:absolute;opacity:0;width:1px;height:1px}
+.sw i{width:36px;height:20px;border-radius:999px;border:1px solid #111;position:relative;display:inline-block;transition:background .2s;flex:none}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#111;transition:transform .2s,background .2s}
+.sw input:checked+i{background:#111}
+.sw input:checked+i::after{transform:translateX(16px);background:#F2F0EB}
+.spec{display:grid;grid-template-columns:1fr auto;gap:10px 18px;font-size:14px;align-items:baseline}
+.stage{perspective:1800px;perspective-origin:50% 30%;flex:0 0 660px;height:640px;position:relative;display:flex;align-items:center;justify-content:center}
+.spot{position:absolute;left:50%;top:50%;width:820px;height:820px;margin:-410px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none}
+.plates{position:relative;width:400px;height:250px;transform-style:preserve-3d;animation:bob 6s ease-in-out infinite alternate}
+@keyframes bob{to{transform:translateZ(18px)}}
+.plate{position:absolute;inset:0;border-radius:8px;background:linear-gradient(135deg,#2c2c2c,#0b0b0b 55%,#1a1a1a);box-shadow:0 10px 0 #000,0 70px 80px -26px rgba(17,17,17,.7);overflow:hidden;animation:drop .6s cubic-bezier(.2,.8,.2,1) both}
+@keyframes drop{from{transform:translateZ(120px);opacity:0}}
+.plate::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 47%,transparent 60%);background-size:260% 100%;animation:sheen 7s ease-in-out infinite}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.plate.top::before{content:"";position:absolute;left:34px;right:34px;top:42px;height:3px;background:#FF4D00;box-shadow:0 0 12px #FF4D00,0 0 36px rgba(255,77,0,.6)}
+.shadow{position:absolute;left:50%;bottom:70px;width:560px;height:100px;margin-left:-240px;border-radius:50%;background:rgba(17,17,17,.36);filter:blur(26px);transform:skewX(-24deg)}
+.step{display:flex;align-items:center;gap:16px;min-height:44px;border-top:1px solid #D9D6CF;font-size:15px}
+.step .n{font:400 11px 'DM Mono',monospace;letter-spacing:.12em;color:#63625D;width:28px}
+.step.done .n{color:#111}.step.on .n{color:#C23A00}
+.step.wait{color:#9A988F}
+.cell{display:flex;flex-direction:column;gap:8px;padding:20px 20px 22px 20px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.row{display:grid;grid-template-columns:36px 1.3fr 1fr 150px 160px;gap:16px;align-items:center;min-height:54px;border-top:1px solid #D9D6CF;text-decoration:none;color:#111;position:relative;transition:background .2s;background:transparent;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font-family:inherit;width:100%;padding:0 2px;font-size:15px}
+.row:hover{background:#ECE9E2}
+.row::before{content:"";position:absolute;left:-18px;top:0;bottom:0;width:3px;background:#FF4D00;opacity:0;transition:opacity .2s}
+.row:hover::before{opacity:1}
+.list{padding-left:18px;margin-left:-18px;border-bottom:1px solid #D9D6CF}
+.ruler{position:relative;height:84px;border-top:1px solid #111;display:flex}
+.tick{flex:1;position:relative;border:0;background:transparent;cursor:pointer;color:#63625D;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;padding:14px 0 0;text-align:left;text-transform:uppercase;line-height:1.7}
+.tick::before{content:"";position:absolute;left:0;top:0;width:1px;height:10px;background:#111}
+.tick:hover{color:#111}.tick.past{color:#111}
+.tick.on{color:#C23A00}.tick.on::before{width:2px;height:24px;background:#FF4D00;box-shadow:0 0 10px rgba(255,77,0,.6)}
+.stage{cursor:grab;touch-action:none;user-select:none}.stage.dragging,.stage.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1360px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 30px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl on" href="Payroll.dc.html">Payroll</a><a class="navl" href="People.dc.html">People</a><a class="navl" href="Leave.dc.html">Leave</a><a class="navl" href="Attendance.dc.html">Time</a><a class="navl" href="Claims.dc.html">Claims</a><a class="navl" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <span class="mono mid" style="margin-left: auto">Payroll / Process / Run 2026-10</span>
+    </header>
+
+    <section style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; min-height: 660px">
+      <div class="rv" style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px; animation-delay: .1s">
+        <span class="mono mid">Nusantara Sdn Bhd · Monthly · pay date 25 Oct</span>
+        <h1 style="margin: 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em">{{sel.long}}.</h1>
+        <div style="display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline">
+          <span class="mono" style="color: {{sel.color}}">{{sel.status}}</span>
+          <span class="mono mid">{{sel.heads}} payslips</span>
+          <sc-if value="{{sel.isDraft}}" hint-placeholder-val="{{ true }}"><span class="mono or">2 blocking · 3 review</span></sc-if>
+        </div>
+        <sc-if value="{{isIdle}}" hint-placeholder-val="{{ false }}">
+          <p class="mid" style="margin: 0; font-size: 17px; line-height: 1.5; max-width: 520px">Nothing is computed yet. Generating a draft changes no live figure: review, resolve the exceptions, approve, then release.</p>
+          <div style="display: flex; gap: 22px; align-items: center"><button class="pill" type="button" onClick="{{generate}}">Generate the run <span aria-hidden="true">→</span></button><a class="txt" href="#guide">Workflow guide</a></div>
+        </sc-if>
+        <sc-if value="{{isGen}}" hint-placeholder-val="{{ false }}">
+          <div style="max-width: 520px; border-bottom: 1px solid #D9D6CF">
+            <sc-for list="{{steps}}" as="s" hint-placeholder-count="5"><div class="step {{s.cls}}"><span class="n">{{s.n}}</span><span>{{s.text}}</span><span class="mono" style="margin-left: auto; color: {{s.markColor}}">{{s.mark}}</span></div></sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{isDone}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; gap: 40px; flex-wrap: wrap; align-items: flex-end">
+            <div><span class="mono mid">Net pay</span><div class="num" style="font-size: 56px; font-weight: 500; letter-spacing: -.04em; line-height: 1; margin-top: 6px">{{sel.net}}</div></div>
+            <div><span class="mono mid">Gross</span><div class="num" style="font-size: 20px; margin-top: 6px">{{sel.gross}}</div></div>
+            <div><span class="mono mid">Employer cost</span><div class="num" style="font-size: 20px; margin-top: 6px">{{sel.cost}}</div></div>
+            <div><span class="mono mid">PCB · EPF · SOCSO/EIS</span><div class="num" style="font-size: 20px; margin-top: 6px">{{sel.stat}}</div></div>
+          </div>
+          <div style="display: flex; gap: 22px; align-items: center; flex-wrap: wrap">
+            <sc-if value="{{sel.isDraft}}" hint-placeholder-val="{{ true }}"><a class="pill" href="#approve">Continue to approve <span aria-hidden="true">→</span></a><button class="txt" type="button">Check this run</button><button class="txt" type="button" onClick="{{reset}}">Discard draft</button></sc-if>
+            <sc-if value="{{sel.isReleased}}" hint-placeholder-val="{{ false }}"><a class="pill" href="Compliance.dc.html">Statutory files <span aria-hidden="true">→</span></a><button class="txt" type="button">Bank file</button><button class="txt" type="button">Reprocess selected</button></sc-if>
+          </div>
+        </sc-if>
+      </div>
+      <div class="stage rv {{stageCls}}" aria-hidden="true" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}" style="animation-delay: .2s">
+        <span class="spot"></span><span class="shadow"></span>
+        <div class="cam {{dragCls}}" style="position: relative; transform-style: preserve-3d; transform: rotateX({{rx}}deg) rotateZ({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<div class="plates">
+          <sc-for list="{{plates}}" as="p" hint-placeholder-count="3"><div class="plate {{p.cls}}" style="transform: translateZ({{p.z}}px)"></div></sc-for>
+        </div>
+</div>
+      </div>
+    </section>
+
+    <section class="rv" style="animation-delay: .3s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">What should payroll do</span>
+        <input type="text" value="Generate the October Monthly run for Nusantara Sdn Bhd">
+        <button class="txt" type="button" onClick="{{generate}}" style="min-height: 40px; border-bottom: 0">{{goLabel}} ↵</button>
+      </label>
+    </section>
+
+    <section class="rv" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; animation-delay: .4s">
+      <div class="cell"><span class="mono mid">01 · Period</span><div class="spec"><span class="mid">Company</span><span>Nusantara Sdn Bhd</span><span class="mid">Month</span><span class="num">2026-10</span><span class="mid">Cycle</span><span>Monthly</span><span class="mid">Pay date</span><span class="num">25 Oct 2026</span></div><span class="mono mid" style="margin-top: 6px">Bonus · Off-cycle · Mid-month <span style="color: #B8B5AC">off for this tenant</span></span></div>
+      <div class="cell"><span class="mono mid">02 · Employees</span><div style="font-size: 44px; font-weight: 500; letter-spacing: -.04em; line-height: 1">251</div><div class="spec"><span class="mid">Joiners</span><span class="num">3</span><span class="mid">Left mid-month</span><span class="num">2</span><span class="mid">Scope</span><span>All departments</span></div><span class="mid" style="font-size: 13px; line-height: 1.45">Leavers stay in so final pay is not skipped.</span></div>
+      <div class="cell"><span class="mono mid">03 · Consolidate</span><label class="sw">Attendance and overtime<input type="checkbox" checked><i></i></label><label class="sw">Approved leave<input type="checkbox" checked><i></i></label><label class="sw">Approved claims<input type="checkbox" checked><i></i></label><label class="sw">Loan instalments<input type="checkbox" checked><i></i></label><label class="sw">Prorate joiners and leavers<input type="checkbox" checked><i></i></label></div>
+      <div class="cell"><span class="mono mid">04 · Exceptions</span><div style="font-size: 44px; font-weight: 500; letter-spacing: -.04em; line-height: 1; color: #C23A00">2<span class="mid" style="font-size: 20px; letter-spacing: 0; margin-left: 10px">blocking</span></div><div style="font-size: 14px; line-height: 1.5"><span style="font-weight: 500">Daniel Lim</span> · no active compensation record, no payslip until one is effective-dated.<br><span style="font-weight: 500">Nurul Izzati</span> · EPF member number missing; Borang A would be rejected.</div><a class="txt" href="People.dc.html" style="align-self: flex-start; min-height: 36px; font-size: 14px">Resolve in People</a></div>
+    </section>
+
+    <sc-if value="{{isDone}}" hint-placeholder-val="{{ true }}">
+      <section class="rv" style="animation-delay: .5s">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px; flex-wrap: wrap; gap: 10px">
+          <span class="mono mid">Payslips · {{sel.heads}} generated · showing 12</span>
+          <div class="mono" style="display: flex; gap: 22px"><a class="navl on" href="#all">All</a><a class="navl" href="#ex">Exceptions · 5</a><a class="navl" href="#join">Joiners · 3</a><a class="navl" href="#leave">Leavers · 2</a><a class="navl" href="#chg">Changed vs Sep</a></div>
+        </div>
+        <div class="list">
+          <sc-for list="{{slips}}" as="p" hint-placeholder-count="12">
+            <button class="row" type="button"><span class="mono mid">{{p.n}}</span><span style="font-weight: 500">{{p.name}}</span><span class="mid" style="font-size: 14px">{{p.dept}}</span><span class="num" style="font-size: 14px">{{p.net}}</span><span class="mono" style="color: {{p.color}}">{{p.status}}</span></button>
+          </sc-for>
+        </div>
+      </section>
+    </sc-if>
+
+    <section class="rv" aria-label="Runs this year" style="animation-delay: .6s">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px"><span class="mono mid">Runs · 2026</span><a class="txt" href="#history" style="min-height: 32px; font-size: 14px">History import</a></div>
+      <div class="ruler"><sc-for list="{{runs}}" as="r" hint-placeholder-count="10"><button class="tick {{r.cls}}" type="button" onClick="{{r.pick}}">{{r.short}}<br><span style="letter-spacing: 0; text-transform: none">{{r.netShort}}</span></button></sc-for><span class="tick" style="cursor: default; color: #B8B5AC">Nov</span><span class="tick" style="cursor: default; color: #B8B5AC">Dec</span></div>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .7s">
+      <span>Sys OK</span><span>Run 2026-10 · {{sel.status}}</span><span>251 in scope</span><span>Statutory tables draft</span><span style="margin-left: auto">Figures never animate</span>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1360}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: -30, b0: 58, aMin: null, aMax: null, bMin: 30, bMax: 76, zMin: 0.7, zMax: 1.4 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const runId = st.run || 'oct';
+    const octPhase = st.phase || 'idle';
+    const step = st.step || 0;
+    const fmt = (n) => 'RM ' + n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const short = (n) => (n / 1000000).toFixed(2) + 'M';
+    const raw = [
+      { id: 'jan', short: 'Jan', long: 'January 2026', gross: 1548200, net: 1239880, status: 'Released', heads: 238 },
+      { id: 'feb', short: 'Feb', long: 'February 2026', gross: 1551900, net: 1242840, status: 'Released', heads: 239 },
+      { id: 'mar', short: 'Mar', long: 'March 2026', gross: 1560300, net: 1249580, status: 'Released', heads: 240 },
+      { id: 'apr', short: 'Apr', long: 'April 2026', gross: 1571800, net: 1258790, status: 'Released', heads: 242 },
+      { id: 'may', short: 'May', long: 'May 2026', gross: 1575400, net: 1261670, status: 'Released', heads: 242 },
+      { id: 'jun', short: 'Jun', long: 'June 2026', gross: 1580100, net: 1265430, status: 'Released', heads: 244 },
+      { id: 'jul', short: 'Jul', long: 'July 2026', gross: 1588600, net: 1272240, status: 'Released', heads: 245 },
+      { id: 'aug', short: 'Aug', long: 'August 2026', gross: 1596200, net: 1278330, status: 'Released', heads: 247 },
+      { id: 'sep', short: 'Sep', long: 'September 2026', gross: 1603900, net: 1284530, status: 'Released', heads: 248 },
+      { id: 'oct', short: 'Oct', long: 'October 2026', gross: 1612480, net: 1275330, status: octPhase === 'done' ? 'Draft' : 'Not generated', heads: 251 }
+    ];
+    const runs = raw.map((r, i) => ({ ...r, netShort: short(r.net), cls: r.id === runId ? 'on' : (i < 9 ? 'past' : ''), pick: () => this.setState({ run: r.id }) }));
+    const m = runs.find((r) => r.id === runId) || runs[9];
+    const isOct = runId === 'oct';
+    const phase = isOct ? octPhase : 'done';
+    const epfEe = m.gross * 0.11, socsoEe = m.gross * 0.005, eisEe = m.gross * 0.002, zakat = 4200;
+    const pcb = m.gross - m.net - epfEe - socsoEe - eisEe - zakat;
+    const epfEr = m.gross * 0.125, socsoEr = m.gross * 0.0175, eisEr = m.gross * 0.002, hrdf = m.gross * 0.01;
+    const sel = { long: m.long, status: m.status, heads: m.heads, color: m.status === 'Released' ? '#111' : (m.status === 'Draft' ? '#C23A00' : '#63625D'), isDraft: m.status !== 'Released', isReleased: m.status === 'Released', net: fmt(m.net), gross: fmt(m.gross), cost: fmt(m.gross + epfEr + socsoEr + eisEr + hrdf), stat: short(pcb) + ' · ' + short(epfEe + epfEr) + ' · ' + short(socsoEe + socsoEr + eisEe + eisEr) };
+    const texts = ['Consolidating attendance, leave, claims and loans', 'Applying EPF, SOCSO and EIS tables', 'Computing PCB with prior-month accumulators', 'Prorating 3 joiners and 2 leavers', 'Checking exceptions'];
+    const steps = texts.map((t, i) => ({ n: '0' + (i + 1), text: t, cls: i < step ? 'done' : (i === step ? 'on' : 'wait'), mark: i < step ? 'Done' : (i === step ? 'Running' : ''), markColor: i < step ? '#111' : '#C23A00' }));
+    const plateCount = phase === 'idle' ? 1 : (phase === 'gen' ? Math.min(step + 2, 6) : 6);
+    const plates = [];
+    for (let i = 0; i < plateCount; i++) plates.push({ z: i * 30, cls: i === plateCount - 1 ? 'top' : '' });
+    const generate = () => {
+      if (!isOct || octPhase === 'gen') return;
+      this.setState({ phase: 'gen', step: 0 });
+      [1, 2, 3, 4].forEach((n) => setTimeout(() => this.setState({ step: n }), n * 650));
+      setTimeout(() => this.setState({ phase: 'done', step: 5 }), 3500);
+    };
+    const slipBase = [
+      { name: 'Priya Nair', dept: 'Finance', net: 11296.9, status: 'Ready' }, { name: 'Marcus Ong', dept: 'Engineering', net: 6958.6, status: 'Joiner' }, { name: 'Wei Jie Tan', dept: 'Operations', net: 7365.05, status: 'Review · OT', warn: true },
+      { name: 'Aisyah Rahman', dept: 'Marketing', net: 6673.05, status: 'Ready' }, { name: 'Kelvin Chong', dept: 'Operations', net: 9840.2, status: 'Ready' }, { name: 'Mei Ling Chua', dept: 'Finance', net: 4412.3, status: 'Ready' },
+      { name: 'Arjun Pillai', dept: 'Sales', net: 3610.4, status: 'Leaver · 18 Oct', warn: true }, { name: 'Raj Kumar', dept: 'Finance', net: 3980.15, status: 'Ready' }, { name: 'Farah Hussin', dept: 'Customer care', net: 2586.6, status: 'Review · net', warn: true },
+      { name: 'Siti Aminah', dept: 'People', net: 4105.7, status: 'Transferred' }, { name: 'Nurul Izzati', dept: 'Retail', net: 0, status: 'Blocked · EPF no.', bad: true }, { name: 'Daniel Lim', dept: 'Logistics', net: 0, status: 'Blocked · no pay record', bad: true }
+    ];
+    const slips = slipBase.map((p, i) => ({ ...p, n: (i + 1 < 10 ? '0' : '') + (i + 1), net: p.net ? fmt(p.net) : '—', color: p.bad ? '#C23A00' : (p.warn ? '#63625D' : '#111') }));
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', isIdle: phase === 'idle', isGen: phase === 'gen', isDone: phase === 'done', goLabel: phase === 'gen' ? 'Generating' : (phase === 'done' && isOct ? 'Regenerate' : 'Generate'), generate, reset: () => this.setState({ phase: 'idle', step: 0 }), sel, steps, plates, slips, runs };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+/* Monolith theme tokens — drop-in for app/globals.css (Tailwind v4, next-themes `.dark`).
+   Keeps every existing token NAME so components/ui restyle without edits; adds Monolith-only tokens.
+   Source of truth: docs/design/monolith/README.md. Design boards: https://claude.ai/artifact/AJgxP9Z821f876RftyHY4c */
+
+:root {
+  /* Ground and ink */
+  --canvas: #ece9e2;            /* pressed — the frame behind the shell */
+  --background: #f2f0eb;        /* bone — the page */
+  --foreground: #111111;        /* ink */
+  --card: #f2f0eb;              /* Monolith has no cards: surfaces are the page, divided by hairlines */
+  --card-foreground: #111111;
+  --popover: #f2f0eb;
+  --popover-foreground: #111111;
+  --sidebar: #f2f0eb;
+  --sidebar-foreground: #63625d;
+  --sidebar-border: #d9d6cf;
+  /* The one accent is ink. Orange is a MARK, never a fill behind text. */
+  --primary: #111111;
+  --primary-foreground: #f2f0eb;
+  --secondary: #ece9e2;         /* pressed */
+  --secondary-foreground: #111111;
+  --muted: #ece9e2;
+  --muted-foreground: #63625d;  /* mid — 5.9:1 on bone */
+  --accent: #ece9e2;            /* hover wash = pressed, never a tint */
+  --accent-foreground: #111111;
+  --destructive: #c23a00;       /* orange text — 5.1:1 on bone */
+  --destructive-foreground: #f2f0eb;
+  --border: #d9d6cf;            /* hairline */
+  --input: #111111;             /* inputs are underlined in ink, not boxed */
+  --ring: #ff4d00;
+  --radius: 0px;                /* Monolith is square. Pills (999px) and the 24px artboard corner are the only rounds. */
+  /* Monolith-only */
+  --ink: #111111;
+  --bone: #f2f0eb;
+  --pressed: #ece9e2;
+  --hairline: #d9d6cf;
+  --mid: #63625d;
+  --faint: #9a988f;             /* placeholders, off states — never for body text */
+  --signal: #ff4d00;            /* the orange mark: 2–3px lines, dots, rings, glows */
+  --signal-text: #c23a00;       /* orange as text, AA on bone */
+  --light: #fbfaf7;             /* the light pool under an object */
+  --shadow-sm: none;
+  --shadow-card: none;
+  --shadow-pop: 0 24px 60px -24px rgb(17 17 17 / 0.35);
+  --shadow-shell: none;
+  --object-shadow: 0 100px 90px -56px rgb(17 17 17 / 0.75);
+  --glow: 0 0 12px #ff4d00, 0 0 36px rgb(255 77 0 / 0.6);
+}
+
+.dark {
+  --canvas: #0a0a0a;
+  --background: #111111;
+  --foreground: #f2f0eb;
+  --card: #111111;
+  --card-foreground: #f2f0eb;
+  --popover: #161616;
+  --popover-foreground: #f2f0eb;
+  --sidebar: #111111;
+  --sidebar-foreground: #9a988f;
+  --sidebar-border: #2a2a2a;
+  --primary: #f2f0eb;
+  --primary-foreground: #111111;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #f2f0eb;
+  --muted: #1a1a1a;
+  --muted-foreground: #a8a69e;
+  --accent: #1a1a1a;
+  --accent-foreground: #f2f0eb;
+  --destructive: #ff6a2b;
+  --destructive-foreground: #111111;
+  --border: #2a2a2a;
+  --input: #f2f0eb;
+  --ring: #ff4d00;
+  --ink: #f2f0eb;
+  --bone: #111111;
+  --pressed: #1a1a1a;
+  --hairline: #2a2a2a;
+  --mid: #a8a69e;
+  --faint: #6b6a66;
+  --signal: #ff4d00;
+  --signal-text: #ff6a2b;
+  --light: #1c1c1c;
+}
+
+/* Add to the existing `@theme inline` block (keep the current color-* lines; these are additions). */
+@theme inline {
+  --font-sans: var(--font-schibsted), 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, monospace;
+  --color-ink: var(--ink);
+  --color-bone: var(--bone);
+  --color-pressed: var(--pressed);
+  --color-hairline: var(--hairline);
+  --color-mid: var(--mid);
+  --color-faint: var(--faint);
+  --color-signal: var(--signal);
+  --color-signal-text: var(--signal-text);
+  --color-light: var(--light);
+  --tracking-mono: 0.12em;
+  --tracking-display: -0.04em;
+}
+
+/* Layer-level rules that are part of the theme, not of any component. */
+@layer base {
+  body { font-feature-settings: 'ss01', 'cv11'; -webkit-font-smoothing: antialiased; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+}

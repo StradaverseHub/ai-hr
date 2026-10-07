@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR People</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 22px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .2s}
+.pill:hover{transform:translateY(-1px);color:#F2F0EB}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.intent input::placeholder{color:#9A988F}
+.pc{display:flex;flex-direction:column;gap:10px;padding:20px 18px 20px;border-left:1px solid #D9D6CF;border-top:1px solid #D9D6CF;background:transparent;color:#111;text-align:left;cursor:pointer;font-family:inherit;transition:background .2s;min-height:190px}
+.pc:hover{background:#ECE9E2}
+.pc.on{background:#111;color:#F2F0EB}
+.pc.on .mid{color:#B8B5AC}
+.ini{width:56px;height:56px;border-radius:50%;background:#111;color:#F2F0EB;display:inline-flex;align-items:center;justify-content:center;font:500 16px 'Schibsted Grotesk',sans-serif;letter-spacing:-.02em}
+.pc.on .ini{background:#F2F0EB;color:#111}
+.stage{position:relative;height:540px;display:flex;align-items:center;justify-content:center;perspective:1500px;overflow:visible}
+.spot{position:absolute;left:50%;top:50%;width:760px;height:760px;margin:-380px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none}
+.orb{position:relative;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle at 34% 28%,#5a5a5a,#111 42%,#000 100%);box-shadow:0 80px 90px -40px rgba(17,17,17,.8),inset -30px -36px 60px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#F2F0EB;font:500 60px 'Schibsted Grotesk',sans-serif;letter-spacing:-.04em;z-index:2;animation:bob 7s ease-in-out infinite alternate}
+@keyframes bob{to{transform:translateY(-12px)}}
+.orb::before{content:"";position:absolute;left:18%;top:10%;width:34%;height:22%;border-radius:50%;background:radial-gradient(ellipse,rgba(255,255,255,.55),transparent 70%)}
+.refl{position:absolute;left:50%;top:412px;width:280px;height:150px;margin-left:-140px;border-radius:0 0 140px 140px;background:radial-gradient(circle at 34% 80%,#4a4a4a,#111 42%,#000 100%);opacity:.16;filter:blur(3px);-webkit-mask:linear-gradient(180deg,#000,transparent 85%);mask:linear-gradient(180deg,#000,transparent 85%);pointer-events:none;z-index:1}
+.ring{position:absolute;left:50%;top:50%;width:460px;height:460px;margin:-230px;border-radius:50%;border:1px solid #111;transform:rotateX(64deg);transform-style:preserve-3d;animation:spin 30s linear infinite}
+@keyframes spin{to{transform:rotateX(64deg) rotateZ(360deg)}}
+.ring .n{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px;transform-style:preserve-3d}
+.ring .n i{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#111;color:#F2F0EB;font:500 13px 'DM Mono',monospace;letter-spacing:.06em;animation:counter 30s linear infinite;font-style:normal;box-shadow:0 20px 30px -14px rgba(17,17,17,.7)}
+@keyframes counter{from{transform:rotate(calc(-1 * var(--a))) rotateX(-64deg)}to{transform:rotate(calc(-1 * var(--a) - 360deg)) rotateX(-64deg)}}
+.shadow{position:absolute;left:50%;bottom:50px;width:440px;height:64px;margin-left:-170px;border-radius:50%;background:rgba(17,17,17,.34);filter:blur(22px);transform:skewX(-26deg)}
+.spec{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;font-size:14px}
+.tl{display:grid;grid-template-columns:70px 1fr;gap:14px;align-items:baseline;padding:9px 0;border-top:1px solid #D9D6CF;font-size:14px}
+.ruler{position:relative;height:72px;border-top:1px solid #111;display:flex}
+.tick{flex:1;position:relative;border:0;background:transparent;cursor:pointer;color:#63625D;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;padding:14px 0 0;text-align:left;text-transform:uppercase}
+.tick::before{content:"";position:absolute;left:0;top:0;width:1px;height:10px;background:#111}
+.tick:hover{color:#111}.tick.past{color:#111}
+.tick.on{color:#C23A00}.tick.on::before{width:2px;height:24px;background:#FF4D00;box-shadow:0 0 10px rgba(255,77,0,.6)}
+.stage{cursor:grab;touch-action:none;user-select:none}.stage.dragging,.stage.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1340px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 30px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl" href="Payroll.dc.html">Payroll</a><a class="navl on" href="People.dc.html">People</a><a class="navl" href="Leave.dc.html">Leave</a><a class="navl" href="Attendance.dc.html">Time</a><a class="navl" href="Claims.dc.html">Claims</a><a class="navl" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <a class="pill" href="#hire" style="margin-left: auto; min-height: 40px; font-size: 14px">New hire <span aria-hidden="true">→</span></a>
+    </header>
+
+    <section class="rv" style="display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 20px; animation-delay: .1s">
+      <div><span class="mono mid">{{count}} · 3 companies · {{asAt}}</span><h1 style="margin: 6px 0 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em">People.</h1></div>
+      <div class="mono" style="display: flex; gap: 22px; flex-wrap: wrap"><sc-for list="{{filters}}" as="f" hint-placeholder-count="5"><button class="navl {{f.cls}}" type="button" onClick="{{f.pick}}">{{f.name}}</button></sc-for><span style="width: 1px; background: #D9D6CF"></span><a class="navl on" href="#gallery">Gallery</a><a class="navl" href="OrgTower.dc.html">Org tower</a><a class="navl" href="Campus.dc.html">Campus</a></div>
+    </section>
+
+    <section class="rv" style="animation-delay: .2s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Find or do something with people</span>
+        <input type="text" placeholder="Everyone joining this month, or: transfer Siti to NH Logistics from 1 Nov">
+        <button class="txt" type="button" style="min-height: 40px; border-bottom: 0; font-size: 20px">↵</button>
+      </label>
+    </section>
+
+    <section class="rv" style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; animation-delay: .3s">
+      <div style="flex: 999 1 640px; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-right: 1px solid #D9D6CF; border-bottom: 1px solid #D9D6CF">
+        <sc-for list="{{people}}" as="p" hint-placeholder-count="8">
+          <button class="pc {{p.cls}}" type="button" onClick="{{p.pick}}">
+            <span style="display: flex; justify-content: space-between; align-items: flex-start"><span class="ini">{{p.ini}}</span><span class="mono mid">{{p.id2}}</span></span>
+            <span style="font-size: 18px; font-weight: 500; letter-spacing: -.02em; line-height: 1.15; margin-top: auto">{{p.name}}</span>
+            <span class="mid" style="font-size: 13px">{{p.title}} · {{p.company}}</span>
+            <span class="mono" style="color: {{p.color}}">{{p.status}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 300px; display: flex; flex-direction: column; gap: 14px; border-top: 1px solid #111; padding-top: 6px">
+        <div class="stage {{stageCls}}" aria-hidden="true" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}">
+          <span class="spot"></span><span class="shadow"></span>
+          <div class="cam {{dragCls}}" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transform-style: preserve-3d; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<div class="ring"><sc-for list="{{sel.reports}}" as="r" hint-placeholder-count="2"><span class="n" style="--a: {{r.a}}deg; transform: rotate({{r.a}}deg) translate(230px)"><i>{{r.ini}}</i></span></sc-for></div>
+          <div class="orb">{{sel.ini}}</div>
+          <span class="refl"></span>
+</div>
+        </div>
+        <div><span class="mono mid">{{sel.id}} · {{sel.type}}</span><div style="font-size: 34px; font-weight: 500; letter-spacing: -.035em; line-height: 1; margin-top: 6px">{{sel.name}}</div><div class="mid" style="font-size: 14px; margin-top: 6px">{{sel.title}} · {{sel.company}}</div><div class="mono" style="margin-top: 8px; color: {{sel.color}}">{{sel.status}}</div></div>
+        <div class="spec" style="border-top: 1px solid #D9D6CF; padding-top: 12px"><span class="mid">Reports to</span><span>{{sel.reportsTo}}</span><span class="mid">Department</span><span>{{sel.dept}}</span><span class="mid">Joined</span><span class="num">{{sel.joined}}</span><span class="mid">Today</span><span>{{sel.today}}</span></div>
+        <div><span class="mono mid">Effective-dated history</span><div style="margin-top: 6px; border-bottom: 1px solid #D9D6CF"><sc-for list="{{sel.history}}" as="h" hint-placeholder-count="3"><div class="tl"><span class="mono mid">{{h.when}}</span><span>{{h.what}}</span></div></sc-for></div></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center"><button class="pill" type="button" style="min-height: 40px; font-size: 14px">Generate a letter</button><button class="txt" type="button" style="font-size: 14px">Transfer</button><button class="txt" type="button" style="font-size: 14px">Change pay</button><button class="txt" type="button" style="font-size: 14px; color: #C23A00; border-bottom-color: #C23A00">Terminate</button></div>
+        <span class="mid" style="font-size: 13px; line-height: 1.5">A termination here drafts the CP22A notice and the final-pay proration in the same step.</span>
+      </aside>
+    </section>
+
+    <section class="rv" aria-label="Time scrubber" style="animation-delay: .4s">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px"><span class="mono mid">As at</span><span style="font-size: 22px; font-weight: 500; letter-spacing: -.02em">{{asAt}}</span></div>
+      <div class="ruler"><sc-for list="{{months}}" as="m" hint-placeholder-count="12"><button class="tick {{m.cls}}" type="button" onClick="{{m.pick}}">{{m.label}}</button></sc-for></div>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .5s"><span>Sys OK</span><span>{{count}}</span><span>3 joiners · 2 leavers · 1 pay blocked</span><span style="margin-left: auto">Bitemporal · scrub to read the org as it stood</span></footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1340}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: null, aMax: null, bMin: -30, bMax: 30, zMin: 0.7, zMax: 1.4 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const selId = st.sel || 'hafiz';
+    const filter = st.filter || 'all';
+    const monthIdx = st.month === undefined ? 9 : st.month;
+    const base = [
+      { id: 'lim', ini: 'LS', name: 'Dato’ Lim Seng Huat', title: 'Group CEO', company: 'Nusantara Holdings', status: 'Active', color: '#111', type: 'Permanent', id2: 'NH-0001', reportsTo: 'Board', dept: 'Executive', joined: '1 Mar 2015', today: 'In office', cat: 'all', history: [ { when: '2015', what: 'Hired as Managing Director' }, { when: '2021', what: 'Group CEO on formation of the holding' } ], reports: ['priya', 'hafiz', 'kelvin'] },
+      { id: 'hafiz', ini: 'HR', name: 'Hafiz Rahman', title: 'Head of People', company: 'Nusantara Holdings', status: 'Active', color: '#111', type: 'Permanent', id2: 'NH-0017', reportsTo: 'Dato’ Lim Seng Huat', dept: 'People', joined: '3 Feb 2020', today: 'In office', cat: 'all', history: [ { when: '2020', what: 'Hired as HR Manager, Nusantara Sdn Bhd' }, { when: '2024', what: 'Transferred to the holding company' }, { when: '2026', what: 'Payroll approver for all three companies' } ], reports: ['aisyah', 'farah', 'siti'] },
+      { id: 'priya', ini: 'PN', name: 'Priya Nair', title: 'Head of Finance', company: 'Nusantara Sdn Bhd', status: 'Active', color: '#111', type: 'Permanent', id2: 'NS-0042', reportsTo: 'Dato’ Lim Seng Huat', dept: 'Finance', joined: '12 Jun 2018', today: 'In office', cat: 'all', history: [ { when: '2018', what: 'Hired as Finance Manager' }, { when: '2023', what: 'Promoted to Head of Finance' } ], reports: ['mei', 'raj'] },
+      { id: 'kelvin', ini: 'KC', name: 'Kelvin Chong', title: 'Head of Operations', company: 'NH Logistics Sdn Bhd', status: 'On leave', color: '#63625D', type: 'Permanent', id2: 'NL-0003', reportsTo: 'Dato’ Lim Seng Huat', dept: 'Operations', joined: '19 Aug 2019', today: 'Annual leave until 8 Oct', cat: 'leave', history: [ { when: '2019', what: 'Hired as Operations Manager' }, { when: '2025', what: 'Promoted to Head of Operations' } ], reports: ['weijie', 'daniel'] },
+      { id: 'aisyah', ini: 'AR', name: 'Aisyah Rahman', title: 'Marketing Executive', company: 'Nusantara Sdn Bhd', status: 'Active', color: '#111', type: 'Permanent', id2: 'NS-0156', reportsTo: 'Hafiz Rahman · matrix: Kelvin Chong', dept: 'Marketing', joined: '14 Mar 2023', today: 'In office · leave 12 to 14 Oct pending', cat: 'all', history: [ { when: '2023', what: 'Hired as Marketing Executive' }, { when: 'Sep 26', what: 'Matrix line to Operations for the Q4 launch' } ], reports: [] },
+      { id: 'nurul', ini: 'NI', name: 'Nurul Izzati', title: 'Sales Associate', company: 'NH Retail Sdn Bhd', status: 'Joined today', color: '#C23A00', type: 'Permanent', id2: 'NR-0211', reportsTo: 'Farah Hussin', dept: 'Retail', joined: '6 Oct 2026', today: 'Onboarding 40% · EPF number missing', cat: 'joiner', history: [ { when: '6 Oct', what: 'Hired as Sales Associate, Mid Valley outlet' } ], reports: [] },
+      { id: 'marcus', ini: 'MO', name: 'Marcus Ong', title: 'Software Engineer', company: 'Nusantara Sdn Bhd', status: 'Joined 4 Oct', color: '#111', type: 'Permanent', id2: 'NS-0210', reportsTo: 'Priya Nair', dept: 'Engineering', joined: '4 Oct 2026', today: 'In office · CP22 filed', cat: 'joiner', history: [ { when: '4 Oct', what: 'Hired as Software Engineer, probation to 3 Apr 2027' } ], reports: [] },
+      { id: 'arjun', ini: 'AP', name: 'Arjun Pillai', title: 'Sales Executive', company: 'Nusantara Sdn Bhd', status: 'Leaving 18 Oct · CP22A overdue', color: '#C23A00', type: 'Permanent', id2: 'NS-0133', reportsTo: 'Hafiz Rahman', dept: 'Sales', joined: '2 May 2022', today: 'In office', cat: 'leaver', history: [ { when: '2022', what: 'Hired as Sales Executive' }, { when: '18 Oct', what: 'Resignation effective; final pay prorated in October' } ], reports: [] },
+      { id: 'daniel', ini: 'DL', name: 'Daniel Lim', title: 'Logistics Coordinator', company: 'NH Logistics Sdn Bhd', status: 'Pay blocked', color: '#C23A00', type: 'Permanent', id2: 'NL-0099', reportsTo: 'Kelvin Chong', dept: 'Logistics', joined: '15 Jul 2024', today: 'In office', cat: 'blocked', history: [ { when: '2024', what: 'Hired as Logistics Coordinator' }, { when: 'Oct 26', what: 'Compensation record ended 30 Sep, none effective after' } ], reports: [] },
+      { id: 'farah', ini: 'FH', name: 'Farah Hussin', title: 'Customer Care Lead', company: 'NH Retail Sdn Bhd', status: 'On leave', color: '#63625D', type: 'Permanent', id2: 'NR-0033', reportsTo: 'Hafiz Rahman', dept: 'Customer care', joined: '28 Nov 2021', today: 'Annual leave until 8 Oct', cat: 'leave', history: [ { when: '2021', what: 'Hired as Customer Care Executive' }, { when: '2024', what: 'Promoted to Lead' } ], reports: ['nurul'] },
+      { id: 'siti', ini: 'SA', name: 'Siti Aminah', title: 'HR Executive', company: 'NH Logistics Sdn Bhd', status: 'Transferred 1 Oct', color: '#111', type: 'Permanent', id2: 'NL-0188', reportsTo: 'Hafiz Rahman', dept: 'People', joined: '9 Jan 2024', today: 'Absent · no check-in', cat: 'all', history: [ { when: '2024', what: 'Hired at Nusantara Sdn Bhd' }, { when: '1 Oct', what: 'Transferred to NH Logistics, cost recharged 100%' } ], reports: [] },
+      { id: 'weijie', ini: 'WT', name: 'Wei Jie Tan', title: 'Operations Supervisor', company: 'NH Logistics Sdn Bhd', status: 'Active · OT above cap', color: '#63625D', type: 'Permanent', id2: 'NL-0071', reportsTo: 'Kelvin Chong', dept: 'Operations', joined: '9 Sep 2020', today: 'Night shift', cat: 'all', history: [ { when: '2020', what: 'Hired as Warehouse Executive' }, { when: '2024', what: 'Promoted to Supervisor' } ], reports: [] }
+    ];
+    const byId = {}; base.forEach((p) => { byId[p.id] = p; });
+    const filters = [ { id: 'all', name: 'All · 248' }, { id: 'joiner', name: 'Joiners · 3' }, { id: 'leaver', name: 'Leavers · 2' }, { id: 'leave', name: 'On leave · 5' }, { id: 'blocked', name: 'Pay blocked · 1' } ].map((f) => ({ ...f, cls: f.id === filter ? 'on' : '', pick: () => this.setState({ filter: f.id }) }));
+    const people = base.filter((p) => filter === 'all' || p.cat === filter).map((p) => ({ ...p, cls: p.id === selId ? 'on' : '', pick: () => this.setState({ sel: p.id }) }));
+    const s = byId[selId] || byId.hafiz;
+    const reports = (s.reports.length ? s.reports : [s.reportsTo === 'Board' ? 'lim' : 'hafiz']).map((rid, i, arr) => ({ a: Math.round(i * (360 / arr.length)), ini: byId[rid] ? byId[rid].ini : 'HR' }));
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = names.map((n, i) => ({ label: n, cls: i === monthIdx ? 'on' : (i < monthIdx ? 'past' : ''), pick: () => this.setState({ month: i }) }));
+    const asAt = monthIdx === 9 ? '6 October 2026 · today' : (monthIdx < 9 ? '30 ' + names[monthIdx] + ' 2026' : '1 ' + names[monthIdx] + ' 2026 · projected');
+    const count = monthIdx === 9 ? '248 active' : (monthIdx < 9 ? (238 + monthIdx) + ' active' : '249 active');
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', filters, people, months, asAt, count, sel: { ...s, id: s.id2, reports } };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Leave</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 22px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .2s}
+.pill:hover{transform:translateY(-1px);color:#F2F0EB}
+.pill.inv{background:#F2F0EB;color:#111;border-color:#F2F0EB}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.txt.bone{color:#F2F0EB;border-bottom-color:#F2F0EB}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.intent input::placeholder{color:#9A988F}
+textarea{width:100%;background:transparent;border:0;border-bottom:1px solid #111;color:#111;font:500 16px 'Schibsted Grotesk',system-ui,sans-serif;padding:10px 0;min-height:60px;resize:vertical}
+.cell{display:flex;flex-direction:column;gap:6px;padding:18px 20px 20px 20px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.grid7{display:grid;grid-template-columns:repeat(7, minmax(0, 1fr));gap:0;border-top:1px solid #111;border-left:1px solid #D9D6CF}
+.dow{font:400 11px 'DM Mono',monospace;letter-spacing:.12em;color:#63625D;padding:10px 10px 8px;border-right:1px solid #D9D6CF;border-bottom:1px solid #D9D6CF}
+.day{position:relative;height:78px;border:0;border-right:1px solid #D9D6CF;border-bottom:1px solid #D9D6CF;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:10px;transition:background .15s}
+.day:hover{background:#ECE9E2}
+.day.wk{color:#9A988F}
+.day.hol{color:#C23A00}
+.day.sel{background:#111;color:#F2F0EB}
+.day.start::after,.day.end::after{content:"";position:absolute;left:10px;right:10px;bottom:8px;height:2px;background:#FF4D00;box-shadow:0 0 8px #FF4D00}
+.day .who{display:flex;gap:4px}
+.day .who i{width:8px;height:8px;border-radius:50%;background:#111;display:inline-block}
+.day.sel .who i{background:#F2F0EB}
+.day .hl{font:400 9px 'DM Mono',monospace;letter-spacing:.1em}
+.blank{height:78px;border-right:1px solid #D9D6CF;border-bottom:1px solid #D9D6CF}
+.stage{perspective:1600px;display:flex;align-items:flex-start;justify-content:center;padding-top:10px;position:relative}
+.spot{position:absolute;left:50%;top:40%;width:760px;height:760px;margin:-380px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none;z-index:0}
+.ticket{position:relative;z-index:1;width:100%;max-width:440px;min-height:540px;border-radius:10px;background:linear-gradient(160deg,#3a3a3a 0%,#121212 38%,#0a0a0a 55%,#232323 78%,#050505 100%);color:#F2F0EB;padding:34px 34px 30px;display:flex;flex-direction:column;gap:18px;box-shadow:0 100px 90px -56px rgba(17,17,17,.75),0 30px 40px -30px rgba(17,17,17,.5);overflow:hidden;animation:tilt 9s ease-in-out infinite alternate;transform-style:preserve-3d}
+@keyframes tilt{from{transform:rotateY(-10deg) rotateX(4deg)}to{transform:rotateY(8deg) rotateX(-3deg) translateY(-6px)}}
+.ticket::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.2) 47%,rgba(255,255,255,.05) 52%,transparent 62%);background-size:260% 100%;animation:sheen 7s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.ticket .etch{height:1px;background:rgba(255,255,255,.22)}
+.ticket.done{box-shadow:0 60px 60px -40px rgba(17,17,17,.6),0 0 0 2px #FF4D00}
+.row{display:grid;grid-template-columns:36px 1fr 1fr 120px 120px;gap:16px;align-items:center;min-height:54px;border-top:1px solid #D9D6CF;font-size:15px;padding:0 2px}
+.list{border-bottom:1px solid #D9D6CF}
+.stage{cursor:grab;touch-action:none;user-select:none}.stage.dragging,.stage.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1220px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 30px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl" href="Payroll.dc.html">Payroll</a><a class="navl" href="People.dc.html">People</a><a class="navl on" href="Leave.dc.html">Leave</a><a class="navl" href="Attendance.dc.html">Time</a><a class="navl" href="Claims.dc.html">Claims</a><a class="navl" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <span class="mono mid" style="margin-left: auto">Me / Leave · Aisyah Rahman · Marketing</span>
+    </header>
+
+    <section class="rv" style="display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 20px; animation-delay: .1s">
+      <div><span class="mono mid">As at 6 October 2026</span><h1 style="margin: 6px 0 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em">Leave.</h1></div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; flex: 0 1 620px">
+        <sc-for list="{{balances}}" as="b" hint-placeholder-count="4"><div class="cell"><span class="mono mid">{{b.name}}</span><span class="num" style="font-size: 40px; font-weight: 500; letter-spacing: -.03em; line-height: 1">{{b.avail}}<span class="mid" style="font-size: 16px; letter-spacing: 0"> / {{b.ent}}</span></span><span class="mid" style="font-size: 13px">{{b.note}}</span></div></sc-for>
+      </div>
+    </section>
+
+    <section class="rv" style="animation-delay: .2s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Tell AIHR what you need</span>
+        <input type="text" placeholder="Three days off around Deepavali, or: when is my team away?">
+        <button class="txt" type="button" onClick="{{suggest}}" style="min-height: 40px; border-bottom: 0; font-size: 14px">Try the Deepavali bridge ↵</button>
+      </label>
+    </section>
+
+    <section class="rv" style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; animation-delay: .3s">
+      <div style="flex: 0 1 260px; min-width: 220px; display: flex; flex-direction: column; gap: 22px">
+        <div><span class="mono mid">01 · Type</span><div class="mono" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px; align-items: flex-start"><sc-for list="{{types}}" as="t" hint-placeholder-count="5"><button class="navl {{t.cls}}" type="button" onClick="{{t.pick}}">{{t.name}} · {{t.avail}}</button></sc-for></div></div>
+        <div><label for="reason" class="mono mid">02 · Reason, optional</label><textarea id="reason" placeholder="Family trip to Penang"></textarea></div>
+        <div><span class="mono mid">03 · Attachment</span><div><button class="txt" type="button" style="font-size: 14px">Attach a document</button></div></div>
+      </div>
+
+      <div style="flex: 999 1 520px; min-width: 0">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px; flex-wrap: wrap; gap: 10px">
+          <span style="font-size: 22px; font-weight: 500; letter-spacing: -.02em">{{month.name}} <span class="mid" style="font-size: 14px; margin-left: 10px">{{month.hint}} Dots are teammates away.</span></span>
+          <div class="mono" style="display: flex; gap: 22px"><sc-for list="{{monthChips}}" as="mc" hint-placeholder-count="3"><button class="navl {{mc.cls}}" type="button" onClick="{{mc.pick}}">{{mc.short}}</button></sc-for></div>
+        </div>
+        <div class="grid7">
+          <span class="dow">Mon</span><span class="dow">Tue</span><span class="dow">Wed</span><span class="dow">Thu</span><span class="dow">Fri</span><span class="dow">Sat</span><span class="dow">Sun</span>
+          <sc-for list="{{days}}" as="d" hint-placeholder-count="35">
+            <sc-if value="{{d.blank}}" hint-placeholder-val="{{ false }}"><span class="blank"></span></sc-if>
+            <sc-if value="{{d.real}}" hint-placeholder-val="{{ true }}"><button class="day {{d.cls}}" type="button" onClick="{{d.pick}}" aria-label="{{d.aria}}"><span class="num">{{d.n}}</span><span style="display: flex; justify-content: space-between; align-items: flex-end; width: 100%"><span class="who"><sc-for list="{{d.away}}" as="a" hint-placeholder-count="0"><i title="{{a.name}}"></i></sc-for></span><span class="hl">{{d.hol}}</span></span></button></sc-if>
+          </sc-for>
+        </div>
+      </div>
+
+      <div class="stage {{stageCls}}" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}" style="flex: 0 1 440px; min-width: 360px">
+        <span class="spot" aria-hidden="true"></span>
+        <div class="cam {{dragCls}}" style="width: 100%; max-width: 440px; transform-style: preserve-3d; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<div class="ticket {{ticketCls}}">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; position: relative"><span class="mono" style="color: {{ticketColor}}">{{ticketStatus}}</span><span class="mono" style="color: #9A988F">LR-2026-0412</span></div>
+          <div style="font-size: 46px; font-weight: 500; letter-spacing: -.04em; line-height: .96; position: relative">{{typeName}}<br>{{range.label}}</div>
+          <span class="etch"></span>
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; font-size: 14px; position: relative">
+            <span style="color: #9A988F">Working days</span><span class="num">{{range.days}}</span>
+            <span style="color: #9A988F">Balance after</span><span class="num" style="color: {{range.afterColor}}">{{range.after}}</span>
+            <span style="color: #9A988F">Overlap</span><span>{{range.clashText}}</span>
+            <span style="color: #9A988F">Approver</span><span>Hafiz Rahman, then HR</span>
+          </div>
+          <span class="etch"></span>
+          <sc-if value="{{isPick}}" hint-placeholder-val="{{ true }}"><div style="display: flex; gap: 18px; align-items: center; position: relative; margin-top: auto"><button class="pill inv" type="button" onClick="{{submit}}">Generate request <span aria-hidden="true">→</span></button><button class="txt bone" type="button" onClick="{{clear}}">Clear</button></div></sc-if>
+          <sc-if value="{{isDone}}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 12px; position: relative; margin-top: auto"><span style="font-size: 14px; line-height: 1.5; color: #D9D6CF">Sent 09:21. Hafiz has it. Your calendar is blocked as tentative.</span><button class="txt bone" type="button" onClick="{{clear}}" style="align-self: flex-start">Compose another</button></div></sc-if>
+        </div>
+</div>
+      </div>
+    </section>
+
+    <section class="rv" style="animation-delay: .4s">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px"><span class="mono mid">Requests · 2026</span><a class="txt" href="#record" style="min-height: 32px; font-size: 14px">Leave record</a></div>
+      <div class="list">
+        <div class="row"><span class="mono mid">01</span><span style="font-weight: 500">Annual · 12 to 14 Oct</span><span class="mid" style="font-size: 14px">3 days · applied 6 Oct</span><span class="mono mid">Pending · Hafiz</span><a class="txt" href="#withdraw" style="min-height: 32px; font-size: 14px; justify-self: start">Withdraw</a></div>
+        <div class="row"><span class="mono mid">02</span><span style="font-weight: 500">Replacement · 17 Sep</span><span class="mid" style="font-size: 14px">1 day · Malaysia Day cover</span><span class="mono">Approved</span><span></span></div>
+        <div class="row"><span class="mono mid">03</span><span style="font-weight: 500">Medical · 3 Sep</span><span class="mid" style="font-size: 14px">1 day · MC attached</span><span class="mono">Approved</span><span></span></div>
+        <div class="row"><span class="mono mid">04</span><span style="font-weight: 500">Annual · 21 to 25 Jul</span><span class="mid" style="font-size: 14px">5 days · applied 14 Jul</span><span class="mono">Approved</span><span></span></div>
+        <div class="row"><span class="mono mid">05</span><span style="font-weight: 500">Annual · 30 Mar</span><span class="mid" style="font-size: 14px">1 day · quarter-end freeze</span><span class="mono or">Rejected</span><a class="txt" href="#why" style="min-height: 32px; font-size: 14px; justify-self: start">See reason</a></div>
+      </div>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .5s"><span>Sys OK</span><span>Annual 11 of 20</span><span>Next holiday Deepavali · 8 Nov</span><span style="margin-left: auto">Aisyah Rahman · NS-0156</span></footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1220}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: -40, aMax: 40, bMin: -20, bMax: 20, zMin: 0.8, zMax: 1.3 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const mIdx = st.mIdx === undefined ? 1 : st.mIdx;
+    const typeId = st.type || 'annual';
+    const screen = st.screen || 'pick';
+    const selMonth = st.selMonth === undefined ? 1 : st.selMonth;
+    const start = st.start || 0, end = st.end || 0;
+    const balances = [ { name: 'Annual', ent: 20, avail: 11, note: '6 taken · 3 pending' }, { name: 'Medical', ent: 14, avail: 12, note: '2 taken' }, { name: 'Hospitalisation', ent: 60, avail: 60, note: 'none taken' }, { name: 'Replacement', ent: 2, avail: 2, note: 'earned 16 Sep' } ];
+    const types = [ { id: 'annual', name: 'Annual', avail: 11 }, { id: 'medical', name: 'Medical', avail: 12 }, { id: 'emergency', name: 'Emergency', avail: 11 }, { id: 'replacement', name: 'Replacement', avail: 2 }, { id: 'unpaid', name: 'Unpaid', avail: 0 } ].map((t) => ({ ...t, cls: t.id === typeId ? 'on' : '', pick: () => this.setState({ type: t.id }) }));
+    const type = types.find((t) => t.id === typeId) || types[0];
+    const defs = [
+      { name: 'September 2026', short: 'Sep', days: 30, first: 1, hol: { 16: 'Malaysia Day' }, away: {}, hint: 'Malaysia Day on the 16th.' },
+      { name: 'October 2026', short: 'Oct', days: 31, first: 3, hol: {}, away: { 7: ['Farah'], 8: ['Farah'], 12: ['Farah', 'Kelvin'], 13: ['Farah', 'Kelvin'], 14: ['Farah'], 26: ['Raj'], 27: ['Raj'] }, hint: 'No public holiday.' },
+      { name: 'November 2026', short: 'Nov', days: 30, first: 6, hol: { 8: 'Deepavali' }, away: { 2: ['Mei Ling'], 3: ['Mei Ling'], 6: ['Kelvin'], 9: ['Kelvin', 'Raj'] }, hint: 'Deepavali on Sunday the 8th.' }
+    ];
+    const pickDay = (mi, n) => { if (mi !== selMonth || !start || (start && end)) { this.setState({ selMonth: mi, start: n, end: 0, mIdx: mi, screen: 'pick' }); return; } if (n < start) { this.setState({ start: n, end: start }); return; } this.setState({ end: n }); };
+    const md = defs[mIdx];
+    const days = [];
+    for (let b = 0; b < md.first; b++) days.push({ blank: true, real: false, away: [] });
+    for (let n = 1; n <= md.days; n++) {
+      const dow = (md.first + n - 1) % 7; const wk = dow >= 5; const hol = md.hol[n];
+      const inSel = mIdx === selMonth && start && ((end && n >= start && n <= end) || (!end && n === start));
+      let cls = wk ? 'wk' : ''; if (hol) cls += ' hol'; if (inSel) cls += ' sel'; if (mIdx === selMonth && n === start) cls += ' start'; if (mIdx === selMonth && end && n === end) cls += ' end';
+      days.push({ blank: false, real: true, n: n < 10 ? '0' + n : String(n), cls, hol: hol || '', away: (md.away[n] || []).map((nm) => ({ name: nm })), aria: n + ' ' + md.short, pick: () => pickDay(mIdx, n) });
+    }
+    const monthChips = defs.map((d, i) => ({ short: d.short, cls: i === mIdx ? 'on' : '', pick: () => this.setState({ mIdx: i }) }));
+    const sm = defs[selMonth];
+    let count = 0, clash = [];
+    if (start) { const e = end || start; for (let n = start; n <= e; n++) { const dow = (sm.first + n - 1) % 7; if (dow < 5 && !sm.hol[n]) count++; (sm.away[n] || []).forEach((nm) => { if (clash.indexOf(nm) < 0) clash.push(nm); }); } }
+    const label = !start ? 'Pick your dates' : (end && end !== start ? start + ' to ' + end + ' ' + sm.short : start + ' ' + sm.short);
+    const after = type.avail - count;
+    const range = { label, days: count, after: after + ' days', afterColor: after < 0 ? '#FF4D00' : '#F2F0EB', clashText: clash.length ? clash.join(', ') + ' away' : 'None' };
+    const done = screen === 'done';
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', balances, types, typeName: type.name, days, monthChips, month: md, range, isPick: !done, isDone: done, ticketCls: done ? 'done' : '', ticketColor: done ? '#FF4D00' : '#9A988F', ticketStatus: done ? 'Requested · pending Hafiz' : 'Draft request',
+      submit: () => { if (start) this.setState({ screen: 'done' }); }, clear: () => this.setState({ start: 0, end: 0, screen: 'pick' }), suggest: () => this.setState({ mIdx: 2, selMonth: 2, start: 6, end: 9, screen: 'pick', type: 'annual' }) };
+  }
+}
+</script>
+</body>
+</html>
