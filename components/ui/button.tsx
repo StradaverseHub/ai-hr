@@ -19,8 +19,8 @@ const MONO_PILL_GHOST = `${MONO_PILL_BASE} monolith:border-ink monolith:bg-trans
 const MONO_PILL_DESTRUCTIVE = `${MONO_PILL_BASE} monolith:border-signal-text monolith:bg-transparent monolith:text-signal-text monolith:hover:bg-pressed`;
 const MONO_TXT =
   ' monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-ink monolith:bg-transparent monolith:text-[15px] monolith:font-medium monolith:text-ink monolith:no-underline monolith:hover:border-signal-text monolith:hover:bg-transparent monolith:hover:text-signal-text monolith:hover:no-underline';
-const PILLS = ['default', 'secondary', 'destructive'] as const;
-const TXTS = ['outline', 'ghost', 'link'] as const;
+const PILLS: ('default' | 'secondary' | 'destructive')[] = ['default', 'secondary', 'destructive'];
+const TXTS: ('outline' | 'ghost' | 'link')[] = ['outline', 'ghost', 'link'];
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition duration-150 ease-snappy active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50' +
