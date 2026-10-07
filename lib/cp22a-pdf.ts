@@ -76,6 +76,12 @@ export type Cp22aPdfData = {
     cessation: Cp22aCessation;
     dateOfBirth: string | null;
     maritalStatus: string | null;
+    /**
+     * A7 — "Cukai ditanggung majikan": employee_statutory_my.employer_bears_tax, the flag payroll itself
+     * runs on (core/payroll.ts funds the PCB from employer cost when it is set). true → Ya, false → Tidak,
+     * null (no statutory record for this person) → both boxes blank.
+     */
+    taxBorneByEmployer: boolean | null;
     /** A13 a) — the qualifying-children COUNT, as the EA prints item 8. Null = unrecorded (blank). */
     childrenCount: number | null;
     phone: string | null;
@@ -184,6 +190,8 @@ export function cp22aFieldValues(d: Cp22aPdfData): Cp22aValues {
   v.deathNotifiedDate = cp22aDateCells(d.typed.deathNotifiedDate);
   v.retirementCompulsory = d.typed.retirement === 'compulsory' ? 'X' : '';
   v.retirementOptional = d.typed.retirement === 'optional' ? 'X' : '';
+  v.taxBorneYes = d.employee.taxBorneByEmployer === true ? 'X' : '';
+  v.taxBorneNo = d.employee.taxBorneByEmployer === false ? 'X' : '';
   v.schemeYes = d.typed.scheme === 'yes' ? 'X' : '';
   v.schemeNo = d.typed.scheme === 'no' ? 'X' : '';
   v.icNo = cp22aIdCells(d.employee.icNo, d.employee.passportNo) ?? [''];

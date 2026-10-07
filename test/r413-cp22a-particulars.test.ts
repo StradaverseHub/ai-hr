@@ -147,6 +147,18 @@ describe('r413 · cp22aParticulars — the year so far, from processed payroll, 
     expect(p.employee.cessation).toBe('resigned');
   });
 
+  /** A7 (verifier fix). NON-VACUITY: drop `taxBorneByEmployer: extra.bearsTax` in cp22aParticulars → fails. */
+  it('reads A7 from employee_statutory_my.employer_bears_tax — false, then true, then null with no row', async () => {
+    const a = adminCtx(base);
+    expect((await cp22aParticulars(a, { employmentId }))!.employee.taxBorneByEmployer).toBe(false);
+    await owner.db.update(schema.employeeStatutoryMy).set({ employerBearsTax: true }).where(eq(schema.employeeStatutoryMy.personId, personId));
+    expect((await cp22aParticulars(a, { employmentId }))!.employee.taxBorneByEmployer).toBe(true);
+    await owner.db.delete(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, personId));
+    const none = await cp22aParticulars(a, { employmentId });
+    expect(none, 'still a CP22A without a statutory row').not.toBeNull();
+    expect(none!.employee.taxBorneByEmployer).toBeNull();
+  });
+
   it('maps a death and a retirement onto A2 from the recorded termination type', async () => {
     for (const [type, kind] of [['death', 'death'], ['retired', 'retired'], ['involuntary', 'resigned']] as const) {
       await owner.db.update(schema.employment).set({ terminationType: type }).where(eq(schema.employment.id, employmentId));

@@ -1559,6 +1559,14 @@ export async function cp22aParticulars(
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
+    // A7 — whether the employer bears this person's tax: the flag payroll funds the PCB from. A missing
+    // statutory row is null (both A7 boxes blank), never a "Tidak".
+    const [bears] = await tx
+      .select({ tax: employeeStatutoryMy.employerBearsTax })
+      .from(employment)
+      .innerJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
     // Section E — the company's LHDN signatory first (the same row CP39 and the EA read).
     const [auth] = await tx
       .select({ signatoryPersonId: companyStatutoryAuthority.signatoryPersonId })
@@ -1584,7 +1592,7 @@ export async function cp22aParticulars(
     const sessionEmail = !signatory && ctx.personId
       ? (await tx.select({ email: person.primaryEmail }).from(person).where(eq(person.id, ctx.personId)).limit(1))[0]?.email ?? null
       : null;
-    return { emp, corr, signatory, sessionEmail };
+    return { emp, corr, signatory, sessionEmail, bearsTax: bears ? bears.tax : null };
   });
   if (!extra.emp?.terminatedOn) return null;
   const cessationDate = extra.emp.terminatedOn;
@@ -1680,6 +1688,7 @@ export async function cp22aParticulars(
       commencementDate: base.employee.commencementDate,
       cessationDate,
       cessation: cp22aCessationFor(extra.emp.terminationType),
+      taxBorneByEmployer: extra.bearsTax,
       dateOfBirth: base.employee.dateOfBirth,
       maritalStatus: base.employee.maritalStatus,
       childrenCount: ea?.employee.children ?? null,

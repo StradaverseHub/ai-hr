@@ -65,6 +65,7 @@ const full = (over: Partial<Cp22aPdfData> = {}): Cp22aPdfData => ({
     commencementDate: '2025-01-01',
     cessationDate: '2026-04-20',
     cessation: 'resigned',
+    taxBorneByEmployer: true,
     dateOfBirth: '1990-01-01',
     maritalStatus: 'married',
     childrenCount: 2,
@@ -314,6 +315,29 @@ describe('r413 · A2 — the kind of cessation, and exactly one X', () => {
       const m = await fieldValuesOf(await renderCp22aPdf(template(), { ...d, employee: { ...d.employee, cessation: kind } }));
       const marked = Object.values(box).filter((n) => m.get(n) === 'X');
       expect(marked, kind).toEqual([box[kind]]);
+    }
+  });
+});
+
+/**
+ * A7 — "Cukai ditanggung majikan". Verifier fix: the builder listed A7 as unfillable ("no record"), but
+ * employee_statutory_my.employer_bears_tax (migration 0200) IS that record — the flag payroll funds the PCB
+ * from. NON-VACUITY: set A7a/A7b back to `source: 'none'` in lib/cp22a-fields.ts (or drop the two
+ * `taxBorne*` lines in cp22aFieldValues) and the Ya and Tidak cases fail.
+ */
+describe('r413 · A7 — tax borne by the employer, from employee_statutory_my.employer_bears_tax', () => {
+  it('marks Ya for true, Tidak for false, and NEITHER when no statutory record exists', async () => {
+    for (const [bears, want] of [
+      [true, { taxBorneYes: 'X', taxBorneNo: '' }],
+      [false, { taxBorneYes: '', taxBorneNo: 'X' }],
+      [null, { taxBorneYes: '', taxBorneNo: '' }],
+    ] as const) {
+      const d = full();
+      const data = { ...d, employee: { ...d.employee, taxBorneByEmployer: bears } };
+      const v = cp22aFieldValues(data);
+      expect({ taxBorneYes: v.taxBorneYes ?? '', taxBorneNo: v.taxBorneNo ?? '' }, String(bears)).toEqual(want);
+      const m = await fieldValuesOf(await renderCp22aPdf(template(), data));
+      expect({ taxBorneYes: m.get('taxBorneYes'), taxBorneNo: m.get('taxBorneNo') }, `saved ${bears}`).toEqual(want);
     }
   });
 });
