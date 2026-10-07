@@ -252,7 +252,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   there. Nothing was centred there before either: the left cluster was overflowing its
                   own track. From md up the equal tracks and the exact centring return (measured: the
                   centre's midpoint is 0px off the header's midpoint at every width ≥ 768). */}
-              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith-rv monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none">
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv">
                 {/* Left cluster = WHERE you are working. The CompanySwitcher MOVED here from the right
                     cluster (r256): this track is a full 1fr — 243px at 1280, 563px at 1920 — carrying
                     one static group label, while the switcher was being crushed to 27px on the right
@@ -288,7 +288,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   )}
                   <ShellLiveClock />
                 </div>
-                {/* r398 — hidden, NOT unmounted, in Monolith: <CommandBar /> keeps its ⌘K listener and its dialog
+                {/* r398 — hidden, NOT unmounted, in Monolith: the command bar keeps its ⌘K listener and its dialog
                     (portalled to <body>), and the intent bar below opens that same dialog. */}
                 <div className="flex min-w-0 items-center justify-center monolith:hidden">
                   <CommandBar />
