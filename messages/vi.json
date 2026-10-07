@@ -4599,7 +4599,15 @@
       "viewer_back": "Quay lại",
       "viewer_openNewTab": "Mở trong thẻ mới",
       "viewer_frameTitle": "{form} — xem trước",
-      "viewer_showVersion": "Hiển thị phiên bản này"
+      "viewer_showVersion": "Hiển thị phiên bản này",
+      "cycles": "Kỳ trả lương",
+      "cycles_hint": "Chỉ liệt kê các kỳ trả lương đã xử lý của công ty và tháng đã chọn.",
+      "cycles_noRuns": "Chưa có kỳ trả lương nào đã xử lý cho công ty và tháng này.",
+      "cycles_nonePicked": "Hãy chọn ít nhất một kỳ trả lương để tiếp tục.",
+      "cycles_partial": "Bạn đã bỏ ra ít nhất một kỳ trả lương. Biểu mẫu chỉ gồm các kỳ đã chọn và không có ô nào cho biết mỗi dòng thuộc kỳ nào.",
+      "refusal_cycles_no_runs": "Không có bảng lương đã xử lý cho công ty và tháng này, nên không có gì được tạo.",
+      "refusal_cycles_no_data": "Các kỳ trả lương đã chọn không có khoản đóng góp đã xử lý nào cho biểu mẫu này, nên không có gì được tạo.",
+      "refusal_cycles_invalid": "Lựa chọn kỳ trả lương không hợp lệ. Hãy chọn lại."
     },
     "ea": {
       "backToReports": "Báo cáo",
@@ -6980,7 +6988,10 @@
       "downloadReport": "Kiểm tra tệp tải lên theo từng trường",
       "downloadReportTitle": "Báo cáo về chính tệp tải lên: độ dài từng dòng, và từng trường kèm cột, độ dài và giá trị, để bạn đối chiếu với mẫu của KWSP trước khi tải lên.",
       "fileBlocked": "Tệp tải lên bị chặn cho đến khi các hồ sơ ở trên được sửa.",
-      "downloadsBlocked": "Việc tải xuống bị chặn cho đến khi mọi dòng đầy đủ."
+      "downloadsBlocked": "Việc tải xuống bị chặn cho đến khi mọi dòng đầy đủ.",
+      "cyclesAll": "Tất cả chu kỳ trả lương",
+      "viewerBack": "Đổi lựa chọn",
+      "previewBlocked": "Biểu mẫu sẽ hiển thị ở đây khi các thiếu sót nêu trên được bổ sung."
     },
     "cp39Form": {
       "title": "CP39 — bảng kê khấu trừ PCB / MTD hằng tháng (LHDN)",
@@ -7767,6 +7778,18 @@
       "error_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
       "error_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
       "error_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
+    },
+    "runPicker": {
+      "all": "Tất cả chu kỳ trả lương",
+      "selectAll": "Chọn tất cả",
+      "clear": "Bỏ chọn",
+      "search": "Tìm chu kỳ trả lương",
+      "loading": "Đang tìm các đợt trả lương của tháng này…",
+      "run": "Đợt thứ {seq} của tháng",
+      "runTypeRegular": "Thường kỳ",
+      "runTypeOffCycle": "Ngoài chu kỳ",
+      "runTypeBonus": "Thưởng",
+      "runTypeAdjustment": "Điều chỉnh"
     }
   },
   "admin": {

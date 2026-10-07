@@ -377,6 +377,17 @@ export type ReportDef = {
   fidelity?: FormFidelity;
   /** 587ee719 — position within its body shelf. See `StatutoryFormLink.shelfOrder`. */
   shelfOrder?: number;
+  /**
+   * r407 (item 4f45f9b0) — THIS FORM IS FILED PER PAYROLL CYCLE, AND WHERE ITS CRITERIA STEP CONTINUES TO.
+   *
+   * Declared ONLY by a report whose `generate` honours `params.runSeqs` — a criteria step that offered a
+   * Payroll Cycle box for a generator that ignored it would be a control that silently does nothing, on a
+   * statutory return. `action` is the screen the step's Continue opens (the form's own preview), which
+   * runs the server-side "is there anything to file" gate and sends a refusal back to the step.
+   * `app/payroll/statutory-forms/criteria.ts` turns this into the `cycles` criterion; my.borang-a declares
+   * it now, my.borang-8a and my.cp39 are expected to next.
+   */
+  runSelection?: { action: string };
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
 };
 
@@ -2226,6 +2237,9 @@ export const MY_REPORTS: ReportDef[] = [
   // from the SAME rows as the drawn page, behind its own route.
   { id: 'my.borang-a', label: 'Borang A — monthly contribution form (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borangAReport,
     descriptionKey: 'desc_borang_a', fidelity: 'agency-layout', outputs: ['pdf', 'print', 'file'], shelfOrder: 2,
+    // r407 (item 4f45f9b0) — Open Form asks for the payroll cycles too, and Continue opens the form itself.
+    // `borangAReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
+    runSelection: { action: '/payroll/borang-a/preview' },
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.

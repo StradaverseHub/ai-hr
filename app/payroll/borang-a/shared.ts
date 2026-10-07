@@ -139,8 +139,10 @@ export function borangARows(form: BorangAForm): BorangARow[] {
  * ── r372 (item f022dd70): THE PAYROLL CYCLES THIS DOWNLOAD COVERS ─────────────────────────────────
  * Read off the SAME query the rest of the per-generation inputs are read from, and validated in ONE place
  * (lib/payroll-run-selection.ts) so the three statutory formats cannot disagree about what a bad value
- * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before this
- * round is and what every other surface (the review screen, the PDF, the text export) still sends. An
+ * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before r372
+ * is. Since r407 (item 4f45f9b0) the review screen, its framed PDF and all three downloads carry the
+ * criteria step's selection too, through ONE list (`./query.ts`), so a filtered review can no longer
+ * download a whole-month file. An
  * INVALID one is REFUSED rather than dropped: dropping it would build the file over a different population
  * from the one the URL named, which is the reporter's acceptance criterion read backwards.
  */

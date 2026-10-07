@@ -5002,7 +5002,15 @@
       "viewer_back": "Back",
       "viewer_openNewTab": "Open in new tab",
       "viewer_frameTitle": "{form} — preview",
-      "viewer_showVersion": "Show this version"
+      "viewer_showVersion": "Show this version",
+      "cycles": "Payroll cycle",
+      "cycles_hint": "Only processed payroll cycles of the chosen company and month are listed.",
+      "cycles_noRuns": "No processed payroll cycle for this company and month yet.",
+      "cycles_nonePicked": "Tick at least one payroll cycle to continue.",
+      "cycles_partial": "You have left out at least one payroll cycle. The form will carry only the cycles you ticked, and it has no box that says which cycle a line came from.",
+      "refusal_cycles_no_runs": "There is no processed payroll for this company and month, so nothing was produced.",
+      "refusal_cycles_no_data": "No processed contributions for this form in the payroll cycles you picked, so nothing was produced.",
+      "refusal_cycles_invalid": "The payroll cycle selection was not valid. Pick the cycles again."
     },
     "ea": {
       "backToReports": "Reports",
@@ -6980,7 +6988,10 @@
       "downloadReport": "Check the upload file field by field",
       "downloadReportTitle": "A report on the upload file itself: every line’s length, and every field with its columns, its length and its value, so you can compare it against a KWSP sample before you upload.",
       "fileBlocked": "The upload file is blocked until the records above are fixed.",
-      "downloadsBlocked": "Downloads are blocked until every row is complete."
+      "downloadsBlocked": "Downloads are blocked until every row is complete.",
+      "cyclesAll": "All payroll cycles",
+      "viewerBack": "Change selection",
+      "previewBlocked": "The form is shown here once the gaps listed above are filled."
     },
     "cp39Form": {
       "title": "CP39 — monthly PCB / MTD statement (LHDN)",
@@ -7767,6 +7778,18 @@
       "error_invalid_scheme": "Select a valid Income Tax Resident category.",
       "error_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
       "error_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
+    },
+    "runPicker": {
+      "all": "All payroll cycles",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "search": "Search payroll cycles",
+      "loading": "Looking up this month’s payroll runs…",
+      "run": "Run {seq} of the month",
+      "runTypeRegular": "Regular",
+      "runTypeOffCycle": "Off-cycle",
+      "runTypeBonus": "Bonus",
+      "runTypeAdjustment": "Adjustment"
     }
   },
   "admin": {

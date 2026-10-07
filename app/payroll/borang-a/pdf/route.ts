@@ -39,8 +39,10 @@ export async function GET(req: Request) {
       return new Response('No payroll run for this month — run payroll first.', { status: 422 });
     }
     // r372 (item f022dd70) — TWO MORE REFUSALS, BOTH ABOUT THE PAYROLL-CYCLE SELECTION ON THE LINK.
-    // Unreachable from this screen, which sends no run parameter, and answered here anyway: a route is
-    // not a screen, and a hand-edited link must not fall through to "somebody is missing a number".
+    // r407: the review screen DOES send run parameters now (it carries the criteria step's selection), and
+    // its Continue gate refuses an empty selection before any link is drawn — so these answer a hand-edited
+    // or stale link. A route is not a screen, and such a link must not fall through to "somebody is
+    // missing a number".
     if (loaded.reason === 'selection-empty') {
       return new Response('No payroll run for this month matches the payroll cycles you selected.', {
         status: 422,
@@ -51,10 +53,14 @@ export async function GET(req: Request) {
   }
 
   const pdf = await renderBorangAPdf(loaded.form);
+  // r407 (item 4f45f9b0) — THE PREVIEW IS THIS ROUTE, ASKED TO SHOW RATHER THAN SAVE. The in-app viewer
+  // frames `?…&disposition=inline`: the same loader, the same gate, the same renderer, the same bytes —
+  // only the header differs, so the form on screen IS the file Download saves. Any other value saves.
+  const disposition = q.get('disposition') === 'inline' ? 'inline' : 'attachment';
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${borangAFilename(loaded.form, 'pdf')}"`,
+      'Content-Disposition': `${disposition}; filename="${borangAFilename(loaded.form, 'pdf')}"`,
       'Cache-Control': 'private, no-store',
     },
   });
