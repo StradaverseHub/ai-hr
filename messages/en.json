@@ -11124,6 +11124,11 @@
     "themeToggle": {
       "toggle": "Toggle theme"
     },
+    "uiTheme": {
+      "label": "Theme",
+      "monolith": "Monolith",
+      "classic": "Classic"
+    },
     "drawer": {
       "close": "Close"
     }
