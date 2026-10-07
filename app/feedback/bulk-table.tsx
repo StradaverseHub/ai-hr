@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+// r399: board rows prefetch the item on hover/focus (components/intent-link.tsx), so opening one skips the shell.
+import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
 import type { FeedbackRow } from '@/core/feedback';
 import { paginateRows } from '@/lib/pagination';

@@ -1,7 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
+
+/** r399: a pointer must rest on the link this long before the full prefetch starts, so sweeping the mouse down a
+ *  long list (the feedback board has hundreds of rows) does not ask the server to render every row's page. Focus
+ *  and touch are deliberate, so they escalate at once. */
+export const INTENT_DWELL_MS = 80;
 
 /**
  * r394 — a `next/link` that prefetches the FULL route once the user shows intent (pointer over it, focus,
@@ -18,16 +23,20 @@ import { useState, type ComponentProps } from 'react';
  * two links the user is about to click (Next's documented hover-prefetch pattern, applied with `true`).
  * Freshness is bounded by `experimental.staleTimes.static` in next.config.ts (30 s).
  */
-export function IntentLink({ prefetch, onPointerEnter, onFocus, onTouchStart, ...rest }: ComponentProps<typeof Link>) {
+export function IntentLink({ prefetch, onPointerEnter, onPointerLeave, onFocus, onTouchStart, ...rest }: ComponentProps<typeof Link>) {
   const [intent, setIntent] = useState(false);
+  const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clear = () => { if (dwell.current) { clearTimeout(dwell.current); dwell.current = null; } };
+  useEffect(() => clear, []);
   return (
     <Link
       {...rest}
       // An explicit `prefetch={false}` from the caller wins: that link asked never to prefetch.
       prefetch={prefetch === false ? false : intent ? true : prefetch ?? null}
-      onPointerEnter={(e) => { setIntent(true); onPointerEnter?.(e); }}
-      onFocus={(e) => { setIntent(true); onFocus?.(e); }}
-      onTouchStart={(e) => { setIntent(true); onTouchStart?.(e); }}
+      onPointerEnter={(e) => { if (!intent && !dwell.current) dwell.current = setTimeout(() => { dwell.current = null; setIntent(true); }, INTENT_DWELL_MS); onPointerEnter?.(e); }}
+      onPointerLeave={(e) => { clear(); onPointerLeave?.(e); }}
+      onFocus={(e) => { clear(); setIntent(true); onFocus?.(e); }}
+      onTouchStart={(e) => { clear(); setIntent(true); onTouchStart?.(e); }}
     />
   );
 }
