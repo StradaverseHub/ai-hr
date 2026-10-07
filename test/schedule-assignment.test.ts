@@ -1096,13 +1096,15 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
       '[employmentId]',
       'actions.ts',
       'bulk',
+      // r394: every page folder carries the shared navigation shell (test/r394-route-loading.test.ts).
+      'loading.tsx',
       'page.tsx',
       'status-chip.tsx',
     ]);
-    expect(fs.readdirSync(path.join(dir, '[employmentId]')).sort()).toEqual(['page.tsx']);
+    expect(fs.readdirSync(path.join(dir, '[employmentId]')).sort()).toEqual(['loading.tsx', 'page.tsx']);
     // The bulk screen is a page plus ONE client island — the ticking. Everything it decides is on the
     // server, and the island imports its server action rather than being handed one as a prop.
-    expect(fs.readdirSync(path.join(dir, 'bulk')).sort()).toEqual(['bulk-form.tsx', 'page.tsx']);
+    expect(fs.readdirSync(path.join(dir, 'bulk')).sort()).toEqual(['bulk-form.tsx', 'loading.tsx', 'page.tsx']);
     expect(list, 'the list renders the shared chip').toContain('<StatusChip');
     expect(detail, 'and so does the detail page').toContain('<StatusChip');
   });

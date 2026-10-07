@@ -230,12 +230,12 @@ describe('plannedAbsences personIds scope (eae550e9 step 1)', () => {
     const read = () =>
       plannedAbsences(adminCtx(b), [b.companyId], WINDOW, FAKE_TODAY, { personIds: teamIds });
 
-    // Budget breakdown (per call): 4 set_config + emps + leaves + per-date rows fetch, then per DISTINCT
-    // employment with eligible leave: 1 roster + 3 holiday-resolution queries (workingDatesForSpans).
-    // 3 employments ⇒ 7 + 3×4 = 19. A reintroduced per-LEAVE lookup or a second plannedAbsences call
+    // Budget breakdown (per call): 1 set_config (r394: withTenant sets its four GUCs in ONE statement; it
+    // was 4) + emps + leaves + per-date rows fetch, then per DISTINCT employment with eligible leave:
+    // 1 roster + 3 holiday-resolution queries (workingDatesForSpans). 3 employments ⇒ 4 + 3×4 = 16. A reintroduced per-LEAVE lookup or a second plannedAbsences call
     // breaks this exact number — that is the point of pinning it.
     const first = await countQueries(read);
-    expect(first.queries).toBe(19);
+    expect(first.queries).toBe(16);
 
     // MORE leaves for the same employments must NOT change the round-trip count (the old code paid
     // 2 round-trips per LEAVE; the fix pays per EMPLOYMENT).
