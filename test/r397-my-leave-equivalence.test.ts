@@ -349,7 +349,7 @@ describe('r397 · the batched per-type reads answer what the single reads answer
 });
 
 describe('r397 · statement budget for one My Leave load', () => {
-  it('profiles before vs after', async () => {
+  it('one load: 271 statements / 46 transactions before r397, 134 / 18 after', async () => {
     const p = await inputs(CASES[0]);
     const before = await captureQueries(() => loadMyLeaveBefore(p));
     const after = await captureQueries(() => loadMyLeave(p));
@@ -365,6 +365,26 @@ describe('r397 · statement budget for one My Leave load', () => {
       fs.writeFileSync(`${process.env.R397_PROFILE_OUT}/before.txt`, `${before.statements.length}\n${tally(before.statements)}\n`);
       fs.writeFileSync(`${process.env.R397_PROFILE_OUT}/after.txt`, `${after.statements.length}\n${tally(after.statements)}\n`);
     }
-    expect(after.statements.length).toBeLessThanOrEqual(before.statements.length);
+    const txCount = (xs: string[]) => xs.filter((x) => x.startsWith("select set_config('app.tenant_id'")).length;
+    // PINNED, for the 'rich' employee (10 dashboard cards, Replacement Leave on, one shared group, 4 upcoming rows).
+    //
+    // BEFORE r397: 271 statements in 46 transactions, all sequential. The dashboard alone opened 2 transactions
+    // per card — leaveEntitlementBreakdown (type row + employment row + template resolver + 4 ledger reads) and
+    // leaveTypeApplySummary (6 statements) — and the page also ran the whole history card's reads it discarded.
+    //
+    // AFTER r397: 134 statements in 18 transactions, in four concurrent chains (app/leave/my-leave-data.ts):
+    //   catalogue 3 tx (listEmployees, listLeaveTypes, listEligibleLeaveTypesFor) → canApplyLeaveOnBehalf 1;
+    //   replacementRequestAvailability 1 → leaveCreditOfferForEmployment 1;
+    //   myLeaveDashboard 5 — leaveBalances, the employment/cycle read, offeredLeaveYears, ONE
+    //     leaveEntitlementBreakdowns (1 type read + 1 employment read + 1 resolver per distinct asOf + the 4
+    //     per-card ledger reads × 10 cards = the 40 statements that remain per card), ONE leaveTypeApplySummaries
+    //     (6 statements whatever the card count) → replacementLeaveLedger 1 ∥ listReplacementLeaveRequests 1;
+    //   sharedLeaveGroupBalances 2 (groups/members/usage, then leaveBalances);
+    //   loadOwnUpcomingLeave 3 (myEmploymentIdsAll, myUpcomingLeave's list + count, the Upcoming rows' trails).
+    // A reintroduced per-card transaction or a history read on this page breaks these exact numbers.
+    expect(txCount(before.statements)).toBe(46);
+    expect(before.statements.length).toBe(271);
+    expect(txCount(after.statements), 'transactions').toBe(18);
+    expect(after.statements.length, 'statements').toBe(134);
   }, 60_000);
 });
