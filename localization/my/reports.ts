@@ -2345,12 +2345,14 @@ export const MY_REPORTS: ReportDef[] = [
   // r412 (item e74af58c, step 2) — THE EIS (SIP) MONTHLY CONTRIBUTION SCHEDULE, built. It takes the slot the
   // planned "SIP Forms" entry held (shelfOrder 4); SIP 2 / SIP 2A — the registration forms — stay planned
   // below. Laid out like the reporter's sample, which is another payroll system's report and NOT a PERKESO
-  // form, so `agency-layout` is the ceiling and `official` is out of the question.
+  // form — so `fidelity: 'figures'`, NOT `agency-layout`: the shared agency-layout caption says "drawn box for
+  // box to match the agency's own form", which is untrue of a vendor's report, and a shared caption may say
+  // only what is true of every member (CLAUDE.md §8). Rasterising the criteria step caught it.
   //
   // `runSelection` — `sipContributionReport` IS the Borang 8A read (which honours `runSeqs`) re-shaped, so
   // the cycle box is real. `dueDayOfNextMonth: 15`: EIS is paid with SOCSO, on the 8A's date.
   { id: 'my.sip-contribution', label: 'EIS (SIP) monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: sipContributionReport,
-    descriptionKey: 'desc_sip_contribution', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 4,
+    descriptionKey: 'desc_sip_contribution', fidelity: 'figures', outputs: ['pdf', 'print'], shelfOrder: 4,
     runSelection: { action: '/payroll/sip-contribution/preview' },
     submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.

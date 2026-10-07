@@ -916,16 +916,15 @@ describe('the four pins', () => {
     // typesetting of LHDN's TP3 from the specimen attached to the item, not a facsimile of their PDF.
     ).toEqual([
       'my.borang-8a',
-      // r412 — Borang 8B is drawn to PERKESO's own blank 8B (the 8A's measured geometry); the EIS (SIP)
-      // schedule to the reporter's sample, which is not a government page at all — `agency-layout` is its
-      // ceiling, and neither is `official`.
+      // r412 — Borang 8B is drawn to PERKESO's own blank 8B (the 8A's measured geometry). The EIS (SIP)
+      // schedule is deliberately NOT here: it follows a vendor's report, not an agency form, so it is
+      // `figures` (pinned in test/r412-sip-borang-8b.test.ts).
       'my.borang-8b',
       'my.borang-a',
       'my.cp39',
       // r402 — one entry each (was `.en` / `.ms`).
       'my.ea',
       'my.pcb2ii',
-      'my.sip-contribution',
       'my.tp1',
       'my.tp3',
     ]);

@@ -345,7 +345,11 @@ describe('both forms left the planned list and joined the catalog', () => {
     const d = reportDestination(sip.id, sip.periodKind, sip.runSelection, sip.preview);
     expect(d.action).toBe('/payroll/sip-contribution/preview');
     expect(d.criteria.map((c) => c.kind)).toEqual(['company', 'year', 'month', 'cycles']);
-    expect(sip.fidelity).toBe('agency-layout');
+    // `figures`, not `agency-layout`: the shared agency-layout caption claims the agency's own form, and
+    // the sample is a vendor's report. Never `official`.
+    expect(sip.fidelity).toBe('figures');
+    const ns = en.payroll.statutoryForms as Record<string, string>;
+    expect(ns.fidelity_agency_layout_hint).toMatch(/agency’s own form/);
     expect(sip.shelfOrder).toBe(4);
   });
 

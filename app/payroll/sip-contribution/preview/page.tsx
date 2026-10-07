@@ -243,8 +243,10 @@ export default async function SipContributionPreviewPage({ searchParams }: { sea
         <p className="text-sm text-muted-foreground" data-preview-blocked>
           {t('previewBlocked')}
         </p>
-        {reconciliation}
-        {schedule}
+        {/* An empty table totalling 0.00 would assert there is no EIS to file — a bonus-only selection holds
+            NONE because the selection is wrong, not because nothing is owed. Shown only when it has lines. */}
+        {form.employees > 0 && reconciliation}
+        {form.employees > 0 && schedule}
       </div>
     );
   }

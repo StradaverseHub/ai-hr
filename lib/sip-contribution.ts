@@ -12,7 +12,8 @@
  * we will not add sections it does not have — so this model has no field for either.
  *   ADDED, and only these two: a "Jumlah muka surat ini" per sheet and "Lembaran n/N", because a schedule
  *   that runs to more than one sheet has to be reconcilable sheet by sheet (the approved build notes).
- * Fidelity is `agency-layout` at most, never `official`: there is no government page behind it at all.
+ * Fidelity is `figures` — "laid out our way, not on the agency's own document" — never `agency-layout`
+ * (whose shared caption claims the agency's own form) and never `official`: no government page is behind it.
  *
  * ── THE FIGURE IS TAKEN, NEVER CALCULATED ─────────────────────────────────────────────────────────────
  * JUMLAH CARUMAN is `eisEmployer + eisEmployee` off the rows the Borang 8A READ already produced
