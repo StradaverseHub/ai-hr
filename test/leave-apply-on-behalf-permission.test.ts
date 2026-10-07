@@ -396,7 +396,13 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
   const actions = read('app/leave/actions.ts');
 
   it('the Employee selector’s visibility is the PERMISSION, not the org chart', () => {
-    expect(page).toContain('const canApplyOnBehalf = await canApplyLeaveOnBehalf(session, myCompanyId);');
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts), which asks
+    // it in the viewer's own company. The decision pinned is the same: the selector is the PERMISSION.
+    const loader = read('app/leave/my-leave-data.ts');
+    expect(loader).toContain('return canApplyLeaveOnBehalf(session, myCompanyId);');
+    expect(loader).toContain('.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;');
+    expect(page).toContain('canApplyOnBehalf,'); // destructured off the loader's result
+    expect(loader, 'the reporting-lines read is back').not.toContain('reportingLinesFor');
     expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
     // THE ONE-EDIT-APART CASE. The old rule and the new one differ by a single expression, so the absence of
     // the old read is asserted as flatly as the presence of the new one — a page that asks BOTH questions

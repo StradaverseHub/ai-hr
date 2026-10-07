@@ -354,15 +354,31 @@ describe('Leave Details panel: both call sites feed the trimmed §1 summary + vi
     const page = read('/app/leave/page.tsx');
     expect(page).toContain('<UpcomingLeave rows={upcoming} locale={locale} />');
     // r378 shares the owned History/upcoming projection; Overview retains the upcoming renderer.
-    expect(page).toContain('const { upcoming, historyFilterParams } = await loadOwnLeaveHistory({ session, me, sp, locale, leaveTypes, eligibleTypeIds });');
+    // UPDATED BY r397: the page takes `upcoming` from loadOwnUpcomingLeave (via its loader,
+    // app/leave/my-leave-data.ts) — the same Upcoming projection loadOwnLeaveHistory builds, without the history
+    // card's reads. Both loaders share the employment-id helper and the Upcoming read, so both are pinned.
+    expect(page).toContain('upcoming,');
+    expect(read('/app/leave/my-leave-data.ts')).toContain('const upcomingP = loadOwnUpcomingLeave({ session, me, sp });');
     const history = read('/components/leave/own-leave-history.tsx');
-    const loaderStart = history.indexOf('export async function loadOwnLeaveHistory(');
-    const loaderEnd = history.indexOf('return { history, upcoming, historyFilterParams };', loaderStart);
-    expect(loaderStart).toBeGreaterThan(-1);
-    expect(loaderEnd).toBeGreaterThan(loaderStart);
-    const projection = history.slice(loaderStart, loaderEnd);
-    expect(projection).toContain('const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];');
-    expect(projection).toContain('myUpcomingLeave(session, historyEmploymentIds, today)');
+    const idsStart = history.indexOf('async function ownHistoryEmploymentIds(');
+    const idsEnd = history.indexOf('return historyEmploymentIds;', idsStart);
+    expect(idsStart).toBeGreaterThan(-1);
+    expect(idsEnd).toBeGreaterThan(idsStart);
+    expect(history.slice(idsStart, idsEnd)).toContain('const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];');
+    for (const [start, end] of [
+      ['export async function loadOwnLeaveHistory(', 'return { history, upcoming, historyFilterParams };'],
+      ['export async function loadOwnUpcomingLeave(', 'return { upcoming, historyFilterParams };'],
+    ]) {
+      const loaderStart = history.indexOf(start);
+      const loaderEnd = history.indexOf(end, loaderStart);
+      expect(loaderStart, start).toBeGreaterThan(-1);
+      expect(loaderEnd, end).toBeGreaterThan(loaderStart);
+      const projection = history.slice(loaderStart, loaderEnd);
+      expect(projection.length, start).toBeGreaterThan(200);
+      expect(projection).toContain('const historyEmploymentIds = await ownHistoryEmploymentIds(session, me);');
+      expect(projection).toContain('myUpcomingLeave(session, historyEmploymentIds, today)');
+      expect(projection).toContain('ownUpcomingView(upcomingRows, approvalTrails)');
+    }
     const service = read('/core/my-leave.ts');
     const serviceStart = service.indexOf('export async function myUpcomingLeave(');
     const serviceEnd = service.indexOf('return rows;', serviceStart);

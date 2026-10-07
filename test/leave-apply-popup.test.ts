@@ -35,7 +35,8 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
     // decision it pins is unchanged — the viewer's locale reaches listLeaveTypes — but that call now also
     // states `includeArchived: false` explicitly, and an exact-literal guard would have to be rewritten
     // every time a second option is named. The `locale` term itself is still required.
-    expect(page).toMatch(/listLeaveTypes\(session, \{ locale\b/);
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
+    expect(read('app/leave/my-leave-data.ts')).toMatch(/listLeaveTypes\(session, \{ locale\b/);
   });
 
   it('sorts the array alphabetically with a locale-aware, case-insensitive comparison', () => {
@@ -43,13 +44,26 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
     // because the page now holds TWO arrays that must be ordered identically: the full catalogue (still
     // needed for the unpaid-leave name and the Edit box) and the eligibility-filtered apply source. Two
     // inline copies of one comparator is exactly how they would have drifted.
-    expect(page).toContain("a.name.localeCompare(b.name, locale, { sensitivity: 'base' })");
-    expect(page).toContain('leaveTypes.sort(byName);');
-    expect(page).toContain('eligibleLeaveTypes.sort(byName);');
+    //
+    // UPDATED BY r397: the reads — and so the one sort — moved into the page's loader
+    // (app/leave/my-leave-data.ts), which sorts both arrays the moment they return, before it hands them on.
+    const loader = read('app/leave/my-leave-data.ts');
+    expect(loader).toContain("a.name.localeCompare(b.name, locale, { sensitivity: 'base' })");
+    expect(loader).toContain('leaveTypes.sort(byName);');
+    expect(loader).toContain('eligibleLeaveTypes.sort(byName);');
+    expect(page, 'a second sort on the page').not.toContain('.sort(byName)');
   });
 
   it('sorts BEFORE every consumer maps off the array (one sort fixes all four)', () => {
-    const sortAt = page.indexOf('leaveTypes.sort(');
+    // UPDATED BY r397: the sort is in the loader, inside the `.then` that receives the reads and BEFORE its
+    // `return { employees, leaveTypes, eligibleLeaveTypes }`; every page consumer runs after the page's
+    // `await loadMyLeave(`. So the page-side anchor is that await, and the loader-side order is pinned too.
+    const loader = read('app/leave/my-leave-data.ts');
+    const loaderSort = loader.indexOf('eligibleLeaveTypes.sort(byName);');
+    const loaderHandOn = loader.indexOf('return { employees, leaveTypes, eligibleLeaveTypes };');
+    expect(loaderSort).toBeGreaterThan(-1);
+    expect(loaderHandOn).toBeGreaterThan(loaderSort);
+    const sortAt = page.indexOf('await loadMyLeave(');
     expect(sortAt).toBeGreaterThan(-1);
     // Every `.map(` that builds options off either array must come after the sorts.
     // afd0a87c — was >= 4. Two of the four consumers were the retired request table's leave-type filter

@@ -129,7 +129,8 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
   it('ad965821: the ESS apply dropdown is built from the ELIGIBILITY-filtered read', () => {
     // The defect lived in the CONTRACT between this page and core/read.ts (AGENTS rule 17), so it is pinned
     // on both halves: a unit test of either one passes throughout.
-    expect(leavePage).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
+    expect(read('app/leave/my-leave-data.ts')).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
     // REV 2 pinned a UNION here — the option list drawn from every subject a line manager could pick,
     // because LeaveDurationFields intersects `types` with the selected subject's set and a viewer-only
     // array made the on-behalf offer eligible(manager) ∩ eligible(report).
