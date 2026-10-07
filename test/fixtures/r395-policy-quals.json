@@ -115,7 +115,7 @@
       "cmd": "ALL",
       "calls": 1,
       "oldQual": "((tenant_id = app.current_tenant_id()) AND app.can_see_person(person_id))",
-      "newQual": "((tenant_id = app.current_tenant_id()) AND (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])))",
+      "newQual": "((tenant_id = app.current_tenant_id()) AND (( SELECT app.is_admin() AS is_admin) OR (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[]))))",
       "withCheck": "((tenant_id = app.current_tenant_id()) AND app.is_admin())"
     },
     {
@@ -160,7 +160,7 @@
       "cmd": "ALL",
       "calls": 1,
       "oldQual": "((tenant_id = app.current_tenant_id()) AND app.can_see_person(person_id))",
-      "newQual": "((tenant_id = app.current_tenant_id()) AND (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])))",
+      "newQual": "((tenant_id = app.current_tenant_id()) AND (( SELECT app.is_admin() AS is_admin) OR (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[]))))",
       "withCheck": "((tenant_id = app.current_tenant_id()) AND app.is_admin())"
     },
     {
@@ -394,7 +394,7 @@
       "cmd": "ALL",
       "calls": 1,
       "oldQual": "((tenant_id = app.current_tenant_id()) AND (app.can_see_person(id) OR (EXISTS ( SELECT 1\n   FROM employment e\n  WHERE ((e.person_id = person.id) AND (e.tenant_id = app.current_tenant_id()) AND (app.can_admin_payroll_for(e.company_id) OR app.can_admin_perfcomp_for(e.company_id)))))))",
-      "newQual": "((tenant_id = app.current_tenant_id()) AND ((id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])) OR (EXISTS ( SELECT 1\n   FROM employment e\n  WHERE ((e.person_id = person.id) AND (e.tenant_id = app.current_tenant_id()) AND (app.can_admin_payroll_for(e.company_id) OR app.can_admin_perfcomp_for(e.company_id)))))))",
+      "newQual": "((tenant_id = app.current_tenant_id()) AND (( SELECT app.is_admin() AS is_admin) OR (id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])) OR (EXISTS ( SELECT 1\n   FROM employment e\n  WHERE ((e.person_id = person.id) AND (e.tenant_id = app.current_tenant_id()) AND (app.can_admin_payroll_for(e.company_id) OR app.can_admin_perfcomp_for(e.company_id)))))))",
       "withCheck": "((tenant_id = app.current_tenant_id()) AND (app.is_admin() OR app.is_self_person(id)))"
     },
     {
@@ -403,7 +403,7 @@
       "cmd": "ALL",
       "calls": 1,
       "oldQual": "((tenant_id = app.current_tenant_id()) AND app.can_see_person(person_id))",
-      "newQual": "((tenant_id = app.current_tenant_id()) AND (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])))",
+      "newQual": "((tenant_id = app.current_tenant_id()) AND (( SELECT app.is_admin() AS is_admin) OR (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[]))))",
       "withCheck": "((tenant_id = app.current_tenant_id()) AND (app.is_admin() OR app.is_self_person(person_id)))"
     },
     {
@@ -412,7 +412,7 @@
       "cmd": "ALL",
       "calls": 1,
       "oldQual": "((tenant_id = app.current_tenant_id()) AND app.can_see_person(person_id))",
-      "newQual": "((tenant_id = app.current_tenant_id()) AND (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])))",
+      "newQual": "((tenant_id = app.current_tenant_id()) AND (( SELECT app.is_admin() AS is_admin) OR (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[]))))",
       "withCheck": "((tenant_id = app.current_tenant_id()) AND app.is_admin())"
     },
     {
@@ -502,7 +502,7 @@
       "cmd": "ALL",
       "calls": 1,
       "oldQual": "((tenant_id = app.current_tenant_id()) AND app.can_see_person(person_id))",
-      "newQual": "((tenant_id = app.current_tenant_id()) AND (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[])))",
+      "newQual": "((tenant_id = app.current_tenant_id()) AND (( SELECT app.is_admin() AS is_admin) OR (person_id = ANY (( SELECT app.visible_person_ids() AS visible_person_ids)::uuid[]))))",
       "withCheck": "((tenant_id = app.current_tenant_id()) AND app.can_see_person(person_id))"
     },
     {

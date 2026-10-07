@@ -16,11 +16,15 @@
 --          is_admin_report_of's root_company), and the HOD arm (heads_department_of per caller
 --          employment: current assignment, per-caller company clamp on every hop, depth < 64, the
 --          caller must manage a current administrative line).
---        app.visible_person_ids() uuid[]      — every person id p with app.can_see_person(p).
+--        app.visible_person_ids() uuid[]      — every person id p that app.can_see_person(p) admits through
+--          its NON-admin arms (own app_user row; an employment passing can_see_employment).
 --      Both return '{}', never NULL.
 --   2. In each policy USING clause listed below, and ONLY there,
 --        app.can_see_employment(X)  →  (X = ANY ((SELECT app.visible_employment_ids())::uuid[]))
---        app.can_see_person(X)      →  (X = ANY ((SELECT app.visible_person_ids())::uuid[]))
+--        app.can_see_person(X)      →  ((SELECT app.is_admin()) OR (X = ANY ((SELECT app.visible_person_ids())::uuid[])))
+--      can_see_person's admin arm stays a row-independent boolean (an InitPlan too): it is TRUE for ANY id —
+--      another tenant's person, or the row an `INSERT INTO person … RETURNING` is creating, which is not in
+--      the statement's snapshot. Listing persons for it instead refused every admin hire (r395, measured).
 --      The (SELECT …) makes the set an InitPlan: computed once per statement, not once per row.
 --      The ::uuid[] cast is REQUIRED SYNTAX, not decoration: `X = ANY ((SELECT f()))` parses as
 --      `= ANY (subquery)` (nested parentheses are still a parenthesised SELECT) and fails with
@@ -106,11 +110,10 @@
 -- changed by a later migration merged earlier) would otherwise be silently REPLACED by this file's
 -- version; it fails the migration instead.
 --
--- KNOWN BOUNDARY (not a behaviour change on consistent data): app.can_see_person returns TRUE for ANY id
--- when app.is_admin(); visible_person_ids lists the admin's CURRENT TENANT's persons. A row could differ
--- only if a row of this tenant pointed at another tenant's person — the person FKs are single-column, so
--- the schema does not forbid that, but no writer creates one. Listing every tenant's persons instead would
--- hand an admin the id of every person in every tenant through a callable function.
+-- EXACTNESS. Both rewrites are the old functions' definitions read as sets, with no boundary cases:
+-- test/r395-visibility-equivalence.test.ts (reads, 24 contexts, both tenants, all 57 tables) and
+-- test/r395-write-path-equivalence.test.ts (INSERT/UPDATE … RETURNING and the real hireEmployee under the
+-- old and the new policies) compare them.
 --
 -- Rollback: re-run the ALTER POLICY statements with the old USING texts from the fixture, then
 --   DROP FUNCTION app.visible_person_ids(); DROP FUNCTION app.visible_employment_ids();
@@ -337,10 +340,13 @@ GRANT EXECUTE ON FUNCTION app.visible_employment_ids() TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── app.visible_person_ids() ─────────────────────────────────────────────────────────────────────────
--- The SET of person ids p for which app.can_see_person(p) is true (0001):
---   app.is_admin()
---   OR the caller's own app_user row names p in the current tenant
+-- The NON-ADMIN arms of app.can_see_person(p) (0001), as a set:
+--   the caller's own app_user row names p in the current tenant
 --   OR some employment of p in the current tenant passes app.can_see_employment.
+-- can_see_person's FIRST arm, app.is_admin(), is deliberately NOT in this set: it is true for ANY id
+-- (another tenant's person, or the row the current statement is inserting), so it is not a list of
+-- existing rows. A set-based admin arm read `person` in the statement's snapshot and so refused every
+-- admin `INSERT INTO person … RETURNING`. The policies spell that arm as `(SELECT app.is_admin())`.
 CREATE OR REPLACE FUNCTION app.visible_person_ids()
 RETURNS uuid[]
 LANGUAGE sql
@@ -349,12 +355,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   WITH visible AS (
-    SELECT p.id
-    FROM person p
-    WHERE (SELECT app.is_admin())
-      AND p.tenant_id = app.current_tenant_id()
-    UNION
-    SELECT u.person_id
+    SELECT u.person_id AS id
     FROM app_user u
     WHERE u.id = app.current_user_id()
       AND u.tenant_id = app.current_tenant_id()
@@ -420,7 +421,7 @@ ALTER POLICY "employee_cp38_rls" ON "employee_cp38"
 --> statement-breakpoint
 -- employee_dependent.employee_dependent_rls (ALL, 1 call)
 ALTER POLICY "employee_dependent_rls" ON "employee_dependent"
-  USING (((tenant_id = app.current_tenant_id()) AND (person_id = ANY ((SELECT app.visible_person_ids())::uuid[]))));
+  USING (((tenant_id = app.current_tenant_id()) AND ((SELECT app.is_admin()) OR (person_id = ANY ((SELECT app.visible_person_ids())::uuid[])))));
 --> statement-breakpoint
 -- employee_device.employee_device_rls (ALL, 1 call)
 ALTER POLICY "employee_device_rls" ON "employee_device"
@@ -440,7 +441,7 @@ ALTER POLICY "employee_qualification_rls" ON "employee_qualification"
 --> statement-breakpoint
 -- employee_tp3.employee_tp3_rls (ALL, 1 call)
 ALTER POLICY "employee_tp3_rls" ON "employee_tp3"
-  USING (((tenant_id = app.current_tenant_id()) AND (person_id = ANY ((SELECT app.visible_person_ids())::uuid[]))));
+  USING (((tenant_id = app.current_tenant_id()) AND ((SELECT app.is_admin()) OR (person_id = ANY ((SELECT app.visible_person_ids())::uuid[])))));
 --> statement-breakpoint
 -- employment.employment_rls (ALL, 1 call)
 ALTER POLICY "employment_rls" ON "employment"
@@ -560,17 +561,17 @@ ALTER POLICY "performance_review_rls" ON "performance_review"
 --> statement-breakpoint
 -- person.person_rls (ALL, 1 call)
 ALTER POLICY "person_rls" ON "person"
-  USING (((tenant_id = app.current_tenant_id()) AND ((id = ANY ((SELECT app.visible_person_ids())::uuid[])) OR (EXISTS ( SELECT 1
+  USING (((tenant_id = app.current_tenant_id()) AND (((SELECT app.is_admin()) OR (id = ANY ((SELECT app.visible_person_ids())::uuid[]))) OR (EXISTS ( SELECT 1
    FROM employment e
   WHERE ((e.person_id = person.id) AND (e.tenant_id = app.current_tenant_id()) AND (app.can_admin_payroll_for(e.company_id) OR app.can_admin_perfcomp_for(e.company_id))))))));
 --> statement-breakpoint
 -- person_emergency_contact.person_emergency_contact_rls (ALL, 1 call)
 ALTER POLICY "person_emergency_contact_rls" ON "person_emergency_contact"
-  USING (((tenant_id = app.current_tenant_id()) AND (person_id = ANY ((SELECT app.visible_person_ids())::uuid[]))));
+  USING (((tenant_id = app.current_tenant_id()) AND ((SELECT app.is_admin()) OR (person_id = ANY ((SELECT app.visible_person_ids())::uuid[])))));
 --> statement-breakpoint
 -- person_photo.person_photo_rls (ALL, 1 call)
 ALTER POLICY "person_photo_rls" ON "person_photo"
-  USING (((tenant_id = app.current_tenant_id()) AND (person_id = ANY ((SELECT app.visible_person_ids())::uuid[]))));
+  USING (((tenant_id = app.current_tenant_id()) AND ((SELECT app.is_admin()) OR (person_id = ANY ((SELECT app.visible_person_ids())::uuid[])))));
 --> statement-breakpoint
 -- profile_change_request.profile_change_request_rls (ALL, 1 call)
 ALTER POLICY "profile_change_request_rls" ON "profile_change_request"
@@ -612,7 +613,7 @@ ALTER POLICY "toil_accrual_rls" ON "toil_accrual"
 --> statement-breakpoint
 -- tp1_relief.tp1_relief_rls (ALL, 1 call)
 ALTER POLICY "tp1_relief_rls" ON "tp1_relief"
-  USING (((tenant_id = app.current_tenant_id()) AND (person_id = ANY ((SELECT app.visible_person_ids())::uuid[]))));
+  USING (((tenant_id = app.current_tenant_id()) AND ((SELECT app.is_admin()) OR (person_id = ANY ((SELECT app.visible_person_ids())::uuid[])))));
 --> statement-breakpoint
 -- travel_request.travel_request_rls (ALL, 1 call)
 ALTER POLICY "travel_request_rls" ON "travel_request"

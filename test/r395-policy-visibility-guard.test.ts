@@ -47,6 +47,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
 
   it('the 57 rewritten policies carry the fixture USING text and an UNCHANGED WITH CHECK', async () => {
     expect(FIXTURE.policies.length).toBe(57);
+    expect(FIXTURE.policies.filter((p) => /app\.can_see_person\(/.test(p.oldQual)).length, 'six person policies').toBe(6);
     const live = new Map(
       (await q(`select tablename, policyname, qual, with_check from pg_policies`)).map((r) => [key(r.tablename as string, r.policyname as string), r]),
     );
@@ -57,6 +58,11 @@ describe('r395 — per-row visibility functions are gone from every policy USING
       expect(r!.with_check ?? null, `${key(p.table, p.policy)} WITH CHECK unchanged`).toBe(p.withCheck);
       expect(p.oldQual, `${key(p.table, p.policy)} old USING called a per-row function`).toMatch(/app\.can_see_(employment|person)\(/);
       expect(p.newQual).toMatch(/visible_(employment|person)_ids\(\)/);
+      // can_see_person's admin arm is TRUE for any id (another tenant's person; the row an INSERT … RETURNING
+      // is creating) and must stay a row-independent boolean beside the set, never be folded into it.
+      if (/app\.can_see_person\(/.test(p.oldQual)) {
+        expect(p.newQual, `${key(p.table, p.policy)} keeps the is_admin() arm`).toMatch(/\( SELECT app\.is_admin\(\) AS is_admin\) OR \([a-z_.]+ = ANY \(\( SELECT app\.visible_person_ids\(\)/);
+      }
     }
   });
 
