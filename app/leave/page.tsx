@@ -1,4 +1,5 @@
-import { loadOwnLeaveHistory } from '@/components/leave/own-leave-history';
+// r397 — the page's reads, started together (app/leave/my-leave-data.ts documents each one and the graph).
+import { loadMyLeave } from './my-leave-data';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -15,7 +16,6 @@ import {
   // sibling, and the reporting-lines read that used to decide who got an Employee selector, both left with
   // 5206539f: the selector is a named permission now, not a shape of the org chart.
   listEligibleLeaveTypesFor,
-  replacementLeaveLedger,
   // r301 (83511d3b) — Cancel Approved Leave: THE button predicate (shared with the Team Leave Tracker) and the
   // Pending Cancellation progress on the viewer's own records.
   employeeCancelOffers,
@@ -23,14 +23,14 @@ import {
 } from '@/core/read';
 // 5f2e20fb — the SAME filter control the three HR leave screens use, on the employee's own history box.
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-// 5206539f — `leave.apply_on_behalf`, resolved by the SAME function requestLeave's own gate calls, so the
-// selector below and the refusal in the service can never answer differently.
-import { canApplyLeaveOnBehalf, todayInKualaLumpur } from '@/core/leave';
+// 5206539f — `leave.apply_on_behalf` is resolved by the SAME function requestLeave's own gate calls
+// (canApplyLeaveOnBehalf, asked in ./my-leave-data.ts since r397), so the selector below and the refusal in the
+// service can never answer differently.
+import { todayInKualaLumpur } from '@/core/leave';
 import { isReplacementLeaveType, pickReplacementLeaveType } from '@/core/ess-view';
 // r302 (6c9802c9) — My Leave dashboard: the per-leave-year figures, Upcoming Leave, and the names of the people
 // who decide the viewer's OWN requests (migration 0472). Every figure is a pick in core/my-leave.ts.
 import {
-  myLeaveDashboard,
   myUpcomingLeave,
   ownLeaveApprovalTrails,
   ownLeaveCancellations,
@@ -64,8 +64,8 @@ import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
-// 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
-// read that decides whether to offer it, and the action it posts to.
+// 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave" and the action it posts
+// to. The availability read that decides whether to offer it is asked in ./my-leave-data.ts (r397).
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
 // r343 — the dialog's body is the single Leave Credit table, and it posts to that table's own action.
 // r389 (ba039150) — the dialog is now the ONLY entry point to that form: `/leave/credit` lost its second copy
@@ -77,13 +77,12 @@ import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './cre
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
 // round changing Leave config settings against a cause that sits above Leave config.
 import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
-import { leaveCreditOfferForEmployment, listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 // My Leave History — tabs, one row per request, and the slide-out View panel (657962ec, reshaped by r302).
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
 // Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
-// as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid.
-import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
+// as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid. Read
+// by sharedLeaveGroupBalances in ./my-leave-data.ts (r397).
 // r341 (8d3a7bff) — which leave-type card a shared group's ceiling belongs on, decided in one pure place.
 import { planSharedGroupCeilings } from '@/lib/shared-leave-pool';
 import { durationLabel } from '@/lib/leave-duration';
@@ -237,38 +236,30 @@ export default async function LeavePage({
   // still re-validates every posted date authoritatively.
 
   const locale = await getLocale();
-  const [employees, leaveTypes, eligibleLeaveTypes] = await Promise.all([
-    listEmployees(session, scopeIds),
-    // Employee apply-popup enhancement: pass the viewer's locale so listLeaveTypes localizes `name` through
-    // pickName. Without it the list is always English, which also makes an alphabetical sort meaningless
-    // outside English. Admin master screens deliberately keep passing no locale (they edit the English name).
-    //
-    // ad965821 — THE FULL CATALOGUE IS STILL READ, and deliberately: two consumers on this page need it and
-    // would break silently on the narrowed list. (1) `unpaidTypeName` just below, which supplies the
-    // tenant's own name for unpaid leave to the fef49b9a balance split — UNPAID is a plausible hidden or
-    // not-can-apply type, so filtering it away would drop that name from the breakdown. (2) the
-    // EditLeaveDialog list, which must keep a request's OWN type selectable even when the employee no
-    // longer qualifies for it. What it no longer feeds is the apply dropdown.
-    //
-    // ec991c2a — `includeArchived: false` written out, and it is already `listLeaveTypes`' default
-    // (core/read.ts: `.where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt))`). The item's
-    // build notes read this call as the one deciding the apply list; it is NOT — see the line below. It
-    // feeds `unpaidTypeName`, the EditLeaveDialog list and the replacement-leave notice, all of which want
-    // the live catalogue. Stated explicitly so the next reader does not have to go and check the default.
-    listLeaveTypes(session, { locale, includeArchived: false }),
-    // …which now comes from HERE: the types this employee actually qualifies for, resolved through the ONE
-    // gate in core/read.ts (conditions + employee_can_apply + hidden placement). An ineligible type is
-    // ABSENT — no message, no greyed row, no badge, no count. requestLeave still refuses the submission.
-    listEligibleLeaveTypesFor(session, me.employmentId, locale),
-  ]);
+  // r397 — EVERY READ BELOW IS MADE BY ONE LOADER, app/leave/my-leave-data.ts, which starts the independent ones
+  // together instead of one after another. The calls themselves — which function, with which arguments, gated
+  // on what — are unchanged and are documented there, read for read, with the dependency graph between them.
+  // This page keeps every derivation it always made from their results; it no longer makes the reads.
+  const {
+    employees,
+    leaveTypes,
+    eligibleLeaveTypes,
+    canApplyOnBehalf,
+    replacementRequest,
+    leaveCreditOffer,
+    dashboard,
+    leaveYearAsOf,
+    replacementLedger,
+    replacementRequests,
+    sharedGroupBalances,
+    upcoming,
+    historyFilterParams,
+  } = await loadMyLeave({ session, scopeIds, me, sp, locale, today });
   // Sort ONCE, at the source: every consumer on this page maps off one of these two arrays (the
   // request-leave dialog options, the two edit-leave dialog lists), so one sort makes them agree instead of
   // one popup being ordered and another not. NOT pushed into core/read.ts listLeaveTypes — the admin master
-  // listing has its own ordering.
-  const byName = (a: { name: string }, b: { name: string }) =>
-    a.name.localeCompare(b.name, locale, { sensitivity: 'base' });
-  leaveTypes.sort(byName);
-  eligibleLeaveTypes.sort(byName);
+  // listing has its own ordering. r397: the sort is made in the loader, the moment the reads return and before
+  // anything consumes them — the same `byName` comparator, so both arrays arrive here already ordered.
   // fef49b9a — the tenant's OWN name for unpaid leave, so the breakdown says what their catalogue says.
   // Matched on the UNPAID code, which is the same lookup core/leave.ts already uses for the Emergency
   // decomposition (core/leave.ts:3480). The approved plan asked for the leave-type ROLE marker instead,
@@ -296,8 +287,8 @@ export default async function LeavePage({
   //
   // Company-scoped: an override row may be granted for one company of a group, so the viewer's OWN company
   // (off the already-loaded employee list — `me` does not carry the id) is what this question is asked in.
-  const myCompanyId = active.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;
-  const canApplyOnBehalf = await canApplyLeaveOnBehalf(session, myCompanyId);
+  // r397: asked by the loader as `canApplyLeaveOnBehalf(session, myCompanyId)`, myCompanyId being
+  // `active.find((e) => e.employmentId === me.employmentId)?.companyId ?? null` over the same employee list.
   // WHO a holder may pick: everyone in their scope, with THE VIEWER LEADING THE LIST. That ordering is the
   // one ad965821 rule that survives — LeaveDurationFields defaults employmentId to the first option, so
   // without it a holder opening Request Leave would be applying for whoever `listEmployees` returned first
@@ -404,7 +395,8 @@ export default async function LeavePage({
   // THIS IS NOT THE ENFORCEMENT. `submitReplacementLeaveRequest` re-derives all three server-side; this
   // read exists so the button is not offered where the submission would be refused. Hiding it is the
   // courtesy, refusing the POST is the control.
-  const replacementRequest = ess && me ? await replacementRequestAvailability(session, me.employmentId, today) : { allowed: false };
+  // r397: read by the loader — replacementRequestAvailability(session, me.employmentId, today). `ess` is necessarily
+  // true past the short-page return, which is the only path that reaches the loader.
   // ⚠️ r358 70294f7a — THE TIERS NO LONGER DEPEND ON THE SWITCH, AND THAT IS THE ITEM. This read
   // `extendedHoursOfferForEmployment`, which returns null when the company has not switched extended
   // hours on — false on EVERY company — and the table read that null as "no tier ladder exists" and
@@ -412,8 +404,7 @@ export default async function LeavePage({
   // keeping it would have switched Leave Credit off for every company. `leaveCreditOfferForEmployment`
   // returns the ladder and the switch as two separate facts; the switch now governs only whether an
   // ORDINARY working day may earn a credit.
-  const leaveCreditOffer =
-    ess && me && replacementRequest.allowed ? await leaveCreditOfferForEmployment(session, me.employmentId) : null;
+  // r397: read by the loader, and still only when `replacementRequest.allowed` — null otherwise.
   // r219 — WHO IS SHOWN THE REASON, and why it is not simply everyone whose read said no.
   //
   // A tenant that has never had a Replacement Leave type in its catalogue has nothing to explain: the
@@ -435,19 +426,17 @@ export default async function LeavePage({
   // for" from leaveTypeApplySummary, the Apply popup's own figure (= the submit guard, test/r75). Hidden types
   // never arrive; Primary types come before Secondary. The read is where the r209 pool story (whose breakdown a
   // borrower tells) and the ec991c2a archived gate now live; this page computes no balance.
-  const dashboard = ess && me ? await myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale }) : null;
-  const leaveYearAsOf =
-    dashboard && dashboard.selectedYear !== dashboard.currentYear ? `${dashboard.selectedYear}-12-31` : today;
+  // r397: read by the loader — myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale }) —
+  // with `leaveYearAsOf` = the chosen year's 31 December when it is not the current year, else today.
 
   // ── Replacement Leave: the per-credit register behind its card (feedback 00307068) ─────────────────────
   // Replacement Leave is a stack of separately earned credits, so its card opens a TABLE of those credits
   // rather than the Leave Summary. ONE EXTRA READ, AND ONLY WHEN IT IS RENDERED: loaded only when the dashboard
   // actually carries a Replacement Leave card (matched BY ROLE, the seeded code as the fallback — 5ff7daff).
-  const replacementCard = dashboard?.cards.find((c) => isReplacementLeaveType(c));
-  const replacementLedger = replacementCard && me ? await replacementLeaveLedger(session, me.employmentId) : null;
+  // r397: the loader reads the ledger (and the claims below) only when the dashboard carries that card — the
+  // first card `isReplacementLeaveType` accepts, exactly the test this page made.
   // 5ff7daff — the employee's own PENDING claims, summed over `pending` rows only (an approved request is
   // already a credit on the ledger above, and counting it in both places would double it).
-  const replacementRequests = replacementCard && me ? await listReplacementLeaveRequests(session, me.employmentId) : [];
   const replacementPendingDays =
     Math.round(replacementRequests.filter((r) => r.status === 'pending').reduce((sum, r) => sum + r.totalDays, 0) * 100) / 100;
   const dashboardCards: MyLeaveDashboardCard[] = (dashboard?.cards ?? []).map((c) =>
@@ -469,8 +458,7 @@ export default async function LeavePage({
   // `sharedLeaveGroupBalances` returns only the groups HR has PLACED (Hidden groups never come back), each with
   // the genuinely drawable figure. r302: placement is ORDER now — Primary groups first, then Secondary — drawn
   // as tiles in the dashboard grid, for the chosen year (a group's cycle is the calendar year of `asOf`).
-  const sharedGroupBalances =
-    ess && me ? await sharedLeaveGroupBalances(session, me.employmentId, { locale, asOf: leaveYearAsOf }) : [];
+  // r397: read by the loader — sharedLeaveGroupBalances(session, me.employmentId, { locale, asOf: leaveYearAsOf }).
   // Pre-translate here (t() is server-side) so the tile stays a plain presentational element.
   const sharedGroupEntriesAt = (placement: 'primary' | 'secondary') =>
     sharedGroupBalances
@@ -586,7 +574,8 @@ export default async function LeavePage({
     groupName: groupNameByTypeId.get(o.id) ?? null,
   }));
 
-  const { upcoming, historyFilterParams } = await loadOwnLeaveHistory({ session, me, sp, locale, leaveTypes, eligibleTypeIds });
+  // r397: `upcoming` and `historyFilterParams` come from the loader's loadOwnUpcomingLeave — the two things this
+  // page ever used of loadOwnLeaveHistory, without the history card's reads (that card is /leave/history's).
   const historyLinkParams = new URLSearchParams();
   for (const [key, value] of Object.entries(historyFilterParams)) for (const one of Array.isArray(value) ? value : [value]) historyLinkParams.append(key, one);
   for (const key of ['leaveYear', 'warnHoliday', 'loaded', 'state', 'year'] as const) if (sp[key]) historyLinkParams.set(key, sp[key]);

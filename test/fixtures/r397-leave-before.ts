@@ -29,7 +29,8 @@ import {
   listReplacementLeaveRequests,
   replacementRequestAvailability,
 } from '../../packs/leave/service';
-import { loadOwnLeaveHistory, type HistorySearch } from '../../components/leave/own-leave-history';
+import { type HistorySearch } from '../../components/leave/own-leave-history';
+import { loadOwnLeaveHistory } from './r397-own-leave-history-before';
 import { isReplacementLeaveType } from '../../core/ess-view';
 
 type Me = NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
