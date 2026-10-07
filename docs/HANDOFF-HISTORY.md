@@ -1,6 +1,27 @@
+## r405 — 2026-10-08 · main@25ff9ea11b876d78b61daf63d092ed9d524168a3 · migration none
+
+**Scope.** Three board items, built while `planned` (r389/r392 precedent): f3cf2444 (one EA and one PCB 2(II) card with a Version step, full-width in-app viewer, Blank form and field register unlinked), 7a595a02 (read-only company view), 42e55e2b (My Leave › Leave Details + Excel). Deployed with `improve:deploy`, so **no board write**: build-start/deployed are recorded only when the reporter approves each plan byte-identical. Live after restart (401 on box, public /health 200, zero-line dry-run).
+
+**Decisions.**
+- `components/statutory-pdf-viewer.tsx` is the shared viewer for the statutory items to come (EPF, SOCSO, LHDN): server component, iframe of the same-origin preview route at A4 shape, Download = the same query on the download route. `statutory-pdf-frame.tsx` follows a refusal out of the frame (same-origin only).
+- Reverses r220/r242/r256/r331 shelf decisions: `my.ea.en/.ms` → `my.ea`, `my.pcb2ii.en/.ms` → `my.pcb2ii`; old ids redirect; 15 keys retired, none deleted. Version defaults to English, never the UI locale.
+- Company view runs the editor's guards (scopedAdmin, adminOnly list, 404) before any per-company read; the GUARD does the refusing (RLS alone lets a Beta-scoped admin read Acme, measured by mutation).
+- Leave Details: `employeeBalanceRows(..., { audience: 'self' })` is HR's row narrowed, never a second derivation; scope from `myEmployment(session)` only. Explain withheld whenever any ESS switch is off, and (verify fix D1) on a borrower row also when the POOL's switches hide anything, since the panel's data is the pool's. Real .xlsx with the 16 on-screen columns.
+
+**Verify fixes after the gate.** PCB 2(II) refusal now carries the ticked ids back (the viewer follows it top-level, so the picker came back empty; mutation-checked). `asOf` bounded to 1900–2999 (year 0 round-trips in JS, not in Postgres). Company view gained its `loading.tsx` (the only gate red, r394 guard).
+
+**Gate.** 20 chunks, 1206 of 1206 counted, 19 green; chunk 7 the missing loading.tsx. Post-gate delta: tsc 0 and the 9 affected files green.
+
+**Not done / owed.**
+- D1 is a defensive guard with no test: the fixture cannot build a visible borrower that survives the shared-group fold.
+- `#view=FitH` fit-width unconfirmed in Chrome, Safari and Firefox; the iframe onLoad may miss a pre-hydration refusal (`pnpm test:browser` not run).
+- D2: a visible borrower whose pool is hidden shows null year/forfeited on the self row, while HR shows values (no leak).
+- Leave Details still scrolls sideways at 1440 with the rail open, as HR's screen does.
+- Company view edge cases (non-MY company, tenant without Payroll) written but not rendered.
+
 ## r401 — 2026-10-07 · main@d28945c795313726cf04acb46bfde6a4bdf65738 · migration none
 
-**Scope.** Monolith rollout STEP 4a: Dashboard and My Profile drawn to their boards. No board item. Built on box (state ok, built_ref d28945c7, stale_build 0); **the service restart was not run by this session** (classifier refused the remote write) — production serves the r400 build until `sudo systemctl restart aihr`.
+**Scope.** Monolith rollout STEP 4a: Dashboard and My Profile drawn to their boards. No board item. Built on box (state ok, built_ref d28945c7, stale_build 0); The restart was first refused by the permission classifier; the owner then confirmed restarts are authorised, and it went live with r405's restart.
 
 **Decisions.**
 - One server reader of the theme cookie, `lib/ui-theme-server.ts` `currentUiTheme()`; default only outside a request scope, any other error rethrown.
