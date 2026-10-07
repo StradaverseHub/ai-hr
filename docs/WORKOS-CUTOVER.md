@@ -17,6 +17,23 @@ procedure.
 > - **`SHARE_PASSWORD` can go.** `deploy.sh` and `middleware.ts` now accept EITHER the demo gate OR a complete
 >   real-sign-in configuration (switcher off + all four WorkOS settings). Neither still refuses.
 
+> **2026-10-07 — owner's decision: cut over on `sfm.stradaprop.com`.** AI HR has been public there since the
+> 2026-10-06 ops round (Cloudflare proxy → nginx 443 on the box → 127.0.0.1:3000). Wherever this runbook says
+> `aihr.stradaverse.ai`, read `sfm.stradaprop.com`: redirect URI `https://sfm.stradaprop.com/callback`,
+> sign-out redirect `https://sfm.stradaprop.com/login`, homepage `https://sfm.stradaprop.com/`. Step 1a (the
+> named tunnel) is NOT used. Instead, BEFORE real logins: install a Cloudflare Origin CA certificate on nginx
+> (`~ubuntu/install-origin-cert.sh`, run with sudo; it validates the pair and restores on failure) and set the
+> `stradaprop.com` zone's SSL/TLS mode to **Full (strict)** — the old origin certificate expired 2026-05-12, so
+> until then the Cloudflare → box hop is encrypted but unauthenticated.
+>
+> State on 2026-10-07: WorkOS Production has NO redirect URIs (the WorkOS MCP still answers FORBIDDEN for
+> Production redirect/logout URIs, so they are dashboard steps). `.env.production` has
+> `WORKOS_COOKIE_PASSWORD` (generated on the box, never printed; original backed up beside it as
+> `.env.production.bak-r394-*`); `WORKOS_API_KEY`, `WORKOS_CLIENT_ID` and `NEXT_PUBLIC_WORKOS_REDIRECT_URI`
+> are not yet set. Production has no person record for the owner: the bootstrap binds the owner's login to the
+> seeded group-wide "HR Admin" person (`37c34b0e-93ee-4eef-a8df-b51c9364beb1`, app_user `22222222-…`), which is
+> then renamed in Personnel.
+
 ## 1a. HTTPS for aihr.stradaverse.ai (this deployment)
 
 The box (LAN `10.20.30.20`, NAT `203.142.6.241`) has no public port 80, and its public 443 belongs to the
