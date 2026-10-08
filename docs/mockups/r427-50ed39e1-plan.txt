@@ -1,0 +1,88 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+WHAT YOU ASKED FOR
+
+A redesign of the screens delivered for this request (File Structure Mapping and Import Clocking Data), on the look only: a clean label-and-value layout, related information grouped in sections with clear headings, labels and values aligned the same way everywhere, long labels never cut off or overlapping, one consistent set of text styles for headings, labels, values and helper text, light sections without boxes inside boxes or heavy borders, and screens that work on any screen size without sideways scrolling. How the screens work, their checks, their figures and what they save stay exactly as they are. Your message reached us cut off after "Prevent horizontal overflow", so we have read the rest of point 6 as: nothing on the page scrolls sideways, and every screen is usable on a phone.
+
+THE SITUATION TODAY
+
+1. Each screen sets its own label style. The same kind of label is small grey text on one screen, bolder black text on the next, and small capitals on a third.
+
+2. The New Mapping page puts three fields side by side in narrow columns. On a mid-size screen the Delimiter choices wrap inside their box.
+
+3. Every list is a wide table (up to 8 columns). On a phone the page has to be scrolled sideways to see the status, the error or the actions.
+
+4. On a fixed-width file, the field names sit in tiny type above the numbered ruler. Short fields or longer translated names can print over each other, and the ruler runs off the side of the screen.
+
+5. The import counts are a grid of boxed tiles, and the import log puts the recent imports table inside the log's own section.
+
+WHAT WE'LL CHANGE
+
+The same rules apply on every screen below, in both the standard look and the Classic look:
+
+- Sections: each group of information sits in one section with a number and a clear heading (for example "01 Details"). In the standard look a section is a thin dark line on top; in Classic it is a light white card. Never a section inside a section.
+
+- Labels and values: on a computer the label sits on the left in a fixed-width column and the value on the right, so every value starts at the same place. On a phone the label sits above its value. Long labels wrap onto a second line instead of being cut off.
+
+- Text: four styles only, used the same everywhere: section heading, field label, field value, and helper text in a lighter shade under the field it explains.
+
+- Lists: a table on a computer. On a phone each row becomes a small block of labelled values, so nothing scrolls sideways.
+
+- Statuses (Active, Valid, Completed with Errors and so on) keep their words and colours, written the same way on every screen.
+
+File Structure Mapping list
+
+1. A "Find a mapping" section with the search and filters, then a "Mappings" section with the same columns, actions and notes as today.
+
+Viewing one mapping
+
+2. Sections for Details, File format, Field mapping (each field with its column or positions), In / Out codes and Sample lines, each as label and value.
+
+New and Edit Mapping
+
+3. Six numbered sections in a single column: Details, File format, Sample file, Field mapping (or Field positions), In / Out code values, Test with the sample. Then Cancel and Save Mapping.
+
+4. Separated files: the field chips and the sample columns stay, with drag and the column list exactly as today. On a phone the sample columns are shown as a list (Column 1 reads 001234, and so on) instead of a wide table.
+
+5. Fixed-width files: field names leave the ruler. Each field is its own labelled row with its shade, its Start and End boxes and what line 1 reads. The field you are typing in is marked with an orange line on the ruler. The ruler wraps every ten positions to fit the screen instead of running off the side.
+
+Import Clocking Data
+
+6. The three steps along the top, then "01 Mapping and file" and "02 Validation result". The counts become one row of figures divided by thin lines instead of boxed tiles. Wrong lines show their status with the reason underneath.
+
+Import logs and one import log
+
+7. One import log has four separate sections: Import details, Line counts (the four totals, then the four parts that make up Failed), Lines (tabs, reason filter, pages) and Recent imports.
+
+WHAT IS NOT DONE
+
+1. No change to how anything works: the same fields, checks, error messages, counts, preview limit of 500 lines, 200 lines per log page, buttons and who can use the screens.
+
+2. Dragging a field onto a column needs a mouse, as today. On a phone the column is chosen from the list.
+
+3. Only these screens change in this round. The new section and label-and-value layout is built so other screens can use it later, but none is changed now.
+
+4. The wording stays the same, except for the new section headings: Find a mapping, Mappings, File format, Import details, Line counts, Lines, Recent imports, and "Failed records are made up of".
+
+Pictures attached: the mapping list, New Mapping for a separated file and for a fixed-width file, the import preview, one import log, and three phone-width pictures (mapping list, import preview, fixed-width positions). They show the standard look. Classic follows the same layout with white cards.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Read on main 1bc98833 (r424 merged 89e95a55). Current state was inferred from source, not rendered (no dev server this round); render-check every route before shipping.
+
+Findings. None of the 18 files under app/admin/attendance/file-mappings/** and app/attendance/import/** carries a monolith: class (grep count 0); in Monolith (DEFAULT_UI_THEME, lib/ui-theme.ts:18) they get only the token remap (globals.css:87) plus Card's MONO_SECTION (components/ui/card.tsx:11). Label styles diverge: mapping-form.tsx Label :99 (text-sm font-medium), view page dt :21 and log meta :50 (text-xs muted), list filter labels page.tsx:64 (text-xs muted), SectionTitle :108 (uppercase tracking-widest + border-t). Narrow grids: mapping-form md:grid-cols-3 :327, :353, :408; Segmented :79 is flex-wrap inside ONE bordered box, so a wrapped delimiter group breaks its border. Wide tables with overflow-x-auto: list page.tsx:90 (7 cols, 5 actions), delimited sample :530 (min-w-28 per column, up to 40 columns), field table :659, codes table :737, test table :812, preview clocking-import.tsx:287 (7 cols, status min-w-64 :309), log [runId]/page.tsx:137, runs-table.tsx:13 (8 cols), nested in a log section :199-202. Fixed-width ruler :597-648: w-[1.4ch] per position up to 200, field names at 10px absolute whitespace-nowrap on two staggered rows :601-617, so same-row names overlap when fields are narrower than their names (more so in ms/zh/ta). Tiles: clocking-import.tsx:129 and log :51, border-l/t + border-b/r grid. Tinted pills: line-view.tsx:20, run-status.tsx:4, list pill :45 (Monolith README section 8: status is a word, no tinted fill). Reusable today: Field (components/ui.tsx:63), ReadField/ReadCard and MONO_LABELS (app/me/read-field.tsx:11-18), Card/CardHeader/CardTitle (components/ui/card.tsx), theadCls/thCls/tbodyCls (components/ui.tsx:38-41).
+
+New shared pieces (components/ui/, server-safe, no 'use client', classic strings plus monolith: appended exactly like card.tsx):
+- SectionCard({ index, title, aside?, description?, children }) on Card; heading = typeSection. Never nest one: Recent imports on the log page is its own SectionCard beside the others, not inside one.
+- LabelValueList({ columns: 1|2 }) + LabelValue({ label, value, required?, help? }) as dl/dt/dd: grid-cols-1 md:grid-cols-[11rem_minmax(0,1fr)], label overflow-wrap:anywhere, never truncate/line-clamp; columns=2 only for read-only lists (view page, log details, failed breakdown).
+- FormRow({ label, htmlFor, required, help, children }): same grid as LabelValue so read and edit align; control max-w-xl. Forms are single-column.
+- StackedTable: one DOM; th hidden below md, each td carries data-label and renders label-above via before:content-[attr(data-label)]; keep role="table"/"row"/"cell"/"columnheader" explicitly because display:grid on tr drops table semantics in WebKit. Use for the list, preview, log lines, runs, test table.
+- Type tokens as class constants: typeSectionCls (Classic text-base font-semibold; Monolith 16px/600 with a mono index), typeLabelCls (Classic text-[13px] font-medium muted; Monolith mono 11px uppercase tracking-mono text-mid), typeValueCls (Classic text-sm text-foreground; Monolith 15px font-medium ink), typeHelpCls (text-xs/13px muted).
+- StatCells (hairline cells, tabular figures; 4 per row at lg, 2 below; a long value like the date range spans the row on a phone). StatusWord for ResultPill/RunStatusPill: Classic keeps today's pill classes byte-identical, Monolith renders a mono word in ink/signal-text/mid.
+Segmented becomes flex-wrap gap-1.5 with each option bordered (no shared outer border). Fixed-width ruler: chunk positions into blocks of 10 rendered as flex-wrap items (ruler row + one row per sample line per block), no field names on the ruler; FormRow per field with its SHADE swatch; focused field (onFocus/onBlur local state) adds an inset signal underline on its positions. Delimited sample: below md render a column list (Column n, line 1 and 2 values, assigned field) instead of the table; drag stays md+.
+
+Messages: new keys clockingFile.sec.* (findMapping, mappings, fileFormat, importDetails, lineCounts, lines, recentImports, failedMadeUp) in all six locales; retire form.secDetails only if unused (retire, never delete keys still computed).
+
+Risks. The changed files are app/** client components and pages whose imports change, so this is a FULL gate (CLAUDE.md section 4), not affected. No test pins these screens' markup (searched test/: only pagination.test.ts:246 names clocking-import.tsx and asserts it does NOT import lib/pagination; keep the 500-row cap). New components need a browser test (pnpm test:browser) at 390 and 1280 in both themes: no document horizontal overflow, labels not clipped (scrollWidth == clientWidth), StackedTable td labels present, ruler blocks wrap inside 358px; follow table-scroll-containment.browser.test.tsx and r400-monolith-primitives.browser.test.tsx. i18n-coverage needs the new keys in six locales. Card.tsx and ui.tsx are imported everywhere: add new exports only, do not change existing class strings (r396-theme-switch and r400 tests compare Classic). Render-check all seven routes on a round-scoped port with a seeded mapping and a run (db:seed has neither; create one via the screens) and measure at 390 and 1280. Mockups: docs/mockups/r427-50ed39e1-*.png.
