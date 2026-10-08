@@ -73,7 +73,9 @@ Hand-offs, all in the caller's transaction (both records exist or neither does):
 
 ## Verification
 
-- 40 integration tests (`test/lifecycle.test.ts`) against real Postgres as the RLS-governed role, 23 pure rule tests, 6 import tests, 8 worklist and export tests, plus the pack-boundary guard and a guard that every history action and status has a translated label in all six locales.
-- The migration was applied to a copy of the production schema (`pnpm gate:shadow`, 424/424).
+- Tests: 42 integration tests against real Postgres as the RLS-governed role (`test/lifecycle.test.ts`), 23 pure rule tests, 6 import tests, 9 worklist and export tests, the pack-boundary guard, and a guard that every history action and status has a translated label in all six locales. The cross-company policy tests were confirmed non-vacuous by reverting the policy in a copy and watching them fail.
+- The migration was applied to a copy of the production schema (`pnpm gate:shadow`, 424/424), after its last edit.
+- Full gate (`CHUNKS=20`, 1227 of 1227 files counted): 19 chunks green; chunk 7 failed once on a repository guard that every table pointing at a company is declared in `core/company-refs.ts` (a real omission, fixed), then re-ran green. `tsc` clean. `next build` passes on the Darwin build machine; that says nothing about the production box (Linux, node 20).
 - Render check on a dev server as an administrator, a module manager, an agent, a new hire and a requester: every screen read for its heading, no unresolved message keys, no server errors, redirects correct, nothing sensitive in the new-hire view; layout measured at 390 px (no horizontal overflow); a step tick, the step editor and the New Hire form were driven end to end and the database read back.
-- NOT done: the full chunked gate and a deploy. Merged is not deployed (CLAUDE.md §3).
+- NOT done: a deploy, a native-speaker review of the Malay, Chinese, Tamil, Thai and Vietnamese text (the handover's own UAT says Malay and Chinese still need one), and a check of the module on the production box. Merged is not deployed (CLAUDE.md §3).
+- BEFORE MERGE: re-check that migration number 0516 and ADR number 0095 are still free on main, and that a `scripts/seed-catalogs.ts` run creates the `lifecycle` catalog row on the box. The module is off for every tenant until a `tenant_module` row exists.
