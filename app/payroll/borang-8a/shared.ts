@@ -66,12 +66,8 @@ export type Borang8AFileLoad =
 export function borang8AFileRows(form: Borang8AForm): { rows: Borang8ARow[]; passportOnly: string[] } {
   const all = form.pages.flatMap((pg) => pg.rows);
   return {
-    // r418 — field 3 is "Identification Number / SOCSO Foreign Worker Number": the stored IC, else (a non-citizen
-    // with no IC) the SOCSO number. Only someone with neither is refused by name.
-    rows: all.map((r) => ({ ...r, ic: r.icNumber.trim() || (r.idKind === 'passport' ? (r.socsoNumber ?? '').trim() : '') || r.icNumber })),
-    passportOnly: all
-      .filter((r) => r.idKind === 'passport' && !r.icNumber.trim() && !(r.socsoNumber ?? '').trim())
-      .map((r) => r.name),
+    rows: all.map((r) => ({ ...r, ic: r.icNumber })),
+    passportOnly: all.filter((r) => r.idKind === 'passport' && !r.icNumber.trim()).map((r) => r.name),
   };
 }
 

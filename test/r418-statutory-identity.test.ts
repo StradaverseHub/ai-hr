@@ -121,14 +121,6 @@ describe('the PERKESO ASSIST file keeps carrying the IC field (its own spec name
     expect(rows.map((r) => r.ic)).toEqual(['900101015555', '']);
     expect(passportOnly).toEqual(['EMPLOYEE D']);
   });
-  it('a non-citizen with no IC but a SOCSO number goes in the file under that number (field 3 is also the SOCSO Foreign Worker Number)', () => {
-    const withSocso = { ...passportRow8a, socsoNumber: 'F12345678' };
-    const form = borang8AFrom({ header: {}, rows: [citizenRow8a, withSocso] });
-    expect(form.pages[0].rows.map((r) => r.ic), 'the printed form still shows the passport').toEqual(['900101015555', 'PA1234567']);
-    const { rows, passportOnly } = borang8AFileRows(form);
-    expect(rows.map((r) => r.ic)).toEqual(['900101015555', 'F12345678']);
-    expect(passportOnly).toEqual([]);
-  });
   it('a row shaped before r418 (no icNumber key) keeps its `ic` as the IC field — the pre-r418 file bytes', () => {
     const { idKind: _k, icNumber: _i, ...old } = citizenRow8a;
     const form = borang8AFrom({ header: {}, rows: [old] });

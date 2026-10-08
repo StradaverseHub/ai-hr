@@ -271,8 +271,6 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         // r418 — the three facts `statutoryIdentityFor` decides column (3) from. LEFT joined: a person with
         // no statutory row reads null throughout, which the rule treats as a citizen with nothing on file.
         passportNumber: employeeStatutoryMy.passportNumber,
-        // r418 — for the ASSIST upload file: PERKESO's field 3 also takes the SOCSO Foreign Worker Number.
-        socsoNumber: employeeStatutoryMy.socsoNumber,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         nationality: person.nationality,
         joinDate: employment.joinDate,
@@ -322,7 +320,6 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       employmentId: string;
       name: string;
       /** The IC field as stored — the PERKESO ASSIST file's identity box reads THIS, never the passport. */
-      socsoNumber: string | null;
       ic: string | null;
       /** r418 — what column (3) prints, and why not when it cannot (`statutoryIdentityFor`). */
       identity: StatutoryIdentity;
@@ -387,7 +384,6 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           employmentId: s.employmentId,
           name: s.name,
           ic: s.ic,
-          socsoNumber: s.socsoNumber ?? null,
           identity: statutoryIdentityFor({
             epfCitizenship: s.epfCitizenship,
             nationality: s.nationality,
@@ -452,7 +448,6 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         // The IC field as stored, for the ASSIST upload file only: PERKESO's field 3 is "Identification
         // Number / SOCSO Foreign Worker Number" — not a passport — so that file is NOT changed by r418.
         icNumber: a.ic ?? '',
-        socsoNumber: a.socsoNumber ?? '',
         name: a.name,
         contribution: a.socso,
         socsoEmployer: a.socsoEmployer,

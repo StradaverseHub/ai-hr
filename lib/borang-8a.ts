@@ -69,8 +69,6 @@ export type Borang8ARow = {
    * so the file keeps carrying what it carried before r418; only the paper form's column (3) changed.
    */
   icNumber: string;
-  /** r418 — the SOCSO number as stored, for the ASSIST file's "SOCSO Foreign Worker Number" only. Not printed. */
-  socsoNumber?: string;
   /** Column (4) NAMA PEKERJA (MENGIKUT KAD PENGENALAN). */
   name: string;
   /** Column (5) Caruman, in RM. */
@@ -307,7 +305,6 @@ export function borang8AFrom(p: {
     // r418 — ABSENT ⇒ a row shaped before r418, whose `ic` WAS the IC field; the read always sets it (to ''
     // when the person has no IC), so a present-but-empty value never falls back to the printed number.
     icNumber: r.icNumber == null ? str(r.ic) : str(r.icNumber),
-    socsoNumber: str(r.socsoNumber),
     name: str(r.name),
     contribution: round2(Number(r.contribution) || 0),
     // 18c1d92b — the upload file's four legs and the wage, carried through the same reconstruction the
