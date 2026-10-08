@@ -3944,6 +3944,124 @@ export const attendancePunch = pgTable(
   (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
 );
 
+// ── r424 50ed39e1 · Attendance File Structure Mapping + Import Clocking Data (migration 0518) ──────────
+// How a clocking device writes its file (described once), and a log of every import. An imported clocking
+// is an ordinary `attendance_punch` row (method 'import'); the link from a log line to that punch lives on
+// the LINE, so neither attendance table changes. Mappings are TENANT-WIDE: a device file names no company.
+// The built-in "AIHR Standard Template" is code (lib/clocking-file.ts), not a row. See 0518's header.
+export const clockingFileTypeEnum = pgEnum('clocking_file_type', ['csv', 'txt']);
+export const clockingFileLayoutEnum = pgEnum('clocking_file_layout', ['delimited', 'fixed_width']);
+export type ClockingFieldSpecRow = { column: number } | { start: number; end: number };
+export type ClockingFieldsRow = Partial<
+  Record<'cardId' | 'deviceId' | 'day' | 'month' | 'year' | 'hours' | 'minute' | 'inOutCode', ClockingFieldSpecRow>
+>;
+export const clockingFileMapping = pgTable(
+  'clocking_file_mapping',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    deviceName: text('device_name').notNull().default(''),
+    fileType: clockingFileTypeEnum('file_type').notNull(),
+    layout: clockingFileLayoutEnum('layout').notNull(),
+    /** The separator of a delimited file; NULL for fixed width (DB CHECK). */
+    delimiter: text('delimiter'),
+    hasHeader: boolean('has_header').notNull().default(false),
+    /** 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1252' (DB CHECK). Decoded in the browser. */
+    encoding: text('encoding').notNull().default('utf-8'),
+    active: boolean('active').notNull().default(true),
+    /** Per field: {column} (1-based) for a delimited file, {start,end} (1-based inclusive) for fixed width.
+     *  The six required fields are the service's rule (core/attendance-clocking-import.ts). */
+    fields: jsonb('fields').$type<ClockingFieldsRow>().notNull().default({}),
+    inOutCodes: jsonb('in_out_codes').$type<{ code: string; direction: 'in' | 'out' }[]>().notNull().default([]),
+    /** Up to 20 lines of the sample file, kept for Edit. Never imported. */
+    sampleLines: jsonb('sample_lines').$type<string[]>().notNull().default([]),
+    sampleFileName: text('sample_file_name').notNull().default(''),
+    createdByUserId: text('created_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('clocking_file_mapping_name_uq').on(t.tenantId, sql`lower(${t.name})`)],
+);
+
+/** One row per import. Status is DERIVED (failure_reason → Failed; else from the counts), never stored. */
+export const clockingImportRun = pgTable(
+  'clocking_import_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** NULL = the built-in AIHR Standard Template. RESTRICT: a used mapping is deactivated, not deleted. */
+    mappingId: uuid('mapping_id').references(() => clockingFileMapping.id, { onDelete: 'restrict' }),
+    mappingName: text('mapping_name').notNull(),
+    /** The mapping exactly as it was on the day of the import. */
+    mappingSnapshot: jsonb('mapping_snapshot').notNull().default({}),
+    fileName: text('file_name').notNull().default(''),
+    fileBytes: integer('file_bytes').notNull().default(0),
+    fileSha256: text('file_sha256').notNull().default(''),
+    createdByPersonId: uuid('created_by_person_id').references(() => person.id),
+    createdByUserId: text('created_by_user_id'),
+    createdAt: createdAt(),
+    totalLines: integer('total_lines').notNull().default(0),
+    validLines: integer('valid_lines').notNull().default(0),
+    importedLines: integer('imported_lines').notNull().default(0),
+    duplicateLines: integer('duplicate_lines').notNull().default(0),
+    unmatchedCardLines: integer('unmatched_card_lines').notNull().default(0),
+    invalidDatetimeLines: integer('invalid_datetime_lines').notNull().default(0),
+    otherErrorLines: integer('other_error_lines').notNull().default(0),
+    daysUpdated: integer('days_updated').notNull().default(0),
+    employeesUpdated: integer('employees_updated').notNull().default(0),
+    /** Set only on a run that stopped and saved nothing. */
+    failureReason: text('failure_reason'),
+  },
+  (t) => [
+    index('clocking_import_run_tenant_created_idx').on(t.tenantId, t.createdAt),
+    index('clocking_import_run_sha_idx').on(t.tenantId, t.fileSha256),
+  ],
+);
+
+export type ClockingImportLineResult =
+  | 'imported'
+  | 'duplicate'
+  | 'unmatched_card'
+  | 'invalid_date'
+  | 'invalid_time'
+  | 'unknown_in_out_code'
+  | 'missing_value'
+  | 'line_too_short'
+  | 'ambiguous_card'
+  | 'not_employed_on_date'
+  | 'future_date'
+  | 'day_corrected'
+  | 'period_closed'
+  | 'uncoded_on_clocked_day'
+  | 'other';
+
+/** One row per non-blank data line of an imported file. raw_line only when the line was not imported. */
+export const clockingImportLine = pgTable(
+  'clocking_import_line',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => clockingImportRun.id, { onDelete: 'cascade' }),
+    lineNo: integer('line_no').notNull(),
+    cardRef: text('card_ref').notNull().default(''),
+    employmentId: uuid('employment_id').references(() => employment.id),
+    deviceRef: text('device_ref'),
+    punchDate: date('punch_date'),
+    punchTime: time('punch_time'),
+    direction: attendancePunchDirectionEnum('direction'),
+    /** text + DB CHECK (the 0275 lesson: this vocabulary is the one most likely to grow). */
+    result: text('result').$type<ClockingImportLineResult>().notNull(),
+    message: text('message').notNull().default(''),
+    rawLine: text('raw_line'),
+    attendancePunchId: uuid('attendance_punch_id').references(() => attendancePunch.id, { onDelete: 'set null' }),
+  },
+  (t) => [index('clocking_import_line_run_idx').on(t.runId, t.lineNo)],
+);
+
 // Per-company attendance thresholds + work schedule (ADR-0011). One pattern per company;
 // per-employee shift/roster overrides are a deliberate later phase.
 export const attendancePolicy = pgTable(

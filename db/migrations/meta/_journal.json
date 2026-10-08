@@ -2976,6 +2976,13 @@
       "when": 1791600000000,
       "tag": "0517_clocking_location_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 518,
+      "version": "7",
+      "when": 1791700000000,
+      "tag": "0518_clocking_file_import",
+      "breakpoints": true
     }
   ]
 }

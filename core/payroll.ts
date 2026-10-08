@@ -1225,11 +1225,44 @@ export async function batchesCoveringAttendanceDates(
   tx: Tx,
   p: { companyId: string; entries: { employmentId: string; date: string }[] },
 ): Promise<{ batchId: string; payPeriod: string; batchDate: string; employmentIds: string[] }[]> {
+  // The per-entry `entries` list is dropped here on purpose: this shape is carried verbatim in the
+  // attendance-recompute.run event payload, and that payload must not change under it.
+  const runs = await runsCoveringAttendanceDates(tx, p, 'processed');
+  return runs.map(({ entries: _entries, ...r }) => r);
+}
+
+/**
+ * r424 (50ed39e1) — the CLOSED sibling of batchesCoveringAttendanceDates, with exactly the same ownership
+ * test (a payslip on the run AND the date inside that employment's attendance cut-off window). A clocking
+ * import must not add to a day a closed run has already paid: a closed run cannot be written or marked,
+ * so the import refuses that day and lists its lines instead. Read-only; no event. `entries` names the
+ * exact (employment, date) pairs each run owns, because the import refuses per DAY, not per employee.
+ */
+export async function closedBatchesCoveringAttendanceDates(
+  tx: Tx,
+  p: { companyId: string; entries: { employmentId: string; date: string }[] },
+): Promise<CoveringRun[]> {
+  return runsCoveringAttendanceDates(tx, p, 'closed');
+}
+
+type CoveringRun = {
+  batchId: string;
+  payPeriod: string;
+  batchDate: string;
+  employmentIds: string[];
+  entries: { employmentId: string; date: string }[];
+};
+
+async function runsCoveringAttendanceDates(
+  tx: Tx,
+  p: { companyId: string; entries: { employmentId: string; date: string }[] },
+  status: 'processed' | 'closed',
+): Promise<CoveringRun[]> {
   if (p.entries.length === 0) return [];
   const batches = await tx
     .select({ id: payrollBatch.id, payPeriod: payrollBatch.payPeriod, batchDate: payrollBatch.batchDate })
     .from(payrollBatch)
-    .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.status, 'processed')))
+    .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.status, status)))
     .orderBy(payrollBatch.payPeriod);
   if (batches.length === 0) return [];
   const batchIds = batches.map((b) => b.id);
@@ -1251,17 +1284,20 @@ export async function batchesCoveringAttendanceDates(
     windows.set(key, w);
     return w;
   };
-  const out: { batchId: string; payPeriod: string; batchDate: string; employmentIds: string[] }[] = [];
+  const out: CoveringRun[] = [];
   for (const b of batches) {
     const hit = new Set<string>();
+    const entries: { employmentId: string; date: string }[] = [];
     for (const e of p.entries) {
-      if (hit.has(e.employmentId)) continue;
       if (!onRun.has(`${b.id}|${e.employmentId}`)) continue;
       const w = await windowFor(e.employmentId, b.payPeriod);
-      if (e.date >= w.start && e.date <= w.end) hit.add(e.employmentId);
+      if (e.date >= w.start && e.date <= w.end) {
+        hit.add(e.employmentId);
+        entries.push(e);
+      }
     }
     if (hit.size > 0) {
-      out.push({ batchId: b.id, payPeriod: b.payPeriod, batchDate: b.batchDate, employmentIds: [...hit].sort() });
+      out.push({ batchId: b.id, payPeriod: b.payPeriod, batchDate: b.batchDate, employmentIds: [...hit].sort(), entries });
     }
   }
   return out;

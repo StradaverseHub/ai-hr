@@ -40,6 +40,9 @@ const BOUNDARIES = [
   'core/attendance-clock-read',
   'core/attendance-rule',
   'core/clocking-location',
+  // r424 (50ed39e1) — the clocking-file import: mapping library, line decisions, import logs. Pack
+  // implementation like attendance-clock beside it, so a BOUNDARY (outside callers use the facade).
+  'core/attendance-clocking-import',
 ];
 
 /** The pack surface (see packs/attendance/index.ts header): wiring/facade, implementation, routes. */
@@ -55,6 +58,7 @@ const ALWAYS_ALLOWED = [
   'core/attendance-clock-read.ts',
   'core/attendance-rule.ts',
   'core/clocking-location.ts',
+  'core/attendance-clocking-import.ts', // r424 — pack implementation; imports core/attendance directly
   'app/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal
   'app/admin/attendance/', // shift-settings screen (shared shift library page under the Attendance nav)
   'app/admin/attendance-policy/', // policy + rule library + device admin

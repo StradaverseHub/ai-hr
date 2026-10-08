@@ -1,20 +1,49 @@
 'use server';
 
+/**
+ * r424 (50ed39e1) — Import Clocking Data. Validate writes nothing; Import re-runs every check on the
+ * server (the browser's preview is never trusted) and saves the valid lines. The rules all live in
+ * core/attendance-clocking-import.ts; `requireAdmin` is this surface's guard, and RLS is the authority.
+ */
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
-import { importAttendancePunches, type PunchImportResult } from '@/core/attendance';
+import {
+  ClockingImportError,
+  commitClockingImport,
+  validateClockingImport,
+  type ClockingImportOutcome,
+  type ClockingImportPreview,
+} from '@/packs/attendance/service';
 
-/** Dry-run reconcile. Returns the per-day preview; writes nothing. */
-export async function dryRunPunchImportAction(csvText: string): Promise<PunchImportResult> {
+type Refusal = { ok: false; error: ClockingImportError['code'] };
+
+export async function validateClockingImportAction(
+  mappingId: string,
+  text: string,
+): Promise<{ ok: true; preview: ClockingImportPreview } | Refusal> {
   const s = await requireAdmin();
-  return importAttendancePunches(s, { csvText, dryRun: true });
+  try {
+    return { ok: true, preview: await validateClockingImport(s, { mappingId, text }) };
+  } catch (e) {
+    if (e instanceof ClockingImportError) return { ok: false, error: e.code };
+    throw e;
+  }
 }
 
-/** Commit the reconciled rows. Re-reconciles server-side (the client preview is never trusted) and
- *  upserts one attendance row per (employee, business day). */
-export async function commitPunchImportAction(csvText: string): Promise<PunchImportResult> {
+export async function commitClockingImportAction(
+  mappingId: string,
+  text: string,
+  fileName: string,
+  fileBytes: number,
+): Promise<{ ok: true; outcome: ClockingImportOutcome } | Refusal> {
   const s = await requireAdmin();
-  const result = await importAttendancePunches(s, { csvText, dryRun: false });
-  revalidatePath('/attendance');
-  return result;
+  try {
+    const outcome = await commitClockingImport(s, { mappingId, text, fileName, fileBytes });
+    revalidatePath('/attendance');
+    revalidatePath('/attendance/import/logs');
+    return { ok: true, outcome };
+  } catch (e) {
+    if (e instanceof ClockingImportError) return { ok: false, error: e.code };
+    throw e;
+  }
 }
