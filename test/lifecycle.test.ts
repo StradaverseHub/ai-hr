@@ -13,7 +13,7 @@ import { ModuleNotEnabledError } from '../core/entitlements';
 import {
   LifecycleError, addComment, advanceAssetRequest, assetHistory, bulkAssetStatus, cancelAssetRequest, cancelCase, cancelRequisition, createAssetRequest,
   createOffboardingCase, createOnboardingCase, createStandaloneRequisition, decideAssetRequest, decideRequisition, ensureCatalogue, getAsset,
-  getCase, getRequisition, listAssetRequests, listAssets, listCases, listRequisitions, listStaff, loadHandoverDefaults, registerAsset, getMyOnboarding, submitMyAcknowledgement,
+  getCase, getRequisition, listAssetRequests, listAssets, listCases, listRequisitions, exportLifecycleCsv, listMyCompanies, listMyEmployerCompanies, listStaff, pendingApprovals, loadHandoverDefaults, registerAsset, getMyOnboarding, submitMyAcknowledgement,
   reopenCase, returnAssets, saveCompanyConfig, saveCustomFields, saveProvisionDefs, saveStepDefs, setAssetRequestHandler, setOutcome, setProvision,
   setStaff, tickStep, undoStep, updateAsset, updateCase, caseHistory, listComments,
 } from '../packs/lifecycle/service';
@@ -106,6 +106,62 @@ describe('Lifecycle module', () => {
       await createOnboardingCase(admin, onbInput({ companyId: companyB, employeeNo: 'E200', newhireEmail: null }));
       const seen = await listCases(agent, 'onboarding');
       expect(seen.map((c) => c.employeeNo)).toEqual(['E100']);
+    });
+
+    it('the timeline is readable only for records of a company the reader serves (RLS, read the table directly)', async () => {
+      await owner.db.delete(schema.lcStaff).where(eq(schema.lcStaff.tenantId, b.tenantId));
+      await owner.db.insert(schema.lcStaff).values({ tenantId: b.tenantId, userId: ids['Alice Agent']!.userId, companyId: b.companyId, level: 'agent' });
+      const mine = await createOnboardingCase(admin, onbInput());
+      const theirs = await createOnboardingCase(admin, onbInput({ companyId: companyB, employeeNo: 'E200', newhireEmail: 'b@acme.test' }));
+      const reg = await registerAsset(admin, { companyId: companyB, assetType: 'laptop' });
+      const { withTenant } = await import('../db/client');
+      const rows = await withTenant(agent, (tx) => tx.select({ ref: schema.lcHistory.refId, type: schema.lcHistory.refType }).from(schema.lcHistory));
+      const refs = new Set(rows.map((r) => r.ref));
+      expect(refs.has(mine.id)).toBe(true);
+      expect(refs.has(theirs.id)).toBe(false);
+      expect(refs.has((await getAsset(admin, reg.code)).id)).toBe(false);
+      // and a requester reads none of it
+      expect(await withTenant(requester, (tx) => tx.select().from(schema.lcHistory))).toEqual([]);
+    });
+
+    it('manager in one company, agent in another: manager-only lists cover only the company where they are a manager', async () => {
+      await owner.db.delete(schema.lcStaff).where(eq(schema.lcStaff.tenantId, b.tenantId));
+      await owner.db.insert(schema.lcStaff).values([
+        { tenantId: b.tenantId, userId: ids['Mia Manager']!.userId, companyId: b.companyId, level: 'agent' },
+        { tenantId: b.tenantId, userId: ids['Mia Manager']!.userId, companyId: companyB, level: 'manager' },
+      ]);
+      await saveCompanyConfig(admin, b.companyId, { approvalLevels: 1, accessSystems: [] });
+      await saveCompanyConfig(admin, companyB, { approvalLevels: 1, accessSystems: [] });
+      const a = await createOnboardingCase(admin, onbInput());
+      const bb = await createOnboardingCase(admin, onbInput({ companyId: companyB, employeeNo: 'E200', newhireEmail: 'b@acme.test' }));
+      await cancelCase(admin, 'onboarding', a.number, 'x');
+      await cancelCase(admin, 'onboarding', bb.number, 'x');
+      // history: only company B's, although the person's best level (manager) would pass a coarse check
+      expect((await listCases(manager, 'onboarding', { history: true })).map((c) => c.number)).toEqual([bb.number]);
+      const ra = await createStandaloneRequisition(admin, { companyId: b.companyId, fullName: 'A', employeeNo: 'E1' });
+      const rb = await createStandaloneRequisition(admin, { companyId: companyB, fullName: 'B', employeeNo: 'E2' });
+      const p = await pendingApprovals(manager);
+      // company B's own onboarding requisition is pending too, so assert by company rather than by count
+      expect(p.requisitions.length).toBeGreaterThanOrEqual(2);
+      expect(p.requisitions.every((r) => r.companyId === companyB)).toBe(true);
+      expect(p.requisitions.map((r) => r.number)).toContain(rb.number);
+      expect(p.requisitions.map((r) => r.number)).not.toContain(ra.number);
+      // and cannot approve company A's even if they find the number
+      await rejects(decideRequisition(manager, ra.number, 'approve'), /Not permitted/);
+      expect(await decideRequisition(manager, rb.number, 'approve')).toBe('approved');
+      // the export carries only company B's rows
+      const csv = await exportLifecycleCsv(manager, 'requisitions');
+      expect(csv).toContain(rb.number);
+      expect(csv).not.toContain(ra.number);
+    });
+
+    it('lists the companies a person serves and the ones that employ them', async () => {
+      expect((await listMyCompanies(agent)).map((c) => c.id).sort()).toEqual([b.companyId, companyB].sort());
+      expect(await listMyCompanies(requester)).toEqual([]);
+      expect((await listMyEmployerCompanies(requester)).map((c) => c.id)).toEqual([b.companyId]);
+      await owner.db.delete(schema.lcStaff).where(eq(schema.lcStaff.tenantId, b.tenantId));
+      await owner.db.insert(schema.lcStaff).values({ tenantId: b.tenantId, userId: ids['Alice Agent']!.userId, companyId: companyB, level: 'agent' });
+      expect((await listMyCompanies(agent)).map((c) => c.id)).toEqual([companyB]);
     });
 
     it('only an administrator manages module staff', async () => {

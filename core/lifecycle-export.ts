@@ -8,7 +8,7 @@ import type { SessionContext } from '../db/client';
 import { itAsset, itAssetRequest, itRequisition, lcCase } from '../db/schema';
 import { toCsv } from '../lib/csv';
 import { maskId } from './lifecycle-rules';
-import { LEVEL, requireLevel, withTenant } from './lifecycle-base';
+import { LEVEL, atLeast, requireLevel, withTenant } from './lifecycle-base';
 
 export type ExportKind = 'onboarding' | 'offboarding' | 'requisitions' | 'assets' | 'asset-requests';
 const iso = (d: Date | string | null | undefined): string => (d instanceof Date ? d.toISOString().slice(0, 10) : (d ?? ''));
@@ -16,14 +16,15 @@ const iso = (d: Date | string | null | undefined): string => (d instanceof Date 
 export async function exportLifecycleCsv(ctx: SessionContext, kind: ExportKind, range: { from?: string; to?: string } = {}): Promise<string> {
   return withTenant(ctx, async (tx) => {
     await requireLevel(tx, null, LEVEL.manager, 'only a manager exports');
-    const dateRange = (col: Parameters<typeof gte>[0]) => {
-      const c = [];
+    // An export is a manager's: judged per company, so being a manager in one company never exports another's rows.
+    const dateRange = (col: Parameters<typeof gte>[0], companyCol: unknown) => {
+      const c = [atLeast(companyCol, LEVEL.manager)];
       if (range.from) c.push(gte(col, new Date(`${range.from}T00:00:00Z`) as never));
       if (range.to) c.push(lte(col, new Date(`${range.to}T23:59:59Z`) as never));
-      return c.length ? and(...c) : undefined;
+      return and(...c);
     };
     if (kind === 'onboarding' || kind === 'offboarding') {
-      const mine = await tx.select().from(lcCase).where(and(eq(lcCase.kind, kind), dateRange(lcCase.createdAt))).orderBy(asc(lcCase.number));
+      const mine = await tx.select().from(lcCase).where(and(eq(lcCase.kind, kind), dateRange(lcCase.createdAt, lcCase.companyId))).orderBy(asc(lcCase.number));
       return toCsv([
         ['Number', 'Status', 'Full name', 'Employee no.', 'ID / passport (masked)', 'Job title', 'Department', 'Supervisor', kind === 'onboarding' ? 'Join date' : 'Resignation date', kind === 'onboarding' ? 'Laptop required' : 'Last working day', kind === 'onboarding' ? 'Car park' : 'Outcome', 'Created'],
         ...mine.map((r) => [r.number, r.status, r.fullName, r.employeeNo, maskId(r.nricPassport), r.jobTitle, r.department, r.supervisor,
@@ -32,16 +33,16 @@ export async function exportLifecycleCsv(ctx: SessionContext, kind: ExportKind, 
       ]);
     }
     if (kind === 'requisitions') {
-      const rows = await tx.select().from(itRequisition).where(dateRange(itRequisition.createdAt)).orderBy(asc(itRequisition.number));
+      const rows = await tx.select().from(itRequisition).where(dateRange(itRequisition.createdAt, itRequisition.companyId)).orderBy(asc(itRequisition.number));
       return toCsv([['Number', 'Type', 'Status', 'Approval', 'Full name', 'Employee no.', 'Department', 'Created'],
         ...rows.map((r) => [r.number, r.kind, r.status, r.approvalStatus, r.fullName, r.employeeNo, r.department, iso(r.createdAt)])]);
     }
     if (kind === 'assets') {
-      const rows = await tx.select().from(itAsset).where(dateRange(itAsset.createdAt)).orderBy(asc(itAsset.code));
+      const rows = await tx.select().from(itAsset).where(dateRange(itAsset.createdAt, itAsset.companyId)).orderBy(asc(itAsset.code));
       return toCsv([['Code', 'Type', 'Status', 'Manufacturer', 'Model', 'Serial', 'Holder', 'Holder employee no.', 'Warranty end', 'Lease end', 'Location'],
         ...rows.map((r) => [r.code, r.assetType, r.status, r.manufacturer, r.model, r.serialNo, r.userName, r.userEmployeeNo, iso(r.warrantyEnd), iso(r.leaseEnd), r.location])]);
     }
-    const rows = await tx.select().from(itAssetRequest).where(dateRange(itAssetRequest.createdAt)).orderBy(asc(itAssetRequest.number));
+    const rows = await tx.select().from(itAssetRequest).where(dateRange(itAssetRequest.createdAt, itAssetRequest.companyId)).orderBy(asc(itAssetRequest.number));
     return toCsv([['Number', 'Status', 'Requester', 'Employee no.', 'Quantity', 'Preferred date', 'Created'],
       ...rows.map((r) => [r.number, r.status, r.fullName, r.employeeNo, r.quantity, iso(r.preferredDate), iso(r.createdAt)])]);
   });

@@ -460,10 +460,17 @@ CREATE POLICY it_asset_staff ON it_asset FOR ALL USING (
 ) WITH CHECK (tenant_id = app.current_tenant_id() AND app.lc_level(company_id) >= 1);--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON it_asset TO ai_hr_app;--> statement-breakpoint
 
--- Timeline: readable by staff of the record's company. Insert-only (a history that can be edited is not one).
+-- Timeline: readable by staff of the COMPANY OF THE RECORD it is about (the row names its parent by type and
+-- id, so the policy follows it there; "staff somewhere" is not enough). Insert-only (a history that can be
+-- edited is not one).
 ALTER TABLE lc_history ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY lc_history_read ON lc_history FOR SELECT USING (
-  tenant_id = app.current_tenant_id() AND app.lc_level(NULL) >= 1);--> statement-breakpoint
+  tenant_id = app.current_tenant_id() AND (
+    (ref_type = 'case' AND EXISTS (SELECT 1 FROM lc_case c WHERE c.id = lc_history.ref_id AND c.tenant_id = lc_history.tenant_id AND app.lc_level(c.company_id) >= 1))
+    OR (ref_type = 'requisition' AND EXISTS (SELECT 1 FROM it_requisition r WHERE r.id = lc_history.ref_id AND r.tenant_id = lc_history.tenant_id AND app.lc_level(r.company_id) >= 1))
+    OR (ref_type = 'asset' AND EXISTS (SELECT 1 FROM it_asset a WHERE a.id = lc_history.ref_id AND a.tenant_id = lc_history.tenant_id AND app.lc_level(a.company_id) >= 1))
+    OR (ref_type = 'asset_request' AND EXISTS (SELECT 1 FROM it_asset_request q WHERE q.id = lc_history.ref_id AND q.tenant_id = lc_history.tenant_id AND app.lc_level(q.company_id) >= 1))
+  ));--> statement-breakpoint
 CREATE POLICY lc_history_insert ON lc_history FOR INSERT WITH CHECK (tenant_id = app.current_tenant_id());--> statement-breakpoint
 GRANT SELECT, INSERT ON lc_history TO ai_hr_app;--> statement-breakpoint
 

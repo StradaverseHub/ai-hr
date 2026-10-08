@@ -24,6 +24,9 @@ export class LifecycleError extends Error {
   }
 }
 
+/** SQL predicate: the caller is at least `min` for the row's company (RLS-consistent, per row). */
+export const atLeast = (companyCol: unknown, min: number) => sql`app.lc_level(${companyCol}) >= ${min}`;
+
 export const LEVEL = { none: 0, agent: 1, manager: 2, admin: 3 } as const;
 
 /** The caller's level for a company (null = the best level they hold anywhere). */

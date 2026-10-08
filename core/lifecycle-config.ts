@@ -29,6 +29,15 @@ export const slugKey = (label: string): string =>
   label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^([^a-z])/, 'x_$1').slice(0, 40) || 'item';
 
 // ───────────────────────────── module staff ─────────────────────────────
+/** Logins an administrator may name as module staff (name + id only). */
+export async function listAssignableUsers(ctx: SessionContext): Promise<{ userId: string; name: string }[]> {
+  return withTenant(ctx, async (tx) => {
+    await requireLevel(tx, null, LEVEL.admin, 'only an administrator manages module staff');
+    const rows = await tx.select({ id: appUser.id, name: person.fullName }).from(appUser).leftJoin(person, eq(person.id, appUser.personId)).orderBy(asc(person.fullName), asc(appUser.id)).limit(500);
+    return rows.map((r) => ({ userId: r.id, name: r.name ?? 'User' }));
+  });
+}
+
 export type StaffRow = { id: string; userId: string; name: string; companyId: string | null; level: 'agent' | 'manager' };
 
 export async function listStaff(ctx: SessionContext): Promise<StaffRow[]> {
@@ -70,6 +79,25 @@ export async function staffDirectory(ctx: SessionContext, companyId: string): Pr
   return withTenant(ctx, async (tx) => {
     const rows = (await tx.execute(sql`select user_id, full_name, level from app.lc_staff_directory(${companyId}::uuid)`)) as unknown as { user_id: string; full_name: string | null; level: string }[];
     return rows.map((r) => ({ userId: r.user_id, name: r.full_name ?? 'User', level: r.level }));
+  });
+}
+
+export type CompanyChoice = { id: string; name: string; code: string };
+
+/** Companies the caller serves as module staff (level >= min), for the create forms' company pickers. */
+export async function listMyCompanies(ctx: SessionContext, min: number = LEVEL.agent): Promise<CompanyChoice[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`select c.id, coalesce(c.company_label, c.legal_name) as name, c.company_label as code from company c where app.lc_level(c.id) >= ${min} order by 2`)) as unknown as { id: string; name: string; code: string | null }[];
+    return rows.map((r) => ({ id: r.id, name: r.name, code: normaliseCompanyCode(r.code) }));
+  });
+}
+
+/** Companies the caller is employed by, for the asset request form. */
+export async function listMyEmployerCompanies(ctx: SessionContext): Promise<CompanyChoice[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const rows = (await tx.execute(sql`select distinct c.id, coalesce(c.company_label, c.legal_name) as name, c.company_label as code from employment e join company c on c.id = e.company_id where e.person_id = ${ctx.personId}::uuid order by 2`)) as unknown as { id: string; name: string; code: string | null }[];
+    return rows.map((r) => ({ id: r.id, name: r.name, code: normaliseCompanyCode(r.code) }));
   });
 }
 

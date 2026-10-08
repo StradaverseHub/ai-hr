@@ -18,7 +18,7 @@ import { PROVISION_ASSET_RETURN, PROVISION_LAPTOP_ISSUE } from './lifecycle-defa
 import { issuedToTx, issueAssetTx, returnAssetTx, type Holder } from './lifecycle-assets';
 import { loadCompanyConfigTx, loadProvisionListTx } from './lifecycle-config';
 import { canAdvanceRequest, initialApprovalStatus, nextApproval, type ApprovalStatus } from './lifecycle-rules';
-import { LEVEL, LifecycleError, clean, levelOf, nextNumber, recordChange, requireLevel, withTenant } from './lifecycle-base';
+import { LEVEL, LifecycleError, atLeast, clean, levelOf, nextNumber, recordChange, requireLevel, withTenant } from './lifecycle-base';
 
 export type RequisitionKind = 'requisition' | 'return' | 'standalone';
 export type RequisitionRow = typeof itRequisition.$inferSelect;
@@ -378,8 +378,9 @@ export async function cancelAssetRequest(ctx: SessionContext, number: string, re
 export async function pendingApprovals(ctx: SessionContext): Promise<{ requisitions: RequisitionRow[]; assetRequests: AssetRequestRow[] }> {
   return withTenant(ctx, async (tx) => {
     if ((await levelOf(tx, null)) < LEVEL.manager) return { requisitions: [], assetRequests: [] };
-    const requisitions = await tx.select().from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`)).orderBy(asc(itRequisition.number));
-    const assetRequests = await tx.select().from(itAssetRequest).where(inArray(itAssetRequest.status, ['requested', 'pending_approval'])).orderBy(asc(itAssetRequest.number));
+    // Only the companies where the caller can actually DECIDE (manager there), not every company they touch.
+    const requisitions = await tx.select().from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`, atLeast(itRequisition.companyId, LEVEL.manager))).orderBy(asc(itRequisition.number));
+    const assetRequests = await tx.select().from(itAssetRequest).where(and(inArray(itAssetRequest.status, ['requested', 'pending_approval']), atLeast(itAssetRequest.companyId, LEVEL.manager))).orderBy(asc(itAssetRequest.number));
     return { requisitions, assetRequests };
   });
 }

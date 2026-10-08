@@ -59,6 +59,7 @@
     "core/approvals-inbox.ts",
     "core/report-registry.ts"
   ],
+  "lifecycle": [],
   "attendance": [
     "app/approvals/actions.ts",
     "app/approvals/page.tsx",

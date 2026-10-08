@@ -14,7 +14,7 @@ import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
 import { itAsset, itAssetRequest, itRequisition, itRequisitionItem, lcCase, lcCaseStep } from '../db/schema';
 import { daysBetween } from './lifecycle-rules';
-import { LEVEL, levelOf, todayMy, withTenant } from './lifecycle-base';
+import { LEVEL, atLeast, levelOf, todayMy, withTenant } from './lifecycle-base';
 
 /** Offboarding: last working day within this many days ahead (or already past). */
 export const LWD_REMINDER_DAYS = 3;
@@ -82,12 +82,12 @@ export async function lifecycleWorklist(ctx: SessionContext): Promise<WorklistIt
 
     // 3. Approvals waiting too long (managers and admins only).
     if (mgr) {
-      const rq = await tx.select().from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`)).orderBy(asc(itRequisition.number));
+      const rq = await tx.select().from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`, atLeast(itRequisition.companyId, LEVEL.manager))).orderBy(asc(itRequisition.number));
       for (const r of rq) {
         const age = daysBetween(r.createdAt.toISOString().slice(0, 10), today);
         if (age >= APPROVAL_CHASE_DAYS) out.push({ kind: 'approval', ref: r.number, label: r.fullName, detail: 'requisition', days: -age, href: `/lifecycle/requisitions/${r.number}` });
       }
-      const ar = await tx.select().from(itAssetRequest).where(inArray(itAssetRequest.status, ['requested', 'pending_approval'])).orderBy(asc(itAssetRequest.number));
+      const ar = await tx.select().from(itAssetRequest).where(and(inArray(itAssetRequest.status, ['requested', 'pending_approval']), atLeast(itAssetRequest.companyId, LEVEL.manager))).orderBy(asc(itAssetRequest.number));
       for (const r of ar) {
         const age = daysBetween(r.createdAt.toISOString().slice(0, 10), today);
         if (age >= APPROVAL_CHASE_DAYS) out.push({ kind: 'approval', ref: r.number, label: r.fullName, detail: 'assetRequest', days: -age, href: `/lifecycle/asset-requests/${r.number}` });

@@ -22,7 +22,7 @@ import { cancelOpenReturnTx, createRequisitionTx } from './lifecycle-it';
 import { cleanCustomValues, fieldsFor, loadCompanyConfigTx, loadCustomFieldsTx, loadStepDefsTx, phaseLabels } from './lifecycle-config';
 import { buildStepViews, isCaseComplete, progressOf, type CaseFacts, type StepView } from './lifecycle-rules';
 import {
-  LEVEL, LifecycleError, asBool, clean, cleanDate, normEmail, recordChange, requireLevel, withTenant,
+  LEVEL, LifecycleError, asBool, atLeast, clean, cleanDate, normEmail, recordChange, requireLevel, withTenant,
 } from './lifecycle-base';
 
 export type CaseRow = typeof lcCase.$inferSelect;
@@ -187,6 +187,9 @@ export async function listCases(ctx: SessionContext, kind: CaseKind, f: { compan
     const lvl = await requireLevel(tx, f.companyId ?? null, LEVEL.agent, 'only staff read cases');
     if (f.history && lvl < LEVEL.manager) throw new LifecycleError('Not permitted: only a manager reads the history lists.', 'forbidden');
     const conds = [eq(lcCase.kind, kind), f.history ? inArray(lcCase.status, ['completed', 'cancelled']) : eq(lcCase.status, 'in_progress')];
+    // The history lists are manager-only PER COMPANY: someone who is a manager in one company and an agent in
+    // another must not read the second company's history because their best level is higher.
+    if (f.history) conds.push(atLeast(lcCase.companyId, LEVEL.manager));
     if (f.companyId) conds.push(eq(lcCase.companyId, f.companyId));
     const rows = await tx.select().from(lcCase).where(and(...conds)).orderBy(desc(lcCase.number)).limit(1000);
     if (rows.length === 0) return [];
