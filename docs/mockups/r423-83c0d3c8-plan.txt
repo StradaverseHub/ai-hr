@@ -1,0 +1,114 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+WHAT YOU ASKED FOR
+
+You asked for clocking locations to be set up in one simple flow: create the location first (name, address, map point, geofencing radius, Active or Inactive), then tick which company or companies may use it. On the employee's Attendance tab, one switch, "Use Geofencing for Clocking", decides the rest. Off: no location is needed and the location field is hidden. On: a location must be chosen, and only Active locations open to the employee's company are offered. When the switch is on, clocking checks the phone's position against that location's radius, accepts inside, refuses outside, and keeps a record of the result.
+
+THE SITUATION TODAY
+
+1. Attendance > Locations is a list of companies and their work locations. Clocking locations are not listed there. They sit inside each work location's own screen, plus a separate screen for clocking locations not attached to any work location. That is why the setup feels company-first.
+
+2. A clocking location has no company at all. Since September every clocking location is shared by every company, so the employee's location picker offers every location in the group, whatever company the employee belongs to.
+
+3. Only a group administrator can create or change a clocking location. Company administrators can view them. This stays.
+
+4. The employee's Attendance tab already has a Location assignment list (one or more locations), a separate "Enforce geofencing" tick box, and a "Radius override" box.
+
+5. Something you should know: that tick box does not control the employee's own Clock in / Clock out screen (the one with the photo). That screen always checks the phone's position against the employee's assigned locations, ticked or not. An employee with no assigned location cannot clock in there at all today.
+
+6. Already working and kept: the map and address search on the location form, a radius on each location, and the record of every check. Each accepted clocking saves where the phone was, which location matched, the distance and the allowed radius. Each refused attempt is written to the audit trail.
+
+WHAT WE'LL CHANGE
+
+Attendance > Locations
+
+1. Becomes the list of clocking locations, with columns Location Name, Address, State, GPS Coordinates, Geofencing Radius, Companies, Status and Actions (View, Edit, Deactivate, or Activate for an inactive one). It has a search box (name or address), a Company filter, a Status filter (All, Active, Inactive) and a New Clocking Location button for group administrators.
+
+2. A company administrator sees, read-only, only the locations open to companies they administer, and only those company names.
+
+3. The company-based work location list moves to its own menu row under Attendance, called "Work Locations", otherwise unchanged. It still records where an employee works, which shows in their employment history. Clocking locations are no longer shown inside it.
+
+New and Edit Clocking Location
+
+4. One page, in the order you listed: Location Name; Find an address; Address; State (optional, from the list of Malaysian states); Latitude and Longitude; the map with the radius circle; Geofencing Radius in metres; Companies (tick one or more, at least one required); Status (Active or Inactive). Report label and Remarks stay at the bottom as optional, because the Attendance report already prints the report label.
+
+5. A company cannot be unticked while employees of that company are assigned to the location. The message says how many, so they can be moved first.
+
+6. Deactivate asks for confirmation and says how many employees are assigned. An inactive location cannot be chosen for anyone and does not accept clocking.
+
+Employee > Attendance > Location Assignment
+
+7. One switch: "Use Geofencing for Clocking". It replaces the "Enforce geofencing" tick box.
+
+8. Off: the location field is hidden and nothing needs choosing. Saving with the switch off clears the employee's assigned locations; the change history keeps the old list.
+
+9. On: the Clocking Location field appears, and Save is refused until at least one Active location is chosen. The picker offers only Active locations open to the employee's company. More than one may be chosen, because some staff work at two sites, but one is enough.
+
+10. The "Radius override" box is removed. Each location's own radius is the only radius.
+
+11. If a location assigned earlier is no longer usable (inactive, or not open to the employee's company, for example after a transfer), its row says so. It does not count towards the one required location and does not accept clocking.
+
+Clocking
+
+12. Switch on: the phone's position is compared with the assigned location or locations. Inside the radius, the clocking is accepted and saved with the location, distance and radius. Outside, or with no usable location, it is refused with the distance shown, and the refused attempt goes into the audit trail. This is what happens today.
+
+13. Switch off: the employee can clock in and out on the Clock screen without being at any location. The photo and the registered phone are still required, as today. The phone's position is still saved with the clocking, marked "geofencing not required", so HR can see where it was made. It is simply not compared with a location.
+
+14. Clock times HR types in by hand on the Employee Attendance daily list are not checked against a location, because a typed time has no phone position. Today that entry is refused for any employee whose geofencing box is ticked.
+
+WHAT HAPPENS TO WHAT IS ALREADY SAVED
+
+1. Every existing clocking location keeps its name, address, coordinates, radius, report label and status. Its companies are set to the companies whose employees are assigned to it today, plus the company of the work location it is attached to, if any. A location nobody is assigned to is given every company, so it stays selectable exactly as today; narrow it with Edit.
+
+2. Every employee with at least one assigned location gets the switch On, whatever the old tick box said. The Clock screen already checks them against those locations today, so nothing changes for them when they clock in.
+
+3. Employees with no assigned location get the switch Off. Today they cannot clock in on the Clock screen at all. After the change they can, with their position recorded but not checked. If any of them should be geofenced, turn the switch on and choose a location.
+
+4. An employee whose old box was ticked but who has no location stays On and is still refused at clock-in, as today. Their tab says "Choose a location: this employee cannot clock in until one is assigned".
+
+5. An employee with a radius override is judged by the location's own radius from now on.
+
+6. Past clockings and their records are not touched.
+
+7. I have not counted how many employees fall under points 2 to 5. They are counted on the live system just before the change, and the numbers go in the round's notes.
+
+WHAT IS NOT DONE
+
+1. No new clocking method. No company setting chooses between clocking methods today. The Clock screen with photo and registered phone remains the way employees clock.
+
+2. Creating and editing clocking locations stays with group administrators, because one location can serve companies another administrator does not manage. Company administrators still assign locations to their own employees.
+
+3. State on a clocking location is for display and filtering only. It does not change public holidays.
+
+4. The Work Locations list itself is not redesigned.
+
+5. The map stays the free map in use today, not Google Maps.
+
+Pictures attached: the new Locations list, the New Clocking Location page, and the employee's Location Assignment with the switch off and on.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Current state (read on main afc8aee2): clocking_location has no company_id since 0459 (db/schema.ts:438; core/clocking-location.ts:6-18). RLS: SELECT tenant-wide; INSERT/UPDATE/DELETE app.is_group_admin() (0459). employee_clocking_location RLS USING visible_employment_ids (0515:415), WITH CHECK can_admin_employment (0144:85). Admin list /admin/work-locations is the company listing of location (app/admin/work-locations/page.tsx); clocking rows render via clocking-points.tsx on location [id] screens and on clocking/page.tsx for unlinked. Profile card app/admin/personnel/[employmentId]/page.tsx:2423-2510 (picker = listClockingLocations(s), unfiltered, :549); sections clocking + geofencing are separate (lib/personnel-tab-sections.ts:120; actions.ts:2228-2287). Engine: core/attendance.ts resolveGeofence :216 (override ?? site radius; archived sites excluded); checkInTx passes required: !!clockCaptureId (:1720, :1853). Self-service clock: app/api/attendance/clock/route.ts → core/attendance-clock.ts captureEmployeeClock :71-72 calls resolveGeofence required: true and throws without a match, so the switch is ignored there (r378 decision "clock capture requires enforced geofence" is reversed for switch-off employees). Clock screen prerequisite: core/attendance-clock-read.ts:45 locationValid. attendance_clock_capture.clocking_location_id, distance_m, radius_m are NOT NULL (schema.ts:3865). Admin daily check-in app/attendance/actions.ts:26 passes no geo → GeolocationRequiredError when geofencing_enabled.
+
+Migration 0517 (journal max idx is 515; 0516 is taken by unmerged branch claude/chgb-onboarding-assets-module-c5e840, when 1791500000000 — use when > that, e.g. 1791600000000):
+- CREATE TABLE clocking_location_company (id, tenant_id, clocking_location_id FK, company_id FK, created_at; unique (clocking_location_id, company_id); index (tenant_id, company_id)). RLS: INSERT/DELETE tenant AND app.is_group_admin(); SELECT tenant AND (app.is_group_admin() OR app.is_admin_for(company_id) OR company_id is the caller's own employment company; check which helper exists, do not invent). GRANT to ai_hr_app.
+- Backfill per clocking_location (archived included): distinct employment.company_id of its employee_clocking_location rows ∪ location.company_id via location_id; if empty, every company of the tenant. RAISE NOTICE counts.
+- ALTER clocking_location ADD state text (nullable; validate in service via core/state-vocabulary validateStateFor over the selected companies' countries).
+- UPDATE employment SET geofencing_enabled = true WHERE exists an employee_clocking_location row; RAISE NOTICE count. Measure on production before release (counts for plan points 2-5: assigned+off, unassigned, on+unassigned, geofence_radius_m not null) and record them in the round entry.
+- ALTER attendance_clock_capture ALTER clocking_location_id, distance_m, radius_m DROP NOT NULL.
+- employment.geofence_radius_m kept, no longer read or written.
+Grep every writer of employment.geofencing_enabled and attendance_clock_capture before the constraint change (CLAUDE.md §6).
+
+Service (core/clocking-location.ts, via packs/attendance/service only):
+- create/update take companyIds (≥1, each a company in tenant) and state; status via existing archive/restore (UI words Activate/Deactivate); events carry companyIds before/after. Removing a company with assigned employments of that company → typed error with count.
+- listClockingLocations returns companies (filtered to companies the caller can see), state; supports q / companyId / status.
+- New setClockingControl(employmentId, enabled, clockingLocationIds) replaces the two writers: OFF clears assignments; ON requires ≥1 id that is active AND linked to the employment's company; one event. Merge the clocking + geofencing tab sections into one section so the rule is atomic.
+- resolveGeofence: drop the override; count only sites active AND linked to employment's current company. Remove required: forcing — enforcement = employment.geofencing_enabled only.
+- captureEmployeeClock: OFF → no match needed, capture row stores lat/lng/accuracy with null site/distance/radius, punch geofence_status not_enforced (existing enum value). ON → unchanged. attendance-clock-read locationValid true when OFF and a valid fix exists; clock-client shows a third pill text ("Location recorded — geofencing not required").
+- Admin daily checkInAction/checkOutAction: skip the geofence (not_enforced, null geo).
+
+Screens: clocking list at /admin/work-locations/clocking (existing route, becomes the full list with search/filters, chip-multi-select or checkbox list for companies); nav row locations → that href; new nav row "Work Locations" (nav.workLocations, six locales) → /admin/work-locations; remove ClockingPointRows and "Add a clocking point" from location [id]/edit screens; re-point /admin/locations stubs to the clocking list. View = read-only page; Edit = form. Form order per plan point 4 (reverses r335's Name-below-coordinates). Profile card: switch, conditional picker filtered by emp.companyId + active, unusable-assignment rows flagged, override field removed; i18n keys retired not deleted where guards require; six locales. Check lib/permissions.ts SCREENS for the new nav row, sidebar exact-set nav guards (test/sidebar-attendance-group.test.ts, attendance-menu-relocation, work-location-organization-relocation), attendance-pack-drift ratchet.
+
+Tests (expect many pinned guards to be UPDATED, not deleted): clocking-geofence, clocking-location-shared, clocking-location-page, 7ac6b4db-web-clocking, r378-attendance-evidence, r272-location-assignment, personnel-attendance-tab, personnel-tab-save-tabs, company-referrers (new FK to company), migration journal. New: backfill cases (used-by, linked location, unused → all companies); ON with zero/unavailable location refused at save and at clock; OFF clock accepted and recorded not_enforced with null site; transferred employee's old site not counted; company-admin list shows no other company names; company removal refused with count; admin daily check-in for geofenced employee succeeds. Render check on dev server for the list, form, profile tab and clock screen in Monolith and Classic. ADR-0070 amendment (companies on a shared location; switch is the only control; r378 capture rule narrowed). Full gate + gate:shadow (migration).
