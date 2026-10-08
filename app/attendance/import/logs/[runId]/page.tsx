@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { PageHeader, inputCls, buttonVariants } from '@/components/ui';
+import { Button, PageHeader, inputCls } from '@/components/ui';
 import { getClockingImportRun, listClockingImportRuns } from '@/packs/attendance/service';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
 import { lineMessage, ResultPill } from '../../line-view';
@@ -127,9 +127,9 @@ export default async function ClockingImportLogPage({
                 </option>
               ))}
             </select>
-            <button type="submit" className={buttonVariants({ variant: 'outline' })}>
+            <Button type="submit" variant="outline">
               {t('log.filter')}
-            </button>
+            </Button>
           </form>
         )}
       </div>

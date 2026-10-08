@@ -306,7 +306,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums">{r.date ? formatDmy(r.date) : r.dateText || '—'}</td>
                     <td className="px-3 py-2 tabular-nums">{r.time ? r.time.slice(0, 5) : r.timeText || '—'}</td>
                     <td className="px-3 py-2">{r.direction ? t(`dirShort.${r.direction}`) : '—'}</td>
-                    <td className="px-3 py-2">
+                    <td className="min-w-64 px-3 py-2">
                       <ResultPill
                         result={r.result}
                         label={r.result === 'imported' ? t('import.statusValid') : t(`resultShort.${r.result}`)}

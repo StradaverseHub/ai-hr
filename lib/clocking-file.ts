@@ -255,9 +255,10 @@ export function readLine(
     error: structural,
     errorField,
   };
-  if (structural) return out;
+  // Read the date and time even when another field failed, so the log can still show WHEN the line was.
   out.date = readDate(day, month, year);
   out.time = readTime(values.hours ?? '', values.minute ?? '');
+  if (structural) return out;
   if (!out.date) {
     out.error = 'invalid_date';
     return out;

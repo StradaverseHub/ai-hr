@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { builtinMappingLastUsed, listClockingMappings } from '@/packs/attendance/service';
 import { BUILTIN_MAPPING_ID, BUILTIN_MAPPING_NAME } from '@/lib/clocking-file';
 import { formatDmy } from '@/lib/date-display';
-import { Card, ErrorBanner, PageHeader, buttonVariants, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { deleteClockingMappingAction, duplicateClockingMappingAction, setClockingMappingActiveAction } from './actions';
 import { layoutLabel } from './labels';
@@ -51,9 +51,11 @@ export default async function FileMappingsPage({
         title={t('list.title')}
         description={t('list.description')}
         actions={
-          <Link href="/admin/attendance/file-mappings/new" className={buttonVariants()}>
-            {t('list.newMapping')}
-          </Link>
+          // asChild: Button is a client component, so its variant classes cannot be computed here (r424
+          // render check: calling buttonVariants() from a server page throws at runtime, not at tsc).
+          <Button asChild>
+            <Link href="/admin/attendance/file-mappings/new">{t('list.newMapping')}</Link>
+          </Button>
         }
       />
       {sp.error && <ErrorBanner message={sp.error} />}
@@ -79,9 +81,9 @@ export default async function FileMappingsPage({
             <option value="inactive">{t('status.inactive')}</option>
           </select>
         </label>
-        <button type="submit" className={buttonVariants({ variant: 'outline' })}>
+        <Button type="submit" variant="outline">
           {t('list.apply')}
-        </button>
+        </Button>
       </form>
 
       <Card className="overflow-hidden">

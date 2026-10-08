@@ -399,6 +399,10 @@ describe('one bad line never stops the others; validate writes nothing (plan ite
       [5, 'unmatched_card'],
       [7, 'imported'],
     ]);
+    // A line that could not be read still names its employee when the card is known (plan item 21);
+    // the unknown card names no one.
+    expect(lines.map((l) => l.employmentId === emp)).toEqual([true, true, true, true, false, true]);
+    expect(lines[4].employmentId).toBeNull();
     // Raw text only for a line that was not imported; the punch link only for one that was.
     expect(lines.filter((l) => l.result === 'imported').every((l) => l.rawLine === null && l.attendancePunchId)).toBe(true);
     expect(lines.filter((l) => l.result !== 'imported').every((l) => l.rawLine && !l.attendancePunchId)).toBe(true);

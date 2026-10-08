@@ -5,7 +5,7 @@ import { requireAdmin } from '@/lib/authz';
 import { builtinMappingLastUsed, getClockingMapping } from '@/packs/attendance/service';
 import { BUILTIN_MAPPING_ID, BUILTIN_MAPPING_NAME, CLOCKING_FIELDS, REQUIRED_CLOCKING_FIELDS } from '@/lib/clocking-file';
 import { formatDmy } from '@/lib/date-display';
-import { Card, PageHeader, buttonVariants } from '@/components/ui';
+import { Button, Card, PageHeader } from '@/components/ui';
 import { layoutLabel } from '../labels';
 
 /**
@@ -62,9 +62,9 @@ export default async function FileMappingViewPage({ params }: { params: Promise<
         title={m.name}
         description={m.description || undefined}
         actions={
-          <Link href={`/admin/attendance/file-mappings/${m.id}/edit`} className={buttonVariants({ variant: 'outline' })}>
-            {t('list.edit')}
-          </Link>
+          <Button asChild variant="outline">
+            <Link href={`/admin/attendance/file-mappings/${m.id}/edit`}>{t('list.edit')}</Link>
+          </Button>
         }
       />
       <Card className="space-y-5 p-5">

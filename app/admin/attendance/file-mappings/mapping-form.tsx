@@ -596,19 +596,25 @@ export function MappingForm({
             <p className="text-sm text-muted-foreground">{t('form.positionHint')}</p>
             <div className="overflow-x-auto rounded-md border border-border bg-card p-3">
               <div className="inline-block min-w-full font-mono text-sm">
-                {/* Field labels at their start positions */}
-                <div className="flex pl-8 text-[10px] uppercase text-muted-foreground">
-                  {Array.from({ length: maxLen }, (_, i) => {
-                    const pos = i + 1;
-                    const f = CLOCKING_FIELDS.find((k) => posFields[k]?.start === pos);
-                    return (
-                      <span key={pos} className="relative inline-block w-[1.4ch] shrink-0">
-                        {f && <span className="absolute left-0 top-0 whitespace-nowrap border-l border-muted-foreground pl-0.5">{fieldLabel(f)}</span>}
-                        &nbsp;
-                      </span>
-                    );
-                  })}
-                </div>
+                {/* Field labels at their start positions, on two staggered rows so neighbouring short
+                    fields (day, month) do not print over each other. */}
+                {[0, 1].map((row) => (
+                  <div key={row} className="flex pl-8 text-[10px] uppercase text-muted-foreground">
+                    {Array.from({ length: maxLen }, (_, i) => {
+                      const pos = i + 1;
+                      const order = CLOCKING_FIELDS.filter((k) => posFields[k]?.start).sort(
+                        (a, b) => (posFields[a]!.start ?? 0) - (posFields[b]!.start ?? 0),
+                      );
+                      const f = order.find((k, idx) => posFields[k]?.start === pos && idx % 2 === row);
+                      return (
+                        <span key={pos} className="relative inline-block w-[1.4ch] shrink-0">
+                          {f && <span className="absolute left-0 top-0 whitespace-nowrap border-l border-muted-foreground pl-0.5">{fieldLabel(f)}</span>}
+                          &nbsp;
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
                 {/* Numbered ruler */}
                 <div className="flex pl-8 text-[10px] text-muted-foreground">
                   {Array.from({ length: maxLen }, (_, i) => {
@@ -742,7 +748,7 @@ export function MappingForm({
                         <td className="px-3 py-2">
                           <input
                             aria-label={t('form.colDeviceCode')}
-                            className={`${inputCls} w-28 font-mono`}
+                            className={`${inputCls} w-20 font-mono sm:w-28`}
                             value={c.code}
                             maxLength={20}
                             onChange={(e) => setCodes((cs) => cs.map((x, j) => (j === i ? { ...x, code: e.target.value } : x)))}
@@ -751,7 +757,7 @@ export function MappingForm({
                         <td className="px-3 py-2">
                           <select
                             aria-label={t('form.colMeaning')}
-                            className={inputCls}
+                            className={`${inputCls} min-w-32`}
                             value={c.direction}
                             onChange={(e) =>
                               setCodes((cs) => cs.map((x, j) => (j === i ? { ...x, direction: e.target.value as CodeRow['direction'] } : x)))

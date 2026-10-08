@@ -469,7 +469,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
     detail: read.error === 'unknown_in_out_code' ? (read.code ?? '') : '',
   }));
   const readable = decided.filter((d) => d.result === 'imported');
-  if (readable.length === 0) return decided;
+  if (readable.length === 0 && !decided.some((d) => d.read.cardRef)) return decided;
 
   // 1 · Match. Every employment the importer may see (RLS), terminated ones included, because "employed
   //     on the date" is decided per line. Card, then code, then IC digits; first level with an employment
@@ -505,6 +505,19 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
   const byCode = index((e) => (e.code ? e.code.trim().toLowerCase() : null));
   const byIc = index((e) => (e.ic ? onlyDigits(e.ic) || null : null));
   const employedOn = (e: EmpRow, date: string) => e.start <= date && (e.end == null || date <= e.end);
+  // A line that could not be READ (bad date, time, code, short line) is still about someone: name the
+  // employee in the log when the card answers to exactly one employment the importer may see (plan item 21,
+  // "employee where known"). Display only — such a line is never imported, and an unknown or ambiguous card
+  // names no one.
+  for (const d of decided) {
+    if (d.result === 'imported' || !d.read.cardRef) continue;
+    const ref = d.read.cardRef.trim();
+    const hit = [byCard.get(ref.toLowerCase()), byCode.get(ref.toLowerCase()), onlyDigits(ref) ? byIc.get(onlyDigits(ref)) : undefined].find(
+      (c) => c && c.length > 0,
+    );
+    if (hit && hit.length === 1) d.emp = hit[0];
+  }
+  if (readable.length === 0) return decided;
   for (const d of readable) {
     const ref = d.read.cardRef.trim();
     const levels = [byCard.get(ref.toLowerCase()), byCode.get(ref.toLowerCase()), onlyDigits(ref) ? byIc.get(onlyDigits(ref)) : undefined];
