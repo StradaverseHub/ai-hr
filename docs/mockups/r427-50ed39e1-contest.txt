@@ -1,0 +1,35 @@
+UI/UX Redesign – Modern Label-by-Label Interface
+Requirement: UI/UX redesign only
+The existing screen shall be redesigned with a more modern, clean, professional, and user-friendly UI/UX.
+The redesign is limited to the visual interface and presentation layer only. The existing workflow, system flow, business logic, functions, validations, data processing, and system behaviour shall remain unchanged.
+UI/UX Design Requirements
+1.	Label-by-Label Information Design
+o	Redesign the information display using a clear label-and-value structure.
+o	Each field should have a clearly identifiable label followed by its corresponding value.
+o	Maintain consistent label positioning, spacing, font hierarchy, and alignment throughout the screen.
+o	Avoid excessive borders, unnecessary boxes, or visually heavy layouts.
+2.	Modern Information Layout
+o	Group related information into logical sections/cards.
+o	Use clean spacing and sufficient white space to improve readability.
+o	Use clear section headings to differentiate different information groups.
+o	Important information should have stronger visual hierarchy without making the interface crowded.
+3.	Field Alignment
+o	All labels and values must be consistently aligned.
+o	Long labels must remain fully visible and must not be truncated or overlap other fields.
+o	Values should align consistently across rows and columns.
+o	Maintain a balanced layout on different screen resolutions.
+4.	Typography
+o	Use a consistent modern font hierarchy for:
+	Section headings
+	Field labels
+	Field values
+	Supporting/helper text
+o	Field labels should be visually distinguishable from field values without excessive font sizing or styling.
+5.	Cards and Sections
+o	Use modern cards or section containers where appropriate.
+o	Avoid unnecessary nested cards and excessive borders.
+o	Use subtle visual separation between sections instead of heavy lines.
+o	Keep the overall interface visually clean and lightweight.
+6.	Responsive Layout
+o	Ensure the redesigned interface remains usable on different screen sizes.
+o	Prevent horizontal overflow
