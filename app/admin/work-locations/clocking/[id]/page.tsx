@@ -1,115 +1,122 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
-import { listLocations } from '@/core/location';
 import { listClockingLocations } from '@/packs/attendance/service';
-import { Card, PageHeader, pageWideCls } from '@/components/ui';
-import { ClockingLocationForm } from '../clocking-form';
-import { UUID_RE, readTypedClockingValues, type ClockingFormValues } from '../form-fields';
-import { clockingPointHome } from '../../location-fields';
+import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { deleteClockingLocationAction } from '../../../actions';
+import { UUID_RE, clockingEditPage, clockingFocusHref } from '../form-fields';
 
 /**
- * f9afd1ce rev 2 (r267) — EDIT one clocking location, on a page of its own. Opened by a row's "Edit" on
- * the list. Two sections in the reporter's order (../clocking-form.tsx); Save returns to the list landed
- * on this row, highlighted; Cancel and Back return there with nothing saved; a refusal lands back here
- * with the reason and everything typed.
+ * r423 (83c0d3c8) — VIEW one clocking location, READ-ONLY. The list's "View" opens it; "Edit" (group
+ * administrators only) opens ./edit. Until r423 this address WAS the edit form, with a read-only fact list
+ * for a company administrator; the form moved to ./edit so View and Edit are two screens, as the list's
+ * three actions promise.
  *
- * `[id]` IS AN UNTRUSTED URL SEGMENT AND `clocking_location.id` IS A UUID COLUMN. Its shape is checked
- * BEFORE any query (junk reaching `eq(clockingLocation.id, …)` makes Postgres throw "invalid input syntax
- * for type uuid" — the r263 verifier's 500). Junk and an unknown id are both notFound(), the shift
- * library's [shiftId] idiom: there is no record to show.
+ * `[id]` is shape-checked BEFORE any query; junk and an unknown id are notFound(). THE SAME READ THE LIST
+ * USES, narrowed to this id: a company administrator therefore finds only a location open to a company
+ * they administer, and sees only those companies' names on it (the filter is in the query).
  *
- * THE SAME READ THE LIST USES, narrowed to this id — never a second reader that could disagree with the
- * list about the link, the "Used by" companies or the archive state. Archived sites are editable from
- * here too (the list shows them, with Restore on the row).
- *
- * requireAdmin(), like the list; registered on the same `locations` screen column. A company-scoped
- * admin gets the record READ-ONLY plus the note the list gives them — write authority is the group
- * administrator's (core assertGroupAdmin + RLS app.is_group_admin()).
+ * DELETE LIVES HERE, for a group administrator: it was a row action on the old register and the plan's
+ * list carries View / Edit / Deactivate only. It is refused by the service while any assignment or
+ * attendance record references the location, which is said in the confirmation.
  */
-export default async function EditClockingLocationPage({
+export default async function ViewClockingLocationPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.locations');
   const { id: rawId } = await params;
-  const sp = await searchParams;
   if (!UUID_RE.test(rawId)) notFound();
 
-  const site = (await listClockingLocations(s, { includeArchived: true })).find((cl) => cl.id === rawId);
+  const site = (await listClockingLocations(s, { status: 'all' })).find((cl) => cl.id === rawId);
   if (!site) notFound();
-
   const groupAdmin = isGroupAdmin(s);
-  // 639bf4a5 rev 2 (r338) — home is the LOCATION this point hangs off (its Edit screen lists the points
-  // it carries), or the screen for points that hang off none. It was the register, which no longer
-  // renders a point row at all, so `#row-<id>` there would have been a dead anchor.
-  const listHref = clockingPointHome(site.id, site.locationId);
-  const error = typeof sp.error === 'string' ? sp.error : undefined;
+  const listHref = clockingFocusHref(site.id);
 
-  if (!groupAdmin) {
-    const facts: [string, string][] = [
-      [t('name'), site.name],
-      [t('reportLabel'), site.reportLabel ?? '—'],
-      [t('address'), site.address ?? '—'],
-      [t('clockingLocationLinkOptional'), site.locationCode ? `${site.locationCode} · ${site.locationName ?? ''}` : t('clockingLocationNone')],
-      [t('remarks'), site.remarks ?? '—'],
-      [t('coordinates'), `${site.lat}, ${site.lng}`],
-      [t('radiusMetresLabel'), site.radiusM != null ? t('radiusMetres', { radius: site.radiusM }) : '—'],
-    ];
-    return (
-      <div className={pageWideCls}>
-        <PageHeader title={t('editClockingTitle')} description={site.name} back={{ href: listHref, label: t('backToLocations') }} />
-        <Card>
-          <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">{t('sharedManagedByGroupAdmin')}</p>
-          <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            {facts.map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-                <dd className="mt-1">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </Card>
-      </div>
-    );
+  const facts: [string, string][] = [
+    [t('locationName'), site.name],
+    [t('address'), site.address ?? '—'],
+    [t('stateOptional'), site.state ?? '—'],
+    [t('gpsCoordinates'), `${site.lat}, ${site.lng}`],
+    [t('radiusMetresLabel'), site.radiusM != null ? t('radiusMetres', { radius: site.radiusM }) : '—'],
+    [t('colStatus'), site.archivedAt ? t('statusInactive') : t('statusActive')],
+    [t('assignedEmployeesLabel'), String(site.assignedCount)],
+    [t('reportLabel'), site.reportLabel ?? '—'],
+    [t('remarks'), site.remarks ?? '—'],
+  ];
+  if (site.locationId) {
+    facts.push([
+      t('clockingLocationLinkOptional'),
+      site.locationCode ? `${site.locationCode} · ${site.locationName ?? ''}` : t('clockingLocationNone'),
+    ]);
   }
-
-  const linkableLocations = await listLocations(s, [], {});
-  const linkNotOffered =
-    site.locationId != null && !linkableLocations.some((l) => l.id === site.locationId)
-      ? { id: site.locationId, code: site.locationCode, name: site.locationName }
-      : null;
-
-  // WHAT IS ON FILE, as the form's raw strings — then WHAT WAS TYPED when a refusal echoed it, which wins.
-  const onFile: ClockingFormValues = {
-    name: site.name,
-    reportLabel: site.reportLabel ?? '',
-    address: site.address ?? '',
-    locationId: site.locationId ?? '',
-    remarks: site.remarks ?? '',
-    lat: String(site.lat),
-    lng: String(site.lng),
-    radiusM: site.radiusM == null ? '' : String(site.radiusM),
-  };
-  const values: ClockingFormValues = { ...onFile, ...readTypedClockingValues(sp) };
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('editClockingTitle')} description={site.name} back={{ href: listHref, label: t('backToLocations') }} />
-      <ClockingLocationForm
-        t={t}
-        mode="edit"
-        clockingLocationId={site.id}
-        values={values}
-        linkableLocations={linkableLocations.map((l) => ({ id: l.id, code: l.code, name: l.name, companyName: l.companyName }))}
-        linkNotOffered={linkNotOffered}
-        error={error}
-        cancelHref={listHref}
+      <PageHeader
+        title={t('viewClockingTitle')}
+        description={site.name}
+        back={{ href: listHref, label: t('backToLocations') }}
+        actions={
+          groupAdmin ? (
+            <Link href={clockingEditPage(site.id)} className={btnGhost}>
+              {t('edit')}
+            </Link>
+          ) : undefined
+        }
       />
+      {!groupAdmin && <p className="px-1 text-xs text-muted-foreground">{t('sharedManagedByGroupAdmin')}</p>}
+
+      <Card>
+        <SectionHeader title={t('sectionLocation')} />
+        <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          {facts.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+              <dd className="mt-1 break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
+
+      <Card>
+        <SectionHeader title={t('sectionCompanies')} />
+        <div className="flex flex-wrap gap-2 p-4">
+          {site.companies.length === 0 ? (
+            <span className="text-sm text-muted-foreground">—</span>
+          ) : (
+            site.companies.map((c) => (
+              <span key={c.id} className="rounded-md border border-border bg-muted/40 px-2 py-0.5 text-sm">
+                {c.name}
+              </span>
+            ))
+          )}
+        </div>
+      </Card>
+
+      {groupAdmin && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+            <span className="text-xs text-muted-foreground">{t('clockingNote')}</span>
+            <form action={deleteClockingLocationAction}>
+              <input type="hidden" name="clockingLocationId" value={site.id} />
+              <ConfirmSubmit
+                title={t('deleteConfirmTitle')}
+                description={t('deleteConfirmDescription', { name: site.name })}
+                confirmLabel={t('delete')}
+                size="sm"
+                variant="ghost"
+              >
+                {t('delete')}
+              </ConfirmSubmit>
+            </form>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

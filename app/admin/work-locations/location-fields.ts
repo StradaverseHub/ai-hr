@@ -23,24 +23,10 @@ import { CLOCKING_NEW_PAGE, LOCATIONS_LIST, UUID_RE } from './clocking/form-fiel
 
 /** Add — one company's new work location. `?companyId=` names the company; it is the screen's subject. */
 export const LOCATION_NEW_PAGE = '/admin/work-locations/new';
-/** View — one location, read-only, with the clocking points it carries. */
+/** View — one location, read-only. */
 export const locationViewPage = (id: string) => `/admin/work-locations/${id}`;
-/** Edit — the same location with its form, its archive control and its clocking points. */
+/** Edit — the same location with its form and its archive control. */
 export const locationEditPage = (id: string) => `/admin/work-locations/${id}/edit`;
-/**
- * The clocking points that hang off NO location (and the ones linked to a location this caller's RLS
- * cannot reach). They used to render on the register; the register is a company listing now and carries
- * no rows of its own, so they get a screen rather than becoming unreachable.
- */
-export const UNLINKED_CLOCKING_PAGE = '/admin/work-locations/clocking';
-
-/**
- * "Add a clocking point" FROM a location's Edit screen — the new-point page with this site already
- * picked. A GET; nothing is written, and ./clocking/new/page.tsx honours `?addPoint=` only when it names
- * a location it can actually offer (a comparison, never a query).
- */
-export const CLOCKING_NEW_PAGE_FOR = (locationId: string) => `${CLOCKING_NEW_PAGE}?addPoint=${locationId}`;
-
 /** The listing, landed on ONE location's row and highlighted: what a successful Save returns to. */
 export const locationRowHref = (id: string) => `${LOCATIONS_LIST}?saved=1&focus=${id}#row-${id}`;
 
@@ -61,25 +47,12 @@ export function locationSavedHref(returnTo: string, locationId: string): string 
 }
 
 /**
- * WHERE A CLOCKING POINT GOES HOME TO — the "a site and its points stay maintained in one place" half of
- * the item, expressed as an address rather than a sentence.
- *
- * Until r338 every way out of a clocking point's screen landed on the register at `#row-<pointId>`,
- * because the register rendered the points. It is a company listing now, so a point's home is the
- * LOCATION it hangs off (its Edit screen lists the points it carries); a point linked to no location —
- * the link has been optional since f9afd1ce/0459 — goes to the screen that holds exactly those.
- *
- * DERIVED FROM THE POSTED `locationId`, NEVER FROM A POSTED URL. That field is already one of the eight
- * the clocking form posts and the service already validates it, so the destination is a consequence of
- * the record rather than a destination the browser asked for — which is what
- * test/clocking-location-page.test.ts forbids of these actions, and rightly.
+ * r423 (83c0d3c8) — `UNLINKED_CLOCKING_PAGE`, `CLOCKING_NEW_PAGE_FOR`, `clockingPointBase` and
+ * `clockingPointHome` STOOD HERE and are GONE. They sent a clocking point "home" to the work location it
+ * hung off (r338). Clocking locations are no longer shown under a work location: every one is listed on
+ * Attendance › Locations, and every way out of a clocking screen lands there
+ * (./clocking/form-fields.ts `CLOCKING_LIST` / `clockingFocusHref`).
  */
-export const clockingPointBase = (locationId: string | null | undefined) =>
-  locationId && UUID_RE.test(locationId) ? locationEditPage(locationId) : UNLINKED_CLOCKING_PAGE;
-
-/** …the same address, landed on the point's row and highlighted: what Back and Cancel return to. */
-export const clockingPointHome = (clockingId: string, locationId: string | null | undefined) =>
-  `${clockingPointBase(locationId)}?focus=${clockingId}#row-${clockingId}`;
 
 /** The four fields the location form posts — every column ADR-0086 left editable. */
 export const LOCATION_FIELDS = ['code', 'name', 'country', 'branch'] as const;

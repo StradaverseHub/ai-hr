@@ -1,39 +1,53 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
+import { listCompanies } from '@/core/read';
 import { listClockingLocations } from '@/packs/attendance/service';
-import { Card, PageHeader, btnPrimary, pageWideCls } from '@/components/ui';
-import { ClockingPointRows } from '../clocking-points';
-import { CLOCKING_NEW_PAGE, LOCATIONS_LIST, UUID_RE } from '../location-fields';
+import {
+  Card,
+  ErrorBanner,
+  PageHeader,
+  btnGhost,
+  btnPrimary,
+  inputCls,
+  pageWideCls,
+  tableWrapCls,
+  tbodyCls,
+  theadCls,
+  thCls,
+} from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { cn } from '@/lib/utils';
+import { archiveClockingLocationAction, restoreClockingLocationAction } from '../../actions';
+import { CLOCKING_LIST, CLOCKING_NEW_PAGE, UUID_RE, clockingEditPage, clockingViewPage } from './form-fields';
 
 /**
- * 639bf4a5 rev 2 (r338) — THE CLOCKING POINTS THAT HANG OFF NO LOCATION.
+ * r423 (83c0d3c8) — ATTENDANCE › LOCATIONS: THE LIST OF CLOCKING LOCATIONS.
  *
- * ⚠️ THIS SCREEN EXISTS BECAUSE THE REGISTER STOPPED BEING ONE. Until this round every clocking point
- * in the tenant rendered on /admin/work-locations, grouped under the location it links to, with two
- * extra groups for the ones that link to NOTHING and the ones that link to a location this caller's RLS
- * cannot see. r338 turns that page into a COMPANY LISTING with no rows of its own, and moves each
- * location's points onto the location's own screens. Those two groups have no location to move onto —
- * the link has been OPTIONAL since f9afd1ce (migration 0459) — so without this screen they would simply
- * have disappeared from the product: still in the database, still enforcing geofences for whoever is
- * assigned to them, and unreachable from any page. The listing links here with a count when there are
- * any, and says nothing when there are none.
+ * Until r423 Attendance › Locations was the company-based WORK location listing, and clocking locations sat
+ * inside each work location's own screen, plus this address for the ones attached to none. The reporter
+ * asked for location-first setup: create the place, then tick the companies allowed to use it. So this
+ * address (registered on the `locations` screen column since r338, no new grant) became the list, and the
+ * work location listing moved to its own menu row, "Work Locations" (../page.tsx), otherwise unchanged.
  *
- * TWO GROUPS, DECIDED PER ROW, exactly as the register decided them:
- *   • `locationId` null → "Not linked to a location". A normal home since the link became optional.
- *   • `locationId` set but the location came back null → linked to a location this caller cannot see
- *     (another company's, for a company-scoped admin). Its OWN group, so it is never mistaken for
- *     "unlinked" and never silently re-homed by a Save.
+ * COLUMNS, the plan's: Location Name · Address · State · GPS Coordinates · Geofencing Radius · Companies ·
+ * Status · Actions (View, Edit, Deactivate — or Activate for an inactive one). Filters: a search box (name
+ * or address), Company, and Status (All / Active / Inactive). The filters are a GET form: they change the
+ * address, never a record.
  *
- * requireAdmin(), like every screen in this family, and registered on the SAME `locations` screen column
- * in lib/permissions.ts — no new grant, no new permission identity. WRITE authority for a point is the
- * group administrator's (core assertGroupAdmin + RLS app.is_group_admin()); a company-scoped admin gets
- * the facts, a View and the note.
+ * WHO SEES WHAT — decided in the query (core listClockingLocations), not here. A group administrator sees
+ * every location and every company on it, and gets New / Edit / Deactivate. A company administrator sees,
+ * READ-ONLY, only the locations open to companies they administer, and on each only those company names
+ * (app.is_admin_for in SQL; clocking_location_company's RLS says the same underneath). The Company filter
+ * offers the companies the caller administers, by the same rule.
+ *
+ * DEACTIVATE ASKS FIRST and says how many employees are assigned (an inactive location cannot be chosen for
+ * anyone and does not accept clocking). Activate does not ask: nothing is lost by it.
  *
  * Read through the pack's published facade (`packs/attendance/service`), never core/clocking-location —
- * the drift ratchet's rule, which this round leaves exactly where r336 ratcheted it to.
+ * the drift ratchet's rule.
  */
-export default async function UnlinkedClockingPointsPage({
+export default async function ClockingLocationsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -41,67 +55,173 @@ export default async function UnlinkedClockingPointsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.locations');
   const sp = await searchParams;
-  const focus = typeof sp.focus === 'string' && UUID_RE.test(sp.focus) ? sp.focus : undefined;
-  const saved = typeof sp.saved === 'string' ? sp.saved : undefined;
-  const error = typeof sp.error === 'string' ? sp.error : undefined;
+  const one = (k: string) => (typeof sp[k] === 'string' ? (sp[k] as string) : '');
+  const focus = UUID_RE.test(one('focus')) ? one('focus') : undefined;
+  const saved = one('saved') || undefined;
+  const error = one('error') || undefined;
+  const q = one('q').slice(0, 200);
+  const status = (['active', 'inactive'] as const).find((v) => v === one('status')) ?? 'all';
 
   const groupAdmin = isGroupAdmin(s);
-  const all = await listClockingLocations(s, { includeArchived: true });
-  const unlinked = all.filter((cl) => !cl.locationId);
-  const outOfScope = all.filter((cl) => cl.locationId && cl.locationCode == null);
+  const companies = (await listCompanies(s, { adminOnly: true }))
+    .map((c) => ({ id: c.id, name: c.companyLabel ?? c.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // `?company=` is honoured only when it names a company this caller administers — a comparison, never a query.
+  const companyId = companies.some((c) => c.id === one('company')) ? one('company') : '';
+
+  const rows = await listClockingLocations(s, { status, q, companyId: companyId || undefined });
+  const activeCount = rows.filter((r) => !r.archivedAt).length;
 
   return (
     <div className={pageWideCls}>
       <PageHeader
-        title={t('offRegisterTitle')}
-        description={t('offRegisterDescription')}
-        back={{ href: LOCATIONS_LIST, label: t('backToLocations') }}
+        title={t('pageTitle')}
+        description={t('clockingListDescription')}
         actions={
           groupAdmin ? (
             <Link href={CLOCKING_NEW_PAGE} className={btnPrimary}>
-              {t('addClocking')}
+              {t('newClockingCta')}
             </Link>
           ) : undefined
         }
       />
-
+      <ErrorBanner message={error} />
       {!error && saved ? (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
           {t('saved')}
         </p>
       ) : null}
+      {!groupAdmin && <p className="px-1 text-xs text-muted-foreground">{t('companyAdminReadOnly')}</p>}
 
-      {!groupAdmin && (
-        <p className="px-1 text-xs text-muted-foreground">{t('sharedManagedByGroupAdmin')}</p>
-      )}
+      {/* The filters: a GET form, so the list is linkable and Back returns to what was filtered. */}
+      <form method="get" action={CLOCKING_LIST} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_14rem_10rem_auto] sm:items-end">
+        <label className="space-y-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">{t('searchLabel')}</span>
+          <input type="search" name="q" defaultValue={q} placeholder={t('searchPlaceholder')} className={inputCls} />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">{t('colCompany')}</span>
+          <select name="company" defaultValue={companyId} className={inputCls}>
+            <option value="">{t('allCompanies')}</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">{t('colStatus')}</span>
+          <select name="status" defaultValue={status} className={inputCls}>
+            <option value="all">{t('statusAll')}</option>
+            <option value="active">{t('statusActive')}</option>
+            <option value="inactive">{t('statusInactive')}</option>
+          </select>
+        </label>
+        <button className={btnGhost}>{t('applyFilters')}</button>
+      </form>
 
-      {unlinked.length === 0 && outOfScope.length === 0 && (
-        <Card>
-          <p className="px-4 py-6 text-sm text-muted-foreground">{t('noSharedSites')}</p>
-        </Card>
-      )}
-
-      {unlinked.length > 0 && (
-        <Card className="overflow-hidden">
-          <div className="border-b border-border px-4 py-3 text-sm font-medium">
-            {t('unlinkedGroupTitle')}
-            <span className="ml-2 text-muted-foreground">({unlinked.length})</span>
+      <Card className="overflow-hidden">
+        {rows.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-muted-foreground">{q || companyId || status !== 'all' ? t('noMatches') : t('noSharedSites')}</p>
+        ) : (
+          <div className={cn(tableWrapCls, 'rounded-none border-0')}>
+            <table className="w-full min-w-[56rem] text-sm">
+              <thead className={cn(theadCls, 'border-b border-border bg-transparent')}>
+                <tr>
+                  <th className={thCls}>{t('locationName')}</th>
+                  <th className={thCls}>{t('address')}</th>
+                  <th className={thCls}>{t('colState')}</th>
+                  <th className={thCls}>{t('gpsCoordinates')}</th>
+                  <th className={thCls}>{t('geofencingRadius')}</th>
+                  <th className={thCls}>{t('colCompanies')}</th>
+                  <th className={thCls}>{t('colStatus')}</th>
+                  <th className={cn(thCls, 'text-right')}>{t('colActions')}</th>
+                </tr>
+              </thead>
+              <tbody className={tbodyCls}>
+                {rows.map((cl) => (
+                  <tr
+                    key={cl.id}
+                    id={`row-${cl.id}`}
+                    className={cn('align-top', cl.archivedAt && 'text-muted-foreground', cl.id === focus && 'bg-muted/50')}
+                  >
+                    <td className="px-3 py-2 font-medium">
+                      {cl.name}
+                      {cl.reportLabel ? <span className="block text-xs font-normal text-muted-foreground">{cl.reportLabel}</span> : null}
+                    </td>
+                    <td className="max-w-[16rem] px-3 py-2 text-muted-foreground">{cl.address ?? '—'}</td>
+                    <td className="px-3 py-2">{cl.state ?? '—'}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {cl.lat}, {cl.lng}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">{cl.radiusM != null ? t('radiusMetres', { radius: cl.radiusM }) : '—'}</td>
+                    <td className="px-3 py-2">
+                      <span className="flex flex-col items-start gap-1">
+                        {cl.companies.map((c) => (
+                          <span key={c.id} className="rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-xs">
+                            {c.name}
+                          </span>
+                        ))}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full px-2 py-0.5 text-xs font-semibold',
+                          cl.archivedAt ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary',
+                        )}
+                      >
+                        {cl.archivedAt ? t('statusInactive') : t('statusActive')}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                        <Link href={clockingViewPage(cl.id)} className="text-primary hover:underline">
+                          {t('view')}
+                        </Link>
+                        {groupAdmin && (
+                          <>
+                            <span className="text-muted-foreground">|</span>
+                            <Link href={clockingEditPage(cl.id)} className="text-primary hover:underline">
+                              {t('edit')}
+                            </Link>
+                            <span className="text-muted-foreground">|</span>
+                            {cl.archivedAt ? (
+                              <form action={restoreClockingLocationAction}>
+                                <input type="hidden" name="clockingLocationId" value={cl.id} />
+                                <button className="text-primary hover:underline">{t('activate')}</button>
+                              </form>
+                            ) : (
+                              <form action={archiveClockingLocationAction}>
+                                <input type="hidden" name="clockingLocationId" value={cl.id} />
+                                <ConfirmSubmit
+                                  title={t('deactivateConfirmTitle')}
+                                  description={t('deactivateConfirmDescription', { name: cl.name, count: cl.assignedCount })}
+                                  confirmLabel={t('deactivate')}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  {t('deactivate')}
+                                </ConfirmSubmit>
+                              </form>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <ClockingPointRows t={t} rows={unlinked} manage={groupAdmin} focus={focus} locationId="" />
-        </Card>
-      )}
+        )}
+      </Card>
 
-      {outOfScope.length > 0 && (
-        <Card className="overflow-hidden">
-          <div className="border-b border-border px-4 py-3 text-sm font-medium">
-            {t('linkedOutOfScopeGroupTitle')}
-            <span className="ml-2 text-muted-foreground">({outOfScope.length})</span>
-          </div>
-          <ClockingPointRows t={t} rows={outOfScope} manage={groupAdmin} focus={focus} locationId="" />
-        </Card>
-      )}
-
-      <p className="px-1 text-xs text-muted-foreground">{t('clockingNote')}</p>
+      <div className="flex flex-wrap justify-between gap-2 px-1 text-xs text-muted-foreground">
+        <span>{t('clockingSummary', { total: rows.length, active: activeCount })}</span>
+        <span>{t('inactiveNote')}</span>
+      </div>
       <p className="px-1 text-xs text-muted-foreground">{t('radiusNote')}</p>
     </div>
   );

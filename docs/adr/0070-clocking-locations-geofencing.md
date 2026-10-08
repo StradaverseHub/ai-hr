@@ -371,3 +371,37 @@ model, storage or geofencing behaviour is affected.
   to keep it un-gated and the reporter did not answer, so it is built gated, as they described it.
   Un-gating it is one hand-written `MODULE_OF_HREF` exemption. Pinned by
   `test/work-location-organization-relocation.test.ts`.
+
+## Amended 2026-10-08 (r423, 83c0d3c8) — a shared location is opened to named companies, and ONE switch decides
+
+Board item 83c0d3c8, migration 0517. This amends §2 (who may use a site), §8 and the f9afd1ce amendment's
+"assignment is not scoped by company", and narrows r378's "a clock capture requires an enforced geofence".
+
+- **A clocking location is still ONE shared, tenant-level record written by a group administrator**, but it
+  is now OPENED TO NAMED COMPANIES: `clocking_location_company (clocking_location_id, company_id)`, at least
+  one per location (enforced in `core/clocking-location.ts`, not a trigger). RLS: INSERT/DELETE
+  `app.is_group_admin()`; SELECT for a group admin, `app.is_admin_for(company_id)`, or an employee of the
+  company (the existing `EXISTS employment … app.is_self_person` composition — no new helper). A company
+  cannot be unticked while employees of that company are assigned to the location (typed refusal with the
+  count). The f9afd1ce rule "an employee of company B may be assigned a site that serves company A" is
+  **reversed**: only an ACTIVE location open to the employment's CURRENT company may be newly chosen, and
+  only such a site is matched by `resolveGeofence`. An assignment that has become unusable (deactivated, or
+  the employee transferred) stays on file, flagged on the profile, counts for nothing and never matches.
+- **A location carries an optional `state`** (display and filtering only; it never drives holidays),
+  validated against the selected companies' countries.
+- **The employee's ONE switch is `employment.geofencing_enabled`, "Use Geofencing for Clocking"**, written
+  with the assignments by `setClockingControl` (one transaction, one `employee.clocking-control.updated`
+  event), which replaced `setEmployeeClockingLocations` + `setGeofencing`. OFF clears the assignments; ON
+  requires at least one usable location. The per-employee radius override (`geofence_radius_m`) is
+  **retired** — kept in the table, never read or written; each location's own radius is the only radius.
+- **The switch decides the self-service Clock screen too.** `captureEmployeeClock` no longer forces the
+  geofence (`required: true` is gone from `resolveGeofence`): ON is unchanged (inside a usable site or
+  refused, the refused attempt now written as `attendance.geofence.blocked` in its own transaction, as
+  checkIn/checkOut already did); OFF records the position on the capture with NULL site / distance /
+  radius (those three columns are nullable since 0517) and the punch `not_enforced`. Photo and registered
+  phone are still required. A time HR types on the daily list (`manual: true`) is never compared with a
+  location.
+- **Screens.** Attendance › Locations is the clocking location list (`/admin/work-locations/clocking`:
+  search, Company and Status filters, View / Edit / Deactivate); the company-based work location listing
+  is its own menu row, "Work Locations" (`/admin/work-locations`), and no longer shows clocking locations.
+  Both stay on the `locations` screen column. Backfill and counts: see migration 0517's header.

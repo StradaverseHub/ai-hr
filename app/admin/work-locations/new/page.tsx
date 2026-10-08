@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listProfileOptions } from '@/core/profile-options';
-import { Card, PageHeader, pageWideCls } from '@/components/ui';
+import { PageHeader, pageWideCls } from '@/components/ui';
 import { workLocationsReturnTo } from '@/lib/return-to';
 import { BLANK_LOCATION, LocationForm } from '../location-form';
 import { readTypedLocationValues, type LocationFormValues } from '../location-fields';
@@ -26,9 +26,8 @@ import { readTypedLocationValues, type LocationFormValues } from '../location-fi
  * requireAdmin(), like the listing: registered on the SAME `locations` screen column in
  * lib/permissions.ts, so no new grant and no new permission identity.
  *
- * NO CLOCKING POINTS HERE, and the page says so rather than showing an empty box: a clocking point links
- * to a location that EXISTS, so there is nothing to link to until this one is saved. The location's Edit
- * screen is where its points are maintained.
+ * r423 (83c0d3c8) — no clocking-point note here any more: clocking locations are maintained on
+ * Attendance › Locations, not under a work location.
  */
 export default async function NewLocationPage({
   searchParams,
@@ -57,7 +56,7 @@ export default async function NewLocationPage({
       <PageHeader
         title={t('newLocationTitle')}
         description={company.name}
-        back={{ href: backHref, label: t('backToLocations') }}
+        back={{ href: backHref, label: t('backToWorkLocations') }}
       />
       <LocationForm
         t={t}
@@ -69,9 +68,6 @@ export default async function NewLocationPage({
         cancelHref={backHref}
         returnTo={backHref}
       />
-      <Card>
-        <p className="px-4 py-4 text-sm text-muted-foreground">{t('clockingPointsAfterSave')}</p>
-      </Card>
     </div>
   );
 }

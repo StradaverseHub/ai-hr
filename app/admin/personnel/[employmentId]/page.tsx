@@ -173,7 +173,7 @@ import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/
 // the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
 // refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
 import { listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
-import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
+import { setClockingControlAction } from './actions';
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
@@ -542,11 +542,11 @@ export default async function EmployeePage({
   // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
   // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
   const shiftHistory = admin ? await shiftArrangementHistory(s, employmentId) : [];
-  // ADR-0070 — Clocking Location & Geofencing: the multi-select options + this employee's current
-  // assignment (admin-only, mirrors the payroll-policy card). f9afd1ce (0459): EVERY active clocking site
-  // in the tenant, not this employee's company's — a clocking location is a shared record with no owner
-  // company, and this was the one line that made assignment per-company in practice.
-  const clockingLocations = admin ? await listClockingLocations(s) : [];
+  // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
+  // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
+  // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
+  // (setClockingControl) refuses anything else, so this filter is the courtesy and the service the rule.
+  const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
   const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
 
@@ -2418,38 +2418,65 @@ export default async function EmployeePage({
   ) : null;
 
   // ── OTHERS ─────────────────────────────────────────────────────────────────
-  // ADR-0070 — Clocking Location & Geofencing. Admin-only, mirrors the payroll-policy card. Multi-select
-  // of the company's active clocking sites; geofencing toggle + radius (required when enabling).
+  // ADR-0070 — Clocking Location & Geofencing. Admin-only.
+  // r423 (83c0d3c8) — ONE switch, "Use Geofencing for Clocking", and the locations it needs, as ONE section
+  // with ONE writer (setClockingControlAction → setClockingControl). It replaced two sections: the site
+  // list and the "Enforce geofencing" tick box + "Radius override" box (retired: each location's own radius
+  // is the only radius). The rows the table can show are the OFFERED locations (active, open to this
+  // employee's company) plus any location ASSIGNED earlier that is no longer usable, flagged with why.
+  const clockingOffered = clockingLocations.map((cl) => ({
+    id: cl.id,
+    name: cl.name,
+    code: cl.locationCode ?? null,
+    address: cl.address ?? null,
+    radiusM: cl.radiusM ?? null,
+    radiusText: cl.radiusM != null ? tc('withinRadius', { radius: cl.radiusM }) : null,
+    archived: false,
+    unusableReason: null as string | null,
+  }));
+  const clockingOfferedIds = new Set(clockingOffered.map((l) => l.id));
+  const clockingUnusable = assignedClockingLocations
+    .filter((cl) => !clockingOfferedIds.has(cl.id))
+    .map((cl) => ({
+      id: cl.id,
+      name: cl.name,
+      code: null,
+      address: cl.address ?? null,
+      radiusM: cl.radiusM ?? null,
+      radiusText: cl.radiusM != null ? tc('withinRadius', { radius: cl.radiusM }) : null,
+      archived: cl.archivedAt != null,
+      // An assignment listed here but not offered is unusable by definition: either deactivated, or not
+      // open to the employee's current company (core/attendance.ts resolveGeofence never matches it).
+      unusableReason:
+        cl.archivedAt != null ? tc('unusableInactive') : tc('unusableNotOpen', { company: emp.company ?? '' }),
+    }));
   const clockingCard = admin && !emp.terminatedOn ? (
     <Card id="section-clocking-location">
       <SectionHeader title={tc('assignmentTitle')} />
-          {/* 420ebab5 part two (r255) — both forms in this card lose their Save buttons to the Attendance
-              tab's one "Save Changes", and each becomes its own section: they write two different
-              services (a set-based replace of the assigned sites, and the geofencing toggle + radius
-              override), so folding them into one payload would be exactly the blanket write the
-              consolidated save is not. An untouched one is not in `sections` and is never called. */}
-          <form action={setEmployeeClockingLocationsAction} data-save-section="clocking" className="space-y-3 p-4">
+          <form action={setClockingControlAction} data-save-section="clocking" className="space-y-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <LocationAssignment
               name="clockingLocationIds"
-              locations={clockingLocations.map((cl) => ({
-                id: cl.id,
-                name: cl.name,
-                code: cl.locationCode ?? null,
-                address: cl.address ?? null,
-                radiusM: cl.radiusM ?? null,
-                radiusText: cl.radiusM != null ? tc('withinRadius', { radius: cl.radiusM }) : null,
-                archived: cl.archivedAt != null,
-              }))}
+              switchName="geofencingEnabled"
+              defaultEnabled={emp.geofencingEnabled}
+              locations={[...clockingOffered, ...clockingUnusable]}
               defaultSelected={clockingDefaultIds}
               labels={{
-                intro: tc('assignmentIntro'),
+                switchTitle: tc('switchTitle'),
+                switchDescription: tc('switchDescription'),
+                switchOn: tc('switchOn'),
+                switchOff: tc('switchOff'),
+                offNote: tc('offNote'),
+                fieldLabel: tc('fieldLabel'),
+                requiredMark: tc('requiredMark'),
+                pickerHint: tc('pickerHint', { company: emp.company ?? '' }),
+                requiredNote: tc('requiredNote'),
+                cannotClockWarning: tc('cannotClockWarning'),
                 colLocation: tc('colLocation'),
                 colAddress: tc('colAddress'),
                 colRadius: tc('colRadius'),
                 colStatus: tc('colStatus'),
                 remove: tc('remove'),
-                none: tc('noneAssigned'),
                 addLocation: tc('addLocation'),
                 all: tc('allLabel'),
                 search: tc('searchPlaceholder'),
@@ -2457,41 +2484,10 @@ export default async function EmployeePage({
                 clearAll: tc('clearAll'),
                 selectedCountTemplate: tc('selectedCount', { count: '{count}' }),
                 active: tc('statusActive'),
-                inactive: tc('statusInactive'),
                 noRadius: tc('noRadius'),
+                noneOffered: tc('noneOffered', { company: emp.company ?? '' }),
               }}
             />
-            {/* r272 — ONE empty state, and it is about the assignment rather than about the branch.
-                The three sentences that stood here explained how many clocking points were linked to the
-                employee's resolved work location, which is the coupling this item exists to remove; the
-                component above now says "no locations assigned" in its own words. This one remains
-                because it answers a different question: there is nothing to assign FROM. */}
-            {clockingLocations.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{tc('noSharedSites')}</p>
-            ) : null}
-          </form>
-          <form action={setGeofencingAction} data-save-section="geofencing" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <label className="flex items-center gap-2 pb-2 text-sm text-muted-foreground">
-              <input type="checkbox" name="enabled" defaultChecked={emp.geofencingEnabled} />
-              {tc('geofencingToggle')}
-            </label>
-            {/* 1fff489c — this is now an OPTIONAL OVERRIDE, not the radius. Each site carries its own
-                allowed distance; leaving this blank (the recommended setting, and the new default for an
-                employee who has never had one) means "use each site's own radius". Filling it in replaces
-                every site's figure FOR THIS PERSON. Hence no defaultValue of 300 any more — pre-filling a
-                number here would silently override eight correctly-tuned sites on the next save. */}
-            <Field label={tc('radiusOverrideLabel')}>
-              <input
-                name="radiusM"
-                type="number"
-                min={1}
-                max={100000}
-                placeholder={tc('radiusOverridePlaceholder')}
-                defaultValue={emp.geofenceRadiusM ?? ''}
-                className={`${inputCls} w-36`}
-              />
-            </Field>
           </form>
           {/* 44bc1c33 — CARD / CLOCKING ID, the SECOND interface onto `employment.card_id`. The Attendance ›
               Card Assignment screen edits the same column, so the two cannot drift: the reporter's
@@ -2513,7 +2509,6 @@ export default async function EmployeePage({
             </Field>
             <p className="pb-2 text-xs text-muted-foreground">{ta('cardNoneNote')}</p>
           </form>
-          <p className="px-4 pb-4 text-xs text-muted-foreground">{tc('hint')}</p>
     </Card>
   ) : null;
 
@@ -5043,9 +5038,8 @@ export default async function EmployeePage({
     ),
     // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated
     // WHOLE from Employment (locationCard, defaultShiftCard) and Others (clockingCard) into one tab.
-    // The const definitions (setLocationAction / setDefaultShiftAction / setEmployeeClockingLocationsAction
-    // + setGeofencingAction) are untouched — only their render location moved, so the full-row-overwrite
-    // <form>s and every mounted input stay byte-identical and no server logic or event emission changed.
+    // The const definitions (setLocationAction / setDefaultShiftAction and the clocking writer — since r423
+    // the single setClockingControlAction) were untouched by that move — only their render location moved.
     // That relocation ordered them as a setup flow (Work Location → Shift Arrangement → Clocking &
     // Geofencing); item 52a30630 then pinned Holiday Calendar above all three when it moved onto this tab.
     //

@@ -1,8 +1,13 @@
 import { requireAdmin } from '@/lib/authz';
-import { LOCATIONS_LIST } from '../work-locations/clocking/form-fields';
+import { CLOCKING_LIST } from '../work-locations/clocking/form-fields';
 import { forward } from './redirect-stub';
 
 /**
+ * r423 (83c0d3c8) — RE-POINTED at Attendance › Locations, the CLOCKING location list
+ * (`/admin/work-locations/clocking`). This address was the clocking-site admin before r336, so an old
+ * bookmark meant clocking locations; the work location listing it forwarded to since r336 has its own menu
+ * row ("Work Locations") now.
+ *
  * 639bf4a5 (r336) — REDIRECT STUB. The work-site register lives at `/admin/work-locations` now, under
  * Organization, named "Physical Work Location".
  *
@@ -27,5 +32,5 @@ export default async function LocationsRedirect({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requireAdmin();
-  forward(await searchParams, LOCATIONS_LIST);
+  forward(await searchParams, CLOCKING_LIST);
 }

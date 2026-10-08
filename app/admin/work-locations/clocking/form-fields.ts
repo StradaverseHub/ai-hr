@@ -23,23 +23,41 @@
  * server actions and the three redirect stubs have always read it by.
  */
 export { WORK_LOCATIONS_LIST as LOCATIONS_LIST } from '@/lib/return-to';
-export const CLOCKING_NEW_PAGE = '/admin/work-locations/clocking/new';
-export const clockingEditPage = (id: string) => `/admin/work-locations/clocking/${id}`;
+
 /**
- * 639bf4a5 rev 2 (r338) — `clockingRowHref` STOOD HERE and is gone. It sent every way out of a clocking
- * point's screen to `<the register>?focus=<id>#row-<id>`, which was right while the register rendered the
- * clocking rows. It is a COMPANY LISTING now and renders none, so that anchor would have been dead: the
- * operator would have landed on a table of companies with nothing highlighted and no sign of what they
- * just saved. A point now goes home to the LOCATION it hangs off — `clockingPointBase` /
- * `clockingPointHome` in ../location-fields.ts, which is the "site and its points in one place" half of
- * the item — or, for a point linked to nothing, to the screen that holds those.
+ * r423 (83c0d3c8) — ATTENDANCE › LOCATIONS IS THE CLOCKING LOCATION LIST, at this existing address (it held
+ * only the "points linked to no location" until now). `LOCATIONS_LIST` above keeps its name and its value
+ * for the WORK LOCATIONS listing (menu row "Work Locations", same address since r336) because every work
+ * location screen and action reads it by that name; the clocking screens read CLOCKING_LIST.
+ *
+ * View is a READ-ONLY page of its own and Edit is the form (the plan's View / Edit / Deactivate), so the
+ * edit form moved from `/clocking/<id>` to `/clocking/<id>/edit`. The `/admin/locations/clocking/<id>`
+ * redirect stub reads clockingEditPage and so follows it.
+ */
+export const CLOCKING_LIST = '/admin/work-locations/clocking';
+export const CLOCKING_NEW_PAGE = '/admin/work-locations/clocking/new';
+export const clockingViewPage = (id: string) => `/admin/work-locations/clocking/${id}`;
+export const clockingEditPage = (id: string) => `/admin/work-locations/clocking/${id}/edit`;
+/** The list, landed on one location's row and highlighted: what Back and Cancel return to (nothing saved). */
+export const clockingFocusHref = (id: string) => `${CLOCKING_LIST}?focus=${id}#row-${id}`;
+/**
+ * 639bf4a5 rev 2 (r338) removed an earlier `clockingRowHref`, because the register it pointed at had
+ * stopped rendering clocking rows. r423's `clockingFocusHref` is its successor, for the list that renders
+ * nothing else (a Save lands there too, with `saved=1`, built in app/admin/actions.ts clockingSaved).
  */
 
 /** `[id]`, `?focus=` and a posted `clockingLocationId` all address a uuid column: shape-checked before use. */
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The eight fields the form posts — the seven a site held before r267 plus the report label. */
-export const CLOCKING_FIELDS = ['name', 'reportLabel', 'address', 'locationId', 'remarks', 'lat', 'lng', 'radiusM'] as const;
+/**
+ * The single-valued fields the form posts — the seven a site held before r267, the report label, and r423's
+ * state and status. The COMPANIES are a multi-value field (one `companyIds` entry per tick) and are echoed
+ * separately under `typedCompanyIds`, comma-joined (COMPANY_FIELD / readTypedCompanyIds below).
+ */
+export const CLOCKING_FIELDS = ['name', 'reportLabel', 'address', 'locationId', 'remarks', 'lat', 'lng', 'radiusM', 'state', 'status'] as const;
+/** r423 — the multi-value companies field, and the url key a refusal echoes it under. */
+export const COMPANY_FIELD = 'companyIds';
+export const TYPED_COMPANY_IDS = 'typedCompanyIds';
 export type ClockingField = (typeof CLOCKING_FIELDS)[number];
 /** Every field as a RAW STRING — what the form renders as defaults and what the action reads and echoes. */
 export type ClockingFormValues = Record<ClockingField, string>;
@@ -63,6 +81,8 @@ const SHAPE: Record<ClockingField, (v: string) => boolean> = {
   lat: (v) => v === '' || (v.length <= 40 && Number.isFinite(Number(v))),
   lng: (v) => v === '' || (v.length <= 40 && Number.isFinite(Number(v))),
   radiusM: (v) => v === '' || /^\d{1,9}$/.test(v),
+  state: (v) => v.length <= 100,
+  status: (v) => v === 'active' || v === 'inactive',
 };
 
 /** The `typed*` echoes present on the url, each shape-checked; absent or malformed ones are left out. */
@@ -74,4 +94,12 @@ export function readTypedClockingValues(sp: Record<string, string | string[] | u
     if (typeof value === 'string' && SHAPE[field](value)) out[field] = value;
   }
   return out;
+}
+
+/** r423 — the echoed company ticks: comma-joined uuids; anything malformed is dropped. Null when absent. */
+export function readTypedCompanyIds(sp: Record<string, string | string[] | undefined>): string[] | null {
+  const raw = sp[TYPED_COMPANY_IDS];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string') return null;
+  return value.split(',').filter((v) => UUID_RE.test(v));
 }

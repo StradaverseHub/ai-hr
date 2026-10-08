@@ -70,6 +70,7 @@
  * built here by design.
  */
 import {
+  Building2,
   CreditCard,
   CalendarClock,
   CalendarCog,
@@ -544,7 +545,15 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * MapPin, as it always was: the fly-out renders every child's glyph and the collapsed rail renders
      * glyphs ALONE, and no sibling in this node carries it.
      */
-    { href: '/admin/work-locations', labelKey: 'locations', icon: MapPin, adminOnly: true },
+    /**
+     * r423 (83c0d3c8) — "Locations" IS THE CLOCKING LOCATION LIST NOW, and the work location listing it
+     * used to open has a row of its own beneath it, "Work Locations", otherwise unchanged. Both are the
+     * same `locations` screen column in lib/permissions.ts (no new grant, no new permission identity).
+     * Building2 for the work sites so the collapsed rail — which renders glyphs alone — can tell the two
+     * apart; no sibling in this node carries it.
+     */
+    { href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true },
+    { href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true },
     //
     // e776d17d reserves the "Overtime Configuration" child slot here (after Attendance allowance, before Roster).
     // 3fb1a611 (r299) — the Time off in lieu row (/admin/toil, label key timeOffInLieu) STOOD HERE and is

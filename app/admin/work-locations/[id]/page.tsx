@@ -4,10 +4,8 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listLocations } from '@/core/location';
-import { listClockingLocations } from '@/packs/attendance/service';
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { workLocationsReturnTo, withWorkLocationsFrom } from '@/lib/return-to';
-import { ClockingPointRows } from '../clocking-points';
 import { UUID_RE, locationEditPage } from '../location-fields';
 
 /**
@@ -28,9 +26,9 @@ import { UUID_RE, locationEditPage } from '../location-fields';
  * administer is notFound() rather than rendered — the same boundary the listing draws, drawn again here
  * rather than trusted from the link that got us here.
  *
- * THE CLOCKING POINTS IT CARRIES RENDER BELOW IT, read-only, through the pack's published facade. That
- * is the "a site and its points stay maintained in one place" half of the item; the controls for them
- * are on the Edit screen next door.
+ * r423 (83c0d3c8) — NO CLOCKING LOCATIONS HERE ANY MORE. They render beside the location they hung off
+ * from r338 until r423; Attendance › Locations (../clocking/page.tsx) is now the one list of clocking
+ * locations, and a work location is what it always was — where an employee works.
  */
 export default async function ViewLocationPage({
   params,
@@ -51,10 +49,6 @@ export default async function ViewLocationPage({
   const site = locations.find((l) => l.id === rawId);
   if (!site) notFound();
 
-  const points = (await listClockingLocations(s, { includeArchived: true })).filter(
-    (cl) => cl.locationId === site.id,
-  );
-
   const facts: [string, string][] = [
     [t('colCompany'), site.companyName],
     [t('code'), site.code],
@@ -70,7 +64,7 @@ export default async function ViewLocationPage({
       <PageHeader
         title={t('viewLocationTitle')}
         description={`${site.code} · ${site.name}`}
-        back={{ href: backHref, label: t('backToLocations') }}
+        back={{ href: backHref, label: t('backToWorkLocations') }}
         actions={
           <Link href={withWorkLocationsFrom(locationEditPage(site.id), backHref)} className={btnGhost}>
             {t('edit')}
@@ -90,18 +84,6 @@ export default async function ViewLocationPage({
         </dl>
       </Card>
 
-      <Card className="overflow-hidden">
-        <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          {t('clockingPointsHeading')}
-          <span className="ml-2 text-muted-foreground">({points.length})</span>
-        </div>
-        {points.length === 0 ? (
-          <p className="px-4 py-3 text-xs text-muted-foreground">{t('groupNoPoints')}</p>
-        ) : (
-          <ClockingPointRows t={t} rows={points} manage={false} locationId={site.id} />
-        )}
-      </Card>
-      <p className="px-1 text-xs text-muted-foreground">{t('radiusNote')}</p>
     </div>
   );
 }

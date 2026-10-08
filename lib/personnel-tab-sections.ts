@@ -116,8 +116,11 @@ export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'ot
 // satisfied by there being one column, so neither screen can drift from the other.
 // LAST in the order deliberately: it is the only section here that can be REFUSED for a reason about
 // another employee (the card collides with somebody's code / IC), and `runTabSave` reports per section —
-// so a refused card leaves the four sections above it saved and names the card as the one that broke.
-export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'geofencing', 'card'] as const;
+// so a refused card leaves the sections above it saved and names the card as the one that broke.
+// r423 (83c0d3c8) — `clocking` and `geofencing` MERGED into one `clocking` section: the "Use Geofencing for
+// Clocking" switch and the locations it needs are one rule ("on requires a location") with one writer
+// (setClockingControl), so they can no longer be saved apart. `geofencing` is gone, not renamed.
+export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'card'] as const;
 
 /**
  * Employment (the `job` tab). One section: the Employment Dates card.

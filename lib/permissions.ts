@@ -932,7 +932,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     // since ADR-0054, which r336 orphaned when it minted `nav.physicalWorkLocation`. That newer key is
     // deleted in the same commit: a live-looking nav key nothing renders is how a retired row comes back.
     screenKey: 'locations',
-    href: '/admin/work-locations',
+    // r423 (83c0d3c8) — the href follows the "Locations" function to the CLOCKING location list. The work
+    // location listing ('/admin/work-locations') is a second menu row, "Work Locations", but NOT a second
+    // screenKey: both are the same permission identity they have always been, so no stored grant changes
+    // meaning and nobody gains or loses either screen. Its routes stay on this column below.
+    href: '/admin/work-locations/clocking',
     labelKey: 'nav.locations',
     guard: 'requireAdmin',
     // f9afd1ce rev 2 (r267): a clocking location is added and edited on a page of its own (the loans
@@ -960,6 +964,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/work-locations/clocking',
       '/admin/work-locations/clocking/new',
       '/admin/work-locations/clocking/[id]',
+      // r423 — View (above) is read-only now; the form is its own route.
+      '/admin/work-locations/clocking/[id]/edit',
       '/admin/locations',
       '/admin/locations/clocking/new',
       '/admin/locations/clocking/[id]',

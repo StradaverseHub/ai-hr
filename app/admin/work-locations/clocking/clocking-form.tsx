@@ -20,7 +20,8 @@ import { ClockingMap } from './clocking-map';
  * built then and NOTHING about it changes here), but a whole card boundary sat between the search and the
  * two boxes it writes, so the connection was invisible. The fix is the boundary, not the behaviour.
  *
- * One card now, under the GPS heading, in the reporter's approved order:
+ * (r423 — the order below is SUPERSEDED; see the r423 note at the end of this header.)
+ * One card, under the GPS heading, in the reporter's then-approved order:
  *   Find an address → Address → Latitude → Longitude → Clocking radius → Name → Report label →
  *   Clocking location link (only when one exists) → Remarks
  * `admin.locations.sectionInfo` is therefore RETIRED — removed from all six locales, because a heading
@@ -67,6 +68,19 @@ import { ClockingMap } from './clocking-map';
  * CLOCKING_FIELDS is unchanged, a refused save still echoes everything typed, and the coordinates stay
  * typeable by hand when the map is slow or unavailable.
  *
+ * r423 (83c0d3c8) — THE REPORTER'S ORDER, REVERSING r335's "Name below the coordinates": they asked to
+ * create the location first and then tick the companies allowed to use it. Five numbered sections:
+ *   01 Location — Location Name → Find an address → Address → State (optional, Malaysian states)
+ *   02 GPS and geofencing radius — Latitude → Longitude → Geofencing Radius → the map with its circle
+ *   03 Companies allowed to use this location — one tick per company, at least one (the service refuses
+ *      none, and refuses unticking a company whose employees are assigned here, with the count)
+ *   04 Status — Active / Inactive (the archive stamp; an inactive location is never offered and never
+ *      matched at clock-in)
+ *   05 Optional — Report label → Remarks (the Attendance report prints the report label), then the
+ *      read-only work-location link when one exists (carried through so a Save never silently unlinks)
+ * The address search still writes Address / Latitude / Longitude and the map still reads the boxes, so the
+ * two islands are unchanged; only where the boxes sit moved.
+ *
  * SYNCHRONOUS, taking the page's translator as a prop (the app/payroll/multi-cycle-worksheet idiom):
  * both callers are server components, so a function prop crosses no client boundary, and a sync component
  * is what lets test/clocking-location-page.test.ts render the real page with renderToStaticMarkup.
@@ -76,8 +90,12 @@ export function ClockingLocationForm({
   mode,
   clockingLocationId,
   values,
+  companyIds,
+  companies,
+  stateOptions,
   linkableLocations,
   linkNotOffered,
+  assignedCount,
   error,
   cancelHref,
 }: {
@@ -87,27 +105,29 @@ export function ClockingLocationForm({
   clockingLocationId?: string;
   /** The form's defaults: what was typed when a refusal echoed it, else what is on file, else blank. */
   values: ClockingFormValues;
-  /** Every LIVE location the caller can see, any company — the link is optional and not company-bound. */
+  /** r423 — the ticked companies (what was typed, else what is on file, else none). */
+  companyIds: string[];
+  /** r423 — every company the caller may open a location to (a group administrator: all of them). */
+  companies: { id: string; name: string }[];
+  /** r423 — the states of those companies' countries, for the optional State select. */
+  stateOptions: string[];
+  /** Every LIVE location the caller can see, any company — only used to caption an existing link. */
   linkableLocations: { id: string; code: string; name: string; companyName: string | null }[];
   /**
    * A link the picker cannot offer (an archived location) is kept as its own option so a plain Save
-   * cannot silently unlink the point. The service still refuses an archived link on save, and says so;
-   * the form just never LIES about what is linked.
+   * cannot silently unlink the point. The form just never LIES about what is linked.
    */
   linkNotOffered?: { id: string; code: string | null; name: string | null } | null;
+  /** r423 — employees assigned today (edit only), said beside Status. */
+  assignedCount?: number;
   error?: string;
   cancelHref: string;
 }) {
   const textareaCls = inputCls.replace('h-9', 'min-h-[4.5rem] py-2');
-  // The seam, read ONCE per render on the server. With no map variables set — which is every deployment
-  // today, `.env.production` holds fifteen and none is one — this is the free, keyless OpenStreetMap
-  // provider, and it reports no satellite. It never throws when a key is absent.
+  // The seam, read ONCE per render on the server. With no map variables set this is the free, keyless
+  // OpenStreetMap provider, and it reports no satellite. It never throws when a key is absent.
   const mapProvider = resolveMapProvider(process.env);
-  /**
-   * 0fe1ca2e — the linked location's caption, or null when there is no link (every production row today).
-   * An ARCHIVED link is still named rather than hidden: `linkNotOffered` exists precisely so the form
-   * cannot imply a point is unlinked when it is not.
-   */
+  /** The linked work location's caption, or null when there is no link. An ARCHIVED link is still named. */
   const linkedLabel: string | null = (() => {
     const id = (values.locationId ?? '').trim();
     if (!id) return null;
@@ -117,6 +137,11 @@ export function ClockingLocationForm({
     const hit = linkableLocations.find((l) => l.id === id);
     return hit ? `${hit.code} · ${hit.name} · ${hit.companyName ?? ''}`.trim() : null;
   })();
+  const ticked = new Set(companyIds);
+  const status = values.status === 'inactive' ? 'inactive' : 'active';
+  // A state on file that is no longer in the vocabulary is still SHOWN (and posted back) rather than
+  // silently blanked; the service judges it on save.
+  const states = values.state && !stateOptions.includes(values.state) ? [values.state, ...stateOptions] : stateOptions;
   return (
     <form
       action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}
@@ -127,19 +152,39 @@ export function ClockingLocationForm({
 
       <ErrorBanner message={error} />
 
-      {/* ONE SECTION — 0fe1ca2e rev 6 (r335). See this file's header for why there is no second card. */}
       <Card className="overflow-hidden">
-        <SectionHeader title={t('sectionGps')} />
-        {/* The search, and then the three boxes it writes, with nothing between them. On a button press
-            only — the free geocoder's usage policy forbids search-as-you-type. */}
+        {/* 01 · LOCATION — the name first, then where it is. */}
+        <SectionHeader title={t('sectionLocation')} />
+        <div className="grid grid-cols-1 gap-4 p-4">
+          <Field label={t('locationName')} required>
+            <input name="name" defaultValue={values.name} required maxLength={300} placeholder={t('clockingNamePlaceholder')} className={inputCls} />
+          </Field>
+        </div>
+        {/* The search, and then the boxes it writes. On a button press only — the free geocoder's usage
+            policy forbids search-as-you-type. */}
         <ClockingAddressSearch provider={mapProvider} />
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
-          {/* Address is the field the search WRITES and the one that prints on reports. The reporter's
-              sketch omitted it; dropping it would throw away the address just looked up, so it stays —
-              directly under the search, which is the whole point of the move. */}
-          <Field label={t('address')} className="sm:col-span-3">
+          <Field label={t('address')} className="sm:col-span-2">
             <textarea name="address" defaultValue={values.address} rows={2} maxLength={1000} className={textareaCls} />
           </Field>
+          {/* r423 — display and filtering only; it never changes public holidays. */}
+          <Field label={t('stateOptional')}>
+            <select name="state" defaultValue={values.state} className={inputCls}>
+              <option value="">{t('stateNone')}</option>
+              {states.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        {/* 02 · GPS AND GEOFENCING RADIUS — the three boxes, then the picture of them. */}
+        <div className="border-t border-border">
+          <SectionHeader title={t('sectionGps')} />
+        </div>
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
           <Field label={t('lat')} required>
             <input name="lat" type="number" step="any" min={-90} max={90} defaultValue={values.lat} required placeholder="3.1390" className={inputCls} />
           </Field>
@@ -147,44 +192,73 @@ export function ClockingLocationForm({
             <input name="lng" type="number" step="any" min={-180} max={180} defaultValue={values.lng} required placeholder="101.6869" className={inputCls} />
           </Field>
           {/* 1fff489c — the allowed distance, per site. Required by the form AND by the service; min=1 is
-              the DB CHECK, and the 10..5000 advisory is a toast, never a block. Posted as the raw string so
-              a blank reaches "Radius is required" rather than becoming NaN. */}
+              the DB CHECK, and the 10..5000 advisory is a toast, never a block. */}
           <Field label={t('radiusMetresLabel')} required>
             <input name="radiusM" type="number" min={1} step={1} defaultValue={values.radiusM} required placeholder="150" className={inputCls} />
           </Field>
         </div>
         <p className="px-4 pb-3 text-xs text-muted-foreground">{t('radiusNote')}</p>
-        {/* The marker and the radius circle, which follows the boxes above as they are typed. It stays
-            DIRECTLY under them: a picture of lat / lng / radius separated from lat / lng / radius by four
-            text boxes would repeat, against the map, the exact complaint this round fixes for the search. */}
         <ClockingMap provider={mapProvider} />
-        {/* What the place is CALLED, after where it is. The reporter's order puts these below the
-            coordinates; the plan said out loud that Name moves down and offered to lift it back. */}
-        <div className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
-          {/* The point keeps its OWN name (the reporter's "HQ — North Gate" / "HQ — South Gate" reading). */}
-          <Field label={t('name')} required>
-            <input name="name" defaultValue={values.name} required maxLength={300} placeholder={t('clockingNamePlaceholder')} className={inputCls} />
-          </Field>
-          {/* NEW (0461): the short name the Attendance report prints; blank = the name is printed. */}
+      </Card>
+
+      {/* 03 · COMPANIES — at least one. Plain checkboxes posting one `companyIds` entry per tick. */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('sectionCompanies')} />
+        <fieldset className="p-4">
+          <legend className="sr-only">{t('sectionCompanies')}</legend>
+          {companies.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
+          ) : (
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              {companies.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="companyIds" value={c.id} defaultChecked={ticked.has(c.id)} className="h-4 w-4" />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">{t('companiesHint')}</p>
+        </fieldset>
+      </Card>
+
+      {/* 04 · STATUS — the archive stamp, said as the two words the list uses. */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('sectionStatus')} />
+        <fieldset className="p-4">
+          <legend className="sr-only">{t('sectionStatus')}</legend>
+          <div className="flex flex-wrap gap-6">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="status" value="active" defaultChecked={status === 'active'} className="h-4 w-4" />
+              {t('statusActive')}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="status" value="inactive" defaultChecked={status === 'inactive'} className="h-4 w-4" />
+              {t('statusInactive')}
+            </label>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">{t('inactiveNote')}</p>
+          {mode === 'edit' && assignedCount != null && assignedCount > 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground">{t('assignedEmployees', { count: assignedCount })}</p>
+          ) : null}
+        </fieldset>
+      </Card>
+
+      {/* 05 · OPTIONAL — the report label (the Attendance report prints it) and remarks. */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('sectionOptional')} />
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
           <Field label={t('reportLabel')}>
-            <input name="reportLabel" defaultValue={values.reportLabel} maxLength={MAX_REPORT_LABEL_CHARS} className={inputCls} />
+            <input name="reportLabel" defaultValue={values.reportLabel} maxLength={MAX_REPORT_LABEL_CHARS} placeholder={t('reportLabelPlaceholder')} className={inputCls} />
+          </Field>
+          <Field label={t('remarks')}>
+            <input name="remarks" defaultValue={values.remarks} maxLength={1000} className={inputCls} />
           </Field>
           {/*
-            * 0fe1ca2e — THE CONTROL IS GONE; THE COLUMN, THE LINK AND THE REGISTER'S GROUPING ARE NOT.
-            *
-            * A Clocking Location is a physical place — name, address, lat, lng, radius. It has no company
-            * and never had one. This optional link to a company `location` record was the single field on
-            * the form that made it LOOK company-based, which is what the reporter read it as. Measured on
-            * production before removing it: both clocking locations have `location_id` NULL, so no row
-            * loses an editable link.
-            *
-            * ⚠️ REMOVING THE SELECT ALONE WOULD HAVE SILENTLY UNLINKED EVERY ROW THAT DOES USE IT.
-            * `resolveLocationLink` maps an absent or empty field to NULL and `updateClockingLocation`
-            * then `.set({ locationId })` unconditionally — so on a tenant that had used the link, one
-            * plain Save would have cleared it with no message. That is the exact failure `linkNotOffered`
-            * was added to prevent ("the form just never LIES about what is linked"), so the rule is kept
-            * and narrowed: when a link EXISTS it is shown read-only and carried through the post; when
-            * there is none the field is not rendered at all, which is every row today.
+            * 0fe1ca2e — the optional link to a work `location` is not a control. When one EXISTS it is
+            * shown read-only and carried through the post, because the service writes `locationId`
+            * unconditionally and an absent field would silently unlink the row. None is rendered when
+            * there is no link, which is every production row.
             */}
           {linkedLabel && (
             <Field label={t('clockingLocationLinkOptional')}>
@@ -192,9 +266,6 @@ export function ClockingLocationForm({
               <p className="flex h-9 items-center text-sm text-muted-foreground">{linkedLabel}</p>
             </Field>
           )}
-          <Field label={t('remarks')}>
-            <input name="remarks" defaultValue={values.remarks} maxLength={1000} className={inputCls} />
-          </Field>
         </div>
         <p className="px-4 pb-4 text-xs text-muted-foreground">{t('reportLabelHint')}</p>
       </Card>

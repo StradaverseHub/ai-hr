@@ -44,7 +44,7 @@ import {
 // f513ec02 — the Schedule Group card's writer. It carries the REVERSE of the allowed-shift refusal (the
 // group moves while the shift stands still), which is why it lives beside that refusal in core/roster.ts.
 import { setEmploymentScheduleGroup } from '@/core/roster';
-import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
+import { setClockingControl, ClockingLocationRequiredError, ClockingLocationNotAvailableError } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
 import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionMidMonthError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
@@ -1937,8 +1937,7 @@ export async function saveAttendanceTabAction(formData: FormData): Promise<TabSa
   return runTabSave(s, formData, ATTENDANCE_TAB_SECTION_ORDER, {
     holiday: applyHolidayCalendarSection,
     schedule: applyScheduleGroupSection,
-    clocking: applyClockingLocationsSection,
-    geofencing: applyGeofencingSection,
+    clocking: applyClockingControlSection,
     card: applyCardIdSection,
   });
 }
@@ -2218,62 +2217,43 @@ async function applyOthersStatutorySection(
   });
 }
 
-/** ADR-0070 — set-based replace of an employee's assigned clocking sites. */
 /**
- * r255 420ebab5 — the WRITE half of the Clocking Locations card (see `applyStatutorySection`).
+ * r423 (83c0d3c8) — the WRITE half of the Location Assignment card: the "Use Geofencing for Clocking" switch
+ * and the clocking locations it needs, as ONE section with ONE writer (`setClockingControl`). It replaced
+ * two sections — the site list (`clocking`) and the toggle + radius override (`geofencing`) — which saved
+ * independently, so the switch could be saved on with nothing assigned. The radius override is retired.
  *
- * The multi-select posts one entry per ticked site and NOTHING when the admin unticks them all, which is
- * the set-based replace this service expects. `buildTabPayload` (lib/tab-save-dom.ts) packs a multi-select
- * the same way a real form post does, so "clear every site" survives the consolidated door.
+ * The switch is a checkbox: off posts nothing, which is OFF. The section is only ever applied when the
+ * operator touched the card (components/tab-save-scope.tsx), so an absent box is never read as a change
+ * nobody made. OFF clears the assignments; ON with no usable location is refused by the service in the
+ * plan's words. The multi-select posts one entry per chosen site and nothing when none is chosen.
  */
-async function applyClockingLocationsSection(
+async function applyClockingControlSection(
   s: Awaited<ReturnType<typeof requireAdmin>>,
   formData: FormData,
 ): Promise<void> {
   const employmentId = String(formData.get('employmentId'));
-  await setEmployeeClockingLocations(s, {
-    employmentId,
-    clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
-  });
-}
-
-export async function setEmployeeClockingLocationsAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
   try {
-    await applyClockingLocationsSection(s, formData);
+    await setClockingControl(s, {
+      employmentId,
+      enabled: formData.get('geofencingEnabled') === 'on',
+      clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
+    });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
+    // The two refusals this card is designed around, in the reader's language. Anything else passes through.
+    if (e instanceof ClockingLocationRequiredError || e instanceof ClockingLocationNotAvailableError) {
+      const tc = await getTranslations('people.detail.clocking');
+      throw new Error(tc(e instanceof ClockingLocationRequiredError ? 'locationRequired' : 'locationNotAvailable'));
+    }
+    throw e;
   }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** ADR-0070 — enable/disable geofencing for one employee + set its radius (metres). */
-/**
- * r255 420ebab5 — the WRITE half of the Geofencing controls (see `applyStatutorySection`).
- *
- * `enabled` is a checkbox and `radiusM` an optional override: an unticked box posts nothing, and a blank
- * radius means "use each site's own". `buildTabPayload` skips unticked checkboxes exactly as a form post
- * does, so both defaults survive the consolidated door.
- */
-async function applyGeofencingSection(
-  s: Awaited<ReturnType<typeof requireAdmin>>,
-  formData: FormData,
-): Promise<void> {
-  const employmentId = String(formData.get('employmentId'));
-  await setGeofencing(s, {
-    employmentId,
-    enabled: formData.get('enabled') === 'on',
-    radiusM: formData.get('radiusM') ? Number(formData.get('radiusM')) : null,
-  });
-}
-
-export async function setGeofencingAction(formData: FormData) {
+export async function setClockingControlAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await applyGeofencingSection(s, formData);
+    await applyClockingControlSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }

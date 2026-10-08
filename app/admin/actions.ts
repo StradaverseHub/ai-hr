@@ -96,13 +96,18 @@ import {
   deleteClockingLocation,
   ClockingLocationInUseError,
   ClockingLocationNameTakenError,
+  ClockingLocationCompanyInUseError,
+  ClockingLocationCompanyRequiredError,
   type ClockingLocationWriteResult,
   type RadiusAdvisory,
 } from '@/packs/attendance/service';
 import {
   CLOCKING_FIELDS,
+  CLOCKING_LIST,
   CLOCKING_NEW_PAGE,
+  COMPANY_FIELD,
   LOCATIONS_LIST,
+  TYPED_COMPANY_IDS,
   UUID_RE,
   clockingEditPage,
   typedKey,
@@ -111,7 +116,6 @@ import {
 import {
   LOCATION_FIELDS,
   LOCATION_NEW_PAGE,
-  clockingPointBase,
   locationEditPage,
   locationSavedHref,
   typedLocationKey,
@@ -2689,75 +2693,59 @@ export async function restoreLocationAction(fd: FormData) {
 }
 
 // ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route. f9afd1ce (0459): a clocking
-// location is a SHARED, tenant-level record with no owner company, so there is no companyId on create and
-// the WRITE is a group administrator's — the service's assertGroupAdmin throws a plain-English refusal
-// that reaches the banner, and RLS (app.is_group_admin() on INSERT/UPDATE/DELETE) says the same thing
-// underneath. Assigning a site to an employee (personnel actions) is unchanged.
+// location is a SHARED, tenant-level record, and the WRITE is a group administrator's — the service's
+// assertGroupAdmin throws a plain-English refusal that reaches the banner, and RLS (app.is_group_admin() on
+// INSERT/UPDATE/DELETE) says the same thing underneath.
 //
-// f9afd1ce rev 2 (r267) — THE FORM LIVES ON A PAGE OF ITS OWN NOW (app/admin/work-locations/clocking/new and
-// …/clocking/[id]); the list renders no inline forms. WHERE A SAVE LANDS, the r265 schedule-assignment idiom:
-//   saved   → the LIST with `saved=1`, `focus=<id>` and the `#row-<id>` fragment — the administrator lands
-//             on the row they just saved, highlighted, not at the top. A radius advisory (1fff489c) rides
-//             along as `toast=`, read by the same global ToastFromQuery that read it before: the write
-//             already SUCCEEDED, an unusual radius is a warning, never a refusal.
-//   refused → the PAGE the form was on, `error=<reason>` beside the fields, plus EVERYTHING typed echoed
-//             under the `typed*` keys of app/admin/work-locations/clocking/form-fields.ts (blank included — on
-//             the new page "what is on file" is nothing, and a link the operator cleared must not come back
-//             pre-picked), so the page re-renders the operator's own values rather than what is on file.
-//             The page shape-checks each echoed value before rendering it.
-// THE PAGE IS DERIVED FROM THE POSTED ID, NEVER FROM A POSTED URL. `clockingLocationId` is an untrusted
-// posted field addressing a uuid column: it is shape-checked here, BEFORE any query, and a malformed one
-// lands on the list with the service's own "not found" sentence — there is no page for an id that is not
-// one. No redirect below can leave the Locations screens (test/clocking-location-page.test.ts).
+// r423 (83c0d3c8) — THE LOCATION IS OPENED TO COMPANIES (`companyIds`, one entry per tick, at least one),
+// carries an optional STATE and a STATUS (Active / Inactive — the existing archive stamp), and EVERY way out
+// lands on Attendance › Locations, the clocking list (CLOCKING_LIST), never on a work location's screen:
+//   saved   → the list with `saved=1`, `focus=<id>` and `#row-<id>`; a radius advisory rides along as `toast=`.
+//   refused → the PAGE the form was on, `error=<reason>`, plus EVERYTHING typed echoed under the `typed*` keys
+//             of app/admin/work-locations/clocking/form-fields.ts (the ticked companies comma-joined under
+//             `typedCompanyIds`), so the page re-renders the operator's own values.
+// THE PAGE IS DERIVED FROM THE POSTED ID, NEVER FROM A POSTED URL. `clockingLocationId` is shape-checked
+// BEFORE any query; no redirect below can leave the Locations screens (test/clocking-location-page.test.ts).
 
-/** The eight fields as posted, raw strings — what the service is given AND what a refusal echoes back. */
+/** The single-valued fields as posted, raw strings — what the service is given AND what a refusal echoes. */
 function clockingFieldsOf(fd: FormData): ClockingFormValues {
   const out = {} as ClockingFormValues;
   for (const field of CLOCKING_FIELDS) out[field] = String(fd.get(field) ?? '');
   return out;
 }
 
+/** r423 — the ticked companies, one entry per tick. Nothing ticked posts nothing, which the service refuses. */
+const companyIdsOf = (fd: FormData): string[] => fd.getAll(COMPANY_FIELD).map(String).filter(Boolean);
+
 /** A posted coordinate: blank must reach the service's "must be a number", not become 0 (Number('') is 0). */
 const coord = (v: string): number => (v.trim() === '' ? NaN : Number(v));
 
 /**
- * The refusal, in the admin's language where the service has a typed error for it. The duplicate-name
- * sentence (unique per TENANT since 0459) is composed here because only this layer can reach
- * getTranslations; the service's other refusals already read as sentences and are shown verbatim.
+ * The refusal, in the admin's language where the service has a typed error for it. The service's other
+ * refusals already read as sentences and are shown verbatim.
  */
 async function clockingRefusalMessage(e: unknown): Promise<string> {
-  if (e instanceof ClockingLocationNameTakenError) {
-    const t = await getTranslations('admin.locations');
-    return t('clockingNameTaken', { name: e.siteName });
+  const t = await getTranslations('admin.locations');
+  if (e instanceof ClockingLocationNameTakenError) return t('clockingNameTaken', { name: e.siteName });
+  if (e instanceof ClockingLocationCompanyRequiredError) return t('companiesRequired');
+  if (e instanceof ClockingLocationCompanyInUseError) {
+    return t('companyInUse', { count: e.count, companies: e.companyNames.join(', ') });
   }
   return publicErrorMessage(e);
 }
 
 /** Refused: back onto the page the form was on, the reason beside the fields, everything typed echoed. */
-async function clockingRefused(page: string, typed: ClockingFormValues, e: unknown): Promise<never> {
+async function clockingRefused(page: string, typed: ClockingFormValues, companyIds: string[], e: unknown): Promise<never> {
   const params = new URLSearchParams();
   params.set('error', await clockingRefusalMessage(e));
   for (const field of CLOCKING_FIELDS) params.set(typedKey(field), typed[field]);
+  params.set(TYPED_COMPANY_IDS, companyIds.filter((id) => UUID_RE.test(id)).join(','));
   redirect(`${page}?${params.toString()}`);
 }
 
-/**
- * Saved: the point's HOME, landed on its row, highlighted; a radius advisory rides along as the toast it
- * always was.
- *
- * 639bf4a5 rev 2 (r338) — HOME USED TO BE THE REGISTER and is now the LOCATION the point hangs off (or,
- * for a point that hangs off none, the screen that holds exactly those). The register is a company
- * listing and renders no point rows, so `#row-<pointId>` there would have been a dead anchor over a
- * table of companies — the operator would have been told "saved" and shown nothing they just saved.
- *
- * ⚠️ DERIVED FROM THE POSTED `locationId`, NEVER FROM A POSTED URL. That field is one of the eight the
- * clocking form already posts and the service already validates; `clockingPointBase` shape-checks it and
- * falls back to the unlinked screen. So this stays a destination the RECORD implies, which is what
- * test/clocking-location-page.test.ts requires of these two actions.
- */
-async function clockingSaved(id: string, locationId: string, warning: RadiusAdvisory | null): Promise<never> {
-  const home = clockingPointBase(locationId);
-  revalidatePath(home);
+/** Saved: the clocking list, landed on the row, highlighted; a radius advisory rides along as the toast. */
+async function clockingSaved(id: string, warning: RadiusAdvisory | null): Promise<never> {
+  revalidatePath(CLOCKING_LIST);
   const params = new URLSearchParams({ saved: '1', focus: id });
   if (warning) {
     const t = await getTranslations('admin.locations');
@@ -2768,12 +2756,13 @@ async function clockingSaved(id: string, locationId: string, warning: RadiusAdvi
         : t('radiusWarningWide', { radius: warning.radiusM }),
     );
   }
-  redirect(`${home}?${params.toString()}#row-${id}`);
+  redirect(`${CLOCKING_LIST}?${params.toString()}#row-${id}`);
 }
 
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   const typed = clockingFieldsOf(fd);
+  const companyIds = companyIdsOf(fd);
   let saved: ClockingLocationWriteResult | null = null;
   try {
     saved = await createClockingLocation(user, {
@@ -2781,26 +2770,29 @@ export async function createClockingLocationAction(fd: FormData) {
       lat: coord(typed.lat),
       lng: coord(typed.lng),
       // 1fff489c — the radius is REQUIRED by the service, passed as the raw form string so a blank field
-      // reaches the "Radius is required" message rather than becoming NaN. f9afd1ce — the location link
-      // is OPTIONAL; a blank select posts '' and the service stores null. rev 2 — so is the report label.
+      // reaches the "Radius is required" message rather than becoming NaN.
       radiusM: typed.radiusM,
       locationId: typed.locationId,
       address: typed.address || null,
       remarks: typed.remarks || null,
       reportLabel: typed.reportLabel || null,
+      companyIds,
+      state: typed.state || null,
+      active: typed.status !== 'inactive',
     });
   } catch (e) {
-    await clockingRefused(CLOCKING_NEW_PAGE, typed, e);
+    await clockingRefused(CLOCKING_NEW_PAGE, typed, companyIds, e);
   }
   // clockingRefused never returns; a refusal has already redirected.
-  await clockingSaved(saved!.id, typed.locationId, saved!.warning);
+  await clockingSaved(saved!.id, saved!.warning);
 }
 
 export async function updateClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   const clockingLocationId = String(fd.get('clockingLocationId') ?? '').trim();
-  if (!UUID_RE.test(clockingLocationId)) fail(LOCATIONS, new Error('Clocking location not found'));
+  if (!UUID_RE.test(clockingLocationId)) fail(CLOCKING_LIST, new Error('Clocking location not found'));
   const typed = clockingFieldsOf(fd);
+  const companyIds = companyIdsOf(fd);
   let saved: ClockingLocationWriteResult | null = null;
   try {
     saved = await updateClockingLocation(user, {
@@ -2813,54 +2805,54 @@ export async function updateClockingLocationAction(fd: FormData) {
       address: typed.address || null,
       remarks: typed.remarks || null,
       reportLabel: typed.reportLabel || null,
+      companyIds,
+      state: typed.state || null,
+      // The radio always posts one of the two; anything else leaves the status as it is.
+      active: typed.status === 'active' ? true : typed.status === 'inactive' ? false : undefined,
     });
   } catch (e) {
-    await clockingRefused(clockingEditPage(clockingLocationId), typed, e);
+    await clockingRefused(clockingEditPage(clockingLocationId), typed, companyIds, e);
   }
-  await clockingSaved(clockingLocationId, typed.locationId, saved!.warning);
+  await clockingSaved(clockingLocationId, saved!.warning);
 }
 
 /**
- * 639bf4a5 rev 2 (r338) — the three row controls land back on the SCREEN THE ROW WAS ON, which is the
- * location's Edit screen (or the unlinked-points screen). Same derivation as `clockingSaved`: the row
- * posts the `locationId` it was rendered under, `clockingPointBase` shape-checks it, and a junk or
- * absent value collapses to the unlinked screen. No posted URL decides anything.
+ * r423 — Deactivate / Activate (the archive stamp) and Delete, from the list's row actions and the View
+ * page. All land on the clocking list. The list asks for confirmation before Deactivate, with the number of
+ * employees assigned.
  */
 export async function archiveClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
-  const home = clockingPointBase(String(fd.get('locationId') ?? ''));
   try {
     await archiveClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
-    fail(home, e);
+    fail(CLOCKING_LIST, e);
   }
-  ok(home);
+  ok(CLOCKING_LIST);
 }
 
 export async function restoreClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
-  const home = clockingPointBase(String(fd.get('locationId') ?? ''));
   try {
     await restoreClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
-    fail(home, e);
+    fail(CLOCKING_LIST, e);
   }
-  ok(home);
+  ok(CLOCKING_LIST);
 }
 
 export async function deleteClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   const t = await getTranslations('admin.locations');
-  const home = clockingPointBase(String(fd.get('locationId') ?? ''));
   try {
     await deleteClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
     if (e instanceof ClockingLocationInUseError) {
-      fail(home, new Error(t('clockingInUse', { count: e.refs })));
+      fail(CLOCKING_LIST, new Error(t('clockingInUse', { count: e.refs })));
     }
-    fail(home, e);
+    fail(CLOCKING_LIST, e);
   }
-  ok(home);
+  ok(CLOCKING_LIST);
 }
 
 // ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ──────────────────────────────

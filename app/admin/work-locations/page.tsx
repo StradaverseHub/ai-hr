@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listLocations, listUnmappedBranches } from '@/core/location';
-import { listClockingLocations } from '@/packs/attendance/service';
 import {
   Card,
   ErrorBanner,
@@ -19,13 +18,18 @@ import { withWorkLocationsFrom } from '@/lib/return-to';
 import {
   LOCATION_NEW_PAGE,
   LOCATIONS_LIST,
-  UNLINKED_CLOCKING_PAGE,
   UUID_RE,
   locationEditPage,
   locationViewPage,
 } from './location-fields';
 
 /**
+ * r423 (83c0d3c8) — THIS IS ATTENDANCE › WORK LOCATIONS NOW, ON A MENU ROW OF ITS OWN, OTHERWISE UNCHANGED.
+ * "Locations" became the list of CLOCKING locations (./clocking/page.tsx); the company-based work location
+ * listing below kept its address, its screens and its behaviour, and is labelled "Work Locations". It still
+ * records where an employee works (their employment history). Clocking locations are no longer shown
+ * anywhere under it — not on this page, not on a location's View or Edit screen.
+ *
  * 639bf4a5 rev 2 (r338) — ATTENDANCE › LOCATIONS. A COMPANY LISTING, AND NOTHING ELSE.
  *
  * ⚠️ THIS ROUND REVERSES WHAT r336 SHIPPED, ON THE REPORTER'S INSTRUCTION. r336 moved this screen to
@@ -90,12 +94,9 @@ import {
  * test/clocking-location-shared.test.ts, which is why the opening angle bracket of that tag name is
  * deliberately absent from this comment as well as from the code.
  *
- * THE CLOCKING REGISTER LEFT THIS PAGE. Until r338 it led the screen: every clocking point in the
- * tenant, grouped under the location it links to. The points now render on the location's OWN screen
- * (./[id] read-only, ./[id]/edit with its controls), which is the "a site and its points stay
- * maintained in one place" half of the item. Points linked to NO location — the link has been optional
- * since f9afd1ce/0459 — would have become unreachable, so they keep a screen of their own
- * (./clocking/page.tsx) and this page links to it with a count rather than pretending they do not exist.
+ * THE CLOCKING REGISTER LEFT THIS PAGE in r338, onto each location's own screens; r423 took it off those
+ * too. Every clocking location is listed, searched and filtered on Attendance › Locations
+ * (./clocking/page.tsx), whatever work location — if any — it is linked to.
  */
 
 export default async function LocationsPage({
@@ -132,12 +133,6 @@ export default async function LocationsPage({
     else unmappedByCompany.set(u.companyId, [u]);
   }
 
-  // The points that hang off no location the caller can see. Read through the pack's published facade —
-  // the ratchet's rule, unchanged by the menu move. Tenant-catalog read (RLS lets every tenant member
-  // through), but this admin-only route only ever renders it for an admin.
-  const clockingLocations = await listClockingLocations(s, { includeArchived: true });
-  const offRegister = clockingLocations.filter((cl) => !cl.locationId || cl.locationCode == null);
-
   /** This screen as the operator is standing on it, so every way out can come back to exactly here. */
   const here = (() => {
     const params = new URLSearchParams();
@@ -169,7 +164,7 @@ export default async function LocationsPage({
   return (
     <div className={pageWideCls}>
       <PageHeader
-        title={t('pageTitle')}
+        title={t('workLocationsTitle')}
         description={t('companySummary', { total: companies.length, withLocation })}
       />
       <ErrorBanner message={error} />
@@ -295,16 +290,6 @@ export default async function LocationsPage({
         </Card>
       )}
 
-      {/* Not a summary of the clocking register — the register is on each location's own screen now.
-          This is the ONE thing that would otherwise have nowhere to be: a point linked to no location
-          (or to one this caller's RLS cannot reach) that would simply have vanished from the product. */}
-      {offRegister.length > 0 && (
-        <p className="px-1 text-sm">
-          <Link href={UNLINKED_CLOCKING_PAGE} className="text-primary hover:underline">
-            {t('offRegisterLink', { count: offRegister.length })}
-          </Link>
-        </p>
-      )}
     </div>
   );
 }
