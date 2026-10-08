@@ -1,3 +1,13 @@
+## r416 — 2026-10-08 · main@151bf343ab556666a350421288a6b6553419c5cd · migration none
+
+**Scope.** Owner report: "can't log out or change company after new theme". Reproduced in Chromium (Monolith, 1440 and 390): the header's `monolith-rv` reveal keeps a transform on <header>, making it a stacking context, so the company menu and the account menu (z-50 inside it) painted UNDER <main> — the page showed through the company list and "Customize Dashboard" covered "Log out". On a phone the company switcher was also crushed to 0px. Fix: `monolith:relative monolith:z-30` on the header; `monolith:min-w-[5.5rem]` on the switcher wrapper. Classic untouched. Live after restart (401, /health 200, zero-line dry-run).
+
+**Gate.** 20 chunks, 1221 of 1221; two reds with 0 assertions (r291 timing; a DOM test "timed out in 5000ms" while another project ran ~35 vitest workers, load ~75), both re-run alone 74/74. Plus tsc, 25 touching files, `pnpm test:browser` 126 + 1 expected fail, and a Chromium click check before/after.
+
+**Decisions.** A deploy BEFORE the full gate (owner said yes) was refused by the permission classifier because the receipt would have said PASS on targeted evidence; it waited for the gate instead. The gate's "2 hours" was my wrong estimate: uncontended it is ~25 min (vitest ~20, rebuild ~7s/chunk); the slowness was another project sharing the machine. A tiered gate (fast affected tier for presentational changes; no-DB files run once) was approved and is being built as r417 (ADR-0094).
+
+**Not done / owed.** Classic at 390: the company switcher is 26px and the notification bell covers it (pre-existing; changing it alters Classic's layout).
+
 ## r415 — 2026-10-08 · main@d6836f2d067e32ae22cd7ec52d0247cc43d250a2 · migration none
 
 **Scope.** 79f3f64d step 3: CP21 (employee leaving Malaysia) filled in on LHDN's CP21 [Pin.1/2025] artwork, opened through the event screen. Deployed; live after restart (401 on box, public /health 200, zero-line dry-run). Board: 79f3f64d recorded built and deployed (all three approved steps live).
