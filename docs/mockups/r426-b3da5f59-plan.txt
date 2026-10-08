@@ -1,0 +1,27 @@
+VERDICT: Small change   ·   SIZE: Small
+
+WHAT YOU ASKED FOR
+
+Rename "Leave Credit History" to "Leave Credit Status" in the employee portal, under the My Leave menu.
+
+WHAT WE'LL CHANGE
+
+1. The My Leave menu row reads "Leave Credit Status". It stays third, after Leave Request and Leave History, and opens the same page.
+
+2. The page it opens is titled "Leave Credit Status" too, so the menu and the page say the same thing. The title printed at the top of the page's export file changes with it.
+
+3. The other five languages change the same way, using the wording each already uses for the "Credit Status" column on that page: Status Kredit Cuti, விடுப்பு வரவு நிலை, สถานะเครดิตวันลา, Trạng thái tín dụng nghỉ phép, 假期额度状态.
+
+WHAT IS NOT DONE
+
+1. Nothing on the page itself changes: the same columns, filters and requests, for the same people.
+
+2. The page address stays /leave/credit, so saved links still work.
+
+Picture attached: the My Leave menu and page title, before and after.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+messages/*.json: nav.leaveCreditHistory and leaveCreditHistory.title only (six locales). Key names unchanged (packs/leave/index.ts:469, components/sidebar.tsx:253, test/leave-pack.test.ts:155 pin keys, not text). Export title reads t('title') (app/leave/credit/export/route.ts:106). Retired-key prose mentioning "Leave Credit History" is history and stays. Affected-tier gate (messages only).
