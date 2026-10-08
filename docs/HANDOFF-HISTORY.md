@@ -1,3 +1,15 @@
+## r422 — 2026-10-08 · main@24403990a4e1f07f4837c5c276b00c1b4726da48 · migration none
+
+**Scope.** 7e784380: every date on the Personnel employee profile reads DD-MMM-YYYY ("31-Jan-2026"). `lib/date-display.ts` (formatDmy / formatDmyTime / formatDmyInText: fixed English months, a yyyy-mm-dd is read off the string and never through `new Date`, instants on the Kuala Lumpur clock) and `components/ui/date-field.tsx` (native date input kept, same name and ISO value, drawn under a DMY box). Shared components opt in by prop; the wizard, Leave, Audit and Schedule screens are unchanged. Exports, PDFs and letters stay ISO. Deployed; live after restart (401, /health 200, zero-line dry-run from the deployed tree). Board: approved plan byte-identical to the pushed text; build-start, build-complete and deployed recorded at 24403990.
+
+**Decisions.**
+- Document upload stamps and movement recorded/reversed times now print Kuala Lumpur time instead of UTC (up to 8 h visible shift); shift-history "changed on" is the KL day.
+- The builder's two WIP commits were squashed onto main (tree identical) before gating, so the gated sha is the shipped sha and main fast-forwarded to it.
+
+**Gate.** Full. First run RED with 88 files in chunk 1 of 6, all "No space left on device" on the 8 GB RAM-disk cluster (the r422 DB test ran in chunk 6, green). Re-run at CHUNKS=8: 1232 of 1232 (470 + 762), 1142 s, peak disk 22% per chunk. tsc clean; `next build` clean. `pnpm test:browser` not run (full tier does not include it).
+
+**Not done / owed.** Dialog date inputs, the contract-employee block and the leave side panel are formatted in code but not covered by the render sweep. Classic at 390 company switcher (pre-existing). `ai_hr_r422` dev DB to drop.
+
 ## r421 — 2026-10-08 · main@6972b6994c952792f6d1c563b40eb2a22133725f · migration none
 
 **Scope.** One gate, five pieces: r417 tiered gate (ADR-0094), r418 statutory identity + Borang A zero-EPF rows + BBCB card + Statutory Forms panels (e74af58c contested, 5c31d379, 57ef8cf9), r419 bank account tab (48652e18), r420 CSV template label (f9b3b8bf). Deployed with `improve:deploy`; live after restart (401, /health 200). Board: all five items planned, plans re-pushed after review corrections; record deployed only on byte-identical approval.
