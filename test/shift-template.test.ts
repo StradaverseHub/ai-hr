@@ -106,17 +106,17 @@ describe('shift template (R7 Multi-Shift Phase 1)', () => {
         breakPeriods: [{ start: '07:00:00', end: '07:30:00' }],
       }),
     ).rejects.toThrow(/inside the shift/i);
-    // A break spanning the night shift's midnight boundary cannot be expressed with start < end → rejected.
-    await expect(
-      createShift(ctx, {
-        companyId: b.companyId,
-        name: 'BadBreak2',
-        code: 'BB2',
-        startTime: '22:00:00',
-        endTime: '06:00:00',
-        breakPeriods: [{ start: '23:30:00', end: '00:30:00' }],
-      }),
-    ).rejects.toThrow(/cannot cross midnight/i);
+    // r429 (f6819e19, plan point 7): a night shift's break MAY run past midnight (23:30 to 00:30 is 60 min).
+    const across = await createShift(ctx, {
+      companyId: b.companyId,
+      name: 'Midnight Break',
+      code: 'BB2',
+      startTime: '22:00:00',
+      endTime: '06:00:00',
+      breakPeriods: [{ start: '23:30:00', end: '00:30:00' }],
+    });
+    const [acrossRow] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, across.id));
+    expect(acrossRow.breakMinutes).toBe(60);
     // Fully inside the morning segment of a cross-midnight shift is fine.
     const ok = await createShift(ctx, {
       companyId: b.companyId,
