@@ -8216,6 +8216,7 @@
       "bankRemoveConfirmTitle": "Buang akaun bank ini?",
       "bankRemoveConfirmEnding": "akaun berakhir {last4}",
       "bankRemoveConfirmBody": "Semua butiran akaun ini akan dipadam. Tindakan ini tidak boleh dibatalkan.",
+      "bankRemoveConfirmPaysBodies": "{bodies} dibayar daripada akaun ini dan tidak akan mempunyai akaun pembayaran sehingga anda memilih akaun lain di tab Berkanun.",
       "bankRemoveConfirmYes": "Ya, buang",
       "bankRemovedToast": "Akaun {bank} berakhir {last4} telah dibuang",
       "bankRemovedToastNoDigits": "Akaun {bank} telah dibuang",

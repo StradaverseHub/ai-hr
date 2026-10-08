@@ -69,7 +69,11 @@ const profile = (over: Partial<PanelBankProfile> = {}): PanelBankProfile => ({
   ...over,
 });
 
-function panel(bankProfiles: PanelBankProfile[], actions: { setBankProfile: () => void; removeBankProfile: () => void }) {
+function panel(
+  bankProfiles: PanelBankProfile[],
+  actions: { setBankProfile: () => void; removeBankProfile: () => void },
+  statutoryAuthorities: unknown[] = [],
+) {
   const noop = () => undefined;
   return (
     <NextIntlClientProvider
@@ -85,7 +89,7 @@ function panel(bankProfiles: PanelBankProfile[], actions: { setBankProfile: () =
         companies={[{ id: 'c1', name: 'Demo Sdn Bhd' }]}
         statutory={null}
         bankProfiles={bankProfiles}
-        statutoryAuthorities={[]}
+        statutoryAuthorities={statutoryAuthorities as never}
         signatories={[]}
         stateOptions={[]}
         activeCycleNames={['Monthly']}
@@ -111,10 +115,10 @@ function panel(bankProfiles: PanelBankProfile[], actions: { setBankProfile: () =
   );
 }
 
-function setup(bankProfiles: PanelBankProfile[] = [profile()]) {
+function setup(bankProfiles: PanelBankProfile[] = [profile()], statutoryAuthorities: unknown[] = []) {
   const setBankProfile = vi.fn();
   const removeBankProfile = vi.fn();
-  const utils = render(panel(bankProfiles, { setBankProfile, removeBankProfile }));
+  const utils = render(panel(bankProfiles, { setBankProfile, removeBankProfile }, statutoryAuthorities));
   const rerender = (next: PanelBankProfile[]) => utils.rerender(panel(next, { setBankProfile, removeBankProfile }));
   return { setBankProfile, removeBankProfile, rerender, user: userEvent.setup() };
 }
@@ -191,6 +195,23 @@ describe('Remove asks first', () => {
     expect(text, 'never the full number').not.toContain(FULL_NO);
     expect(text, 'nor the digits before the last four').not.toContain('1234');
     expect(text).not.toContain('51401234');
+  });
+
+  it('names every statutory body paid from the account — removing it leaves them with no paying account', async () => {
+    const bp = profile();
+    const body = (authority: string, bankProfileId: string | null) => ({ id: `sa-${authority}`, authority, accountNo: null, bankProfileId });
+    const { user } = setup([bp], [body('epf', bp.id), body('socso', null)]);
+    const dialog = await openRemove(user);
+    const text = dialog.textContent ?? '';
+    expect(text).toContain(ORG.authority_epf);
+    expect(text, 'a body paid from another account is not named').not.toContain(ORG.authority_socso);
+    expect(text).toContain(ORG.bankRemoveConfirmPaysBodies.replace('{bodies}', ORG.authority_epf));
+  });
+
+  it('says nothing about statutory bodies when none is paid from the account', async () => {
+    const { user } = setup();
+    const dialog = await openRemove(user);
+    expect(dialog.textContent ?? '').not.toContain('paying account until');
   });
 
   it('Cancel closes the dialog and leaves nothing submitted', async () => {

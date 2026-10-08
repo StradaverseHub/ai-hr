@@ -1246,7 +1246,17 @@ export function CompanyPanel({
                           confirmVariant="destructive"
                           title={t('bankRemoveConfirmTitle')}
                           subtitle={bankRemoveSubject(bp)}
-                          description={t('bankRemoveConfirmBody')}
+                          description={(() => {
+                            // r419 — Remove refuses nothing (core/bank-profile.ts): a statutory body paid from this
+                            // account keeps its row and LOSES its paying account (FK ON DELETE SET NULL, 0276).
+                            // So the dialog says which bodies, before the click that does it.
+                            const bodies = statutoryAuthorities
+                              .filter((r) => r.bankProfileId === bp.id)
+                              .map((r) => t(`authority_${r.authority}` as never));
+                            return bodies.length > 0
+                              ? `${t('bankRemoveConfirmBody')} ${t('bankRemoveConfirmPaysBodies', { bodies: bodies.join(', ') })}`
+                              : t('bankRemoveConfirmBody');
+                          })()}
                           confirmLabel={t('bankRemoveConfirmYes')}
                         >
                           {t('bankProfileRemove')}

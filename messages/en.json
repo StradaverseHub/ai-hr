@@ -8216,6 +8216,7 @@
       "bankRemoveConfirmTitle": "Remove this bank account?",
       "bankRemoveConfirmEnding": "account ending {last4}",
       "bankRemoveConfirmBody": "All of this account’s details will be deleted. This cannot be undone.",
+      "bankRemoveConfirmPaysBodies": "{bodies} will have no paying account until you choose another on the Statutory tab, because it is paid from this one.",
       "bankRemoveConfirmYes": "Yes, remove",
       "bankRemovedToast": "Removed the {bank} account ending {last4}",
       "bankRemovedToastNoDigits": "Removed the {bank} account",

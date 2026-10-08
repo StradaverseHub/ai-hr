@@ -8216,6 +8216,7 @@
       "bankRemoveConfirmTitle": "Xóa tài khoản ngân hàng này?",
       "bankRemoveConfirmEnding": "tài khoản có đuôi {last4}",
       "bankRemoveConfirmBody": "Toàn bộ thông tin của tài khoản này sẽ bị xóa. Không thể hoàn tác.",
+      "bankRemoveConfirmPaysBodies": "{bodies} được thanh toán từ tài khoản này và sẽ không có tài khoản thanh toán cho đến khi bạn chọn tài khoản khác ở thẻ Theo luật định.",
       "bankRemoveConfirmYes": "Có, xóa",
       "bankRemovedToast": "Đã xóa tài khoản {bank} có đuôi {last4}",
       "bankRemovedToastNoDigits": "Đã xóa tài khoản {bank}",

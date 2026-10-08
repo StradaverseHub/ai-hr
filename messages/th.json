@@ -8216,6 +8216,7 @@
       "bankRemoveConfirmTitle": "ลบบัญชีธนาคารนี้หรือไม่?",
       "bankRemoveConfirmEnding": "บัญชีลงท้ายด้วย {last4}",
       "bankRemoveConfirmBody": "รายละเอียดทั้งหมดของบัญชีนี้จะถูกลบ และไม่สามารถย้อนกลับได้",
+      "bankRemoveConfirmPaysBodies": "{bodies} ชำระจากบัญชีนี้ และจะไม่มีบัญชีชำระเงินจนกว่าคุณจะเลือกบัญชีอื่นในแท็บตามกฎหมาย",
       "bankRemoveConfirmYes": "ใช่ ลบ",
       "bankRemovedToast": "ลบบัญชี {bank} ที่ลงท้ายด้วย {last4} แล้ว",
       "bankRemovedToastNoDigits": "ลบบัญชี {bank} แล้ว",

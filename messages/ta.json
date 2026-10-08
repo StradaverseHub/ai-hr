@@ -8216,6 +8216,7 @@
       "bankRemoveConfirmTitle": "இந்த வங்கிக் கணக்கை அகற்றவா?",
       "bankRemoveConfirmEnding": "{last4} இல் முடியும் கணக்கு",
       "bankRemoveConfirmBody": "இந்தக் கணக்கின் அனைத்து விவரங்களும் நீக்கப்படும். இதைத் திரும்பப் பெற முடியாது.",
+      "bankRemoveConfirmPaysBodies": "{bodies} இந்தக் கணக்கிலிருந்து செலுத்தப்படுகிறது; நீங்கள் சட்டப்பூர்வ தாவலில் வேறு கணக்கைத் தேர்ந்தெடுக்கும் வரை செலுத்தும் கணக்கு இருக்காது.",
       "bankRemoveConfirmYes": "ஆம், அகற்று",
       "bankRemovedToast": "{last4} இல் முடியும் {bank} கணக்கு அகற்றப்பட்டது",
       "bankRemovedToastNoDigits": "{bank} கணக்கு அகற்றப்பட்டது",

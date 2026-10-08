@@ -8216,6 +8216,7 @@
       "bankRemoveConfirmTitle": "移除此银行账户？",
       "bankRemoveConfirmEnding": "尾号 {last4} 的账户",
       "bankRemoveConfirmBody": "此账户的所有资料都将被删除，且无法撤销。",
+      "bankRemoveConfirmPaysBodies": "{bodies} 从此账户付款；在您于法定标签页选择其他账户之前，将没有付款账户。",
       "bankRemoveConfirmYes": "是，移除",
       "bankRemovedToast": "已移除尾号 {last4} 的 {bank} 账户",
       "bankRemovedToastNoDigits": "已移除 {bank} 账户",
