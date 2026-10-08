@@ -1,8 +1,8 @@
 /**
  * 44bc1c33 — CARD / CLOCKING ID: the third way a physical attendance device's file finds an employee.
  *
- * `importAttendancePunches` matches a device's own identifier against `employment.employee_code` and the
- * IC on `employee_statutory_my`. A company whose terminal records its own card numbers matched neither, so every punch in
+ * The clocking importer (r424: core/attendance-clocking-import.ts; before it, `importAttendancePunches`)
+ * matches a device's own identifier against `employment.employee_code` and the IC on `employee_statutory_my`. A company whose terminal records its own card numbers matched neither, so every punch in
  * the file came back unmatched — correctly, because the importer reports rather than guesses, but with no
  * way to fix it short of renumbering the device. This module owns the missing key.
  *
@@ -50,7 +50,7 @@ export const normalizeCardId = (raw: string): string => raw.trim();
  *
  * ⚠️ THE "CARD ID IS THE SAME AS EMPLOYEE ID" SETTING WAS NOT BUILT, AND THE REASON IS THAT IT HAS NO
  * EFFECT ON MATCHING. The ticket asks for a global switch that fills each Card ID in from the Employee ID
- * so HR need not type them. But `importAttendancePunches` ALREADY matches on `employee_code` — a device
+ * so HR need not type them. But the importer ALREADY matches on `employee_code` — a device
  * that records employee numbers has always imported, with no card row at all. So a setting that copies the
  * code into the card would change nothing about which punches match; it would only change what the screen
  * prints, at the cost of a stored duplicate of one fact and a sync rule on every code rename.
@@ -74,17 +74,20 @@ export function resolveCardMatch(row: { cardId: string | null; employeeCode: str
 /**
  * Refuse a card id that any OTHER employment in the tenant already answers to — by card, by employee code
  * or by IC. Case-insensitive, and IC is compared on digits only, because that is exactly how
- * `importAttendancePunches` builds its lookup: a value that collides there attributes a punch to the wrong
- * person, and this is the only place that can see it coming.
+ * the clocking importer builds its lookup (core/attendance-clocking-import.ts): a value that collides there
+ * makes the punch ambiguous at best, and this is the only place that can see it coming.
  */
 export async function assertCardIdFree(tx: Tx, employmentId: string, cardId: string): Promise<void> {
   const wanted = normalizeCardId(cardId);
   const digits = wanted.replace(/\D/g, '');
 
-  // ⚠️ THIS QUERY MIRRORS `importAttendancePunches`'s OWN LOOKUP, and has to. That importer joins
-  // `employee_statutory_my` for the IC (it is NOT on `person`) and considers only employments with no
-  // `terminated_on`. Checking a different population here would let a collision through that the importer
-  // can still see, or refuse one it never could.
+  // ⚠️ THIS QUERY MIRRORS THE IMPORTER'S OWN KEYS, and has to: card, employee code and IC digits, the
+  // IC joined from `employee_statutory_my` (it is NOT on `person`). r424 — the importer
+  // (core/attendance-clocking-import.ts) now matches only employments EMPLOYED ON THE CLOCKING'S DATE and
+  // refuses two answers at one level as ambiguous instead of letting the last writer of a flat map win. A
+  // terminated employment can therefore still answer a card for a date before its termination; refusing
+  // collisions among LIVE employments here remains the right guard for new assignments, and anything older
+  // that still collides is reported by the importer as ambiguous rather than guessed.
   const clashes = await tx
     .select({
       id: employment.id,

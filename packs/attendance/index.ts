@@ -77,6 +77,7 @@ import {
   CalendarRange,
   ClipboardList,
   Clock,
+  FileCog,
   FilePen,
   FileUp,
   HandCoins,
@@ -435,6 +436,11 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // card numbers are not the employee codes. Admin-only and beside Shift because it is device
     // configuration, not a record anybody reads day to day.
     { href: '/admin/card-assignment', labelKey: 'cardAssignment', icon: CreditCard, adminOnly: true },
+    // r424 (50ed39e1) — FILE STRUCTURE MAPPING, beside Card Assignment because it is the other half of
+    // device configuration: Card Assignment says WHO a device's card number is, this says HOW the device
+    // writes its file. Admin-only (requireAdmin in every page body). The Import row above now reads
+    // "Import Clocking Data" — label only; its key stays `attendanceImport` (the r317 exemption).
+    { href: '/admin/attendance/file-mappings', labelKey: 'fileStructureMapping', icon: FileCog, adminOnly: true },
     /**
      * ⚠️ e4471e3c (r287) — TWO ROWS WERE REMOVED HERE, AND THEIR SCREENS WERE NOT. READ THIS BEFORE
      * ADDING EITHER BACK.
@@ -621,6 +627,9 @@ export const attendancePack: ModulePack = {
     { table: 'clocking_location', note: 'geofenced clocking sites (clock portal), not the org location spine' },
     { table: 'employee_clocking_location', note: 'employee ↔ clocking-site assignment + geofence flag' },
     { table: 'employee_device', note: 'registered clocking devices + revocation (device gate, R63)' },
+    { table: 'clocking_file_mapping', note: 'how each clocking device writes its CSV/TXT file (r424)' },
+    { table: 'clocking_import_run', note: 'one log row per clocking-file import (r424)' },
+    { table: 'clocking_import_line', note: 'per-line outcome of a clocking-file import (r424)' },
   ],
   serviceFacade: 'packs/attendance/service',
 };

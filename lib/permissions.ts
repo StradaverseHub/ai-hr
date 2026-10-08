@@ -860,9 +860,19 @@ export const SCREENS: readonly ScreenEntry[] = [
     // terminal needs. requireAdmin, the same guard and the same admin device-configuration surface as the
     // shift library beside it, so it RIDES this column rather than minting a screen key. Registered in the
     // SAME commit as its page.tsx — test/function-access.test.ts fails in BOTH directions.
+    // r424 (50ed39e1): File Structure Mapping (list / new / view / edit) and the Import Clocking Data
+    // logs (list / one log). All requireAdmin — the same guard and the same admin surface as Card
+    // Assignment and '/attendance/import' already on this column — so they RIDE it rather than minting a
+    // screen key. Registered in the SAME commit as the page.tsx files (test/function-access.test.ts).
     routes: [
       '/admin/attendance',
       '/admin/card-assignment',
+      '/admin/attendance/file-mappings',
+      '/admin/attendance/file-mappings/new',
+      '/admin/attendance/file-mappings/[mappingId]',
+      '/admin/attendance/file-mappings/[mappingId]/edit',
+      '/attendance/import/logs',
+      '/attendance/import/logs/[runId]',
       '/admin/attendance/new',
       '/admin/attendance/schedule',
       '/admin/attendance/schedule/new',

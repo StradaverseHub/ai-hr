@@ -9,11 +9,13 @@
  * 08:30 sitting next to a Late mark that was measured against 08:00.
  *
  * WHAT THIS IS, AND WHAT IT IS NOT. This is a new SCOPE and a new SCREEN over machinery that already
- * ships. It is the THIRD path that re-derives a whole day against a fresh schedule and writes the result;
- * the other two are approving a clock-time correction (core/attendance.ts decideAttendanceCorrection) and
- * re-uploading a clocking file (importAttendancePunches). All three resolve the schedule fresh, all three
- * re-decide the day type from the calendar and the roster, and all three write through the same
- * stage1Columns helper. Recompute follows them rather than introducing a fourth behaviour.
+ * ships. It is the SECOND path that re-derives a whole day against a fresh schedule and writes the
+ * result; the other is approving a clock-time correction (core/attendance.ts decideAttendanceCorrection).
+ * Both resolve the schedule fresh, both re-decide the day type from the calendar and the roster, and both
+ * write through the same stage1Columns helper. Recompute follows it rather than introducing another
+ * behaviour. (r424: re-uploading a clocking file USED to be a third such path — importAttendancePunches
+ * replaced the whole day. It is retired; an import now ADDS clockings and re-derives the day the
+ * Clock-screen way, keeping its stamped day type. See core/attendance-clocking-import.ts.)
  *
  * THE HARD BOUNDARY. Only CALCULATED figures are rewritten. `check_in_at` and `check_out_at` are read and
  * never written — they are the input, not the output. That is the reporter's explicit requirement, and it

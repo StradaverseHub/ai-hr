@@ -87,6 +87,9 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       // 44bc1c33 (r306) — Card Assignment. Its page carries its own scopedAdmin guard, which is this file's
       // whole premise: a row in the Admin node is not what protects the screen behind it.
       '/admin/card-assignment',
+      // r424 (50ed39e1) — File Structure Mapping, beside Card Assignment. Every one of its four pages calls
+      // requireAdmin() in its own body (the it.each below covers the list).
+      '/admin/attendance/file-mappings',
       '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
@@ -134,6 +137,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/attendance/breakdown',
     '/admin/attendance',
     '/admin/card-assignment',
+    '/admin/attendance/file-mappings',
     '/admin/attendance-policy',
     '/admin/attendance-policy/schedule',
     '/admin/attendance/schedule',

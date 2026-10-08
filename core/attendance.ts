@@ -23,7 +23,8 @@ import { type SessionContext, type Tx } from '../db/client';
 // which is what keeps Leave and the roster working for a tenant without Attendance. See
 // core/module-gate.ts.
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, appendEvents } from '../db/events';
+import { randomUUID } from 'node:crypto';
 import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
@@ -99,7 +100,6 @@ import {
   type AttendanceRequestKind,
   type ShiftOtRule,
 } from '../db/schema';
-import { parseAttendanceCsv } from '../lib/attendance-csv';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -698,23 +698,131 @@ function halfDayCutoff(p: {
   return fmtTime((toMinutes(p.start) + Math.floor(shiftSpan(p.start, p.end, p.crosses) / 2)) % MINS_PER_DAY);
 }
 
+/**
+ * r424 (50ed39e1) — an OPTIONAL read cache for scheduleFor, for a caller that resolves thousands of
+ * (employee, day) schedules in ONE transaction (a 25,000-line clocking import). Without it scheduleFor
+ * re-reads the same policy, rules, holiday calendar, shift arrangements, default shift and OT windows for
+ * every day of every employee — about ten queries a day. With it each of those is read once per employee
+ * (or once per shift / rule) for the whole transaction, the holiday calendar once per employee over the
+ * memo's date range, and the roster from a prefetch. ONLY valid while nothing it caches can change, i.e.
+ * inside one transaction that writes none of those tables. Absent (every other caller), scheduleFor is
+ * exactly what it was.
+ */
+export type ScheduleMemo = {
+  /** Inclusive range every date asked about lies within; the holiday calendar is read over it once. */
+  from: string;
+  to: string;
+  cache: Map<string, Promise<unknown>>;
+  /** When set, the roster row for `${employmentId}|${date}` (absent = no roster row) — see prefetch. */
+  roster?: Map<string, RosterRow>;
+};
+type RosterRow = {
+  isRestDay: boolean;
+  shiftId: string | null;
+  code: string | null;
+  name: string | null;
+  start: string | null;
+  end: string | null;
+  brk: number | null;
+  crosses: boolean | null;
+  override: number | null;
+  periods: (typeof shift.$inferSelect)['breakPeriods'] | null;
+  lateGrace: number | null;
+  earlyLeaveGrace: number | null;
+  otRule: (typeof shift.$inferSelect)['otRule'] | null;
+  ruleId: string | null;
+  rounding: number | null;
+  halfDayFirstOut: (typeof shift.$inferSelect)['halfDayFirstOut'] | null;
+  cutoffOn: boolean | null;
+  cutoffAt: string | null;
+  flexOn: boolean | null;
+  flexMin: number | null;
+  shiftType: (typeof shift.$inferSelect)['type'] | null;
+};
+const rosterRowCols = {
+  isRestDay: rosterAssignment.isRestDay,
+  shiftId: shift.id,
+  code: shift.code,
+  name: shift.name,
+  start: shift.startTime,
+  end: shift.endTime,
+  brk: shift.breakMinutes,
+  crosses: shift.crossesMidnight,
+  override: shift.normalMinutesOverride,
+  periods: shift.breakPeriods,
+  lateGrace: shift.lateGraceMinutes,
+  earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+  otRule: shift.otRule,
+  ruleId: shift.ruleId,
+  // cf21e554 stage 1 — the two General boxes that MOVE a figure (see db/schema.ts).
+  rounding: shift.normalHoursRoundingMinutes,
+  halfDayFirstOut: shift.halfDayFirstOut,
+  // b8aa3466 — the daily cut-off (migration 0429).
+  cutoffOn: shift.dailyCutoffEnabled,
+  cutoffAt: shift.dailyCutoffTime,
+  // 6340aecb — the flexible break (migration 0457).
+  flexOn: shift.flexibleBreakEnabled,
+  flexMin: shift.flexibleBreakMinutes,
+  shiftType: shift.type,
+};
+
+/** A memo over [from, to] with the roster for `employmentIds` prefetched in chunks (one query each). */
+export async function newScheduleMemo(tx: Tx, p: { employmentIds: string[]; from: string; to: string }): Promise<ScheduleMemo> {
+  const roster = new Map<string, RosterRow>();
+  for (let i = 0; i < p.employmentIds.length; i += 1000) {
+    const rows = await tx
+      .select({ employmentId: rosterAssignment.employmentId, shiftDate: rosterAssignment.shiftDate, ...rosterRowCols })
+      .from(rosterAssignment)
+      .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(
+        and(
+          inArray(rosterAssignment.employmentId, p.employmentIds.slice(i, i + 1000)),
+          gte(rosterAssignment.shiftDate, p.from),
+          lte(rosterAssignment.shiftDate, p.to),
+        ),
+      );
+    for (const { employmentId, shiftDate, ...r } of rows) {
+      const k = `${employmentId}|${shiftDate}`;
+      if (!roster.has(k)) roster.set(k, r);
+    }
+  }
+  return { from: p.from, to: p.to, cache: new Map(), roster };
+}
+
+function memoized<T>(memo: ScheduleMemo | undefined, key: string, f: () => Promise<T>): Promise<T> {
+  if (!memo) return f();
+  const hit = memo.cache.get(key) as Promise<T> | undefined;
+  if (hit) return hit;
+  // Promise.resolve, not f() itself: a drizzle query is a lazy THENABLE that runs again on every await, so
+  // caching the builder would cache nothing. Resolving it once turns it into a real, settled promise.
+  const v = Promise.resolve(f());
+  memo.cache.set(key, v);
+  return v;
+}
+
 /** Resolve the schedule for one employee+date: rostered shift > holiday (calendar) > rostered rest-day >
  *  DEFAULT shift (employment.default_shift_id, ec4cbf63 — its weekly_pattern decides working vs rest) >
  *  company policy. No roster row and no default shift ⇒ the policy branch, which reproduces the
- *  pre-Phase-C engine exactly. */
-async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<ResolvedSchedule> {
-  const pol = await policyFor(tx, employmentId);
+ *  pre-Phase-C engine exactly. `memo` (r424) is an optional read cache; see ScheduleMemo. */
+async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<ResolvedSchedule> {
+  const pol = await memoized(memo, `pol|${employmentId}`, () => policyFor(tx, employmentId));
   const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
   // ADR-0055: the day-type holiday flag comes from the unified resolver — business-group → state →
   // national, single-winner replacement — the SAME calendar the leave engine resolves (leave.ts
   // resolveHolidaySet), so attendance OT day-type classification can never disagree with leave. A
   // business-group override REPLACES nat+state; no company/state rows ⇒ national-only = today's behaviour.
-  const isHoliday = (await holidayDatesFor(tx, { employmentId, startDate: date, endDate: date })).has(date);
+  const isHoliday = memo
+    ? (
+        await memoized(memo, `hol|${employmentId}`, () =>
+          holidayDatesFor(tx, { employmentId, startDate: memo.from, endDate: memo.to }),
+        )
+      ).has(date)
+    : (await holidayDatesFor(tx, { employmentId, startDate: date, endDate: date })).has(date);
   // 88e94371 — the Standard ("Lateness, Early Out & Overtime Settings") rule. Used by the policy/rest branches
   // AND as the fallback when a resolved shift carries no explicit rule_id. Null when the tenant has no rule
   // yet ⇒ byte-identical legacy behaviour. 6da67ab7: one Standard per TENANT, not per company — the rule is
   // chosen by the shift, and shifts are tenant-wide, so the employee's company no longer selects it.
-  const defaultRule = await resolveRuleTx(tx, { ruleId: null });
+  const defaultRule = await memoized(memo, 'rule|default', () => resolveRuleTx(tx, { ruleId: null }));
   /**
    * 870b79e2 (r277, migration 0464) — THE EMPLOYEE'S SCHEDULE GROUP, and the ONE line of this item that
    * touches the engine.
@@ -742,23 +850,30 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
    * unrepresentable, and if RLS or a missing row ever made the rule unreadable, `resolveRuleTx` returns
    * null and the employee falls through to the pre-existing chain rather than losing their rules.
    */
-  const [empRow] = await tx
-    .select({ ruleId: employment.attendanceRuleId })
-    .from(employment)
-    .where(eq(employment.id, employmentId))
-    .limit(1);
-  const groupRule = empRow?.ruleId ? await resolveRuleTx(tx, { ruleId: empRow.ruleId }) : null;
+  const [empRow] = await memoized(memo, `emprule|${employmentId}`, () =>
+    tx.select({ ruleId: employment.attendanceRuleId }).from(employment).where(eq(employment.id, employmentId)).limit(1),
+  );
+  const groupRule = empRow?.ruleId
+    ? await memoized(memo, `rule|${empRow.ruleId}`, () => resolveRuleTx(tx, { ruleId: empRow.ruleId! }))
+    : null;
   /** The rule for a branch with NO shift of its own (company policy, rest day): the group's, else Standard. */
   const baseRule = groupRule ?? defaultRule;
   // The effective late/early grace for a shift branch: an explicit per-shift grace wins (R17, unchanged); else
   // the rule's grace-period section; else the policy-derived grace / midpoint heuristic (null ⇒ legacy).
   const ruleFor = (ruleId: string | null): Promise<ResolvedAttendanceRule | null> =>
-    groupRule ? Promise.resolve(groupRule) : ruleId ? resolveRuleTx(tx, { ruleId }) : Promise.resolve(defaultRule);
+    groupRule
+      ? Promise.resolve(groupRule)
+      : ruleId
+        ? memoized(memo, `rule|${ruleId}`, () => resolveRuleTx(tx, { ruleId }))
+        : Promise.resolve(defaultRule);
   // cf21e554 — the OT windows of one shift, in grid order, or null when it declares none (which is every
   // shift until someone opens the new tab). Null and [] are deliberately the same thing to the caller: no
   // windows ⇒ workday OT stays "time worked past the shift end", byte-identical.
   const otWindowsFor = async (shiftId: string | null): Promise<ShiftOtWindowSpec[] | null> => {
     if (!shiftId) return null;
+    return memoized(memo, `otw|${shiftId}`, () => otWindowsRead(shiftId));
+  };
+  const otWindowsRead = async (shiftId: string): Promise<ShiftOtWindowSpec[] | null> => {
     const rows = await tx
       .select({
         label: shiftOtWindow.label,
@@ -775,7 +890,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       .orderBy(shiftOtWindow.sortOrder);
     return rows.length > 0 ? rows : null;
   };
-  const [ra] = await tx
+  const prefetched = memo?.roster;
+  const [ra] = prefetched
+    ? ((r) => (r ? [r] : []))(prefetched.get(`${employmentId}|${date}`))
+    : await tx
     .select({
       isRestDay: rosterAssignment.isRestDay,
       shiftId: shift.id,
@@ -912,7 +1030,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // on TODAY. It now means the dated arrangement in force on `date` (employment_shift_arrangement, migration
   // 0421). A roster row still wins, exactly as before: this branch is only reached when there is none.
   // No ladder row at all ⇒ the employment.default_shift_id join below, byte-identical to before.
-  const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
+  const arrangement = pickArrangementOn(
+    await memoized(memo, `arr|${employmentId}`, () => arrangementsForEmploymentTx(tx, employmentId)),
+    date,
+  );
   const defaultShiftCols = {
     shiftId: shift.id,
     code: shift.code,
@@ -941,13 +1062,17 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     shiftType: shift.type,
   };
   const [ds] = arrangement
-    ? await tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
-    : await tx
-        .select(defaultShiftCols)
-        .from(employment)
-        .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-        .where(eq(employment.id, employmentId))
-        .limit(1);
+    ? await memoized(memo, `shift|${arrangement.shiftId}`, () =>
+        tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1),
+      )
+    : await memoized(memo, `dshift|${employmentId}`, () =>
+        tx
+          .select(defaultShiftCols)
+          .from(employment)
+          .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+          .where(eq(employment.id, employmentId))
+          .limit(1),
+      );
   if (ds) {
     // 07ebd04d (r331, migration 0483) — THE WORKING WEEK IS THE SCHEDULE GROUP'S WHEN IT HAS ONE.
     //
@@ -1661,6 +1786,22 @@ async function recomputeDayFromPunches(
     .select({ punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
     .from(attendancePunch)
     .where(eq(attendancePunch.attendanceId, p.attendanceId));
+  const { set, result } = deriveDayFromPunchList(p.sched, p.attendanceDate, punches, p.fallbackCheckInAt);
+  if (set) await tx.update(attendance).set(set).where(eq(attendance.id, p.attendanceId));
+  return result;
+}
+
+/**
+ * The rule recomputeDayFromPunches applies, over punches already in hand — so a caller that holds a whole
+ * file's punches (r424's batched import) works each day out with EXACTLY this rule and no second read.
+ * `set` is what the day row receives, or null when there is nothing to derive.
+ */
+function deriveDayFromPunchList(
+  sched: ResolvedSchedule,
+  attendanceDate: string,
+  punches: { punchAt: string; direction: 'in' | 'out' }[],
+  fallbackCheckInAt: string | null,
+) {
   const ins = punches.filter((x) => x.direction === 'in').map((x) => x.punchAt);
   const outs = punches.filter((x) => x.direction === 'out').map((x) => x.punchAt);
   // Preserve the payroll minute owner; seconds only resolve equal-minute clock metadata.
@@ -1668,21 +1809,23 @@ async function recomputeDayFromPunches(
     toMinutes(a) - toMinutes(b) || Number(a.split(':')[2] ?? 0) - Number(b.split(':')[2] ?? 0);
   const minAt = (xs: string[]) => xs.reduce((a, b) => (compareClock(b, a) < 0 ? b : a));
   const maxAt = (xs: string[]) => xs.reduce((a, b) => (compareClock(b, a) > 0 ? b : a));
-  const checkInAt = ins.length ? minAt(ins) : p.fallbackCheckInAt;
+  const checkInAt = ins.length ? minAt(ins) : fallbackCheckInAt;
   const balanced = ins.length >= 1 && ins.length === outs.length;
   const checkOutAt = balanced && outs.length ? maxAt(outs) : null;
   if (!checkInAt) {
     // No punches and no fallback anchor — nothing to derive (defensive; a check-in always seeds one).
-    return { status: 'present', workedMinutes: null, otMinutes: null, checkInAt: null, checkOutAt: null };
+    return {
+      set: null,
+      result: { status: 'present' as const, workedMinutes: null, otMinutes: null, checkInAt: null, checkOutAt: null },
+    };
   }
-  const d = deriveAttendance(p.sched, checkInAt, checkOutAt, p.attendanceDate);
+  const d = deriveAttendance(sched, checkInAt, checkOutAt, attendanceDate);
   const { status, workedMinutes, otMinutes } = d;
-  await tx
-    .update(attendance)
+  return {
     // 7c834696: worked/OT are written exactly as before; the stage-1 columns are added alongside them.
-    .set({ checkInAt, checkOutAt, status, workedMinutes, otMinutes, ...stage1Columns(d) })
-    .where(eq(attendance.id, p.attendanceId));
-  return { status, workedMinutes, otMinutes, checkInAt, checkOutAt };
+    set: { checkInAt, checkOutAt, status, workedMinutes, otMinutes, ...stage1Columns(d) },
+    result: { status, workedMinutes, otMinutes, checkInAt: checkInAt as string | null, checkOutAt },
+  };
 }
 
 export async function checkInTx(
@@ -5219,110 +5362,48 @@ export async function setAttendancePolicy(
   });
 }
 
-// ─── ADR-0032 C6 · biometric / terminal punch import ──────────────────────────────────────────────────
-// Reconcile raw clock punches (CSV) into attendance rows. Roster-aware: a rostered shift defines a window
-// (shift start..end, +1 day when it crosses midnight, ± a buffer) and every punch inside it belongs to that
-// shift's business day — so a 22:00→06:00 night shift becomes ONE row keyed to the shift's start date with
-// check-in 22:00 / check-out 06:00 (the engine's spanMinutes() handles the wrap). Employees with no roster
-// fall back to calendar-day grouping (the pre-Phase-C behaviour). check-in = earliest punch by full datetime,
-// check-out = latest; a lone punch records check-in only. Dry-run computes the same preview without writing.
+// ─── ADR-0032 C6 · terminal punch import — r424 (50ed39e1): ADDS punches, never writes over a day ─────
+//
+// THE OLD RULE, AND WHY IT WENT. `importAttendancePunches` reconciled a file into ONE aggregate per
+// (employee, business day) — earliest punch in, latest out — and UPSERTED it: it replaced the whole day,
+// writing over Clock-screen clockings and over times already corrected through an approved attendance
+// request, and it wrote no `attendance_punch` children at all. r424 retired it. A file is now read
+// through a File Structure Mapping (lib/clocking-file.ts) by core/attendance-clocking-import.ts, which
+// decides line by line what may be added, and each surviving clocking is ADDED to its day as an ordinary
+// R45 multi-punch child (method 'import'); the day is then worked out exactly as the Clock screen's
+// multiple clockings are — recomputeDayFromPunches, first in / last out, balanced or left open.
+//
+// What stays here is the part that needs this file's private machinery: which BUSINESS DAY a clocking
+// belongs to (the roster window below, unchanged from the old importer) and the per-day write.
 const PUNCH_WINDOW_BUFFER_MIN = 180; // ± window around a rostered shift to still attribute an early/late punch
 const dayIndex = (date: string): number => Math.round(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
 const addDays = (date: string, n: number): string =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const dtMinutes = (date: string, time: string): number => dayIndex(date) * MINS_PER_DAY + toMinutes(time);
-const onlyDigits = (s: string): string => s.replace(/\D/g, '');
 
-export type PunchImportPreviewRow = {
-  employmentId: string;
-  name: string;
-  date: string;
-  checkIn: string;
-  checkOut: string | null;
-  status: 'present' | 'late' | 'half_day';
-  dayType: DayType;
-  workedMinutes: number | null;
-  otMinutes: number | null;
-  punchCount: number;
-  source: ResolvedSchedule['source'];
-};
-export type PunchImportResult = {
-  parseErrors: string[];
-  unmatchedRefs: string[];
-  matchedPunches: number;
-  reconciledDays: number;
-  imported: number;
-  dryRun: boolean;
-  preview: PunchImportPreviewRow[];
-};
-
-export async function importAttendancePunches(
-  ctx: SessionContext,
-  p: { csvText: string; dryRun: boolean },
-): Promise<PunchImportResult> {
-  const parsed = parseAttendanceCsv(p.csvText);
-  return withTenant(ctx, async (tx) => {
-    // 1 · Match keys for every active employee the caller may see (RLS-scoped): employee code + IC number.
-    const emps = await tx
-      .select({
-        id: employment.id,
-        code: employment.employeeCode,
-        name: person.fullName,
-        ic: employeeStatutoryMy.icNumber,
-        // 44bc1c33 — the THIRD key, for a terminal whose Card / Clocking ID is not the employee code.
-        cardId: employment.cardId,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(isNull(employment.terminatedOn));
-    const byRef = new Map<string, { id: string; name: string }>();
-    // 44bc1c33 — ORDER IS THE PRECEDENCE, and it is deliberate. This is a FLAT map, so the last writer of a
-    // key wins. Codes and ICs go in first and CARD IDS LAST, so an exact card match beats a coincidental
-    // collision with somebody else's code or IC: the card is the device's own field and the most specific
-    // answer to "who is this punch". `assertCardIdFree` (core/attendance-card.ts) refuses such a collision
-    // at the point a card is assigned, so this ordering is the second line rather than the first — it
-    // matters for cards that predate that guard or arrive by any other route.
-    for (const e of emps) {
-      if (e.code) byRef.set(e.code.toLowerCase(), { id: e.id, name: e.name });
-      if (e.ic) byRef.set(onlyDigits(e.ic), { id: e.id, name: e.name });
-    }
-    for (const e of emps) {
-      if (e.cardId) byRef.set(e.cardId.toLowerCase(), { id: e.id, name: e.name });
-    }
-    const matchRef = (ref: string) =>
-      byRef.get(ref.toLowerCase()) ?? (onlyDigits(ref) ? byRef.get(onlyDigits(ref)) : undefined);
-
-    // 2 · Match punches → employments; unmatched refs are reported, never guessed.
-    type MP = { employmentId: string; name: string; date: string; time: string };
-    const matched: MP[] = [];
-    const unmatched = new Set<string>();
-    for (const pu of parsed.punches) {
-      const m = matchRef(pu.employeeRef);
-      if (!m) {
-        unmatched.add(pu.employeeRef);
-        continue;
-      }
-      matched.push({ employmentId: m.id, name: m.name, date: pu.date, time: pu.time });
-    }
-    const empty: PunchImportResult = {
-      parseErrors: parsed.errors,
-      unmatchedRefs: [...unmatched],
-      matchedPunches: 0,
-      reconciledDays: 0,
-      imported: 0,
-      dryRun: p.dryRun,
-      preview: [],
-    };
-    if (matched.length === 0) return empty;
-
-    // 3 · Rostered shift windows for the matched employees over the punch range (± a day for cross-midnight
-    //     tails). Each window maps a real-time span to one business day; sort by start so the earlier shift
-    //     claims a boundary punch (a night-shift checkout at 06:00 belongs to the prior day, not that morning).
-    const dates = matched.map((m) => m.date).sort();
-    const from = addDays(dates[0], -1);
-    const to = addDays(dates[dates.length - 1], 1);
-    const empIds = [...new Set(matched.map((m) => m.employmentId))];
+/**
+ * The business day each clocking belongs to. Roster-aware, exactly as the old importer was: a rostered
+ * shift defines a window (shift start..end, +1 day when it crosses midnight, ± PUNCH_WINDOW_BUFFER_MIN)
+ * and every clocking inside it belongs to that shift's day — so a 22:00→06:00 night shift's two
+ * clockings land on ONE day keyed to the shift's start date. A clocking in no window keeps its own
+ * calendar date. Windows are sorted by start so the earlier shift claims a boundary clocking (a night
+ * shift's 06:00 clock-out belongs to the night before, not that morning). One roster query for the whole
+ * file, never one per line. Returns one day per input, in input order.
+ */
+export async function assignPunchBusinessDays(
+  tx: Tx,
+  items: { employmentId: string; date: string; time: string }[],
+): Promise<string[]> {
+  if (items.length === 0) return [];
+  const dates = items.map((m) => m.date).sort();
+  const from = addDays(dates[0], -1);
+  const to = addDays(dates[dates.length - 1], 1);
+  const empIds = [...new Set(items.map((m) => m.employmentId))];
+  type Win = { day: string; startDt: number; endDt: number };
+  const windowsByEmp = new Map<string, Win[]>();
+  // Chunked: a 25,000-line file can name a few thousand employments, and one IN list that long is a
+  // planner and parameter-count risk for no gain.
+  for (let i = 0; i < empIds.length; i += 1000) {
     const ras = await tx
       .select({
         employmentId: rosterAssignment.employmentId,
@@ -5335,13 +5416,11 @@ export async function importAttendancePunches(
       .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
       .where(
         and(
-          inArray(rosterAssignment.employmentId, empIds),
+          inArray(rosterAssignment.employmentId, empIds.slice(i, i + 1000)),
           gte(rosterAssignment.shiftDate, from),
           lte(rosterAssignment.shiftDate, to),
         ),
       );
-    type Win = { day: string; startDt: number; endDt: number };
-    const windowsByEmp = new Map<string, Win[]>();
     for (const r of ras) {
       const endDay = r.crosses ? addDays(r.shiftDate, 1) : r.shiftDate;
       const arr = windowsByEmp.get(r.employmentId) ?? [];
@@ -5352,163 +5431,273 @@ export async function importAttendancePunches(
       });
       windowsByEmp.set(r.employmentId, arr);
     }
-    for (const arr of windowsByEmp.values()) arr.sort((a, b) => a.startDt - b.startDt);
+  }
+  for (const arr of windowsByEmp.values()) arr.sort((a, b) => a.startDt - b.startDt);
+  return items.map((m) => {
+    const pDt = dtMinutes(m.date, m.time);
+    const win = (windowsByEmp.get(m.employmentId) ?? []).find((w) => pDt >= w.startDt && pDt <= w.endDt);
+    return win ? win.day : m.date;
+  });
+}
 
-    // 4 · Assign each punch to a business day: the rostered window it falls in, else its own calendar day.
-    type Grp = { employmentId: string; name: string; day: string; punches: { time: string; dt: number }[] };
-    const groups = new Map<string, Grp>();
-    for (const m of matched) {
-      const pDt = dtMinutes(m.date, m.time);
-      const win = (windowsByEmp.get(m.employmentId) ?? []).find((w) => pDt >= w.startDt && pDt <= w.endDt);
-      const day = win ? win.day : m.date;
-      const key = `${m.employmentId}|${day}`;
-      const g = groups.get(key) ?? { employmentId: m.employmentId, name: m.name, day, punches: [] };
-      g.punches.push({ time: m.time, dt: pDt });
-      groups.set(key, g);
+/** Real-time ordering key of a clocking read on calendar `date` at `time` (cross-midnight safe). */
+export const punchOrderKey = (date: string, time: string): number => dtMinutes(date, time);
+
+export type ImportedPunchInput = { time: string; direction: 'in' | 'out' };
+export type ImportedDayInput = { employmentId: string; day: string; punches: ImportedPunchInput[] };
+
+/**
+ * r424 — ADD imported clockings to their (employee, business) days and work each day out again. The caller
+ * (core/attendance-clocking-import.ts) has already decided that every punch here may be added: not a
+ * duplicate, not on a corrected day, not in a closed pay period, its direction known. This function never
+ * removes or rewrites a clocking that is already there.
+ *
+ *  · No day row yet → one is created, day type from the schedule (as a first clock-in does), remarks
+ *    'Imported (terminal)'.
+ *  · A day row with NO punch children (written before multi-punch, or by the old importer) → its
+ *    check-in and check-out are first synthesised as children with the row's own method and geo, the
+ *    same legacy backfill checkOutTx does (both ends here, because this path can add either). Without it
+ *    an added clocking would make the day look like a single punch and the old times would be lost.
+ *  · The day type stamped on an existing row is KEPT (the clock screen's first-clock-in freeze).
+ *  · The day is worked out by recomputeDayFromPunches' own rule (deriveDayFromPunchList) — first in /
+ *    last out, closed only when the ins and outs balance — and the aggregate's method / geo columns follow
+ *    whichever clocking now supplies each end: an import has no geofence reading, so an end that came from
+ *    one carries none (ADR-0070).
+ *  · An approved overtime plan lands exactly as at clock-out (applyApprovedOtPlanTx).
+ *  · One `attendance.imported` event per day, carrying the run id.
+ * No geofence and no registered-device gate: a terminal clocking is not a web clock-in (ADR-0070's
+ * disclosed bypass; the device gate is never reached because this is not checkInTx).
+ *
+ * BATCHED, because a file is 25,000 lines (~12,500 days). Measured on this machine, the one-day-at-a-time
+ * version took about eight minutes for that file: ~20 statements a day, ten of them scheduleFor re-reading
+ * the same policy, rules and calendar. Here the reads are made once (aggregates, punches, OT plans, the
+ * roster through a ScheduleMemo), new rows and punches are inserted in bulk with ids minted up front, an
+ * EXISTING day costs one UPDATE, and the events go in bulk. The per-day rule is the same function.
+ */
+export async function addImportedPunchesBatchTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { days: ImportedDayInput[]; runId: string },
+): Promise<{ punchIds: string[][] }> {
+  const days = p.days.filter((d) => d.punches.length > 0);
+  if (days.length === 0) return { punchIds: p.days.map(() => []) };
+  const empIds = [...new Set(days.map((d) => d.employmentId))];
+  const sorted = days.map((d) => d.day).sort();
+  const from = sorted[0];
+  const to = sorted[sorted.length - 1];
+  const chunk = <T,>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
+  const keyOf = (e: string, d: string) => `${e}|${d}`;
+
+  // 1 · What is already there: the day rows, their punches, and which days carry an approved OT decision.
+  const rowBy = new Map<string, typeof attendance.$inferSelect>();
+  const otKeys = new Set<string>();
+  for (const ids of chunk(empIds, 1000)) {
+    for (const r of await tx
+      .select()
+      .from(attendance)
+      .where(and(inArray(attendance.employmentId, ids), gte(attendance.attendanceDate, from), lte(attendance.attendanceDate, to)))) {
+      rowBy.set(keyOf(r.employmentId, r.attendanceDate), r);
     }
+    for (const c of await tx
+      .select({ employmentId: attendanceCorrection.employmentId, date: attendanceCorrection.attendanceDate })
+      .from(attendanceCorrection)
+      .where(
+        and(
+          inArray(attendanceCorrection.employmentId, ids),
+          gte(attendanceCorrection.attendanceDate, from),
+          lte(attendanceCorrection.attendanceDate, to),
+          eq(attendanceCorrection.status, 'approved'),
+          sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+        ),
+      )) {
+      otKeys.add(keyOf(c.employmentId, c.date));
+    }
+  }
+  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' };
+  const kidsBy = new Map<string, Kid[]>();
+  const wanted = days.map((d) => rowBy.get(keyOf(d.employmentId, d.day))?.id).filter((x): x is string => !!x);
+  for (const ids of chunk(wanted, 1000)) {
+    for (const k of await tx
+      .select({ attendanceId: attendancePunch.attendanceId, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction, method: attendancePunch.method })
+      .from(attendancePunch)
+      .where(inArray(attendancePunch.attendanceId, ids))) {
+      const arr = kidsBy.get(k.attendanceId) ?? [];
+      arr.push(k);
+      kidsBy.set(k.attendanceId, arr);
+    }
+  }
+  const memo = await newScheduleMemo(tx, { employmentIds: empIds, from: addDays(from, -7), to: addDays(to, 7) });
 
-    // 5 · Per (employee, business day): earliest punch = check-in, latest = check-out (ordered by full
-    //     datetime, so a cross-midnight pair orders correctly). Derive against the schedule, then upsert.
-    const preview: PunchImportPreviewRow[] = [];
-    let imported = 0;
-    for (const g of groups.values()) {
-      const ordered = [...g.punches].sort((a, b) => a.dt - b.dt);
-      const checkIn = ordered[0].time;
-      const checkOut = ordered.length > 1 ? ordered[ordered.length - 1].time : null;
-      const sched = await scheduleFor(tx, g.employmentId, g.day);
-      const d = deriveAttendance(sched, checkIn, checkOut, g.day);
-      preview.push({
-        employmentId: g.employmentId,
-        name: g.name,
-        date: g.day,
-        checkIn,
-        checkOut,
-        status: d.status,
-        dayType: sched.dayType,
-        workedMinutes: d.workedMinutes,
-        otMinutes: d.otMinutes,
-        punchCount: g.punches.length,
-        source: sched.source,
-      });
-      if (!p.dryRun) {
-        // ADR-0070: geofencing does not apply to terminal punches (physical presence at the device is its
-        // own proof — a disclosed bypass). Every punch this import writes/overwrites gets method='import'
-        // and its geo-capture columns nulled, so an import can never leave a stale geofence attestation
-        // sitting next to punch times it didn't actually validate (both check-in AND check-out columns are
-        // nulled on every write here, since this importer always determines both punches for the day).
-        const [row] = await tx
-          .insert(attendance)
-          .values({
-            tenantId: ctx.tenantId,
-            employmentId: g.employmentId,
-            attendanceDate: g.day,
-            checkInAt: checkIn,
-            checkOutAt: checkOut,
-            status: d.status,
-            dayType: sched.dayType,
-            workedMinutes: d.workedMinutes,
-            otMinutes: d.otMinutes,
-            ...stage1Columns(d),
-            remarks: 'Imported (terminal)',
-            checkInMethod: 'import',
-            checkInLat: null,
-            checkInLng: null,
-            checkInClockingLocationId: null,
-            checkInDistanceM: null,
-            checkInGeofenceStatus: null,
-            checkInRadiusM: null,
-            checkOutMethod: checkOut ? 'import' : null,
-            checkOutLat: null,
-            checkOutLng: null,
-            checkOutClockingLocationId: null,
-            checkOutDistanceM: null,
-            checkOutGeofenceStatus: null,
-            checkOutRadiusM: null,
-          })
-          .onConflictDoUpdate({
-            target: [attendance.employmentId, attendance.attendanceDate],
-            set: {
-              checkInAt: checkIn,
-              checkOutAt: checkOut,
-              status: d.status,
-              dayType: sched.dayType,
-              workedMinutes: d.workedMinutes,
-              otMinutes: d.otMinutes,
-              ...stage1Columns(d),
-              remarks: 'Imported (terminal)',
-              checkInMethod: 'import',
-              checkInLat: null,
-              checkInLng: null,
-              checkInClockingLocationId: null,
-              checkInDistanceM: null,
-              checkInGeofenceStatus: null,
-              checkInRadiusM: null,
-              checkOutMethod: checkOut ? 'import' : null,
-              checkOutLat: null,
-              checkOutLng: null,
-              checkOutClockingLocationId: null,
-              checkOutDistanceM: null,
-              checkOutGeofenceStatus: null,
-              checkOutRadiusM: null,
-            },
-          })
-          .returning({ id: attendance.id });
-        // 1e9145d4 — an imported day is a day that has been WORKED, so an overtime plan approved ahead of it
-        // lands here on exactly the same terms as a clock-out: resolved against `d.otMinutes` (the figure
-        // derived from the terminal punches) through the company's ot_approval_calculation, once. On a
-        // RE-IMPORT of a day whose plan already landed this re-asserts the approved figure, which the upsert
-        // above has just overwritten with the raw derived one. Only reached when !dryRun — a preview must
-        // never consume a plan.
-        const plannedOt = await applyApprovedOtPlanTx(tx, ctx, {
-          employmentId: g.employmentId,
-          date: g.day,
-          attendanceId: row.id,
-          sched,
-          systemOtMinutes: d.otMinutes,
+  // 2 · Work every day out in memory.
+  const newRows: (typeof attendance.$inferInsert)[] = [];
+  const punchRows: (typeof attendancePunch.$inferInsert)[] = [];
+  const updates: { id: string; set: Partial<typeof attendance.$inferInsert> }[] = [];
+  const otDays: { employmentId: string; day: string; attendanceId: string; sched: ResolvedSchedule; systemOt: number | null }[] = [];
+  const results = new Map<ImportedDayInput, { attendanceId: string; punchIds: string[]; checkInAt: string | null; checkOutAt: string | null }>();
+  for (const d of days) {
+    const existing = rowBy.get(keyOf(d.employmentId, d.day));
+    const sched0 = await scheduleFor(tx, d.employmentId, d.day, memo);
+    const sched: ResolvedSchedule = existing?.dayType ? { ...sched0, dayType: existing.dayType } : sched0;
+    const attendanceId = existing?.id ?? randomUUID();
+    const base = { tenantId: ctx.tenantId, attendanceId, employmentId: d.employmentId, attendanceDate: d.day };
+    const all: Kid[] = [...(existing ? (kidsBy.get(existing.id) ?? []) : [])];
+    if (existing && all.length === 0) {
+      if (existing.checkInAt) {
+        const method = existing.checkInMethod ?? ('web' as const);
+        punchRows.push({
+          ...base,
+          id: randomUUID(),
+          punchAt: existing.checkInAt,
+          direction: 'in',
+          method,
+          lat: existing.checkInLat,
+          lng: existing.checkInLng,
+          clockingLocationId: existing.checkInClockingLocationId,
+          distanceM: existing.checkInDistanceM,
+          geofenceStatus: existing.checkInGeofenceStatus,
+          radiusM: existing.checkInRadiusM,
         });
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'attendance',
-          aggregateId: row.id,
-          eventType: 'attendance.imported',
-          actor: actorOf(ctx),
-          subjectEmploymentId: g.employmentId,
-          payload: {
-            date: g.day,
-            checkIn,
-            checkOut,
-            source: 'terminal',
-            punchCount: g.punches.length,
-            ...(plannedOt != null ? { otMinutes: plannedOt, otPlanApplied: true } : {}),
-          },
+        all.push({ punchAt: existing.checkInAt, direction: 'in', method });
+      }
+      if (existing.checkOutAt) {
+        const method = existing.checkOutMethod ?? existing.checkInMethod ?? ('web' as const);
+        punchRows.push({
+          ...base,
+          id: randomUUID(),
+          punchAt: existing.checkOutAt,
+          direction: 'out',
+          method,
+          lat: existing.checkOutLat,
+          lng: existing.checkOutLng,
+          clockingLocationId: existing.checkOutClockingLocationId,
+          distanceM: existing.checkOutDistanceM,
+          geofenceStatus: existing.checkOutGeofenceStatus,
+          radiusM: existing.checkOutRadiusM,
         });
-        imported += 1;
+        all.push({ punchAt: existing.checkOutAt, direction: 'out', method });
       }
     }
-    preview.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+    const punchIds: string[] = [];
+    for (const x of d.punches) {
+      const id = randomUUID();
+      punchIds.push(id);
+      punchRows.push({ ...base, id, punchAt: x.time, direction: x.direction, method: 'import' });
+      all.push({ punchAt: x.time, direction: x.direction, method: 'import' });
+    }
+    const { set, result } = deriveDayFromPunchList(sched, d.day, all, existing?.checkInAt ?? d.punches[0].time);
+    // The aggregate's method / geo columns describe the clocking that supplies each end NOW. When an
+    // imported clocking has become the day's first in or last out, that end carries no geofence reading.
+    const endFrom = (dir: 'in' | 'out', at: string | null) => (at == null ? [] : all.filter((k) => k.direction === dir && k.punchAt === at));
+    const inSrc = endFrom('in', result.checkInAt);
+    const outSrc = endFrom('out', result.checkOutAt);
+    const ends: Partial<typeof attendance.$inferInsert> = {};
+    if (existing && inSrc.length > 0 && inSrc.every((k) => k.method === 'import') && existing.checkInMethod !== 'import') {
+      Object.assign(ends, {
+        checkInMethod: 'import' as const,
+        checkInLat: null,
+        checkInLng: null,
+        checkInClockingLocationId: null,
+        checkInDistanceM: null,
+        checkInGeofenceStatus: null,
+        checkInRadiusM: null,
+      });
+    }
+    if (outSrc.length > 0 && outSrc.every((k) => k.method === 'import') && (existing?.checkOutMethod ?? null) !== 'import') {
+      Object.assign(ends, {
+        checkOutMethod: 'import' as const,
+        checkOutLat: null,
+        checkOutLng: null,
+        checkOutClockingLocationId: null,
+        checkOutDistanceM: null,
+        checkOutGeofenceStatus: null,
+        checkOutRadiusM: null,
+      });
+    }
+    if (!existing) {
+      newRows.push({
+        id: attendanceId,
+        tenantId: ctx.tenantId,
+        employmentId: d.employmentId,
+        attendanceDate: d.day,
+        status: 'present',
+        dayType: sched.dayType,
+        remarks: 'Imported (terminal)',
+        checkInMethod: 'import',
+        checkInAt: d.punches[0].time,
+        ...(set ?? {}),
+        ...ends,
+      });
+    } else if (set || Object.keys(ends).length) {
+      updates.push({ id: attendanceId, set: { ...(set ?? {}), ...ends } });
+    }
+    if (otKeys.has(keyOf(d.employmentId, d.day))) {
+      otDays.push({ employmentId: d.employmentId, day: d.day, attendanceId, sched, systemOt: result.otMinutes });
+    }
+    results.set(d, { attendanceId, punchIds, checkInAt: result.checkInAt, checkOutAt: result.checkOutAt });
+  }
+
+  // 3 · Write: day rows first (the punches reference them), then punches, then the existing days' figures.
+  for (const part of chunk(newRows, 500)) await tx.insert(attendance).values(part);
+  for (const part of chunk(punchRows, 1000)) await tx.insert(attendancePunch).values(part);
+  for (const u of updates) await tx.update(attendance).set(u.set).where(eq(attendance.id, u.id));
+
+  // 4 · 1e9145d4 — an imported day is a worked day, so an overtime plan approved ahead of it lands here on
+  // the same terms as a clock-out (and is re-asserted, not re-landed, when it already has). Only on commit:
+  // a preview never reaches this function. Only the days that carry an approved OT decision are asked.
+  const plannedBy = new Map<string, number>();
+  for (const o of otDays) {
+    const planned = await applyApprovedOtPlanTx(tx, ctx, {
+      employmentId: o.employmentId,
+      date: o.day,
+      attendanceId: o.attendanceId,
+      sched: o.sched,
+      systemOtMinutes: o.systemOt,
+    });
+    if (planned != null) plannedBy.set(keyOf(o.employmentId, o.day), planned);
+  }
+
+  // 5 · One `attendance.imported` event per day.
+  const events = days.map((d) => {
+    const r = results.get(d)!;
+    const planned = plannedBy.get(keyOf(d.employmentId, d.day));
     return {
-      parseErrors: parsed.errors,
-      unmatchedRefs: [...unmatched],
-      matchedPunches: matched.length,
-      reconciledDays: groups.size,
-      imported,
-      dryRun: p.dryRun,
-      preview,
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance',
+      aggregateId: r.attendanceId,
+      eventType: 'attendance.imported',
+      actor: actorOf(ctx),
+      subjectEmploymentId: d.employmentId,
+      payload: {
+        date: d.day,
+        checkIn: r.checkInAt,
+        checkOut: r.checkOutAt,
+        source: 'terminal',
+        runId: p.runId,
+        punchCount: d.punches.length,
+        ...(planned != null ? { otMinutes: planned, otPlanApplied: true } : {}),
+      },
     };
   });
+  for (const part of chunk(events, 500)) await appendEvents(tx, part);
+  return { punchIds: p.days.map((d) => results.get(d)?.punchIds ?? []) };
 }
 
 // ─────────────── 1c1b321a · Recompute Attendance — the range writer's per-day derivation ───────────────
 //
-// THE THIRD RE-DERIVE PATH. A day's figures are decided once, at check-out, and then kept. Two paths
-// already re-decide them wholesale against a FRESH schedule and write the result: approving a clock-time
-// correction (decideAttendanceCorrection — resolves a fresh sched and writes sched.dayType) and
-// re-uploading a clocking file (importAttendancePunches — same). Recompute is the third, and it follows
-// those two rather than inventing a fourth behaviour: same scheduleFor, same deriveAttendance, same
+// THE SECOND RE-DERIVE PATH. A day's figures are decided once, at check-out, and then kept. One path
+// already re-decides them wholesale against a FRESH schedule and writes the result: approving a clock-time
+// correction (decideAttendanceCorrection — resolves a fresh sched and writes sched.dayType). Recompute
+// follows it rather than inventing another behaviour: same scheduleFor, same deriveAttendance, same
 // stage1Columns, same "day type is re-decided from the calendar and the roster".
 //
-// The first-clock-in DAY-TYPE FREEZE lives only on checkInTx/checkOutTx and is deliberately not honoured
-// here, exactly as it is not honoured by the two paths above.
+// ⚠️ r424 (50ed39e1) — THIS USED TO SAY "THE THIRD", counting re-uploading a clocking file
+// (importAttendancePunches) as the second wholesale re-derive. That importer is retired: an import now
+// ADDS clockings to a day (addImportedPunchesBatchTx) and works it out the Clock-screen way — through
+// recomputeDayFromPunches' rule, keeping the day type stamped on the row — so it is no longer a path of this kind.
+//
+// The first-clock-in DAY-TYPE FREEZE lives on checkInTx/checkOutTx (and, since r424, on the import's
+// addImportedPunchesBatchTx) and is deliberately not honoured here, exactly as it is not honoured by the
+// correction path above.
 //
 // WHAT THIS FUNCTION DOES NOT DO: it never looks at attendance_punch and it never returns a check_in_at /
 // check_out_at. Recompute rewrites CALCULATED figures only — the reporter's hard requirement — so the

@@ -1,7 +1,8 @@
 /**
  * 44bc1c33 — Card / Clocking ID: the third key a terminal file can find an employee by.
  *
- * WHAT WAS ACTUALLY BROKEN. `importAttendancePunches` matched a device's identifier against
+ * WHAT WAS ACTUALLY BROKEN. `importAttendancePunches` (retired in r424; these cases now drive its
+ * replacement, the built-in mapping of core/attendance-clocking-import.ts, via test/helpers/punch-import.ts) matched a device's identifier against
  * `employment.employee_code` and the IC on `employee_statutory_my`, and reported anything else as
  * unmatched rather than guessing. A company whose terminal records its own card numbers matched NOTHING
  * and had no way to fix it short of renumbering the device.
@@ -14,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { importAttendancePunches } from '../core/attendance';
+import { importPunchCsv } from './helpers/punch-import';
 import { CardIdInUseError, resolveCardMatch, setEmploymentCardId } from '../core/attendance-card';
 
 let b: Base;
@@ -64,7 +65,7 @@ describe('44bc1c33 · a device file finds the employee by Card ID', () => {
     const emp = await makeEmp('E001', '900101015555', 'CARD-77');
 
     const csv = 'staff,time\nCARD-77,2026-07-01 08:00\nCARD-77,2026-07-01 17:00';
-    const r = await importAttendancePunches(ctx, { csvText: csv, dryRun: false });
+    const r = await importPunchCsv(ctx, csv);
 
     expect(r.unmatchedRefs, 'the card must not be reported as unmatched').toHaveLength(0);
     expect(r.imported).toBe(1);
@@ -75,7 +76,7 @@ describe('44bc1c33 · a device file finds the employee by Card ID', () => {
   it('NON-VACUITY: the same file matches nothing when that employee has no card', async () => {
     const ctx = adminCtx(b);
     await makeEmp('E001', '900101015555', null);
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\nCARD-77,2026-07-01 08:00', dryRun: false });
+    const r = await importPunchCsv(ctx, 'staff,time\nCARD-77,2026-07-01 08:00');
     expect(r.imported).toBe(0);
     expect(r.unmatchedRefs).toEqual(['CARD-77']);
   });
@@ -83,7 +84,7 @@ describe('44bc1c33 · a device file finds the employee by Card ID', () => {
   it('the existing two keys are untouched — a file of employee codes still imports exactly as before', async () => {
     const ctx = adminCtx(b);
     const emp = await makeEmp('E001', '900101015555', 'CARD-77');
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\nE001,2026-07-01 09:00', dryRun: false });
+    const r = await importPunchCsv(ctx, 'staff,time\nE001,2026-07-01 09:00');
     expect(r.imported).toBe(1);
     expect(await attendanceRow(emp, '2026-07-01')).toBeTruthy();
   });
@@ -92,7 +93,7 @@ describe('44bc1c33 · a device file finds the employee by Card ID', () => {
     const ctx = adminCtx(b);
     const seven = await makeEmp('E007', null, '007');
     const alsoSeven = await makeEmp('E700', null, '7');
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\n007,2026-07-01 08:00', dryRun: false });
+    const r = await importPunchCsv(ctx, 'staff,time\n007,2026-07-01 08:00');
     expect(r.imported).toBe(1);
     expect(await attendanceRow(seven, '2026-07-01'), 'card 007 owns the punch').toBeTruthy();
     expect(await attendanceRow(alsoSeven, '2026-07-01'), 'card 7 must not get it').toBeFalsy();
@@ -101,7 +102,7 @@ describe('44bc1c33 · a device file finds the employee by Card ID', () => {
   it('the card is matched case-insensitively, like the employee code beside it', async () => {
     const ctx = adminCtx(b);
     const emp = await makeEmp('E001', null, 'card-77');
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\nCARD-77,2026-07-01 08:00', dryRun: false });
+    const r = await importPunchCsv(ctx, 'staff,time\nCARD-77,2026-07-01 08:00');
     expect(r.imported).toBe(1);
     expect(await attendanceRow(emp, '2026-07-01')).toBeTruthy();
   });
@@ -153,9 +154,9 @@ describe('44bc1c33 · the collision no database constraint can express', () => {
     const emp = await makeEmp('E001', null, 'CARD-77');
     await setEmploymentCardId(ctx, { employmentId: emp, cardId: null });
 
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\nE001,2026-07-01 08:00', dryRun: false });
+    const r = await importPunchCsv(ctx, 'staff,time\nE001,2026-07-01 08:00');
     expect(r.imported, 'the employee code still matches').toBe(1);
-    const gone = await importAttendancePunches(ctx, { csvText: 'staff,time\nCARD-77,2026-07-02 08:00', dryRun: false });
+    const gone = await importPunchCsv(ctx, 'staff,time\nCARD-77,2026-07-02 08:00');
     expect(gone.unmatchedRefs, 'the cleared card matches nobody').toEqual(['CARD-77']);
   });
 
@@ -191,7 +192,7 @@ describe('44bc1c33 · "Card ID is the same as Employee ID" is answered by behavi
   it('no card is ever stored as a copy of the employee code', async () => {
     const ctx = adminCtx(b);
     const emp = await makeEmp('E001', null, null);
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\nE001,2026-07-01 08:00', dryRun: false });
+    const r = await importPunchCsv(ctx, 'staff,time\nE001,2026-07-01 08:00');
     expect(r.imported, 'matching by code needs no card row').toBe(1);
     const [row] = await owner.db
       .select({ cardId: schema.employment.cardId })

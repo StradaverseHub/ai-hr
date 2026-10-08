@@ -28,3 +28,6 @@ export * from '../../core/attendance-explain';
 export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
+
+// r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
+export * from '../../core/attendance-clocking-import';

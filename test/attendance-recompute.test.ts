@@ -11,7 +11,8 @@
  * Plus the two things that make it safe: a dry run writes nothing at all, and a refreshed day inside an
  * already-processed pay run raises that run's needs-recalculation notice instead of editing a payslip.
  *
- * The BEFORE state is always produced by a REAL write path (importAttendancePunches) under the OLD
+ * The BEFORE state is always produced by a REAL write path (a clocking-file import — r424 retired
+ * importAttendancePunches; test/helpers/punch-import.ts drives its replacement) under the OLD
  * settings, not by hand-inserted figures — otherwise the test would only prove the recompute agrees with
  * what I believed the old engine produced.
  */
@@ -21,7 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { importAttendancePunches } from '../core/attendance';
+import { importPunchCsv } from './helpers/punch-import';
 import { recomputeAttendance, recomputeRunsFromEvents } from '../core/attendance-recompute';
 import { assignDefaultShift, createShift, setRestDay, updateShift } from '../core/roster';
 import { hireEmployee } from '../core/org';
@@ -78,7 +79,7 @@ async function shiftEveryDay(code: string, startTime: string, endTime: string, e
 async function record(code: string, date: string, inAt: string, outAt: string | null) {
   const csv =
     `staff,time\n${code},${date} ${inAt}` + (outAt ? `\n${code},${date} ${outAt}` : '');
-  return importAttendancePunches(adminCtx(b), { csvText: csv, dryRun: false });
+  return importPunchCsv(adminCtx(b), csv);
 }
 
 async function attRow(employmentId: string, date: string) {

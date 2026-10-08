@@ -113,6 +113,11 @@ sitting next to punch times it didn't actually validate. Geofencing does not app
 HR decision that already went through approval) — both are disclosed bypasses of the geofence, not
 oversights.
 
+> **Amended by ADR-0096 (r424).** `importAttendancePunches` is retired. A clocking import no longer
+> overwrites any punch: it ADDS `attendance_punch` children (method `import`, no geo) and re-derives the
+> day; when an imported clocking becomes the day's first in or last out, that end of the aggregate takes
+> method `import` with its geo columns null. The bypass itself is unchanged.
+
 ### 7. Browser-GPS accuracy and spoofing — deterrent, not tamper-proof
 Browser geolocation can be off by tens to hundreds of metres indoors and can be spoofed by a
 technically capable user (browser dev tools, a rooted/jailbroken device, GPS-spoofing apps). This

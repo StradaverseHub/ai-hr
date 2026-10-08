@@ -46,6 +46,7 @@ import {
   setModule,
   type Base,
 } from './harness';
+import { importPunchCsv, previewPunchCsv } from './helpers/punch-import';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { dispatchNotifications } from '../core/notifications';
@@ -56,7 +57,6 @@ import {
   checkOut,
   dayTypeFor,
   decideAttendanceCorrection,
-  importAttendancePunches,
   myOvertimePlans,
   otMonthToDateMinutes,
   OT_CAP_MINUTES,
@@ -375,10 +375,15 @@ describe('2 · the plan LANDS when the day is worked', () => {
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
     await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
 
-    const csv = `staff,time\nPLANOT1,${FUTURE} 09:00:00\nPLANOT1,${FUTURE} 20:00:00`;
-    const r = await importAttendancePunches(a, { csvText: csv, dryRun: false });
+    // r424 — a clocking file can no longer carry a FUTURE date (Import Clocking Data refuses one, plan
+    // item 13), and the clock cannot be moved in a test. So the approved, not-yet-landed plan's day is
+    // moved into the past — which is exactly what the passing of time does to it — and the import of
+    // that day is what lands it.
+    await owner.db.update(schema.attendanceCorrection).set({ attendanceDate: PAST }).where(eq(schema.attendanceCorrection.id, correctionId));
+    const csv = `staff,time\nPLANOT1,${PAST} 09:00:00\nPLANOT1,${PAST} 20:00:00`;
+    const r = await importPunchCsv(a, csv);
     expect(r.imported).toBe(1);
-    expect((await attendanceRow(employmentId, FUTURE)).otMinutes).toBe(REQUESTED);
+    expect((await attendanceRow(employmentId, PAST)).otMinutes).toBe(REQUESTED);
     expect((await correctionRow(correctionId)).appliedAt).not.toBeNull();
   });
 
@@ -387,10 +392,14 @@ describe('2 · the plan LANDS when the day is worked', () => {
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
     await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
 
-    const csv = `staff,time\nPLANOT2,${FUTURE} 09:00:00\nPLANOT2,${FUTURE} 20:00:00`;
-    await importAttendancePunches(a, { csvText: csv, dryRun: true });
+    // r424 — Validate is the dry run; the plan's day is moved into the past as in the case above, so the
+    // lines are VALID and the only thing standing between them and the plan is that nothing is written.
+    await owner.db.update(schema.attendanceCorrection).set({ attendanceDate: PAST }).where(eq(schema.attendanceCorrection.id, correctionId));
+    const csv = `staff,time\nPLANOT2,${PAST} 09:00:00\nPLANOT2,${PAST} 20:00:00`;
+    const p = await previewPunchCsv(a, csv);
+    expect(p.counts.valid).toBe(2);
     expect((await correctionRow(correctionId)).appliedAt).toBeNull();
-    expect(await attendanceRow(employmentId, FUTURE)).toBeUndefined();
+    expect(await attendanceRow(employmentId, PAST)).toBeUndefined();
   });
 });
 

@@ -22,6 +22,7 @@ import {
   CalendarRange,
   ClipboardList,
   CreditCard,
+  FileCog,
   Table2,
   Clock,
   FilePen,
@@ -65,6 +66,10 @@ describe('ADR-0080 rung 2: attendance pack registration', () => {
       'clocking_location',
       'employee_clocking_location',
       'employee_device',
+      // r424 (50ed39e1, migration 0518) — the clocking-file mapping library and the import log.
+      'clocking_file_mapping',
+      'clocking_import_run',
+      'clocking_import_line',
     ]);
   });
 
@@ -92,7 +97,7 @@ const PAIRED_HREFS: readonly string[] = ['/roster'];
 /**
  * r317 (1661123d) — rows whose label KEY is deliberately not the camelCase of its English string.
  *
- * `/attendance/import` reads "Import" and is keyed `nav.attendanceImport`. `nav.import` would be the
+ * `/attendance/import` reads "Import" (r424: "Import Clocking Data") and is keyed `nav.attendanceImport`. `nav.import` would be the
  * camelCase form and is a worse key: `nav` is one flat namespace shared by every module, and a bare
  * "import" there says nothing about what is being imported. The key was minted when the row lived in
  * Manage beside its module's other rows; r317 removed that twin but renaming the key now would be a
@@ -288,6 +293,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // unchanged address, on the same `locations` screen column. Building2, not a second MapPin: the
     // collapsed rail renders glyphs alone.
     { href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true },
+    // r424 (50ed39e1) — FILE STRUCTURE MAPPING: how each clocking device writes its file. A genuinely new
+    // row for a genuinely new screen, admin-only and beside Card Assignment (the other half of device
+    // configuration).
+    { href: '/admin/attendance/file-mappings', labelKey: 'fileStructureMapping', icon: FileCog, adminOnly: true },
   ] as const;
 
   /**
@@ -513,6 +522,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/attendance/import',
       '/admin/attendance', // Shift
       '/admin/card-assignment', // Card Assignment (44bc1c33) — device configuration, beside Shift
+      '/admin/attendance/file-mappings', // File Structure Mapping (r424) — the other half of device config
       // e4471e3c (r287) — THE CUTOVER. '/admin/attendance-policy' (Schedule Group) and
       // '/admin/attendance-policy/schedule' (Work Schedule) STOOD HERE and are gone, because the reporter
       // asked for both to be consolidated into the Schedule row below: "to provide a single centralised
@@ -816,6 +826,8 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // 44bc1c33 — a card maps a device number to a person, so it is admin configuration, never a row a
       // manager or an employee reaches.
       '/admin/card-assignment',
+      // r424 — how a device writes its file is admin configuration, like the card mapping above it.
+      '/admin/attendance/file-mappings',
       '/admin/attendance-allowance',
       // 639bf4a5 rev 2 (r338) — back on this list with the row. Its gate never weakened through either
       // move: the page calls requireAdmin() in its own body throughout, which is this file's premise and
@@ -930,7 +942,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // r314 — the SAME labels their Manage twins carry; two rows for one screen must not read as two
       // different functions.
       '/roster': 'Roster',
-      '/attendance/import': 'Import',
+      // r424 (50ed39e1) — "Import Clocking Data", the reporter's name for the screen it now is. Label
+      // only: the key stays `attendanceImport` (LABEL_KEY_EXEMPT above).
+      '/attendance/import': 'Import Clocking Data',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.
@@ -942,6 +956,8 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // 44bc1c33 (r306) — the row says what it opens: the mapping between an employee and the Card /
       // Clocking ID their physical terminal records. Not "Card", which would read as a payment card.
       '/admin/card-assignment': 'Card Assignment',
+      // r424 (50ed39e1) — the reporter's own name for the setting.
+      '/admin/attendance/file-mappings': 'File Structure Mapping',
       // ad52212d round 1 — "Overtime Pattern", the reporter's own name for what this screen already is:
       // a reusable library of hour-banded overtime rates (attendance_rule + attendance_rule_ot_row).
       //

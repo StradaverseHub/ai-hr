@@ -14,7 +14,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
-import { checkIn, checkOut, importAttendancePunches, listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
+import { checkIn, checkOut, listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
+import { importPunchCsv } from './helpers/punch-import';
 import {
   DeviceNotRegisteredError,
   deviceGateRequired,
@@ -254,7 +255,7 @@ describe('registered-device gate on checkIn/checkOut (5249d43f)', () => {
       .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2024-01-01', employeeCode: 'DEV1' })
       .returning({ id: schema.employment.id });
     const csv = 'Staff ID,Timestamp\nDEV1,2026-07-06 09:00:00\nDEV1,2026-07-06 18:00:00';
-    const result = await importAttendancePunches(a, { csvText: csv, dryRun: false });
+    const result = await importPunchCsv(a, csv);
     expect(result.imported).toBe(1);
     const row = await dayRow(emp.id);
     expect(row.checkInMethod).toBe('import');

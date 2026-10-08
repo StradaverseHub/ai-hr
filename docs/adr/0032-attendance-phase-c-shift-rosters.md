@@ -107,7 +107,7 @@ clock-in adoption.
 | **C3** | Roster scheduling UI — assign shifts across a date range (roster grid), §59 rest-day warning | C1 |
 | **C4** | Roster-vs-actual variance read + view (no-show / late / short) | C2 |
 | **C5** | Shift-differential pay — prefill a typed pay-component from differential shifts (mirrors OT prefill); gated | C2, ADR-0025 |
-| **C6** | Biometric/terminal CSV import — `attendance_import_batch` + reconcile (dry-run + commit) | C2 |
+| **C6** | Biometric/terminal CSV import — `attendance_import_batch` + reconcile (dry-run + commit). *Amended by ADR-0096 (r424): file structure mappings; an import adds clockings and never replaces a day; every import is logged.* | C2 |
 | **C7** | Attendance-policy admin UI (the existing-but-unexposed policy) + per-employee rest-day surfaced | — |
 
 C1+C2 are the spine (roster drives the engine). C3 makes it usable. C4–C7 are independent depth on top.

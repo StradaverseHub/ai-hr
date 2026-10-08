@@ -8,7 +8,8 @@ import { saveCardIdAction } from './actions';
 /**
  * 44bc1c33 — ATTENDANCE › CARD ASSIGNMENT.
  *
- * WHAT THE GAP WAS. `importAttendancePunches` matches a clocking device's own identifier against the
+ * WHAT THE GAP WAS. The clocking importer (`importAttendancePunches`, retired in r424 for
+ * core/attendance-clocking-import.ts) matched a clocking device's own identifier against the
  * employee code and the IC, and reports anything else as unmatched rather than guessing. A company whose
  * terminal records its own card numbers therefore matched NOTHING, and had no way to fix it. This screen
  * owns the third key.
