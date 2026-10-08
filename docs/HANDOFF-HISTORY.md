@@ -1,3 +1,15 @@
+## r423 — 2026-10-08 · main@74fd4b33e4582b1bfaa0615ab7314da2b081c391 · migration 0517
+
+**Scope.** 83c0d3c8: Attendance > Locations is the clocking-location list (search, Company and Status filters, View / Edit / Deactivate-Activate, New for group admins); a location carries one or more companies (`clocking_location_company`), an optional state and Active/Inactive; the company work-location list moved to its own "Work Locations" row. The employee's Attendance tab has one "Use Geofencing for Clocking" switch (radius override and the old tick box gone); ON needs at least one active location open to the employee's company. Clock screen: switch OFF accepts the clocking with position recorded, `not_enforced`, no site; ON unchanged, and refused attempts are now audited. HR-typed check-in/out skips the geofence. HR's day detail shows each capture's site + distance, or "Geofencing not required" + an OpenStreetMap link. Deployed; live after restart (401, /health 200, zero-line dry-run). Board: approved plan byte-identical; build-start, build-complete and deployed at 74fd4b33.
+
+**Production counts from 0517.** 2 clocking locations, both unassigned and unlinked → opened to every company (30 rows). 91 employments with no location stay OFF and can now clock in unchecked; 0 flipped ON; 0 ON-with-no-location; 0 radius overrides.
+
+**Decisions.** The Clock screen's always-required geofence (r378) is narrowed to the switch. Plan point 13's "HR can see where it was made" had no screen behind it; the builder's first pass shipped without one, so the day-detail evidence line was added before gating. Rebased over r425 (Lifecycle, 0516): journal and nav-message conflicts resolved keeping both.
+
+**Gate.** Full, GREEN first pass at CHUNKS=8: 1240 of 1240 (473 + 767), 1282 s. tsc clean, `gate:shadow` PASS (425/425), `next build` clean. `pnpm test:browser` not run.
+
+**Not done / owed.** Employee's own day view shows no evidence line. At 390 the locations and assignment tables scroll inside their card. Deleting a company can leave a location open to no one; a non-group admin can no longer delete a sub-company a location is open to. Delete lives on the View page only.
+
 ## r425 — 2026-10-08 · deployed tree f2f54613574bb44c476ba9ccea33796929b6f74b (main@cefee644 contains it) · migration 0516
 
 **Scope.** The CHGB handover (Onboarding, Offboarding, IT Requisitions, Asset Requests, Asset Tracker) built as the `lifecycle` pack: `core/lifecycle-*.ts`, `packs/lifecycle/`, `app/lifecycle/**`, `app/admin/lifecycle/`, tables `lc_*` and `it_*`, ADR-0095. Not the first-login tour (ADR-0018). Deployed; live after the deploy's own restart (401 on the box, /health 200, 424 migrations applied, 15 module tables, `lifecycle` catalog row present). No board item closed. The module is OFF for every tenant: no `tenant_module` row exists for it yet.
