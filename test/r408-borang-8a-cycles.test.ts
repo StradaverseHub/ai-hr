@@ -241,6 +241,9 @@ const rowN = (i: number): Borang8ARow => ({
   stopDate: '',
   status: '',
   ic: String(800101010000 + i),
+  // r418 — which document `ic` is, and the stored IC field the ASSIST file reads. A citizen: the same number.
+  idKind: 'ic',
+  icNumber: String(800101010000 + i),
   name: `PERSON ${i}`,
   contribution: Math.round((40 + i * 1.37) * 100) / 100,
   socsoEmployer: 0,

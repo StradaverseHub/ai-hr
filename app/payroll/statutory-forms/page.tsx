@@ -1,11 +1,9 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies } from '@/core/read';
-import { complianceWorklist, cp22MonthCohort, listStatutoryCatalog } from '@/core/reporting';
+import { listStatutoryCatalog } from '@/core/reporting';
 import type { FormOutput, StatutoryBodyKey } from '@/localization/country-pack';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
-import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { payrollProcessBack } from '../back';
 import { TEMPLATED, criteriaHref } from './criteria';
 
@@ -48,8 +46,9 @@ import { TEMPLATED, criteriaHref } from './criteria';
  * Reports page, beside a dropdown of every other report and a generation history — so getting to the
  * next form meant starting again. That is what the shelves and the per-form screen fix.
  *
- * STILL GENERATES NOTHING. This page calls `listStatutoryCatalog` and the CP22/CP22A worklist — metadata
- * and lifecycle dates. The figures live two clicks away on `[formId]`, which calls the SHARED generator.
+ * STILL GENERATES NOTHING. This page calls `listStatutoryCatalog` — metadata only (r418: and no longer the
+ * CP22/CP22A worklist or the month cohort, whose panels are gone; see the r418 note below). The figures
+ * live two clicks away on `[formId]`, which calls the SHARED generator.
  * A second generator for the same statutory figures is the duplication 241817ef spent two rounds
  * undoing, and test/statutory-forms-page.test.ts pins that.
  *
@@ -104,15 +103,21 @@ import { TEMPLATED, criteriaHref } from './criteria';
  * chose would be asserting a missed statutory filing, which is the assertion AGENTS 28 exists to stop.
  *
  * THE CARD'S ACTION IS THE CRITERIA STEP FOR EVERY ENTRY WHOSE DESTINATION IS TEMPLATED, and the entry's
- * own href otherwise — read off the placeholders in the catalog, never off the form's id. The CP22 row
- * is the whole of "otherwise" today: it opens the worklist at the foot of THIS page, which needs nothing
- * chosen, so it is still one press.
+ * own href otherwise — read off the placeholders in the catalog, never off the form's id. Since r413 the
+ * CP22 and CP22A rows are un-templated links to the choose-the-employee screen (/payroll/statutory-forms/event).
  *
- * ⚠️ THE CP22 WORKLIST KEEPS ITS OWN COMPANY / YEAR / MONTH, AT THE FOOT, AND THAT IS NOT THE FILTER BAR
- * COMING BACK. Those two cards are a JOINER AND LEAVER LIST, not a form you generate: `complianceWorklist`
- * needs a company and `cp22MonthCohort` needs a company and a month, and neither has ever gated the form
- * list. They are the CP22 entry's own criteria, rendered where the list is rather than at the top of a
- * screen they do not describe — which is what keeps `?companyId=…#worklist` bookmarks resolving.
+ * ── r418 (item 57ef8cf9): THE TWO PANELS AT THE FOOT ARE GONE ─────────────────────────────────────
+ * "Compliance worklist · CP22 / CP22A" and the month cohort ("New joiners in <month>") used to render here,
+ * with their own company / year / month controls. The reporter asked for them to go: the LHDN shelf's CP22 and
+ * CP22A cards are the one place for those forms now — open the form, choose the company, pick the person from
+ * the recent joiners or leavers. That list IS `complianceWorklist`, narrowed (the event screen calls it), so
+ * nothing the panels offered is lost, and the function stays. This page no longer reads it, nor
+ * `cp22MonthCohort` (which still serves /payroll/cp22/batch), nor the company list.
+ *
+ * OLD BOOKMARKS STILL OPEN THIS PAGE. `?companyId=…`, `?periodKey=…`, `?year=…&month=…` and `#worklist` are
+ * accepted and IGNORED: nothing here reads them, so they cannot error, and an anchor with no element simply
+ * leaves the browser at the top of the page — the plan's "open the Statutory Forms page instead of a broken
+ * section". The in-app links that pointed at the anchor (Reports, the CP22 review screen) were repointed.
  */
 
 /**
@@ -124,13 +129,6 @@ import { TEMPLATED, criteriaHref } from './criteria';
  */
 const BODY_SHELVES: Record<StatutoryBodyKey, true> = { epf: true, perkeso: true, lhdn: true, other: true };
 const BODY_ORDER = Object.keys(BODY_SHELVES) as StatutoryBodyKey[];
-
-const WL_STATUS: Record<string, string> = {
-  overdue: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-  due_soon: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  upcoming: 'bg-muted text-muted-foreground',
-  on_notice: 'bg-muted text-muted-foreground',
-};
 
 /**
  * 587ee719 — the statuses, their i18n keys and their colours, in ONE place.
@@ -259,20 +257,14 @@ function ExtraActions({ items, groupLabel }: { items: ShelfExtraAction[]; groupL
   );
 }
 
-const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
-
-/** Default to the month just ENDED — the one whose submission is actually open. */
-function previousMonth(today: string): string {
-  const y = Number(today.slice(0, 4));
-  const m = Number(today.slice(5, 7));
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-}
-
 export default async function StatutoryFormsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    /** The CP22 worklist's own company / period at the foot of the page — NEVER the form list's. */
+    /**
+     * r418 — ACCEPTED AND IGNORED. They were the removed CP22 worklist's own company / period; old bookmarks
+     * still carry them, and the page opens exactly as it does without them. Named here so that stays visible.
+     */
     companyId?: string;
     periodKey?: string;
     year?: string;
@@ -290,33 +282,10 @@ export default async function StatutoryFormsPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
   // d3a9383c — the CP22 document's own labels. Its own namespace rather than more keys on this screen's:
-  // they describe a FORM, and CP22A will want the same set when it is built.
+  // they describe a FORM. r418 — only the blank CP22's tooltip is read from it here now.
   const tCp22 = await getTranslations('payroll.cp22');
-  // r413 — the CP22A's own namespace, for the leaver rows' link title.
-  const tCp22a = await getTranslations('payroll.cp22a');
   const locale = await getLocale();
-  // Month NAMES, in the viewer's language, from Intl rather than twelve translated keys per locale —
-  // the same `Intl.DateTimeFormat(locale, …)` the roster and scheduled-actions screens use. UTC so a
-  // month cannot shift by one in a negative-offset render.
-  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
-  const monthName = (mm: string) => monthFmt.format(new Date(Date.UTC(2000, Number(mm) - 1, 1)));
   const sp = await searchParams;
-  const companies = (await listCompanies(s)).filter((c) => !c.archivedAt && scopeIds.includes(c.id));
-  // The WORKLIST's company, and nothing else's. An out-of-scope id in the URL falls back rather than
-  // being honoured, the same rule the export route and `[formId]` apply.
-  const companyId = (sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : '') || companies[0]?.id || '';
-  const today = todayInKualaLumpur();
-
-  // The worklist month is two selects, but `periodKey` is still ACCEPTED: links to this screen exist in
-  // the wild (the nav, bookmarks, the CP22 shelf entry), and a redesign that quietly stops resolving them
-  // turns every one of those into the default month without saying so.
-  const fallback = /^\d{4}-\d{2}$/.test(sp.periodKey ?? '') ? sp.periodKey! : previousMonth(today);
-  const year = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : fallback.slice(0, 4);
-  const month = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? sp.month! : fallback.slice(5, 7);
-  const periodKey = `${year}-${month}`;
-  // Six years back plus the current one, and ALWAYS the selected year — a link carrying an older year
-  // would otherwise resolve correctly while the select silently displayed a different one.
-  const years = yearOptions(today, year);
   const activeBody = BODY_ORDER.includes(sp.body as StatutoryBodyKey) ? (sp.body as StatutoryBodyKey) : null;
   // 587ee719 — the search term. Capped and lower-cased once; it is only ever compared against strings we
   // rendered ourselves, never interpolated into a query or a route.
@@ -331,26 +300,14 @@ export default async function StatutoryFormsPage({
   // and is correctly absent here: it is an internal reconciliation view, not a form anybody files.
   const submissions = catalog.reports.filter((r) => r.submission != null);
   const catalogSize = catalog.reports.length + catalog.links.length + catalog.planned.length;
-  const worklist = companyId ? await complianceWorklist(s, { companyId }) : [];
-  const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
-  // db46d9a2 — the month cohort, driven by the SAME two selects as the worklist beneath it. Null for a
-  // company whose jurisdiction no pack owns: CP22 is an LHDN form, and the honest answer there is no card
-  // at all, not "nobody started in July". The 60-day worklist below is untouched — it is the deadline
-  // alarm, this is the month view, and widening the worklist's window would have made its statuses lie.
-  const cohort = companyId ? await cp22MonthCohort(s, { companyId, periodKey }) : null;
-  // Named BEFORE the download, not discovered after it: whose page will come out with a gap in it.
-  const cohortGaps = (cohort?.rows ?? []).filter((r) => !r.hasIdentityNo || !r.hasTaxNo);
-  // The heading names the month explicitly, because the control above it is labelled "Payroll month" and
-  // this list is a HIRE month. Same Intl month name the selects use, so the two always agree.
-  const cohortMonthLabel = `${monthName(month)} ${year}`;
 
-  // `q` rides in the address beside the shelf pills so a searched view can be sent to somebody. The
-  // worklist's own company and period ride along too, so pressing a pill does not silently reset the
-  // list at the foot of the page. Appended rather than always present: an empty `?q=` in every pill link
-  // is noise in the bar and in the browser history.
-  const qs =
-    `companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}` +
-    (q ? `&q=${encodeURIComponent(q)}` : '');
+  // `q` rides in the address beside the shelf pills so a searched view can be sent to somebody. Appended
+  // rather than always present: an empty `?q=` in every pill link is noise in the bar and in the history.
+  // r418 — the removed worklist's company / year / month no longer ride along: nothing reads them.
+  const directoryHref = (body: StatutoryBodyKey | null, withQuery: boolean) => {
+    const parts = [body ? `body=${body}` : '', withQuery && q ? `q=${encodeURIComponent(q)}` : ''].filter(Boolean);
+    return parts.length ? `/payroll/statutory-forms?${parts.join('&')}` : '/payroll/statutory-forms';
+  };
   /**
    * r220 — one extra action on a row, built from the catalog entry and nothing else.
    *
@@ -437,8 +394,9 @@ export default async function StatutoryFormsPage({
         // A link entry declares no `dueDayOfNextMonth` — it is a door onto a screen, not a submission
         // this catalog holds a deadline for.
         dueRule: null,
-        // The row's OWN action wording when it declares one — the CP22 entry scrolls to the worklist, it
-        // does not open a form; `my.tp1` opens an employee list. Everything else falls back to the shared
+        // The row's OWN action wording when it declares one — `my.tp1` opens an employee list (r413: the CP22
+        // entry no longer scrolls to a worklist; it opens the choose-the-employee screen, and r418 removed the
+        // worklist itself). Everything else falls back to the shared
         // label, which is why rewording either one never touches the other.
         //
         // r242 — the two EA entries now name `openForm` explicitly, which is the SHARED label they would
@@ -523,14 +481,10 @@ export default async function StatutoryFormsPage({
         {/* 587ee719 — the search box, filtered server-side so the whole view lands in the address. A
             client-side filter would have made the searched view unshareable and unrefreshable, which is
             the exact thing the body pills below were built to avoid.
-            r256 — company / year / month are GONE from this form and the hidden fields below are why they
-            still survive a search: they belong to the CP22 worklist at the foot of the page, and a search
-            that silently reset that list to the default month would be a filter bar removed in name only. */}
+            r256 — company / year / month are GONE from this form. r418 — and so are the hidden fields that
+            carried them through a search for the CP22 worklist at the foot of the page: that list is gone. */}
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-4">
           {activeBody && <input type="hidden" name="body" value={activeBody} />}
-          <input type="hidden" name="companyId" value={companyId} />
-          <input type="hidden" name="year" value={year} />
-          <input type="hidden" name="month" value={month} />
           <Field label={t('search')} className="w-full sm:w-72">
             <input
               type="search"
@@ -546,9 +500,7 @@ export default async function StatutoryFormsPage({
           </button>
           {q && (
             <Link
-              href={`/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}${
-                activeBody ? `&body=${activeBody}` : ''
-              }`}
+              href={directoryHref(activeBody, false)}
               className="h-9 rounded-md px-2 text-sm leading-9 text-muted-foreground hover:text-foreground"
             >
               {t('searchClear')}
@@ -562,7 +514,7 @@ export default async function StatutoryFormsPage({
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs uppercase tracking-wide text-muted-foreground">{t('selectBody')}</span>
         <Link
-          href={`/payroll/statutory-forms?${qs}`}
+          href={directoryHref(null, true)}
           className={`rounded-full border px-3 py-1 text-sm ${
             activeBody == null ? 'border-primary bg-primary/10 font-medium text-primary' : 'border-border hover:bg-accent'
           }`}
@@ -572,7 +524,7 @@ export default async function StatutoryFormsPage({
         {BODY_ORDER.map((b) => (
           <Link
             key={b}
-            href={`/payroll/statutory-forms?${qs}&body=${b}`}
+            href={directoryHref(b, true)}
             className={`rounded-full border px-3 py-1 text-sm ${
               activeBody === b ? 'border-primary bg-primary/10 font-medium text-primary' : 'border-border hover:bg-accent'
             }`}
@@ -722,233 +674,9 @@ export default async function StatutoryFormsPage({
         </Card>
       ))}
 
-      {/* ── CP22 / CP22A — the joiner and leaver list, and its OWN criteria ────────────────────────────
-          r256 — THIS IS WHERE THE COMPANY AND THE MONTH LIVE NOW, and they drive nothing above them. The
-          two cards below are a lifecycle worklist, not a form you generate: `complianceWorklist` needs a
-          company and `cp22MonthCohort` needs a company and a month. Putting their controls beside them
-          rather than at the top of the screen is what lets the FORM LIST have no period at all while
-          `/payroll/statutory-forms?companyId=…#worklist` — the CP22 shelf entry's own destination, and a
-          bookmark people hold — still resolves to exactly the list it always did. */}
-      <Card id="worklist" data-tour="payroll-worklist" className="scroll-mt-6 overflow-hidden">
-        <SectionHeader title={t('worklistTitle')} count={worklist.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('worklistDescription', { company: companyName })}</p>
-        {/* Its own GET form, carrying the shelf view (`q` / `body`) through as hidden fields so choosing a
-            month down here does not clear a search up there. */}
-        <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-4">
-          {activeBody && <input type="hidden" name="body" value={activeBody} />}
-          {q && <input type="hidden" name="q" value={q} />}
-          <Field label={t('company')}>
-            <select name="companyId" defaultValue={companyId} className={inputCls}>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('year')}>
-            <select name="year" defaultValue={year} className={inputCls}>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('month')}>
-            <select name="month" defaultValue={month} className={inputCls}>
-              {MONTHS.map((m) => (
-                <option key={m} value={m}>
-                  {monthName(m)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <button className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-accent">
-            {t('show')}
-          </button>
-        </form>
-        {worklist.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('worklistEmpty')}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colForm')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colReason')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colEventDate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colNotifyBy')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                  {/* d3a9383c — the document itself. Headed for screen readers only: the mockup the
-                      reporter approved shows the buttons under no visible heading. */}
-                  <th className="px-4 py-2 font-medium">
-                    <span className="sr-only">{tCp22('columnHeading')}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {worklist.map((w) => (
-                  <tr key={`${w.employmentId}-${w.form}`}>
-                    <td className="px-4 py-2.5 font-medium">{w.name}</td>
-                    <td className="px-4 py-2.5">{w.form}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{w.reason}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{w.eventDate}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{w.dueBy ?? <span data-due-on-notice className="font-sans">{t('dueOnNotice')}</span>}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${WL_STATUS[w.status]}`}
-                      >
-                        {t(`status_${w.status}` as 'status_upcoming')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {/* r413 — BOTH forms now. A joiner row opens the CP22 review screen; a leaver row
-                          opens the CP22A in the shared viewer (it said "not built yet" until step 2). */}
-                      {w.form === 'CP22' ? (
-                        /* 88076362 — the REVIEW screen, not the download. The reporter's whole complaint
-                           was that pressing this produced a finished form with nowhere to check it
-                           first; the download is one press further on, from a screen that shows every
-                           box. The `/pdf` route is unchanged and still works on its own. */
-                        <Link
-                          href={`/payroll/cp22/${w.employmentId}/preview`}
-                          title={tCp22('reviewLinkTitle')}
-                          className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
-                        >
-                          {tCp22('reviewLink')}
-                        </Link>
-                      ) : (
-                        <Link
-                          href={`/payroll/cp22a/${w.employmentId}/preview`}
-                          title={tCp22a('worklistLinkTitle')}
-                          className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
-                        >
-                          {tCp22('reviewLink')}
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {/* db46d9a2 — THE MONTH VIEW, driven by the same three selects as the worklist above it, so ANY
-          month is reachable — July 2026, March 2026, a month two years back — rather than only the last
-          60 days.
-
-          THE DOWNLOAD FORM IS A SIBLING OF THE CRITERIA FORM, NEVER NESTED INSIDE IT. A form inside a form
-          is invalid HTML and browsers drop the inner one, which would silently turn the download button
-          into a second "Show". It carries its own hidden companyId/year/month for the same reason. */}
-      {cohort && (
-        <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-3">
-            <div className="text-sm font-medium">
-              {tCp22('monthTitle', { month: cohortMonthLabel })}
-              <span className="ml-2 text-muted-foreground">({cohort.rows.length})</span>
-            </div>
-            {/* A month with nobody in it offers NO download button — an empty file is not a useful
-                answer, and the route 404s on it. The card still says which month was asked for, so the
-                operator knows the answer came back rather than the screen failing. */}
-            {cohort.rows.length > 0 && (
-              <form method="get" action="/payroll/cp22/batch" className="flex flex-wrap items-end gap-3">
-                <input type="hidden" name="companyId" value={companyId} />
-                <input type="hidden" name="year" value={year} />
-                <input type="hidden" name="month" value={month} />
-                {/* 88076362 — THE BRANCH BOX IS GONE FROM HERE, and removing it is the honest move.
-                    It existed to stamp box 1 of the 2020 page's "Kepada / To" block; CP22 [Pin.1/2021]
-                    has no such block, so anything typed here would be silently discarded — a field that
-                    does nothing is worse than no field. The branch now lives on the per-joiner review
-                    screen and in its text export, which say plainly that it does not print. */}
-                <button className={btnPrimary} title={tCp22('downloadAllTitle')}>
-                  {tCp22('downloadAll')}
-                </button>
-              </form>
-            )}
-          </div>
-
-          {cohort.rows.length === 0 ? (
-            <div className="px-4 py-8 text-center">
-              <p className="text-sm font-medium">{tCp22('monthEmpty', { month: cohortMonthLabel })}</p>
-              <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-                {tCp22('monthEmptyHint', { company: companyName })}
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* THE CORRECTION WE OWE THE READER, and it sits beside the button rather than in a tooltip.
-                  Since 1 September 2024 a CP22 goes through e-CP22 on MyTax; posted and hand-delivered
-                  forms are not accepted. Nothing on this screen is labelled "for submission". */}
-              <div className="mx-4 mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                <span className="font-medium">{tCp22('notFilingTitle')}</span>{' '}
-                <span className="text-muted-foreground">{tCp22('notFiling')}</span>
-              </div>
-
-              {/* Before the download, not after it. `readinessTitle` is the SAME key the per-form screens
-                  use for the same sentence — one wording for "these people are missing identifiers". */}
-              {(cohortGaps.length > 0 || !cohort.employerNoOnFile) && (
-                <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                  {cohortGaps.length > 0 && (
-                    <p className="font-medium">{t('readinessTitle', { count: cohortGaps.length })}</p>
-                  )}
-                  <ul className="mt-1 space-y-0.5">
-                    {cohortGaps.map((r) => (
-                      <li key={r.employmentId}>
-                        <span className="font-medium">{r.name}</span> —{' '}
-                        {[
-                          !r.hasTaxNo ? tCp22('missingTaxNo') : null,
-                          !r.hasIdentityNo ? tCp22('missingIdentityNo') : null,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </li>
-                    ))}
-                    {/* One row per company, so its absence gaps box 3 on every page at once. */}
-                    {!cohort.employerNoOnFile && <li>{tCp22('missingEmployerNo', { company: companyName })}</li>}
-                  </ul>
-                </div>
-              )}
-
-              <p className="px-4 pt-3 text-xs text-muted-foreground">{tCp22('monthHint')}</p>
-
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                      <th className="px-4 py-2 font-medium">{tCp22('colHireDate')}</th>
-                      <th className="px-4 py-2 font-medium">
-                        <span className="sr-only">{tCp22('columnHeading')}</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {cohort.rows.map((r) => (
-                      <tr key={r.employmentId}>
-                        <td className="px-4 py-2.5 font-medium">{r.name}</td>
-                        <td className="px-4 py-2.5 font-mono text-xs">{r.hiredOn}</td>
-                        <td className="px-4 py-2.5 text-right">
-                          {/* The single-person REVIEW screen — the same link the worklist offers. */}
-                          <Link
-                            href={`/payroll/cp22/${r.employmentId}/preview`}
-                            title={tCp22('reviewLinkTitle')}
-                            className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
-                          >
-                            {tCp22('reviewLink')}
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </Card>
-      )}
+      {/* r418 (item 57ef8cf9) — "Compliance worklist · CP22 / CP22A" and "New joiners in <month>" STOOD HERE and
+          are deliberately gone: CP22 and CP22A are opened from the LHDN shelf above, which picks the person from
+          the same list (`complianceWorklist`, on /payroll/statutory-forms/event). See the r418 note in the header. */}
     </div>
   );
 }

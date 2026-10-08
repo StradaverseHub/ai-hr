@@ -216,7 +216,8 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // df35d60d — `lhdn.tp3` LEFT, the fifth form to take this path. It is pinned by name in the case
     // below, so deleting an entry from here without building it cannot pass as this same migration.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
-      'epf.borang-bbcb',
+      // r418 (item 5c31d379) — `epf.borang-bbcb` LEFT, and NOT built under that name: the reporter confirmed
+      // BBCB is the same form as BBCD, which is built (`my.borang-bbcd`). The two keys are retired, not deleted.
       // r412 (item e74af58c, step 2) — `perkeso.borang-8b` LEFT (built: `my.borang-8b`, same shelfOrder 3), and
       // `perkeso.sip` ("SIP Forms") LEFT: its contribution schedule is built (`my.sip-contribution`, shelfOrder
       // 4) and what stays unbuilt — SIP 2 / SIP 2A — is planned under its own name, `perkeso.sip-2`.
@@ -376,9 +377,16 @@ describe('the landing page is a directory, not a second generator', () => {
     expect(PAGE).not.toContain('/payroll/reports?companyId=');
   });
 
-  it('reads "today" in MYT, so a deadline does not flip a day early overnight', () => {
-    expect(PAGE).toContain('todayInKualaLumpur()');
+  // r418 (item 57ef8cf9) — THIS USED TO PIN `todayInKualaLumpur()` ON THE PAGE. The only date the directory
+  // ever needed was the removed CP22 worklist's default month; with that panel gone the page reads NO date
+  // at all (its cards carry the deadline RULE, never a date — r256). Reversed, not loosened: the page must
+  // still never derive a date from a UTC instant, and now must not derive one at all.
+  it('reads no date at all — and never "today" off a UTC instant', () => {
+    expect(PAGE.length).toBeGreaterThan(5000);
+    expect(PAGE).not.toContain('todayInKualaLumpur');
+    expect(PAGE).not.toContain('yearOptions');
     expect(PAGE).not.toMatch(/new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
+    expect(PAGE).not.toMatch(/new Date\(/);
   });
 
   it('uses the full screen width the reporter asked for', () => {
@@ -391,30 +399,26 @@ describe('the landing page is a directory, not a second generator', () => {
   });
 
   /**
-   * A redesign that swaps one query parameter for two turns every existing link — the nav, a bookmark,
-   * the CP22 shelf entry — into the default month, silently. `periodKey` stays accepted.
+   * r418 (item 57ef8cf9) — REVERSED. This pinned that the page still RESOLVED the old `periodKey` link after
+   * the split into year + month, and that the year picker always offered the selected year — both for the
+   * CP22 worklist's own month at the foot of the page. That panel and the month panel under it are gone, so
+   * the page reads none of `companyId` / `periodKey` / `year` / `month` any more. What the old links need now
+   * is only that they still OPEN the page: the parameters are accepted (named in the props type) and IGNORED,
+   * and nothing on the page is a year or month control that could display the wrong one.
    */
-  it('still resolves the old periodKey parameter after the split into year + month', () => {
-    expect(PAGE).toContain('sp.periodKey');
-    expect(PAGE).toMatch(/name="year"/);
-    expect(PAGE).toMatch(/name="month"/);
-  });
-
-  /**
-   * The year picker, and the defect it exists to prevent: a `<select>` whose `defaultValue` matches no
-   * `<option>` silently falls back to its FIRST option. A link carrying an out-of-window year resolves
-   * correctly server-side, so the page would show the right figures under the WRONG year label — the
-   * worst kind of wrong for a statutory return, because nothing looks broken.
-   */
-  it('always offers the selected year, however far back the link reaches', () => {
-    expect(yearOptions('2026-08-07')).toEqual(['2026', '2025', '2024', '2023', '2022', '2021', '2020']);
-    expect(yearOptions('2026-08-07', '2026')[0]).toBe('2026');
-    const old = yearOptions('2026-08-07', '2015');
-    expect(old).toContain('2015');
-    expect(old[old.length - 1]).toBe('2015'); // newest first, like every other year picker here
-    // A junk value is NOT injected into the list — the page falls back to a real year for those.
+  it('accepts the old worklist links and ignores them: no company, year or month is read or rendered', () => {
+    expect(PAGE.length).toBeGreaterThan(5000);
+    for (const k of ['companyId', 'periodKey', 'year', 'month']) {
+      expect(PAGE, `the props type still names ${k}, so an old bookmark is visibly expected`).toMatch(
+        new RegExp(`\\b${k}\\?: string;`),
+      );
+      expect(PAGE, `the page must not READ sp.${k}`).not.toContain(`sp.${k}`);
+      expect(PAGE, `the page must not render a ${k} control`).not.toContain(`name="${k}"`);
+    }
+    expect(PAGE).not.toContain('listCompanies');
+    // The year-picker defect the old case guarded against is still guarded where a year picker still lives.
+    expect(yearOptions('2026-08-07', '2015')).toContain('2015');
     expect(yearOptions('2026-08-07', 'abcd')).not.toContain('abcd');
-    expect(PAGE).toContain('yearOptions(today, year)');
     expect(FORM_PAGE).toContain('yearOptions(today, year)');
   });
 });
@@ -500,7 +504,12 @@ describe('the shelf cards, and the search above them (587ee719)', () => {
     expect(PAGE).toContain('name="q"');
     expect(PAGE).toContain("const q = (sp.q ?? '').trim()");
     // …and the search rides through the body pills, or choosing a category would silently clear it.
-    expect(PAGE).toContain('&q=${encodeURIComponent(q)}');
+    // r418 — the pills are built by ONE helper now that the worklist's company / year / month no longer ride
+    // along; the pills pass `withQuery: true`, the "clear search" link passes false.
+    expect(PAGE).toContain("withQuery && q ? `q=${encodeURIComponent(q)}` : ''");
+    expect(PAGE).toContain('href={directoryHref(null, true)}');
+    expect(PAGE).toContain('href={directoryHref(b, true)}');
+    expect(PAGE).toContain('href={directoryHref(activeBody, false)}');
   });
 
   it('renders the four statuses in a legend, from the same map the chips use', () => {
@@ -588,20 +597,61 @@ describe('the report table is shared, not copied', () => {
 });
 
 describe('CP22 / CP22A live with the statutory forms now', () => {
-  // r413 (item 79f3f64d, step 2) — THE SHELF ROWS MOVED, THE WORKLIST DID NOT. CP22 and CP22A now open the
-  // event-selection screen (the plan's "choose the Company, then pick the employee"); the worklist and the
-  // month view still render at the foot of Statutory Forms under the same anchor, which is what keeps the
-  // `?companyId=…#worklist` bookmarks (and the Reports page's pointer below) resolving.
-  it('render on Statutory Forms under their anchor, and the shelf rows open the event-selection screen', () => {
-    expect(PAGE).toContain('complianceWorklist');
-    expect(PAGE).toContain('id="worklist"');
+  // r413 (item 79f3f64d, step 2) — THE SHELF ROWS MOVED, THE WORKLIST DID NOT. CP22 and CP22A opened the
+  // event-selection screen, while the worklist and the month view still rendered at the foot of this page.
+  // ⚠️ r418 (item 57ef8cf9) — REVERSED: the two panels are GONE from the page (the reporter asked; the LHDN
+  // shelf's CP22 / CP22A cards are the one place now). The shelf rows still open the event screen, which is
+  // where `complianceWorklist` is read — so the list the panels showed is still one press from the shelf.
+  it('open from the LHDN shelf only: the worklist and month panels and their reads are gone from the page', () => {
+    expect(PAGE.length).toBeGreaterThan(5000);
+    for (const gone of ['complianceWorklist', 'cp22MonthCohort', 'id="worklist"', 'payroll-worklist', "t('worklistTitle')", "tCp22('monthTitle'", '/payroll/cp22/batch', "tCp22a("]) {
+      expect(PAGE, `the page must not carry ${gone}`).not.toContain(gone);
+    }
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22');
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22a')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22a');
+    // The list behind those cards IS the worklist, and it stays: the event screen reads it.
+    expect(code('app/payroll/statutory-forms/event/page.tsx')).toContain('complianceWorklist(s, {');
+    // The panels' keys are RETIRED, never deleted, in every locale.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(read(`messages/${loc}.json`));
+      for (const k of ['worklistTitle', 'worklistDescription', 'worklistEmpty', 'colForm', 'colNotifyBy', 'colReason']) {
+        expect(m.payroll.statutoryForms[k], `${loc} statutoryForms.${k}`).toMatch(/^\[retired r418/);
+      }
+      for (const k of ['monthTitle', 'monthHint', 'monthEmpty', 'monthEmptyHint', 'downloadAll', 'downloadAllTitle', 'colHireDate', 'columnHeading', 'missingTaxNo', 'missingIdentityNo', 'missingEmployerNo', 'reviewLink', 'reviewLinkTitle']) {
+        expect(m.payroll.cp22[k], `${loc} cp22.${k}`).toMatch(/^\[retired r418/);
+      }
+      expect(m.payroll.cp22a.worklistLinkTitle, loc).toMatch(/^\[retired r418/);
+      expect(m.payroll.reports.worklistMovedLink, loc).toMatch(/^\[retired r418/);
+      // …and a key the panels SHARED with a live screen is NOT retired: the CP22 review screen still says it.
+      expect(m.payroll.cp22.notFiling, loc).not.toMatch(/retired/);
+    }
   });
 
-  it('are gone from Reports — but the page says where they went', () => {
+  // r418 — an anchor with no element is not a broken page (an old BOOKMARK still opens Statutory Forms at
+  // the top), but a link we write ourselves should land somewhere that holds what it promises. The Reports
+  // pointer now goes to the LHDN shelf and says so.
+  it('are gone from Reports — and the page says where they went, without pointing at the removed anchor', () => {
     expect(REPORTS_PAGE).not.toContain('complianceWorklist');
-    expect(REPORTS_PAGE).toContain('/payroll/statutory-forms#worklist');
+    expect(REPORTS_PAGE).not.toContain('#worklist');
+    expect(REPORTS_PAGE).toContain('/payroll/statutory-forms?body=lhdn');
+    expect(REPORTS_PAGE).toContain("t('worklistMovedLinkLhdn')");
+  });
+
+  // r418 — THE CP22 REVIEW SCREEN IS BYTE-PINNED to its r413 baseline (test/r413-event-select.test.ts and
+  // test/r415-cp21.test.ts: "CP22 did not move"), so its back link keeps its href, which now simply opens
+  // Statutory Forms at the top. What changes is what the link SAYS: it no longer promises a worklist.
+  it('the CP22 review screen\'s back link opens Statutory Forms and says so, in every locale', () => {
+    const cp22Review = code('app/payroll/cp22/[employmentId]/preview/page.tsx');
+    expect(cp22Review).toContain("back={{ href: '/payroll/statutory-forms#worklist', label: t('previewBack') }}");
+    expect(en.payroll.cp22.previewBack).toBe('Back to Statutory Forms');
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(read(`messages/${loc}.json`));
+      // Tamil inflects the page name inside the phrase (படிவங்கள் → படிவங்களுக்கு), so it is checked by stem.
+      const stem = loc === 'ta' ? m.payroll.statutoryForms.pageTitle.slice(0, -2) : m.payroll.statutoryForms.pageTitle;
+      expect(stem.length, loc).toBeGreaterThan(2);
+      expect(m.payroll.cp22.previewBack, loc).toContain(stem);
+      expect(m.payroll.cp22.previewBack.toLowerCase(), loc).not.toContain('worklist');
+    }
   });
 
   /**
@@ -817,12 +867,18 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   // ⚠️ r413 (item 79f3f64d, step 2) — THE CP22A HALF IS REVERSED, AND THE CASE MOVES WITH IT. CP22A is
   // built, so a leaver row now opens the CP22A viewer — its OWN form, never the joiner's — instead of the
   // dash; `cp22aNotYet` is retired. The joiner half is unchanged.
-  it('opens the CP22 review screen from every new-hire row, and the CP22A viewer from every leaver row', () => {
-    expect(PAGE).toContain('/payroll/cp22/${w.employmentId}/preview');
-    expect(PAGE).toContain("w.form === 'CP22'");
-    expect(PAGE).toContain("tCp22('reviewLink')");
+  // ⚠️ r418 (item 57ef8cf9) — THE ROWS LEFT THIS PAGE WITH THE WORKLIST. The same two destinations are now
+  // reached from the event screen's list (app/payroll/statutory-forms/event/continue): a joiner opens the CP22
+  // review screen, a leaver the CP22A viewer. The PAGE assertions are reversed; the routes stay pinned.
+  it('opens the CP22 review screen for a joiner and the CP22A viewer for a leaver — from the event screen now', () => {
+    expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/preview');
+    expect(PAGE).not.toContain("tCp22('reviewLink')");
     expect(PAGE).not.toContain("tCp22('cp22aNotYet')");
-    expect(PAGE).toContain('/payroll/cp22a/${w.employmentId}/preview');
+    expect(PAGE).not.toContain('/payroll/cp22a/${w.employmentId}/preview');
+    // The destination is the CATALOG's (`event.previewPath`), which the event screen's Continue redirects to.
+    expect(read('app/payroll/statutory-forms/event/continue/route.ts')).toContain('eventPreviewHref(link.event.previewPath');
+    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')?.event?.previewPath).toBe('/payroll/cp22/{employmentId}/preview');
+    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22a')?.event?.previewPath).toBe('/payroll/cp22a/{employmentId}/preview');
     expect(en.payroll.cp22.cp22aNotYet).toMatch(/^\[retired r413/);
     // The row must NOT go straight to the document any more — that is the behaviour this round removed.
     expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/pdf');
@@ -849,13 +905,19 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   });
 
   // A tour step whose target left the route it names points at nothing, silently.
-  it('keep their guided-tour step pointing at the page they actually render on', () => {
+  // r418 (item 57ef8cf9) — REVERSED: the worklist panel is gone, so its tour step is gone with it (its two
+  // keys retired). Every payroll step left on Statutory Forms must still point at something the page renders.
+  it('keep no guided-tour step on the removed worklist, and every Statutory Forms step finds its target', () => {
     const tours = JSON.parse(read('lib/module-tours.json')) as {
       payroll: { steps: { id: string; target: string; route: string }[] };
     };
-    const step = tours.payroll.steps.find((s) => s.id === 'worklist')!;
-    expect(step.route).toBe('/payroll/statutory-forms');
-    expect(PAGE).toContain(step.target.replace('[', '').replace(']', ''));
+    expect(tours.payroll.steps.length).toBeGreaterThan(0);
+    expect(tours.payroll.steps.find((s) => s.id === 'worklist')).toBeUndefined();
+    expect(JSON.stringify(tours)).not.toContain('payroll-worklist');
+    for (const step of tours.payroll.steps.filter((s) => s.route === '/payroll/statutory-forms')) {
+      expect(PAGE, step.id).toContain(step.target.replace('[', '').replace(']', ''));
+    }
+    expect(en.onboarding.tour.payroll.worklist.title).toMatch(/^\[retired r418/);
   });
 });
 

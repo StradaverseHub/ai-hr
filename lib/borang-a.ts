@@ -43,8 +43,20 @@ export type BorangARow = {
   employmentId: string;
   /** No. Ahli — `employee_statutory_my.epf_number`. */
   memberNo: string;
-  /** No. Kad Pengenalan — `employee_statutory_my.ic_number`. */
+  /**
+   * No. Kad Pengenalan — the identity number that APPLIES to the person (r418, item 5c31d379): the IC for a
+   * citizen, the MyPR number for a permanent resident, the passport number for a non-citizen. Decided once,
+   * in the read, by `statutoryIdentityFor` (localization/my/statutory-identity.ts) — Borang 8A's rule.
+   */
   ic: string;
+  /** r418 — which document `ic` is: 'ic' | 'mypr' | 'passport', or '' when nothing applicable is on file. */
+  idKind: string;
+  /**
+   * r418 — the IC FIELD as stored, for the KWSP i-Akaun upload file ONLY. Not printed. That file's 02 record
+   * has a 12-digit IC field on the only real EPFORMA2 file in this repository and no passport field, so the
+   * file keeps carrying what it carried before r418; only the paper form's column changed.
+   */
+  icNumber: string;
   /** Nama Pekerja. */
   name: string;
   /**
@@ -432,6 +444,10 @@ export function borangAFrom(p: {
     employmentId: str(r.employmentId),
     memberNo: str(r.memberNo),
     ic: str(r.ic),
+    idKind: str(r.idKind),
+    // r418 — ABSENT ⇒ a row shaped before r418, whose `ic` WAS the IC field; the read always sets it (to ''
+    // when the person has no IC), so a present-but-empty value never falls back to the printed number.
+    icNumber: r.icNumber == null ? str(r.ic) : str(r.icNumber),
     name: str(r.name),
     staffNo: str(r.staffNo),
     wage: round2(Number(r.wage) || 0),

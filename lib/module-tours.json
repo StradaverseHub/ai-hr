@@ -198,18 +198,6 @@
         ]
       },
       {
-        "id": "worklist",
-        "target": "[data-tour=\"payroll-worklist\"]",
-        "route": "/payroll/statutory-forms",
-        "titleKey": "tour.payroll.worklist.title",
-        "bodyKey": "tour.payroll.worklist.body",
-        "placement": "bottom",
-        "roles": [
-          "hr_admin",
-          "super_admin"
-        ]
-      },
-      {
         "id": "generate",
         "target": "[data-tour=\"payroll-generate\"]",
         "route": "/payroll/reports",

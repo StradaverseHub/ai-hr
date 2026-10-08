@@ -110,6 +110,9 @@ const row = (p: Partial<Borang8ARow> & { employmentId: string; contribution: num
   stopDate: '',
   status: '',
   ic: '860208105128',
+  // r418 — which document `ic` is, and the stored IC field the ASSIST file reads. A citizen: the same number.
+  idKind: 'ic',
+  icNumber: '860208105128',
   name: 'ANG PEI YEE',
   // 18c1d92b — the upload file's fields. Defaulted here so every existing case keeps describing the
   // PRINTED form (which does not carry them) without restating five zeros it does not care about.

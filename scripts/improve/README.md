@@ -54,7 +54,7 @@ A human reviews the preview + the diff, then:
 ```bash
 echo '{"id","tenantId","reporterEmploymentId","worktree","branch","buildRef"}' | pnpm improve:release
 ```
-`release` = final gate (`tsc` + `vitest` in the worktree) → rsync worktree → server → `deploy.sh` →
+`release` = final gate (a `.gate-receipt.json` covering HEAD — it never runs vitest itself, ADR-0094 — then `tsc`) → rsync worktree → server → `deploy.sh` →
 `markDeployed` (status → `deployed` + `feedback.deployed` event). Then, manually:
 `sudo systemctl restart aihr` on the server, and `git checkout main && git merge --no-ff build/fb-<id>` here.
 

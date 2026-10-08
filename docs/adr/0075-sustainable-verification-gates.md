@@ -57,6 +57,11 @@ Two Postgres details this depends on, both easy to get wrong:
 always, but runs the suite only when it cannot prove the same commit already passed. A missing, stale, or
 unreadable receipt falls through to running it — the safe path is the default.
 
+> **Superseded in part by ADR-0094 (2026-10-08).** `release.ts` no longer runs the suite at all: a
+> missing, stale or non-PASS receipt now REFUSES the release, because the bare full-suite run it fell
+> through to is the one command this machine cannot take. Receipts also carry a `tier` (`full` /
+> `affected`).
+
 ### 3. Contention guard
 
 `cleanroom-verify.sh` refuses to start when other client connections exist on the test instance, naming

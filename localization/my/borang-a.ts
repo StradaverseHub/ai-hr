@@ -15,6 +15,9 @@
  *   • `employee_statutory_my.epf_number` — No. Ahli. MEASURED: 9 of 33, and FOUR of those nine are
  *     `EPF9203030`-style values that no numeric upload field can carry (see the readiness note below).
  *   • `employee_statutory_my.ic_number` — No. Kad Pengenalan. MEASURED: 33 of 33, all exactly 12 digits.
+ *     r418 (item 5c31d379) — for a citizen; a permanent resident's MyPR number lives in the same field, and a
+ *     non-citizen's column is their `passport_number`. Which applies is `statutoryIdentityFor`
+ *     (./statutory-identity.ts) on `epf_citizenship` and `person.nationality` — Borang 8A's rule, shared.
  *   • `employment.employee_code` — the upload file's staff-number field. Not printed on the form.
  *   • `company_statutory_authority` for authority `epf` — the authorised-representative block at the foot
  *     of the form, with its own admin screen at app/admin/organization/[companyId]. MEASURED: ONE row
@@ -53,6 +56,16 @@
  * review screen has to NAME them, which it cannot do if the read has already dropped them; the gate lives
  * in `app/payroll/borang-a/shared.ts` and refuses the DOCUMENT, not the preview. Anyone who left before
  * the cycle simply has no payslip in it and is therefore already absent (the form's own note 3).
+ *
+ * ── r418 (item 5c31d379): THEY ARE FILTERED BY CONTRIBUTION, HERE AND ONLY HERE ───────────────────
+ * Somebody whose employer share AND employee share are both zero to the sen, across the selected payroll
+ * cycles, is not on the form: the reporter asked for exactly that. The rule is applied in THIS read, BEFORE
+ * anything paginates, so the preview, the PDF, the text copy, the i-Akaun file, the BBCD, the page totals,
+ * Bil Pekerja and the grand totals all follow one population — `borangAFrom` paginates and totals whatever
+ * rows it is handed, and it is handed only these. A person with either share non-zero stays. Payroll is not
+ * touched. Someone left off is also left off the readiness list: a member number missing for a line that is
+ * not on the form cannot be a reason the form is held. When nobody remains, the loader's "nothing to file"
+ * refusal answers for the form; the i-Akaun file (r407 `refuseEmpty: false`) still builds, with no 02 line.
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
@@ -77,6 +90,8 @@ import {
 } from '../../lib/borang-a';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
+// r418 (item 5c31d379) — which identity number the form prints, by EPF citizenship status. Borang 8A's rule.
+import { statutoryIdentityFor, type StatutoryIdentity } from './statutory-identity';
 // r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
 // summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
 import {
@@ -281,6 +296,11 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         employmentId: payslip.employmentId,
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
+        // r418 — the three facts `statutoryIdentityFor` decides the identity column from. LEFT joined: a
+        // person with no statutory row reads null throughout — a citizen with nothing on file.
+        passportNumber: employeeStatutoryMy.passportNumber,
+        epfCitizenship: employeeStatutoryMy.epfCitizenship,
+        nationality: person.nationality,
         memberNo: employeeStatutoryMy.epfNumber,
         staffNo: employment.employeeCode,
         gross: payslip.grossPay,
@@ -326,7 +346,10 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     type Acc = {
       employmentId: string;
       name: string;
+      /** The IC field as stored — the i-Akaun file's IC field reads THIS, never the passport. */
       ic: string | null;
+      /** r418 — what the identity column prints, and why not when it cannot (`statutoryIdentityFor`). */
+      identity: StatutoryIdentity;
       memberNo: string | null;
       staffNo: string | null;
       /**
@@ -370,6 +393,12 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
           employmentId: s.employmentId,
           name: s.name,
           ic: s.ic,
+          identity: statutoryIdentityFor({
+            epfCitizenship: s.epfCitizenship,
+            nationality: s.nationality,
+            icNumber: s.ic,
+            passportNumber: s.passportNumber,
+          }),
           memberNo: s.memberNo,
           staffNo: s.staffNo,
           // THE WAGE IS ASSIGNED ONCE, HERE, AND NEVER ACCUMULATED. See the Acc comment above.
@@ -397,12 +426,29 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       // person — ONE such slip is enough, and that rule is preserved inside the derivation.
     }
 
-    const accs = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
+    // r418 (item 5c31d379) — NOBODY WITH NO EPF ON THE FORM. Both shares zero TO THE SEN across the selected
+    // cycles ⇒ off the form, off the readiness list, out of every total and count below. In sen, so a float
+    // residue of a summed 0.10 + -0.10 cannot keep a row. See the header: this is the ONE place it happens.
+    const sen = (n: number) => Math.round(n * 100);
+    const accs = [...byEmp.values()]
+      .filter((a) => sen(a.employer) !== 0 || sen(a.employee) !== 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    // r418 verify D2 — named, never silent: a zero can come from a data slip (an EPF mode saved as exempt by
+    // mistake), and a person who vanishes without a word cannot be checked. The review screen lists them.
+    const leftOff = [...byEmp.values()]
+      .filter((a) => sen(a.employer) === 0 && sen(a.employee) === 0)
+      .map((a) => a.name)
+      .sort((a, b) => a.localeCompare(b));
     const rows: ReportRow[] = accs.map((a) => {
       const row: BorangARow = {
         employmentId: a.employmentId,
         memberNo: a.memberNo ?? '',
-        ic: a.ic ?? '',
+        // r418 (item 5c31d379) — the identity number that applies: IC, MyPR number or passport.
+        ic: a.identity.value,
+        idKind: a.identity.kind ?? '',
+        // The IC field as stored, for the i-Akaun upload file only (its 02 record carries a 12-digit IC and no
+        // passport field on the one real EPFORMA2 file we hold), so that file is NOT changed by r418.
+        icNumber: a.ic ?? '',
         name: a.name,
         staffNo: a.staffNo ?? '',
         // A row whose basis was never recorded reports ZERO here and says so through `wageRecorded`.
@@ -422,6 +468,9 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     const totalWage = round2(rows.reduce((acc, r) => acc + num(r.wage), 0));
     const totalEmployer = round2(rows.reduce((acc, r) => acc + num(r.employer), 0));
     const totalEmployee = round2(rows.reduce((acc, r) => acc + num(r.employee), 0));
+    // r418 — of the people ON the form, like Upah beside it. `runEpf` stays the whole selection's EPF, summed
+    // off every slip: a dropped person carried none, so the two still agree to the sen and the strip still
+    // compares two routes to one number.
     const totalGross = round2(accs.reduce((acc, a) => acc + a.gross, 0));
 
     return {
@@ -442,7 +491,9 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
           name: a.name,
           missing: [
             !a.memberNo ? 'EPF member no.' : null,
-            !a.ic ? 'IC' : null,
+            // r418 — the PRECISE number that applies and is absent: "IC", "MyPR number", "Passport number" or
+            // "IC or passport number". A non-citizen with a passport is no longer held here.
+            a.identity.missing,
             !a.wageRecorded ? 'EPF wage basis (this run predates the record of what EPF was charged on)' : null,
             a.wageInconsistent ? EPF_WAGE_INCONSISTENT_REASON : null,
           ].filter((m): m is string => m !== null),
@@ -453,7 +504,14 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         batchStatus,
         statutoryVersion: versions.size ? [...versions].sort().join(',') : MY_STATUTORY_VERSION,
         formHeader: header,
-        notes: [NOTE_NOT_ARTWORK, NOTE_PLUS_ONE, NOTE_WAGE],
+        notes: [
+          NOTE_NOT_ARTWORK,
+          NOTE_PLUS_ONE,
+          NOTE_WAGE,
+          ...(leftOff.length > 0
+            ? [`Not on this form — no EPF contribution (employer and employee shares both RM0.00) on the payroll cycles chosen: ${leftOff.join(', ')}. Check their EPF setting if that is not expected.`]
+            : []),
+        ],
         // THE RECONCILIATION STRIP: the run's own EPF total beside the form's, and the gross the form
         // deliberately does NOT use, so the difference between Upah and gross is visible rather than
         // arguable. Any divergence shows up BEFORE filing rather than at KWSP.
