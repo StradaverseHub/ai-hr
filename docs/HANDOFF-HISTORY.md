@@ -1,3 +1,9 @@
+## r426 — 2026-10-08 · main@3fbc3bc378c3fa913a9394ec5a66c646f9f60382 · migration none
+
+**Scope.** b3da5f59: My Leave › "Leave Credit History" reads "Leave Credit Status" — the menu row and the page title (so the export heading too), six locales, keys unchanged. `test/r383-my-leave-flyout.dom.test.tsx` pins the new wording. Deployed; live after restart (401, /health 200; dry-run's only line is the build-generated `next-env.d.ts`). Board: plan pushed with a before/after picture; NOT yet approved, so build/deployed not recorded.
+
+**Gate.** Affected tier, GREEN: 603 of 603 (319 no-DB + 284 DB) + 6 browser, 485 s.
+
 ## r423 — 2026-10-08 · main@74fd4b33e4582b1bfaa0615ab7314da2b081c391 · migration 0517
 
 **Scope.** 83c0d3c8: Attendance > Locations is the clocking-location list (search, Company and Status filters, View / Edit / Deactivate-Activate, New for group admins); a location carries one or more companies (`clocking_location_company`), an optional state and Active/Inactive; the company work-location list moved to its own "Work Locations" row. The employee's Attendance tab has one "Use Geofencing for Clocking" switch (radius override and the old tick box gone); ON needs at least one active location open to the employee's company. Clock screen: switch OFF accepts the clocking with position recorded, `not_enforced`, no site; ON unchanged, and refused attempts are now audited. HR-typed check-in/out skips the geofence. HR's day detail shows each capture's site + distance, or "Geofencing not required" + an OpenStreetMap link. Deployed; live after restart (401, /health 200, zero-line dry-run). Board: approved plan byte-identical; build-start, build-complete and deployed at 74fd4b33.
