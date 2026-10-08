@@ -137,13 +137,32 @@ export async function upsertCompanyBankProfile(ctx: SessionContext, p: CompanyBa
 }
 
 /** Remove a bank account (config, not history — hard delete). Admin-only via RLS.
- *  Any company_statutory_authority pointing at it is unrouted, not deleted (FK ON DELETE SET NULL, 0276). */
-export async function removeCompanyBankProfile(ctx: SessionContext, p: { id: string }) {
+ *  Any company_statutory_authority pointing at it is unrouted, not deleted (FK ON DELETE SET NULL, 0276).
+ *
+ *  ⚠️ IT REFUSES NOTHING. There is no check for a statutory body paid from this account (the FK above
+ *  silently unroutes it) and no "paying account" concept to check: nothing else references this table.
+ *  The only ways it does not delete are RLS (a non-admin's delete matches no row) and an unknown id — both
+ *  return `{ id: null }` without throwing.
+ *
+ *  48652e18 (r419) — also returns the removed row's `bank` and `debitAccountNo`, so the action can say
+ *  WHICH account went ("…ending 5678"). They are returned to the caller only; the event payload below is
+ *  unchanged and still carries no account number (ADR-0030 Layer-0). */
+export async function removeCompanyBankProfile(
+  ctx: SessionContext,
+  p: { id: string; companyId?: string },
+): Promise<{ id: string; bank: string; debitAccountNo: string } | { id: null }> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .delete(companyBankProfile)
-      .where(eq(companyBankProfile.id, p.id))
-      .returning({ id: companyBankProfile.id, companyId: companyBankProfile.companyId, bank: companyBankProfile.bank });
+      // r419 verify D1 — scoped by company when the caller names one, as the update path already is: a
+      // tenant-wide admin posting company B's account from company A's screen deletes nothing.
+      .where(p.companyId ? and(eq(companyBankProfile.id, p.id), eq(companyBankProfile.companyId, p.companyId)) : eq(companyBankProfile.id, p.id))
+      .returning({
+        id: companyBankProfile.id,
+        companyId: companyBankProfile.companyId,
+        bank: companyBankProfile.bank,
+        debitAccountNo: companyBankProfile.debitAccountNo,
+      });
     if (!row) return { id: null };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -153,7 +172,7 @@ export async function removeCompanyBankProfile(ctx: SessionContext, p: { id: str
       actor: actorOf(ctx),
       payload: { companyBankProfileId: row.id, companyId: row.companyId, bank: row.bank },
     });
-    return { id: row.id };
+    return { id: row.id, bank: row.bank, debitAccountNo: row.debitAccountNo };
   });
 }
 
