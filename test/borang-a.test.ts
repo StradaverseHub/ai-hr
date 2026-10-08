@@ -64,7 +64,7 @@ import {
 } from '../lib/borang-a';
 // The OTHER form's rule, imported rather than restated — see the joint assertion below.
 import { contributionPeriodFor as socsoContributionPeriodFor } from '../lib/borang-8a';
-import { MY_PLANNED_FORMS, MY_REPORTS } from '../localization/my/reports';
+import { MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from '../localization/my/reports';
 import { BORANG_A_COLUMNS } from '../localization/my/borang-a';
 import { BORANG_A_SHEET_GEOMETRY, borangASheetRowCapacity, renderBorangAPdf } from '../lib/borang-a-pdf';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
@@ -102,6 +102,9 @@ const FILE_ROUTE_CODE = code('app/payroll/borang-a/file/route.ts');
 const row = (p: Partial<BorangARow> & { employmentId: string }): BorangARow => ({
   memberNo: '17955667',
   ic: '860208105128',
+  // r418 — which document `ic` is, and the stored IC field the i-Akaun file reads. A citizen: the same number.
+  idKind: 'ic',
+  icNumber: '860208105128',
   name: 'ANG PEI YEE',
   staffNo: 'EMP001',
   wage: 6200,
@@ -450,8 +453,19 @@ describe('the catalog entry', () => {
 
   it('LEFT the planned list rather than being duplicated into both', () => {
     expect(MY_PLANNED_FORMS.map((p) => p.id)).not.toContain('epf.borang-a');
-    // The one remaining EPF planned form keeps its own slot, so the shelf did not renumber.
-    expect(MY_PLANNED_FORMS.find((p) => p.id === 'epf.borang-bbcb')?.shelfOrder).toBe(3);
+    // r418 (item 5c31d379) — THIS USED TO PIN 'epf.borang-bbcb' AT shelfOrder 3, "the one remaining EPF planned
+    // form". It is gone, deliberately: the reporter confirmed BBCB is the same form as BBCD (`my.borang-bbcd`,
+    // built). The pin is reversed rather than dropped — the EPF shelf now holds NO planned form at all, and the
+    // slot it held is EMPTY rather than quietly taken by something else, so nothing on the shelf renumbered.
+    expect(MY_PLANNED_FORMS.map((p) => p.id)).not.toContain('epf.borang-bbcb');
+    expect(MY_PLANNED_FORMS.filter((p) => p.body === 'epf')).toEqual([]);
+    const epfShelf = [
+      ...MY_REPORTS.filter((r) => r.submission?.body === 'epf').map((r) => [r.id, r.shelfOrder] as const),
+      ...MY_STATUTORY_LINKS.filter((l) => l.body === 'epf').map((l) => [l.id, l.shelfOrder] as const),
+    ];
+    expect(epfShelf.length).toBeGreaterThanOrEqual(3);
+    expect(epfShelf.map(([, o]) => o)).not.toContain(3);
+    expect(Object.fromEntries(epfShelf)).toMatchObject({ 'my.epf': 1, 'my.borang-a': 2, 'my.borang-bbcd': 4 });
   });
 
   it('claims `agency-layout` and never `official`', () => {

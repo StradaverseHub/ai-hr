@@ -216,7 +216,8 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // df35d60d — `lhdn.tp3` LEFT, the fifth form to take this path. It is pinned by name in the case
     // below, so deleting an entry from here without building it cannot pass as this same migration.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
-      'epf.borang-bbcb',
+      // r418 (item 5c31d379) — `epf.borang-bbcb` LEFT, and NOT built under that name: the reporter confirmed
+      // BBCB is the same form as BBCD, which is built (`my.borang-bbcd`). The two keys are retired, not deleted.
       // r412 (item e74af58c, step 2) — `perkeso.borang-8b` LEFT (built: `my.borang-8b`, same shelfOrder 3), and
       // `perkeso.sip` ("SIP Forms") LEFT: its contribution schedule is built (`my.sip-contribution`, shelfOrder
       // 4) and what stays unbuilt — SIP 2 / SIP 2A — is planned under its own name, `perkeso.sip-2`.

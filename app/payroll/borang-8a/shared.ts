@@ -21,6 +21,7 @@ import {
   missingBorang8AHeader,
   statusOverridesFrom,
   type Borang8AForm,
+  type Borang8ARow,
 } from '@/lib/borang-8a';
 import {
   PerkesoFileError,
@@ -52,6 +53,23 @@ export type Borang8AFileLoad =
       /** r296 — SKBBK in RM that this revision has no box for. 0 once the v2.0 column exists. */
       skbbkNotCarried: number;
     };
+
+/**
+ * r418 (item e74af58c) — THE ROWS AS THE ASSIST FILE SEES THEM: the IC FIELD as stored in the `ic` slot, never
+ * the printed identity number. The paper form's column (3) now follows the EPF citizenship status (a
+ * non-citizen's passport), but this file's field 3 is "Identification Number / SOCSO Foreign Worker Number" on
+ * PERKESO's own specification (PERKESO_FILE_FIELDS in lib/perkeso-socso-file.ts), which names no passport, so
+ * the file carries exactly what it carried before r418. `passportOnly` names whoever the paper form shows by
+ * passport alone, so the file refuses them in words that say why rather than by the writer's bare width check.
+ * Pure: one place, pinned by test/r418-statutory-identity.test.ts.
+ */
+export function borang8AFileRows(form: Borang8AForm): { rows: Borang8ARow[]; passportOnly: string[] } {
+  const all = form.pages.flatMap((pg) => pg.rows);
+  return {
+    rows: all.map((r) => ({ ...r, ic: r.icNumber })),
+    passportOnly: all.filter((r) => r.idKind === 'passport' && !r.icNumber.trim()).map((r) => r.name),
+  };
+}
 
 export async function loadBorang8AFile(p: {
   companyId: string;
@@ -90,7 +108,17 @@ export async function loadBorang8AFile(p: {
   // so the same answer can be handed to the writer, to the validation report and to the artefact record;
   // `perkesoLayoutForPeriod` is the one place the 1 Oct 2026 cutover lives.
   const layout = perkesoLayoutForPeriod(periodYear, periodMonth);
-  const rows = form.pages.flatMap((pg) => pg.rows);
+  // r418 (item e74af58c) — the IC field, never the printed passport. See `borang8AFileRows`.
+  const { rows, passportOnly } = borang8AFileRows(form);
+  if (passportOnly.length > 0) {
+    return {
+      ok: false,
+      status: 422,
+      message:
+        `Cannot produce a PERKESO upload file: ${passportOnly.join(', ')} — only a passport number is on file, and ` +
+        "the file's identity field holds an identity card number or a SOCSO foreign worker number.",
+    };
+  }
   try {
     const text = buildPerkesoSocsoFile({
       employer: {
