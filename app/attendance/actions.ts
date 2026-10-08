@@ -23,7 +23,9 @@ export async function checkInAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   const date = dateOf(formData);
   try {
-    await checkIn(s, { employmentId, date, time: String(formData.get('time') || '09:00') });
+    // r423 — a time HR types in has no phone position behind it, so it is never compared with a clocking
+    // location (`manual`): recorded `not_enforced` with no coordinates, whatever the employee's switch says.
+    await checkIn(s, { employmentId, date, time: String(formData.get('time') || '09:00'), manual: true });
   } catch (e) {
     redirect(`${DAILY}?date=${date}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
@@ -52,7 +54,7 @@ export async function checkOutAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   const date = dateOf(formData);
   try {
-    await checkOut(s, { employmentId, date, time: String(formData.get('time') || '18:00') });
+    await checkOut(s, { employmentId, date, time: String(formData.get('time') || '18:00'), manual: true });
   } catch (e) {
     redirect(`${DAILY}?date=${date}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }

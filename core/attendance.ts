@@ -204,35 +204,42 @@ type GeofenceCheck =
  * "you are 850 m from the nearest approved site" is still the most useful thing to tell somebody who has
  * been refused, even though nearness no longer decides anything.
  *
- * EFFECTIVE RADIUS = employment.geofence_radius_m when set (an optional per-EMPLOYEE override that
- * replaces every site's own figure for this person), otherwise the site's own radius_m. A site with
- * NEITHER cannot be matched — it has no allowed distance, so there is no distance it can be inside of, and
- * fail-closed is the only safe reading. Every production site has a radius (the admin form requires one);
- * this only bites a row written before migration 0419, of which there are none.
+ * EFFECTIVE RADIUS = the site's own radius_m, and nothing else (r423: the per-employee override that
+ * used to replace it, employment.geofence_radius_m, is retired — kept in the table, never read). A site
+ * with no radius cannot be matched — there is no distance it can be inside of, and fail-closed is the only
+ * safe reading. Every production site has a radius (the admin form requires one).
+ *
+ * r423 — WHICH SITES COUNT: an assigned site that is ACTIVE and OPEN TO THE EMPLOYMENT'S CURRENT COMPANY
+ * (clocking_location_company). A site assigned before a transfer to a company it is not open to, or one
+ * since deactivated, is not matched — the employee is refused exactly as if it were not assigned, and the
+ * profile shows that row flagged.
+ *
+ * r423 — WHETHER IT IS ENFORCED: employment.geofencing_enabled, and ONLY that. The `required` flag that the
+ * self-service Clock screen used to pass (r378: "clock capture requires an enforced geofence") is gone, so
+ * an employee whose switch is OFF clocks without a site and the position is recorded, not compared. A
+ * caller that must never compare (a time typed in by HR has no phone position) passes `skip: true`.
  *
  * The MATCH is the closest PASSING site, not merely the first one found — with two gates in range the row
  * should record the one the employee actually stood at.
  */
 export async function resolveGeofence(
   tx: Tx,
-  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out'; required?: boolean },
+  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out'; skip?: boolean },
 ): Promise<GeofenceCheck> {
+  if (p.skip) return { enforced: false, lat: null, lng: null };
   const [emp] = await tx
-    .select({ geofencingEnabled: employment.geofencingEnabled, geofenceRadiusM: employment.geofenceRadiusM })
+    .select({ geofencingEnabled: employment.geofencingEnabled, companyId: employment.companyId })
     .from(employment)
     .where(eq(employment.id, p.employmentId))
     .limit(1);
   const enabled = emp?.geofencingEnabled ?? false;
 
-  if (!enabled && !p.required) {
+  if (!enabled) {
     return { enforced: false, lat: p.lat ?? null, lng: p.lng ?? null };
   }
   if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
     throw new GeolocationRequiredError();
   }
-  // The per-employee OVERRIDE. Null is now valid and normal (migration 0419 dropped the CHECK that used to
-  // force a value here) and means "each site uses its own radius".
-  const overrideRadiusM = emp?.geofenceRadiusM ?? null;
 
   const sites = await tx
     .select({
@@ -243,7 +250,14 @@ export async function resolveGeofence(
     })
     .from(employeeClockingLocation)
     .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
-    .where(and(eq(employeeClockingLocation.employmentId, p.employmentId), isNull(clockingLocation.archivedAt)));
+    .where(
+      and(
+        eq(employeeClockingLocation.employmentId, p.employmentId),
+        isNull(clockingLocation.archivedAt),
+        sql`exists (select 1 from clocking_location_company gc
+                    where gc.clocking_location_id = ${clockingLocation.id} and gc.company_id = ${emp!.companyId})`,
+      ),
+    );
 
   /** The nearest site of ALL of them — for the refusal payload only. */
   let nearest: { id: string; distanceM: number; radiusM: number | null } | null = null;
@@ -252,7 +266,7 @@ export async function resolveGeofence(
 
   for (const s of sites) {
     const distanceM = haversineMetres(p.lat, p.lng, s.lat, s.lng);
-    const effectiveRadiusM = overrideRadiusM ?? s.radiusM;
+    const effectiveRadiusM = s.radiusM;
     if (!nearest || distanceM < nearest.distanceM) {
       nearest = { id: s.id, distanceM, radiusM: effectiveRadiusM };
     }
@@ -289,7 +303,7 @@ export async function resolveGeofence(
  *  transaction rolled back (ADR-0070 §3 — the fix for the fatal "event never commits" flaw: an event can
  *  never survive inside a transaction that itself rolls back). subjectEmploymentId is always the
  *  server-resolved employment id, never client input (ADR-0015). */
-async function appendGeofenceBlockedEvent(ctx: SessionContext, err: OutsideGeofenceError): Promise<void> {
+export async function appendGeofenceBlockedEvent(ctx: SessionContext, err: OutsideGeofenceError): Promise<void> {
   await withTenant(ctx, async (tx) => {
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1673,7 +1687,7 @@ async function recomputeDayFromPunches(
 
 export async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
@@ -1717,7 +1731,8 @@ export async function checkInTx(
       lat: p.geo?.lat,
       lng: p.geo?.lng,
       punch: 'in',
-      required: !!p.clockCaptureId,
+      // r423 — a time HR typed in has no phone position behind it: never compared with a location.
+      skip: p.manual,
     });
 
     let attendanceId: string;
@@ -1790,7 +1805,7 @@ export async function checkInTx(
  *  (ADR-0070 §3 — the only way a blocked ATTEMPT can be durably recorded once its write rolled back). */
 export async function checkIn(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; manual?: boolean },
 ) {
   try {
     return await checkInTx(ctx, p);
@@ -1804,7 +1819,7 @@ export async function checkIn(
 
 export async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
@@ -1850,7 +1865,7 @@ export async function checkOutTx(
       lat: p.geo?.lat,
       lng: p.geo?.lng,
       punch: 'out',
-      required: !!p.clockCaptureId,
+      skip: p.manual,
     });
 
     // Legacy backfill: an attendance row created before multi-punch (biometric import, seed) carries a
@@ -1953,7 +1968,7 @@ export async function checkOutTx(
 /** Check out. Same optional-geo / blocked-event contract as checkIn (ADR-0070 §3). */
 export async function checkOut(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; manual?: boolean },
 ) {
   try {
     return await checkOutTx(ctx, p);

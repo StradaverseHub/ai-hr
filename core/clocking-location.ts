@@ -4,7 +4,8 @@
  * pattern for READ — see the ADR for why this is a SEPARATE table/registry from `location`.
  *
  * f9afd1ce (2026-09-11, migration 0459) — a clocking location is a SHARED, TENANT-LEVEL record. It has no
- * owner company: created once, available to every company. Three consequences, each enforced here:
+ * owner company: created once, available to every company [r423: to the companies ticked on it]. Three
+ * consequences, each enforced here:
  *   • WRITE AUTHORITY IS THE GROUP ADMINISTRATOR'S. A shared record may be in use by companies an
  *     administrator does not manage, so every writer below (create, update, archive, restore, delete)
  *     calls `assertGroupAdmin` first. The database says the same thing (RLS: INSERT/UPDATE/DELETE require
@@ -13,9 +14,9 @@
  *   • THE LINK TO `location` IS OPTIONAL and may point at a non-archived location of ANY company. `location`
  *     is company-scoped; a site five companies share cannot honestly be required to belong to one company's
  *     holiday-calendar record.
- *   • ASSIGNMENT IS NOT SCOPED BY COMPANY. An employee of company B may be assigned a site that also serves
- *     company A. RLS on employee_clocking_location (can_admin_employment) is unchanged and is the guard that
- *     matters there: who may edit THIS employment's assignments, not which sites exist.
+ *   • ASSIGNMENT IS NOT SCOPED BY COMPANY. [REVERSED by r423 — see below: a site is now open to named
+ *     companies and only an employee of one of them may be given it.] RLS on employee_clocking_location
+ *     (can_admin_employment) is unchanged: who may edit THIS employment's assignments.
  *
  * f9afd1ce rev 2 (r267, migration 0461) — REPORT LABEL. A site carries an optional short label that the
  * Attendance report's Clocking Location column prints instead of the full name (core/reporting.ts reads
@@ -23,14 +24,30 @@
  * `cleanReportLabel` trims and stores NULL for an empty label, so the report's coalesce is never fooled by
  * a row holding '' (there is deliberately no CHECK — CLAUDE.md §6). Every other reader — the locations
  * list, the employee's profile, the clock-in screen — keeps the name; the list shows the label beside it.
+ *
+ * r423 (83c0d3c8, migration 0517) — A SHARED LOCATION IS OPENED TO NAMED COMPANIES, AND ONE SWITCH DECIDES.
+ *   • Still ONE record per physical place, still written by a group administrator only. What is new is the
+ *     list of companies allowed to use it (clocking_location_company): at least one, enforced here. A company
+ *     cannot be unticked while employees of that company are assigned to the location
+ *     (ClockingLocationCompanyInUseError carries how many). This REVERSES f9afd1ce's "assignment is not
+ *     scoped by company": an employee may be given only an ACTIVE location open to THEIR company.
+ *   • A location carries an optional STATE (display and filtering only — it never drives holidays),
+ *     validated against the selected companies' countries.
+ *   • The employee's Attendance tab has ONE switch, "Use Geofencing for Clocking" (employment.
+ *     geofencing_enabled), written together with the assignments by `setClockingControl`, which replaced
+ *     the two independent writers (the site list and the toggle + radius override). OFF clears the
+ *     assignments; ON requires at least one usable location. The per-employee radius override is retired:
+ *     each location's own radius is the only radius.
  */
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { isGroupAdmin, withEffectiveGrants } from '../lib/authz';
+import { validateStateFor } from './state-vocabulary';
 import {
   attendance,
   clockingLocation,
+  clockingLocationCompany,
   company,
   employeeClockingLocation,
   employment,
@@ -68,6 +85,33 @@ export class ClockingLocationAuthorityError extends Error {
       'Only a group administrator can create, edit, archive or delete a shared clocking location — it may be in use by companies you do not manage. Assigning an existing location to an employee is still done on the employee’s profile.',
     );
     this.name = 'ClockingLocationAuthorityError';
+  }
+}
+
+/**
+ * r423 — a clocking location must be open to at least one company. A location no company may use cannot be
+ * given to anybody, so it is refused rather than saved as a dead record.
+ */
+export class ClockingLocationCompanyRequiredError extends Error {
+  constructor() {
+    super('Tick at least one company allowed to use this clocking location.');
+    this.name = 'ClockingLocationCompanyRequiredError';
+  }
+}
+
+/**
+ * r423 — a company cannot be unticked while employees of that company are assigned to the location. The
+ * count (and the companies' names) travel with the error so the screen can say how many to move first.
+ */
+export class ClockingLocationCompanyInUseError extends Error {
+  constructor(
+    public readonly count: number,
+    public readonly companyNames: string[],
+  ) {
+    super(
+      `${companyNames.join(', ')} cannot be unticked: ${count} employee(s) of that company are assigned to this location. Move them to another location first.`,
+    );
+    this.name = 'ClockingLocationCompanyInUseError';
   }
 }
 
@@ -220,6 +264,35 @@ function cleanReportLabel(v: string | null | undefined): string | null {
   return s;
 }
 
+/**
+ * r423 — the companies a location is opened to. Deduplicated; at least one; every id must be a company of
+ * this tenant the caller can see (a group administrator sees every company). Returns the ids and their
+ * countries, which the state is validated against. Runs inside the caller's tx so it shares RLS.
+ */
+async function resolveCompanies(tx: Tx, ids: readonly string[] | undefined): Promise<{ ids: string[]; countries: string[] }> {
+  const wanted = [...new Set((ids ?? []).map((v) => String(v).trim()).filter(Boolean))];
+  if (wanted.length === 0) throw new ClockingLocationCompanyRequiredError();
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (wanted.some((v) => !UUID.test(v))) throw new Error('One of the selected companies does not exist.');
+  const rows = await tx.select({ id: company.id, country: company.country }).from(company).where(inArray(company.id, wanted));
+  if (rows.length !== wanted.length) throw new Error('One of the selected companies does not exist, or is not visible to you.');
+  return { ids: [...wanted].sort(), countries: [...new Set(rows.map((r) => r.country))] };
+}
+
+/** r423 — the optional state: blank → NULL; otherwise one of the selected companies' countries' states. */
+function cleanState(v: string | null | undefined, countries: readonly string[]): string | null {
+  return validateStateFor(v, countries, 'state');
+}
+
+/** r423 — the company ids a location is currently opened to, sorted (the event's before/after shape). */
+async function companyIdsOf(tx: Tx, clockingLocationId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ companyId: clockingLocationCompany.companyId })
+    .from(clockingLocationCompany)
+    .where(eq(clockingLocationCompany.clockingLocationId, clockingLocationId));
+  return rows.map((r) => r.companyId).sort();
+}
+
 export type CreateClockingLocationInput = {
   name: string;
   lat: number;
@@ -232,6 +305,12 @@ export type CreateClockingLocationInput = {
   remarks?: string | null;
   /** f9afd1ce rev 2 — OPTIONAL. The short name the Attendance report prints; blank = the name is printed. */
   reportLabel?: string | null;
+  /** r423 — REQUIRED, at least one. The companies whose employees may be given this location. */
+  companyIds: string[];
+  /** r423 — OPTIONAL. A state of one of the selected companies' countries; display and filtering only. */
+  state?: string | null;
+  /** r423 — the Status radio. Omitted = Active. Inactive is the existing archive stamp. */
+  active?: boolean;
 };
 
 /** Every write returns the site id plus an optional SOFT advisory about the radius (never a refusal). */
@@ -251,23 +330,32 @@ export async function createClockingLocation(
   const reportLabel = cleanReportLabel(p.reportLabel);
   return withTenant(ctx, async (tx) => {
     const locationId = await resolveLocationLink(tx, p.locationId);
+    const companies = await resolveCompanies(tx, p.companyIds);
+    const state = cleanState(p.state, companies.countries);
+    const archivedAt = p.active === false ? new Date() : null;
     let row: { id: string };
     try {
       [row] = await tx
         .insert(clockingLocation)
-        .values({ tenantId: ctx.tenantId, name, lat, lng, radiusM, locationId, address, remarks, reportLabel })
+        .values({ tenantId: ctx.tenantId, name, lat, lng, radiusM, locationId, address, remarks, reportLabel, state, archivedAt })
         .returning({ id: clockingLocation.id });
     } catch (e) {
       // A name already used anywhere in the tenant leaves as a typed error, never as raw SQL + params.
       throw clockingUniqueError(e, name);
     }
+    await tx
+      .insert(clockingLocationCompany)
+      .values(companies.ids.map((companyId) => ({ tenantId: ctx.tenantId, clockingLocationId: row.id, companyId })));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
       aggregateId: row.id,
       eventType: 'clocking-location.created',
       actor: actorOf(ctx),
-      payload: { name, lat, lng, radiusM, locationId, address, remarks, reportLabel },
+      payload: {
+        name, lat, lng, radiusM, locationId, address, remarks, reportLabel,
+        companyIds: companies.ids, state, active: archivedAt == null,
+      },
     });
     return { id: row.id, warning: radiusWarning(radiusM) };
   });
@@ -284,6 +372,12 @@ export type UpdateClockingLocationInput = {
   remarks?: string | null;
   /** f9afd1ce rev 2 — OPTIONAL. Blank clears the label, and the report goes back to printing the name. */
   reportLabel?: string | null;
+  /** r423 — REQUIRED, at least one. Unticking a company with assigned employees is refused with a count. */
+  companyIds: string[];
+  /** r423 — OPTIONAL. Blank clears it. */
+  state?: string | null;
+  /** r423 — the Status radio. Omitted = leave the status as it is. */
+  active?: boolean;
 };
 
 export async function updateClockingLocation(
@@ -309,30 +403,71 @@ export async function updateClockingLocation(
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
         reportLabel: clockingLocation.reportLabel,
+        state: clockingLocation.state,
+        archivedAt: clockingLocation.archivedAt,
       })
       .from(clockingLocation)
       .where(eq(clockingLocation.id, p.clockingLocationId))
       .limit(1);
     if (!before) throw new Error('Clocking location not found');
     const locationId = await resolveLocationLink(tx, p.locationId);
+    const companies = await resolveCompanies(tx, p.companyIds);
+    const state = cleanState(p.state, companies.countries);
+    const beforeCompanyIds = await companyIdsOf(tx, p.clockingLocationId);
+    const removed = beforeCompanyIds.filter((id) => !companies.ids.includes(id));
+    const added = companies.ids.filter((id) => !beforeCompanyIds.includes(id));
+
+    // r423 — a company cannot be unticked while its employees are assigned here: their only usable site
+    // would vanish under them with no message. Counted as the caller (a group administrator sees every
+    // employment), so the number is the whole number, not the part one company admin could see.
+    if (removed.length) {
+      const inUse = await tx
+        .select({
+          n: sql<number>`count(distinct ${employeeClockingLocation.employmentId})::int`,
+          names: sql<string[]>`coalesce(array_agg(distinct coalesce(${company.companyLabel}, ${company.legalName})), '{}'::text[])`,
+        })
+        .from(employeeClockingLocation)
+        .innerJoin(employment, eq(employment.id, employeeClockingLocation.employmentId))
+        .innerJoin(company, eq(company.id, employment.companyId))
+        .where(and(eq(employeeClockingLocation.clockingLocationId, p.clockingLocationId), inArray(employment.companyId, removed)));
+      const n = inUse[0]?.n ?? 0;
+      if (n > 0) throw new ClockingLocationCompanyInUseError(n, [...(inUse[0]?.names ?? [])].sort());
+    }
+
+    const archivedAt =
+      p.active === undefined ? before.archivedAt : p.active ? null : (before.archivedAt ?? new Date());
     let updated: { id: string }[];
     try {
       updated = await tx
         .update(clockingLocation)
-        .set({ name, lat, lng, radiusM, locationId, address, remarks, reportLabel })
+        .set({ name, lat, lng, radiusM, locationId, address, remarks, reportLabel, state, archivedAt })
         .where(eq(clockingLocation.id, p.clockingLocationId))
         .returning({ id: clockingLocation.id });
     } catch (e) {
       throw clockingUniqueError(e, name);
     }
     touched(updated);
+    if (removed.length) {
+      await tx
+        .delete(clockingLocationCompany)
+        .where(and(eq(clockingLocationCompany.clockingLocationId, p.clockingLocationId), inArray(clockingLocationCompany.companyId, removed)));
+    }
+    if (added.length) {
+      await tx
+        .insert(clockingLocationCompany)
+        .values(added.map((companyId) => ({ tenantId: ctx.tenantId, clockingLocationId: p.clockingLocationId, companyId })));
+    }
+    const { archivedAt: beforeArchivedAt, ...beforeFields } = before;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
       aggregateId: p.clockingLocationId,
       eventType: 'clocking-location.updated',
       actor: actorOf(ctx),
-      payload: { before, after: { name, lat, lng, radiusM, locationId, address, remarks, reportLabel } },
+      payload: {
+        before: { ...beforeFields, companyIds: beforeCompanyIds, active: beforeArchivedAt == null },
+        after: { name, lat, lng, radiusM, locationId, address, remarks, reportLabel, state, companyIds: companies.ids, active: archivedAt == null },
+      },
     });
     return { id: p.clockingLocationId, warning: radiusWarning(radiusM) };
   });
@@ -429,6 +564,8 @@ export async function deleteClockingLocation(ctx: SessionContext, p: { clockingL
   });
 }
 
+export type ClockingLocationCompanyRef = { id: string; name: string };
+
 export type ClockingLocationRow = {
   id: string;
   name: string;
@@ -440,53 +577,81 @@ export type ClockingLocationRow = {
   /** Null when unlinked — OR when the linked location is one this caller's RLS does not let them see. */
   locationCode: string | null;
   locationName: string | null;
-  /** The linked location's company (a `location` belongs to one company; a clocking site does not). */
+  /** The linked location's company (a `location` belongs to one company). */
   locationCompanyName: string | null;
-  /** The linked location's own archive stamp, so the group heading's pill never depends on a second list. */
+  /** The linked location's own archive stamp. */
   locationArchivedAt: Date | null;
   address: string | null;
   remarks: string | null;
   /** f9afd1ce rev 2 — the Attendance report's short name for the site; null = the report prints the name. */
   reportLabel: string | null;
+  /** r423 — the state the site is in (display and filtering only). */
+  state: string | null;
   archivedAt: Date | null;
+  /** Assigned employments the caller can see (a company admin's count covers only their companies). */
   assignedCount: number;
   /**
-   * f9afd1ce "Used by" — the distinct companies whose employees are assigned to this site, by display
-   * label (company_label, else legal_name), sorted. Empty when nobody is assigned. Derived from the
-   * assignments, never stored: a shared site has no owner company, so this is the only honest answer to
-   * "who uses it".
+   * r423 — the companies this location is open to, by display label, sorted, FILTERED TO THE COMPANIES THE
+   * CALLER ADMINISTERS (every company for a group administrator). A company administrator is never shown
+   * another company's name: the filter is in the query (app.is_admin_for), not in the screen.
    */
-  usedByCompanies: string[];
+  companies: ClockingLocationCompanyRef[];
+};
+
+export type ListClockingLocationsOptions = {
+  /** Kept for the callers that only want live sites (the default) or every site. `status` wins when set. */
+  includeArchived?: boolean;
+  /** r423 — the list's Status filter. */
+  status?: 'all' | 'active' | 'inactive';
+  /** r423 — name or address contains this text (case-insensitive). */
+  q?: string;
+  /** r423 — only locations open to this company. */
+  companyId?: string;
 };
 
 /**
- * Every clocking site in the tenant, joined with the LOCATION the point sits under (code, name and that
- * location's company — these drive the grouped admin render and the personnel pre-tick), the assigned-
- * employee headcount, and the "Used by" company list. Tenant-catalog read (RLS lets every tenant member
- * through). f9afd1ce: NO company parameter — a shared master has no company to filter by, and the
- * personnel screen offers every site to every employee.
+ * r423 — the clocking locations, as the Attendance › Locations list shows them: each with the companies it
+ * is open to, its state, status and assigned headcount, filtered by search / company / status.
  *
- * Ordered by linked location code, then location name, then site name; Postgres puts NULLs last on ASC,
- * so unlinked sites follow the linked ones — the order the admin screen groups them in.
+ * WHO SEES WHAT. A group administrator sees every location and every company on it. Anyone else sees only
+ * the locations open to at least one company they ADMINISTER, and on each only those companies' names —
+ * both decided in SQL by app.is_admin_for, and clocking_location_company's own RLS says the same thing
+ * underneath. (A plain employee therefore gets an empty list here; their own Clock screen reads through
+ * listEmployeeClockingLocations and core/attendance.ts, never through this.)
  *
- * LEFT joins on `location` (and its company), for two reasons, the second of which is not optional:
- *   1. location_id is nullable and now OPTIONAL; an inner join would make an unlinked row vanish from the
- *      admin screen entirely — the one screen on which such a point must stay visible.
- *   2. RLS. `clocking_location` is a TENANT-CATALOG read (every tenant member, ADR-0070 §1) but `location`
- *      is admin-only-read (migration 0111, is_admin_for(company_id)). An INNER join would return ZERO rows
- *      for a plain employee — silently emptying the clock-in screen's site list — and would hide from a
- *      COMPANY admin every shared site linked to another company's location. With a LEFT join every
- *      caller sees every site; only the location's code/name come back null, which the admin screen
- *      renders as its own group ("linked to a location outside your scope") rather than as unlinked.
+ * LEFT joins on `location` (and its company): location_id is optional, and `location` is admin-read under
+ * RLS, so an inner join would hide rows linked to a location this caller cannot see.
+ *
+ * Ordered by name: the list is a register of places, not a grouping by work location any more.
  */
 export function listClockingLocations(
   ctx: SessionContext,
-  opts: { includeArchived?: boolean } = {},
+  opts: ListClockingLocationsOptions = {},
 ): Promise<ClockingLocationRow[]> {
-  return withTenant(ctx, (tx) => {
+  const groupAdmin = isGroupAdmin(withEffectiveGrants(ctx));
+  return withTenant(ctx, async (tx) => {
     const conds = [];
-    if (!opts.includeArchived) conds.push(isNull(clockingLocation.archivedAt));
-    return tx
+    const status = opts.status ?? (opts.includeArchived ? 'all' : 'active');
+    if (status === 'active') conds.push(isNull(clockingLocation.archivedAt));
+    if (status === 'inactive') conds.push(isNotNull(clockingLocation.archivedAt));
+    const q = (opts.q ?? '').trim();
+    if (q) {
+      const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      conds.push(sql`(${clockingLocation.name} ilike ${like} or coalesce(${clockingLocation.address}, '') ilike ${like})`);
+    }
+    if (!groupAdmin) {
+      conds.push(sql`exists (
+        select 1 from clocking_location_company vc
+        where vc.clocking_location_id = ${clockingLocation.id} and app.is_admin_for(vc.company_id)
+      )`);
+    }
+    if (opts.companyId) {
+      conds.push(sql`exists (
+        select 1 from clocking_location_company fc
+        where fc.clocking_location_id = ${clockingLocation.id} and fc.company_id = ${opts.companyId}::uuid
+      )`);
+    }
+    const rows = await tx
       .select({
         id: clockingLocation.id,
         name: clockingLocation.name,
@@ -501,24 +666,27 @@ export function listClockingLocations(
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
         reportLabel: clockingLocation.reportLabel,
+        state: clockingLocation.state,
         archivedAt: clockingLocation.archivedAt,
         assignedCount: sql<number>`(
           select count(*)::int from employee_clocking_location ecl
           where ecl.clocking_location_id = ${clockingLocation.id}
         )`,
-        usedByCompanies: sql<string[]>`coalesce((
-          select array_agg(distinct coalesce(uc.company_label, uc.legal_name) order by coalesce(uc.company_label, uc.legal_name))
-          from employee_clocking_location ecl
-          join employment ue on ue.id = ecl.employment_id
-          join company uc on uc.id = ue.company_id
-          where ecl.clocking_location_id = ${clockingLocation.id}
-        ), '{}'::text[])`,
+        companies: sql<ClockingLocationCompanyRef[]>`coalesce((
+          select json_agg(json_build_object('id', cc.id, 'name', coalesce(cc.company_label, cc.legal_name))
+                          order by coalesce(cc.company_label, cc.legal_name), cc.id)
+          from clocking_location_company clc
+          join company cc on cc.id = clc.company_id
+          where clc.clocking_location_id = ${clockingLocation.id}
+            and (app.is_group_admin() or app.is_admin_for(clc.company_id))
+        ), '[]'::json)`,
       })
       .from(clockingLocation)
       .leftJoin(location, eq(location.id, clockingLocation.locationId))
       .leftJoin(company, eq(company.id, location.companyId))
       .where(conds.length ? and(...conds) : undefined)
-      .orderBy(asc(location.code), asc(location.name), asc(clockingLocation.name));
+      .orderBy(asc(clockingLocation.name), asc(clockingLocation.id));
+    return rows;
   });
 }
 
@@ -530,11 +698,19 @@ export type AssignedClockingLocation = {
   /** 1fff489c — the site's own radius, so the clock-in screen can say "within 150 m" per site. */
   radiusM: number | null;
   locationId: string | null;
+  address: string | null;
+  archivedAt: Date | null;
+  /**
+   * r423 — whether this assignment can be clocked at: the location is ACTIVE and open to the employment's
+   * CURRENT company. An assignment that is not (deactivated, or the employee transferred to a company the
+   * site is not open to) stays on file and is shown flagged; it does not count towards the one required
+   * location and core/attendance.ts never matches it.
+   */
+  usable: boolean;
 };
 
 /** The clocking sites currently assigned to one employment. Deliberately does NOT join `location`: this is
- *  read by the EMPLOYEE's own clock-in screen, and `location` is admin-only under RLS (see
- *  listClockingLocations above for what an inner join to it costs). */
+ *  read under the EMPLOYEE's own session too, and `location` is admin-only under RLS. */
 export function listEmployeeClockingLocations(
   ctx: SessionContext,
   employmentId: string,
@@ -548,32 +724,63 @@ export function listEmployeeClockingLocations(
         lng: clockingLocation.lng,
         radiusM: clockingLocation.radiusM,
         locationId: clockingLocation.locationId,
+        address: clockingLocation.address,
+        archivedAt: clockingLocation.archivedAt,
+        usable: sql<boolean>`(${clockingLocation.archivedAt} is null and exists (
+          select 1 from clocking_location_company uc
+          join employment ue on ue.company_id = uc.company_id
+          where uc.clocking_location_id = ${clockingLocation.id} and ue.id = ${employeeClockingLocation.employmentId}
+        ))`,
       })
       .from(employeeClockingLocation)
       .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
       .where(eq(employeeClockingLocation.employmentId, employmentId))
-      .orderBy(asc(clockingLocation.name)),
+      .orderBy(asc(clockingLocation.name), asc(clockingLocation.id)),
   );
 }
 
 /**
- * Set-based replace of an employment's assigned clocking sites (delete-then-insert inside one
- * transaction — a simple "currently assigned" list, no effective-dating, per the request).
- *
- * f9afd1ce REMOVED the cross-company guard that lived here. Sites are shared: an employee of company B
- * may be assigned a gate that also serves company A, and that is the point. Who may edit THIS employment's
- * assignments is still decided by RLS on employee_clocking_location (can_admin_employment); which sites
- * exist is decided by the tenant-wide catalog read. The FK to clocking_location refuses an id that is not
- * a site at all.
+ * r423 — refused when the switch is ON and no usable location is chosen. The words are the plan's.
  */
-export function setEmployeeClockingLocations(
+export class ClockingLocationRequiredError extends Error {
+  constructor() {
+    super('Choose at least one clocking location, or turn geofencing off.');
+    this.name = 'ClockingLocationRequiredError';
+  }
+}
+
+/** r423 — refused when a NEWLY chosen location is inactive or not open to the employee's company. */
+export class ClockingLocationNotAvailableError extends Error {
+  constructor() {
+    super('That clocking location is inactive or not open to this employee’s company — choose one from the list.');
+    this.name = 'ClockingLocationNotAvailableError';
+  }
+}
+
+/**
+ * r423 — THE ONE WRITER of an employee's clocking control: the "Use Geofencing for Clocking" switch and the
+ * clocking locations it needs, in ONE transaction and ONE event. It replaced two independent writers (the
+ * set-based site list and the toggle + radius override), which could be saved apart and leave the switch on
+ * with nothing assigned.
+ *
+ *   OFF → the assignments are cleared (the event keeps the old list) and the switch is stored off.
+ *   ON  → at least one chosen location must be USABLE: active AND open to the employment's company. A
+ *         location newly added must itself be usable (the picker offers only those; a crafted post is
+ *         refused). One already assigned that has become unusable may stay — it is shown flagged, counts for
+ *         nothing and never matches at clock-in — so a save never silently drops history the admin can see.
+ *
+ * employment.geofence_radius_m is not written: the override is retired (0517).
+ * Who may write THIS employment is RLS on employee_clocking_location (can_admin_employment) and on
+ * employment, unchanged.
+ */
+export function setClockingControl(
   ctx: SessionContext,
-  p: { employmentId: string; clockingLocationIds: string[] },
+  p: { employmentId: string; enabled: boolean; clockingLocationIds: string[] },
 ) {
-  const ids = [...new Set(p.clockingLocationIds)];
+  const ids = [...new Set(p.clockingLocationIds.map((v) => String(v).trim()).filter(Boolean))];
   return withTenant(ctx, async (tx) => {
     const [emp] = await tx
-      .select({ id: employment.id })
+      .select({ id: employment.id, companyId: employment.companyId, geofencingEnabled: employment.geofencingEnabled })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
@@ -583,73 +790,56 @@ export function setEmployeeClockingLocations(
       .select({ id: employeeClockingLocation.clockingLocationId })
       .from(employeeClockingLocation)
       .where(eq(employeeClockingLocation.employmentId, p.employmentId));
-    const beforeIds = before.map((b) => b.id);
+    const beforeIds = before.map((b) => b.id).sort();
+
+    let afterIds: string[] = [];
+    if (p.enabled) {
+      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (ids.some((v) => !UUID.test(v))) throw new ClockingLocationNotAvailableError();
+      const usableRows = ids.length
+        ? await tx
+            .select({ id: clockingLocation.id })
+            .from(clockingLocation)
+            .where(
+              and(
+                inArray(clockingLocation.id, ids),
+                isNull(clockingLocation.archivedAt),
+                sql`exists (select 1 from clocking_location_company uc
+                            where uc.clocking_location_id = ${clockingLocation.id} and uc.company_id = ${emp.companyId})`,
+              ),
+            )
+        : [];
+      const usable = new Set(usableRows.map((r) => r.id));
+      const kept = new Set(beforeIds);
+      if (ids.some((id) => !usable.has(id) && !kept.has(id))) throw new ClockingLocationNotAvailableError();
+      if (usable.size === 0) throw new ClockingLocationRequiredError();
+      afterIds = [...ids].sort();
+    }
 
     await tx.delete(employeeClockingLocation).where(eq(employeeClockingLocation.employmentId, p.employmentId));
-    if (ids.length) {
+    if (afterIds.length) {
       await tx
         .insert(employeeClockingLocation)
-        .values(ids.map((clockingLocationId) => ({ tenantId: ctx.tenantId, employmentId: p.employmentId, clockingLocationId })));
+        .values(afterIds.map((clockingLocationId) => ({ tenantId: ctx.tenantId, employmentId: p.employmentId, clockingLocationId })));
     }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employment',
-      aggregateId: p.employmentId,
-      eventType: 'employee.clocking-locations.assigned',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: { before: beforeIds, after: ids },
-    });
-    return { employmentId: p.employmentId, clockingLocationIds: ids };
-  });
-}
-
-/**
- * Enable/disable geofencing for one employment + set its OPTIONAL radius override (metres).
- *
- * 1fff489c CHANGED THE MEANING OF THE RADIUS HERE. It used to be the ONLY radius, and was therefore
- * REQUIRED while enabling (backed by the employment_geofence_radius_required CHECK). The authoritative
- * distance now lives on each clocking site (clocking_location.radius_m), and this column is an OVERRIDE
- * that, when set, replaces every site's radius FOR THIS EMPLOYEE — the escape hatch for a field engineer
- * who legitimately needs a wider circle than the sites themselves define.
- *
- * So: blank while enabled is now VALID and means "each site uses its own radius" (the recommended
- * setting, and what the admin screen says). A supplied value is still validated — positive, ≤ MAX_RADIUS_M
- * — because a zero override would silently make every site unreachable. Disabling still clears it.
- */
-export function setGeofencing(
-  ctx: SessionContext,
-  p: { employmentId: string; enabled: boolean; radiusM?: number | string | null },
-) {
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select({ geofencingEnabled: employment.geofencingEnabled, geofenceRadiusM: employment.geofenceRadiusM })
-      .from(employment)
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    if (!before) throw new Error('Employment not found');
-
-    let radiusM: number | null = null;
-    if (p.enabled && p.radiusM != null && String(p.radiusM).trim() !== '') {
-      const n = Math.trunc(Number(p.radiusM));
-      if (!Number.isFinite(n) || n <= 0) throw new Error('Geofencing radius must be a positive number of metres.');
-      if (n > MAX_RADIUS_M) throw new Error(`Geofencing radius cannot exceed ${MAX_RADIUS_M} metres.`);
-      radiusM = n;
-    }
-
-    await tx
+    const updated = await tx
       .update(employment)
-      .set({ geofencingEnabled: p.enabled, geofenceRadiusM: radiusM })
-      .where(eq(employment.id, p.employmentId));
+      .set({ geofencingEnabled: p.enabled })
+      .where(eq(employment.id, p.employmentId))
+      .returning({ id: employment.id });
+    if (!updated.length) throw new Error('Employment not found, or you may not change it.');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
       aggregateId: p.employmentId,
-      eventType: 'employee.geofencing.updated',
+      eventType: 'employee.clocking-control.updated',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { enabled: p.enabled, radiusM, before },
+      payload: {
+        before: { enabled: emp.geofencingEnabled, clockingLocationIds: beforeIds },
+        after: { enabled: p.enabled, clockingLocationIds: afterIds },
+      },
     });
-    return { employmentId: p.employmentId, enabled: p.enabled, radiusM };
+    return { employmentId: p.employmentId, enabled: p.enabled, clockingLocationIds: afterIds };
   });
 }

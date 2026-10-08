@@ -6,7 +6,7 @@ import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrecti
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment } from './read';
-import { checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx } from './attendance';
+import { appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
@@ -18,7 +18,28 @@ export class ClockLocationError extends Error {}
 export type ClockIntent = { action: 'in' | 'out'; requestId: string; deviceToken: string; lat: number; lng: number; accuracy: number; photo: Buffer; mime: string };
 const publicReceipt = (row: typeof attendanceClockCapture.$inferSelect) => ({ id: row.id, direction: row.direction, recordedAt: row.serverRecordedAt.toISOString(), date: row.attendanceDate, photoAvailable: row.photoPurgedAt == null });
 
+/**
+ * r423 — the employee's "Use Geofencing for Clocking" switch decides the geofence here, as it does for every
+ * other punch (core/attendance.ts resolveGeofence). ON: the position must fall inside an active assigned
+ * location open to the employee's company, and the capture stores that site, the distance and the radius.
+ * OFF: no site is needed; the capture stores the position (lat / lng / accuracy) with NO site, distance or
+ * radius, and the punch is `not_enforced`. The photo and the registered phone are required either way.
+ * This narrows r378's "a clock capture requires an enforced geofence" to employees whose switch is ON.
+ *
+ * A refused attempt (outside every site, or no usable site) is written to the audit trail as
+ * attendance.geofence.blocked in its OWN transaction after the capture transaction rolls back — the same
+ * mechanism checkIn/checkOut use (ADR-0070 §3); an event inside a transaction that rolls back never lands.
+ */
 export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) {
+  try {
+    return await captureEmployeeClockTx(ctx, p);
+  } catch (e) {
+    if (e instanceof OutsideGeofenceError) await appendGeofenceBlockedEvent(ctx, e);
+    throw e;
+  }
+}
+
+async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
   const me = await myEmployment(ctx);
   if (!me) throw new Error('No active employee profile');
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId) || !UUID.test(p.deviceToken)) throw new Error('Invalid clock request');
@@ -68,13 +89,16 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
     const sameMinute = priorPunches.filter(punch=>minute(punch.time)===minute(time));
     const legacyAggregateAnchor = p.action==='out' && !priorPunches.length && day?.checkIn && minute(day.checkIn)===minute(time);
     const preciseOrder = !legacyAggregateAnchor && sameMinute.every(punch=>punch.captureId!=null);
-    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: p.lat, lng: p.lng, punch: p.action, required: true });
-    if (!geo.enforced || !geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null) throw new Error('An assigned clocking location is required');
+    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: p.lat, lng: p.lng, punch: p.action });
+    // Geofenced → a matched site with its distance and radius, or resolveGeofence has already thrown. Not
+    // geofenced → the three are stored NULL together (0517) and the position alone is the record.
+    if (geo.enforced && (!geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null)) throw new Error('An assigned clocking location is required');
+    const site = geo.enforced ? { clockingLocationId: geo.clockingLocationId, distanceM: geo.distanceM, radiusM: geo.radiusM } : { clockingLocationId: null, distanceM: null, radiusM: null };
     const captureId = randomUUID();
-    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo, deviceId: device.id, lat: p.lat, lng: p.lng, accuracyM: p.accuracy, clockingLocationId: geo.clockingLocationId, distanceM: geo.distanceM, radiusM: geo.radiusM, commandDigest }).returning();
+    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo, deviceId: device.id, lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
     await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceToken: p.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
     await tx.update(employeeDevice).set({ lastUsedAt: now }).where(eq(employeeDevice.id, device.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { captureId, direction: p.action, serverRecordedAt: now.toISOString(), deviceId: device.id, clockingLocationId: geo.clockingLocationId } });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { captureId, direction: p.action, serverRecordedAt: now.toISOString(), deviceId: device.id, clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
   });
 }

@@ -1,6 +1,6 @@
 /** Own live clock read model. This never writes or derives payable payroll figures. */
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
-import { attendance, attendancePunch, attendanceClockCapture, employeeDevice, clockingLocation } from '../db/schema';
+import { attendance, attendancePunch, attendanceClockCapture, employeeDevice, clockingLocation, employment } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment } from './read';
@@ -40,10 +40,15 @@ export async function ownClockToday(ctx: SessionContext, deviceToken?: string, g
     if (anchor != null) workedMs += Math.max(0,now.getTime()-anchor);
     const captures = await tx.select({ id: attendanceClockCapture.id, direction: attendanceClockCapture.direction, requestId: attendanceClockCapture.requestId, recordedAt: attendanceClockCapture.serverRecordedAt, purgedAt: attendanceClockCapture.photoPurgedAt, locationName: clockingLocation.name }).from(attendanceClockCapture).leftJoin(clockingLocation,eq(clockingLocation.id,attendanceClockCapture.clockingLocationId)).where(and(eq(attendanceClockCapture.employmentId,me.employmentId),eq(attendanceClockCapture.attendanceDate,date))).orderBy(asc(attendanceClockCapture.serverRecordedAt),asc(attendanceClockCapture.id));
     const [device] = deviceToken && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceToken) ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
+    // r423 — the switch decides. ON: valid only inside an active assigned location open to the employee's
+    // company. OFF: a valid position fix is all that is needed (it is recorded, not compared), and
+    // `geofencingRequired: false` lets the screen say "Location recorded — geofencing not required".
+    const [control] = await tx.select({ enabled: employment.geofencingEnabled }).from(employment).where(eq(employment.id, me.employmentId)).limit(1);
+    const geofencingRequired = control?.enabled ?? false;
     let locationValid = false;
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
-      try { const result = await resolveGeofence(tx,{employmentId:me.employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,punch:anchor==null?'in':'out',required:true}); locationValid = result.enforced && !!result.clockingLocationId; } catch { /* explanatory prerequisite; command rechecks */ }
+      try { const result = await resolveGeofence(tx,{employmentId:me.employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
-    return { serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),deviceValid:!!device,locationValid,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null,purgedAt:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
+    return { serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),deviceValid:!!device,locationValid,geofencingRequired,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null,purgedAt:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
   });
 }
