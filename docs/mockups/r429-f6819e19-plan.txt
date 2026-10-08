@@ -1,0 +1,112 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+WHAT YOU ASKED FOR
+
+A simpler Shift page about how a shift works (name, label, start, end, full day hours, cross midnight, half day, breaks), with Working Days and the General section moved to the Schedule Group. Breaks shown straight away as rows with the duration worked out, flexible minutes, one way to set each break, and proper checks.
+
+THE SITUATION TODAY
+
+1. Working days already live on the Schedule Group too. When a shift's Schedule Group sets a working week, that week is the one used and the Mon–Sun row on the Shift page is greyed out. When the group sets none (the Standard group is left without one on purpose), the shift's own row is still the one used. When we last checked, 2 of 8 shifts worked this way.
+
+2. The General section holds: the Schedule Group the shift belongs to (which also decides its lateness, early-out and overtime rules), normal-hours rounding, three boxes saved for reference that nothing uses (Day type, Full-day leave, Full-day overtime), the overtime time windows, and the shift premium.
+
+3. Breaks: rows appear only after Add Break, otherwise there is one "Break (min)" box. There are two ways to make a break flexible: a whole-shift switch with its own minutes, and a per-row Fixed tick (the reverse of Flexible) with its own minutes. A row with its end before its start, or half filled in, is silently left out on save. Overlapping or duplicate breaks are not checked.
+
+4. Something to know: the boxes called "Shift Start Time" and "Shift Time Out" are not the shift's hours (those are "Time in" and "Time out"). They are the earliest clock-in and latest clock-out, and nothing checks clockings against them yet.
+
+WHAT WE'LL CHANGE
+
+The Shift page, in three sections
+
+1. Shift Information: Shift Name, Shift Label (the short code, e.g. AM01), colour, description, category. Below, for reading only: the shift's Schedule Group and its working days, with a link to change them there.
+
+2. Working Time: Shift type, Start Time, End Time, Cross Midnight (shown automatically when the end is at or before the start), Full Day Working Hours (worked out, can be changed) with normal-hours rounding beside it, 1st Half End and 2nd Half Start, the daily cut-off, and the clock-in window renamed "Earliest clock-in" and "Latest clock-out", marked for reference.
+
+3. Breaks: an always-visible table of Break, Start, End, Duration (worked out), Flexible, Paid and Delete. A new shift opens with a blank Break 1 row (a blank row saves nothing). + Add Break adds a row.
+
+4. Ticking Flexible opens a minutes box, filled in with the break's length, which you can lower; those minutes come off every worked day, whenever the break is taken. Not ticked, the break counts as today: only the minutes the clocking covers between its start and end.
+
+5. The overtime time windows and shift premium move to a closed panel at the bottom, "Overtime and pay for this shift". They stay with the shift: each shift has its own values and payroll reads them, so moving them to a Schedule Group would change pay.
+
+6. Gone: the Mon–Sun row, the General heading, the Schedule Group dropdown (changed only on the Schedule Group page under Shifts allowed, which already does this), the whole-shift flexible switch, the Fixed tick and the three reference-only boxes.
+
+Checks on the breaks (said on the row, Save refused until fixed, and checked again when saved)
+
+7. Start must be before End, unless the shift crosses midnight; a night shift's break may now run past midnight, for example 23:45 to 00:15.
+
+8. A break cannot be zero minutes long, cannot overlap another break (two identical breaks count as overlapping), and must fall inside the shift. A half-filled row is reported, not dropped. A flexible break needs its minutes, from 1 up to its length.
+
+The Schedule Group page
+
+9. Working Days (Mon–Sun) moves up to sit straight after General.
+
+10. It lists every shift in the group with the working days it really uses today: the group's week, or the shift's own saved week where the group sets none.
+
+11. While you edit the week, it shows which shifts' days would change (e.g. "Saturday Off → Half") and warns that overtime changes from the day you save. Nothing changes until Save.
+
+Elsewhere
+
+12. The Shift list shows each shift's Schedule Group and the working days actually in force.
+
+13. When a shift with no working days is chosen as someone's fixed shift, the refusal says to put it in a Schedule Group that has a working week.
+
+WHAT HAPPENS TO WHAT IS ALREADY SAVED
+
+No attendance, overtime or pay figure changes because of this release.
+
+1. Each shift's own saved working days stay as they are and are still used wherever its Schedule Group sets no week. To change them, give the Schedule Group a working week.
+
+2. Which Schedule Group each shift belongs to does not change.
+
+3. Break times, Paid ticks and per-break flexible minutes stay. A break ticked flexible with no minutes has always counted like a fixed one; it now shows as not flexible and counts the same.
+
+4. The whole-shift flexible allowance: in September no shift used it. We check again before release; any shift that does has the same minutes moved onto its break rows, so every day comes out identical. One where that cannot be done exactly (e.g. no break times) is left as it is, and its Breaks section says so.
+
+5. Shifts with a break length but no break times keep it, shown under the table as "Break without set times: 60 min, taken off any day of 6 hours or more", as today. Entering break times replaces it, and the break is then counted by its times.
+
+6. The three reference-only boxes keep their values; they are no longer shown, and nothing used them.
+
+7. A shift whose saved breaks overlap calculates as today but cannot be saved until fixed. We count these before release.
+
+Only when someone saves from now on: a new shift starts with no break (today it starts with 60 minutes), and a night shift may have a break across midnight.
+
+WHAT IS NOT DONE
+
+1. Maximum rest days, maximum off days, maximum hours per week, rotation (frequency and week start) and duty roster controls. None is stored today, and a box with nothing behind it would mislead. Each needs its own request saying what should happen when a limit is reached, or how a rotation moves people on.
+
+2. Clockings are still not checked against the earliest clock-in and latest clock-out.
+
+3. A new shift has no working days until it is added to a Schedule Group that has a working week. The Standard group deliberately sets none, because every shift outside a group falls back on it.
+
+4. No weekly hours total on the Schedule Group: its shifts can have different hours, so one figure would be wrong for some.
+
+Pictures attached: the new Shift page, the break checks, the Schedule Group's Working Days section with its warning, and the Shift page on a phone.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Read on main 835b0f27. Build AFTER r427 (build/r427-importui) merges: it adds components/ui/section-card.tsx, stacked-table.tsx, status-word.tsx (use them) and touches the six messages catalogues.
+
+Current state. Schema db/schema.ts: BreakPeriod :4518 (start, end, optional flexible, clockingRequired, paid, flexibleMinutes); shift :4619 — break_minutes :4639, break_periods :4644, normal_minutes_override :4647, weekly_pattern :4654 (+half_pattern/off_pattern :4663/:4667, 0429), daily_cutoff_enabled/time :4675, crosses_midnight :4677 (derived by service), rule_id :4692, differential :4693, cf21e554 General cols :4700-4731 (description, day_type, category, early_in, late_out, late_out_next_day, full_day_leave_minutes, normal_hours_rounding_minutes, full_day_ot_minutes, half_day_first_out/second_in), color :4739, flexible_break_enabled/minutes :4752-4753 (0457). Schedule Group = attendance_rule :4133 (also the lateness/OT rule); its week weekly_pattern/half_pattern/off_pattern :4197-4205 (0483). employment.attendance_rule_id :984.
+Week resolution: core/week-pattern.ts weekPatternFor (group wins only if Full∪Half>0, else shift), weekPatternGroupFor; core/attendance.ts weekLookupTx :2175 (employee's group → shift's group → Standard), scheduleFor :807 default-shift branch :1093, payable-hours clamp :1674-1720, core/roster.ts assign guard :1773 + ShiftHasNoWorkingPatternError :1672 (message says "Set its weekly pattern first"), generateRosterFromTemplate :2157/:2192, usualShiftsFor :2391/:2419, core/shift-arrangement.ts :157-185, core/absence-days.ts :340-400. ALL engine readers are already group-first — no engine change needed. Readers of the shift's OWN week only: app/admin/attendance/page.tsx :181-210 (list column), app/admin/attendance/schedule/page.tsx :210-250 (Shifts available table), app/attendance/clock/page.tsx :14 (employee clock shift options — NOT changed this round; resolving the group week there needs the rules list inside an employee session, and whether RLS allows that is UNVERIFIED; new shifts with no week appear on every day, which is today's "no pattern" behaviour).
+General-section readers: normal_hours_rounding_minutes read by netScheduledMinutes (core/attendance.ts :758, :913, :1052, :1690, …) — APPLIED; differential read by core/payroll.ts :3411-3433; shift_ot_window read by core/attendance.ts :879; day_type, full_day_leave_minutes, full_day_ot_minutes, category, early_in, late_out: written/copied only by core/roster.ts (grep: no other reader; attendance-derive reads attendance.day_type, not shift's). The clock-window hint (admin.attendancePolicy.shiftClockWindowHint) claims clockings are "accepted" in the window — false; reword.
+Breaks: core/roster.ts normalizeShiftInput :309 — end<=start refused :341, inside-span :343, per-row allowance rules :365-400, break_minutes = Σ unpaid (flexibleMinutes ?? window) :418, shift-level allowance :440-457 (becomes break_minutes). No overlap/duplicate check. Engine core/attendance.ts: spannedBreakMinutes :515 (ignores bp.flexible), perRowBreakMinutes :560 (fires only when some unpaid row has flexible+flexibleMinutes), deduction order flexibleBreak ?? perRow ?? spanned :1348-1359, else workedFromSpan 6h cliff :396. Form: app/admin/attendance/shift-form.tsx (sections :149-364), components/shift-time-fields.tsx (week row :480-517, breaks :520-702, client silently drops invalid rows validBreaks :187/:627, new-row default 12:00-13:00 :643, scalar box :525-535, new-shift scalar default '60' via shift-form :225). Actions app/admin/attendance/shift-actions.ts: weekToWrite :180, shiftFields :213 (FULL-ROW overwrite; ruleId: postedRuleId :243 → null when absent). updateShift core/roster.ts :742 (ruleId/otRule/grace undefined-preserve; everything else overwrite; generalColumns :620). Schedule Group: shifts allowed = rules/rule-form.tsx :204-245 → setRuleShifts core/attendance-rule.ts :250; week section app/admin/attendance/schedule/group-sections.tsx :308-360; order app/admin/attendance/schedule/sections.ts SCHEDULE_SECTION_KEYS.
+
+Decisions (all mine; reporter gave none of these).
+D1 Shift week: remove the row; keep the columns and their values (they are the live fallback). Action stops reading dayKind_1..7 and weeklyPattern; ShiftInput weeklyPattern/halfPattern/offPattern become undefined = preserve on update (roster.ts update set + event payload + generalColumns), NO_WEEK on create. Delete weekToWrite/postedWeek and the aec53564 greying code (ShiftScheduleGroupProvider/Select become unused on this form).
+D2 Group link: picker removed; ruleId not posted → pass undefined (preserve). Create → null (Standard). Read-only line in Shift Information: group name (Standard: "sets no working week"), week in force via weekPatternFor(group, shift) with source, link scheduleGroupSectionHref(id,'workingDay'), plus "an employee placed in a different Schedule Group follows that group's days".
+D3 General dissolved: rounding → Working Time beside Full Day Working Hours (rename roster.totalNormalWorkingHours value, or new key if reused elsewhere); OT windows + differential → closed <details> "Overtime and pay for this shift" (must stay MOUNTED so they keep posting; parseOtWindows null vs [] contract unchanged); day_type/full_day_leave_minutes/full_day_ot_minutes → not rendered, ShiftInput undefined = preserve (add to the preserve list; copyShift still copies). Category/description stay in Shift Information. early_in/late_out/late_out_next_day relabelled "Earliest clock-in"/"Latest clock-out", marked recorded-only. Shift Label = code (form label "Shift label (code)"; list column unchanged).
+D4 Breaks, one way: per-row only. "Flexible" tick = stored flexible:true AND flexibleMinutes required (prefill = window length, 1..length). Normal/Full Flexi: a stored flexible:true row without minutes opens UNticked and is saved without the flag (engine identical: spannedBreakMinutes ignores the flag). Semi Flexi: service still forces flexible on every row; tick shown on+locked, minutes optional (blank = overlap, as today). Service refuses flexible:true without minutes on normal/full_flexi. Shift-level switch: no longer rendered; flexibleBreakEnabled/Minutes undefined = preserve; service refuses turning it ON for a shift where it is off. Engine branch kept as is (defensive, byte-identical).
+D5 Scalar-only shifts (break_minutes>0, no rows): show read-only-labelled editable box "Break without set times (min)" under the table only for these; blank Break 1 row above it. Rows present → service recomputes break_minutes from rows (as today). New shifts: no scalar box, breakMinutes posts 0.
+D6 Validation (service = authority, client mirrors for inline row errors; refuse, never drop): both times or neither (blank row = ignored); start<end, or on a crosses_midnight shift a wrapped break (end<start) allowed when start>=shift start AND end<=shift end; duration>0; inside span; no overlap among ALL rows (paid included) on the shift timeline (anchor like OT windows :1197-1210); flexible minutes 1..duration. Errors name the row ("Break 2 overlaps Break 1 (12:00–13:00)"). Wrapped duration = (end−start+1440)%1440 everywhere: roster.ts :394, :418-420; core/shift-break-display.ts :74; client preview. Engine anchors each end independently (anchorToShift :468) — pin with tests incl. daily cut-off on.
+D7 Schedule Group: move 'workingDay' to 2nd in SCHEDULE_SECTION_KEYS, label "Working Days (Mon–Sun)". Add "Shifts in this group" (shift.rule_id = group; for Standard, rule_id NULL) with week in force + source. On edit, a client island (imports core/week-pattern only) recomputes per shift the after-save week from the live selects and lists day changes; warning text names overtime; also count employments with attendance_rule_id = group ("N employees placed directly in this group also follow it"). Standard group: same warning, it applies to every ungrouped shift.
+D8 Shift list column → group name + week in force (needs listAttendanceRules on that page). Schedule list Shifts available table → week in force. ShiftHasNoWorkingPatternError + roster-generation refusal reworded to "put it in a Schedule Group that has a working week".
+
+Migration 0519 (data only, no DDL). Journal max idx 518 (0518_clocking_file_import, when 1791700000000); entries.length 426 — never use. No unmerged branch beyond 518 (checked every local branch); r427 adds none. Use when 1791800000000. Content: DO block over shift where flexible_break_enabled; U = unpaid rows in array order; convert only if count(U)>=1 AND N>=count(U) AND N<=sum of len(U): each row flexible=true, flexibleMinutes = 1 + share of (N − count(U)) filled greedily up to len−1; set flexible_break_enabled=false, flexible_break_minutes=NULL; break_minutes stays N. Proof of identity: perRow total = N, min(N, break_minutes=N, span) = flexibleBreak min(N, span); paid rows contribute 0 in both. RAISE NOTICE converted/left counts. Deploy log must show the counts. gate:shadow cannot test the data half (no rows) — add a test that reads the .sql and executes it on seeded rows (pattern: test/schedule-group-split-migration.test.ts), asserting worked/OT minutes identical before/after for a full day, a short day (<6h), a day not covering the window, and a shift with a paid row.
+
+BEFORE BUILDING, read-only on the box as MIGRATION_DATABASE_URL (RLS returns 0 as app role): count shifts with flexible_break_enabled (and how many convertible), rows with flexible:true and no flexibleMinutes, shifts whose break rows overlap, scalar-only shifts, shifts living on their own week (weekPatternFor source='shift'), and non-null day_type/full_day_leave_minutes/full_day_ot_minutes values. If an unconvertible allowance exists, its Breaks section shows a read-only line "This shift deducts one allowance of N min for the whole day" plus an explicit "Stop using it" tick (posts flexibleBreakEnabled=false) — required before per-row minutes can be saved on it.
+
+Tests (update, never delete guards): test/aec53564-shift-working-days.test.ts + .dom.test.tsx (rewrite to: no day fields rendered, update preserves stored week, create stores none), test/shift-form-sections.test.ts (section set, static key calls), test/shift-colour-flex-break.test.ts (switch no longer settable; stored one still computes; ringgit pins unchanged), test/r277-per-break-allowance.test.ts, test/r331-schedule-working-week.test.ts, test/schedule-config-screen.test.ts (section order), test/attendance-screens-layout.test.ts (WIDE_FORM_SCREENS), test/shift-break-display.test.ts, test/attendance-break-shared.test.ts, test/shift-four-way-and-cutoff.test.ts, test/shift-type-f3321963.test.ts. New: service validation matrix (overlap, duplicate, wrapped break on night shift accepted and on day shift refused, half row, flexible without minutes), engine identity for a wrapped break, update preserves ruleId/week/day_type/full_day_leave_minutes/full_day_ot_minutes/flexible switch when absent from the post (pin across action + service). pnpm test:browser for the break table at 390 px; render check /admin/attendance/new, /admin/attendance/[id], /admin/attendance/schedule/[id] and /edit on a round-scoped port. Six locales for every new/changed key; retire old keys (shiftWorkingDays and its Decided keys, generalSectionLegend, recordedOnlyLegend/Note, breakFixed and its hints, flexibleBreak keys, generalMoreTabNote) only after grepping computed forms. Full gate + gate:shadow (migration). Graphify update after merge. ADR note: Shift = hours and breaks, Schedule Group = days; the shift's stored week is a fallback that is no longer edited on the Shift page.
+
+Risks. (1) Full-row overwrite: any field dropped from the form without undefined-preserve nulls stored data on the next save — the r331 location state precedent; pin each one. (2) Wrapped breaks touch every break-duration reader. (3) A new shift is unusable as a fixed shift until put in a group with a week — workflow change, stated in the plan. (4) Existing overlapping breaks block saving those shifts (count first). (5) Production counts above are UNKNOWN until measured; the September figures (2 of 8 shifts on their own week, 0 whole-shift allowances, 0 per-row allowances) are from r332/r256/r277.
