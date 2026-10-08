@@ -7,20 +7,22 @@
  * remains owned by the resignation workflow (core/offboarding.ts, ADR-0042); the outcome recorded here
  * decides which CHECKLIST applies and whether an IT Return is raised, nothing more.
  *
+ * The Device Acceptance Acknowledgement is the NEW HIRE's own action from their signed-in checklist view
+ * (see core/lifecycle-self.ts) — there is deliberately no public link.
+ *
  * Hand-offs (all in the caller's transaction, so both records exist or neither does):
  *   onboarding case  --creates-->  IT requisition
  *   outcome Accepted --creates-->  IT Return (one open return per case); Accepted -> Rejected cancels it
  */
-import { createHash, randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { itRequisition, lcCase, lcCaseStep, lcComment, lcHistory } from '../db/schema';
-import { ONBOARDING_DAA_STEP, ONBOARDING_LAPTOP_DIST_STEP, OFFBOARDING_OUTCOME_STEP, type CaseKind } from './lifecycle-defaults';
+import { OFFBOARDING_OUTCOME_STEP, type CaseKind } from './lifecycle-defaults';
 import { cancelOpenReturnTx, createRequisitionTx } from './lifecycle-it';
 import { cleanCustomValues, fieldsFor, loadCompanyConfigTx, loadCustomFieldsTx, loadStepDefsTx, phaseLabels } from './lifecycle-config';
 import { buildStepViews, isCaseComplete, progressOf, type CaseFacts, type StepView } from './lifecycle-rules';
 import {
-  LEVEL, LifecycleError, asBool, clean, cleanDate, levelOf, normEmail, recordChange, requireLevel, withTenant,
+  LEVEL, LifecycleError, asBool, clean, cleanDate, normEmail, recordChange, requireLevel, withTenant,
 } from './lifecycle-base';
 
 export type CaseRow = typeof lcCase.$inferSelect;
@@ -211,14 +213,14 @@ export async function getCase(ctx: SessionContext, kind: CaseKind, number: strin
     ]);
     const byKey = new Map(doneRows.map((r) => [r.stepKey, r]));
     return {
-      case: { ...c, daaTokenHash: undefined } as Omit<CaseRow, 'daaTokenHash'> & { daaTokenHash?: undefined },
+      case: c,
       steps: steps.map((s) => ({ ...s, record: byKey.get(s.key) ?? null })),
       phases: phaseLabels(kind),
       progress: progressOf(steps),
       requisitions: reqs,
       openRequisition: reqs.find((r) => r.status !== 'cancelled') ?? null,
       customFields: fieldsFor(fieldDefs, c.companyId),
-      daa: { available: c.daaTokenHash != null || c.daaSubmittedAt != null, submittedAt: c.daaSubmittedAt },
+      daa: { required: c.laptopRequired, submittedAt: c.daaSubmittedAt, details: c.daa },
       myLevel: lvl,
     };
   });
@@ -241,12 +243,9 @@ const BLOCK_MESSAGE: Record<NonNullable<StepView['blocked']>, string> = {
   already_done: 'This step is already done.',
 };
 
-export const hashToken = (t: string): string => createHash('sha256').update(t).digest('hex');
-const newToken = (): string => randomBytes(24).toString('base64url');
-
 export async function tickStep(
   ctx: SessionContext, kind: CaseKind, number: string, key: string, p: { reference?: string | null; notes?: string | null } = {},
-): Promise<{ daaToken?: string; status: string }> {
+): Promise<{ status: string }> {
   return withTenant(ctx, async (tx) => {
     const c = await loadCase(tx, number, kind, true);
     await requireLevel(tx, c.companyId, LEVEL.agent, 'only staff work cases');
@@ -260,14 +259,8 @@ export async function tickStep(
     await tx.insert(lcCaseStep).values({ caseId: c.id, tenantId: ctx.tenantId, stepKey: key, done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: clean(p.notes, 2000) })
       .onConflictDoUpdate({ target: [lcCaseStep.caseId, lcCaseStep.stepKey], set: { done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: p.notes !== undefined ? clean(p.notes, 2000) : sql`${lcCaseStep.notes}` } });
     await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
-    let daaToken: string | undefined;
-    if (kind === 'onboarding' && key === ONBOARDING_LAPTOP_DIST_STEP && c.laptopRequired && !c.daaSubmittedAt) {
-      daaToken = newToken();
-      await tx.update(lcCase).set({ daaTokenHash: hashToken(daaToken) }).where(eq(lcCase.id, c.id));
-      await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'daa.link_created', detail: {}, eventType: 'lifecycle-case.daa-link-created', subjectEmploymentId: c.employmentId, eventRef: { number } });
-    }
     const after = await reconcileCompletion(tx, ctx, c);
-    return { daaToken, status: after.status };
+    return { status: after.status };
   });
 }
 
@@ -399,7 +392,7 @@ export async function cancelCase(ctx: SessionContext, kind: CaseKind, number: st
     await requireLevel(tx, c.companyId, LEVEL.manager, 'only a manager cancels a case');
     if (c.status === 'cancelled') return;
     if (c.status === 'completed') throw new LifecycleError('A completed case cannot be cancelled.', 'conflict');
-    await tx.update(lcCase).set({ status: 'cancelled', cancelReason: why, daaTokenHash: null }).where(eq(lcCase.id, c.id));
+    await tx.update(lcCase).set({ status: 'cancelled', cancelReason: why }).where(eq(lcCase.id, c.id));
     await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'case.cancelled', detail: { reason: why }, eventType: 'lifecycle-case.cancelled', subjectEmploymentId: c.employmentId, eventRef: { number } });
   });
 }
@@ -413,23 +406,6 @@ export async function reopenCase(ctx: SessionContext, kind: CaseKind, number: st
     try { await tx.update(lcCase).set({ status: 'in_progress', cancelReason: null }).where(eq(lcCase.id, c.id)); }
     catch (e) { if (isUnique(e)) throw new LifecycleError('That employee already has another active case.', 'conflict'); throw e; }
     await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'case.reopened', detail: {}, eventType: 'lifecycle-case.reopened', subjectEmploymentId: c.employmentId, eventRef: { number } });
-  });
-}
-
-/** A fresh acknowledgement link (the old one stops working). Only after the laptop was distributed. */
-export async function regenerateDaaLink(ctx: SessionContext, number: string): Promise<string> {
-  return withTenant(ctx, async (tx) => {
-    const c = await loadCase(tx, number, 'onboarding', true);
-    await requireLevel(tx, c.companyId, LEVEL.agent, 'only staff issue acknowledgement links');
-    if (c.status === 'cancelled') throw new LifecycleError('A cancelled case has no acknowledgement link.', 'conflict');
-    if (!c.laptopRequired) throw new LifecycleError('This hire does not need a device acknowledgement.', 'conflict');
-    if (c.daaSubmittedAt) throw new LifecycleError('The acknowledgement was already submitted.', 'conflict');
-    const [d] = await tx.select({ done: lcCaseStep.done }).from(lcCaseStep).where(and(eq(lcCaseStep.caseId, c.id), eq(lcCaseStep.stepKey, ONBOARDING_LAPTOP_DIST_STEP))).limit(1);
-    if (!d?.done) throw new LifecycleError('Mark the laptop as distributed first.', 'conflict');
-    const t = newToken();
-    await tx.update(lcCase).set({ daaTokenHash: hashToken(t) }).where(eq(lcCase.id, c.id));
-    await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'daa.link_created', detail: { regenerated: true }, eventType: 'lifecycle-case.daa-link-created', subjectEmploymentId: c.employmentId, eventRef: { number } });
-    return t;
   });
 }
 
@@ -454,4 +430,3 @@ export async function addComment(ctx: SessionContext, kind: CaseKind, number: st
   });
 }
 
-export { levelOf };

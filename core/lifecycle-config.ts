@@ -6,7 +6,7 @@
  * its own; the first admin save writes the tenant's rows and from then on they are the truth. `loadHandoverDefaults`
  * writes the defaults explicitly (idempotent) for a tenant that wants them as editable rows from day one.
  */
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import {
   appUser, company, itAssetCatalogue, itProvisionDef, lcCompanyConfig, lcCustomField, lcStaff, lcStepDef, person,
@@ -62,6 +62,14 @@ export async function setStaff(
     }
     if (existing) await tx.update(lcStaff).set({ level: p.level }).where(eq(lcStaff.id, existing.id));
     else await tx.insert(lcStaff).values({ tenantId: ctx.tenantId, userId: p.userId, companyId: p.companyId, level: p.level });
+  });
+}
+
+/** Everyone who can be named a handler / assignee for a company: module staff plus administrators. */
+export async function staffDirectory(ctx: SessionContext, companyId: string): Promise<{ userId: string; name: string; level: string }[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`select user_id, full_name, level from app.lc_staff_directory(${companyId}::uuid)`)) as unknown as { user_id: string; full_name: string | null; level: string }[];
+    return rows.map((r) => ({ userId: r.user_id, name: r.full_name ?? 'User', level: r.level }));
   });
 }
 
@@ -135,7 +143,7 @@ export async function saveStepDefs(ctx: SessionContext, kind: CaseKind, steps: S
       }
     }
     const keep = out.map((d) => d.key);
-    await tx.update(lcStepDef).set({ active: false }).where(and(eq(lcStepDef.kind, kind), sql`${lcStepDef.stepKey} <> ALL(${keep}::text[])`));
+    await tx.update(lcStepDef).set({ active: false }).where(and(eq(lcStepDef.kind, kind), notInArray(lcStepDef.stepKey, keep)));
     await recordConfig(tx, ctx, { eventType: 'lifecycle-config.steps-saved', eventRef: { kind, count: out.length } });
   });
 }
@@ -158,8 +166,11 @@ async function companyCodeTx(tx: Tx, companyId: string): Promise<string> {
 
 /** The checklist for a requisition or return: common list + the company's extras. Defaults until edited. */
 export async function loadProvisionListTx(tx: Tx, kind: 'requisition' | 'return', companyId: string): Promise<ProvisionItem[]> {
-  const rows = await tx.select().from(itProvisionDef).where(and(eq(itProvisionDef.kind, kind), eq(itProvisionDef.active, true)));
-  if (rows.length === 0) {
+  // "No rows at all" means the tenant never edited: read the defaults. Rows that are ALL inactive mean the
+  // admin switched everything off, which must not silently fall back to the built-ins.
+  const all = await tx.select().from(itProvisionDef).where(eq(itProvisionDef.kind, kind));
+  const rows = all.filter((r) => r.active);
+  if (all.length === 0) {
     const code = await companyCodeTx(tx, companyId);
     const common = kind === 'requisition' ? REQUISITION_COMMON : RETURN_COMMON;
     const extra = (kind === 'requisition' ? REQUISITION_BY_COMPANY : RETURN_BY_COMPANY)[code] ?? [];
@@ -310,7 +321,7 @@ export async function saveCustomFields(ctx: SessionContext, kind: CaseKind, fiel
     }
     // A removed field is deactivated, not deleted: values already stored on cases stay readable as history.
     const keep = out.map((d) => d.key);
-    if (existing.length) await tx.update(lcCustomField).set({ active: false }).where(and(eq(lcCustomField.kind, kind), sql`${lcCustomField.fieldKey} <> ALL(${keep}::text[])`));
+    if (existing.length) await tx.update(lcCustomField).set({ active: false }).where(and(eq(lcCustomField.kind, kind), notInArray(lcCustomField.fieldKey, keep)));
     await recordConfig(tx, ctx, { eventType: 'lifecycle-config.fields-saved', eventRef: { kind, count: out.length } });
   });
 }

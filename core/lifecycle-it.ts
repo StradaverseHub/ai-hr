@@ -13,7 +13,7 @@
  */
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
-import { employment, itAsset, itAssetCatalogue, itAssetRequest, itRequisition, itRequisitionItem, lcHistory, lcStaff, person } from '../db/schema';
+import { employment, itAsset, itAssetCatalogue, itAssetRequest, itRequisition, itRequisitionItem, lcHistory, person } from '../db/schema';
 import { PROVISION_ASSET_RETURN, PROVISION_LAPTOP_ISSUE } from './lifecycle-defaults';
 import { issuedToTx, issueAssetTx, returnAssetTx, type Holder } from './lifecycle-assets';
 import { loadCompanyConfigTx, loadProvisionListTx } from './lifecycle-config';
@@ -352,8 +352,8 @@ export async function setAssetRequestHandler(ctx: SessionContext, number: string
     const r = await loadReq2(tx, number, true);
     await requireLevel(tx, r.companyId, LEVEL.manager, 'only a manager assigns the handler');
     if (userId) {
-      const ok = await tx.select({ id: lcStaff.id }).from(lcStaff).where(and(eq(lcStaff.userId, userId), sql`(${lcStaff.companyId} is null or ${lcStaff.companyId} = ${r.companyId})`)).limit(1);
-      if (!ok[0]) throw new LifecycleError('The handler must be an active member of the module staff.', 'conflict');
+      const dir = (await tx.execute(sql`select user_id from app.lc_staff_directory(${r.companyId}::uuid)`)) as unknown as { user_id: string }[];
+      if (!dir.some((d) => d.user_id === userId)) throw new LifecycleError('The handler must be an active member of the module staff.', 'conflict');
     }
     await tx.update(itAssetRequest).set({ handlerUserId: userId }).where(eq(itAssetRequest.id, r.id));
     await recordChange(tx, ctx, { refType: 'asset_request', refId: r.id, action: 'request.handler', detail: { handler: userId }, eventType: 'lifecycle-asset-request.handler-set', eventRef: { number } });

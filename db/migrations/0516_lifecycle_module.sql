@@ -44,6 +44,28 @@ CREATE OR REPLACE FUNCTION app.lc_level(p_company uuid) RETURNS int
     ), 0));
 $$;--> statement-breakpoint
 
+-- Who can be named as a handler / assignee. A manager cannot read lc_staff (RLS: admins and the row's own
+-- user only), so the directory is a SECURITY DEFINER read, tenant-bound and gated on the caller being staff.
+-- Admins (hr_admin / super_admin for the company or group-wide) are staff at level 3 and are included.
+CREATE OR REPLACE FUNCTION app.lc_staff_directory(p_company uuid)
+  RETURNS TABLE (user_id uuid, full_name text, level text)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT x.user_id, p.full_name, x.level FROM (
+    SELECT s.user_id, s.level FROM lc_staff s
+     WHERE s.tenant_id = app.current_tenant_id() AND (s.company_id IS NULL OR s.company_id = p_company)
+    UNION
+    SELECT ra.app_user_id, 'admin' FROM role_assignment ra
+     WHERE ra.tenant_id = app.current_tenant_id() AND ra.role IN ('hr_admin', 'super_admin')
+       AND (ra.company_id IS NULL OR ra.company_id = p_company)
+  ) x
+  JOIN app_user u ON u.id = x.user_id AND u.tenant_id = app.current_tenant_id() AND u.archived_at IS NULL
+  LEFT JOIN person p ON p.id = u.person_id
+  WHERE app.lc_level(p_company) >= 1
+  ORDER BY p.full_name, x.user_id;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.lc_staff_directory(uuid) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.lc_staff_directory(uuid) TO ai_hr_app;--> statement-breakpoint
+
 -- ── numbering: ONB- OFB- ITR- AR- and per BG-TYPE asset codes. SECURITY DEFINER so a plain employee
 --    raising an asset request can take a number without any write grant on the counter. Tenant-bound. ──
 CREATE TABLE lc_counter (
@@ -177,8 +199,8 @@ CREATE TABLE lc_case (
   -- Optional links into the identity graph: the new hire has no employment until HR creates it.
   person_id uuid REFERENCES person(id),
   employment_id uuid REFERENCES employment(id),
-  -- Device Acceptance Acknowledgement (public link). The token is stored hashed.
-  daa_token_hash text,
+  -- Device Acceptance Acknowledgement: submitted by the new hire from their own signed-in checklist view
+  -- (no public link, so the app's unauthenticated perimeter does not widen).
   daa_submitted_at timestamptz,
   daa jsonb,
   cancel_reason text,
@@ -195,7 +217,6 @@ CREATE UNIQUE INDEX lc_case_number_uq ON lc_case (tenant_id, number);--> stateme
 -- (which reports it readably); this is the backstop for two staff submitting at once.
 CREATE UNIQUE INDEX lc_case_active_empno_uq ON lc_case (tenant_id, kind, lower(employee_no)) WHERE status = 'in_progress';--> statement-breakpoint
 CREATE UNIQUE INDEX lc_case_active_email_uq ON lc_case (tenant_id, kind, lower(newhire_email)) WHERE status = 'in_progress' AND newhire_email IS NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX lc_case_daa_uq ON lc_case (daa_token_hash) WHERE daa_token_hash IS NOT NULL;--> statement-breakpoint
 CREATE INDEX lc_case_list_idx ON lc_case (tenant_id, kind, status, created_at);--> statement-breakpoint
 
 CREATE TABLE lc_case_step (
@@ -468,4 +489,63 @@ CREATE POLICY it_asset_request_update ON it_asset_request FOR UPDATE USING (
   AND (requester_user_id = app.current_user_id() OR app.lc_level(company_id) >= 2)
 ) WITH CHECK (tenant_id = app.current_tenant_id()
   AND (requester_user_id = app.current_user_id() OR app.lc_level(company_id) >= 2));--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON it_asset_request TO ai_hr_app;
+GRANT SELECT, INSERT, UPDATE ON it_asset_request TO ai_hr_app;--> statement-breakpoint
+
+-- ── new-hire self-service (login-gated) ───────────────────────────────────────────────────────────────
+-- A new hire is not module staff, so RLS shows them nothing in lc_case. These two SECURITY DEFINER
+-- functions are the ONLY door, tenant-bound, and the match is the signed-in user's own person email against
+-- the case's new-hire email (case-insensitive). The first returns a FIXED allowlist of fields: never the
+-- identity number, bank details, cost centre, temporary passwords, notes or custom fields.
+CREATE OR REPLACE FUNCTION app.lc_my_case_id() RETURNS uuid
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT c.id FROM lc_case c
+   JOIN app_user u ON u.id = app.current_user_id() AND u.tenant_id = c.tenant_id
+   JOIN person p ON p.id = u.person_id AND p.tenant_id = c.tenant_id
+  WHERE c.tenant_id = app.current_tenant_id() AND c.kind = 'onboarding' AND c.status <> 'cancelled'
+    AND c.newhire_email IS NOT NULL AND lower(c.newhire_email) = lower(p.primary_email)
+  ORDER BY c.created_at DESC LIMIT 1;
+$$;--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.lc_my_view() RETURNS jsonb
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'case', jsonb_build_object(
+      'number', c.number, 'status', c.status, 'fullName', c.full_name, 'jobTitle', c.job_title, 'department', c.department,
+      'companyId', c.company_id, 'companyName', co.legal_name, 'joinDate', c.join_date, 'supervisor', c.supervisor, 'gbsTa', c.gbs_ta,
+      'floorBuilding', c.floor_building, 'laptopRequired', c.laptop_required, 'carparkRequired', c.carpark_required,
+      'employeeNo', c.employee_no, 'daaSubmittedAt', c.daa_submitted_at),
+    'done', coalesce((SELECT jsonb_agg(s.step_key) FROM lc_case_step s WHERE s.case_id = c.id AND s.done), '[]'::jsonb),
+    'defs', coalesce((SELECT jsonb_agg(jsonb_build_object('key', d.step_key, 'phase', d.phase, 'label', d.label,
+              'ownerTeam', d.owner_team, 'rule', d.rule, 'sort', d.sort, 'active', d.active) ORDER BY d.phase, d.sort)
+            FROM lc_step_def d WHERE d.tenant_id = c.tenant_id AND d.kind = 'onboarding'), '[]'::jsonb))
+  FROM lc_case c JOIN company co ON co.id = c.company_id
+  WHERE c.id = app.lc_my_case_id();
+$$;--> statement-breakpoint
+-- The new hire's one write: the Device Acceptance Acknowledgement. Refused unless a laptop is required, the
+-- laptop was marked distributed, the case is in progress and nothing was submitted before. It ticks the
+-- acknowledgement step (the new hire's own action, so the phase lock does not apply) and writes the
+-- timeline row; the caller appends the audit event in the same transaction.
+CREATE OR REPLACE FUNCTION app.lc_my_daa_submit(p_data jsonb) RETURNS uuid
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_id uuid; v_name text;
+BEGIN
+  v_id := app.lc_my_case_id();
+  IF v_id IS NULL THEN RAISE EXCEPTION 'No onboarding case is linked to your account.' USING ERRCODE = '42501'; END IF;
+  PERFORM 1 FROM lc_case WHERE id = v_id AND status = 'in_progress' AND laptop_required AND daa_submitted_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'The acknowledgement is not available for this case.' USING ERRCODE = 'P0001'; END IF;
+  PERFORM 1 FROM lc_case_step WHERE case_id = v_id AND step_key = 'laptop_dist' AND done;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Your laptop has not been marked as handed over yet.' USING ERRCODE = 'P0001'; END IF;
+  UPDATE lc_case SET daa = p_data, daa_submitted_at = now() WHERE id = v_id;
+  INSERT INTO lc_case_step (case_id, tenant_id, step_key, done, done_by, done_at)
+    VALUES (v_id, app.current_tenant_id(), 'daa_ack', true, app.current_user_id(), now())
+    ON CONFLICT (case_id, step_key) DO UPDATE SET done = true, done_by = app.current_user_id(), done_at = now();
+  SELECT p.full_name INTO v_name FROM app_user u JOIN person p ON p.id = u.person_id WHERE u.id = app.current_user_id();
+  INSERT INTO lc_history (tenant_id, ref_type, ref_id, action, detail, actor_user_id, actor_name)
+    VALUES (app.current_tenant_id(), 'case', v_id, 'daa.submitted', '{}'::jsonb, app.current_user_id(), v_name);
+  RETURN v_id;
+END $$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.lc_my_case_id() FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.lc_my_view() FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.lc_my_daa_submit(jsonb) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.lc_my_case_id() TO ai_hr_app;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.lc_my_view() TO ai_hr_app;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.lc_my_daa_submit(jsonb) TO ai_hr_app;

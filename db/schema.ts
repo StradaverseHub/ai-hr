@@ -9475,7 +9475,6 @@ export const lcCase = pgTable('lc_case', {
   custom: jsonb('custom').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   personId: uuid('person_id').references(() => person.id),
   employmentId: uuid('employment_id').references(() => employment.id),
-  daaTokenHash: text('daa_token_hash'),
   daaSubmittedAt: timestamp('daa_submitted_at', { withTimezone: true }),
   daa: jsonb('daa').$type<Record<string, unknown>>(),
   cancelReason: text('cancel_reason'),
