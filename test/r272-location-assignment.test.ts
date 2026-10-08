@@ -25,7 +25,13 @@ const PICKER = 'components/attendance/location-assignment.tsx';
  * won is asserted below exactly as before, at the file that now holds it; a guard left reading the old
  * file would have gone quietly vacuous the moment the rows moved.
  */
-const ADMIN = 'app/admin/work-locations/clocking-points.tsx';
+/*
+ * r423 (83c0d3c8) — RE-POINTED AGAIN, at Attendance › Locations (app/admin/work-locations/clocking/page.tsx),
+ * which is now THE list of clocking locations; clocking-points.tsx was deleted with the rows it rendered
+ * under work locations. Two r272 properties are REVERSED there on the reporter's instruction and pinned as
+ * reversed below (§C): a location is now opened to named companies and the list prints them.
+ */
+const ADMIN = 'app/admin/work-locations/clocking/page.tsx';
 const read = (p: string) => readFileSync(p, 'utf8');
 const card = read(CARD);
 const picker = read(PICKER);
@@ -130,20 +136,18 @@ describe('§B · the picker: one selection, two views of it', () => {
   });
 });
 
-describe('§C · the two remaining cosmetic couplings', () => {
-  it('the admin list no longer prints a company name on a clocking group heading', () => {
-    // A clocking site has had no company since 0459. What it optionally links to is a `location`, which
-    // IS company-scoped — printing that company made the whole register read as company configuration.
-    expect(admin).not.toContain('g.companyName ? ` · ${g.companyName}` : \'\'');
-    // 639bf4a5 rev 2 (r338) — the group HEADING that carried `{g.code} · {g.name}` is gone with the
-    // register's grouping: a point's rows now hang under the location's OWN screen, which is headed by
-    // that location. So the identity is asserted where it went — on the Edit screen's page header — and
-    // the "no company name on a point" half stays here, on the rows themselves.
+describe('§C · the company coupling — removed by r272, made REAL and explicit by r423', () => {
+  it('the list prints the companies a location is OPEN to, never the company of a linked work location', () => {
+    // r272 removed a company name printed on a clocking group heading because a clocking site HAD no
+    // company — the name came from an optional linked work `location`, which made the register read as
+    // company configuration. r423 (83c0d3c8) gives a location an explicit list of companies allowed to use
+    // it, so the list prints THOSE (the Companies column) and still never the linked location's company.
+    expect(admin).toContain('cl.companies.map((c) =>');
+    expect(admin).not.toContain('locationCompanyName');
+    expect(admin).not.toContain('g.companyName');
+    // The work location screens keep their own identity header (Work Locations is otherwise unchanged).
     const edit = read('app/admin/work-locations/[id]/edit/page.tsx');
-    expect(edit, 'the location’s own identity heads the screen its points hang off').toContain(
-      '`${site.companyName} · ${site.code} · ${site.name}`',
-    );
-    expect(admin, 'and a point’s row still names no company of its own').not.toContain('companyName');
+    expect(edit).toContain('`${site.companyName} · ${site.code} · ${site.name}`');
   });
 
   it('the branch-unmapped sentence stops sending a holiday-calendar problem to the clocking screen', () => {
@@ -162,28 +166,30 @@ describe('§C · the two remaining cosmetic couplings', () => {
 
 describe('§D · the list says what state a site is in, and lets a reader open it', () => {
   it('status is stated on every row, not implied by the absence of a badge', () => {
-    expect(admin).toContain("cl.archivedAt ? t('statusArchived') : t('statusActive')");
+    // r423 — the plan's words: Active / Inactive (the archive stamp underneath is unchanged).
+    expect(admin).toContain("cl.archivedAt ? t('statusInactive') : t('statusActive')");
     // The old shape: a badge only when archived. Active was conveyed by nothing at all.
     expect(admin).not.toContain("{cl.archivedAt && (\n        <span className=\"rounded-full bg-muted");
   });
 
   it('a reader who may not edit still gets a way in', () => {
-    // clocking/[id]/page.tsx already renders a read-only fact list for a non-group-admin; nothing linked
-    // to it, so the only people who could open a site were the ones allowed to change it.
-    // 639bf4a5 rev 2 (r338) — the flag is `manage` now, not `groupAdmin`: the same rows render on three
-    // screens (a location's View, a location's Edit, and the unlinked-points screen) and only ONE of
-    // them offers the controls, so the component takes the decision as a prop rather than re-deriving
-    // it. The property r272 won is unchanged and still asserted: a reader who may not edit gets a View.
-    expect(admin).toContain('{!manage && (');
-    const at = admin.indexOf('{!manage && (');
-    expect(admin.slice(at, at + 700)).toContain("t('view')");
+    // r423 — every row carries View (a read-only page of its own, clocking/[id]); Edit and Deactivate /
+    // Activate follow only for a group administrator. The property r272 won — a reader who may not edit
+    // can still open a location — is asserted as: View precedes the group-admin gate, outside it.
+    const view = admin.indexOf('href={clockingViewPage(cl.id)}');
+    const gate = admin.indexOf('{groupAdmin && (', view);
+    expect(view).toBeGreaterThanOrEqual(0);
+    expect(gate).toBeGreaterThan(view);
+    expect(admin.slice(view, gate)).toContain("t('view')");
+    expect(admin.slice(gate)).toContain('href={clockingEditPage(cl.id)}');
   });
 
   it('every string this round minted exists in all six catalogues and is translated', () => {
     const keys = [
       ['people', 'detail', 'clocking', 'assignmentTitle'],
-      ['people', 'detail', 'clocking', 'assignmentIntro'],
-      ['people', 'detail', 'clocking', 'noneAssigned'],
+      // r423 retired assignmentIntro and noneAssigned (switchDescription / cannotClockWarning replace them).
+      ['people', 'detail', 'clocking', 'switchTitle'],
+      ['people', 'detail', 'clocking', 'cannotClockWarning'],
       ['people', 'detail', 'clocking', 'addLocation'],
       ['people', 'detail', 'clocking', 'statusActive'],
       ['people', 'detail', 'clocking', 'noRadius'],

@@ -60,6 +60,10 @@ const TICKET_HREFS = [
   // 639bf4a5 rev 2 (r338) — the Locations register is a child of this node again, at its r336 address
   // (TICKET_RE_ADDRESSED below). DECLARED here rather than the list being left short, so the "each child
   // is admin-gated" case below covers it the way it covered it before r336 moved it out.
+  // r423 (83c0d3c8) — the ticket screen is the CLOCKING location register again ("Locations"), at
+  // /admin/work-locations/clocking; the company-based work location listing r338 put on that row has a row
+  // of its own, "Work Locations", declared beside it so the admin-gate and once-only cases cover it too.
+  '/admin/work-locations/clocking',
   '/admin/work-locations',
 ] as const;
 
@@ -104,7 +108,9 @@ const TICKET_MOVED_OUT = ['/admin/holidays'] as const;
  * un-gated; the reporter did not answer. Recorded here so the next reader does not read the reversal as
  * an accident.
  */
-const TICKET_RE_ADDRESSED = [{ was: '/admin/locations', now: '/admin/work-locations' }] as const;
+// r423 — `now` follows the clocking register to the clocking list's address (the r336 → r338 address was the
+// work location listing, which keeps it under its own row).
+const TICKET_RE_ADDRESSED = [{ was: '/admin/locations', now: '/admin/work-locations/clocking' }] as const;
 
 /**
  * Every ticket screen, wherever it now lives — the rail-wide invariants below hold for all five.
@@ -132,7 +138,9 @@ const ALL_TICKET_HREFS = [
 // came back (TICKET_RE_ADDRESSED above) and came back IN THE TICKET'S OWN ORDER: Attendance allowance,
 // then the Locations register, exactly where 5cb199b3 put them relative to each other. It is at its new
 // address, which is why the second entry is the `now` spelling and not the `was` one.
-const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/work-locations'] as const;
+// r423 — THREE: Attendance allowance, then Locations (the clocking register, at the ticket's place), then
+// the new Work Locations row directly beneath it.
+const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/work-locations/clocking', '/admin/work-locations'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -197,7 +205,8 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       expect(countQuoted(SRC, was), `${was} must have no menu row left anywhere in the rail`).toBe(0);
       const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${was}`, 'page.tsx'), 'utf8');
       expect(stub, `${was} must still resolve, guard first, as a redirect to ${now}`).toContain('requireAdmin()');
-      expect(stub, `${was} must forward to the register's address`).toContain('LOCATIONS_LIST');
+      // r423 — the old address meant clocking locations, so it forwards to the clocking list.
+      expect(stub, `${was} must forward to the register's address`).toContain('forward(await searchParams, CLOCKING_LIST)');
     }
   });
 

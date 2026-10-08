@@ -381,6 +381,23 @@ const CASES: Case[] = [
     },
   },
   {
+    // r423 (migration 0517) — clocking_location_company is `config`: a company deleted (it has no employees,
+    // or the employees disposition refuses first) stops being one the location is open to. The LINK goes;
+    // the shared location, open to another company too, stays.
+    name: 'a shared clocking location is open to it (r423: the link goes with it, the location stays)',
+    expected: null,
+    setup: async (id) => {
+      const [cl] = await owner.db
+        .insert(schema.clockingLocation)
+        .values({ tenantId: b.tenantId, name: 'Open Gate', lat: 3.1, lng: 101.6, radiusM: 100 })
+        .returning({ id: schema.clockingLocation.id });
+      await owner.db.insert(schema.clockingLocationCompany).values([
+        { tenantId: b.tenantId, clockingLocationId: cl.id, companyId: id },
+        { tenantId: b.tenantId, clockingLocationId: cl.id, companyId: b.companyId },
+      ]);
+    },
+  },
+  {
     name: 'its own org structure, used by nothing outside it (and its own approval rule naming its department)',
     expected: null,
     setup: async (id) => {

@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  Building2,
   CalendarCheck,
   CalendarClock,
   CalendarCog,
@@ -185,8 +186,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
      * together, and which never left the pack for good, has its oracle line UPDATED rather than being
      * re-declared in ADDED_SINCE — every parity property this oracle exists for is unchanged and still
      * asserted below (same icon ref, same gate, still exactly once, still in the settings node).
+     *
+     * r423 (83c0d3c8) — RE-ADDRESSED ONCE MORE, SAME ROW. "Locations" (MapPin, `locations`) is the clocking
+     * location list again — what this row was at the capture — at the existing address
+     * `/admin/work-locations/clocking`. The company-based work location listing it opened since r338 has a
+     * row of its own, declared in ADDED_SINCE (Work Locations).
      */
-    { href: '/admin/work-locations', labelKey: 'locations', icon: MapPin, adminOnly: true },
+    { href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true },
     { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
     { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
@@ -276,6 +282,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // r317 (1661123d) — Import is a SINGLE adminOnly row now; its managerUp twin in Manage was removed
     // because the page refuses managers. See PAIRED_HREFS above.
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, adminOnly: true },
+    // r423 (83c0d3c8) — WORK LOCATIONS. Not a new screen: the company-based work location listing that the
+    // "Locations" row opened from r338 to r423 (it records where an employee works). "Locations" went back
+    // to being the clocking location list, so this listing got a row of its own beneath it, at its
+    // unchanged address, on the same `locations` screen column. Building2, not a second MapPin: the
+    // collapsed rail renders glyphs alone.
+    { href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true },
   ] as const;
 
   /**
@@ -1065,8 +1077,10 @@ describe('ADR-0080 rung 2: service facade re-exports the implementation unchange
     expect(facade.DeviceNotRegisteredError).toBe(coreDevice.DeviceNotRegisteredError);
     expect(facade.listAttendanceRules).toBe(coreRule.listAttendanceRules);
     expect(facade.listClockingLocations).toBe(coreClockingLocation.listClockingLocations);
-    expect(facade.setEmployeeClockingLocations).toBe(coreClockingLocation.setEmployeeClockingLocations);
-    expect(facade.setGeofencing).toBe(coreClockingLocation.setGeofencing);
+    // r423 — the two writers were replaced by ONE (the switch and its locations, atomically).
+    expect(facade.setClockingControl).toBe(coreClockingLocation.setClockingControl);
+    expect('setEmployeeClockingLocations' in facade).toBe(false);
+    expect('setGeofencing' in facade).toBe(false);
   });
 
   it('re-exports the ambiguous DayContext type explicitly (compile-time check)', () => {

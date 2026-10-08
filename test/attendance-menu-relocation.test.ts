@@ -97,6 +97,9 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       // dedicated screens. So the row is in this list again, and this file's premise holds for it
       // exactly as before — the page calls requireAdmin() in its own BODY, and the row is not what
       // protects it. The old '/admin/locations' address stays a guarded redirect stub with no row.
+      // r423 (83c0d3c8) — "Locations" opens the clocking list now; the work location listing has a row
+      // of its own ("Work Locations") directly beneath it.
+      '/admin/work-locations/clocking',
       '/admin/work-locations',
       // 3fb1a611 (r299) — '/admin/toil' STOOD HERE: the row left with the page, which is a redirect stub to
       // Leave Config › Leave Credit now (see test/r299-leave-credit-screens.test.ts).
@@ -143,6 +146,8 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // covered in test/work-location-organization-relocation.test.ts and by test/function-access.test.ts,
     // which walks every guarded page.tsx on disk against lib/permissions.ts in both directions.
     '/admin/work-locations',
+    // r423 — the clocking list, the "Locations" row's screen again.
+    '/admin/work-locations/clocking',
     // 3fb1a611 (r299) — '/admin/toil' left this loop: it is an UNGUARDED redirect stub now (a stub has nothing
     // to guard — the function-access precedent). Its destination, /admin/leave-config/leave-credit, calls
     // requireAdmin in its own page body, pinned by test/r299-leave-credit-screens.test.ts and

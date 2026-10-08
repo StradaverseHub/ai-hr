@@ -399,103 +399,96 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
   });
 
   // ── §3 Attendance ─────────────────────────────────────────────────────────────────────────────────
-  describe('§3 Attendance — three independent writers under one Save', () => {
-    it('writes the holiday calendar and the geofencing settings in one request', async () => {
-      const result = await saveAttendanceTabAction(
-        payload(
-          ['holiday', 'geofencing'],
-          {
-            [key('holiday', 'employmentId')]: employmentId,
-            [key('holiday', 'holidayCalendar')]: 'state:Selangor',
-            [key('geofencing', 'employmentId')]: employmentId,
-            [key('geofencing', 'enabled')]: 'on',
-            [key('geofencing', 'radiusM')]: '450',
-          },
-          employmentId,
-          'attendance',
-        ),
+  describe('§3 Attendance — independent writers under one Save', () => {
+    /**
+     * r423 (83c0d3c8) — the `clocking` and `geofencing` sections MERGED into one `clocking` section: the
+     * "Use Geofencing for Clocking" switch (`geofencingEnabled`) and the locations it needs are one rule with
+     * one writer. The three cases that pinned the separate geofencing section (with its radius override, now
+     * retired) pin the merged one.
+     */
+    const twoSites = async () => {
+      const a = adminCtx(base);
+      const loc = await createLocation(a, { companyId: base.companyId, code: 'SITE1', name: 'HQ' });
+      const mk = (name: string, lat: number) =>
+        createClockingLocation(a, { name, lat, lng: 101.6, radiusM: 300, locationId: loc.id, companyIds: [base.companyId] });
+      return { siteA: await mk('Gate A', 3.1), siteB: await mk('Gate B', 3.2) };
+    };
+
+    it('writes the holiday calendar and the clocking control in one request', async () => {
+      const { siteA } = await twoSites();
+      const fd = payload(
+        ['holiday', 'clocking'],
+        {
+          [key('holiday', 'employmentId')]: employmentId,
+          [key('holiday', 'holidayCalendar')]: 'state:Selangor',
+          [key('clocking', 'employmentId')]: employmentId,
+          [key('clocking', 'geofencingEnabled')]: 'on',
+          [key('clocking', 'clockingLocationIds')]: siteA.id,
+        },
+        employmentId,
+        'attendance',
       );
+      const result = await saveAttendanceTabAction(fd);
 
       expect(result.ok).toBe(true);
-      expect(result.saved).toEqual(['holiday', 'geofencing']);
+      expect(result.saved).toEqual(['holiday', 'clocking']);
       const emp = await readEmployment(employmentId);
       expect(emp.workState).toBe('Selangor');
       expect(emp.holidayGroupId).toBeNull();
       expect(emp.geofencingEnabled).toBe(true);
-      expect(emp.geofenceRadiusM).toBe(450);
+      expect(await readClockingAssignments(employmentId)).toEqual([siteA.id]);
     });
 
-    it('an unticked geofencing box and a blank radius mean OFF and "each site uses its own"', async () => {
-      // The client packs an unticked checkbox and a blank number exactly as a form post does: the checkbox
-      // contributes nothing at all, the number contributes an empty string.
+    it('an unticked switch means OFF, and OFF clears the assigned locations', async () => {
+      const { siteA } = await twoSites();
       await saveAttendanceTabAction(
         payload(
-          ['geofencing'],
+          ['clocking'],
           {
-            [key('geofencing', 'employmentId')]: employmentId,
-            [key('geofencing', 'enabled')]: 'on',
-            [key('geofencing', 'radiusM')]: '450',
+            [key('clocking', 'employmentId')]: employmentId,
+            [key('clocking', 'geofencingEnabled')]: 'on',
+            [key('clocking', 'clockingLocationIds')]: siteA.id,
           },
           employmentId,
           'attendance',
         ),
       );
+      // The client packs an unticked checkbox exactly as a form post does: it contributes nothing. The
+      // picker is unmounted while the switch is off, so no ids are posted either.
       const result = await saveAttendanceTabAction(
-        payload(
-          ['geofencing'],
-          {
-            [key('geofencing', 'employmentId')]: employmentId,
-            [key('geofencing', 'radiusM')]: '',
-          },
-          employmentId,
-          'attendance',
-        ),
+        payload(['clocking'], { [key('clocking', 'employmentId')]: employmentId }, employmentId, 'attendance'),
       );
       expect(result.ok).toBe(true);
       const emp = await readEmployment(employmentId);
       expect(emp.geofencingEnabled).toBe(false);
-      expect(emp.geofenceRadiusM).toBeNull();
+      expect(await readClockingAssignments(employmentId)).toEqual([]);
     });
 
-    it('the clocking multi-select is a set-based replace, and clearing every site clears the assignment', async () => {
-      const a = adminCtx(base);
-      const loc = await createLocation(a, { companyId: base.companyId, code: 'SITE1', name: 'HQ' });
-      const siteA = await createClockingLocation(a, {
-        name: 'Gate A',
-        lat: 3.1,
-        lng: 101.6,
-        radiusM: 300,
-        locationId: loc.id,
-      });
-      const siteB = await createClockingLocation(a, {
-        name: 'Gate B',
-        lat: 3.2,
-        lng: 101.7,
-        radiusM: 300,
-        locationId: loc.id,
-      });
-
+    it('with the switch ON the multi-select is a set-based replace', async () => {
+      const { siteA, siteB } = await twoSites();
       const both = new FormData();
       both.set('employmentId', employmentId);
       both.set('sections', 'clocking');
       both.set('tab', 'attendance');
       both.set(key('clocking', 'employmentId'), employmentId);
+      both.set(key('clocking', 'geofencingEnabled'), 'on');
       // A multi-select posts one entry per ticked option — `buildTabPayload` appends them the same way.
       both.append(key('clocking', 'clockingLocationIds'), siteA.id);
       both.append(key('clocking', 'clockingLocationIds'), siteB.id);
       expect((await saveAttendanceTabAction(both)).ok).toBe(true);
       expect(await readClockingAssignments(employmentId)).toEqual([siteA.id, siteB.id].sort());
 
-      // Untick everything: the field is simply ABSENT, which is what an empty multi-select posts.
-      const none = payload(
-        ['clocking'],
-        { [key('clocking', 'employmentId')]: employmentId },
-        employmentId,
-        'attendance',
-      );
-      expect((await saveAttendanceTabAction(none)).ok).toBe(true);
-      expect(await readClockingAssignments(employmentId)).toEqual([]);
+      const one = new FormData();
+      one.set('employmentId', employmentId);
+      one.set('sections', 'clocking');
+      one.set('tab', 'attendance');
+      one.set(key('clocking', 'employmentId'), employmentId);
+      one.set(key('clocking', 'geofencingEnabled'), 'on');
+      one.append(key('clocking', 'clockingLocationIds'), siteB.id);
+      expect((await saveAttendanceTabAction(one)).ok).toBe(true);
+      expect(await readClockingAssignments(employmentId)).toEqual([siteB.id]);
     });
+  });
   });
 
   // ── §4 Employment ─────────────────────────────────────────────────────────────────────────────────
@@ -588,21 +581,21 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       await seedStatutory();
       const result = await saveAttendanceTabAction(
         payload(
-          ['holiday', 'geofencing'],
+          ['holiday', 'clocking'],
           {
             [key('holiday', 'employmentId')]: employmentId,
             [key('holiday', 'holidayCalendar')]: 'state:Selangor',
-            [key('geofencing', 'employmentId')]: employmentId,
-            [key('geofencing', 'enabled')]: 'on',
-            // Refused by the service — a zero override would make every site unreachable.
-            [key('geofencing', 'radiusM')]: '0',
+            [key('clocking', 'employmentId')]: employmentId,
+            // r423 — refused by the service: the switch ON with no location chosen.
+            [key('clocking', 'geofencingEnabled')]: 'on',
           },
           employmentId,
           'attendance',
         ),
       );
       expect(result.ok).toBe(false);
-      expect(result.failedSection).toBe('geofencing');
+      expect(result.failedSection).toBe('clocking');
+      expect(result.error).toContain('Choose at least one clocking location, or turn geofencing off.');
       expect(result.saved, 'the card that DID commit is named so the client can mark it clean').toEqual([
         'holiday',
       ]);

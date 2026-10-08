@@ -4,7 +4,8 @@
  * split across two tabs: Work Location + Shift Arrangement (Employment / `job` tab) and Clocking Locations
  * & Geofencing (Others tab). The three section cards are relocated WHOLE — the const definitions
  * (locationCard/setLocationAction, defaultShiftCard/setDefaultShiftAction, clockingCard/
- * setEmployeeClockingLocationsAction + setGeofencingAction) stay byte-identical; only the render reference
+ * setEmployeeClockingLocationsAction + setGeofencingAction — since r423 the ONE setClockingControlAction)
+ * stay byte-identical; only the render reference
  * moves. The Employment and Others tabs must no longer render the relocated cards.
  *
  * A source-static test (precedent: test/personnel-bank-statutory-tab.test.ts, test/me-tabs.test.ts) is the
@@ -91,10 +92,13 @@ describe('Personnel — Attendance Information tab (1fbe9891)', () => {
     // Shift arrangement card + its action.
     expect(PAGE.includes('const defaultShiftCard = admin')).toBe(true);
     expect(PAGE.includes('setDefaultShiftAction')).toBe(true);
-    // Clocking + geofencing card: two full-overwrite forms, both actions preserved.
+    // Clocking + geofencing card: r423 merged its two forms into ONE section with ONE writer (the switch
+    // and the locations it needs are one rule), so the two old actions must be GONE, not merely unused.
     expect(PAGE.includes('const clockingCard = admin')).toBe(true);
-    expect(PAGE.includes('setEmployeeClockingLocationsAction')).toBe(true);
-    expect(PAGE.includes('setGeofencingAction')).toBe(true);
+    expect(PAGE.includes('action={setClockingControlAction} data-save-section="clocking"')).toBe(true);
+    expect(PAGE.includes('setEmployeeClockingLocationsAction')).toBe(false);
+    expect(PAGE.includes('setGeofencingAction')).toBe(false);
+    expect(PAGE.includes('data-save-section="geofencing"')).toBe(false);
     // Anchor ids stay so the Attendance module / deep-links keep working.
     expect(PAGE.includes('id="section-location"')).toBe(true);
     expect(PAGE.includes('id="section-default-shift"')).toBe(true);

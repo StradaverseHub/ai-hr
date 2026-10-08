@@ -12,6 +12,17 @@
  * to their redirects: Save lands on the list at the highlighted row; a refusal stays on the page with the
  * reason and everything typed; nothing an action does can leave the Locations screens.
  *
+ * r423 (83c0d3c8) — REWRITTEN AROUND THE NEW SCREENS, property by property. Attendance › Locations is the
+ * CLOCKING location list now (app/admin/work-locations/clocking/page.tsx: search, Company and Status
+ * filters, the plan's eight columns, View / Edit / Deactivate); View is a read-only page (clocking/[id]) and
+ * Edit is the form (clocking/[id]/edit); the form is in the reporter's order (Location Name first — this
+ * REVERSES r335's "Name below the coordinates", which the cases below used to pin) with Companies and
+ * Status sections; and EVERY way out lands on the clocking list, never on a work location's screen (the
+ * r338 "a point goes home to its site" rule is reversed). What did not change and is still pinned: the
+ * routes guard themselves on the `locations` column, one form with Save beside a Cancel LINK, the islands
+ * take one serialisable prop, the posted id is shape-checked, a refusal echoes everything typed, the
+ * hidden work-location link survives a plain Save, and a company-scoped admin gets no write affordance.
+ *
  * ⚠️ FILE-LEVEL MOCKS: requireAdmin() is a fake returning the module-level ADMIN; redirect() and
  * notFound() throw; getTranslations echoes KEY NAMES (so server strings below are keys where they mean
  * sentences); next/headers gives the scope cookie reader an empty jar. Client islands (ConfirmSubmit)
@@ -55,51 +66,44 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
 import NewClockingLocationPage from '../app/admin/work-locations/clocking/new/page';
-import EditClockingLocationPage from '../app/admin/work-locations/clocking/[id]/page';
-import OffRegisterPage from '../app/admin/work-locations/clocking/page';
+import EditClockingLocationPage from '../app/admin/work-locations/clocking/[id]/edit/page';
+import ViewClockingLocationPage from '../app/admin/work-locations/clocking/[id]/page';
+import ClockingListPage from '../app/admin/work-locations/clocking/page';
 import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
 import { createClockingLocationAction, updateClockingLocationAction } from '../app/admin/actions';
 import {
   CLOCKING_FIELDS,
+  CLOCKING_LIST,
   CLOCKING_NEW_PAGE,
-  LOCATIONS_LIST,
+  TYPED_COMPANY_IDS,
   clockingEditPage,
+  clockingFocusHref,
+  clockingViewPage,
   readTypedClockingValues,
+  readTypedCompanyIds,
   typedKey,
 } from '../app/admin/work-locations/clocking/form-fields';
-import {
-  UNLINKED_CLOCKING_PAGE,
-  clockingPointBase,
-  clockingPointHome,
-  locationEditPage,
-} from '../app/admin/work-locations/location-fields';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 /**
- * 639bf4a5 rev 2 (r338) — WHERE A CLOCKING POINT'S ROW LIVES NOW, and why this file has four source
- * constants where it had one.
- *
- * Every assertion in this file about "the list" used to read app/admin/work-locations/page.tsx, because
- * that page rendered the tenant's whole clocking register. The reporter asked for that page to become a
- * COMPANY LISTING (Company | Location | Status | Action, no rows of its own, Add / View / Edit each on a
- * screen of their own), so the rows moved: a location's points render on the LOCATION'S own screens, and
- * the points that link to no location — optional since f9afd1ce/0459 — render on a screen of their own
- * rather than disappearing. Each property f9afd1ce and r267 won is asserted at the file that holds it;
- * REGISTER is kept so the "no clocking form on the register" half can still be read where it belongs.
+ * r423 — the files this test reads. `LIST` is Attendance › Locations; `REGISTER` and `LOCATION_EDIT` are the
+ * WORK location screens, read only to assert that no clocking location is shown under them any more.
  */
-const ROWS = 'app/admin/work-locations/clocking-points.tsx';
+const LIST = 'app/admin/work-locations/clocking/page.tsx';
 const LOCATION_EDIT = 'app/admin/work-locations/[id]/edit/page.tsx';
-const OFF_REGISTER = 'app/admin/work-locations/clocking/page.tsx';
+const LOCATION_VIEW = 'app/admin/work-locations/[id]/page.tsx';
 const REGISTER = 'app/admin/work-locations/page.tsx';
 const FORM = 'app/admin/work-locations/clocking/clocking-form.tsx';
 const NEW = 'app/admin/work-locations/clocking/new/page.tsx';
-const EDIT = 'app/admin/work-locations/clocking/[id]/page.tsx';
+const EDIT = 'app/admin/work-locations/clocking/[id]/edit/page.tsx';
+const VIEW = 'app/admin/work-locations/clocking/[id]/page.tsx';
 const ACTIONS = 'app/admin/actions.ts';
 const FIELDS = 'app/admin/work-locations/clocking/form-fields.ts';
 const NEW_ROUTE = '/admin/work-locations/clocking/new';
-const EDIT_ROUTE = '/admin/work-locations/clocking/[id]';
+const VIEW_ROUTE = '/admin/work-locations/clocking/[id]';
+const EDIT_ROUTE = '/admin/work-locations/clocking/[id]/edit';
 
 /** The index of `needle` in `src`, asserted PRESENT first — `indexOf` gives -1 for an absent needle. */
 const at = (src: string, needle: string) => {
@@ -117,275 +121,203 @@ const withoutComments = (src: string) =>
 
 // ────────────────────────────────── SOURCE SHAPE ──────────────────────────────────
 
-describe('f9afd1ce rev 2 — the two routes exist, guard themselves, and sit on the locations column', () => {
-  it('both pages exist, call requireAdmin(), and are registered on the EXISTING locations screen key', () => {
-    for (const rel of [NEW, EDIT]) {
+describe('r423 — the routes exist, guard themselves, and sit on the locations column', () => {
+  it('list, new, view and edit exist, call requireAdmin(), and are registered on the EXISTING locations screen key', () => {
+    for (const rel of [LIST, NEW, VIEW, EDIT]) {
       expect(fs.existsSync(path.join(root, rel)), `${rel} exists`).toBe(true);
       expect(read(rel), `${rel} guards itself`).toContain('requireAdmin()');
     }
-    expect(REGISTERED_ROUTES.has(NEW_ROUTE), `${NEW_ROUTE} registered`).toBe(true);
-    expect(REGISTERED_ROUTES.has(EDIT_ROUTE), `${EDIT_ROUTE} registered`).toBe(true);
+    for (const route of [CLOCKING_LIST, NEW_ROUTE, VIEW_ROUTE, EDIT_ROUTE]) {
+      expect(REGISTERED_ROUTES.has(route), `${route} registered`).toBe(true);
+    }
     const permissions = read('lib/permissions.ts');
-    const column = permissions.slice(at(permissions, "screenKey: 'locations'"), permissions.indexOf('screenKey:', at(permissions, "screenKey: 'locations'") + 1));
-    expect(column, 'on the SAME column, not a new SCREENS entry').toContain(`'${NEW_ROUTE}'`);
-    expect(column).toContain(`'${EDIT_ROUTE}'`);
-    // No nav row: the pages are reached from the list. Asserted for BOTH the old address and the new
-    // one (639bf4a5) — the pack must not regrow a row for either.
-    expect(read('packs/attendance/index.ts')).not.toContain('/admin/locations/clocking');
-    expect(read('packs/attendance/index.ts')).not.toContain('/admin/work-locations/clocking');
+    const start = at(permissions, "screenKey: 'locations'");
+    const column = permissions.slice(start, permissions.indexOf('screenKey:', start + 1));
+    expect(column.length).toBeGreaterThan(200);
+    for (const route of [CLOCKING_LIST, NEW_ROUTE, VIEW_ROUTE, EDIT_ROUTE]) {
+      expect(column, `${route} on the SAME column, not a new SCREENS entry`).toContain(`'${route}'`);
+    }
+    expect(column, 'the column’s href follows the "Locations" function to the clocking list').toContain(
+      "href: '/admin/work-locations/clocking',",
+    );
+    expect(permissions, 'and no second screenKey was minted for Work Locations').not.toContain("screenKey: 'workLocations'");
   });
 
   /**
-   * 639bf4a5 (r336) — UPDATED, NOT LOOSENED. Until this round the first assertion read
-   *
-   *   expect(read('packs/attendance/index.ts')).toContain(
-   *     "{ href: <the old /admin/locations address>, labelKey: 'clockingLocation', icon: MapPin, adminOnly: true }");
-   *
-   * and pinned the menu row INSIDE the attendance pack. That is the decision this item reverses: the
-   * register is Administration › Physical Work Location now, a flat row in components/sidebar.tsx beside
-   * Organization, and the pack carries no row for it at all. So the same property — "exactly one row,
-   * and it opens the register with no fragment" — is asserted at the row's new home, and the pack is
-   * asserted EMPTY of it, which is the half that would fail if somebody put the old row back.
-   *
-   * (The old row is described rather than quoted: this file greps the pack source for that literal, and
-   * a quoted copy in a comment would satisfy the very assertion it replaced.)
-   *
-   * The r267 reasoning is unchanged and still load-bearing: no `#clocking` fragment on the href, because
-   * the sidebar's active predicate (components/nav-flyout.tsx isHrefActive) splits on `?` only and a
-   * fragment would stop the row ever lighting up. "Lands on the clocking list" is delivered by PAGE
-   * ORDER, which is what the rest of this case measures.
+   * r423 REVERSES r338's "Locations opens the company listing": the reporter asked for clocking locations to
+   * be set up location-first, so "Locations" opens the clocking list and the company listing has a row of
+   * its own, "Work Locations". Exactly one row each across the rail's two sources, no `#fragment` on either
+   * (the active predicate splits on `?` only), and the clocking row is the more specific href so the flyout's
+   * longest-match rule lights the right one.
    */
-  it('the menu row opens /admin/work-locations from the ATTENDANCE node (no fragment), the sidebar carries none, and the register is a company listing', () => {
-    /**
-     * 639bf4a5 rev 2 (r338) — REWRITTEN AGAIN, AND IT NOW ASSERTS WHAT r336'S REWRITE DENIED. r336 moved
-     * the row out of the pack to components/sidebar.tsx and this case followed it there. That shipped,
-     * the reporter contested it, and the row is a child of ATTENDANCE_NAV again reading "Locations". The
-     * property being asserted has never changed: EXACTLY ONE row across the rail's two sources, opening
-     * the register with no `#fragment` — the r267 reasoning still holds, because the sidebar's active
-     * predicate (components/nav-flyout.tsx isHrefActive) splits on `?` only and a fragment would stop the
-     * row ever lighting up.
-     *
-     * The old row is described rather than quoted: this file greps the pack for such literals.
-     */
+  it('the menu: "Locations" opens the clocking list, "Work Locations" the company listing, one row each', () => {
     const sidebar = read('components/sidebar.tsx');
     const pack = read('packs/attendance/index.ts');
-    expect(pack, 'the row is a child of the attendance settings node again').toContain(
-      "{ href: '/admin/work-locations', labelKey: 'locations', icon: MapPin, adminOnly: true }",
-    );
-    expect(
-      (sidebar + pack).split("'/admin/work-locations'").length - 1,
-      'exactly one row across sidebar.tsx + packs/attendance/index.ts',
-    ).toBe(1);
+    expect(pack).toContain("{ href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true }");
+    expect(pack).toContain("{ href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true }");
+    expect((sidebar + pack).split("href: '/admin/work-locations/clocking'").length - 1).toBe(1);
+    expect((sidebar + pack).split("href: '/admin/work-locations'").length - 1).toBe(1);
+    expect(pack, 'no row for the forms — they are reached from the list').not.toContain("'/admin/work-locations/clocking/new'");
     expect(pack, 'the label key it carried before r336 is still retired').not.toContain("labelKey: 'clockingLocation',");
-    // …and the register itself is the company listing the reporter asked for: four columns, no rows of
-    // its own, and no clocking heading anywhere on it.
-    const code = withoutComments(read(REGISTER));
-    for (const col of ['colCompany', 'colLocation', 'colStatus', 'colAction']) {
-      expect(code, `the ${col} column header`).toContain(`t('${col}')`);
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as { nav: Record<string, string> };
+      expect(m.nav.workLocations, `${loc} nav.workLocations`).toBeTruthy();
+      expect(m.nav.workLocations, `${loc}: the two rows read differently`).not.toBe(m.nav.locations);
     }
-    expect(at(code, "t('colCompany')"), 'Company leads the table').toBeLessThan(at(code, "t('colLocation')"));
-    expect(at(code, "t('colLocation')")).toBeLessThan(at(code, "t('colStatus')"));
-    expect(at(code, "t('colStatus')")).toBeLessThan(at(code, "t('colAction')"));
-    expect(code, 'the register renders no clocking register of its own').not.toContain("t('clockingHeading')");
-    expect(code).toContain("t('pageDescription')");
   });
 });
 
-describe('f9afd1ce rev 2 — the rows are for reading: Edit and Add open the page; no inline clocking form', () => {
-  const rows = withoutComments(read(ROWS));
+describe('r423 — the list: the plan’s columns, filters, and row actions; no inline clocking form anywhere', () => {
+  const list = withoutComments(read(LIST));
   const register = withoutComments(read(REGISTER));
   const locationEdit = withoutComments(read(LOCATION_EDIT));
-  const offRegister = withoutComments(read(OFF_REGISTER));
+  const locationView = withoutComments(read(LOCATION_VIEW));
 
-  it('renders no clocking inputs and posts no create / update for a site, on any of the screens that show rows', () => {
-    for (const [name, code] of [['rows', rows], ['register', register], ['location edit', locationEdit], ['off-register', offRegister]] as const) {
+  it('the eight columns in the plan’s order', () => {
+    const cols = ['locationName', 'address', 'colState', 'gpsCoordinates', 'geofencingRadius', 'colCompanies', 'colStatus', 'colActions'];
+    const measured = cols.map((c) => ({ c, at: at(list, `<th className={`) && at(list, `{t('${c}')}</th>`) })).sort((a, b) => a.at - b.at).map((x) => x.c);
+    expect(measured, `the header order, as measured: ${measured.join(' → ')}`).toEqual(cols);
+  });
+
+  it('a GET filter form: search (name or address), Company, Status All / Active / Inactive', () => {
+    expect(list).toContain('<form method="get" action={CLOCKING_LIST}');
+    expect(list).toContain('name="q"');
+    expect(list).toContain('name="company"');
+    expect(list).toContain('name="status"');
+    for (const v of ['all', 'active', 'inactive']) expect(list).toContain(`<option value="${v}">`);
+    expect(list, '?company= is honoured only when it names a company the caller administers').toContain(
+      "companies.some((c) => c.id === one('company')) ? one('company') : ''",
+    );
+    expect(list).toContain('listClockingLocations(s, { status, q, companyId: companyId || undefined })');
+  });
+
+  it('row actions: View for everyone; Edit and Deactivate (asks first, with the count) or Activate for a group admin', () => {
+    expect(list).toContain('id={`row-${cl.id}`}');
+    expect(list).toContain("cl.id === focus && 'bg-muted/50'");
+    const view = at(list, 'href={clockingViewPage(cl.id)}');
+    const gate = at(list, '{groupAdmin && (');
+    expect(view).toBeLessThan(gate);
+    const admin = list.slice(gate);
+    expect(admin).toContain('href={clockingEditPage(cl.id)}');
+    expect(admin).toContain('action={archiveClockingLocationAction}');
+    expect(admin).toContain('action={restoreClockingLocationAction}');
+    expect(admin).toContain("description={t('deactivateConfirmDescription', { name: cl.name, count: cl.assignedCount })}");
+    expect(admin).toContain("{t('activate')}");
+    expect(list, 'the New button is a group admin’s').toMatch(/groupAdmin \? \(\s*<Link href=\{CLOCKING_NEW_PAGE\} className=\{btnPrimary\}>/);
+  });
+
+  it('no screen renders a clocking input or posts a clocking create / update except the form itself', () => {
+    for (const [name, code] of [['list', list], ['register', register], ['location edit', locationEdit], ['location view', locationView]] as const) {
       expect(code, `${name} posts no clocking create`).not.toContain('action={createClockingLocationAction}');
       expect(code, `${name} posts no clocking update`).not.toContain('action={updateClockingLocationAction}');
-      for (const field of CLOCKING_FIELDS.filter((f) => f !== 'locationId')) {
+      for (const field of ['lat', 'lng', 'radiusM', 'reportLabel', 'companyIds']) {
         expect(code, `${name} has no ${field} box`).not.toContain(`name="${field}"`);
       }
     }
-    // `locationId` survives as a HIDDEN field on the row controls — it is what sends the operator back to
-    // the screen the row was on (../location-fields.ts clockingPointBase), never a box anyone types into.
-    expect(rows).toContain('<input type="hidden" name="locationId" value={locationId} />');
-    expect(rows, 'the old create strip anchor is gone').not.toContain('clocking-form');
-    // 639bf4a5 rev 2 — the REGISTER is a company listing and carries no point at all, by the strongest
-    // reading: it never mentions the row component or the point edit address.
-    expect(register, 'the register renders no point rows').not.toContain('ClockingPointRows');
-    expect(register, 'and links to no point editor').not.toContain('clockingEditPage');
   });
 
-  it('each row is an anchor with Edit, and Archive / Restore / Delete stay on the row', () => {
-    expect(rows).toContain('id={`row-${cl.id}`}');
-    expect(rows).toContain('<Link href={clockingEditPage(cl.id)} className={btnGhost}>');
-    expect(rows).toContain("{t('edit')}");
-    expect(rows).toContain('action={archiveClockingLocationAction}');
-    expect(rows).toContain('action={restoreClockingLocationAction}');
-    expect(rows).toContain('action={deleteClockingLocationAction}');
-    // The highlight follows `?focus=`, shape-checked, which is what a Save / Cancel / Back carries.
-    expect(rows).toContain("cl.id === focus ? 'bg-muted/50'");
-    for (const [name, code] of [['location edit', locationEdit], ['off-register', offRegister]] as const) {
-      expect(code, `${name} shape-checks ?focus=`).toContain("UUID_RE.test(sp.focus) ? sp.focus : undefined");
-      expect(code, `${name} reads saved=1 and yields to an error`).toContain('{!error && saved ? (');
-      expect(code, `${name} renders the saved note`).toContain("{t('saved')}");
+  it('the work location screens show no clocking location at all any more (r423 reverses r338)', () => {
+    for (const [name, code] of [['register', register], ['location edit', locationEdit], ['location view', locationView]] as const) {
+      expect(code, `${name} reads no clocking register`).not.toContain('listClockingLocations');
+      expect(code, `${name} renders no clocking rows`).not.toContain('ClockingPointRows');
+      expect(code, `${name} offers no "Add a clocking point"`).not.toContain("t('addPointCta')");
+      expect(code, `${name} links to no clocking editor`).not.toContain('clockingEditPage');
     }
-    // The report label chip on the row; the row still prints the NAME.
-    expect(rows).toContain('{cl.reportLabel && (');
-    expect(rows).toContain("{t('reportLabel')}");
-  });
-
-  it('Add clocking location and the empty-state link open the new page (the latter with the link pre-picked)', () => {
-    // 639bf4a5 rev 2 (r338) — the two entry points MOVED with the rows and neither was dropped. "Add
-    // clocking location" is on the off-register screen (the one place a point with no site is created);
-    // "Add a clocking point" is on a LOCATION's Edit screen, which is what pre-picks the site.
-    expect(offRegister).toContain('<Link href={CLOCKING_NEW_PAGE} className={btnPrimary}>');
-    expect(offRegister).toContain("{t('addClocking')}");
-    expect(locationEdit).toContain('<Link href={CLOCKING_NEW_PAGE_FOR(site.id)} className={btnGhost}>');
-    expect(locationEdit).toContain("{t('addPointCta')}");
-    // Both gated on isGroupAdmin — no screen links a company-scoped admin to a page they cannot save from.
-    expect(offRegister).toMatch(/groupAdmin \? \(\s*<Link href=\{CLOCKING_NEW_PAGE\}/);
-    expect(locationEdit).toMatch(/\{groupAdmin && \(\s*<Link href=\{CLOCKING_NEW_PAGE_FOR\(site\.id\)\}/);
+    expect(fs.existsSync(path.join(root, 'app/admin/work-locations/clocking-points.tsx')), 'the row component is gone').toBe(false);
+    expect(register).toContain("title={t('workLocationsTitle')}");
   });
 });
 
-describe('f9afd1ce rev 2 — the page of its own: ONE section in the reporter’s order, Back, Save beside a Cancel LINK', () => {
+describe('r423 — the form: the reporter’s order, Companies and Status, Back, Save beside a Cancel LINK', () => {
   const form = withoutComments(read(FORM));
   const newPage = withoutComments(read(NEW));
   const editPage = withoutComments(read(EDIT));
 
   /**
-   * 0fe1ca2e rev 6 (r335) — UPDATED, NOT LOOSENED, because it pinned a layout the reporter contested.
-   *
-   * This case used to read "Location information, then GPS and clocking settings — each field in its
-   * place" and asserted the two section slices as disjoint sets: name / reportLabel / address /
-   * locationId / remarks in the first, lat / lng / radiusM in the second, each absent from the other.
-   * That pinned exactly the card boundary the reporter complained about — the address search sat above
-   * Latitude but with a whole card between them — so it is REWRITTEN to pin the single section and the
-   * one order they approved, field by field, rather than deleted.
-   *
-   * The `sectionGps` heading is now the only heading on the form, and it is asserted as the ONLY
-   * SectionHeader: a second card creeping back would show up here first.
+   * r423 REVERSES the r335 order that stood here (search → address → coordinates → radius → Name → …): the
+   * reporter asked for the location to be created first, in this order — Location Name; Find an address;
+   * Address; State; Latitude and Longitude; the map; Geofencing Radius; Companies; Status — with Report label
+   * and Remarks at the bottom as optional. ORDER, not presence: every field but three existed before.
+   * (The radius box sits beside Latitude and Longitude and above the map, which reads it, so the picture
+   * is never separated from the three numbers it draws.)
    */
-  it('ONE section, headed GPS and clocking settings — search, address, the coordinates, then what the place is called', () => {
-    expect(form, 'the retired heading is not rendered anywhere').not.toContain("t('sectionInfo')");
-    expect(form.match(/<SectionHeader /g)?.length, 'ONE section heading on the whole form').toBe(1);
-    expect(form).toContain("<SectionHeader title={t('sectionGps')} />");
-    expect(form.match(/<Card /g)?.length, 'ONE card — the boundary the reporter contested is gone').toBe(1);
-
-    // ⚠️ ORDER, not presence. Every one of these fields was already on the form before this round, so an
-    // assertion that merely found them would have passed on the two-card layout too.
-    const order = ['<ClockingAddressSearch', 'name="address"', 'name="lat"', 'name="lng"', 'name="radiusM"', 'name="name"', 'name="reportLabel"', 'name="locationId"', 'name="remarks"'];
-    const seen = order.map((needle) => ({ needle, at: at(form, needle) }));
-    const measured = [...seen].sort((a, b) => a.at - b.at).map((s) => s.needle);
+  it('the reporter’s order, field by field', () => {
+    const order = [
+      'name="name"',
+      '<ClockingAddressSearch',
+      'name="address"',
+      'name="state"',
+      'name="lat"',
+      'name="lng"',
+      'name="radiusM"',
+      '<ClockingMap',
+      'name="companyIds"',
+      'name="status" value="active"',
+      'name="status" value="inactive"',
+      'name="reportLabel"',
+      'name="remarks"',
+      'name="locationId"',
+    ];
+    const measured = order.map((needle) => ({ needle, at: at(form, needle) })).sort((a, b) => a.at - b.at).map((x) => x.needle);
     expect(measured, `the source order, as measured: ${measured.join(' → ')}`).toEqual(order);
-
+    expect(form, 'the retired heading is not rendered anywhere').not.toContain("t('sectionInfo')");
+    for (const h of ['sectionLocation', 'sectionGps', 'sectionCompanies', 'sectionStatus', 'sectionOptional']) {
+      expect(form, h).toContain(`title={t('${h}')}`);
+    }
+    // Nothing posted sits between the search and the first box it fills.
+    expect(form.slice(at(form, '<ClockingAddressSearch'), at(form, 'name="address"'))).not.toMatch(/\sname="/);
     expect(form, 'the radius is posted raw so a blank reaches the service’s sentence').toContain('name="radiusM" type="number" min={1} step={1}');
-    expect(form, 'the report label hint sits under the grid that holds the box').toContain("t('reportLabelHint')");
-    expect(at(form, "t('reportLabelHint')"), 'and after it, not stranded above the coordinates').toBeGreaterThan(at(form, 'name="reportLabel"'));
-    expect(at(form, "t('radiusNote')"), 'the radius note still follows its own box').toBeGreaterThan(at(form, 'name="radiusM"'));
+    expect(form, 'companies are one checkbox each, posting one entry per tick').toContain(
+      '<input type="checkbox" name="companyIds" value={c.id} defaultChecked={ticked.has(c.id)}',
+    );
+    expect(form).toContain("<option value=\"\">{t('stateNone')}</option>");
     expect(form, 'full width — pageWideCls is the pages’, the form fills it').not.toMatch(/max-w-\d*xl/);
     for (const rel of [NEW, EDIT]) expect(read(rel), `${rel} uses pageWideCls`).toContain('pageWideCls');
   });
 
-  it('Save posts one of the two existing actions; Cancel is a LINK; the reason sits at the top of the form; the key is on the id', () => {
+  it('Save posts one of the two existing actions; Cancel is a LINK; one form; the islands take one plain prop each', () => {
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
     expect(form).toContain("key={clockingLocationId ?? 'new'}");
     expect(form).toMatch(/<button className=\{btnPrimary\}>\{t\('save'\)\}<\/button>/);
     expect(form).toMatch(/<Link href=\{cancelHref\}[^>]*>\s*\{t\('cancel'\)\}/);
     expect(form.match(/<form/g)?.length, 'ONE form — Cancel is not a second one').toBe(1);
     expect(form.match(/<ErrorBanner /g)?.length, 'one banner').toBe(1);
-    // 0fe1ca2e rev 6 (r335): keyed on the heading that still exists — `sectionInfo` was retired with the
-    // second card. The property is unchanged: the refusal reason is above the fields, not under the header.
-    expect(at(form, '<ErrorBanner message={error} />')).toBeLessThan(at(form, "t('sectionGps')"));
-    /**
-     * fa2db8cb rev 2 (r279) — REWRITTEN, NOT DELETED. Until this round two lines stood here. One
-     * asserted the form matched none of five map-related spellings — the two map-library names, the
-     * embed element, and the two placeholder identifiers a future round might have reached for. The
-     * other asserted the file carried no client directive. (Described rather than quoted on purpose:
-     * a comment that spells out a forbidden specifier re-trips the source greps that look for it, and
-     * the reworded description costs a reader nothing.)
-     *
-     * Those lines held the owner's decision of 2026-09-11 — recorded in this form's own header and in
-     * ADR-0070 — that the screen would carry no map and no placeholder until a map provider had been
-     * chosen. rev 2 REVERSES that decision: the item was approved three times and blocked twice asking
-     * the reporter for a Google key that never came, so the map is built now on free, keyless open map
-     * data behind a provider seam that a paid supplier's configuration later replaces without touching
-     * this screen. A guard pinning a decision you are reversing is UPDATED, not removed (CLAUDE.md §8),
-     * so the same lines now pin what replaced it — starting with the half of the old guard that still
-     * holds, which is the important one.
-     */
-    expect(form, 'STILL server-rendered — the islands are separate files, this one has no client island').not.toContain("'use client'");
-    /**
-     * ⚠️ THE WHOLE REASON THIS ROUND WAS RISKY, and asserted FIRST so it is the line that speaks. r272
-     * shipped a page that returned 500 because a server component passed a FUNCTION to a client one;
-     * tsc, eslint and thirteen source guards were green and only a dev-server render caught it. Each
-     * island takes exactly ONE prop and it is the plain provider descriptor — asserted as the WHOLE
-     * prop list of every island on the form, so a second prop of any kind has to come back through here.
-     */
+    expect(at(form, '<ErrorBanner message={error} />'), 'the reason sits above the fields').toBeLessThan(at(form, 'name="name"'));
+    expect(form, 'STILL server-rendered — the islands are separate files').not.toContain("'use client'");
+    // r272 shipped a 500 passing a FUNCTION to a client component; each island still takes ONE plain prop.
     const islandProps = [...form.matchAll(/<Clocking(?:AddressSearch|Map)\s+([^/>]*)\/>/g)].map((m) => m[1].trim());
-    expect(islandProps, 'one serialisable prop each — nothing callable crosses the server→client boundary').toEqual([
-      'provider={mapProvider}',
-      'provider={mapProvider}',
-    ]);
-    expect(form, 'the search is mounted at the top of the form').toContain('<ClockingAddressSearch provider={mapProvider} />');
-    expect(form, 'the map is mounted inside GPS and clocking settings').toContain('<ClockingMap provider={mapProvider} />');
-    /**
-     * 0fe1ca2e rev 6 (r335) — REVERSED ON PURPOSE, WHICH IS THE ROUND. This read
-     *
-     *   expect(at(form, '<ClockingAddressSearch'), 'the search is in Location information')
-     *     .toBeLessThan(at(form, "t('sectionGps')"));
-     *
-     * and was the line that pinned the search into the OTHER card. There is one card now, so the search
-     * comes AFTER the only heading — and, the thing the reporter actually asked for, immediately before
-     * the boxes it writes with nothing between.
-     */
-    expect(at(form, '<ClockingAddressSearch'), 'the search is inside the one section, under its heading').toBeGreaterThan(at(form, "t('sectionGps')"));
-    expect(at(form, '<ClockingAddressSearch'), 'and directly above Address, which it writes').toBeLessThan(at(form, 'name="address"'));
-    expect(
-      form.slice(at(form, '<ClockingAddressSearch'), at(form, 'name="address"')),
-      'nothing posted sits between the search and the first box it fills',
-    ).not.toMatch(/\sname="/);
-    expect(at(form, '<ClockingMap'), 'the map is still directly under the boxes it draws').toBeGreaterThan(at(form, 'name="radiusM"'));
-    expect(at(form, '<ClockingMap'), '…and above the descriptive fields, so it is never separated from them').toBeLessThan(at(form, 'name="name"'));
-    expect(form, 'the seam is resolved ONCE, on the server, from the environment').toContain('const mapProvider = resolveMapProvider(process.env);');
+    expect(islandProps).toEqual(['provider={mapProvider}', 'provider={mapProvider}']);
+    expect(form).toContain('const mapProvider = resolveMapProvider(process.env);');
     expect(form, 'no embed: the framed third-party map is the option that still needs a key').not.toContain('<ifr' + 'ame');
   });
 
-  it('both pages are headed, carry the way back to the point’s home, and gate the form on isGroupAdmin', () => {
-    /**
-     * 639bf4a5 rev 2 (r338) — UPDATED, NOT LOOSENED. "Back" used to be the REGISTER, which rendered every
-     * point: `LOCATIONS_LIST` on the new page and `clockingRowHref(site.id)` (the register at
-     * `#row-<pointId>`) on the edit page. The register is a COMPANY LISTING now and renders no point row
-     * at all, so both of those would have landed the operator on a table of companies with a dead anchor
-     * and no sign of what they just did. A point goes home to the LOCATION it hangs off — whose Edit
-     * screen lists the points it carries — or, for a point that hangs off none, to the screen that holds
-     * exactly those. The property is unchanged and still asserted: ONE way back, named on the header and
-     * reused verbatim as the form's Cancel.
-     */
-    expect(newPage).toMatch(/title=\{t\('newClockingTitle'\)\}[\s\S]*?back=\{\{ href: backHref, label: t\('backToLocations'\) \}\}/);
+  it('both pages are headed, Back and Cancel go to the clocking list, and only a group admin gets a form', () => {
+    expect(newPage).toMatch(/title=\{t\('newClockingTitle'\)\}[\s\S]*?back=\{\{ href: CLOCKING_LIST, label: t\('backToLocations'\) \}\}/);
+    expect(newPage).toContain('cancelHref={CLOCKING_LIST}');
     expect(editPage).toMatch(/title=\{t\('editClockingTitle'\)\}[\s\S]*?back=\{\{ href: listHref, label: t\('backToLocations'\) \}\}/);
-    expect(editPage).toContain('const listHref = clockingPointHome(site.id, site.locationId);');
-    expect(newPage, 'the new page goes home to the site it is being added under, or to the unlinked screen').toContain(
-      'const backHref = clockingPointBase(addPoint || null);',
-    );
-    expect(editPage, 'Cancel and Back land on the row').toContain('cancelHref={listHref}');
-    expect(newPage).toContain('cancelHref={backHref}');
-    for (const src of [newPage, editPage]) {
-      expect(src).toContain('const groupAdmin = isGroupAdmin(s);');
-      expect(src).toContain("t('sharedManagedByGroupAdmin')");
-    }
+    expect(editPage).toContain('const listHref = clockingFocusHref(site.id);');
+    expect(editPage).toContain('cancelHref={listHref}');
+    expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
+    expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
+    expect(editPage, 'a non-group-admin is sent to the read-only View').toContain('if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));');
+    expect(newPage, 'the r338 "add a point under this work location" entry is gone').not.toContain('addPoint');
   });
 
-  it('[id] is shape-checked before any query; ?addPoint= is honoured by comparison only; echoes are read through the shared reader', () => {
-    expect(editPage).toContain('if (!UUID_RE.test(rawId)) notFound();');
-    expect(at(editPage, 'UUID_RE.test(rawId)')).toBeLessThan(at(editPage, 'listClockingLocations(s,'));
-    expect(newPage).toContain("linkableLocations.some((l) => l.id === sp.addPoint) ? sp.addPoint : ''");
-    for (const src of [newPage, editPage]) expect(src).toContain('...readTypedClockingValues(sp)');
+  it('[id] is shape-checked before any query; echoes are read through the shared readers', () => {
+    for (const src of [editPage, withoutComments(read(VIEW))]) {
+      expect(src).toContain('if (!UUID_RE.test(rawId)) notFound();');
+      expect(at(src, 'UUID_RE.test(rawId)')).toBeLessThan(at(src, 'listClockingLocations(s,'));
+    }
+    for (const src of [newPage, editPage]) {
+      expect(src).toContain('...readTypedClockingValues(sp)');
+      expect(src).toContain('readTypedCompanyIds(sp)');
+    }
     expect(editPage, 'typed values win over what is on file').toContain('{ ...onFile, ...readTypedClockingValues(sp) }');
+    expect(editPage).toContain('readTypedCompanyIds(sp) ?? site.companies.map((c) => c.id)');
   });
 });
 
-describe('f9afd1ce rev 2 — the actions land a save on the row and a refusal back on the page, and never leave Locations', () => {
+describe('r423 — the actions land on the clocking list and never leave the Locations screens', () => {
   const code = withoutComments(read(ACTIONS));
   const createAt = at(code, 'export async function createClockingLocationAction');
   const updateAt = at(code, 'export async function updateClockingLocationAction');
@@ -393,36 +325,41 @@ describe('f9afd1ce rev 2 — the actions land a save on the row and a refusal ba
   const create = code.slice(createAt, updateAt);
   const update = code.slice(updateAt, archiveAt);
   const helpers = code.slice(at(code, 'function clockingFieldsOf'), createAt);
+  const rowActions = code.slice(archiveAt, at(code, 'export async function deleteClockingLocationAction') + 600);
 
-  it('create refuses to the new page, update to the site’s own page; both succeed to the point’s home at its row', () => {
-    expect(create).toContain('await clockingRefused(CLOCKING_NEW_PAGE, typed, e);');
-    expect(update).toContain('await clockingRefused(clockingEditPage(clockingLocationId), typed, e);');
-    // 639bf4a5 rev 2 (r338) — the destination is DERIVED FROM THE POSTED `locationId`, one of the eight
-    // fields the form already posts, never from a posted url: `clockingPointBase` shape-checks it and
-    // falls back to the screen that holds the points linked to nothing. `LOCATIONS` (the register) was
-    // the destination until this round, and it renders no point row any more.
-    expect(create).toContain('await clockingSaved(saved!.id, typed.locationId, saved!.warning);');
-    expect(update).toContain('await clockingSaved(clockingLocationId, typed.locationId, saved!.warning);');
-    expect(helpers).toContain('const home = clockingPointBase(locationId);');
-    expect(helpers).toContain('redirect(`${home}?${params.toString()}#row-${id}`);');
+  it('create refuses to the new page, update to the edit page; both succeed to the list at the row', () => {
+    expect(create).toContain('await clockingRefused(CLOCKING_NEW_PAGE, typed, companyIds, e);');
+    expect(update).toContain('await clockingRefused(clockingEditPage(clockingLocationId), typed, companyIds, e);');
+    expect(create).toContain('await clockingSaved(saved!.id, saved!.warning);');
+    expect(update).toContain('await clockingSaved(clockingLocationId, saved!.warning);');
+    expect(helpers).toContain('redirect(`${CLOCKING_LIST}?${params.toString()}#row-${id}`);');
     expect(helpers).toContain("new URLSearchParams({ saved: '1', focus: id })");
-    // Every field the form posts is echoed, under the shared contract's keys.
     expect(helpers).toContain('for (const field of CLOCKING_FIELDS) params.set(typedKey(field), typed[field]);');
-    expect(create, 'the report label reaches the service').toContain('reportLabel: typed.reportLabel || null');
-    expect(update).toContain('reportLabel: typed.reportLabel || null');
+    expect(helpers).toContain("params.set(TYPED_COMPANY_IDS, companyIds.filter((id) => UUID_RE.test(id)).join(','));");
+    for (const src of [create, update]) {
+      expect(src).toContain('reportLabel: typed.reportLabel || null');
+      expect(src).toContain('companyIds,');
+      expect(src).toContain('state: typed.state || null');
+    }
+    expect(create).toContain("active: typed.status !== 'inactive'");
+    expect(helpers, 'the two company refusals in the admin’s words').toContain("t('companyInUse', { count: e.count, companies: e.companyNames.join(', ') })");
+    expect(helpers).toContain("t('companiesRequired')");
+    for (const verb of ['archive', 'restore', 'delete']) expect(rowActions, verb).toContain('CLOCKING_LIST');
+    expect(code, 'the r338 "home is the work location" helper is gone').not.toContain('clockingPointBase');
   });
 
   it('the posted id is shape-checked BEFORE the service is called, and no redirect target is built from a posted url', () => {
     expect(at(update, 'UUID_RE.test(clockingLocationId)')).toBeLessThan(at(update, 'updateClockingLocation(user, {'));
-    expect(update).toContain("fail(LOCATIONS, new Error('Clocking location not found'))");
+    expect(update).toContain("fail(CLOCKING_LIST, new Error('Clocking location not found'))");
     for (const src of [create, update, helpers]) {
       expect(src, 'no posted url decides where the browser goes').not.toMatch(/returnTo|fd\.get\('(?:href|url|next|redirect)'\)/);
     }
-    // The contract module is what both sides read.
-    expect(read(FIELDS)).toContain("export const CLOCKING_FIELDS = ['name', 'reportLabel', 'address', 'locationId', 'remarks', 'lat', 'lng', 'radiusM'] as const;");
+    expect(read(FIELDS)).toContain(
+      "export const CLOCKING_FIELDS = ['name', 'reportLabel', 'address', 'locationId', 'remarks', 'lat', 'lng', 'radiusM', 'state', 'status'] as const;",
+    );
   });
 
-  it('the echo reader drops a malformed value and keeps a blank one', () => {
+  it('the echo readers drop a malformed value and keep a blank one', () => {
     const typed = readTypedClockingValues({
       typedName: 'HQ — North Gate',
       typedReportLabel: 'HQ',
@@ -432,10 +369,16 @@ describe('f9afd1ce rev 2 — the actions land a save on the row and a refusal ba
       typedLat: 'abc',
       typedLng: '101.6869',
       typedRadiusM: '-5',
+      typedState: 'Selangor',
+      typedStatus: 'archived',
     });
-    expect(typed).toEqual({ name: 'HQ — North Gate', reportLabel: 'HQ', address: '', lng: '101.6869' });
+    expect(typed).toEqual({ name: 'HQ — North Gate', reportLabel: 'HQ', address: '', lng: '101.6869', state: 'Selangor' });
     expect(readTypedClockingValues({ typedLocationId: '', typedRadiusM: '' })).toEqual({ locationId: '', radiusM: '' });
     expect(typedKey('reportLabel')).toBe('typedReportLabel');
+    const ok = '00000000-0000-4000-8000-000000000000';
+    expect(readTypedCompanyIds({ [TYPED_COMPANY_IDS]: `${ok},junk` })).toEqual([ok]);
+    expect(readTypedCompanyIds({ [TYPED_COMPANY_IDS]: '' })).toEqual([]);
+    expect(readTypedCompanyIds({})).toBeNull();
   });
 });
 
@@ -451,24 +394,18 @@ function toMarkup(tree: unknown): string {
     }),
   );
 }
-/**
- * 639bf4a5 rev 2 (r338) — `renderList` RENDERED THE REGISTER, which carried every point. It is a company
- * listing now (pinned in test/work-location-organization-relocation.test.ts), so the two screens that
- * actually show a point's row are rendered here instead: the LOCATION'S Edit screen, and the screen for
- * the points that hang off no location.
- */
 const renderLocationEdit = async (id: string, sp: Record<string, string> = {}) =>
   toMarkup(await EditLocationPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) }));
-const renderOffRegister = async (sp: Record<string, string> = {}) =>
-  toMarkup(await OffRegisterPage({ searchParams: Promise.resolve(sp) }));
+const renderList = async (sp: Record<string, string> = {}) => toMarkup(await ClockingListPage({ searchParams: Promise.resolve(sp) }));
+const renderView = async (id: string) => toMarkup(await ViewClockingLocationPage({ params: Promise.resolve({ id }) }));
 const renderNew = async (sp: Record<string, string> = {}) => toMarkup(await NewClockingLocationPage({ searchParams: Promise.resolve(sp) }));
 const renderEdit = async (id: string, sp: Record<string, string> = {}) =>
   toMarkup(await EditClockingLocationPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) }));
 
-/** Run a server action to its redirect and return where it sent the browser. */
-async function runAction(action: (fd: FormData) => Promise<void>, fields: Record<string, string>) {
+/** Run a server action to its redirect and return where it sent the browser. `companyIds` posts one entry each. */
+async function runAction(action: (fd: FormData) => Promise<void>, fields: Record<string, string | string[]>) {
   const fd = new FormData();
-  for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+  for (const [k, v] of Object.entries(fields)) for (const one of Array.isArray(v) ? v : [v]) fd.append(k, one);
   LAST_REDIRECT = '';
   await expect(action(fd)).rejects.toThrow('NEXT_REDIRECT');
   return LAST_REDIRECT;
@@ -478,27 +415,22 @@ const count = (html: string, needle: string) => html.split(needle).length - 1;
 const visible = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, '');
 
 /**
- * 0fe1ca2e rev 6 (r335) — THE ORDER OF THE CONTROLS IN THE MARKUP, which is the whole of what this round
- * changed and the only thing the reporter can see.
- *
- * ⚠️ ORDER, NEVER PRESENCE. Every one of these controls was on the page before this round — in two cards,
- * the search separated from Latitude by the whole of Location information. An assertion that merely found
- * them would pass on the layout that was contested, so each is located by index and the sequence compared,
- * with the MEASURED sequence in the failure message so a regression says what it actually rendered.
- *
- * The search box is anchored on its accessible label, read out of en.json rather than typed here: the
- * island resolves its own text through the real catalogue (the provider in `toMarkup`), so a hardcoded
- * English sentence would pin the translation instead of the layout.
+ * THE ORDER OF THE CONTROLS IN THE MARKUP — r423's order (the reporter's), measured on the rendered page.
+ * ORDER, NEVER PRESENCE; the measured sequence goes in the failure message. The search box is anchored on its
+ * accessible label read out of en.json (the island resolves its own text through the real catalogue).
  */
 const EN_LOCATIONS = (JSON.parse(read('messages/en.json')) as { admin: { locations: Record<string, string> } }).admin.locations;
 function assertClockingOrder(html: string): void {
   const marks: [string, string][] = [
+    ['Location Name', 'name="name"'],
     ['the address search', `aria-label="${EN_LOCATIONS.addressSearchLabel}"`],
     ['Address', 'name="address"'],
+    ['State', 'name="state"'],
     ['Latitude', 'name="lat"'],
     ['Longitude', 'name="lng"'],
-    ['Clocking radius', 'name="radiusM"'],
-    ['Name', 'name="name"'],
+    ['Geofencing Radius', 'name="radiusM"'],
+    ['Companies', 'name="companyIds"'],
+    ['Status', 'name="status"'],
     ['Report label', 'name="reportLabel"'],
     ['Remarks', 'name="remarks"'],
   ];
@@ -519,12 +451,14 @@ function assertClockingOrder(html: string): void {
  * CLOCKING_FIELDS — `clockingLocationId` is the route's own hidden id, not one of the eight, and the
  * search box is deliberately unnamed so it never appears here at all.
  */
-function assertPostedFields(html: string): void {
+function assertPostedFields(html: string, opts: { linked: boolean }): void {
   const open = html.lastIndexOf('<form', html.indexOf('sectionGps'));
   expect(open, 'the form is on the page').toBeGreaterThan(-1);
   const form = html.slice(open, html.indexOf('</form>', open));
   const posted = [...new Set([...form.matchAll(/\sname="([^"]+)"/g)].map((m) => m[1]))].filter((n) => n !== 'clockingLocationId');
-  expect([...posted].sort(), `the form posts: ${posted.join(', ')}`).toEqual([...CLOCKING_FIELDS].sort());
+  // r423 — the single-valued fields plus the companies; the work-location link is posted only when one exists.
+  const expected = [...CLOCKING_FIELDS.filter((f) => opts.linked || f !== 'locationId'), 'companyIds'].sort();
+  expect([...posted].sort(), `the form posts: ${posted.join(', ')}`).toEqual(expected);
 }
 
 let b: Base;
@@ -538,7 +472,8 @@ async function adminFor(companyId: string | null): Promise<SessionContext> {
   return { tenantId: b.tenantId, userId: u.id, grants: [{ role: 'hr_admin', companyId }] };
 }
 const HQ = { lat: 3.139, lng: 101.6869 };
-const FULL = {
+let FULL: Record<string, string | string[]>;
+const fullFor = (companyId: string) => ({
   name: 'HQ — North Gate',
   reportLabel: 'HQ',
   address: '1 Jalan Test, KL',
@@ -547,7 +482,13 @@ const FULL = {
   lat: String(HQ.lat),
   lng: String(HQ.lng),
   radiusM: '150',
-};
+  state: 'Selangor',
+  status: 'active',
+  companyIds: [companyId],
+});
+/** r423 — the service now requires the companies; the cases below open sites to the base company. */
+const mkSite = (p: Omit<Parameters<typeof createClockingLocation>[1], 'companyIds'> & { companyIds?: string[] }) =>
+  createClockingLocation(ADMIN, { companyIds: [b.companyId], ...p });
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -559,52 +500,46 @@ beforeEach(async () => {
   await resetDb();
   b = await seedBase();
   ADMIN = await adminFor(null);
+  FULL = fullFor(b.companyId);
 });
 
-describe('f9afd1ce rev 2 — Save lands on the list at the row; a refusal keeps the page open with everything typed', () => {
-  it('a save from the NEW page creates the site (label included) and lands on its home, highlighted', async () => {
+describe('r423 — Save lands on the clocking list at the row; a refusal keeps the page open with everything typed', () => {
+  it('a save from the NEW page creates the location (companies, state, label) and lands on the list, highlighted', async () => {
     const back = await runAction(createClockingLocationAction, FULL);
-    const site = (await listClockingLocations(ADMIN)).find((l) => l.name === FULL.name);
-    expect(site, 'the site was written').toBeTruthy();
+    const site = (await listClockingLocations(ADMIN)).find((l) => l.name === 'HQ — North Gate');
+    expect(site, 'the location was written').toBeTruthy();
     expect(site?.reportLabel).toBe('HQ');
     expect(site?.radiusM).toBe(150);
-    // FULL links to no location, so home is the screen that holds exactly those points.
-    expect(back).toBe(`${UNLINKED_CLOCKING_PAGE}?saved=1&focus=${site!.id}#row-${site!.id}`);
-    expect(back).toBe(clockingPointHome(site!.id, null).replace('?focus=', '?saved=1&focus='));
+    expect(site?.state).toBe('Selangor');
+    expect(site?.companies.map((c) => c.id)).toEqual([b.companyId]);
+    expect(back).toBe(`${CLOCKING_LIST}?saved=1&focus=${site!.id}#row-${site!.id}`);
 
-    // That screen renders the saved note and highlights THAT row, once.
-    const html = visible(await renderOffRegister({ saved: '1', focus: site!.id }));
-    expect(count(html, 'saved')).toBeGreaterThan(0);
+    const html = visible(await renderList({ saved: '1', focus: site!.id }));
+    expect(html).toContain('saved');
     expect(html).toContain(`id="row-${site!.id}"`);
     expect(count(html, 'bg-muted/50'), 'exactly one row highlighted').toBe(1);
   });
 
-  it('a LINKED save lands on the LOCATION’s own screen, at the point’s row — not on the company listing', async () => {
-    // 639bf4a5 rev 2 (r338) — the half of the move that is the reporter's fourth point: a site and its
-    // points are maintained in one place, so a point's Save returns to the site.
+  it('a LINKED save ALSO lands on the clocking list — never on the work location’s screen (r423 reverses r338)', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     const back = await runAction(createClockingLocationAction, { ...FULL, name: 'Linked Gate', locationId: loc });
     const site = (await listClockingLocations(ADMIN)).find((l) => l.name === 'Linked Gate');
-    expect(site, 'the point was written').toBeTruthy();
-    expect(back).toBe(`${locationEditPage(loc)}?saved=1&focus=${site!.id}#row-${site!.id}`);
-    expect(back.startsWith(LOCATIONS_LIST), 'still inside the Locations screens').toBe(true);
-    const html = visible(await renderLocationEdit(loc, { saved: '1', focus: site!.id }));
-    expect(html, 'the point is on the site’s own screen').toContain(`id="row-${site!.id}"`);
-    expect(html).toContain('Linked Gate');
+    expect(back).toBe(`${CLOCKING_LIST}?saved=1&focus=${site!.id}#row-${site!.id}`);
+    const work = visible(await renderLocationEdit(loc));
+    expect(work, 'the work location screen shows no clocking location').not.toContain('Linked Gate');
   });
 
-  it('a save from the EDIT page updates the site and lands on its row; a radius advisory rides along as the toast', async () => {
-    const { id } = await createClockingLocation(ADMIN, { name: 'Yard', lat: HQ.lat, lng: HQ.lng, radiusM: 300 });
-    const back = await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: id, name: 'Yard 2', radiusM: '5' });
-    expect(back.startsWith(`${UNLINKED_CLOCKING_PAGE}?`)).toBe(true);
+  it('a save from the EDIT page updates the location and lands on its row; a radius advisory rides along as the toast', async () => {
+    const { id } = await mkSite({ name: 'Yard', lat: HQ.lat, lng: HQ.lng, radiusM: 300 });
+    const back = await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: id, name: 'Yard 2', radiusM: '5', status: 'inactive' });
+    expect(back.startsWith(`${CLOCKING_LIST}?`)).toBe(true);
     expect(back).toContain('saved=1');
-    expect(back).toContain(`focus=${id}`);
     expect(back).toContain('toast=radiusWarningTight');
     expect(back.endsWith(`#row-${id}`)).toBe(true);
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(row.name).toBe('Yard 2');
-    expect(row.reportLabel).toBe('HQ');
     expect(row.radiusM).toBe(5);
+    expect(row.archivedAt, 'the Status radio deactivated it').not.toBeNull();
   });
 
   it('a REFUSED save from the NEW page stays on the new page with the reason and every typed value — nothing written', async () => {
@@ -614,44 +549,41 @@ describe('f9afd1ce rev 2 — Save lands on the list at the row; a refusal keeps 
     const params = new URLSearchParams(back.split('?')[1]);
     expect(params.get('error')).toMatch(/Radius .* is required/);
     for (const field of CLOCKING_FIELDS) expect(params.get(typedKey(field)), `${field} echoed`).toBe(typed[field]);
-    expect(back).not.toContain('saved=1');
+    expect(params.get(TYPED_COMPANY_IDS)).toBe(b.companyId);
     expect((await listClockingLocations(ADMIN)).some((l) => l.name === 'Refused')).toBe(false);
 
-    // The page re-renders with what was TYPED, and the reason above the fields.
     const html = visible(await renderNew(Object.fromEntries(params)));
     expect(html).toContain('value="Refused"');
-    expect(html).toContain('value="HQ"');
     expect(html).toContain('1 Jalan Test, KL');
-    expect(html).toContain('value="main gate"');
-    expect(html).toContain(`value="${HQ.lat}"`);
-    expect(html).toContain('Radius');
     expect(html, 'the blank radius stays blank — nothing was invented').toMatch(/name="radiusM"[^>]*value=""/);
+    expect(html, 'the ticked company stays ticked').toMatch(new RegExp(`name="companyIds" value="${b.companyId}" checked=""`));
   });
 
-  it('a REFUSED save from the EDIT page stays on that site’s page with typed values over what is on file', async () => {
-    const { id } = await createClockingLocation(ADMIN, { name: 'On File', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: 'OF' });
+  it('no company ticked is refused in the admin’s words', async () => {
+    const back = await runAction(createClockingLocationAction, { ...FULL, name: 'Nobody', companyIds: [] });
+    expect(new URLSearchParams(back.split('?')[1]).get('error')).toBe('companiesRequired');
+  });
+
+  it('a REFUSED save from the EDIT page stays on that location’s edit page with typed values over what is on file', async () => {
+    const { id } = await mkSite({ name: 'On File', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: 'OF' });
     const back = await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: id, name: 'Typed Name', reportLabel: 'TN', lat: '999' });
     expect(back.startsWith(`${clockingEditPage(id)}?`)).toBe(true);
     const params = new URLSearchParams(back.split('?')[1]);
     expect(params.get('error')).toMatch(/Latitude/);
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(row.name, 'nothing was written').toBe('On File');
-
     const html = visible(await renderEdit(id, Object.fromEntries(params)));
     expect(html).toContain('value="Typed Name"');
-    expect(html).toContain('value="TN"');
     expect(html).not.toContain('value="On File"');
-    expect(html).not.toContain('value="OF"');
-    // A malformed echo (999 is numeric and passes the shape; make one that does not) falls back to on file.
     const junk = visible(await renderEdit(id, { typedLat: 'north-ish', typedName: 'Still Typed' }));
     expect(junk).toContain('value="Still Typed"');
     expect(junk).toContain(`value="${HQ.lat}"`);
   });
 
-  it('a forged posted id can send the browser nowhere but the Locations screens', async () => {
+  it('a forged posted id can send the browser nowhere but the clocking list', async () => {
     for (const junk of ['not-a-uuid', 'https://evil.example/steal', "'; drop table clocking_location; --", '']) {
       const back = await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: junk });
-      expect(back, `${JSON.stringify(junk)} lands on the register with the reason`).toBe(`${LOCATIONS_LIST}?error=${encodeURIComponent('Clocking location not found')}`);
+      expect(back, `${JSON.stringify(junk)} lands on the list with the reason`).toBe(`${CLOCKING_LIST}?error=${encodeURIComponent('Clocking location not found')}`);
     }
     const unknown = '00000000-0000-4000-8000-000000000000';
     const back = await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: unknown });
@@ -675,7 +607,7 @@ describe('f9afd1ce rev 2 — Save lands on the list at the row; a refusal keeps 
 describe('0fe1ca2e · removing the control must not unlink anything', () => {
   it('an edit that changes only the name keeps the link', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    const { id } = await createClockingLocation(ADMIN, {
+    const { id } = await mkSite({
       name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GA',
     });
 
@@ -698,7 +630,7 @@ describe('0fe1ca2e · removing the control must not unlink anything', () => {
    */
   it('and omitting the field is what clears it — which is why the form must render it', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ2', name: 'Second' });
-    const { id } = await createClockingLocation(ADMIN, {
+    const { id } = await mkSite({
       name: 'Gate B', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GB',
     });
 
@@ -712,76 +644,22 @@ describe('0fe1ca2e · removing the control must not unlink anything', () => {
   });
 });
 
-describe('f9afd1ce rev 2 — the pages render', () => {
-  it('the NEW page: ONE section heading, Save, Cancel to the list, the pre-picked link, and the keyless map', async () => {
-    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    const html = visible(await renderNew({ addPoint: loc }));
-    /**
-     * 0fe1ca2e rev 6 (r335) — UPDATED, NOT LOOSENED. The three lines here used to read
-     *
-     *   expect(count(html, 'sectionInfo')).toBe(1);
-     *   expect(count(html, 'sectionGps')).toBe(1);
-     *   expect(html.indexOf('sectionInfo')).toBeLessThan(html.indexOf('sectionGps'));
-     *
-     * and pinned the two-card layout the reporter contested. ONE card now, and `sectionInfo` is retired
-     * from all six locales, so its count is asserted at ZERO — on the markup with <script> stripped, so a
-     * key surviving in the RSC payload cannot fake either half (CLAUDE.md §8).
-     */
-    expect(count(html, 'sectionGps'), 'the one heading, once').toBe(1);
-    expect(count(html, 'sectionInfo'), 'and no Location information heading anywhere on the page').toBe(0);
+describe('r423 — the pages render', () => {
+  it('the NEW page: the reporter’s order, every company as a tick, Save, Cancel to the list, and the keyless map', async () => {
+    const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'XYZ Sdn Bhd' });
+    const html = visible(await renderNew());
     assertClockingOrder(html);
-    assertPostedFields(html);
+    assertPostedFields(html, { linked: false });
+    for (const id of [b.companyId, coB]) expect(html, 'every company offered as a tick').toContain(`name="companyIds" value="${id}"`);
+    expect(html, 'nothing pre-ticked on a new location').not.toMatch(/name="companyIds"[^>]*checked=""/);
+    expect(html, 'Active is the default status').toMatch(/name="status" value="active" checked=""/);
+    expect(html, 'Malaysian states are offered').toContain('<option value="Selangor">Selangor</option>');
     expect(count(html, '>save<')).toBe(1);
-    // 639bf4a5 rev 2 (r338) — `?addPoint=<loc>` was given, so every way out goes to THAT site's screen.
-    expect(html).toContain(`href="${locationEditPage(loc)}"`);
     expect(count(html, '>cancel<')).toBe(1);
-    expect(count(html, 'backToLocations</a>'), 'the way back, once').toBe(1);
-    expect(html).toContain('newClockingTitle');
-    /**
-     * 0fe1ca2e (r322) — UPDATED, NOT DELETED, because it pins a decision that was reversed. This read
-     *
-     *   expect(html).toMatch(new RegExp(`<option value="${loc}"[^>]*selected`));
-     *
-     * back when the link was a <select>. That control is gone: a Clocking Location is a physical place
-     * and the link was the one field that made the form look company-based. What must NOT change is the
-     * property the old line actually protected — that `?addPoint=` still carries its location through —
-     * so it is asserted on the hidden field that now carries it, and the control's absence is asserted
-     * beside it so the two cannot both drift back.
-     */
-    expect(html).toContain(`<input type="hidden" name="locationId" value="${loc}"`);
-    expect(html, 'the picker itself is gone').not.toContain('<select name="locationId"');
-    expect(html).toContain('name="reportLabel"');
-    /**
-     * fa2db8cb rev 2 (r279) — REWRITTEN, NOT DELETED. This line used to read
-     *
-     *   expect(html).not.toMatch(/leaflet|openstreetmap|<iframe/i);
-     *
-     * and was the RENDERED half of the pair that held the 2026-09-11 "no map here" decision (the source
-     * half is in the section-order describe above, where the reasoning is written out). rev 2 reverses
-     * that decision, so the same line now pins the three things the reversal actually promised, ON THE
-     * PAGE rather than in the source — with NO map key set in this environment, which is the only
-     * configuration production has ever had.
-     */
-    /**
-     * ⚠️ TWO CREDITS, PINNED SEPARATELY. Asserting the bare words "© OpenStreetMap contributors" was
-     * VACUOUS and was caught by mutation: the address search's own credit line ENDS in the same words,
-     * so deleting the map's caption entirely left the assertion green. Each is now pinned to its own
-     * element — the map's as a whole text node, the search's by the part only it says.
-     */
-    expect(html, 'the MAP credits its tile supplier in our own server-rendered markup, not Leaflet’s control').toContain(
-      '>© OpenStreetMap contributors</p>',
-    );
-    expect(html, 'and the SEARCH credits the geocoder separately, as its usage policy asks').toContain('Address search: Nominatim');
-    expect(html, 'the Satellite control is RENDERED and visibly DISABLED — never quietly dropped').toMatch(
-      /<button type="button" disabled=""[^>]*>Satellite<\/button>/,
-    );
-    expect(html, '…and it says why, in the page, not only in a tooltip').toContain('Satellite view is off');
-    /**
-     * The fallback the whole keyless design rests on: the coordinates are still ORDINARY REQUIRED BOXES,
-     * so a site can be created when the map is slow, blocked or simply not there. Read as the whole
-     * <input> tag rather than as a regex across attributes — React 19 emits `name` and `value` AFTER
-     * `class` on an input, so an order-sensitive pattern here pins React's internals, not the screen.
-     */
+    expect(count(html, `href="${CLOCKING_LIST}"`), 'Back and Cancel, both to the list').toBe(2);
+    expect(html).toContain('>© OpenStreetMap contributors</p>');
+    expect(html).toContain('Address search: Nominatim');
+    expect(html).toMatch(/<button type="button" disabled=""[^>]*>Satellite<\/button>/);
     const inputTag = (field: string) => {
       const i = at(html, `name="${field}"`);
       return html.slice(html.lastIndexOf('<input', i), html.indexOf('>', i) + 1);
@@ -790,46 +668,30 @@ describe('f9afd1ce rev 2 — the pages render', () => {
       expect(inputTag(field), `${field} is still a plain typed box`).toContain('type="number"');
       expect(inputTag(field), `${field} is still required by the form itself`).toContain('required=""');
     }
-    expect(html, 'still no embed — an <iframe> map needs the key that does not exist').not.toContain('<iframe');
-    // A junk or unknown addPoint pre-picks nothing.
-    const plain = visible(await renderNew({ addPoint: 'not-a-uuid' }));
-    // With no link there is no field AT ALL — not an empty one. An empty `locationId` would post as ''
-    // and resolve to NULL, which is the same outcome here, but rendering nothing is what makes the form
-    // say plainly that a clocking point has no company.
-    expect(plain, 'nothing pre-picked').not.toContain('name="locationId"');
+    expect(html, 'no work-location link on a new location').not.toContain('name="locationId"');
+    expect(html).not.toContain('<iframe');
   });
 
-  it('the EDIT page: what is on file, Back and Cancel to the row, hidden id; junk and unknown ids are notFound()', async () => {
+  it('the EDIT page: what is on file (companies ticked, status), Back and Cancel to the row; junk and unknown ids are notFound()', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    const { id } = await createClockingLocation(ADMIN, { name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GA', address: 'Lot 1' });
+    const { id } = await mkSite({ name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GA', address: 'Lot 1', state: 'Selangor' });
     const html = visible(await renderEdit(id));
     expect(html).toContain('editClockingTitle');
     expect(html).toContain('value="Gate A"');
-    expect(html).toContain('value="GA"');
-    expect(html).toContain('Lot 1');
     expect(html).toContain('value="200"');
+    expect(html).toMatch(new RegExp(`name="companyIds" value="${b.companyId}" checked=""`));
+    expect(html).toMatch(/<option value="Selangor" selected="">/);
     expect(html).toContain(`<input type="hidden" name="clockingLocationId" value="${id}"`);
-    // 0fe1ca2e — the link is READ-ONLY now, but it is still on the form and still posted. This is the
-    // load-bearing half: `resolveLocationLink` maps an absent field to NULL and the update sets it
-    // unconditionally, so a form that merely dropped the control would unlink this row on the next
-    // plain Save, with no message and no event.
+    // 0fe1ca2e — the work-location link is READ-ONLY, still on the form and still posted.
     expect(html).toContain(`<input type="hidden" name="locationId" value="${loc}"`);
-    expect(html, 'no picker').not.toContain('<select name="locationId"');
-    expect(html, 'and it says which location, rather than just hiding it').toContain('Headquarters');
-    // Back and Cancel both land on the row (renderToStaticMarkup escapes & in attributes; there is none here).
-    expect(count(html, `href="${clockingPointHome(id, loc)}"`)).toBe(2);
-    // 0fe1ca2e rev 6 (r335): ONE heading, and the retired one absent — the edit page renders the same form.
-    expect(count(html, 'sectionGps')).toBe(1);
-    expect(count(html, 'sectionInfo')).toBe(0);
+    expect(html, 'and it says which location').toContain('Headquarters');
+    expect(count(html, `href="${clockingFocusHref(id)}"`), 'Back and Cancel land on the row').toBe(2);
     assertClockingOrder(html);
-    assertPostedFields(html);
-
+    assertPostedFields(html, { linked: true });
     for (const junk of ['not-a-uuid', "'; drop table clocking_location; --", id.slice(0, -1)]) {
       await expect(renderEdit(junk), `${junk} never reaches SQL`).rejects.toThrow('NEXT_NOT_FOUND');
     }
     await expect(renderEdit('00000000-0000-4000-8000-000000000000')).rejects.toThrow('NEXT_NOT_FOUND');
-
-    // An archived link the picker cannot offer stays selected rather than silently unlinking on Save.
     await archiveLocation(ADMIN, { locationId: loc });
     const archived = visible(await renderEdit(id));
     expect(archived).toContain(`<input type="hidden" name="locationId" value="${loc}"`);
@@ -898,74 +760,65 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(html).not.toContain('National (default)');
   });
 
-  it('a SITE’s own screen as a group admin: read rows with Edit, the Add link, the label chip, no inline boxes', async () => {
-    /**
-     * 639bf4a5 rev 2 (r338) — RE-POINTED. Every property below was asserted on the REGISTER, which
-     * rendered the whole tenant's register grouped by site. The reporter asked for that page to become a
-     * company listing, so the rows are on the LOCATION'S own screen and on the off-register screen, and
-     * the cases follow them. The ONE property that could not follow — "each point is inside its own
-     * site's block" — is now structural rather than asserted: a point renders on a screen that IS one
-     * site, so a point under the wrong site is a point on the wrong page, which the containment
-     * assertions below read directly.
-     */
-    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    const { id: a } = await createClockingLocation(ADMIN, { name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GA' });
-    const { id: c } = await createClockingLocation(ADMIN, { name: 'Gate C', lat: HQ.lat, lng: HQ.lng, radiusM: 200 });
-    const { id: empty } = await createLocation(ADMIN, { companyId: b.companyId, code: 'YARD', name: 'Yard' });
-
-    const site = visible(await renderLocationEdit(loc));
-    expect(count(site, `href="${clockingEditPage(a)}"`), 'its own point, once').toBe(1);
-    expect(site, 'and nobody else’s').not.toContain(`href="${clockingEditPage(c)}"`);
-    expect(count(site, '>edit<')).toBe(1);
-    expect(site).toContain(`href="${CLOCKING_NEW_PAGE}?addPoint=${loc}"`);
-    expect(site).toContain(`id="row-${a}"`);
-    expect(site, 'the label chip on the row').toContain('reportLabel</span> GA<');
-    expect(site).toContain('Gate A');
-    for (const field of ['lat', 'lng', 'radiusM', 'reportLabel']) expect(site, `no ${field} box on the site screen`).not.toContain(`name="${field}"`);
-    expect(count(site, '>archive<'), 'the point’s Archive, plus the location’s own').toBe(2);
-    expect(count(site, 'delete'), 'Delete (the mocked translator echoes the key) on the row').toBeGreaterThanOrEqual(1);
-
-    // …and a site with no points says so, and offers the way out of that state with itself pre-picked.
-    const bare = visible(await renderLocationEdit(empty));
-    expect(bare).toContain('groupNoPoints');
-    expect(bare).toContain(`href="${CLOCKING_NEW_PAGE}?addPoint=${empty}"`);
-    expect(bare, 'no other site’s point leaks onto it').not.toContain(`id="row-${a}"`);
-
-    // …and the point that hangs off NOTHING is on the screen that holds exactly those, with Add.
-    const off = visible(await renderOffRegister());
-    expect(off).toContain(`id="row-${c}"`);
-    expect(off, 'a linked point is not on it').not.toContain(`id="row-${a}"`);
-    expect(count(off, `href="${CLOCKING_NEW_PAGE}"`)).toBe(1);
-    expect(count(off, 'addClocking')).toBe(1);
+  it('the LIST as a group admin: the columns, the companies, View / Edit / Deactivate, Activate for an inactive one', async () => {
+    const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'XYZ Sdn Bhd' });
+    const { id: a } = await mkSite({ name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, reportLabel: 'GA', companyIds: [b.companyId, coB], state: 'Selangor', address: 'Jalan Kota' });
+    const { id: c } = await mkSite({ name: 'Old Store', lat: HQ.lat, lng: HQ.lng, radiusM: 100 });
+    await owner.db.update(schema.clockingLocation).set({ archivedAt: new Date() }).where(eq(schema.clockingLocation.id, c));
+    const html = visible(await renderList());
+    expect(html).toContain(`id="row-${a}"`);
+    expect(html).toContain(`id="row-${c}"`);
+    expect(html).toContain('Jalan Kota');
+    expect(html).toContain('>Selangor<');
+    expect(html).toContain('>Acme Sdn Bhd<');
+    expect(html).toContain('>XYZ Sdn Bhd<');
+    expect(count(html, '>view<'), 'View on every row').toBe(2);
+    expect(count(html, '>edit<'), 'Edit on every row').toBe(2);
+    expect(count(html, `href="${clockingViewPage(a)}"`)).toBe(1);
+    expect(count(html, 'deactivate'), 'Deactivate on the active row (button + confirm label)').toBeGreaterThanOrEqual(1);
+    expect(count(html, '>activate<'), 'Activate on the inactive one').toBe(1);
+    expect(html).toContain(`href="${CLOCKING_NEW_PAGE}"`);
+    for (const field of ['lat', 'lng', 'radiusM', 'reportLabel']) expect(html, `no ${field} box on the list`).not.toContain(`name="${field}"`);
+    // The filters narrow it.
+    const inactive = visible(await renderList({ status: 'inactive' }));
+    expect(inactive).toContain(`id="row-${c}"`);
+    expect(inactive).not.toContain(`id="row-${a}"`);
+    const byCo = visible(await renderList({ company: coB }));
+    expect(byCo).toContain(`id="row-${a}"`);
+    expect(byCo).not.toContain(`id="row-${c}"`);
+    const searched = visible(await renderList({ q: 'kota' }));
+    expect(searched).toContain(`id="row-${a}"`);
+    expect(searched).not.toContain(`id="row-${c}"`);
   });
 
-  it('the point screens as a COMPANY-SCOPED admin: no Edit, no Add, no form — a View instead', async () => {
-    const { id } = await createClockingLocation(ADMIN, { name: 'Gate B', lat: HQ.lat, lng: HQ.lng, radiusM: 200, reportLabel: 'GB' });
+  /**
+   * Plan point 2 — a company administrator sees, READ-ONLY, only the locations open to companies they
+   * administer, and only those company names. r272's property (a reader who may not edit still gets a View)
+   * is kept.
+   */
+  it('the LIST and the pages as a COMPANY-SCOPED admin: only their companies’ locations and names; View, no Edit, no form', async () => {
+    const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'Hidden Co' });
+    const { id: shared } = await mkSite({ name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 200, reportLabel: 'GB', companyIds: [b.companyId, coB] });
+    const { id: other } = await mkSite({ name: 'Other Co Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 200, companyIds: [coB] });
     ADMIN = await adminFor(b.companyId);
-    const list = visible(await renderOffRegister());
-    expect(list).toContain('sharedManagedByGroupAdmin');
-    /**
-     * r272 (0e8cf366) — UPDATED. This asserted the edit page's URL was ABSENT from the list, which was
-     * true only because nothing linked to it: a company-scoped admin could see a site on the list and had
-     * no way to open it, while `clocking/[id]/page.tsx` has always rendered them a read-only fact list.
-     * They now get a View.
-     *
-     * The subject of this test is unchanged and still asserted: no EDIT control, no Add, and no form at
-     * the destination — the loop below proves the last of those directly, which is why linking the URL is
-     * safe. What is forbidden is the affordance to change something, not the ability to read it.
-     */
+    const list = visible(await renderList());
+    expect(list).toContain('companyAdminReadOnly');
+    expect(list).toContain(`id="row-${shared}"`);
+    expect(list, 'a location open only to another company is not listed').not.toContain(`id="row-${other}"`);
+    expect(list).toContain('>Acme Sdn Bhd<');
+    expect(list, 'and another company’s NAME is never shown').not.toContain('Hidden Co');
     expect(list, 'no Edit control for this role').not.toContain('>edit<');
-    expect(list, 'and it is a View that links there').toContain('>view<');
-    expect(list).toContain(clockingEditPage(id));
+    expect(list).toContain('>view<');
     expect(list).not.toContain(`href="${CLOCKING_NEW_PAGE}"`);
-    expect(list).toContain('Gate B');
-    expect(list).toContain('reportLabel</span> GB<');
-    for (const page of [await renderNew(), await renderEdit(id)]) {
-      const html = visible(page);
-      expect(html).toContain('sharedManagedByGroupAdmin');
-      expect(html).not.toContain('<form');
-      expect(html).not.toContain('name="name"');
-    }
-    expect(visible(await renderEdit(id))).toContain('Gate B');
+    const view = visible(await renderView(shared));
+    expect(view).toContain('Shared Gate');
+    expect(view).not.toContain('Hidden Co');
+    expect(view).not.toContain('<form');
+    await expect(renderView(other), 'a location not open to their companies is notFound()').rejects.toThrow('NEXT_NOT_FOUND');
+    await expect(renderEdit(shared)).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT).toBe(clockingViewPage(shared));
+    const newPage = visible(await renderNew());
+    expect(newPage).toContain('sharedManagedByGroupAdmin');
+    expect(newPage).not.toContain('<form');
   });
 });

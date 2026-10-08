@@ -216,7 +216,7 @@ describe('fa2db8cb rev 2 — the two client islands keep the promises no behavio
     expect(search.match(/<button/g)?.length, 'every button in the island is type="button"').toBe(
       search.match(/<button\s+type="button"/g)?.length,
     );
-    expect(search, 'the search box is UNNAMED, so it is not submitted and CLOCKING_FIELDS stays the set of eight').not.toMatch(
+    expect(search, 'the search box is UNNAMED, so it is not submitted and CLOCKING_FIELDS stays the posted set').not.toMatch(
       /<input[^>]*\sname=/,
     );
   });

@@ -475,8 +475,11 @@ describe('0fe1ca2e rev 6 (r335) — the real one-card form: the search still fil
           t={(k) => k}
           mode="new"
           values={{ ...blank, locationId: LINK }}
+          companyIds={['c1']}
+          companies={[{ id: 'c1', name: 'Acme Sdn Bhd' }]}
+          stateOptions={['Selangor']}
           linkableLocations={[{ id: LINK, code: 'HQ', name: 'Headquarters', companyName: 'Acme' }]}
-          cancelHref="/admin/work-locations"
+          cancelHref="/admin/work-locations/clocking"
         />
       </NextIntlClientProvider>,
     );
@@ -508,17 +511,24 @@ describe('0fe1ca2e rev 6 (r335) — the real one-card form: the search still fil
      * contested. The search is the unnamed one: its blank `name` is deliberate (an unnamed control is not
      * submitted, which is what keeps CLOCKING_FIELDS the set of eight) and is asserted as part of the row.
      */
-    const controls = [...form.querySelectorAll('input, textarea')].map((el) => (el as HTMLInputElement).name || '(the address search)');
+    // r423 (83c0d3c8) — the reporter's order REPLACES r335's: Location Name first, then the search and the
+    // boxes it fills, State, the GPS numbers, the Companies ticks and the Status radios, then the optional
+    // Report label and Remarks (the hidden work-location link rides last, read-only).
+    const controls = [...form.querySelectorAll('input, textarea, select')].map((el) => (el as HTMLInputElement).name || '(the address search)');
     expect(controls).toEqual([
+      'name',
       '(the address search)',
       'address',
+      'state',
       'lat',
       'lng',
       'radiusM',
-      'name',
+      'companyIds',
+      'status',
+      'status',
       'reportLabel',
-      'locationId',
       'remarks',
+      'locationId',
     ]);
 
     // TRAP 1, by use rather than by reading: the bridge walks up to the enclosing form from the island.
@@ -532,8 +542,10 @@ describe('0fe1ca2e rev 6 (r335) — the real one-card form: the search still fil
     expect(buttons.length, 'the Search button at least').toBeGreaterThan(0);
     for (const b of buttons) expect(b.type, `${b.textContent} is not a submit button`).toBe('button');
 
-    // (c) The eight posted fields, as the browser would actually post them off the real form.
-    expect([...new FormData(form).keys()].sort()).toEqual([...CLOCKING_FIELDS].sort());
+    // (c) The posted fields, as the browser would actually post them off the real form — the single-valued
+    // CLOCKING_FIELDS plus one `companyIds` entry per ticked company (one ticked here).
+    expect([...new FormData(form).keys()].sort()).toEqual([...CLOCKING_FIELDS, 'companyIds'].sort());
+    expect(new FormData(form).get('status'), 'Active is the default').toBe('active');
   });
 
   it('Search → pick fills Address, Latitude and Longitude of the real form, reframes the map, and never posts', async () => {

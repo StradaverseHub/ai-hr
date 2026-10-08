@@ -18,6 +18,13 @@
  *
  * Behaviour (the 42501, the service refusal, cross-company assignment landing, the optional link) lives in
  * test/clocking-geofence.test.ts. This file pins the SHAPE those behaviours depend on.
+ *
+ * r423 (83c0d3c8, migration 0517) — the location stays ONE shared record written by group admins, but is now
+ * OPENED TO NAMED COMPANIES (clocking_location_company). Three f9afd1ce pins below are REVERSED and pin the
+ * new rule: the personnel picker offers only the locations open to the employee's company; the list reads
+ * the companies a location is open to (not a "Used by" derived from assignments); and the create action
+ * posts the companies (`companyIds`) — still never an OWNER company. 0517's own shape is pinned in its own
+ * describe at the end.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -240,100 +247,79 @@ describe('f9afd1ce — core/clocking-location.ts: every writer asserts group-adm
     expect(service).toMatch(/function assertGroupAdmin\(ctx: SessionContext\)[\s\S]*?isGroupAdmin\(withEffectiveGrants\(ctx\)\)/);
   });
 
-  it('listClockingLocations takes no company parameter, and the cross-company assignment guard is gone', () => {
-    expect(service).toMatch(/export function listClockingLocations\(\s*ctx: SessionContext,\s*opts: \{ includeArchived\?: boolean \} = \{\},?\s*\)/);
+  it('listClockingLocations FILTERS by company (r423) but no location has an owner company', () => {
+    // r423 — the options are the list's filters; `companyId` is "open to this company", a filter over the
+    // join table, never an owner column on the location.
+    expect(service).toMatch(/export function listClockingLocations\(\s*ctx: SessionContext,\s*opts: ListClockingLocationsOptions = \{\},?\s*\)/);
+    expect(service).toContain('companyId?: string;');
     expect(service).not.toContain('CrossCompanyClockingLocationError');
     expect(service).not.toContain('clockingLocation.companyId');
-    // The row type carries the "Used by" list the screen renders as chips.
-    expect(service).toContain('usedByCompanies: string[];');
+    // The row carries the companies the location is OPEN to; "Used by" (derived from assignments) is gone.
+    expect(service).toContain('companies: ClockingLocationCompanyRef[];');
+    expect(service).not.toContain('usedByCompanies');
+    // A non-group-admin sees only locations open to companies they administer, and only those names.
+    expect(service).toContain('app.is_admin_for(vc.company_id)');
+    expect(service).toContain('(app.is_group_admin() or app.is_admin_for(clc.company_id))');
   });
 });
 
-describe('f9afd1ce — the two screens', () => {
-  it('the personnel page offers EVERY shared site: listClockingLocations(s), not [emp.companyId]', () => {
+describe('f9afd1ce / r423 — the screens', () => {
+  it('r423 REVERSES "the personnel page offers EVERY shared site": only active sites open to the employee’s company', () => {
     const page = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(page).toContain('await listClockingLocations(s) : []');
-    expect(page).not.toContain('listClockingLocations(s, [emp.companyId])');
-    /**
-     * r272 (0e8cf366) — THE PROTECTION SURVIVES, THE SENTENCE DOES NOT.
-     *
-     * f9afd1ce's rule was: the empty state must not claim clock-in is unavailable when shared sites
-     * exist. It met that rule by reporting how many clocking points were linked to the employee's work
-     * location. That sentence was itself the problem the reporter filed 0e8cf366 about — it is the card
-     * telling you about their BRANCH when the engine has never consulted one — so it is gone.
-     *
-     * The rule is met a better way now. The empty state names the actual reason nothing resolves (nothing
-     * is assigned) and the actual consequence (with geofencing enforced, that employee is refused
-     * everywhere — `resolveGeofence` fails closed on zero assigned sites). It blames neither the work
-     * location nor the shared register, which is what the original assertion was defending.
-     */
+    expect(page).toContain('await listClockingLocations(s, { companyId: emp.companyId }) : []');
+    expect(page).not.toContain('await listClockingLocations(s) : []');
     expect(page).not.toContain('resolvedLocationPointCount');
-    expect(page, 'the empty state is about the ASSIGNMENT').toContain("tc('noneAssigned')");
+    /**
+     * r272's protection survives: the empty state names the real reason (nothing usable is assigned) and
+     * the real consequence, and blames neither the work location nor the branch. r423 says it as the plan
+     * worded it ("Choose a location: this employee cannot clock in until one is assigned").
+     */
+    expect(page, 'the empty state is about the ASSIGNMENT').toContain("cannotClockWarning: tc('cannotClockWarning')");
     const en = JSON.parse(read('messages/en.json'));
-    const empty = en.people.detail.clocking.noneAssigned as string;
+    const empty = en.people.detail.clocking.cannotClockWarning as string;
     expect(empty, 'it must not blame the work location or the branch').not.toMatch(/work location|branch/i);
     expect(empty, 'and it states the real consequence').toMatch(/cannot clock in/i);
     expect(page).not.toContain("tc('noSites')");
   });
 
-  it('the clocking rows render ONE tenant-level register beside the location they belong to, and NO clocking form; the page of its own gates on isGroupAdmin and posts no companyId (rev 2, r267)', () => {
-    /**
-     * 639bf4a5 rev 2 (r338) — RE-POINTED, NOT LOOSENED. Until this round the assertions below read the
-     * REGISTER (app/admin/work-locations/page.tsx), which rendered every clocking point in the tenant.
-     * The register is a COMPANY LISTING now — the reporter asked for Company | Location | Status |
-     * Action with no rows of its own — and the points moved onto the location's OWN screens, with the
-     * ones that link to no location on a screen of their own. So each property f9afd1ce won is asserted
-     * at the file that now holds it: the shared row component, the Edit screen that renders it with its
-     * controls, and the unlinked-points screen. The one about the REGISTER that still belongs to the
-     * register is asserted there — that it renders no clocking form, which is now trivially true because
-     * it renders no form at all.
-     */
-    const rows = read('app/admin/work-locations/clocking-points.tsx');
-    const edit = read('app/admin/work-locations/[id]/edit/page.tsx');
-    const offRegister = read('app/admin/work-locations/clocking/page.tsx');
+  it('the list renders ONE tenant-level register through the facade, gated on isGroupAdmin, with no clocking form; the form posts no owner company', () => {
+    const list = read('app/admin/work-locations/clocking/page.tsx');
+    const view = read('app/admin/work-locations/clocking/[id]/page.tsx');
     const page = read('app/admin/work-locations/page.tsx');
-    expect(edit).toContain('const groupAdmin = isGroupAdmin(s);');
-    expect(offRegister).toContain('const groupAdmin = isGroupAdmin(s);');
-    // ONE tenant-level read, still through the pack's published facade, still including archived rows.
-    for (const src of [edit, offRegister, page]) {
-      expect(src).toContain('await listClockingLocations(s, { includeArchived: true })');
-      expect(src, 'through the facade, never the implementation').toContain("from '@/packs/attendance/service'");
-    }
-    expect(edit).toContain("t('sharedManagedByGroupAdmin')");
-    expect(offRegister).toContain("t('sharedManagedByGroupAdmin')");
-    expect(rows).toContain("t('usedBy')");
-    // rev 2 (r267): the create / edit forms MOVED to app/admin/work-locations/clocking/*. The rows post
-    // nothing for a site beyond Archive / Restore / Delete; the form of its own is gated as the list's was.
-    for (const src of [rows, edit, offRegister, page]) {
+    expect(list).toContain('const groupAdmin = isGroupAdmin(s);');
+    expect(list).toContain('await listClockingLocations(s, { status, q, companyId: companyId || undefined })');
+    for (const src of [list, view]) expect(src, 'through the facade, never the implementation').toContain("from '@/packs/attendance/service'");
+    expect(list).toContain("t('companyAdminReadOnly')");
+    expect(view).toContain("t('sharedManagedByGroupAdmin')");
+    expect(list).toContain("t('colCompanies')");
+    expect(list).not.toContain("t('usedBy')");
+    for (const src of [list, view, page]) {
       expect(src).not.toContain('action={createClockingLocationAction}');
       expect(src).not.toContain('action={updateClockingLocationAction}');
     }
-    // 639bf4a5 rev 2 — and the REGISTER carries no <form> of ANY kind: Add, View and Edit each open a
-    // screen of their own, which is the reporter's own requirement and is what makes the line above
-    // true for reasons that cannot quietly stop holding.
-    expect(page, 'the company listing renders no form at all').not.toContain('<form');
+    expect(page, 'the work location listing renders no form at all').not.toContain('<form');
     const form = read('app/admin/work-locations/clocking/clocking-form.tsx');
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
-    // The clocking form used to carry <input type="hidden" name="companyId" …> — only the per-company
-    // `location` form on the list may still post one.
-    expect(form).not.toContain('name="companyId"');
-    for (const rel of ['app/admin/work-locations/clocking/new/page.tsx', 'app/admin/work-locations/clocking/[id]/page.tsx']) {
-      const src = read(rel);
-      expect(src, `${rel} gates the form on isGroupAdmin`).toContain('const groupAdmin = isGroupAdmin(s);');
-      expect(src, `${rel} gives a company-scoped admin the same note the list gives them`).toContain("t('sharedManagedByGroupAdmin')");
-    }
+    expect(form, 'no OWNER company field').not.toContain('name="companyId"');
+    expect(form, 'the companies ALLOWED to use it, one tick each').toContain('name="companyIds"');
+    const newPage = read('app/admin/work-locations/clocking/new/page.tsx');
+    expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
+    expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
+    expect(read('app/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain('if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));');
   });
 
-  it('the create action posts no companyId', () => {
+  it('the create action posts the companies allowed (companyIds), never an owner companyId', () => {
     const actions = read('app/admin/actions.ts');
-    const fn = actions.slice(
-      actions.indexOf('export async function createClockingLocationAction'),
-      actions.indexOf('export async function updateClockingLocationAction'),
-    );
-    expect(fn).not.toContain('companyId');
+    const from = actions.indexOf('export async function createClockingLocationAction');
+    const to = actions.indexOf('export async function updateClockingLocationAction');
+    expect(from).toBeGreaterThanOrEqual(0);
+    expect(to).toBeGreaterThan(from);
+    const fn = actions.slice(from, to);
+    expect(fn).not.toMatch(/\bcompanyId\b/);
+    expect(fn).toContain('companyIds,');
   });
 
-  it('the six locales carry every new key, and the retired ones are gone', () => {
+  it('the six locales carry every live key, the retired ones are marked retired, and the long-deleted stay deleted', () => {
     for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
       const m = JSON.parse(read(`messages/${loc}.json`)) as {
         admin: { locations: Record<string, string> };
@@ -341,17 +327,12 @@ describe('f9afd1ce — the two screens', () => {
       };
       for (const k of [
         'sharedManagedByGroupAdmin',
-        'usedBy',
-        'coordinates',
         'radiusMetres',
         'clockingLocationLinkOptional',
         'clockingLocationNone',
-        'linkedOutOfScopeGroupTitle',
         'noSharedSites',
-        // rev 2 (r267): the page of its own and the report label.
         'reportLabel',
         'reportLabelHint',
-        'addClocking',
         'edit',
         'newClockingTitle',
         'editClockingTitle',
@@ -360,39 +341,31 @@ describe('f9afd1ce — the two screens', () => {
         'radiusMetresLabel',
         'cancel',
         'saved',
-        // 639bf4a5 rev 2 (r338) — what replaced the two retired headings, on the screens that exist now.
-        'clockingPointsHeading',
-        'offRegisterTitle',
-        'offRegisterDescription',
-        'offRegisterLink',
+        // r423 — the list, the form's new sections, and the work location listing's own title.
+        'pageTitle',
+        'workLocationsTitle',
+        'colCompanies',
+        'sectionCompanies',
+        'sectionStatus',
+        'companiesRequired',
+        'companyInUse',
+        'deactivateConfirmDescription',
       ]) {
         expect(m.admin.locations[k], `${loc} admin.locations.${k}`).toBeTruthy();
+        expect(m.admin.locations[k], `${loc} admin.locations.${k} is live`).not.toMatch(/^\[retired/);
+      }
+      // r423 — no screen renders these any more; retired in place (i18n/request.ts deep-merges each locale
+      // over English, so removing a key from en.json alone would leave the old sentence for a Malay reader).
+      for (const k of ['usedBy', 'coordinates', 'linkedOutOfScopeGroupTitle', 'addClocking', 'clockingPointsHeading', 'offRegisterTitle', 'offRegisterDescription', 'offRegisterLink']) {
+        expect(m.admin.locations[k], `${loc} admin.locations.${k} retired in r423`).toMatch(/^\[retired r423 — /);
+      }
+      for (const k of ['noSharedSites', 'linkedPoints', 'geofencingToggle', 'radiusOverrideLabel']) {
+        expect(m.people.detail.clocking[k], `${loc} people.detail.clocking.${k} retired in r423`).toMatch(/^\[retired r423 — /);
       }
       expect(m.admin.locations.noLocationsForCompany, `${loc} retired key`).toBeUndefined();
-      /**
-       * 639bf4a5 rev 2 (r338) — MOVED FROM THE MUST-EXIST LIST ABOVE TO HERE, the same way `sectionInfo`
-       * was below. `clockingSharedTitle` ("Shared clocking locations") and `clockingHeading` ("Clocking
-       * locations — shared across companies") headed the tenant-wide register on the main page. That page
-       * is a COMPANY LISTING now and the points render under the location they belong to, so neither
-       * heading has a screen to be on. Deleted rather than orphaned, and asserted absent in all six so a
-       * merge of an older branch cannot resurrect them silently (CLAUDE.md §10). What replaced them, on
-       * the screens that exist, is asserted in the must-exist list above: `clockingPointsHeading` and
-       * `offRegisterTitle`.
-       */
       expect(m.admin.locations.clockingSharedTitle, `${loc} retired with the tenant-wide register (r338)`).toBeUndefined();
       expect(m.admin.locations.clockingHeading, `${loc} retired with the tenant-wide register (r338)`).toBeUndefined();
-      /**
-       * 0fe1ca2e rev 6 (r335) — MOVED FROM THE MUST-EXIST LIST ABOVE TO HERE, which is the whole of the
-       * round in one line. "Location information" was the heading of the first of two cards; the reporter
-       * contested the card boundary between the address search and the coordinate boxes it fills, so the
-       * form is ONE section under `sectionGps` now and nothing renders `sectionInfo`. A heading no screen
-       * renders is a string the next reader has to prove is dead, so it is deleted rather than orphaned —
-       * asserted absent in all six locales so a merge of an older branch cannot resurrect it silently
-       * (CLAUDE.md §10: a naive deep-merge of messages/*.json brings deleted keys back).
-       */
       expect(m.admin.locations.sectionInfo, `${loc} retired with the second card (r335)`).toBeUndefined();
-      expect(m.people.detail.clocking.noSharedSites, `${loc} people.detail.clocking.noSharedSites`).toBeTruthy();
-      expect(m.people.detail.clocking.linkedPoints, `${loc} people.detail.clocking.linkedPoints`).toContain('{count, plural,');
       expect(m.people.detail.clocking.noSites, `${loc} retired key`).toBeUndefined();
     }
   });
@@ -400,8 +373,44 @@ describe('f9afd1ce — the two screens', () => {
 
 describe('f9afd1ce — ADR-0070 records the amendment rather than being rewritten', () => {
   const adr = read('docs/adr/0070-clocking-locations-geofencing.md');
-  it('keeps the original §2 text and appends the amendment', () => {
+  it('keeps the original §2 text and appends the amendments', () => {
     expect(adr).toContain('### 2. RLS: tenant-catalog read, company-admin write (mirrors 0065 `pay_component`)');
     expect(adr).toContain('Amended 2026-09-11 (f9afd1ce)');
+    expect(adr).toContain('Amended 2026-10-08 (r423, 83c0d3c8)');
+  });
+});
+
+/**
+ * r423 (83c0d3c8) — migration 0517: the companies a shared location is open to, and the switch.
+ * Shape here; the backfill behaviour is in test/r423-clocking-location-companies.test.ts.
+ */
+describe('r423 — migration 0517 is journalled and says what it must', () => {
+  const m517 = read('db/migrations/0517_clocking_location_companies.sql');
+  it('idx 517, tag matching, `when` above 0515 AND above the unmerged 0516 branch (1791500000000)', () => {
+    const e517 = journal.entries.find((e) => e.idx === 517);
+    const e515 = journal.entries.find((e) => e.idx === 515);
+    expect(e517?.tag).toBe('0517_clocking_location_companies');
+    expect(e517!.when).toBeGreaterThan(e515!.when);
+    expect(e517!.when).toBeGreaterThan(1791500000000);
+  });
+  it('RLS: INSERT and DELETE are group-admin; SELECT is group admin, company admin, or an employee of the company; GRANT to ai_hr_app', () => {
+    expect(m517).toContain('ALTER TABLE "clocking_location_company" ENABLE ROW LEVEL SECURITY');
+    expect(m517).toMatch(/clocking_location_company_insert"[\s\S]*?WITH CHECK \(tenant_id = app\.current_tenant_id\(\) AND app\.is_group_admin\(\)\)/);
+    expect(m517).toMatch(/clocking_location_company_delete"[\s\S]*?USING \(tenant_id = app\.current_tenant_id\(\) AND app\.is_group_admin\(\)\)/);
+    const select = m517.slice(m517.indexOf('CREATE POLICY "clocking_location_company_select"'), m517.indexOf('CREATE POLICY "clocking_location_company_insert"'));
+    expect(select.length).toBeGreaterThan(100);
+    expect(select).toContain('app.is_admin_for(company_id)');
+    expect(select).toContain('app.is_self_person(e.person_id)');
+    expect(m517, 'no UPDATE policy: a row is added or removed, never edited').not.toContain('clocking_location_company_update');
+    expect(m517).toContain('GRANT SELECT, INSERT, DELETE ON "clocking_location_company" TO ai_hr_app');
+  });
+  it('adds state, flips the switch on for assigned employees, relaxes the three capture columns, and counts everything', () => {
+    expect(m517).toContain('ALTER TABLE "clocking_location" ADD COLUMN "state" text');
+    expect(m517).toContain('UPDATE employment e SET geofencing_enabled = true');
+    for (const col of ['clocking_location_id', 'distance_m', 'radius_m']) {
+      expect(m517).toContain(`ALTER TABLE "attendance_clock_capture" ALTER COLUMN "${col}" DROP NOT NULL`);
+    }
+    expect((m517.match(/RAISE NOTICE/g) ?? []).length).toBe(2);
+    expect(m517, 'the override column is kept').not.toContain('DROP COLUMN "geofence_radius_m"');
   });
 });

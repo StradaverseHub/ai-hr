@@ -10,6 +10,13 @@
  * group-admin write (RLS + service + screen), an OPTIONAL link to any company's `location`, and
  * assignment across companies. The cases that used to pin the per-company shape now pin the shared one;
  * a guard pinning a decision that was reversed is updated, not deleted.
+ *
+ * r423 (83c0d3c8, migration 0517) — a location is OPENED TO COMPANIES (clocking_location_company, at least
+ * one), and the employee's ONE switch decides: `setClockingControl` replaced the two writers
+ * (setEmployeeClockingLocations + setGeofencing). Cases that called them in pairs now call `assign` below
+ * (switch ON with those sites). The per-employee radius override is RETIRED: the cases that pinned it now
+ * pin that it is never read. "Assignment is not scoped by company" (f9afd1ce) is REVERSED: an employee may
+ * be given only an active location open to their company, and only such a site matches at clock-in.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -36,8 +43,11 @@ import {
   deleteClockingLocation,
   listClockingLocations,
   listEmployeeClockingLocations,
-  setEmployeeClockingLocations,
-  setGeofencing,
+  setClockingControl,
+  ClockingLocationCompanyInUseError,
+  ClockingLocationCompanyRequiredError,
+  ClockingLocationNotAvailableError,
+  ClockingLocationRequiredError,
   radiusWarning,
   ClockingLocationAuthorityError,
   ClockingLocationInUseError,
@@ -128,10 +138,12 @@ async function defaultLocationFor(ctx: SessionContext, companyId: string): Promi
 }
 async function mkSite(
   ctx: SessionContext,
-  p: { name: string; lat: number; lng: number; radiusM?: number; locationId?: string; linkCompanyId?: string; reportLabel?: string },
+  p: { name: string; lat: number; lng: number; radiusM?: number; locationId?: string; linkCompanyId?: string; reportLabel?: string; companyIds?: string[] },
 ) {
   const locationId = p.locationId ?? (await defaultLocationFor(ctx, p.linkCompanyId ?? b.companyId));
   return createClockingLocation(ctx, {
+    // r423 — opened to the base company unless a case says otherwise.
+    companyIds: p.companyIds ?? [b.companyId],
     name: p.name,
     lat: p.lat,
     lng: p.lng,
@@ -140,6 +152,15 @@ async function mkSite(
     reportLabel: p.reportLabel,
   });
 }
+
+/** r423 — switch ON with exactly these sites, through the ONE writer. */
+const assign = (ctx: SessionContext, employmentId: string, clockingLocationIds: string[]) =>
+  setClockingControl(ctx, { employmentId, enabled: true, clockingLocationIds });
+/** r423 — switch ON with NO usable site, written straight to the table: the service refuses to save that
+ *  state, but migration 0517 leaves it in place for an employee who was ticked with no location (plan
+ *  "what happens to what is already saved", point 4), and the engine must still refuse them. */
+const enableWithNoSite = (employmentId: string) =>
+  owner.db.update(schema.employment).set({ geofencingEnabled: true }).where(eq(schema.employment.id, employmentId));
 
 async function attendanceRow(employmentId: string, date: string) {
   const [row] = await owner.db
@@ -197,7 +218,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
     expect(row.reportLabel).toBeNull();
     expect((await listClockingLocations(a)).find((l) => l.id === id)?.reportLabel).toBeNull();
 
-    await updateClockingLocation(a, {
+    await updateClockingLocation(a, { companyIds: [b.companyId],
       clockingLocationId: id,
       name: 'HQ Tower 2',
       lat: HQ.lat + 1,
@@ -244,22 +265,20 @@ describe('clocking_location CRUD (ADR-0070)', () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'Ref Site', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
+    await assign(a, e.employmentId, [site]);
     await expect(deleteClockingLocation(a, { clockingLocationId: site })).rejects.toBeInstanceOf(ClockingLocationInUseError);
 
-    // free the assignment reference, then reference it via an attendance row instead (geofencing OFF here
-    // so no radius check needed; checkIn with a matched site only happens when geofencing is ON, so for
-    // this guard test we assign+enable+checkIn to actually populate the attendance FK).
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 500 });
+    // free the assignment reference, then reference it via an attendance row instead: a geofenced check-in
+    // stamps the matched site on the row; switching OFF (r423) clears the assignment.
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [] });
+    await setClockingControl(a, { employmentId: e.employmentId, enabled: false, clockingLocationIds: [] });
     await expect(deleteClockingLocation(a, { clockingLocationId: site })).rejects.toBeInstanceOf(ClockingLocationInUseError);
   });
 
   it('appends clocking-location.created/updated/archived/restored/deleted events', async () => {
     const a = adminCtx(b);
     const { id } = await mkSite(a, { name: 'EvSite', lat: HQ.lat, lng: HQ.lng });
-    await updateClockingLocation(a, {
+    await updateClockingLocation(a, { companyIds: [b.companyId],
       clockingLocationId: id,
       name: 'EvSite2',
       lat: HQ.lat,
@@ -283,122 +302,237 @@ describe('clocking_location CRUD (ADR-0070)', () => {
   });
 });
 
-describe('assignment + geofencing config (ADR-0070)', () => {
+describe('assignment + geofencing config (ADR-0070; r423 — one switch, one writer)', () => {
   it('set-based replace assigns and unassigns', async () => {
     const a = adminCtx(b);
     const { id: site1 } = await mkSite(a, { name: 'S1', lat: HQ.lat, lng: HQ.lng });
     const { id: site2 } = await mkSite(a, { name: 'S2', lat: HQ.lat + 0.01, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
 
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site1, site2] });
+    await assign(a, e.employmentId, [site1, site2]);
     let assigned = await listEmployeeClockingLocations(a, e.employmentId);
     expect(assigned.map((s) => s.id).sort()).toEqual([site1, site2].sort());
 
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site1] });
+    await assign(a, e.employmentId, [site1]);
     assigned = await listEmployeeClockingLocations(a, e.employmentId);
     expect(assigned.map((s) => s.id)).toEqual([site1]);
   });
 
   /**
-   * f9afd1ce — THE REVERSAL of the cross-company guard. This case used to assert
-   * CrossCompanyClockingLocationError for exactly this shape. A clocking location is shared now: one gate
-   * that serves three companies is one record, and an employee of company B is assigned it like anyone
-   * else. The assignment must LAND (not merely not throw), and the site's "Used by" must then name B.
+   * f9afd1ce made a site assignable to an employee of ANY company ("assignment is not scoped by company").
+   * r423 REVERSES it: a location is opened to named companies, and only an employee of one of them may be
+   * given it. This case used to assert that company B's employee could be assigned a site that served
+   * company A; it now pins both halves — refused while the site is not open to B, accepted (and honoured at
+   * clock-in) once B is ticked.
    */
-  it('an employee of company B can be assigned a shared site linked to company A’s location (f9afd1ce)', async () => {
+  it('an employee of company B is refused a site not open to B, and given it once B is ticked (r423)', async () => {
     const a = adminCtx(b);
-    // The site's only link is to the BASE company's location; company B has no location at all.
     const { id: sharedGate } = await mkSite(a, { name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng });
     const { id: coB } = await createCompany(a, { legalName: 'Co B Sdn Bhd' });
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
     const eB = await hire(a, coB, deptB.id, 'B Employee');
 
-    await setEmployeeClockingLocations(a, { employmentId: eB.employmentId, clockingLocationIds: [sharedGate] });
-    const assigned = await listEmployeeClockingLocations(a, eB.employmentId);
-    expect(assigned.map((s) => s.id)).toEqual([sharedGate]);
-    // Landed in the join table, not just echoed back.
+    await expect(assign(a, eB.employmentId, [sharedGate])).rejects.toBeInstanceOf(ClockingLocationNotAvailableError);
+    expect(await listEmployeeClockingLocations(a, eB.employmentId)).toEqual([]);
+
+    await updateClockingLocation(a, {
+      clockingLocationId: sharedGate, name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 300,
+      locationId: await defaultLocationFor(a, b.companyId), companyIds: [b.companyId, coB],
+    });
+    await assign(a, eB.employmentId, [sharedGate]);
     const rows = await owner.db
       .select({ id: schema.employeeClockingLocation.clockingLocationId })
       .from(schema.employeeClockingLocation)
       .where(eq(schema.employeeClockingLocation.employmentId, eB.employmentId));
     expect(rows.map((r) => r.id)).toEqual([sharedGate]);
 
-    // …and the geofence honours it: B's employee, enforced, punches IN at the shared gate.
-    await setGeofencing(a, { employmentId: eB.employmentId, enabled: true });
     await checkIn(a, { employmentId: eB.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
     const row = await attendanceRow(eB.employmentId, '2026-07-06');
     expect(row.checkInClockingLocationId).toBe(sharedGate);
     expect(row.checkInGeofenceStatus).toBe('pass');
   });
 
-  it('"Used by" lists the distinct companies whose employees are assigned, by label, sorted; empty when none', async () => {
+  /**
+   * r423 — "Used by" (the companies DERIVED from who is assigned) is gone; `companies` is what the location
+   * is OPEN to, by display label, sorted. assignedCount is unchanged.
+   */
+  it('the list carries the companies a location is open to, by label, sorted, and the assigned count', async () => {
     const a = adminCtx(b);
-    const { id: gate } = await mkSite(a, { name: 'Used Gate', lat: HQ.lat, lng: HQ.lng });
-    const { id: lonely } = await mkSite(a, { name: 'Lonely Gate', lat: HQ.lat + 0.01, lng: HQ.lng });
     const { id: coB } = await createCompany(a, { legalName: 'Zeta Sdn Bhd' });
-    // The chip shows the short label when one is set (coalesce(company_label, legal_name)).
     await owner.db.update(schema.company).set({ companyLabel: 'Zeta' }).where(eq(schema.company.id, coB));
+    const { id: gate } = await mkSite(a, { name: 'Used Gate', lat: HQ.lat, lng: HQ.lng, companyIds: [coB, b.companyId] });
+    const { id: lonely } = await mkSite(a, { name: 'Lonely Gate', lat: HQ.lat + 0.01, lng: HQ.lng });
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
-    // Two employees of the base company (Acme Sdn Bhd, no label) and one of Zeta: two chips, not three.
     const e1 = await hire(a, b.companyId, b.deptA, 'Acme One');
     const e2 = await hire(a, b.companyId, b.deptA, 'Acme Two');
     const e3 = await hire(a, coB, deptB.id, 'Zeta One');
-    for (const e of [e1, e2, e3]) {
-      await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [gate] });
-    }
+    for (const e of [e1, e2, e3]) await assign(a, e.employmentId, [gate]);
     const byId = new Map((await listClockingLocations(a)).map((r) => [r.id, r]));
-    expect(byId.get(gate)?.usedByCompanies).toEqual(['Acme Sdn Bhd', 'Zeta']);
+    expect(byId.get(gate)?.companies.map((c) => c.name)).toEqual(['Acme Sdn Bhd', 'Zeta']);
     expect(byId.get(gate)?.assignedCount).toBe(3);
-    expect(byId.get(lonely)?.usedByCompanies).toEqual([]);
+    expect(byId.get(lonely)?.companies.map((c) => c.name)).toEqual(['Acme Sdn Bhd']);
     expect(byId.get(lonely)?.assignedCount).toBe(0);
+    expect(byId.get(gate)).not.toHaveProperty('usedByCompanies');
   });
 
-  it('appends employee.clocking-locations.assigned and employee.geofencing.updated', async () => {
+  it('appends ONE employee.clocking-control.updated event carrying the switch and the list, before and after', async () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'EvS', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await assign(a, e.employmentId, [site]);
+    expect(await latestEventPayload(b.tenantId, e.employmentId, 'employee.clocking-control.updated')).toMatchObject({
+      before: { enabled: false, clockingLocationIds: [] },
+      after: { enabled: true, clockingLocationIds: [site] },
+    });
+    await setClockingControl(a, { employmentId: e.employmentId, enabled: false, clockingLocationIds: [site] });
+    // OFF clears the assignments — the change history keeps the old list.
+    expect(await latestEventPayload(b.tenantId, e.employmentId, 'employee.clocking-control.updated')).toMatchObject({
+      before: { enabled: true, clockingLocationIds: [site] },
+      after: { enabled: false, clockingLocationIds: [] },
+    });
+    expect(await listEmployeeClockingLocations(a, e.employmentId)).toEqual([]);
     const types = await eventTypesFor(b.tenantId, e.employmentId);
-    expect(types).toEqual(
-      expect.arrayContaining(['employee.clocking-locations.assigned', 'employee.geofencing.updated']),
-    );
+    expect(types).not.toContain('employee.clocking-locations.assigned');
+    expect(types).not.toContain('employee.geofencing.updated');
   });
 
   /**
-   * 1fff489c REPLACED the old assertion here, which was "enable without a radius throws". That was right
-   * while the employment radius was the ONLY radius. It is now an OPTIONAL OVERRIDE of each site's own
-   * figure, so enabling with a blank one is the RECOMMENDED state, and migration 0419 drops the
-   * employment_geofence_radius_required CHECK that used to forbid it at the storage layer too.
+   * r423 REPLACED the two radius-override cases that stood here ("blank while enabled is stored null" and
+   * "a supplied override is validated"). The override is retired: the writer no longer takes one and never
+   * writes the column, and the engine never reads it (pinned in the per-site radius block below).
    */
-  it('setGeofencing: the radius is an OPTIONAL override — blank while enabled is allowed and stored null', async () => {
+  it('ON requires at least one usable location; the radius override column is never written', async () => {
     const a = adminCtx(b);
     const e = await hire(a, b.companyId, b.deptA);
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
-    const [blank] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, e.employmentId));
-    expect(blank.geofencingEnabled).toBe(true);
-    expect(blank.geofenceRadiusM).toBeNull();
-    // An empty-string form value is the same "not supplied", not a zero.
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: '' });
-    const [blank2] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, e.employmentId));
-    expect(blank2.geofenceRadiusM).toBeNull();
-  });
-
-  it('setGeofencing validates a SUPPLIED override: positive, and under the ceiling', async () => {
-    const a = adminCtx(b);
-    const e = await hire(a, b.companyId, b.deptA);
-    await expect(setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 0 })).rejects.toThrow(/radius/);
-    await expect(setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: -5 })).rejects.toThrow(/radius/);
-    await expect(setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 200_000 })).rejects.toThrow(/exceed/);
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await owner.db.update(schema.employment).set({ geofenceRadiusM: 777 }).where(eq(schema.employment.id, e.employmentId));
+    await expect(setClockingControl(a, { employmentId: e.employmentId, enabled: true, clockingLocationIds: [] })).rejects.toBeInstanceOf(
+      ClockingLocationRequiredError,
+    );
+    await expect(setClockingControl(a, { employmentId: e.employmentId, enabled: true, clockingLocationIds: [] })).rejects.toThrow(
+      'Choose at least one clocking location, or turn geofencing off.',
+    );
+    const { id: site } = await mkSite(a, { name: 'Usable', lat: HQ.lat, lng: HQ.lng });
+    await assign(a, e.employmentId, [site]);
     const [row] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, e.employmentId));
     expect(row.geofencingEnabled).toBe(true);
-    expect(row.geofenceRadiusM).toBe(300);
-    // disabling clears the radius (documented: harmless since never read while off, but we clear it anyway)
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: false });
-    const [row2] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, e.employmentId));
-    expect(row2.geofencingEnabled).toBe(false);
-    expect(row2.geofenceRadiusM).toBeNull();
+    expect(row.geofenceRadiusM, 'kept, never written').toBe(777);
+  });
+
+  it('an INACTIVE location cannot be newly chosen, and alone does not satisfy the switch', async () => {
+    const a = adminCtx(b);
+    const { id: site } = await mkSite(a, { name: 'Closed', lat: HQ.lat, lng: HQ.lng });
+    await archiveClockingLocation(a, { clockingLocationId: site });
+    const e = await hire(a, b.companyId, b.deptA);
+    await expect(assign(a, e.employmentId, [site])).rejects.toBeInstanceOf(ClockingLocationNotAvailableError);
+  });
+
+  /**
+   * Plan point 11 — an assignment that has become unusable (here: the employee transferred to a company the
+   * site is not open to) STAYS on file, flagged, may be kept by a later save, counts for nothing and never
+   * matches at clock-in.
+   */
+  it('a transferred employee’s old site is kept but flagged, does not count, and does not match at clock-in', async () => {
+    const a = adminCtx(b);
+    const { id: oldSite } = await mkSite(a, { name: 'Old Co Site', lat: HQ.lat, lng: HQ.lng });
+    const e = await hire(a, b.companyId, b.deptA);
+    await assign(a, e.employmentId, [oldSite]);
+    const { id: coB } = await createCompany(a, { legalName: 'Transfer Co' });
+    // The transfer itself is another service; the fact this rule reads is employment.company_id.
+    await owner.db.update(schema.employment).set({ companyId: coB }).where(eq(schema.employment.id, e.employmentId));
+
+    const [flagged] = await listEmployeeClockingLocations(a, e.employmentId);
+    expect(flagged.id).toBe(oldSite);
+    expect(flagged.usable).toBe(false);
+
+    // Alone it does not satisfy the switch …
+    await expect(assign(a, e.employmentId, [oldSite])).rejects.toBeInstanceOf(ClockingLocationRequiredError);
+    // … and the engine refuses at clock-in standing ON the point.
+    await expect(
+      checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ }),
+    ).rejects.toBeInstanceOf(OutsideGeofenceError);
+
+    // Kept beside a usable one by a later save; the usable one is what matches.
+    const { id: newSite } = await mkSite(a, { name: 'New Co Site', lat: HQ.lat, lng: HQ.lng, companyIds: [coB] });
+    await assign(a, e.employmentId, [oldSite, newSite]);
+    expect((await listEmployeeClockingLocations(a, e.employmentId)).map((l) => [l.name, l.usable])).toEqual([
+      ['New Co Site', true],
+      ['Old Co Site', false],
+    ]);
+    await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
+    expect((await attendanceRow(e.employmentId, '2026-07-06')).checkInClockingLocationId).toBe(newSite);
+  });
+});
+
+/**
+ * r423 — THE COMPANIES A LOCATION IS OPEN TO: at least one, every one a company of the tenant, unticking a
+ * company refused while its employees are assigned (with the count), and the state validated against the
+ * selected companies' countries.
+ */
+describe('r423 — companies, state and status on a clocking location', () => {
+  it('refuses a location open to no company', async () => {
+    const a = adminCtx(b);
+    await expect(
+      createClockingLocation(a, { name: 'Nobody', lat: HQ.lat, lng: HQ.lng, radiusM: 100, companyIds: [] }),
+    ).rejects.toBeInstanceOf(ClockingLocationCompanyRequiredError);
+    expect((await listClockingLocations(a)).some((l) => l.name === 'Nobody')).toBe(false);
+  });
+
+  it('refuses unticking a company while its employees are assigned, saying how many; nothing changes', async () => {
+    const a = adminCtx(b);
+    const { id: coB } = await createCompany(a, { legalName: 'Other Co' });
+    const { id: site } = await mkSite(a, { name: 'Two Co Site', lat: HQ.lat, lng: HQ.lng, companyIds: [b.companyId, coB] });
+    const e1 = await hire(a, b.companyId, b.deptA, 'One');
+    const e2 = await hire(a, b.companyId, b.deptA, 'Two');
+    for (const e of [e1, e2]) await assign(a, e.employmentId, [site]);
+    const base = { clockingLocationId: site, name: 'Two Co Site', lat: HQ.lat, lng: HQ.lng, radiusM: 300, locationId: await defaultLocationFor(a, b.companyId) };
+
+    const err: unknown = await updateClockingLocation(a, { ...base, companyIds: [coB] }).then(() => null, (x) => x);
+    expect(err).toBeInstanceOf(ClockingLocationCompanyInUseError);
+    expect((err as ClockingLocationCompanyInUseError).count).toBe(2);
+    expect((err as ClockingLocationCompanyInUseError).companyNames).toEqual(['Acme Sdn Bhd']);
+    expect((await listClockingLocations(a)).find((l) => l.id === site)?.companies.map((c) => c.id).sort()).toEqual(
+      [b.companyId, coB].sort(),
+    );
+
+    // Unticking the company with NOBODY assigned is fine, and the event carries before/after.
+    await updateClockingLocation(a, { ...base, companyIds: [b.companyId] });
+    expect(await latestEventPayload(b.tenantId, site, 'clocking-location.updated')).toMatchObject({
+      before: { companyIds: [b.companyId, coB].sort() },
+      after: { companyIds: [b.companyId] },
+    });
+  });
+
+  it('stores an optional state validated against the companies’ countries, and the Status radio', async () => {
+    const a = adminCtx(b);
+    const { id } = await createClockingLocation(a, {
+      companyIds: [b.companyId], name: 'Stated', lat: HQ.lat, lng: HQ.lng, radiusM: 100, state: 'Selangor', active: false,
+    });
+    const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+    expect(row.state).toBe('Selangor');
+    expect(row.archivedAt, 'Inactive on create').not.toBeNull();
+    await expect(
+      createClockingLocation(a, { companyIds: [b.companyId], name: 'Bad State', lat: HQ.lat, lng: HQ.lng, radiusM: 100, state: 'Narnia' }),
+    ).rejects.toThrow(/Unknown state/);
+    await updateClockingLocation(a, { clockingLocationId: id, companyIds: [b.companyId], name: 'Stated', lat: HQ.lat, lng: HQ.lng, radiusM: 100, state: '', active: true });
+    const [u] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+    expect(u.state).toBeNull();
+    expect(u.archivedAt).toBeNull();
+  });
+
+  it('the list filters by search text, company and status', async () => {
+    const a = adminCtx(b);
+    const { id: coB } = await createCompany(a, { legalName: 'Filter Co' });
+    const { id: x } = await mkSite(a, { name: 'Klang Store', lat: HQ.lat, lng: HQ.lng });
+    const { id: y } = await mkSite(a, { name: 'Penang Branch', lat: HQ.lat + 0.01, lng: HQ.lng, companyIds: [coB] });
+    await updateClockingLocation(a, { clockingLocationId: y, companyIds: [coB], name: 'Penang Branch', lat: HQ.lat + 0.01, lng: HQ.lng, radiusM: 300, address: 'Lebuh Pantai', locationId: await defaultLocationFor(a, b.companyId) });
+    await archiveClockingLocation(a, { clockingLocationId: x });
+    const ids = async (o: Parameters<typeof listClockingLocations>[1]) => (await listClockingLocations(a, o)).map((r) => r.id).sort();
+    expect(await ids({ status: 'all' })).toEqual([x, y].sort());
+    expect(await ids({ status: 'inactive' })).toEqual([x]);
+    expect(await ids({ status: 'active' })).toEqual([y]);
+    expect(await ids({ status: 'all', q: 'pantai' })).toEqual([y]);
+    expect(await ids({ status: 'all', q: 'klang' })).toEqual([x]);
+    expect(await ids({ status: 'all', companyId: coB })).toEqual([y]);
   });
 });
 
@@ -407,8 +541,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'InRadius', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await assign(a, e.employmentId, [site]);
 
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
     const row = await attendanceRow(e.employmentId, '2026-07-06');
@@ -431,8 +564,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'Far', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await assign(a, e.employmentId, [site]);
 
     // ~1.1 degrees away ≈ 100+ km — well outside any sane radius.
     const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1 };
@@ -466,8 +598,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
     const { id: site1 } = await mkSite(a, { name: 'Near1', lat: HQ.lat, lng: HQ.lng });
     const { id: site2 } = await mkSite(a, { name: 'Near2', lat: HQ.lat + 1, lng: HQ.lng + 1 });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site1, site2] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await assign(a, e.employmentId, [site1, site2]);
 
     // At site2's coordinates — far from site1, but a hit on site2.
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: { lat: HQ.lat + 1, lng: HQ.lng + 1 } });
@@ -479,7 +610,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
   it('enabled + zero assigned sites blocks fail-closed with event', async () => {
     const a = adminCtx(b);
     const e = await hire(a, b.companyId, b.deptA);
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await enableWithNoSite(e.employmentId);
     await expect(
       checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ }),
     ).rejects.toBeInstanceOf(OutsideGeofenceError);
@@ -493,8 +624,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'NoCoords', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await assign(a, e.employmentId, [site]);
 
     await expect(
       checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00' }),
@@ -529,19 +659,39 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('mid-day toggle: each punch keeps its own frozen status/radius', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { name: 'Toggle', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Toggle', lat: HQ.lat, lng: HQ.lng, radiusM: 500 });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     // Geofencing OFF at check-in.
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
-    // Turn geofencing ON with a radius, then check out — inside radius, so it passes with its OWN stamp.
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 500 });
+    // Turn the switch ON with the site, then check out — inside its radius, so it passes with its OWN stamp
+    // (the SITE's radius: r423 retired the per-employee override).
+    await assign(a, e.employmentId, [site]);
     await checkOut(a, { employmentId: e.employmentId, date: '2026-07-06', time: '18:00', geo: HQ });
     const row = await attendanceRow(e.employmentId, '2026-07-06');
     expect(row.checkInGeofenceStatus).toBe('not_enforced');
     expect(row.checkInRadiusM).toBeNull();
     expect(row.checkOutGeofenceStatus).toBe('pass');
     expect(row.checkOutRadiusM).toBe(500);
+  });
+
+  /** r423 plan point 14 — a time HR types in is never compared with a location, whatever the switch says. */
+  it('a MANUAL (HR-typed) check-in/out of a geofenced employee is accepted, not_enforced, with no geo', async () => {
+    const a = adminCtx(b);
+    const { id: site } = await mkSite(a, { name: 'Manual', lat: HQ.lat, lng: HQ.lng });
+    const e = await hire(a, b.companyId, b.deptA);
+    await assign(a, e.employmentId, [site]);
+    // Without `manual` the same call is refused (no position) — the guard is the flag, not luck.
+    await expect(checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00' })).rejects.toBeInstanceOf(
+      GeolocationRequiredError,
+    );
+    await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', manual: true });
+    await checkOut(a, { employmentId: e.employmentId, date: '2026-07-06', time: '18:00', manual: true });
+    const row = await attendanceRow(e.employmentId, '2026-07-06');
+    expect(row.checkInGeofenceStatus).toBe('not_enforced');
+    expect(row.checkOutGeofenceStatus).toBe('not_enforced');
+    expect(row.checkInLat).toBeNull();
+    expect(row.checkInClockingLocationId).toBeNull();
+    expect(row.checkOutClockingLocationId).toBeNull();
   });
 });
 
@@ -557,8 +707,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
       .insert(schema.employment)
       .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2024-01-01', employeeCode: 'IMP1' })
       .returning({ id: schema.employment.id });
-    await setEmployeeClockingLocations(a, { employmentId: emp.id, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: emp.id, enabled: true, radiusM: 300 });
+    await assign(a, emp.id, [site]);
     await checkIn(a, { employmentId: emp.id, date: '2026-07-06', time: '09:00', geo: HQ });
     let row = await attendanceRow(emp.id, '2026-07-06');
     expect(row.checkInGeofenceStatus).toBe('pass');
@@ -585,8 +734,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
       .insert(schema.employment)
       .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2024-01-01', employeeCode: 'MIX1' })
       .returning({ id: schema.employment.id });
-    await setEmployeeClockingLocations(a, { employmentId: emp.id, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: emp.id, enabled: true, radiusM: 300 });
+    await assign(a, emp.id, [site]);
 
     const csv = 'Staff ID,Timestamp\nMIX1,2026-07-06 09:00:00';
     await importAttendancePunches(a, { csvText: csv, dryRun: false });
@@ -606,8 +754,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'CorrSite', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
+    await assign(a, e.employmentId, [site]);
 
     // Check in fine (at the office)...
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
@@ -650,9 +797,12 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
       .returning({ id: schema.person.id });
     const empCtx = await employeeCtxFor(p.id);
 
-    // Read: the tenant-wide catalog policy lets a plain employee through.
-    const seen = await listClockingLocations(empCtx);
+    // Read: the tenant-wide catalog policy on clocking_location lets a plain employee through (the Clock
+    // screen and attendance history resolve names with it) …
+    const seen = await withTenant(empCtx, (tx) => tx.select({ id: schema.clockingLocation.id }).from(schema.clockingLocation));
     expect(seen.map((s) => s.id)).toContain(site);
+    // … but r423's admin LIST is scoped to the companies the caller administers, which is none.
+    expect(await listClockingLocations(empCtx)).toEqual([]);
 
     // Write: RLS WITH CHECK requires is_admin_for(company_id) — a plain employee cannot create.
     await expect(
@@ -672,17 +822,17 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
     const { id: site } = await mkSite(a, { name: 'AOnly', lat: HQ.lat, lng: HQ.lng });
     const companyAdmin = await adminFor(b.companyId); // scoped to ONE company — not a group admin
 
-    // Read: tenant-wide catalog policy — the company admin sees the shared site.
+    // Read: the site is open to the company this admin administers, so it is on their list.
     expect((await listClockingLocations(companyAdmin)).map((s) => s.id)).toContain(site);
 
-    // Assign: unchanged — can_admin_employment on the join table, not the catalog's authority.
+    // Assign: can_admin_employment on the join table, not the catalog's authority.
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(companyAdmin, { employmentId: e.employmentId, clockingLocationIds: [site] });
+    await assign(companyAdmin, e.employmentId, [site]);
     expect((await listEmployeeClockingLocations(companyAdmin, e.employmentId)).map((s) => s.id)).toEqual([site]);
 
     // Every writer: refused by the service, with the rule named in words. Type AND message, because the
     // message is what fail() puts in the banner.
-    const attempt = { name: 'Hijacked', lat: HQ.lat, lng: HQ.lng, radiusM: 300 };
+    const attempt = { name: 'Hijacked', lat: HQ.lat, lng: HQ.lng, radiusM: 300, companyIds: [b.companyId] };
     await expect(createClockingLocation(companyAdmin, { ...attempt, name: 'ByCompanyAdmin' })).rejects.toBeInstanceOf(
       ClockingLocationAuthorityError,
     );
@@ -698,7 +848,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
     await expect(restoreClockingLocation(companyAdmin, { clockingLocationId: site })).rejects.toBeInstanceOf(
       ClockingLocationAuthorityError,
     );
-    await setEmployeeClockingLocations(companyAdmin, { employmentId: e.employmentId, clockingLocationIds: [] });
+    await setClockingControl(companyAdmin, { employmentId: e.employmentId, enabled: false, clockingLocationIds: [] });
     await expect(deleteClockingLocation(companyAdmin, { clockingLocationId: site })).rejects.toBeInstanceOf(
       ClockingLocationAuthorityError,
     );
@@ -744,8 +894,8 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
 
   it('a GROUP admin (grant-carrying) creates, updates, archives, restores and deletes', async () => {
     const g = await groupAdmin();
-    const { id } = await createClockingLocation(g, { name: 'GroupMade', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
-    await updateClockingLocation(g, { clockingLocationId: id, name: 'GroupMade 2', lat: HQ.lat, lng: HQ.lng, radiusM: 200 });
+    const { id } = await createClockingLocation(g, { companyIds: [b.companyId], name: 'GroupMade', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
+    await updateClockingLocation(g, { companyIds: [b.companyId], clockingLocationId: id, name: 'GroupMade 2', lat: HQ.lat, lng: HQ.lng, radiusM: 200 });
     await archiveClockingLocation(g, { clockingLocationId: id });
     await restoreClockingLocation(g, { clockingLocationId: id });
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
@@ -761,13 +911,13 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
     const { id: coB } = await createCompany(g, { legalName: 'Co B Uniq' });
     const locA = await defaultLocationFor(g, b.companyId);
     const locB = await defaultLocationFor(g, coB);
-    await createClockingLocation(g, { name: 'HQ Tower — Main Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: locA });
+    await createClockingLocation(g, { companyIds: [b.companyId], name: 'HQ Tower — Main Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: locA });
     // The old (tenant, company, name) index would have let this through as company B's own copy.
     await expect(
-      createClockingLocation(g, { name: 'HQ Tower — Main Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: locB }),
+      createClockingLocation(g, { companyIds: [b.companyId], name: 'HQ Tower — Main Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: locB }),
     ).rejects.toThrow();
     // …and a DIFFERENT name linked to B's location is fine.
-    await createClockingLocation(g, { name: 'HQ Tower — South Gate', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150, locationId: locB });
+    await createClockingLocation(g, { companyIds: [b.companyId], name: 'HQ Tower — South Gate', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150, locationId: locB });
   });
 
   it('another tenant sees nothing', async () => {
@@ -790,10 +940,9 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
     const e = await hire(a, b.companyId, b.deptA);
     const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, e.personId));
     const empCtx = await employeeCtxFor(p.id);
-    // A plain employee (not self, not admin) cannot assign sites to this employment.
-    await expect(
-      setEmployeeClockingLocations(empCtx, { employmentId: e.employmentId, clockingLocationIds: [site] }),
-    ).rejects.toThrow();
+    // A plain employee (self, not admin) cannot set their own clocking control.
+    await expect(assign(empCtx, e.employmentId, [site])).rejects.toThrow();
+    expect(await owner.db.select().from(schema.employeeClockingLocation).where(eq(schema.employeeClockingLocation.employmentId, e.employmentId))).toEqual([]);
   });
 });
 
@@ -813,9 +962,8 @@ describe('1fff489c — per-site radius', () => {
     const a = adminCtx(b);
     const { id: tight } = await mkSite(a, { name: 'Tight', ...north(0), radiusM: 100 });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [tight] });
-    // Enabled with NO override — the site's own 100 m is the only radius in play.
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    // The site's own 100 m is the only radius in play.
+    await assign(a, e.employmentId, [tight]);
 
     // 300 m away: outside the site's 100 m.
     await expect(
@@ -838,8 +986,7 @@ describe('1fff489c — per-site radius', () => {
     // 400 m away with a 500 m circle — further off, and it DOES.
     const { id: far } = await mkSite(a, { name: 'Far Yard', ...north(400), radiusM: 500 });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [near, far] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    await assign(a, e.employmentId, [near, far]);
 
     // The old logic picked `near` (nearest) and compared it against the single employment radius, so this
     // punch was refused. The rule is now "ANY assigned site whose own radius contains me".
@@ -857,40 +1004,40 @@ describe('1fff489c — per-site radius', () => {
     const { id: further } = await mkSite(a, { name: 'A Further', ...north(400), radiusM: 900 });
     const { id: closer } = await mkSite(a, { name: 'B Closer', ...north(100), radiusM: 900 });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [further, closer] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    await assign(a, e.employmentId, [further, closer]);
 
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: north(0) });
     const row = await attendanceRow(e.employmentId, '2026-07-06');
     expect(row.checkInClockingLocationId).toBe(closer);
   });
 
-  it('the employment radius is an OVERRIDE: it replaces every site radius, tighter or wider', async () => {
+  /**
+   * r423 REVERSED "the employment radius is an OVERRIDE: it replaces every site radius". The override is
+   * retired — each location's own radius is the only radius — so a value left in employment.geofence_radius_m
+   * (kept by migration 0517, never written again) must change NOTHING, tighter or wider.
+   */
+  it('a leftover employment radius override is IGNORED: only the site radius decides, tighter or wider', async () => {
     const a = adminCtx(b);
     const { id: wide } = await mkSite(a, { name: 'Wide', ...north(0), radiusM: 1000 });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [wide] });
+    await assign(a, e.employmentId, [wide]);
 
-    // Override 100 m TIGHTENS a 1000 m site: 300 m away is now refused.
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 100 });
-    await expect(
-      checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: north(300) }),
-    ).rejects.toBeInstanceOf(OutsideGeofenceError);
-
-    // Override 600 m WIDENS a 100 m site: the same 300 m now passes, and the row records the override.
-    await updateClockingLocation(a, {
-      clockingLocationId: wide,
-      name: 'Wide',
-      lat: HQ.lat,
-      lng: HQ.lng,
-      radiusM: 100,
-      locationId: await defaultLocationFor(a, b.companyId),
-    });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 600 });
+    // A 100 m override would have refused 300 m away; the site's 1000 m accepts it.
+    await owner.db.update(schema.employment).set({ geofenceRadiusM: 100 }).where(eq(schema.employment.id, e.employmentId));
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: north(300) });
     const row = await attendanceRow(e.employmentId, '2026-07-06');
     expect(row.checkInGeofenceStatus).toBe('pass');
-    expect(row.checkInRadiusM).toBe(600);
+    expect(row.checkInRadiusM).toBe(1000);
+
+    // A 600 m override would have accepted 300 m from a 100 m site; the site's 100 m refuses it.
+    await updateClockingLocation(a, {
+      companyIds: [b.companyId], clockingLocationId: wide, name: 'Wide', lat: HQ.lat, lng: HQ.lng, radiusM: 100,
+      locationId: await defaultLocationFor(a, b.companyId),
+    });
+    await owner.db.update(schema.employment).set({ geofenceRadiusM: 600 }).where(eq(schema.employment.id, e.employmentId));
+    await expect(
+      checkOut(a, { employmentId: e.employmentId, date: '2026-07-06', time: '18:00', geo: north(300) }),
+    ).rejects.toBeInstanceOf(OutsideGeofenceError);
   });
 
   it('a site with NO radius and no override can never be matched (fail closed)', async () => {
@@ -903,8 +1050,11 @@ describe('1fff489c — per-site radius', () => {
       .values({ tenantId: b.tenantId, name: 'Legacy', lat: HQ.lat, lng: HQ.lng, locationId })
       .returning({ id: schema.clockingLocation.id });
     const e = await hire(a, b.companyId, b.deptA);
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [legacy.id] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    // Written straight to the tables: a radius-less legacy site is not one the service would let you save,
+    // and the r423 company link it needs to count is given too, so the ONLY reason it fails is the radius.
+    await owner.db.insert(schema.clockingLocationCompany).values({ tenantId: b.tenantId, clockingLocationId: legacy.id, companyId: b.companyId });
+    await owner.db.insert(schema.employeeClockingLocation).values({ tenantId: b.tenantId, employmentId: e.employmentId, clockingLocationId: legacy.id });
+    await enableWithNoSite(e.employmentId);
 
     // Standing exactly ON the point, and still refused: no radius means no distance to be inside of.
     await expect(
@@ -916,7 +1066,7 @@ describe('1fff489c — per-site radius', () => {
   it('zero assigned sites: the refusal carries a null distance AND a null radius, together', async () => {
     const a = adminCtx(b);
     const e = await hire(a, b.companyId, b.deptA);
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    await enableWithNoSite(e.employmentId);
     const err: unknown = await checkIn(a, {
       employmentId: e.employmentId,
       date: '2026-07-06',
@@ -941,22 +1091,22 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     const a = adminCtx(b);
     const locationId = await defaultLocationFor(a, b.companyId);
     const base = { lat: HQ.lat, lng: HQ.lng, locationId };
-    await expect(createClockingLocation(a, { ...base, name: 'R1', radiusM: '' })).rejects.toThrow(/required/);
-    await expect(createClockingLocation(a, { ...base, name: 'R2', radiusM: 0 })).rejects.toThrow(/positive/);
-    await expect(createClockingLocation(a, { ...base, name: 'R3', radiusM: -1 })).rejects.toThrow(/positive/);
-    await expect(createClockingLocation(a, { ...base, name: 'R4', radiusM: 500_000 })).rejects.toThrow(/exceed/);
+    await expect(createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'R1', radiusM: '' })).rejects.toThrow(/required/);
+    await expect(createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'R2', radiusM: 0 })).rejects.toThrow(/positive/);
+    await expect(createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'R3', radiusM: -1 })).rejects.toThrow(/positive/);
+    await expect(createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'R4', radiusM: 500_000 })).rejects.toThrow(/exceed/);
   });
 
   /**
    * f9afd1ce REVERSED "refuses a create with no location link". A shared site five companies use cannot
    * honestly be required to belong to one company's holiday-calendar record, so the link is optional:
-   * blank → stored null, listed under "Not linked to a location", never pre-ticked from anyone's work
+   * blank → stored null and listed like any other (r423: on Attendance › Locations), never pre-ticked from anyone's work
    * location. A blank AND an omitted field both mean "no link".
    */
   it('accepts a create with no location link — stored null, listed, unlinked in the read model', async () => {
     const a = adminCtx(b);
-    const { id: blank } = await createClockingLocation(a, { name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' });
-    const { id: omitted } = await createClockingLocation(a, { name: 'NoLink2', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
+    const { id: blank } = await createClockingLocation(a, { companyIds: [b.companyId], name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' });
+    const { id: omitted } = await createClockingLocation(a, { companyIds: [b.companyId], name: 'NoLink2', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
     const byId = new Map((await listClockingLocations(a)).map((r) => [r.id, r]));
     for (const id of [blank, omitted]) {
       expect(byId.get(id)?.locationId).toBeNull();
@@ -965,8 +1115,8 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     }
     // …and an update may take the link away again.
     const loc = await defaultLocationFor(a, b.companyId);
-    await updateClockingLocation(a, { clockingLocationId: blank, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: loc });
-    await updateClockingLocation(a, { clockingLocationId: blank, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' });
+    await updateClockingLocation(a, { companyIds: [b.companyId], clockingLocationId: blank, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: loc });
+    await updateClockingLocation(a, { companyIds: [b.companyId], clockingLocationId: blank, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' });
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, blank));
     expect(row.locationId).toBeNull();
   });
@@ -976,7 +1126,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     const a = adminCtx(b);
     const { id: coB } = await createCompany(a, { legalName: 'Co B Link' });
     const { id: foreignLocation } = await createLocation(a, { companyId: coB, code: 'FOREIGN', name: 'Foreign' });
-    const { id } = await createClockingLocation(a, {
+    const { id } = await createClockingLocation(a, { companyIds: [b.companyId],
       name: 'CrossCo',
       lat: HQ.lat,
       lng: HQ.lng,
@@ -992,7 +1142,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
   it('refuses a link to a location that does not exist', async () => {
     const a = adminCtx(b);
     await expect(
-      createClockingLocation(a, { name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: randomUUID() }),
+      createClockingLocation(a, { companyIds: [b.companyId], name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: randomUUID() }),
     ).rejects.toBeInstanceOf(ClockingLocationLinkError);
   });
 
@@ -1001,7 +1151,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     const { id: gone } = await createLocation(a, { companyId: b.companyId, code: 'GONE', name: 'Closed Site' });
     await archiveLocation(a, { locationId: gone });
     await expect(
-      createClockingLocation(a, { name: 'Archived', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: gone }),
+      createClockingLocation(a, { companyIds: [b.companyId], name: 'Archived', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: gone }),
     ).rejects.toBeInstanceOf(ClockingLocationLinkError);
   });
 
@@ -1011,7 +1161,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     const { id: point } = await mkSite(a, { name: 'Homed', lat: HQ.lat, lng: HQ.lng });
     const { id: coB } = await createCompany(a, { legalName: 'Co B Rehome' });
     const { id: foreignLocation } = await createLocation(a, { companyId: coB, code: 'REHOME', name: 'Elsewhere' });
-    await updateClockingLocation(a, {
+    await updateClockingLocation(a, { companyIds: [b.companyId],
       clockingLocationId: point,
       name: 'Homed',
       lat: HQ.lat,
@@ -1028,11 +1178,11 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     const locationId = await defaultLocationFor(a, b.companyId);
     const base = { lat: HQ.lat, lng: HQ.lng, locationId };
 
-    const tight = await createClockingLocation(a, { ...base, name: 'Tiny', radiusM: RADIUS_ADVISORY_MIN_M - 1 });
+    const tight = await createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'Tiny', radiusM: RADIUS_ADVISORY_MIN_M - 1 });
     expect(tight.warning).toEqual({ code: 'tight', radiusM: RADIUS_ADVISORY_MIN_M - 1 });
-    const wide = await createClockingLocation(a, { ...base, name: 'Huge', radiusM: RADIUS_ADVISORY_MAX_M + 1, lng: HQ.lng + 0.01 });
+    const wide = await createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'Huge', radiusM: RADIUS_ADVISORY_MAX_M + 1, lng: HQ.lng + 0.01 });
     expect(wide.warning).toEqual({ code: 'wide', radiusM: RADIUS_ADVISORY_MAX_M + 1 });
-    const normal = await createClockingLocation(a, { ...base, name: 'Normal', radiusM: 150, lng: HQ.lng + 0.02 });
+    const normal = await createClockingLocation(a, { companyIds: [b.companyId], ...base, name: 'Normal', radiusM: 150, lng: HQ.lng + 0.02 });
     expect(normal.warning).toBeNull();
 
     // NOT BLOCKED: all three rows are really there, with the radii as typed.
@@ -1050,9 +1200,9 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
   /** Verifier m3 — a duplicate name leaves as a typed error carrying the name, never as raw SQL + params. */
   it('a duplicate site name is ClockingLocationNameTakenError, on create and on rename', async () => {
     const a = adminCtx(b);
-    const { id: second } = await createClockingLocation(a, { name: 'Gate One', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
-    await createClockingLocation(a, { name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
-    const dup: unknown = await createClockingLocation(a, { name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.002, radiusM: 150 }).then(
+    const { id: second } = await createClockingLocation(a, { companyIds: [b.companyId], name: 'Gate One', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
+    await createClockingLocation(a, { companyIds: [b.companyId], name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
+    const dup: unknown = await createClockingLocation(a, { companyIds: [b.companyId], name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.002, radiusM: 150 }).then(
       () => null,
       (e: unknown) => e,
     );
@@ -1060,7 +1210,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     expect((dup as ClockingLocationNameTakenError).siteName).toBe('Gate Two');
     expect((dup as Error).message).not.toMatch(/failed query|params:/i);
     // Renaming Gate One to Gate Two hits the same index through the UPDATE path.
-    const ren: unknown = await updateClockingLocation(a, { clockingLocationId: second, name: 'Gate Two', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }).then(
+    const ren: unknown = await updateClockingLocation(a, { companyIds: [b.companyId], clockingLocationId: second, name: 'Gate Two', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }).then(
       () => null,
       (e: unknown) => e,
     );
@@ -1081,7 +1231,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     await expect(restoreClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
     await expect(deleteClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
     await expect(
-      updateClockingLocation(g, { clockingLocationId: ghost, name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }),
+      updateClockingLocation(g, { companyIds: [b.companyId], clockingLocationId: ghost, name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }),
     ).rejects.toThrow(/not found/);
     expect(await eventTypesFor(b.tenantId, ghost)).toEqual([]);
   });
@@ -1089,7 +1239,7 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
   it('listClockingLocations carries the linked location’s code and name for the grouped render', async () => {
     const a = adminCtx(b);
     const { id: locationId } = await createLocation(a, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    await createClockingLocation(a, {
+    await createClockingLocation(a, { companyIds: [b.companyId],
       name: 'HQ — North Gate',
       lat: HQ.lat,
       lng: HQ.lng,
@@ -1120,11 +1270,11 @@ describe('f9afd1ce rev 2 — the report label: trimmed, blank → NULL, capped, 
 
     const base = { clockingLocationId: id, name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 300 };
     for (const blank of ['', '   ', null, undefined]) {
-      await updateClockingLocation(a, { ...base, reportLabel: blank });
+      await updateClockingLocation(a, { companyIds: [b.companyId], ...base, reportLabel: blank });
       [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
       expect(row.reportLabel, `a label of ${JSON.stringify(blank)} clears the column`).toBeNull();
     }
-    await updateClockingLocation(a, { ...base, reportLabel: 'HQ' });
+    await updateClockingLocation(a, { companyIds: [b.companyId], ...base, reportLabel: 'HQ' });
     [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(row.reportLabel).toBe('HQ');
   });
@@ -1136,12 +1286,12 @@ describe('f9afd1ce rev 2 — the report label: trimmed, blank → NULL, capped, 
     expect((await listClockingLocations(a)).some((l) => l.name === 'Long Label')).toBe(false);
     const { id } = await mkSite(a, { name: 'Short Label', lat: HQ.lat, lng: HQ.lng, reportLabel: 'SL' });
     await expect(
-      updateClockingLocation(a, { clockingLocationId: id, name: 'Short Label', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: long }),
+      updateClockingLocation(a, { companyIds: [b.companyId], clockingLocationId: id, name: 'Short Label', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: long }),
     ).rejects.toThrow(/characters or fewer/);
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(row.reportLabel).toBe('SL');
     // Exactly the cap is fine.
-    await updateClockingLocation(a, { clockingLocationId: id, name: 'Short Label', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: 'L'.repeat(MAX_REPORT_LABEL_CHARS) });
+    await updateClockingLocation(a, { companyIds: [b.companyId], clockingLocationId: id, name: 'Short Label', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: 'L'.repeat(MAX_REPORT_LABEL_CHARS) });
   });
 
   it('the created and updated events carry the label (before and after)', async () => {
@@ -1149,7 +1299,7 @@ describe('f9afd1ce rev 2 — the report label: trimmed, blank → NULL, capped, 
     const { id } = await mkSite(a, { name: 'EvLabel', lat: HQ.lat, lng: HQ.lng, reportLabel: 'EL' });
     const created = await latestEventPayload(b.tenantId, id, 'clocking-location.created');
     expect(created).toMatchObject({ reportLabel: 'EL' });
-    await updateClockingLocation(a, {
+    await updateClockingLocation(a, { companyIds: [b.companyId],
       clockingLocationId: id,
       name: 'EvLabel',
       lat: HQ.lat,
@@ -1172,8 +1322,7 @@ describe('f9afd1ce rev 2 — the report label: trimmed, blank → NULL, capped, 
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, reportLabel: 'HQ' });
     const e = await hire(a, b.companyId, b.deptA, 'Report Emp');
-    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    await assign(a, e.employmentId, [site]);
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
     expect((await attendanceRow(e.employmentId, '2026-07-06')).checkInClockingLocationId, 'the punch matched the site').toBe(site);
 
@@ -1184,11 +1333,11 @@ describe('f9afd1ce rev 2 — the report label: trimmed, blank → NULL, capped, 
     expect((await rowFor())?.clockingLocation, 'the report prints the LABEL, not the name').toBe('HQ');
 
     const base = { clockingLocationId: site, name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 300 };
-    await updateClockingLocation(a, { ...base, reportLabel: '' });
+    await updateClockingLocation(a, { companyIds: [b.companyId], ...base, reportLabel: '' });
     expect((await rowFor())?.clockingLocation, 'blank label ⇒ the name is printed').toBe('HQ Tower — North Gate');
 
     // The clock screen's read keeps the NAME whatever the label says.
-    await updateClockingLocation(a, { ...base, reportLabel: 'HQ' });
+    await updateClockingLocation(a, { companyIds: [b.companyId], ...base, reportLabel: 'HQ' });
     const assigned = await listEmployeeClockingLocations(a, e.employmentId);
     expect(assigned.map((l) => l.name)).toEqual(['HQ Tower — North Gate']);
     expect(assigned[0]).not.toHaveProperty('reportLabel');

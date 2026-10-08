@@ -15,8 +15,7 @@ import { hireEmployee } from '../core/org';
 import { attendancePunchesForRange, checkIn, checkOut } from '../core/attendance';
 import {
   createClockingLocation,
-  setEmployeeClockingLocations,
-  setGeofencing,
+  setClockingControl,
 } from '../core/clocking-location';
 import { createLocation } from '../core/location';
 import {
@@ -168,6 +167,19 @@ describe('clock-client source guards (r378 approved camera replacement for af552
     expect(ISLAND).toContain('disabled={busy} onClick={confirm}');
     expect(ISLAND).toContain('body:command.current.body');
   });
+  /** r423 — the third pill state: switch OFF, a valid fix → "Location recorded — geofencing not required". */
+  it('says "Location recorded — geofencing not required" when the employee is not geofenced, in all six locales', () => {
+    expect(ISLAND).toContain("t(today.locationValid?(today.geofencingRequired?'withinLocation':'locationRecordedNoGeofence'):geo?'outsideLocation':'locationCheckNeeded')");
+    expect(ISLAND).toContain("{c.locationName??t('geofencingNotRequired')}");
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
+      expect(m.attendance.clock.locationRecordedNoGeofence, loc).toBeTruthy();
+      expect(m.attendance.clock.geofencingNotRequired, loc).toBeTruthy();
+    }
+    const READ = fs.readFileSync(path.resolve(__dirname, '../core/attendance-clock-read.ts'), 'utf8');
+    expect(READ).toContain('locationValid = result.enforced ? !!result.clockingLocationId : true');
+    expect(READ).not.toContain('required:true');
+  });
   it('hides Switch unless there is more than one assignable shift', () => {
     expect(ISLAND).toMatch(/shiftOptions\.length>1&&<button/);
     expect(ISLAND).toContain('setShiftIdx(i=>(i+1)%shiftOptions.length)');
@@ -273,9 +285,9 @@ describe('attendancePunchesForRange — per-punch matched site + coordinates (af
       lng: HQ.lng,
       radiusM: 500,
       locationId,
+      companyIds: [b.companyId],
     });
-    await setEmployeeClockingLocations(a, { employmentId, clockingLocationIds: [site] });
-    await setGeofencing(a, { employmentId, enabled: true, radiusM: 500 });
+    await setClockingControl(a, { employmentId, enabled: true, clockingLocationIds: [site] });
 
     await checkIn(a, { employmentId, date: MON, time: '08:36', geo: HQ });
     await checkOut(a, { employmentId, date: MON, time: '12:00', geo: HQ });

@@ -6,21 +6,24 @@ import * as schema from '../db/schema';
 import { adminCtx,closeAll,createAppUser,eventTypesFor,latestEventPayload,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base } from './harness';
 import { type SessionContext,withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { createClockingLocation,setEmployeeClockingLocations } from '../core/clocking-location';
+import { createClockingLocation,setClockingControl } from '../core/clocking-location';
 import { registerDevice,revokeDevice } from '../core/attendance-device';
 import { captureEmployeeClock,clockCapturePhoto,purgeClockPhoto,ClockConflictError,type ClockIntent } from '../core/attendance-clock';
 import { ownClockToday } from '../core/attendance-clock-read';
-import { checkIn,decideAttendanceCorrection,requestAttendanceCorrection,myAttendanceCorrections,MissingAttendanceRejectReasonError } from '../core/attendance';
+import { checkIn,decideAttendanceCorrection,requestAttendanceCorrection,myAttendanceCorrections,MissingAttendanceRejectReasonError,OutsideGeofenceError } from '../core/attendance';
 import { decodeClockPhoto,CLOCK_PHOTO_MAX_BYTES } from '../lib/attendance-photo';
 import { formatMinutesToHM,plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { todayInKualaLumpur } from '../lib/hr-date';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});afterEach(()=>vi.useRealTimers());
-async function subject(){
+// r423 — the employee's "Use Geofencing for Clocking" switch decides the Clock screen too. These r378
+// cases are about a GEOFENCED employee, so the subject is created with the switch ON and one site; the
+// switch-OFF behaviour (r378's "a capture requires an enforced geofence", narrowed) is the r423 block below.
+async function subject(opts:{geofenced?:boolean}={}){
  const admin=adminCtx(b),h=await hireEmployee(admin,{person:{fullName:'Synthetic Attendance Fixture',primaryEmail:randomUUID()+'@test.local'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  const userId=await createAppUser(b.tenantId,h.personId,'employee');
  const ctx:SessionContext={tenantId:b.tenantId,userId,personId:h.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId),grants:[{role:'employee',companyId:null}]};
- const site=await createClockingLocation(admin,{name:'Synthetic Office '+randomUUID(),lat:3,lng:101,radiusM:100});await setEmployeeClockingLocations(admin,{employmentId:h.employmentId,clockingLocationIds:[site.id]});
+ const site=await createClockingLocation(admin,{name:'Synthetic Office '+randomUUID(),lat:3,lng:101,radiusM:100,companyIds:[b.companyId]});if(opts.geofenced!==false)await setClockingControl(admin,{employmentId:h.employmentId,enabled:true,clockingLocationIds:[site.id]});
  const device=await registerDevice(ctx,{employmentId:h.employmentId,label:'Synthetic browser'});
  const photo=await sharp({create:{width:80,height:60,channels:3,background:'#246'}}).jpeg().toBuffer();
  const intent:ClockIntent={action:'in',requestId:randomUUID(),deviceToken:device.deviceToken,lat:3,lng:101,accuracy:10,photo,mime:'image/jpeg'};
@@ -29,7 +32,7 @@ async function subject(){
 const clockAt=(iso:string)=>{vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(iso));};
 
 describe('r378 private capture command integrity',()=>{
- it('mandatory photo/device/geofence despite policy flags off, no partial rows on failure',async()=>{
+ it('mandatory photo/device, and the geofence for a geofenced employee, despite policy flags off; no partial rows on failure',async()=>{
   const x=await subject();
   await expect(captureEmployeeClock(x.ctx,{...x.intent,photo:Buffer.from('not an image')})).rejects.toThrow();
   await expect(captureEmployeeClock(x.ctx,{...x.intent,deviceToken:randomUUID()})).rejects.toThrow('registered');
@@ -103,7 +106,7 @@ describe('r378 private capture command integrity',()=>{
  });
  it('legacy manual same-minute and future anchors keep existing ordering guards without partial evidence',async()=>{
   const x=await subject();const date=todayInKualaLumpur();clockAt(date+'T09:00:10+08:00');
-  await checkIn(x.admin,{employmentId:x.h.employmentId,date,time:'09:00'});
+  await checkIn(x.admin,{employmentId:x.h.employmentId,date,time:'09:00',manual:true});
   await expect(captureEmployeeClock(x.ctx,{...x.intent,action:'out'})).rejects.toThrow();
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
   const [day]=await owner.db.select().from(schema.attendance);expect(day.checkInAt).toBe('09:00:00');expect(day.checkOutAt).toBeNull();
@@ -127,7 +130,7 @@ describe('r378 private capture command integrity',()=>{
 
 describe('r378 correction originals and rejection facts',()=>{
  it('freezes originals at submission, preserves them when live clocks change, and records trimmed rejection',async()=>{
-  const x=await subject(),date=todayInKualaLumpur();await checkIn(x.admin,{employmentId:x.h.employmentId,date,time:'09:00'});
+  const x=await subject(),date=todayInKualaLumpur();await checkIn(x.admin,{employmentId:x.h.employmentId,date,time:'09:00',manual:true});
   const request=await requestAttendanceCorrection(x.ctx,{employmentId:x.h.employmentId,date,checkIn:'09:05',checkOut:'18:00',reason:'Forgot the clock'});
   const [before]=await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,request.correctionId));
   expect(before.originalClockSnapshot).toMatchObject({version:1,originalCheckIn:'09:00:00',originalCheckOut:null});
@@ -162,5 +165,42 @@ describe('r378 actual image decoding and duration presentation',()=>{
  it.each([[150,'2h30m'],[120,'2h'],[45,'45m'],[0,'0m']])('formats recorded %i minutes as %s', (minutes,expected)=>expect(formatMinutesToHM(minutes)).toBe(expected));
  it('strictly derives overnight windows while equal/incomplete/malformed times remain invalid',()=>{
   expect(plannedOvertimeMinutes('22:00','01:30')).toBe(210);expect(plannedOvertimeMinutes('18:00','20:30')).toBe(150);for(const [start,end] of [['18:00','18:00'],['','20:00'],['24:00','01:00'],['9:00','10:00']])expect(plannedOvertimeMinutes(start,end)).toBeNull();expect(()=>formatMinutesToHM(1.5)).toThrow();
+ });
+});
+
+describe('r423 · the switch decides the Clock screen',()=>{
+ it('switch OFF: the clocking is accepted anywhere, the position recorded, no site/distance/radius, punch not_enforced',async()=>{
+  const x=await subject({geofenced:false});clockAt(todayInKualaLumpur()+'T09:00:10+08:00');
+  const far={...x.intent,lat:5.4,lng:100.3};
+  const before=await ownClockToday(x.ctx,far.deviceToken,{lat:far.lat,lng:far.lng,accuracy:10});
+  expect(before.geofencingRequired).toBe(false);expect(before.locationValid,'a valid fix is all that is needed').toBe(true);
+  const receipt=await captureEmployeeClock(x.ctx,far);
+  const [cap]=await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id,receipt.id));
+  expect(cap.lat).toBeCloseTo(5.4,6);expect(cap.lng).toBeCloseTo(100.3,6);expect(cap.accuracyM).toBe(10);
+  expect(cap.clockingLocationId).toBeNull();expect(cap.distanceM).toBeNull();expect(cap.radiusM).toBeNull();
+  const [punch]=await owner.db.select().from(schema.attendancePunch);expect(punch.geofenceStatus).toBe('not_enforced');expect(punch.clockCaptureId).toBe(receipt.id);
+  expect(await latestEventPayload(b.tenantId,receipt.id,'attendance.clock.captured')).toMatchObject({clockingLocationId:null,geofence:'not_enforced'});
+  // The photo and the registered phone are still required with the switch OFF.
+  await expect(captureEmployeeClock(x.ctx,{...far,action:'out',requestId:randomUUID(),deviceToken:randomUUID()})).rejects.toThrow('registered');
+  await expect(captureEmployeeClock(x.ctx,{...far,action:'out',requestId:randomUUID(),photo:Buffer.from('nope')})).rejects.toThrow();
+ });
+ it('switch ON: outside the radius is refused, nothing written, and the refused attempt is in the audit trail',async()=>{
+  const x=await subject();clockAt(todayInKualaLumpur()+'T09:00:10+08:00');
+  const today=await ownClockToday(x.ctx,x.intent.deviceToken,{lat:5,lng:101,accuracy:10});
+  expect(today.geofencingRequired).toBe(true);expect(today.locationValid).toBe(false);
+  await expect(captureEmployeeClock(x.ctx,{...x.intent,lat:5})).rejects.toBeInstanceOf(OutsideGeofenceError);
+  expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+  expect(await eventTypesFor(b.tenantId,x.h.employmentId)).toContain('attendance.geofence.blocked');
+  // Inside: accepted with the site, the distance and the radius.
+  const receipt=await captureEmployeeClock(x.ctx,x.intent);
+  const [cap]=await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id,receipt.id));
+  expect(cap.clockingLocationId).toBe(x.site.id);expect(cap.distanceM).toBe(0);expect(cap.radiusM).toBe(100);
+ });
+ it('switch ON with NO usable location (deactivated) is refused at clock-in and audited',async()=>{
+  const x=await subject();clockAt(todayInKualaLumpur()+'T09:00:10+08:00');
+  await owner.db.update(schema.clockingLocation).set({archivedAt:new Date()}).where(eq(schema.clockingLocation.id,x.site.id));
+  await expect(captureEmployeeClock(x.ctx,x.intent)).rejects.toBeInstanceOf(OutsideGeofenceError);
+  expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+  expect(await eventTypesFor(b.tenantId,x.h.employmentId)).toContain('attendance.geofence.blocked');
  });
 });

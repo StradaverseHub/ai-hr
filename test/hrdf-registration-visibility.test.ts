@@ -98,10 +98,15 @@ describe('(a) employee Bank & Statutory — the contradiction is stated, not swa
     // Refusing the save would strand HR who set employees up before the company registration lands, and
     // the stored flag is honest: it starts levying the moment the rate is set. Only the render changed.
     const ACTIONS = read('app/admin/personnel/[employmentId]/actions.ts');
-    const fn = ACTIONS.slice(
-      ACTIONS.indexOf('export async function setOthersStatutoryAction'),
-      ACTIONS.indexOf('export async function setEmployeeClockingLocationsAction'),
-    );
+    // r423 — the next export after the statutory action is the merged clocking writer (it was
+    // setEmployeeClockingLocationsAction). Both markers must be FOUND, or the slice is '' and this passes on
+    // nothing (CLAUDE.md §8).
+    const from = ACTIONS.indexOf('export async function setOthersStatutoryAction');
+    const to = ACTIONS.indexOf('export async function setClockingControlAction');
+    expect(from).toBeGreaterThanOrEqual(0);
+    expect(to).toBeGreaterThan(from);
+    const fn = ACTIONS.slice(from, to);
+    expect(fn.length).toBeGreaterThan(200);
     expect(fn).toContain("hrdfChoice === 'yes' ? true : hrdfChoice === 'no' ? false : null");
     expect(fn).not.toContain('hrdfStatus');
   });

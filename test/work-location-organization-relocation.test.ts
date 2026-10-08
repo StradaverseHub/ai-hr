@@ -97,7 +97,7 @@ import {
   archiveLocationAction,
   restoreLocationAction,
 } from '../app/admin/actions';
-import { CLOCKING_NEW_PAGE, LOCATIONS_LIST, clockingEditPage } from '../app/admin/work-locations/clocking/form-fields';
+import { CLOCKING_LIST, CLOCKING_NEW_PAGE, LOCATIONS_LIST, clockingEditPage } from '../app/admin/work-locations/clocking/form-fields';
 import { LOCATION_NEW_PAGE, locationEditPage, locationViewPage } from '../app/admin/work-locations/location-fields';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -121,20 +121,26 @@ const countQuoted = (haystack: string, href: string) => haystack.split(`'${href}
 // ───────────────────────── (a) UNDER ATTENDANCE, NOT UNDER ORGANIZATION ─────────────────────────
 
 describe('639bf4a5 (a) — the row is under Attendance and is NOT under Organization', () => {
-  it('is a child of the attendance settings node, labelled `locations`, beside Attendance allowance', () => {
+  /**
+   * r423 (83c0d3c8) — UPDATED, NOT LOOSENED. "Locations" (labelKey `locations`) opens the CLOCKING location
+   * list now; this work location listing kept its address and moved to a row of its own, "Work Locations"
+   * (labelKey `workLocations`), directly beneath it — still a child of the attendance settings node, still
+   * after Attendance allowance, still administrators only.
+   */
+  it('is a child of the attendance settings node, labelled `workLocations`, under "Locations", after Attendance allowance', () => {
     const node = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
     const row = node.children.find((c) => c.href === HREF);
-    expect(row, 'the Locations row is a child of the Attendance settings node').toBeTruthy();
-    expect(row!.labelKey, 'and it is labelled with the key that reads "Locations"').toBe('locations');
+    expect(row, 'the Work Locations row is a child of the Attendance settings node').toBeTruthy();
+    expect(row!.labelKey, 'and it is labelled "Work Locations"').toBe('workLocations');
     expect(row!.adminOnly, 'administrators only, as it always was').toBe(true);
-    // POSITION, not mere presence: 5cb199b3's order put it after Attendance allowance, and a row appended
-    // to the end of a long literal would satisfy "it is in the node" while missing the arrangement.
     const hrefs = node.children.map((c) => c.href);
     expect(hrefs.indexOf(HREF), 'it comes after Attendance allowance').toBeGreaterThan(
       hrefs.indexOf('/admin/attendance-allowance'),
     );
+    expect(hrefs.indexOf(HREF), 'directly under Locations (the clocking list)').toBe(hrefs.indexOf(CLOCKING_LIST) + 1);
+    expect(node.children.find((c) => c.href === CLOCKING_LIST)?.labelKey).toBe('locations');
     expect(PACK, 'declared in the pack source, not mounted from elsewhere').toContain(
-      `{ href: '${HREF}', labelKey: 'locations', icon: MapPin, adminOnly: true }`,
+      `{ href: '${HREF}', labelKey: 'workLocations', icon: Building2, adminOnly: true }`,
     );
   });
 
@@ -157,8 +163,14 @@ describe('639bf4a5 (a) — the row is under Attendance and is NOT under Organiza
     expect(isNavRowActive(HREF, '', orgRow), 'the Organization row does NOT').toBe(false);
     // …and it stays lit on every one of the dedicated screens, which is the point of keeping them under
     // the same address rather than minting a sibling route for each.
-    for (const sub of [`${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`, `${HREF}/clocking/new`]) {
+    for (const sub of [`${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`]) {
       expect(isNavRowActive(sub, '', mineRow), `${sub} keeps the row lit`).toBe(true);
+    }
+    // r423 — the clocking screens are under this address too, and belong to the MORE SPECIFIC "Locations"
+    // row: the flyout lights the longest matching href (components/sidebar.tsx activeChildHref).
+    for (const sub of [CLOCKING_LIST, `${CLOCKING_LIST}/new`, `${CLOCKING_LIST}/abc/edit`]) {
+      expect(isHrefActive(sub, '', CLOCKING_LIST), `${sub} lights Locations`).toBe(true);
+      expect(CLOCKING_LIST.length, 'and Locations is the longer, winning href').toBeGreaterThan(HREF.length);
     }
     // …and an attendance sibling does not claim it.
     const siblings = attendancePack
@@ -205,18 +217,21 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
 
   it('every screen in the tree reads clocking through the pack facade, never the implementation', () => {
     for (const rel of [
-      'app/admin/work-locations/page.tsx',
-      'app/admin/work-locations/[id]/page.tsx',
-      'app/admin/work-locations/[id]/edit/page.tsx',
       'app/admin/work-locations/clocking/page.tsx',
       'app/admin/work-locations/clocking/[id]/page.tsx',
-      'app/admin/work-locations/clocking-points.tsx',
+      'app/admin/work-locations/clocking/[id]/edit/page.tsx',
     ]) {
       const src = read(rel);
       expect(src, `${rel} imports the facade`).toContain("from '@/packs/attendance/service'");
       expect(src, `${rel} must not import the pack's implementation directly`).not.toMatch(
         /from '@\/core\/clocking-location'/,
       );
+    }
+    // r423 — the WORK location screens read no clocking at all any more (they show none).
+    for (const rel of ['app/admin/work-locations/page.tsx', 'app/admin/work-locations/[id]/page.tsx', 'app/admin/work-locations/[id]/edit/page.tsx']) {
+      const src = read(rel);
+      expect(src, `${rel} reads no clocking`).not.toContain('listClockingLocations');
+      expect(src).not.toMatch(/from '@\/core\/clocking-location'/);
     }
     // …and the org spine is STILL imported directly, because that half is kernel and always was.
     expect(LIST_SRC).toContain("from '@/core/location'");
@@ -250,10 +265,12 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
 // ─────────────────────── (e) THREE DEDICATED SCREENS, AND NO FORM ON THE LISTING ───────────────────────
 
 describe('639bf4a5 (e) — Add, View and Edit each have a route of their own, all on the unchanged screen key', () => {
-  it('the screen column keeps its key, href and guard, and gains the four new routes', () => {
+  it('the screen column keeps its key and guard, its href follows "Locations" (r423), and it holds every route', () => {
     const screen = SCREENS.find((s) => s.screenKey === 'locations');
     expect(screen, 'the screen column survives BOTH moves — the screenKey is a permission identity').toBeTruthy();
-    expect(screen!.href, 'the ADDRESS did not move: the reporter renamed the function, not the URL').toBe(HREF);
+    // r423 — the column's href is the clocking list now ("Locations"); the work location listing is a
+    // second menu row on the SAME column, so no stored grant changes meaning.
+    expect(screen!.href).toBe(CLOCKING_LIST);
     expect(screen!.labelKey, 'only the label follows the menu').toBe('nav.locations');
     expect(screen!.guard, 'the guard is unchanged: administrators only').toBe('requireAdmin');
     expect(screen!.routes).toEqual([
@@ -264,6 +281,7 @@ describe('639bf4a5 (e) — Add, View and Edit each have a route of their own, al
       '/admin/work-locations/clocking',
       '/admin/work-locations/clocking/new',
       '/admin/work-locations/clocking/[id]',
+      '/admin/work-locations/clocking/[id]/edit',
       '/admin/locations',
       '/admin/locations/clocking/new',
       '/admin/locations/clocking/[id]',
@@ -682,35 +700,24 @@ describe('639bf4a5 (h) — create, edit, archive and restore still work, from th
     expect(await renderList(), 'the heading is gone once the branch is mapped').not.toContain('unmappedBranchesHeading');
   });
 
-  it('a location’s clocking points move with it onto its own screens — and one linked to nothing is still reachable', async () => {
-    /**
-     * The reporter's fourth point: "the clocking points a location carries move with it onto that
-     * dedicated screen, so a site and its points stay maintained in one place." Two sites are used
-     * because a bug that herded every point onto the first site would satisfy a one-site test.
-     */
+  /**
+   * r423 (83c0d3c8) REVERSES r338's "a location's clocking points move with it onto its own screens". The
+   * reporter asked for clocking locations to be set up location-first and opened to companies, so every
+   * one is on Attendance › Locations and NONE renders under a work location — linked or not.
+   */
+  it('no clocking location renders on a work location’s screens or on the listing, linked or not', async () => {
     const { id: hq } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    const { id: yard } = await createLocation(ADMIN, { companyId: b.companyId, code: 'YARD', name: 'North Yard' });
-    const { id: gate } = await createClockingLocation(ADMIN, { name: 'North Gate', lat: 3.139, lng: 101.6869, radiusM: 200, locationId: hq });
-    const { id: yardGate } = await createClockingLocation(ADMIN, { name: 'Yard Gate', lat: 3.14, lng: 101.687, radiusM: 200, locationId: yard });
-    const { id: floating } = await createClockingLocation(ADMIN, { name: 'Floating Point', lat: 3.15, lng: 101.69, radiusM: 200 });
-
-    for (const render of [renderView, renderEdit]) {
-      const hqHtml = await render(hq);
-      expect(hqHtml, 'North Gate is on the HQ screen').toContain(`id="row-${gate}"`);
-      expect(hqHtml, "…and nobody else's point is").not.toContain(`id="row-${yardGate}"`);
-      expect(hqHtml, '…including the unlinked one').not.toContain(`id="row-${floating}"`);
-      const yardHtml = await render(yard);
-      expect(yardHtml, 'Yard Gate is on the YARD screen').toContain(`id="row-${yardGate}"`);
-      expect(yardHtml).not.toContain(`id="row-${gate}"`);
+    const { id: gate } = await createClockingLocation(ADMIN, { name: 'North Gate', lat: 3.139, lng: 101.6869, radiusM: 200, locationId: hq, companyIds: [b.companyId] });
+    const { id: floating } = await createClockingLocation(ADMIN, { name: 'Floating Point', lat: 3.15, lng: 101.69, radiusM: 200, companyIds: [b.companyId] });
+    for (const html of [await renderView(hq), await renderEdit(hq), await renderList()]) {
+      expect(html).not.toContain(`id="row-${gate}"`);
+      expect(html).not.toContain(`id="row-${floating}"`);
+      expect(html).not.toContain('North Gate');
+      expect(html).not.toContain(clockingEditPage(gate));
+      expect(html, 'no "add a clocking point" under a work location').not.toContain(`${CLOCKING_NEW_PAGE}?addPoint=`);
+      expect(html).not.toContain('offRegisterLink');
     }
-    // The point that links to NOTHING is not on either site, and the listing points at where it is.
-    const list = await renderList();
-    expect(list, 'the listing renders no point row of its own').not.toContain(`id="row-${floating}"`);
-    expect(list, 'but it does not pretend the point is gone').toContain('offRegisterLink');
-    expect(list).toContain(`href="/admin/work-locations/clocking"`);
-    // …and the Edit screen is where a point is added to a site, with the site pre-picked.
-    expect(await renderEdit(hq)).toContain(`href="${CLOCKING_NEW_PAGE}?addPoint=${hq}"`);
-    expect(await renderEdit(hq), 'and each point still opens its single editor').toContain(`href="${clockingEditPage(gate)}"`);
+    expect(await renderList(), 'the listing is headed Work Locations').toContain('workLocationsTitle');
   });
 
   it('[id] is shape-checked before any query — junk never reaches a uuid column', async () => {
@@ -860,12 +867,11 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
       'locationSaved',
       'sectionSite',
       'branchHint',
-      'clockingPointsHeading',
-      'clockingPointsAfterSave',
-      'offRegisterTitle',
-      'offRegisterDescription',
-      'offRegisterLink',
+      // r423 retired clockingPointsHeading, clockingPointsAfterSave and the three offRegister* keys (no
+      // clocking location is shown under a work location now); it minted the two below.
       'archivedNote',
+      'workLocationsTitle',
+      'backToWorkLocations',
     ];
     /**
      * ⚠️ ONE DECLARED EXEMPTION, AND IT IS A FACT ABOUT THE LANGUAGE RATHER THAN A MISSING TRANSLATION:
@@ -888,11 +894,13 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
     expect(catalog('ms').admin.locations.colStatus, 'ms: "Status" is the Malay word, not an English leftover').toBe('Status');
   });
 
-  it('the page title reads the same as the menu row, in every locale', () => {
-    // The screen the reporter clicks and the heading they land on must be the same words.
+  it('the page title reads the same as the menu row, in every locale — for both rows', () => {
+    // The screen the reporter clicks and the heading they land on must be the same words. r423: "Locations"
+    // heads the clocking list, "Work Locations" heads this listing.
     for (const loc of LOCALES) {
       const c = catalog(loc);
       expect(c.admin.locations.pageTitle, `${loc}: page title equals the nav label`).toBe(c.nav.locations);
+      expect(c.admin.locations.workLocationsTitle, `${loc}: Work Locations title equals its nav label`).toBe(c.nav.workLocations);
     }
   });
 
@@ -930,12 +938,12 @@ describe('639bf4a5 — the /admin/locations addresses redirect, guard first; the
     }
   });
 
-  it('the list stub forwards to the register, carrying its query', async () => {
+  it('the list stub forwards to the CLOCKING list (r423: the old address meant clocking locations), carrying its query', async () => {
     LAST_REDIRECT = '';
     await expect(LocationsRedirect({ searchParams: Promise.resolve({ saved: '1', focus: 'abc' }) })).rejects.toThrow(
       'NEXT_REDIRECT',
     );
-    expect(LAST_REDIRECT).toBe(`${LOCATIONS_LIST}?saved=1&focus=abc`);
+    expect(LAST_REDIRECT).toBe(`${CLOCKING_LIST}?saved=1&focus=abc`);
   });
 
   it('the new-clocking stub forwards, keeping a refused save’s reason and typed values', async () => {
