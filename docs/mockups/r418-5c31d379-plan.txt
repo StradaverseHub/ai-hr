@@ -26,6 +26,8 @@ GOOD TO KNOW
 
 - We are keeping the name BBCD, the name printed on the form you sent us. We could not find a different official name for it on KWSP's current forms list.
 
+- The column keeps the heading printed on the agency's own form (No. Kad Pengenalan), even on a line that carries a passport number, because that is how the form itself is laid out.
+
 - No EPF amounts change.
 
 ------------------------------------------------------------

@@ -29,6 +29,8 @@ GOOD TO KNOW
 
 - If a citizen has no IC number on file but has a non-Malaysian nationality and a passport number, the passport number is used rather than blocking the form.
 
+- The column keeps the heading printed on the agency's own form (No. Kad Pengenalan), even on a line that carries a passport number, because that is how the form itself is laid out.
+
 - No SOCSO or EIS amounts change.
 
 ------------------------------------------------------------
