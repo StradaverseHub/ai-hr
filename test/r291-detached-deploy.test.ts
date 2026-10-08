@@ -801,6 +801,11 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
   git('config', 'user.name', 'r291');
   git('add', '-A');
   git('commit', '-qm', 'r291 fixture');
+  // r417 (ADR-0094): release.ts no longer runs the suite on a missing receipt — it refuses. This fixture is
+  // about the DEPLOY path, so it carries a full-tier receipt for its own HEAD, exactly what a green
+  // scripts/gate-chunked.sh writes. test/r417-release-gate.test.ts pins the refusals.
+  const head = git('rev-parse', 'HEAD').stdout.trim();
+  fs.writeFileSync(path.join(wt, '.gate-receipt.json'), JSON.stringify({ sha: head, result: 'PASS', tier: 'full' }));
 
   const r = spawnSync(
     process.execPath,
@@ -818,7 +823,7 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}): CliRun {
         buildRef: 'r291-fixture',
       }),
       env: {
-        // The shims come FIRST: npx (tsc), pnpm (vitest), rsync and ssh are all stubbed. `git` is NOT
+        // The shims come FIRST: npx (tsc), pnpm, rsync and ssh are all stubbed. `git` is NOT
         // stubbed — release.ts must read a real HEAD.
         PATH: `${box.bin}:${process.env.PATH ?? ''}`,
         HOME: box.dir,

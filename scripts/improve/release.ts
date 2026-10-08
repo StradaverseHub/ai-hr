@@ -5,7 +5,7 @@
  *
  *   echo '{"id","tenantId","reporterEmploymentId","worktree","branch","buildRef"}' | pnpm improve:release
  *
- * Flow: final gate (tsc + vitest in the worktree) → announce → rsync worktree → server → DETACHED deploy.sh
+ * Flow: final gate (the gate receipt must cover HEAD — r417, see release-gate.ts — then tsc) → announce → rsync worktree → server → DETACHED deploy.sh
  * → follow it by polling → markDeployed. Credentials never leave the server (deploy.sh sources its own
  * .env.production); the service restart still needs the user's sudo (deploy.sh declines it by design).
  *
@@ -40,6 +40,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tierFor } from '../gate-tier-git';
+import { decideReleaseGate, type DeployedVerdict, type GateReceipt } from './release-gate';
 import { markDeployed } from './remote';
 
 const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
@@ -316,6 +318,35 @@ export function followDeploy(deps: FollowDeps): DeployStatus {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * r417 — the tier classifier's verdict on the diff from the commit PRODUCTION RUNS (`built_ref` from the
+ * box's own deploy-state.sh, read-only) to HEAD. Only consulted for an affected-tier receipt. Any failure
+ * to answer is returned as an error, which refuses the release: "could not check" is not "presentational".
+ */
+export function deployedVerdict(worktree: string): DeployedVerdict {
+  let deployedRef: string | undefined;
+  try {
+    const out = execFileSync('ssh', sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`), {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    deployedRef = parseDeployStatus(out).built_ref;
+  } catch (e) {
+    return { error: `could not read the deployed ref from ${USER}@${HOST}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}` };
+  }
+  if (!deployedRef || deployedRef === '-') return { error: `the box reports no built_ref (got '${deployedRef ?? ''}')` };
+  try {
+    return { deployedRef, verdict: tierFor(deployedRef, 'HEAD', worktree).verdict };
+  } catch (e) {
+    return {
+      error: `could not diff ${deployedRef.slice(0, 7)}...HEAD in ${worktree} (is the deployed commit in this repo?): ${
+        e instanceof Error ? e.message.split('\n')[0] : String(e)
+      }`,
+    };
+  }
+}
+
+/**
  * SHIP THE WORKTREE, AND NOTHING ELSE. Steps 1-4 of a release, with no board write.
  *
  * r357 — SPLIT OUT BECAUSE A ROUND THAT CLOSES NO BOARD ITEM IS A REAL CASE AND HAD NO COMMAND. r356
@@ -332,34 +363,39 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   if (!p.worktree || !existsSync(p.worktree)) {
     throw new Error(`worktree not found: ${p.worktree}`);
   }
-  // 1. FINAL GATE — re-verify green in the worktree before anything leaves this machine.
+  // 1. FINAL GATE — prove a gate already covered THIS commit before anything leaves this machine.
   //
-  // tsc always runs (seconds). The full suite only runs when we can't prove it already passed on THIS exact
-  // commit: cleanroom-verify.sh writes .gate-receipt.json with the sha it validated. Without that check the
-  // suite ran twice per round on an identical tree — ~13 minutes for zero extra information. A missing,
-  // stale, or unreadable receipt falls through to running it, so the safe path is the default.
+  // r417 (ADR-0094): the release NEVER runs the test suite any more. Until r417 a missing or stale
+  // receipt fell through to a bare `pnpm vitest run`, which is the one command this machine cannot take
+  // (CLAUDE.md §4). Now the receipt decides — see scripts/improve/release-gate.ts — and its tier is printed:
+  //   • full      → shipped on the receipt alone;
+  //   • affected  → the diff from the commit PRODUCTION RUNS to HEAD is re-judged with the gate's own
+  //                 classifier, and a verdict of FULL refuses the release;
+  //   • missing, unreadable, non-PASS or for another sha → refused, with the gate command to run.
+  // tsc still always runs (seconds).
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: p.worktree, encoding: 'utf8' }).trim();
+  let receipt: GateReceipt | null = null;
+  let receiptError: string | undefined;
+  try {
+    receipt = JSON.parse(readFileSync(join(p.worktree, '.gate-receipt.json'), 'utf8')) as GateReceipt;
+  } catch (e) {
+    receiptError = existsSync(join(p.worktree, '.gate-receipt.json'))
+      ? `unreadable: ${e instanceof Error ? e.message : String(e)}`
+      : `missing in ${p.worktree}`;
+  }
+  const decision = decideReleaseGate({
+    receipt,
+    receiptError,
+    head,
+    deployedVerdict: () => deployedVerdict(p.worktree),
+  });
+  for (const line of decision.lines) console.log(line);
+  if (!decision.ok) {
+    throw new Error(`release refused by the gate check — nothing was shipped.\n${decision.lines.join('\n')}`);
+  }
+
   console.log('→ final gate: npx tsc --noEmit');
   run('npx', ['tsc', '--noEmit'], p.worktree);
-
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: p.worktree, encoding: 'utf8' }).trim();
-  let receiptSha: string | null = null;
-  try {
-    const receipt = JSON.parse(readFileSync(join(p.worktree, '.gate-receipt.json'), 'utf8')) as {
-      sha?: string;
-      result?: string;
-    };
-    if (receipt.result === 'PASS' && receipt.sha) receiptSha = receipt.sha;
-  } catch {
-    // no receipt (or unreadable) → fall through and run the suite
-  }
-
-  if (receiptSha === head) {
-    console.log(`→ final gate: vitest SKIPPED — clean-room receipt already covers ${head.slice(0, 7)}`);
-  } else {
-    const why = receiptSha ? `receipt is for ${receiptSha.slice(0, 7)}, HEAD is ${head.slice(0, 7)}` : 'no receipt';
-    console.log(`→ final gate: pnpm vitest run (${why})`);
-    run('pnpm', ['vitest', 'run'], p.worktree);
-  }
 
   // 2. Announce the release on the box BEFORE a single byte of source moves. See buildPendingCommand.
   console.log(`→ announcing ${head.slice(0, 7)} on the server (so an interrupted rsync is detectable)`);
