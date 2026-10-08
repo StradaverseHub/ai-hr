@@ -168,9 +168,17 @@ describe('r413 · a death is due 30 days after the employer is TOLD — no compu
     expect(html).not.toContain(`${wrong.slice(8, 10)}/${wrong.slice(5, 7)}/${wrong.slice(0, 4)}`);
   });
 
-  it('the directory’s own worklist table says the same word where the date would be', () => {
+  // ⚠️ r418 (item 57ef8cf9) — REVERSED: the directory's own worklist table is GONE (the reporter asked), so the
+  // event screen above is the one place this word is printed. Pinned both ways, so the word cannot quietly
+  // come back on the directory as a date, nor vanish from the event screen.
+  it('the directory carries no worklist table any more; the event screen is where the word is said', () => {
     const src = code(fs.readFileSync(path.join(ROOT, 'app/payroll/statutory-forms/page.tsx'), 'utf8'));
-    expect(src).toMatch(/\{w\.dueBy \?\? <span data-due-on-notice[^>]*>\{t\('dueOnNotice'\)\}<\/span>\}/);
+    expect(src.length).toBeGreaterThan(5000);
+    expect(src).not.toContain('w.dueBy');
+    expect(src).not.toContain('data-due-on-notice');
+    const ev = code(fs.readFileSync(path.join(ROOT, 'app/payroll/statutory-forms/event/page.tsx'), 'utf8'));
+    expect(ev).toContain('data-due-on-notice');
+    expect(ev).toContain("tf('dueOnNotice')");
   });
 });
 
