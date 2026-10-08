@@ -272,6 +272,12 @@ describe('r418 — Borang A leaves off people with no EPF, before pagination', (
       );
     const r = await view('my.borang-a');
     expect(r.readiness).toEqual([]);
+    // r418 verify D2 — but they are NAMED: a zero from a data slip must not vanish without a word.
+    const leftOff = (r.meta.notes ?? []).find((n) => n.startsWith('Not on this form'));
+    expect(leftOff, 'the review screen names who was left off').toBeTruthy();
+    expect(leftOff).toMatch(/BBB/i);
+    expect(leftOff).toMatch(/EEE/i);
+    expect(leftOff).not.toMatch(/AAA/i);
   });
 
   it('everybody zero: no rows remain, so the form’s "nothing to file" refusal applies', async () => {

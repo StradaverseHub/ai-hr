@@ -433,6 +433,12 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     const accs = [...byEmp.values()]
       .filter((a) => sen(a.employer) !== 0 || sen(a.employee) !== 0)
       .sort((a, b) => a.name.localeCompare(b.name));
+    // r418 verify D2 — named, never silent: a zero can come from a data slip (an EPF mode saved as exempt by
+    // mistake), and a person who vanishes without a word cannot be checked. The review screen lists them.
+    const leftOff = [...byEmp.values()]
+      .filter((a) => sen(a.employer) === 0 && sen(a.employee) === 0)
+      .map((a) => a.name)
+      .sort((a, b) => a.localeCompare(b));
     const rows: ReportRow[] = accs.map((a) => {
       const row: BorangARow = {
         employmentId: a.employmentId,
@@ -498,7 +504,14 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         batchStatus,
         statutoryVersion: versions.size ? [...versions].sort().join(',') : MY_STATUTORY_VERSION,
         formHeader: header,
-        notes: [NOTE_NOT_ARTWORK, NOTE_PLUS_ONE, NOTE_WAGE],
+        notes: [
+          NOTE_NOT_ARTWORK,
+          NOTE_PLUS_ONE,
+          NOTE_WAGE,
+          ...(leftOff.length > 0
+            ? [`Not on this form — no EPF contribution (employer and employee shares both RM0.00) on the payroll cycles chosen: ${leftOff.join(', ')}. Check their EPF setting if that is not expected.`]
+            : []),
+        ],
         // THE RECONCILIATION STRIP: the run's own EPF total beside the form's, and the gross the form
         // deliberately does NOT use, so the difference between Upah and gross is visible rather than
         // arguable. Any divergence shows up BEFORE filing rather than at KWSP.
