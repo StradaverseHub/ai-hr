@@ -3323,7 +3323,10 @@
     "rejectReasonLabel": "คำอธิบายการปฏิเสธ",
     "rejectNotRecorded": "ไม่ได้บันทึกคำอธิบาย",
     "otScrollHint": "เลื่อนไปด้านข้างเพื่อดูรายละเอียดล่วงเวลาทั้งหมด",
-    "rejectRequired": "ต้องมีคำอธิบายการปฏิเสธ 1–1000 อักขระ"
+    "rejectRequired": "ต้องมีคำอธิบายการปฏิเสธ 1–1000 อักขระ",
+    "clockEvidenceGeofenced": "{site} · ระยะ {distance} ม. จากที่อนุญาต {radius} ม.",
+    "clockEvidenceNotRequired": "ไม่ต้องใช้เขตพื้นที่",
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} ม."
   },
   "org": {
     "title": "ผังองค์กร",

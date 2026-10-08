@@ -3323,7 +3323,10 @@
     "rejectReasonLabel": "拒绝说明",
     "rejectNotRecorded": "未记录说明",
     "otScrollHint": "横向滚动查看全部加班详情",
-    "rejectRequired": "请输入 1–1000 字的拒绝说明。"
+    "rejectRequired": "请输入 1–1000 字的拒绝说明。",
+    "clockEvidenceGeofenced": "{site} · 距离 {distance} 米（允许 {radius} 米）",
+    "clockEvidenceNotRequired": "无需地理围栏",
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} 米"
   },
   "org": {
     "title": "组织架构图",

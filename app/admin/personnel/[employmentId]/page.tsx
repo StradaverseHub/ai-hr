@@ -1069,7 +1069,9 @@ export default async function EmployeePage({
   const tabSaveCovers = {
     profile: [t('personalDetails'), t('contactAddressTitle')],
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
-    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('cardTitle'))],
+    // r423 — the clocking card's heading is "Location assignment" (one merged section), so the bar names
+    // it by that heading; `cardTitle` ("Clocking locations & geofencing") named the old two-form card.
+    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle'))],
     job: [t('employmentInfo.title')],
     // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
     // Method is rendered inside Basic Salary, whose own headline control records an effective-dated

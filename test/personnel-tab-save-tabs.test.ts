@@ -764,7 +764,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // UPDATED rather than loosened: Holiday Calendar stays first (item 52a30630), and a bar that gained
       // a card without gaining its name would be the same control-that-lies `covers` exists to prevent.
       expect(page).toContain(
-        "attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('cardTitle'))]",
+        "attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle'))]",
       );
       expect(page).toContain("job: [t('employmentInfo.title')]");
       // r256 — Payroll's entry names a SUB-SECTION of a card, not the card. Payment Method is rendered

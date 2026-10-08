@@ -3323,7 +3323,10 @@
     "rejectReasonLabel": "Giải thích từ chối",
     "rejectNotRecorded": "Chưa ghi giải thích",
     "otScrollHint": "Cuộn ngang để xem toàn bộ chi tiết tăng ca",
-    "rejectRequired": "Cần giải thích từ chối dài 1–1000 ký tự."
+    "rejectRequired": "Cần giải thích từ chối dài 1–1000 ký tự.",
+    "clockEvidenceGeofenced": "{site} · cách {distance} m trên {radius} m cho phép",
+    "clockEvidenceNotRequired": "Không yêu cầu hàng rào địa lý",
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m"
   },
   "org": {
     "title": "Sơ đồ tổ chức",

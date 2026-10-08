@@ -7,9 +7,10 @@ import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/
 import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
+import { clockCaptureEvidence } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
-import { fmtMin, fmtDayDate } from '@/components/attendance-format';
+import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
 
 /**
  * 570fd56e — ATTENDANCE › RECORDS › INDIVIDUAL ATTENDANCE › ONE DAY.
@@ -99,6 +100,14 @@ export default async function IndividualAttendanceDayPage({
   const admin = isAdmin(s);
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
+  // r423 (83c0d3c8, plan point 13) — WHERE each self-service clocking was made. Only punches backed by a
+  // clock capture have evidence; manual, imported and legacy punches show nothing new. Read under the
+  // caller's own session through the pack facade: the capture table's RLS (can_see_employment) is the same
+  // visibility as the attendance rows on this page, so nobody sees more than they did.
+  const evidence = await clockCaptureEvidence(
+    s,
+    punches.map((p) => p.clockCaptureId).filter((id): id is string => id != null),
+  );
 
   const backHref = `/attendance/individual?emp=${encodeURIComponent(selected.employmentId)}${
     sp.from ? `&from=${encodeURIComponent(sp.from)}` : ''
@@ -203,18 +212,48 @@ export default async function IndividualAttendanceDayPage({
               {punches.map((p, i) => (
                 <span
                   key={i}
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 tabular-nums"
+                  className="inline-flex flex-col rounded-md border border-border bg-background px-2 py-0.5 tabular-nums"
                 >
-                  <span className="font-medium text-foreground">{p.punchAt.slice(0, 5)}</span>
-                  <span
-                    className={
-                      p.direction === 'in'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-indigo-600 dark:text-indigo-400'
-                    }
-                  >
-                    {p.direction === 'in' ? t('punchIn') : t('punchOut')}
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-medium text-foreground">{p.punchAt.slice(0, 5)}</span>
+                    <span
+                      className={
+                        p.direction === 'in'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-indigo-600 dark:text-indigo-400'
+                      }
+                    >
+                      {p.direction === 'in' ? t('punchIn') : t('punchOut')}
+                    </span>
                   </span>
+                  {(() => {
+                    const ev = p.clockCaptureId ? evidence.get(p.clockCaptureId) : undefined;
+                    if (!ev) return null;
+                    if (ev.geofenced) {
+                      return (
+                        <span data-clock-evidence="geofenced" className="text-[11px] text-muted-foreground">
+                          {t('clockEvidenceGeofenced', {
+                            site: ev.locationName ?? DASH,
+                            distance: ev.distanceM ?? 0,
+                            radius: ev.radiusM ?? 0,
+                          })}
+                        </span>
+                      );
+                    }
+                    return (
+                      <span data-clock-evidence="not-enforced" className="text-[11px] text-muted-foreground">
+                        {t('clockEvidenceNotRequired')} ·{' '}
+                        <a
+                          href={osmPointHref(ev.lat, ev.lng)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-foreground"
+                        >
+                          {t('clockEvidenceCoordinates', { lat: fmtCoord(ev.lat), lng: fmtCoord(ev.lng), accuracy: Math.round(ev.accuracyM) })}
+                        </a>
+                      </span>
+                    );
+                  })()}
                 </span>
               ))}
             </div>

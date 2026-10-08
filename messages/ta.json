@@ -3323,7 +3323,10 @@
     "rejectReasonLabel": "நிராகரிப்பு விளக்கம்",
     "rejectNotRecorded": "விளக்கம் பதிவு செய்யப்படவில்லை",
     "otScrollHint": "அனைத்து கூடுதல் நேர விவரங்களையும் காண பக்கவாட்டில் உருட்டவும்",
-    "rejectRequired": "1–1000 எழுத்துகளுடன் நிராகரிப்பு விளக்கம் தேவை."
+    "rejectRequired": "1–1000 எழுத்துகளுடன் நிராகரிப்பு விளக்கம் தேவை.",
+    "clockEvidenceGeofenced": "{site} · தூரம் {distance} மீ ({radius} மீ அனுமதி)",
+    "clockEvidenceNotRequired": "புவிவேலி தேவையில்லை",
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} மீ"
   },
   "org": {
     "title": "நிறுவன அமைப்பு",

@@ -3323,7 +3323,10 @@
     "rejectReasonLabel": "Penjelasan penolakan",
     "rejectNotRecorded": "Penjelasan tidak direkod",
     "otScrollHint": "Tatal ke sisi untuk melihat semua butiran kerja lebih masa",
-    "rejectRequired": "Penjelasan penolakan 1–1000 aksara diperlukan."
+    "rejectRequired": "Penjelasan penolakan 1–1000 aksara diperlukan.",
+    "clockEvidenceGeofenced": "{site} · jarak {distance} m daripada {radius} m yang dibenarkan",
+    "clockEvidenceNotRequired": "Geopagar tidak diperlukan",
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m"
   },
   "org": {
     "title": "Carta organisasi",

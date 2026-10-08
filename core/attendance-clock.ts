@@ -1,8 +1,8 @@
 /** Employee web command. A private capture and the existing attendance writer share one transaction. */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
-import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, employeeDevice, domainEvent } from '../db/schema';
+import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employeeDevice, domainEvent } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment } from './read';
@@ -129,4 +129,60 @@ export async function purgeClockPhoto(ctx: SessionContext, captureId: string) {
     const [event] = await tx.select({ id: domainEvent.id }).from(domainEvent).where(and(eq(domainEvent.aggregateId, captureId), eq(domainEvent.eventType, 'attendance.clock.photo-purged'))).orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
     await tx.execute(sql`select app.purge_attendance_clock_photo(${captureId}::uuid, ${event.id}::uuid)`);
   });
+}
+
+/**
+ * r423 (83c0d3c8, plan point 13) — the LOCATION EVIDENCE of self-service clock captures, for HR's day
+ * detail. A capture carries the phone's position (lat / lng / accuracy) always, and the matched site, the
+ * distance and the allowed radius only when geofencing was checked (the employee's switch ON); NULL site
+ * means "geofencing not required". Photo bytes are NOT selected here.
+ *
+ * Read under the caller's own session: attendance_clock_capture's SELECT policy is
+ * app.can_see_employment(employment_id), the same visibility as the attendance rows the page already
+ * shows, so this widens nothing. An id the caller may not see simply has no entry.
+ */
+export type ClockCaptureEvidence = {
+  captureId: string;
+  geofenced: boolean;
+  locationName: string | null;
+  distanceM: number | null;
+  radiusM: number | null;
+  lat: number;
+  lng: number;
+  accuracyM: number;
+};
+
+export async function clockCaptureEvidence(ctx: SessionContext, captureIds: readonly string[]): Promise<Map<string, ClockCaptureEvidence>> {
+  const ids = [...new Set(captureIds.filter((id) => UUID.test(id)))];
+  const out = new Map<string, ClockCaptureEvidence>();
+  if (!ids.length) return out;
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .select({
+        captureId: attendanceClockCapture.id,
+        clockingLocationId: attendanceClockCapture.clockingLocationId,
+        locationName: clockingLocation.name,
+        distanceM: attendanceClockCapture.distanceM,
+        radiusM: attendanceClockCapture.radiusM,
+        lat: attendanceClockCapture.lat,
+        lng: attendanceClockCapture.lng,
+        accuracyM: attendanceClockCapture.accuracyM,
+      })
+      .from(attendanceClockCapture)
+      .leftJoin(clockingLocation, eq(clockingLocation.id, attendanceClockCapture.clockingLocationId))
+      .where(inArray(attendanceClockCapture.id, ids)),
+  );
+  for (const r of rows) {
+    out.set(r.captureId, {
+      captureId: r.captureId,
+      geofenced: r.clockingLocationId != null,
+      locationName: r.locationName,
+      distanceM: r.distanceM,
+      radiusM: r.radiusM,
+      lat: r.lat,
+      lng: r.lng,
+      accuracyM: r.accuracyM,
+    });
+  }
+  return out;
 }

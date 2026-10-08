@@ -66,3 +66,15 @@ export const fmtDayDate = (iso: string, locale: string) =>
 /** The weekday name for an attendance date, in the viewer's locale (was hardcoded `en-GB` inline). */
 export const fmtDayName = (iso: string, locale: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'long', timeZone: 'UTC' });
+
+/**
+ * r423 (83c0d3c8) — a recorded clocking position, for HR's day detail: degrees to 5 decimal places (about
+ * a metre), and the OpenStreetMap address that centres a pin on it. Here rather than on the page because
+ * the day screen formats nothing itself (test/570fd56e-individual-attendance-day.test.ts).
+ */
+export const fmtCoord = (deg: number): string => deg.toFixed(5);
+export const osmPointHref = (lat: number, lng: number): string => {
+  const la = fmtCoord(lat);
+  const lo = fmtCoord(lng);
+  return `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=18/${la}/${lo}`;
+};

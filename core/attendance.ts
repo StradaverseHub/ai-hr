@@ -2639,6 +2639,8 @@ export type AttendancePunchRow = {
   lat: number | null;
   lng: number | null;
   locationName: string | null;
+  /** r423 — the self-service clock capture behind this punch, or null (manual / import / legacy). */
+  clockCaptureId: string | null;
 };
 
 /**
@@ -2664,6 +2666,7 @@ export function attendancePunchesForRange(
         lat: attendancePunch.lat,
         lng: attendancePunch.lng,
         locationName: clockingLocation.name,
+        clockCaptureId: attendancePunch.clockCaptureId,
       })
       .from(attendancePunch)
       .leftJoin(clockingLocation, eq(clockingLocation.id, attendancePunch.clockingLocationId))

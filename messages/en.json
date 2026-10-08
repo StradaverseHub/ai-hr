@@ -3323,7 +3323,10 @@
     "rejectReasonLabel": "Rejection explanation",
     "rejectNotRecorded": "Explanation not recorded",
     "otScrollHint": "Scroll sideways to view all overtime details",
-    "rejectRequired": "A rejection explanation of 1–1000 characters is required."
+    "rejectRequired": "A rejection explanation of 1–1000 characters is required.",
+    "clockEvidenceGeofenced": "{site} · distance {distance} m of {radius} m allowed",
+    "clockEvidenceNotRequired": "Geofencing not required",
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m"
   },
   "org": {
     "title": "Org chart",
