@@ -129,8 +129,9 @@ describe('topbar — search box and company switcher keep to their own lanes', (
   });
 
   it('company switcher flex item can compress below its label width', () => {
-    // Wrapper: the actual flex item of its cluster — min-w-0 removes the min-width:auto floor.
-    expect(SWITCHER).toContain('<div className="relative min-w-0">');
+    // Wrapper: the actual flex item of its cluster — min-w-0 removes the min-width:auto floor. r416 adds a
+    // Monolith-ONLY floor (the top line crushed it to 0px on a phone); in Classic it still compresses freely.
+    expect(SWITCHER).toContain('<div className="relative min-w-0 monolith:min-w-[5.5rem]">');
     // Trigger: capped to the wrapper so the label truncates instead of overflowing.
     expect(SWITCHER).toContain('flex min-w-0 max-w-full items-center');
   });
