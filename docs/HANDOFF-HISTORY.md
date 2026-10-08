@@ -1,3 +1,20 @@
+## r425 — 2026-10-08 · deployed tree f2f54613574bb44c476ba9ccea33796929b6f74b (main@cefee644 contains it) · migration 0516
+
+**Scope.** The CHGB handover (Onboarding, Offboarding, IT Requisitions, Asset Requests, Asset Tracker) built as the `lifecycle` pack: `core/lifecycle-*.ts`, `packs/lifecycle/`, `app/lifecycle/**`, `app/admin/lifecycle/`, tables `lc_*` and `it_*`, ADR-0095. Not the first-login tour (ADR-0018). Deployed; live after the deploy's own restart (401 on the box, /health 200, 424 migrations applied, 15 module tables, `lifecycle` catalog row present). No board item closed. The module is OFF for every tenant: no `tenant_module` row exists for it yet.
+
+**Gate.** Full tier on the final merged tree, 1238 of 1238 files, receipt matching HEAD. One chunk was red on an earlier run with zero assertion errors ("out of shared memory", from running the gate without `VITEST_MAX_WORKERS=3`); re-run green. An earlier run also caught `test/company-referrers.test.ts` (every table pointing at a company must be declared in `core/company-refs.ts`; fixed). `tsc`, `next build` and `gate:shadow` clean.
+
+**Decisions the handover did not settle.** Module staff are an `lc_staff` table, never line managers. The Device Acceptance form is a login-gated action in the new hire's own view, not a public link (no new unauthenticated route). There is no email transport in this repository, so the reminder emails became a live worklist. Approval gates completion and device issue, not the other checklist items. Nobody approves their own request and level 2 differs from level 1. An offboarding outcome never ends employment (ADR-0042 owns that).
+
+**Landing.** Main moved by docs-only plan commits (r423, r424) while the gate ran, which made a fast-forward impossible. The branch was merged into main (cefee644) and the gated worktree was deployed with `improve:deploy`, so production runs the tested tree and differs from main only by those docs.
+
+**Not done / owed.**
+- Switching the module on for a tenant (a `tenant_module` row), loading its reference data (Module Config), naming module staff.
+- A native-speaker review of the Malay, Chinese, Tamil, Thai and Vietnamese text.
+- Email log, print tag, mention notifications, global search, the mobile web app, automatic link from an accepted resignation, HRMS-linked steps, deactivation blockers for the module.
+- Owner decisions listed at the end of ADR-0095 (public acknowledgement link, mail transport, retention, whether cancelling a case cancels its requisition).
+- Chunk-level evidence for the production box itself: no tenant has used the module there yet.
+
 ## r422 — 2026-10-08 · main@24403990a4e1f07f4837c5c276b00c1b4726da48 · migration none
 
 **Scope.** 7e784380: every date on the Personnel employee profile reads DD-MMM-YYYY ("31-Jan-2026"). `lib/date-display.ts` (formatDmy / formatDmyTime / formatDmyInText: fixed English months, a yyyy-mm-dd is read off the string and never through `new Date`, instants on the Kuala Lumpur clock) and `components/ui/date-field.tsx` (native date input kept, same name and ISO value, drawn under a DMY box). Shared components opt in by prop; the wizard, Leave, Audit and Schedule screens are unchanged. Exports, PDFs and letters stay ISO. Deployed; live after restart (401, /health 200, zero-line dry-run from the deployed tree). Board: approved plan byte-identical to the pushed text; build-start, build-complete and deployed recorded at 24403990.
