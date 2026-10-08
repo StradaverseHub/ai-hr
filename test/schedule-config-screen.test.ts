@@ -176,19 +176,22 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
 });
 
 describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 built the seventh', () => {
-  it('the sections are the reporter\'s, in the reporter\'s order', () => {
+  it('the sections are the reporter\'s, reordered once more for r429', () => {
     // 665de026 — SEVEN, not six. The reporter's original list had six; they listed "Working Day /
     // Schedule Pattern" SEVENTH, and 07ebd04d (r331, migration 0483) gave it storage on attendance_rule,
-    // so this round built it. The first six keys and their order are UNCHANGED — that order is what makes
-    // the shape recognisable to the reporter — and the seventh is appended, not inserted.
+    // so that round built it, appended rather than inserted.
+    //
+    // r429 (f6819e19) · D7 — MOVED TO SECOND. The Shift page's own week row is retired (D1): this section
+    // is now the ONLY place a working week is set at all, and it is this round's main screen. The other
+    // five keep their relative order.
     expect([...SCHEDULE_SECTION_KEYS]).toEqual([
       'general',
+      'workingDay',
       'holiday',
       'overtime',
       'attendance',
       'request',
       'notification',
-      'workingDay',
     ]);
   });
 

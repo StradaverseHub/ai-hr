@@ -17,6 +17,7 @@
  * shift that has a paid break.
  */
 import type { BreakPeriod } from '../db/schema';
+import { breakRowMinutes } from './shift-break-rules';
 
 /** One break window, ready to render: its 1-based position, its clock faces, its own length, paid or not. */
 export type BreakDisplayRow = {
@@ -43,11 +44,6 @@ export type BreakDisplay = {
 
 const hhmm = (t: string): string => t.slice(0, 5); // "HH:MM:SS" | "HH:MM" → "HH:MM"
 
-const toMin = (t: string): number => {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-};
-
 /**
  * Format the Break Time column for one shift.
  * @param breakPeriods the stored break windows (may be null/empty)
@@ -71,7 +67,10 @@ export function formatBreakDisplay(
       seq: i + 1,
       start: hhmm(bp.start),
       end: hhmm(bp.end),
-      minutes: toMin(bp.end) - toMin(bp.start),
+      // r429 (f6819e19) — WRAP-AWARE: a break stored across midnight (end < start, only ever written on a
+      // shift that itself crosses midnight) has a POSITIVE length, not the negative one plain subtraction
+      // gives. breakRowMinutes is the one place this is computed (core/shift-break-rules.ts).
+      minutes: breakRowMinutes(bp.start, bp.end),
       // Absent means UNPAID — the whole reason the flag is optional (db/schema.ts BreakPeriod).
       paid: bp.paid === true,
     }));
@@ -83,7 +82,7 @@ export function formatBreakDisplay(
     // length, which is the identical sum this line has always computed.
     const unpaidSum = breakPeriods
       .filter((bp) => bp.paid !== true)
-      .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? toMin(bp.end) - toMin(bp.start)), 0);
+      .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? breakRowMinutes(bp.start, bp.end)), 0);
     if (flexibleMinutes != null) return { text, rows, flexibleMinutes };
     return unpaidSum === scalar ? { text, rows } : { text, rows, mismatchMinutes: scalar };
   }

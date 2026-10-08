@@ -6,6 +6,7 @@ import { listCompanies } from '@/core/read';
 import { listAttendancePolicies } from '@/core/attendance';
 import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
+import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
 import {
   Card,
   ErrorBanner,
@@ -189,10 +190,15 @@ export default async function ScheduleListPage({
               weekly_pattern / half_pattern / off_pattern is a Rest day, which is what the four-way row
               (b8aa3466, migration 0429) means.
 
-              ⚠️ THIS TABLE IS THE SHIFT'S WEEK, NOT THE SCHEDULE GROUP'S. Since 07ebd04d (migration 0483)
-              a Schedule Group carries the same four-way row, and `core/week-pattern.ts weekPatternFor`
-              resolves GROUP FIRST and shift second. The group's is on its own page (./sections.ts
-              `workingDay`); this stays the shift's, and the two are never merged into one column. */}
+              r429 (f6819e19) · D8 — REWORDED: this table now shows the WEEK IN FORCE (`weekPatternFor`,
+              group-first then shift), not the shift's own raw row. The comment this replaces said the two
+              were deliberately "never merged into one column" — that was true while the Shift page still
+              edited the shift's own week beside this table and the two readouts answered different
+              questions on purpose. The Shift page no longer edits it (D1): a reader comparing "Shifts
+              available" against a shift's own page now wants the one answer the engine actually uses, the
+              same correction app/admin/attendance/page.tsx's list received. The Schedule Group's OWN
+              working-week editor is still the group's page (./sections.ts `workingDay`) and nothing here
+              writes to it. */}
           <Card id="shifts-available" className="scroll-mt-6">
             <SectionHeader title={t('shiftsTitle')} count={shifts.length} subtitle={t('shiftsHint')} />
             {shifts.length === 0 ? (
@@ -213,14 +219,21 @@ export default async function ScheduleListPage({
                   </thead>
                   <tbody className={tbodyCls}>
                     {shifts.map((sh) => {
+                      // r429 (f6819e19) · D8 — the SAME resolver the engine, the Shift form's read-only
+                      // preview, and the Shift list all use: the group this shift resolves to (blank
+                      // ruleId ⇒ the tenant's Standard rule), and the week ACTUALLY IN FORCE.
+                      const group = weekPatternGroupFor(rules, sh.ruleId);
+                      const resolved = weekPatternFor(
+                        group ? { pattern: group.weeklyPattern, halfPattern: group.halfPattern, offPattern: group.offPattern } : null,
+                        { pattern: sh.weeklyPattern, halfPattern: sh.halfPattern, offPattern: sh.offPattern },
+                      );
                       const assigned = new Set<number>([
-                        ...(sh.weeklyPattern ?? []),
-                        ...(sh.halfPattern ?? []),
-                        ...(sh.offPattern ?? []),
+                        ...(resolved.pattern ?? []),
+                        ...(resolved.halfPattern ?? []),
+                        ...(resolved.offPattern ?? []),
                       ]);
                       const rest = ISO_DAYS.filter((d) => !assigned.has(d));
-                      const noPattern =
-                        (sh.weeklyPattern ?? []).length === 0 && (sh.halfPattern ?? []).length === 0;
+                      const noPattern = (resolved.pattern ?? []).length === 0 && (resolved.halfPattern ?? []).length === 0;
                       return (
                         <tr key={sh.id}>
                           <td className="px-3 py-2 font-mono text-xs">{sh.code ?? '—'}</td>
@@ -241,9 +254,9 @@ export default async function ScheduleListPage({
                             </td>
                           ) : (
                             <>
-                              <td className="px-3 py-2">{days(sh.weeklyPattern)}</td>
-                              <td className="px-3 py-2">{days(sh.halfPattern)}</td>
-                              <td className="px-3 py-2">{days(sh.offPattern)}</td>
+                              <td className="px-3 py-2">{days(resolved.pattern)}</td>
+                              <td className="px-3 py-2">{days(resolved.halfPattern)}</td>
+                              <td className="px-3 py-2">{days(resolved.offPattern)}</td>
                               <td className="px-3 py-2 text-muted-foreground">{days(rest)}</td>
                             </>
                           )}

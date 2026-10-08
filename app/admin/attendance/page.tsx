@@ -2,9 +2,12 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { listShiftsForTenant } from '@/core/roster';
+import { listAttendanceRules } from '@/core/attendance-rule';
 import { formatBreakDisplay } from '@/core/shift-break-display';
+import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
 import { shiftChipClass } from '@/lib/shift-visual';
+import { scheduleGroupSectionHref } from './schedule/sections';
 import { archiveShiftAction, copyShiftAction, deleteShiftAction, unarchiveShiftAction } from './shift-actions';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -47,6 +50,12 @@ export default async function ShiftSettingsPage({
   // The shared library — every non-archived shift in the tenant (same set the roster + personnel pickers
   // use), plus the deactivated ones when the toggle is on.
   const shifts = await listShiftsForTenant(s, { includeArchived });
+  // r429 (f6819e19) · D8 — the Schedule Group each shift resolves to, and the working days ACTUALLY IN
+  // FORCE (weekPatternFor — group-first, shift-second), not the shift's own raw row. A shift's own week is
+  // still what the group falls back to, but a reader of this LIST asking "which days does this shift work"
+  // deserves the same answer the engine gives, not an answer only correct for the 0 shifts (measured
+  // 2026-10-08) still living on their own fallback.
+  const ruleOptions = await listAttendanceRules(s);
 
   return (
     <div className={pageWideCls}>
@@ -85,6 +94,7 @@ export default async function ShiftSettingsPage({
                     <th className="px-4 py-2 font-medium">{t('colTimeIn')}</th>
                     <th className="px-4 py-2 font-medium">{t('colTimeOut')}</th>
                     <th className="px-4 py-2 font-medium">{t('colBreakTime')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colScheduleGroup')}</th>
                     <th className="px-4 py-2 font-medium">{t('colWorkingDays')}</th>
                     <th className="px-4 py-2"></th>
                   </tr>
@@ -100,6 +110,13 @@ export default async function ShiftSettingsPage({
                     // 6340aecb — the shift's own colour, previewed exactly as the Duty Roster paints it.
                     // Null (every shift until somebody picks one) renders the plain code cell as before.
                     const chip = shiftChipClass(sh.color);
+                    // r429 (f6819e19) · D8 — the SAME resolver the Shift form's read-only preview and the
+                    // engine use: the group this shift resolves to, and the week ACTUALLY IN FORCE.
+                    const group = weekPatternGroupFor(ruleOptions, sh.ruleId);
+                    const resolvedWeek = weekPatternFor(
+                      group ? { pattern: group.weeklyPattern, halfPattern: group.halfPattern, offPattern: group.offPattern } : null,
+                      { pattern: sh.weeklyPattern, halfPattern: sh.halfPattern, offPattern: sh.offPattern },
+                    );
                     const deactivated = sh.archivedAt != null;
                     return (
                       <tr key={sh.id}>
@@ -174,13 +191,23 @@ export default async function ShiftSettingsPage({
                           )}
                         </td>
                         <td className="px-4 py-2.5">
-                          {/* b8aa3466 — the row is four-way now, so the column has to say which kind each
-                              day is rather than only which days are ticked. Rest days stay unlisted, exactly
-                              as they are today; Half and Off are called out because they are the values the
-                              tick row could never express. */}
-                          {sh.weeklyPattern?.length || sh.halfPattern.length || sh.offPattern.length ? (
+                          {group ? (
+                            <Link href={scheduleGroupSectionHref(group.id, 'workingDay')} className="text-primary hover:underline">
+                              {group.name}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {/* r429 (f6819e19) · D8 — THE WEEK ACTUALLY IN FORCE (resolvedWeek), not the
+                              shift's own raw row: since 07ebd04d a Schedule Group may decide, and a list
+                              that kept showing the shift's own week here would disagree with the engine on
+                              every shift whose group decides. b8aa3466 — the row is four-way, so the column
+                              still has to say which kind each day is; Rest stays unlisted. */}
+                          {resolvedWeek.pattern?.length || resolvedWeek.halfPattern?.length || resolvedWeek.offPattern?.length ? (
                             <span className="flex flex-wrap gap-1">
-                              {ISO_DAYS.filter((d) => sh.weeklyPattern?.includes(d)).map((d) => (
+                              {ISO_DAYS.filter((d) => resolvedWeek.pattern?.includes(d)).map((d) => (
                                 <span
                                   key={`f${d}`}
                                   className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
@@ -188,7 +215,7 @@ export default async function ShiftSettingsPage({
                                   {t(DAY_KEY[d])}
                                 </span>
                               ))}
-                              {ISO_DAYS.filter((d) => sh.halfPattern.includes(d)).map((d) => (
+                              {ISO_DAYS.filter((d) => resolvedWeek.halfPattern?.includes(d)).map((d) => (
                                 <span
                                   key={`h${d}`}
                                   className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400"
@@ -197,7 +224,7 @@ export default async function ShiftSettingsPage({
                                   {t(DAY_KEY[d])} · {trr('dayKindHalf')}
                                 </span>
                               ))}
-                              {ISO_DAYS.filter((d) => sh.offPattern.includes(d)).map((d) => (
+                              {ISO_DAYS.filter((d) => resolvedWeek.offPattern?.includes(d)).map((d) => (
                                 <span
                                   key={`o${d}`}
                                   className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"

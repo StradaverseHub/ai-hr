@@ -2983,6 +2983,13 @@
       "when": 1791700000000,
       "tag": "0518_clocking_file_import",
       "breakpoints": true
+    },
+    {
+      "idx": 519,
+      "version": "7",
+      "when": 1791800000000,
+      "tag": "0519_shift_flexible_break_to_rows",
+      "breakpoints": true
     }
   ]
 }

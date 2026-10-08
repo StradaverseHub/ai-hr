@@ -14,7 +14,7 @@
  * Substrate: every write appends a DomainEvent (attendance-rule.created / .updated / .deleted). Reads are
  * documented skips.
  */
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 // 07ebd04d (r331) — the group's WORKING WEEK. `weekPatternWorkingDayCount` is the ONE definition of
 // "how many days does this week actually schedule" (core/week-pattern.ts, a leaf module with no imports
 // precisely so this service can use it without a cycle through core/attendance.ts).
@@ -27,6 +27,7 @@ import {
   attendancePolicy,
   attendanceRule,
   attendanceRuleOtRow,
+  employment,
   shift,
   type AttendanceOtRatePattern,
   type AttendanceOtRoundingMode,
@@ -220,6 +221,24 @@ export function listAttendanceRules(ctx: SessionContext): Promise<AttendanceRule
     const byRule = new Map<string, (typeof attendanceRuleOtRow.$inferSelect)[]>();
     for (const row of rows) (byRule.get(row.ruleId) ?? byRule.set(row.ruleId, []).get(row.ruleId)!).push(row);
     return rules.map((r) => ({ ...r, otRows: byRule.get(r.id) ?? [] }));
+  });
+}
+
+/**
+ * r429 (f6819e19) · D7 — how many CURRENT employments are placed DIRECTLY in this group
+ * (employment.attendance_rule_id = ruleId — the 870b79e2 column, read sideways from its usual "which rule
+ * does this person resolve" direction). A shift's own members are counted separately (they are listed, not
+ * merely counted, in the "Shifts in this group" table); this is for the warning beside a working-week
+ * change, which affects them too even though no shift links them to the group. Terminated employments are
+ * excluded — the same `terminatedOn IS NULL` currency test core/read.ts uses throughout.
+ */
+export async function countEmploymentsInRule(ctx: SessionContext, ruleId: string): Promise<number> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(and(eq(employment.attendanceRuleId, ruleId), isNull(employment.terminatedOn)));
+    return rows.length;
   });
 }
 
