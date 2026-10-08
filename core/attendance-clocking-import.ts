@@ -4,7 +4,7 @@
  * WHAT THIS OWNS. The mapping library (how each clocking device writes its file), the line-by-line
  * decision of what in a file may be added to attendance, and the permanent log of every import. It does
  * NOT own how a day is worked out: each accepted clocking is handed to core/attendance.ts
- * addImportedPunchesToDayTx, which adds it as an ordinary multi-punch child and re-derives the day the
+ * addImportedPunchesBatchTx, which adds it as an ordinary multi-punch child and re-derives the day the
  * Clock-screen way. Reading a line (dates, times, codes) is lib/clocking-file.ts, pure, shared with the
  * browser — and re-run here on the text the server receives, because the browser's preview is never
  * trusted.
@@ -47,7 +47,7 @@ import {
   type ClockingImportLineResult,
 } from '../db/schema';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { addImportedPunchesToDayTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
+import { addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
 // ADR-0080 D9 — payroll is consumed through its pack facade, never core/payroll directly.
 import {
   batchesCoveringAttendanceDates,
@@ -570,7 +570,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
       existingBy.set(k, arr);
     }
     // A day row written before multi-punch (or by the retired importer) has no children: its own
-    // check-in / check-out stand in as clockings, exactly as addImportedPunchesToDayTx will synthesise them.
+    // check-in / check-out stand in as clockings, exactly as addImportedPunchesBatchTx will synthesise them.
     const rows = await tx
       .select({
         employmentId: attendance.employmentId,
@@ -829,18 +829,20 @@ export async function commitClockingImport(
         byDay.set(k, arr);
       }
       const punchIdOf = new Map<Decided, string>();
-      const changed: { employmentId: string; companyId: string; date: string }[] = [];
-      for (const ds of byDay.values()) {
+      const groups = [...byDay.values()];
+      for (const ds of groups) {
         ds.sort((a, b) => punchOrderKey(a.read.date!, a.read.time!) - punchOrderKey(b.read.date!, b.read.time!) || a.read.lineNo - b.read.lineNo);
-        const r = await addImportedPunchesToDayTx(tx, ctx, {
+      }
+      const written = await addImportedPunchesBatchTx(tx, ctx, {
+        runId: run.id,
+        days: groups.map((ds) => ({
           employmentId: ds[0].emp!.id,
           day: ds[0].day!,
           punches: ds.map((d) => ({ time: d.read.time!, direction: d.direction! })),
-          runId: run.id,
-        });
-        ds.forEach((d, i) => punchIdOf.set(d, r.punchIds[i]));
-        changed.push({ employmentId: ds[0].emp!.id, companyId: ds[0].emp!.companyId, date: ds[0].day! });
-      }
+        })),
+      });
+      groups.forEach((ds, gi) => ds.forEach((d, i) => punchIdOf.set(d, written.punchIds[gi][i])));
+      const changed = groups.map((ds) => ({ employmentId: ds[0].emp!.id, companyId: ds[0].emp!.companyId, date: ds[0].day! }));
 
       // The log lines — every data line, raw text only for a line that was not imported.
       for (const part of chunks(decided, 500)) {

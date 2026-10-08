@@ -65,6 +65,25 @@ export async function appendEvent(tx: Tx, e: AppendEventArgs): Promise<void> {
   });
 }
 
+/** r424 — several events in ONE statement (a clocking import appends one per changed day, thousands per
+ *  file). Same columns, same rules as appendEvent; an empty list is a no-op. */
+export async function appendEvents(tx: Tx, es: AppendEventArgs[]): Promise<void> {
+  if (es.length === 0) return;
+  await tx.insert(domainEvent).values(
+    es.map((e) => ({
+      tenantId: e.tenantId,
+      aggregateType: e.aggregateType,
+      aggregateId: e.aggregateId,
+      eventType: e.eventType,
+      actorType: e.actor.type,
+      actorId: e.actor.id ?? null,
+      subjectEmploymentId: e.subjectEmploymentId ?? null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      payload: (e.payload ?? null) as any,
+    })),
+  );
+}
+
 /** Derive an Actor from the session context (USER if we have a user id, else SYSTEM). */
 export function actorOf(ctx: SessionContext): Actor {
   return ctx.userId ? { type: 'user', id: ctx.userId } : { type: 'system' };

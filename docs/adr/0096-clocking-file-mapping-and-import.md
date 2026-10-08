@@ -5,7 +5,7 @@
   0095 is held by an unmerged branch (the lifecycle module); renumber at merge if that changes.
 - **Amends:** ADR-0032 C6 (terminal punch import) and the terminal-punch note of ADR-0070.
 - **Related:** migration 0518, `lib/clocking-file.ts`, `core/attendance-clocking-import.ts`,
-  `core/attendance.ts` `addImportedPunchesToDayTx` / `assignPunchBusinessDays`, R45 multi-punch (0265),
+  `core/attendance.ts` `addImportedPunchesBatchTx` / `assignPunchBusinessDays`, R45 multi-punch (0265),
   0341 (employee import history — the run-log precedent), 0474 (tenant-wide card ids).
 
 ## Context
