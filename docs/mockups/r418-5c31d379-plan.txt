@@ -28,6 +28,8 @@ GOOD TO KNOW
 
 - The column keeps the heading printed on the agency's own form (No. Kad Pengenalan), even on a line that carries a passport number, because that is how the form itself is laid out.
 
+- The KWSP i-Akaun upload file has only an IC number box and no box for a passport number. So a non-citizen with no IC, such as Employee D, appears on the printed Borang A with their passport number, but the upload file names them and cannot include them. We do not know how KWSP wants a passport holder entered in that file. If you can find out (for example from your KWSP officer), tell us and we will add it.
+
 - No EPF amounts change.
 
 ------------------------------------------------------------

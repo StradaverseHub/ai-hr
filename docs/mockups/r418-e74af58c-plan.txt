@@ -31,6 +31,8 @@ GOOD TO KNOW
 
 - The column keeps the heading printed on the agency's own form (No. Kad Pengenalan), even on a line that carries a passport number, because that is how the form itself is laid out.
 
+- The PERKESO upload file has one identity box, for an IC number or a SOCSO foreign worker number. For a non-citizen with no IC, the file uses their SOCSO number, which the staff record already holds for Employee D. Only someone with neither number is named and held back from the file.
+
 - No SOCSO or EIS amounts change.
 
 ------------------------------------------------------------
