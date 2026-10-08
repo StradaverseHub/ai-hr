@@ -135,7 +135,7 @@ describe('2983802f · the rail reports only the steps the screen has evidence fo
     const user = userEvent.setup();
     screenUnderTest();
     expect(currentStep(), 'nothing done yet').toEqual([1]);
-    await user.click(screen.getByRole('button', { name: 'Download Template' }));
+    await user.click(screen.getByRole('button', { name: 'Download CSV template' }));
     // Filling the template in happens in Excel, off this screen — step 2 is where the admin now is.
     expect(currentStep()).toEqual([2]);
   });

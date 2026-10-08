@@ -11395,7 +11395,7 @@
       "button": "Muat turun CSV"
     },
     "downloadTemplate": {
-      "button": "Muat turun Templat"
+      "button": "Muat turun templat CSV"
     },
     "editableRow": {
       "save": "Simpan",

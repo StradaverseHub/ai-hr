@@ -11395,7 +11395,7 @@
       "button": "ดาวน์โหลด CSV"
     },
     "downloadTemplate": {
-      "button": "ดาวน์โหลดเทมเพลต"
+      "button": "ดาวน์โหลดเทมเพลต CSV"
     },
     "editableRow": {
       "save": "บันทึก",
