@@ -142,7 +142,20 @@ describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
    */
   it('has no expand/collapse anywhere in the panel — nothing on it folds (15e5bd93)', () => {
     expect(panel).not.toContain('defaultExpanded');
-    expect(panel.match(/aria-expanded/g) ?? [], 'nothing in this file expands').toHaveLength(0);
+    /**
+     * ⚠️ UPDATED BY 48652e18 (r419) — "NONE" BECOMES "EXACTLY ONE, AND IT IS ADD-A-BANK-ACCOUNT". The reporter
+     * approved moving "Add a bank account" above the saved accounts as one closed button that opens the
+     * blank form. That is an ACTION behind a button, not information folded away, so the rest of this case
+     * (no fold over anything the reader came to see) is unchanged. Pinned to its block so a second toggle,
+     * or this one wandering onto a saved account or a statutory row, still fails.
+     */
+    expect(panel.match(/aria-expanded/g) ?? [], 'exactly one thing in this file expands').toHaveLength(1);
+    const addAt = panel.indexOf('data-bank-add');
+    expect(addAt, 'the add-a-bank-account block exists').toBeGreaterThan(-1);
+    const addBlock = panel.slice(addAt, panel.indexOf('</div>\n            {/* R46: a company may hold SEVERAL', addAt));
+    expect(addBlock.length, 'the add block slice is real').toBeGreaterThan(400);
+    expect(addBlock, 'and the one toggle is its button').toContain('aria-expanded={bankAddOpen}');
+    expect(addBlock).toContain("t('bankAccountAdd')");
     expect(panel, 'and no Close, which only a fold ever needed').not.toContain("t('authorityClose')");
     /**
      * ⚠️ `authorityOpen` IS RENDERED AGAIN, AND THAT IS THE REVERSAL r353 IS FOR — r352's version of this

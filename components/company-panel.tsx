@@ -11,6 +11,7 @@ import { type TabSaveResult } from '@/lib/tab-save-sections';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 import { TabSaveScope } from './tab-save-scope';
 import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
+import { accountLast4 } from '@/lib/bank-account-last4';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 // 15e5bd93 rev 2 (r353) — the marks and the r226 filing-field map moved to lib/, because the reporter's
 // approved rev-2 redesign gives the statutory bodies a DEDICATED screen and both that screen and this
@@ -217,7 +218,9 @@ function SubHeader({ children }: { children: React.ReactNode }) {
 
 /**
  * One company bank account (R46 orgbank 84719377). Used twice: prefilled for each saved account (a hidden
- * `id` makes the save an UPDATE of that row) and blank to add another. A company may hold several accounts
+ * `id` makes the save an UPDATE of that row) and blank to add another. 48652e18 (r419) — the blank one
+ * lives inside the "Add a bank account" disclosure and is the only caller that passes `onCancel`, which
+ * draws a Cancel beside Save that closes the disclosure (and so discards what was typed). A company may hold several accounts
  * including more than one at the same bank, so the row id — not (company, bank) — is the identity.
  *
  * The Bank picker is the SHARED Malaysian bank master (lib/my-banks.ts), the same list the employee bank
@@ -234,11 +237,13 @@ function BankAccountForm({
   companyId,
   companyName,
   profile,
+  onCancel,
 }: {
   action: Action;
   companyId: string;
   companyName: string;
   profile: PanelBankProfile | null;
+  onCancel?: () => void;
 }) {
   const t = useTranslations('admin.organization');
   const p = profile;
@@ -323,10 +328,15 @@ function BankAccountForm({
         <input type="checkbox" name="isPrimary" defaultChecked={p?.isPrimary ?? false} className="size-4 rounded" />
         {t('bankPrimaryLabel')}
       </label>
-      <div className="sm:col-span-2">
+      <div className="flex items-center gap-2 sm:col-span-2">
         <Button type="submit" size="sm">
           {t('bankProfileSave')}
         </Button>
+        {onCancel ? (
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            {t('bankAccountAddCancel')}
+          </Button>
+        ) : null}
       </div>
     </form>
   );
@@ -578,9 +588,14 @@ function StatutoryBodyRow({
  * Statutory tab holds the company's own registrations and a read-only list of the eight bodies that
  * LINKS there. See StatutoryBodyRow.
  *
+ * ⚠️ ONE EXCEPTION, ON THE REPORTER'S APPROVED REQUEST (48652e18, r419): "Add a bank account" on the Bank
+ * Account tab is a closed button again, moved ABOVE the saved accounts, that opens the blank form. It is not
+ * a fold over information the reader came to see — it is an action, and the form behind it is empty. It is
+ * the ONLY expand/collapse on the panel, and the guard pins exactly one such attribute in this file.
+ *
  * DO NOT reintroduce a details/summary disclosure here — the source guard in
  * test/company-panel-bank-statutory-layout.test.ts fails the build if one comes back, and it also pins
- * that the bank sections and the panel itself stay flat. The group-structure fold on the LISTING page is
+ * that the saved bank accounts and the panel itself stay flat. The group-structure fold on the LISTING page is
  * a different decision and is deliberately kept (test/organization-group-structure-collapse.test.ts).
  *
  * The tabs are NOT a disclosure and stay: they group a large screen, they do not gate it, and every
@@ -672,9 +687,37 @@ export function CompanyPanel({
 }) {
   const t = useTranslations('admin.organization');
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'general');
+  /**
+   * 48652e18 (r419) — "Add a bank account" is a DISCLOSURE again, closed on arrival, on the reporter's
+   * approved request (it sits above the saved accounts, so it must not push them off the screen).
+   *
+   * It closes on Cancel (the button sets this) and after a SUCCESSFUL save, which is detected the only
+   * way this component can see it: a bank account id appears that was not in the list before. The save's
+   * redirect may or may not re-initialise this state; this effect makes the outcome the same either way,
+   * and a REFUSED save (no new id) leaves the form open with the operator's entry.
+   */
+  const [bankAddOpen, setBankAddOpen] = useState(false);
+  const knownBankIds = useRef<Set<string>>(new Set(bankProfiles.map((bp) => bp.id)));
+  useEffect(() => {
+    const added = bankProfiles.some((bp) => !knownBankIds.current.has(bp.id));
+    knownBankIds.current = new Set(bankProfiles.map((bp) => bp.id));
+    if (added) setBankAddOpen(false);
+  }, [bankProfiles]);
   const c = company;
   const isMY = c.country === 'MY';
   // Readiness for the monthly filings: the three agency identifiers reports key on.
+  // 48652e18 (r419) — the line under the Remove dialog's title: which account, at which bank, ending in
+  // which four characters. The full number is never part of it.
+  // The label is left out when it only repeats the bank (the service defaults a blank label to the bank's
+  // name), and the ending is left out when the number is too short to have one that is not the whole.
+  const bankRemoveSubject = (bp: PanelBankProfile) => {
+    const bank = myBankLabel(bp.bank);
+    const label = bp.accountLabel?.trim();
+    const last4 = accountLast4(bp.debitAccountNo);
+    return [label && label !== bank ? label : null, bank, last4 ? t('bankRemoveConfirmEnding', { last4 }) : null]
+      .filter(Boolean)
+      .join(' · ');
+  };
   const statMissing = isMY
     ? [statutory?.epfEmployerNo, statutory?.socsoEmployerCode, statutory?.lhdnEmployerNo].filter((v) => !v).length
     : 0;
@@ -1132,6 +1175,38 @@ export function CompanyPanel({
         {isMY ? (
           <div className="space-y-3 rounded-lg border border-border bg-card p-3">
             <SubHeader>{t('bankProfilesTitle')}</SubHeader>
+            {/* 48652e18 (r419) — ADD COMES FIRST, AND IT FOLDS. The reporter asked for "Add new bank
+                account" above the accounts, as one closed button that opens the fields; it closes again
+                on Cancel and after a successful save (see `bankAddOpen`). This REVERSES 3c2f55d7, which
+                unfolded this form when it sat BELOW the list; it is the one disclosure on this panel, and
+                test/company-panel-bank-statutory-layout.test.ts pins that it is exactly one. The form is
+                MOUNTED only while open, so Cancel really discards what was typed. The dashed border still
+                marks it as the ADD form rather than a saved one. */}
+            <div className="rounded-md border border-dashed border-border" data-bank-add>
+              <div className="px-3 py-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-expanded={bankAddOpen}
+                  aria-controls={bankAddOpen ? `bank-add-${c.id}` : undefined}
+                  onClick={() => setBankAddOpen((o) => !o)}
+                >
+                  {t('bankAccountAdd')}
+                </Button>
+              </div>
+              {bankAddOpen ? (
+                <div id={`bank-add-${c.id}`} className="border-t border-border/60 px-3 py-3">
+                  <BankAccountForm
+                    action={actions.setBankProfile}
+                    companyId={c.id}
+                    companyName={c.name}
+                    profile={null}
+                    onCancel={() => setBankAddOpen(false)}
+                  />
+                </div>
+              ) : null}
+            </div>
             {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
                 saved account is its own editable form (identity is the row id) rather than one upsert box. */}
             {bankProfiles.length === 0 ? (
@@ -1159,24 +1234,29 @@ export function CompanyPanel({
                         {/* 65b22c00 — identity is the ROW, so `id` is the profile's. The company rides
                             alongside it because the action has to name the screen to return to. */}
                         <input type="hidden" name="companyId" value={c.id} />
-                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                        {/* 48652e18 (r419) — Remove ASKS FIRST (the house confirm, as Delete Company does).
+                            The dialog names the account, its bank and only the LAST FOUR characters of the
+                            number — never the whole number, even though the heading above prints it; a
+                            number of four or fewer is named without digits (lib/bank-account-last4). Only
+                            "Yes, remove" submits this form; Cancel closes the dialog and posts nothing. */}
+                        <ConfirmSubmit
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          confirmVariant="destructive"
+                          title={t('bankRemoveConfirmTitle')}
+                          subtitle={bankRemoveSubject(bp)}
+                          description={t('bankRemoveConfirmBody')}
+                          confirmLabel={t('bankRemoveConfirmYes')}
+                        >
                           {t('bankProfileRemove')}
-                        </button>
+                        </ConfirmSubmit>
                       </form>
                     </div>
                   </li>
                 ))}
               </ul>
             )}
-            {/* 3c2f55d7 — the blank "add an account" form was itself a fold. A company with no bank
-                account saw an empty list and a closed row, i.e. the one thing it needed to do was
-                hidden. The dashed border still marks it as the ADD form rather than a saved one. */}
-            <div className="rounded-md border border-dashed border-border">
-              <div className="px-3 py-2 text-sm font-medium text-primary">{t('bankAccountAdd')}</div>
-              <div className="border-t border-border/60 px-3 py-3">
-                <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
-              </div>
-            </div>
             <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
             <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
           </div>

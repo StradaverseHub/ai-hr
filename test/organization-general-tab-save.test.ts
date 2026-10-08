@@ -337,7 +337,9 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
   it('EXACTLY the declared General sections carry a marker, and nothing else on the screen does', () => {
     const all = formsIn(markup(FULL));
     // A company with one bank account and one configured body renders every kind of form this screen has.
-    expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(8);
+    // ⚠️ 48652e18 (r419): 8 → 7. The blank "add a bank account" form is behind a closed button on arrival
+    // now (the reporter's approved request), so a static render has one form fewer; the next case names it.
+    expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(7);
     const marked = all.filter((f) => f.attrs.includes('data-save-section'));
     const ids = marked.map((f) => /data-save-section="([^"]+)"/.exec(f.attrs)?.[1]);
     expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
@@ -393,9 +395,12 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
             : /name="id"/.test(body) && /name="companyId"/.test(body)
               ? 'remove'
               : 'other';
+    // ⚠️ UPDATED BY 48652e18 (r419): ONE bankEditor on arrival, not two. The blank "add" editor is mounted
+    // only once its closed "Add a bank account" button is pressed (test/r419-bank-account-tab.dom.test.tsx
+    // opens it and asserts it is an unmarked form with its own Save). The saved account's editor and its
+    // Remove are unchanged here.
     expect(unmarked.map((f) => signature(f.body)).sort(), 'the bucket (b) bindings, rendered').toEqual([
       'archive',
-      'bankEditor',
       'bankEditor',
       'remove',
       'statutoryIdentity',
