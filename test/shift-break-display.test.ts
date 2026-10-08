@@ -98,4 +98,25 @@ describe('formatBreakDisplay', () => {
     expect(formatBreakDisplay(undefined, undefined).text).toBe('');
     expect(formatBreakDisplay([], 0).text).toBe('');
   });
+
+  describe('r429 (f6819e19) · D6 — a break that crosses midnight is WRAP-AWARE, not negative', () => {
+    it('23:45–00:15 is 30 minutes, not −1410', () => {
+      const r = formatBreakDisplay([{ start: '23:45', end: '00:15' }], 30);
+      expect(r.rows[0].minutes).toBe(30);
+      expect(r.text).toBe('1. 23:45–00:15 (30m)');
+      expect(r.mismatchMinutes).toBeUndefined();
+    });
+
+    it('a wrapped row still sums correctly beside an ordinary one for the mismatch check', () => {
+      const r = formatBreakDisplay(
+        [
+          { start: '12:00', end: '13:00' }, // 60
+          { start: '23:45', end: '00:15' }, // 30, wrapped
+        ],
+        90,
+      );
+      expect(r.rows.map((x) => x.minutes)).toEqual([60, 30]);
+      expect(r.mismatchMinutes).toBeUndefined();
+    });
+  });
 });

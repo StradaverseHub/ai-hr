@@ -375,8 +375,10 @@ describe('r277 — the contradictions are refused, not stored', () => {
   });
 
   it('refuses an allowance longer than its own window', async () => {
+    // r429 (f6819e19) · D6 — reworded to name the row ("Break 1 …") and state its own length in the
+    // message, which the client's per-row preview echoes live (core/shift-break-rules.ts).
     await expect(shift({ breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: true, flexibleMinutes: 61 }] })).rejects.toThrow(
-      /longer than the break window/i,
+      /cannot be longer than the break itself/i,
     );
   });
 
@@ -397,11 +399,12 @@ describe('r277 — the contradictions are refused, not stored', () => {
   });
 
   it('refuses zero and refuses a negative — an empty box is absent, and absent is not zero', async () => {
+    // r429 (f6819e19) · D6 — reworded, naming the row.
     await expect(shift({ breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: true, flexibleMinutes: 0 }] })).rejects.toThrow(
-      /needs an allowed duration/i,
+      /needs a flexible duration/i,
     );
     await expect(shift({ breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: true, flexibleMinutes: -5 }] })).rejects.toThrow(
-      /needs an allowed duration/i,
+      /needs a flexible duration/i,
     );
   });
 });

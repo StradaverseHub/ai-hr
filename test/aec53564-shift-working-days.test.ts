@@ -1,40 +1,26 @@
 /**
- * aec53564 (r331) — THE WORKING DAYS ARE EDITABLE ON THE SHIFT FORM EXACTLY WHEN NOTHING ELSE IS DECIDING
- * THEM, and this file is the WRITE half of that sentence.
+ * aec53564 (r331) → r429 (f6819e19) · D1 — THE SHIFT FORM NO LONGER EDITS THE WEEK AT ALL.
  *
- * The screen greys the seven day dropdowns when the shift's Schedule Group states a working week
- * (components/shift-time-fields.tsx, rendered in test/aec53564-shift-working-days.dom.test.tsx). A greyed
- * control is not a refusal: a disabled <select> simply submits nothing, so a stale tab, a form re-submitted
- * from history, the LEGACY `weeklyPattern` checkbox name that shift-actions.ts still decodes, or a
- * hand-made POST all still carry day fields. Before this round they were written — into three columns that
- * nothing reads, because every reader resolves the group first (core/week-pattern.ts `weekPatternFor`).
+ * REWRITTEN for r429. The r331 item made the Mon–Sun row editable "exactly when nothing else is
+ * deciding" — greyed when the Schedule Group states a week, live otherwise. r429 retires the row from the
+ * Shift page entirely (D1 of the approved plan): which days are worked is now set ONLY on the Schedule
+ * Group's own "Working Days" section. So the write-side question this file pinned — "which of the posted
+ * day fields counts?" — no longer has an answer to test, because the form never posts one.
  *
- * ⚠️ AND THE OTHER HALF, WHICH IS WHY "IGNORE THE POST" IS NOT SPELLED "WRITE NOTHING". core/roster.ts
- * updateShift is a FULL-ROW OVERWRITE for weekly_pattern / half_pattern / off_pattern, so passing the empty
- * decode would CLEAR the shift's own week. That week is the FALLBACK: a group whose pattern is emptied
- * stops winning immediately and the shift's row is the only value left (measured on production 2026-09-23:
- * 2 of 8 shifts are living on it today). Every ignore case below therefore asserts the stored week is still
- * there afterwards, byte for byte — not merely that the posted one was not taken.
- *
- * Each refusal is paired with a POSITIVE CONTROL on the same shape of POST, so none of them can pass
- * because the decode broke.
+ * What replaces it: core/roster.ts normalizeShiftInput now treats weeklyPattern / halfPattern / offPattern
+ * as UNDEFINED-MEANS-PRESERVE (the same contract otRule / ruleId already used), and
+ * app/admin/attendance/shift-actions.ts never sets any of the three keys at all — so every save through the
+ * real action preserves whatever the shift already had. This file pins exactly that, end to end through
+ * `updateShiftAction` / `createShiftAction`, plus the direct-service contract both actions rely on.
  */
 import { randomUUID } from 'node:crypto';
 import { scheduleGroupSectionHref } from '../app/admin/attendance/schedule/sections';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import {
-  createAttendanceRule,
-  ensureStandardRule,
-  updateAttendanceRule,
-  type AttendanceRuleInput,
-} from '../core/attendance-rule';
-import { createShift, listShiftsForTenant } from '../core/roster';
+import { createShift, updateShift, type ShiftInput } from '../core/roster';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
-// The actions call getSession() (a request the harness has no equivalent of) — hand back the seeded admin
-// ctx so their writes still run under RLS. Precedent: test/personnel-schedule-group-assignment.test.ts.
 let ADMIN: ReturnType<typeof adminCtx>;
 vi.mock('../lib/session', () => ({ getSession: async () => ADMIN }));
 let LAST_REDIRECT = '';
@@ -50,24 +36,8 @@ import { createShiftAction, updateShiftAction } from '../app/admin/attendance/sh
 
 let b: Base;
 
-const ruleInput = (name: string, over: Partial<AttendanceRuleInput> = {}): AttendanceRuleInput => ({
-  name,
-  status: 'active',
-  lateGracePeriodMinutes: 0,
-  lateAfterMinutes: 0,
-  lateDeductMinutes: 0,
-  includeGraceInLateness: false,
-  earlyGracePeriodMinutes: 0,
-  earlyAfterMinutes: 0,
-  earlyDeductMinutes: 0,
-  includeGraceInEarlyOut: false,
-  applyToEarlyOt: false,
-  otRows: [],
-  ...over,
-});
-
 /** A shift whose own week is Mon–Wed, so any change to it is visible in one array. */
-const shiftInput = (over: Record<string, unknown> = {}) => ({
+const shiftInput = (over: Partial<ShiftInput> = {}): ShiftInput => ({
   name: `S_${randomUUID().slice(0, 6)}`,
   code: `C_${randomUUID().slice(0, 6)}`,
   startTime: '09:00:00',
@@ -79,7 +49,6 @@ const shiftInput = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-/** The three stored arrays, read as the OWNER so RLS cannot answer 0 rows and look like a pass. */
 const storedWeek = async (shiftId: string) => {
   const [row] = await owner.db
     .select({
@@ -93,14 +62,10 @@ const storedWeek = async (shiftId: string) => {
   return row;
 };
 
-/**
- * A POST the way the form makes one: every field the action reads, so the assertions below are about the
- * WEEK and not about a half-filled form being refused for some other reason.
- */
-function postFor(
-  shift: { id: string; name: string; code: string | null },
-  opts: { ruleId?: string; dayKinds?: Record<number, string>; legacyWeekly?: number[] },
-): FormData {
+/** A POST the way the REAL form makes one now: no day field, no `attendanceRuleId` — the two controls
+ *  D1/D2 retired. Every other field shiftFields() reads is present, so a failure here is about the week
+ *  or the group, not about an unrelated refusal. */
+function postFor(shift: { id: string; name: string; code: string | null }): FormData {
   const fd = new FormData();
   fd.set('shiftId', shift.id);
   fd.set('name', shift.name);
@@ -108,14 +73,8 @@ function postFor(
   fd.set('startTime', '09:00');
   fd.set('endTime', '18:00');
   fd.set('breakMinutes', '60');
-  fd.set('attendanceRuleId', opts.ruleId ?? '');
-  if (opts.dayKinds) for (const [d, k] of Object.entries(opts.dayKinds)) fd.set(`dayKind_${d}`, k);
-  if (opts.legacyWeekly) for (const d of opts.legacyWeekly) fd.append('weeklyPattern', String(d));
   return fd;
 }
-
-/** Mon–Sat full, Sun rest — a week that is different from every fixture's, in all three arrays. */
-const SIX_DAY: Record<number, string> = { 1: 'full', 2: 'full', 3: 'full', 4: 'full', 5: 'full', 6: 'full', 7: 'rest' };
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -130,196 +89,131 @@ beforeEach(async () => {
   LAST_REDIRECT = '';
 });
 
-// ── (b) NOTHING IS DECIDING ⇒ THE DAYS ARE STILL WHAT DECIDES, AND THEY ARE STORED ────────────────────
-describe('(b) no Schedule Group states a week — the posted days ARE written', () => {
-  it('a shift with no rule at all: the post lands', async () => {
+describe('D1 — updateShiftAction never posts a day field, so every save PRESERVES the stored week', () => {
+  it('end to end through the real action: the week survives a save that changes an unrelated field', async () => {
     const a = adminCtx(b);
-    await ensureStandardRule(a); // 0483 leaves its three arrays NULL on purpose — it must not win.
     const sh = await createShift(a, shiftInput());
-    const row = (await listShiftsForTenant(a)).find((s) => s.id === sh.id)!;
+    const row = (await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id)))[0];
+    const fd = postFor({ id: sh.id, name: row.name, code: row.code });
+    fd.set('description', 'changed the description, nothing else');
 
-    await expect(updateShiftAction(postFor(row, { dayKinds: SIX_DAY }))).rejects.toThrow('NEXT_REDIRECT');
+    await expect(updateShiftAction(fd)).rejects.toThrow('NEXT_REDIRECT');
     const after = await storedWeek(sh.id);
-    expect(after.weeklyPattern, 'the operator edited the week and it is theirs to edit').toEqual([1, 2, 3, 4, 5, 6]);
-    expect(after.halfPattern).toEqual([]);
-    expect(after.offPattern).toEqual([]);
-  });
-
-  it('a shift IN a group that states no week: the group exists, and still the post lands', async () => {
-    const a = adminCtx(b);
-    await ensureStandardRule(a);
-    // A real Schedule Group with grace and overtime settings but NO working week — the shape every rule
-    // written before migration 0483 has. It must not lock the row merely by existing.
-    const weekless = await createAttendanceRule(a, ruleInput('A02 no week'));
-    const sh = await createShift(a, shiftInput({ ruleId: weekless.id }));
-    const row = (await listShiftsForTenant(a)).find((s) => s.id === sh.id)!;
-
-    await expect(
-      updateShiftAction(postFor(row, { ruleId: weekless.id, dayKinds: SIX_DAY })),
-    ).rejects.toThrow('NEXT_REDIRECT');
-    expect((await storedWeek(sh.id)).weeklyPattern).toEqual([1, 2, 3, 4, 5, 6]);
-  });
-});
-
-// ── (a) A GROUP STATES A WEEK ⇒ THE POSTED DAYS ARE IGNORED, AND THE STORED WEEK SURVIVES ─────────────
-describe('(a) the Schedule Group states a week — the posted days are ignored', () => {
-  it('the post is discarded and every one of the three arrays is left exactly as stored', async () => {
-    const a = adminCtx(b);
-    await ensureStandardRule(a);
-    const group = await createAttendanceRule(
-      a,
-      ruleInput('Standard 5 Day', { weeklyPattern: [1, 2, 3, 4, 5], halfPattern: [], offPattern: [6] }),
-    );
-    const sh = await createShift(a, shiftInput({ ruleId: group.id }));
-    const before = await storedWeek(sh.id);
-    const row = (await listShiftsForTenant(a)).find((s) => s.id === sh.id)!;
-
-    await expect(updateShiftAction(postFor(row, { ruleId: group.id, dayKinds: SIX_DAY }))).rejects.toThrow(
-      'NEXT_REDIRECT',
-    );
-    const after = await storedWeek(sh.id);
-    expect(after.weeklyPattern, 'the posted week is NOT written').toEqual(before.weeklyPattern);
-    expect(after.halfPattern, 'and the half-day list is not quietly emptied either').toEqual(before.halfPattern);
-    expect(after.offPattern).toEqual(before.offPattern);
-    expect(after.weeklyPattern, 'the shift keeps its own fallback week — this is the value 2 live shifts run on').toEqual([1, 2, 3]);
+    expect(after.weeklyPattern, 'the shift form never posts a day field any more — the week is preserved').toEqual([1, 2, 3]);
     expect(after.halfPattern).toEqual([4]);
     expect(after.offPattern).toEqual([5]);
-    // The rest of the save is untouched: this is an ignored FIELD, not a refused form.
     expect(LAST_REDIRECT, 'the save still succeeds').toBe('/admin/attendance');
+    const [stored] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id));
+    expect(stored.description).toBe('changed the description, nothing else');
   });
 
-  it('it is the GROUP that decides, not the field being absent: empty the group and the same post lands', async () => {
+  it('the group is preserved too — the action never posts `attendanceRuleId` any more (D2)', async () => {
     const a = adminCtx(b);
-    await ensureStandardRule(a);
-    const group = await createAttendanceRule(a, ruleInput('Standard 5 Day', { weeklyPattern: [1, 2, 3, 4, 5] }));
-    const sh = await createShift(a, shiftInput({ ruleId: group.id }));
-    const row = (await listShiftsForTenant(a)).find((s) => s.id === sh.id)!;
+    const sh = await createShift(a, shiftInput({ ruleId: null }));
+    await owner.db.update(schema.shift).set({ ruleId: null }).where(eq(schema.shift.id, sh.id));
+    const row = (await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id)))[0];
 
-    await expect(updateShiftAction(postFor(row, { ruleId: group.id, dayKinds: SIX_DAY }))).rejects.toThrow(
-      'NEXT_REDIRECT',
-    );
-    expect((await storedWeek(sh.id)).weeklyPattern, 'ignored while the group states a week').toEqual([1, 2, 3]);
-
-    // Take the week off the group. Nothing else changes — not the shift, not the post.
-    await updateAttendanceRule(a, {
-      ruleId: group.id,
-      ...ruleInput('Standard 5 Day', { weeklyPattern: [], halfPattern: [], offPattern: [] }),
-    });
-    await expect(updateShiftAction(postFor(row, { ruleId: group.id, dayKinds: SIX_DAY }))).rejects.toThrow(
-      'NEXT_REDIRECT',
-    );
-    expect(
-      (await storedWeek(sh.id)).weeklyPattern,
-      'the group stopped deciding, so the shift decides again — and the fallback it falls back to is the week that was preserved',
-    ).toEqual([1, 2, 3, 4, 5, 6]);
-  });
-
-  it('BLANK on the dropdown is the tenant Standard rule, and it is judged by the same rule', async () => {
-    const a = adminCtx(b);
-    const standard = await ensureStandardRule(a);
-    const sh = await createShift(a, shiftInput());
-    const row = (await listShiftsForTenant(a)).find((s) => s.id === sh.id)!;
-
-    // Migration 0483 leaves Standard's three arrays NULL ON PURPOSE, because every shift with no rule_id
-    // resolves it — so with a blank dropdown the shift is still what decides.
-    await expect(updateShiftAction(postFor(row, { dayKinds: SIX_DAY }))).rejects.toThrow('NEXT_REDIRECT');
-    expect((await storedWeek(sh.id)).weeklyPattern).toEqual([1, 2, 3, 4, 5, 6]);
-
-    // Give Standard a week and the SAME blank post stops being written — proving the blank option really
-    // resolves to Standard rather than to "no group", which is what core/attendance-rule.ts resolveRuleTx
-    // does on every read.
-    await updateAttendanceRule(a, {
-      ruleId: standard.id,
-      ...ruleInput('Standard', { weeklyPattern: [1, 2, 3, 4, 5] }),
-    });
-    await expect(
-      updateShiftAction(postFor(row, { dayKinds: { 1: 'rest', 2: 'rest', 3: 'rest', 4: 'rest', 5: 'rest', 6: 'rest', 7: 'rest' } })),
-    ).rejects.toThrow('NEXT_REDIRECT');
-    expect((await storedWeek(sh.id)).weeklyPattern, 'unchanged from the previous save').toEqual([1, 2, 3, 4, 5, 6]);
+    await expect(updateShiftAction(postFor({ id: sh.id, name: row.name, code: row.code }))).rejects.toThrow('NEXT_REDIRECT');
+    expect((await storedWeek(sh.id)).ruleId, 'ruleId is not posted, so it is preserved (null stays null)').toBeNull();
   });
 });
 
-// ── (d) THE LEGACY FIELD NAME IS NOT A WAY ROUND IT ───────────────────────────────────────────────────
-describe('(d) the legacy `weeklyPattern` field name is ignored on the same terms', () => {
-  it('a legacy post is discarded when the group decides, and STILL WORKS when it does not', async () => {
+describe('D1 — create stores NO week of its own, even when the week fields are simply absent', () => {
+  it('createShiftAction never posts a day field either, so a new shift declares no week', async () => {
     const a = adminCtx(b);
-    await ensureStandardRule(a);
-    const group = await createAttendanceRule(a, ruleInput('Standard 5 Day', { weeklyPattern: [1, 2, 3, 4, 5] }));
-    const grouped = await createShift(a, shiftInput({ ruleId: group.id }));
-    const ungrouped = await createShift(a, shiftInput());
-    const rows = await listShiftsForTenant(a);
-
-    // No dayKind_* fields at all — the exact shape shift-actions.ts falls back to for older callers.
-    await expect(
-      updateShiftAction(postFor(rows.find((s) => s.id === grouped.id)!, { ruleId: group.id, legacyWeekly: [6, 7] })),
-    ).rejects.toThrow('NEXT_REDIRECT');
-    expect(
-      (await storedWeek(grouped.id)).weeklyPattern,
-      'the old field name reaches the database on exactly the same terms as the new one',
-    ).toEqual([1, 2, 3]);
-
-    // The positive control, and it is the one that makes the assertion above mean something: the legacy
-    // decode is alive and writes when nothing is deciding.
-    await expect(
-      updateShiftAction(postFor(rows.find((s) => s.id === ungrouped.id)!, { legacyWeekly: [6, 7] })),
-    ).rejects.toThrow('NEXT_REDIRECT');
-    expect((await storedWeek(ungrouped.id)).weeklyPattern, 'the legacy path still writes').toEqual([6, 7]);
-  });
-});
-
-// ── CREATE — the same rule, and the one place it cannot preserve anything ─────────────────────────────
-describe('create: a NEW shift under a week-setting group declares no week of its own', () => {
-  it('stores no week rather than the posted one, and the group still decides', async () => {
-    const a = adminCtx(b);
-    await ensureStandardRule(a);
-    const group = await createAttendanceRule(a, ruleInput('Standard 5 Day', { weeklyPattern: [1, 2, 3, 4, 5] }));
-
     const fd = new FormData();
     fd.set('name', 'Brand New');
     fd.set('code', `C_${randomUUID().slice(0, 6)}`);
     fd.set('startTime', '09:00');
     fd.set('endTime', '18:00');
     fd.set('breakMinutes', '60');
-    fd.set('attendanceRuleId', group.id);
-    for (const [d, k] of Object.entries(SIX_DAY)) fd.set(`dayKind_${d}`, k);
     await expect(createShiftAction(fd)).rejects.toThrow('NEXT_REDIRECT');
 
-    const created = (await listShiftsForTenant(a)).find((s) => s.name === 'Brand New')!;
-    const week = await storedWeek(created.id);
-    expect(week.ruleId, 'the group was still stored — only the days were ignored').toBe(group.id);
-    expect(week.weeklyPattern, 'no week was invented for a shift that was never asked for one').toBeNull();
-    expect(week.halfPattern).toEqual([]);
-    expect(week.offPattern).toEqual([]);
+    const [created] = await owner.db.select().from(schema.shift).where(eq(schema.shift.name, 'Brand New'));
+    expect(created.weeklyPattern, 'no week was invented for a shift the form never asked one of').toBeNull();
+    expect(created.halfPattern).toEqual([]);
+    expect(created.offPattern).toEqual([]);
+    expect(created.ruleId, 'no group was invented either — a blank picker always meant Standard').toBeNull();
+  });
+});
+
+describe('D1/D2/D4 — the SERVICE contract every caller (the form, a script, a test) now relies on', () => {
+  it('createShift: omitting weeklyPattern/halfPattern/offPattern stores NO_WEEK (null/[]/[])', async () => {
+    const a = adminCtx(b);
+    const sh = await createShift(a, { name: `NW_${randomUUID().slice(0, 6)}`, code: `NW_${randomUUID().slice(0, 6)}`, startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    const row = await storedWeek(sh.id);
+    expect(row.weeklyPattern).toBeNull();
+    expect(row.halfPattern).toEqual([]);
+    expect(row.offPattern).toEqual([]);
   });
 
-  it('…and the SAME create with no week-setting group stores the posted week', async () => {
+  it('updateShift: omitting all three preserves the stored week byte for byte', async () => {
     const a = adminCtx(b);
-    await ensureStandardRule(a);
-    const fd = new FormData();
-    fd.set('name', 'Brand New Free');
-    fd.set('code', `C_${randomUUID().slice(0, 6)}`);
-    fd.set('startTime', '09:00');
-    fd.set('endTime', '18:00');
-    fd.set('breakMinutes', '60');
-    for (const [d, k] of Object.entries(SIX_DAY)) fd.set(`dayKind_${d}`, k);
-    await expect(createShiftAction(fd)).rejects.toThrow('NEXT_REDIRECT');
+    const sh = await createShift(a, shiftInput());
+    const row = (await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id)))[0];
+    await updateShift(a, {
+      shiftId: sh.id,
+      name: row.name,
+      code: row.code!,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      breakMinutes: row.breakMinutes,
+      // weeklyPattern / halfPattern / offPattern deliberately OMITTED.
+    });
+    const after = await storedWeek(sh.id);
+    expect(after.weeklyPattern).toEqual([1, 2, 3]);
+    expect(after.halfPattern).toEqual([4]);
+    expect(after.offPattern).toEqual([5]);
+  });
 
-    const created = (await listShiftsForTenant(a)).find((s) => s.name === 'Brand New Free')!;
-    expect((await storedWeek(created.id)).weeklyPattern).toEqual([1, 2, 3, 4, 5, 6]);
+  it('updateShift: posting one of the three still validates and stores all three together', async () => {
+    const a = adminCtx(b);
+    const sh = await createShift(a, shiftInput());
+    const row = (await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id)))[0];
+    await updateShift(a, {
+      shiftId: sh.id,
+      name: row.name,
+      code: row.code!,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      breakMinutes: row.breakMinutes,
+      weeklyPattern: [6, 7], // explicit — halfPattern/offPattern absent ⇒ treated as empty, as before
+    });
+    const after = await storedWeek(sh.id);
+    expect(after.weeklyPattern).toEqual([6, 7]);
+    expect(after.halfPattern).toEqual([]);
+    expect(after.offPattern).toEqual([]);
+  });
+
+  it('updateShift: omitting ruleId preserves the stored group (D2)', async () => {
+    const a = adminCtx(b);
+    const group = randomUUID();
+    const sh = await createShift(a, shiftInput());
+    // Stamp a ruleId directly (bypassing FK for the sake of a cheap id — use a real rule instead).
+    const [rule] = await owner.db
+      .insert(schema.attendanceRule)
+      .values({ tenantId: b.tenantId, name: `G_${group.slice(0, 8)}`, isDefault: false, status: 'active' })
+      .returning({ id: schema.attendanceRule.id });
+    await owner.db.update(schema.shift).set({ ruleId: rule.id }).where(eq(schema.shift.id, sh.id));
+    const row = (await owner.db.select().from(schema.shift).where(eq(schema.shift.id, sh.id)))[0];
+
+    await updateShift(a, {
+      shiftId: sh.id,
+      name: row.name,
+      code: row.code!,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      breakMinutes: row.breakMinutes,
+      // ruleId OMITTED.
+    });
+    expect((await storedWeek(sh.id)).ruleId).toBe(rule.id);
   });
 });
 
 /**
- * aec53564 — THE LINK ITSELF, which until now nothing exercised.
- *
- * ⚠️ WHY THIS EXISTS. The DOM test asserts the rendered anchor's href, but it builds its fixture from a
- * STRING LITERAL (`test/aec53564-shift-working-days.dom.test.tsx`, the `href:` props). So the helper that
- * actually composes that URL on the server was covered by nothing: break
- * `scheduleGroupSectionHref` and every DOM case stays green, because the fixture never calls it.
- *
- * The shape is not cosmetic. `?section=` concatenated in FRONT of the query key is the r287 → r301 defect,
- * and r331 has now reproduced it twice more — once in 665de026's own mutation table. It is spelled once,
- * in `app/admin/attendance/schedule/sections.ts`, and this pins that spelling.
+ * aec53564 — THE LINK ITSELF, unchanged by r429: the Shift form's READ-ONLY Schedule Group line
+ * (app/admin/attendance/shift-form.tsx) still links to the group's "Working Days" section with this exact
+ * helper, so the shape pinned here is still what the product produces.
  */
 describe('aec53564 · the Schedule Group link is built by the helper, not by hand', () => {
   const RULE = '0f9c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
@@ -332,7 +226,6 @@ describe('aec53564 · the Schedule Group link is built by the helper, not by han
 
   it('never concatenates the section in front of the query key (r287 → r301)', () => {
     const href = scheduleGroupSectionHref(RULE, 'workingDay');
-    // The defect spelling is `...?section=workingDay?toast=...` — a SECOND `?` rather than an `&`.
     expect(href.match(/\?/g) ?? [], 'exactly one "?" in the URL').toHaveLength(1);
     expect(href, 'the path ends at the rule id, not at a query fragment').not.toMatch(/\/[^/?#]*\?[^/?#]*\//);
   });
@@ -343,9 +236,7 @@ describe('aec53564 · the Schedule Group link is built by the helper, not by han
     expect(href, 'a link beside a control you cannot change must not open an editor').not.toContain('/edit');
   });
 
-  it('is what the rendered anchor uses — the DOM fixture and the helper agree', () => {
-    // The literal the DOM test hard-codes for the grouped shift, rebuilt through the helper. If these
-    // ever diverge the DOM test is asserting a URL the product does not produce.
+  it('is the literal URL this round’s read-only preview renders', () => {
     expect(scheduleGroupSectionHref('grp-0000-0000-0000-000000000001', 'workingDay')).toBe(
       '/admin/attendance/schedule/grp-0000-0000-0000-000000000001?section=workingDay#section-workingDay',
     );

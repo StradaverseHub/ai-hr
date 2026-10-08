@@ -2,33 +2,18 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listShiftOtWindows, listShiftsForTenant } from '@/core/roster';
 import type { listAttendanceRules } from '@/core/attendance-rule';
-import { weekDayKindFor } from '@/core/week-pattern';
-import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
-import { ShiftTimeFields, type DayKind } from '@/components/shift-time-fields';
+import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
+import { ErrorBanner, Field, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { SectionCard, LabelValue, LabelValueList } from '@/components/ui/section-card';
+import { ShiftTimeFields } from '@/components/shift-time-fields';
 import { ShiftOtWindowFields } from '@/components/shift-ot-window-fields';
-// aec53564 (r331) — the Schedule Group picker and the context that lets the working-day row follow it live.
-// COMPONENTS ONLY are imported from this 'use client' module and they are RENDERED as JSX; nothing in it is
-// called from here, and no server action is passed into it (test/rsc-boundary-guard.test.ts).
-import {
-  ShiftScheduleGroupProvider,
-  ShiftScheduleGroupSelect,
-  type ShiftScheduleGroupOption,
-} from '@/components/shift-schedule-group';
 import { SHIFT_COLORS, SHIFT_COLOR_TOKENS } from '@/lib/shift-visual';
 import { scheduleGroupSectionHref } from './schedule/sections';
 import { createShiftAction, updateShiftAction } from './shift-actions';
 
 const LIST = '/admin/attendance';
 
-const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
-// cf21e554 — the shift Day Type box (RECORDED ONLY in stage 1). Static literal keys so the i18n coverage
-// test's check C can see every one of them.
-const DAY_TYPE_KEY: Record<string, string> = {
-  workday: 'shiftDayTypeWorkday',
-  rest_day: 'shiftDayTypeRestDay',
-  holiday: 'shiftDayTypeHoliday',
-};
-// 6340aecb — the colour swatches. Static literal keys, same reason as above.
+// 6340aecb — the colour swatches. Static literal keys so the i18n coverage test's check C can see every one.
 const COLOR_KEY: Record<string, string> = {
   indigo: 'shiftColorIndigo',
   green: 'shiftColorGreen',
@@ -45,28 +30,36 @@ export type ShiftOtWindowRow = Awaited<ReturnType<typeof listShiftOtWindows>>[nu
 export type ShiftRuleOption = Awaited<ReturnType<typeof listAttendanceRules>>[number];
 
 /**
- * af7a8eb4 · Add / Edit form for ONE shift template, on its own page — the same shape
- * /admin/attendance-policy/rules already uses (rules/rule-form.tsx behind rules/new + rules/[ruleId]).
+ * r429 (f6819e19) · THE SHIFT PAGE, REDESIGNED — "how this shift works: its hours and its breaks. Which
+ * days it is worked is set by its Schedule Group." (the reporter's own words, from the mockup header).
  *
- * ── 6340aecb · THE REDESIGN THE REPORTER ASKED FOR ───────────────────────────────────────────────────
- * The screen had grown field by field rather than being designed, so it read as one long form with a
- * catch-all "More settings" drawer at the bottom. It is now FULL WIDTH and organised into the four
- * sections the reporter named, in their order:
+ * ── D1-D8 OF THE APPROVED PLAN, IN ONE PLACE ─────────────────────────────────────────────────────────────
+ * THREE sections now, not four, plus a closed fourth:
+ *   1. SHIFT INFORMATION — name, label (code), colour, description, category, and — READ ONLY — the
+ *      Schedule Group this shift belongs to and the working days actually in force, with a link to change
+ *      them on the Group's own page. (components/ui/section-card.tsx LabelValueList/LabelValue, the r427
+ *      primitives this redesign is built on.)
+ *   2. WORKING TIME — shift type, start/end, the derived Cross Midnight readout, Full Day Working Hours +
+ *      rounding, the half-day pair, and — grouped as "recorded for reference" — the earliest/latest
+ *      accepted clocking and the daily cut-off.                       (components/shift-time-fields.tsx)
+ *   3. BREAKS — an always-visible table, one row per break, Flexible as the ONE way to set a break.
+ *                                                                      (components/shift-time-fields.tsx)
+ *   4. OVERTIME AND PAY FOR THIS SHIFT — the overtime schedule and the shift premium, behind a closed
+ *      <details> that stays MOUNTED (never a conditional render — see the note below).
  *
- *   1. SHIFT IDENTIFICATION — what the shift IS: name, code, colour, description, category.
- *   2. WORKING TIMES        — times in/out, the relabelled clock window, total normal hours, the half-day
- *                             pair, the daily cut-off and the weekly row.   (components/shift-time-fields)
- *   3. BREAKS               — the break windows, and the new Flexible break. (components/shift-time-fields)
- *   4. GENERAL CONTROLS     — the rule, rounding, the recorded-only boxes, the overtime schedule and the
- *                             shift premium.
+ * GONE (D1/D2/D3/D4): the Mon–Sun working-day row (now the Schedule Group's own "Working Days" section),
+ * the Schedule Group picker (now the Group's own "Shifts in this group" — changed FROM the group, not the
+ * shift), the three reference-only boxes (day type, full-day leave, full-day overtime — saved, not shown),
+ * and the whole-shift Flexible switch (per-row Flexible is the one way now; the one shift migration 0519
+ * could not convert keeps its switch until explicitly turned off — see shift-time-fields.tsx).
  *
- * NOTHING WAS DROPPED, AND THAT IS LOAD-BEARING. shiftFields() in shift-actions.ts is a FULL-ROW OVERWRITE
- * and every General / recorded-for-reference key is deliberately absent-means-null (core/roster.ts). If any
- * of those inputs stopped rendering, saving MB28 would null its early_in, late_out, its OT window and the
- * shift-premium pair that core/payroll.ts prefillShiftDifferential reads. The old form kept them alive
- * inside a <details> for exactly that reason; sections keep them alive by simply being visible, and the
- * one control still behind a <details> below (the overtime schedule) stays MOUNTED because a <details>
- * hides its children without unmounting them.
+ * NOTHING WAS DROPPED FROM THE WRITE, AND THAT IS STILL LOAD-BEARING. shiftFields() in shift-actions.ts is
+ * a FULL-ROW OVERWRITE for the fields still on screen; every field that left the screen (the week, the
+ * group, the three reference boxes, the whole-shift switch) now PRESERVES on an absent post
+ * (core/roster.ts normalizeShiftInput), the same undefined-means-preserve contract 88e94371 established for
+ * otRule / ruleId. The overtime schedule stays MOUNTED behind its <details> for the same old reason: a
+ * <details> hides children without unmounting them, and a conditional render would delete every window on
+ * the next save.
  *
  * Server component: it RENDERS ShiftTimeFields and ShiftOtWindowFields as JSX (never imports+calls them),
  * keeping the RSC boundary clean.
@@ -86,42 +79,53 @@ export async function ShiftForm({
   const tr = await getTranslations('roster');
   const editing = shift;
 
-  // b8aa3466 — today's row read as the four-way one. Full = in weekly_pattern, Half / Off = their own
-  // arrays, Rest = in none of them. A shift saved before migration 0429 therefore opens as Full where it
-  // was ticked and Rest where it was not, which is precisely what it means today. A NEW shift defaults
-  // Mon–Fri Full, Sat/Sun Rest — the same default the tick row had.
-  //
-  // aec53564 — the four-way lookup is `weekDayKindFor` (core/week-pattern.ts) now, not a fifth hand-written
-  // copy of it. Only the NEW-shift default is still decided here, because a shift that does not exist yet
-  // has no row to read.
-  const kindOf = (d: number): DayKind =>
-    editing
-      ? weekDayKindFor(
-          { pattern: editing.weeklyPattern, halfPattern: editing.halfPattern, offPattern: editing.offPattern },
-          d,
-        )
-      : d <= 5
-        ? 'full'
-        : 'rest';
-  const dayKinds = Object.fromEntries(ISO_DAYS.map((d) => [d, kindOf(d)])) as Record<number, DayKind>;
+  // ── D2 · THE SCHEDULE GROUP, READ-ONLY ─────────────────────────────────────────────────────────────
+  // The SAME resolver the engine and the Schedule Group's own page use (core/week-pattern.ts), asked about
+  // the SAME two candidates: the group a blank dropdown would have resolved to (weekPatternGroupFor), and
+  // the triple it hands to weekPatternFor. Nothing here writes anything — see shift-actions.ts, which never
+  // posts a ruleId or a day field for this form at all any more.
+  const group = weekPatternGroupFor(ruleOptions, editing?.ruleId ?? null);
+  const groupWeek = group ? { pattern: group.weeklyPattern, halfPattern: group.halfPattern, offPattern: group.offPattern } : null;
+  const shiftOwnWeek = {
+    pattern: editing?.weeklyPattern ?? null,
+    halfPattern: editing?.halfPattern ?? [],
+    offPattern: editing?.offPattern ?? [],
+  };
+  const resolvedWeek = weekPatternFor(groupWeek, shiftOwnWeek);
+  const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+  const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
+  const KIND_KEY = { full: 'dayKindFull', half: 'dayKindHalf', off: 'dayKindOff', rest: 'dayKindRest' } as const;
+  const declaresWeek = ISO_DAYS.some(
+    (d) => resolvedWeek.pattern?.includes(d) || resolvedWeek.halfPattern?.includes(d) || resolvedWeek.offPattern?.includes(d),
+  );
+  const weekDaysText = declaresWeek
+    ? ISO_DAYS.map((d) => {
+        const kind = resolvedWeek.pattern?.includes(d)
+          ? 'full'
+          : resolvedWeek.halfPattern?.includes(d)
+            ? 'half'
+            : resolvedWeek.offPattern?.includes(d)
+              ? 'off'
+              : 'rest';
+        return kind === 'rest' ? null : `${t(DAY_KEY[d])} ${tr(KIND_KEY[kind])}`;
+      })
+        .filter(Boolean)
+        .join(' · ')
+    : null;
 
-  /**
-   * aec53564 — the Schedule Groups this form can resolve to, as PLAIN DATA for the client island: identity,
-   * the week the group declares, and the href the group's page is reached at. The href is built HERE, on
-   * the server, by the one helper that knows the shape (`scheduleGroupSectionHref`) — a URL assembled in a
-   * browser is a URL nobody reviewed, and the `?section=` parameter on this screen has been mis-assembled
-   * twice already (the r287 → r301 defect).
-   */
-  const scheduleGroups: ShiftScheduleGroupOption[] = ruleOptions.map((r) => ({
-    id: r.id,
-    name: r.name,
-    isDefault: r.isDefault,
-    inactive: r.status === 'inactive',
-    href: scheduleGroupSectionHref(r.id, 'workingDay'),
-    pattern: r.weeklyPattern,
-    halfPattern: r.halfPattern,
-    offPattern: r.offPattern,
-  }));
+  // ── D5 · BREAKS — the always-at-least-one-row table, and the scalar-only / locked states ──────────
+  const defaultBreaks =
+    editing?.breakPeriods && editing.breakPeriods.length > 0
+      ? editing.breakPeriods.map((bp) => ({
+          start: bp.start.slice(0, 5),
+          end: bp.end.slice(0, 5),
+          paid: bp.paid === true,
+          flexible: bp.flexible === true,
+          flexibleMinutes: bp.flexibleMinutes != null ? String(bp.flexibleMinutes) : '',
+        }))
+      : [{ start: '', end: '' }];
+  const isScalarOnlySource =
+    editing != null && (editing.breakPeriods == null || editing.breakPeriods.length === 0) && editing.breakMinutes > 0;
 
   return (
     <div className={pageWideCls}>
@@ -135,46 +139,27 @@ export async function ShiftForm({
       {/* `key` forces React to reset the ShiftTimeFields island's internal state when the route switches
           between add and a specific shift's edit. R33 f21d6eee — no company picker: a shift is a
           tenant-global template. */}
-      <form
-        id="shift-form"
-        key={editing?.id ?? 'new'}
-        action={editing ? updateShiftAction : createShiftAction}
-        className="space-y-6"
-      >
-        {/* aec53564 — the Schedule Group the shift resolves to, shared between the picker in Section 4 and
-            the working-day row in Section 2. DATA ONLY crosses this boundary; it carries no action. */}
-        <ShiftScheduleGroupProvider groups={scheduleGroups} defaultRuleId={editing?.ruleId ?? ''}>
+      <form id="shift-form" key={editing?.id ?? 'new'} action={editing ? updateShiftAction : createShiftAction} className="space-y-6">
         {editing && <input type="hidden" name="shiftId" value={editing.id} />}
 
-        {/* ── SECTION 1 · SHIFT IDENTIFICATION ──────────────────────────────────────────────────────── */}
-        <Card className="space-y-4 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('shiftIdentificationLegend')}</h2>
-
+        {/* ── SECTION 1 · SHIFT INFORMATION ──────────────────────────────────────────────────────────── */}
+        <SectionCard index={1} title={t('shiftInformationLegend')}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label={t('shiftName')} required requiredAriaLabel={tr('requiredField')}>
+            <Field label={tr('shiftName')} required requiredAriaLabel={tr('requiredField')}>
               <input name="name" required defaultValue={editing?.name ?? ''} className={inputCls} />
             </Field>
             <Field label={t('shiftCode')} required requiredAriaLabel={tr('requiredField')}>
               <input name="code" required defaultValue={editing?.code ?? ''} className={inputCls} />
             </Field>
-            {/* cf21e554 — the reference "Description" box. MB28's description was living in its NAME
-                because there was nowhere else to put it; this is that place, and it belongs with the
-                shift's identity rather than in a drawer at the bottom of the screen. */}
-            <Field label={t('shiftDescription')} className="lg:col-span-2">
-              <input name="description" defaultValue={editing?.description ?? ''} className={inputCls} />
-            </Field>
             <Field label={t('shiftCategory')}>
               <input name="category" defaultValue={editing?.category ?? ''} className={inputCls} />
             </Field>
+            <Field label={t('shiftDescription')}>
+              <input name="description" defaultValue={editing?.description ?? ''} className={inputCls} />
+            </Field>
           </div>
 
-          {/* 6340aecb — THE SHIFT COLOUR (request points 6 + 7). A closed palette of radio swatches rather
-              than a colour picker: the value is rendered as a filled chip on the Duty Roster, where it has
-              to stay legible in both themes, and an arbitrary hex cannot promise that. "No colour" is a
-              real, selectable option and the default — a shift without one is drawn on the roster exactly
-              as it is today (components/roster-grid.tsx keeps its automatic position palette for it), so
-              nothing about an existing roster changes until somebody chooses. */}
-          <fieldset>
+          <fieldset className="mt-4">
             <legend className="mb-1.5 text-sm font-medium text-foreground">{t('shiftColorLabel')}</legend>
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground has-[:checked]:ring-2 has-[:checked]:ring-foreground/40">
@@ -205,24 +190,46 @@ export async function ShiftForm({
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">{t('shiftColorHint')}</p>
           </fieldset>
-        </Card>
 
-        {/* ── SECTIONS 2 + 3 · WORKING TIMES and BREAKS ─────────────────────────────────────────────
+          {/* r429 (f6819e19) · D2 — READ ONLY. The group is changed on ITS OWN page now ("Shifts allowed"
+              there), and the week is changed on the group's "Working Days" section — never here. */}
+          <LabelValueList className="mt-5 border-t border-border pt-2">
+            <LabelValue
+              label={t('shiftScheduleGroupLabel')}
+              value={
+                <>
+                  {group?.name ?? '—'}{' '}
+                  <Link href={scheduleGroupSectionHref(group?.id ?? '', 'workingDay')} className="text-primary hover:underline">
+                    {t('shiftScheduleGroupChangeLink')}
+                  </Link>
+                </>
+              }
+            />
+            <LabelValue
+              label={t('shiftWorkingDaysInForceLabel')}
+              value={weekDaysText ?? t('shiftScheduleGroupNoWeek', { group: group?.name ?? '' })}
+              help={
+                declaresWeek
+                  ? resolvedWeek.source === 'group'
+                    ? t('shiftWorkingDaysSetBy', { group: group?.name ?? '' })
+                    : t('shiftWorkingDaysOwnWeek')
+                  : undefined
+              }
+            />
+          </LabelValueList>
+          <p className="mt-2 text-xs text-muted-foreground">{t('shiftScheduleGroupFollowNote')}</p>
+        </SectionCard>
+
+        {/* ── SECTIONS 2 + 3 · WORKING TIME and BREAKS ────────────────────────────────────────────────
             One island renders both: the shift type decides the labels and which boxes are asked for, and
             the break rows feed the live normal-hours readout, so the two sections share state. */}
         <ShiftTimeFields
           defaultType={(editing?.type ?? 'normal') as 'normal' | 'semi_flexi' | 'full_flexi'}
           defaultStart={editing?.startTime.slice(0, 5) ?? '09:00'}
           defaultEnd={editing?.endTime.slice(0, 5) ?? '18:00'}
-          defaultBreaks={(editing?.breakPeriods ?? []).map((bp) => ({
-            start: bp.start.slice(0, 5),
-            end: bp.end.slice(0, 5),
-            paid: bp.paid === true,
-            flexible: bp.flexible === true,
-            // r277 — seed the row's own allowance; absent stays an EMPTY box, never a 0.
-            flexibleMinutes: bp.flexibleMinutes != null ? String(bp.flexibleMinutes) : '',
-          }))}
-          defaultBreakMinutes={editing ? String(editing.breakMinutes) : '60'}
+          defaultBreaks={defaultBreaks}
+          isScalarOnlySource={isScalarOnlySource}
+          defaultBreakMinutesScalar={editing ? String(editing.breakMinutes) : '0'}
           defaultOverride={editing?.normalMinutesOverride != null ? String(editing.normalMinutesOverride) : ''}
           defaultRounding={editing?.normalHoursRoundingMinutes != null ? String(editing.normalHoursRoundingMinutes) : ''}
           defaultHalfDayFirstOut={editing?.halfDayFirstOut?.slice(0, 5) ?? ''}
@@ -232,121 +239,30 @@ export async function ShiftForm({
           defaultLateOutNextDay={editing?.lateOutNextDay === true}
           defaultDailyCutoffEnabled={editing?.dailyCutoffEnabled === true}
           defaultDailyCutoffTime={editing?.dailyCutoffTime?.slice(0, 5) ?? ''}
-          defaultFlexibleBreakEnabled={editing?.flexibleBreakEnabled === true}
-          defaultFlexibleBreakMinutes={editing?.flexibleBreakMinutes != null ? String(editing.flexibleBreakMinutes) : ''}
-          dayKinds={dayKinds}
+          flexLocked={editing?.flexibleBreakEnabled === true}
+          lockedAllowanceMinutes={editing?.flexibleBreakMinutes ?? 0}
+          lockedBreakPeriodsJson={JSON.stringify(editing?.breakPeriods ?? [])}
         />
 
-        {/* ── SECTION 4 · GENERAL CONTROLS ──────────────────────────────────────────────────────────── */}
-        <Card className="space-y-6 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('generalSectionLegend')}</h2>
-
-          {/* 88e94371: the shift's attendance-calculation rule. Blank ⇒ the tenant's Standard rule.
-              aec53564 — the same <select name="attendanceRuleId">, with the same options in the same order,
-              moved into a client island so the working-day row in Section 2 can follow it without a save.
-              IT STAYS HERE, in General Controls: its label names lateness, early-out and overtime, which is
-              where 6340aecb put it and none of which is a working time. The STATE travels, not the control. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ShiftScheduleGroupSelect />
-            <div>
-              <Field label={t('shiftNormalHoursRounding')}>
-                <input
-                  name="normalHoursRoundingMinutes"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  defaultValue={editing?.normalHoursRoundingMinutes ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <p className="mt-1 text-xs text-muted-foreground">{t('shiftNormalHoursRoundingHint')}</p>
-            </div>
-          </div>
-
-          {/* cf21e554 — the boxes that are RECORDED ONLY, grouped and labelled as such. Every one of them
-              still POSTS; a full-row overwrite means a box that stops rendering is a column that gets
-              nulled on the next save. */}
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">
-              {t('recordedOnlyLegend')}{' '}
-              <span className="font-normal text-muted-foreground">({t('recordedOnlyNote')})</span>
-            </legend>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label={t('shiftDayType')}>
-                <select name="shiftDayType" defaultValue={editing?.dayType ?? ''} className={inputCls}>
-                  <option value="">{t('notSet')}</option>
-                  <option value="workday">{t(DAY_TYPE_KEY.workday)}</option>
-                  <option value="rest_day">{t(DAY_TYPE_KEY.rest_day)}</option>
-                  <option value="holiday">{t(DAY_TYPE_KEY.holiday)}</option>
-                </select>
-              </Field>
-              <Field label={t('shiftFullDayLeaveMinutes')}>
-                <input
-                  name="fullDayLeaveMinutes"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  defaultValue={editing?.fullDayLeaveMinutes ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('shiftFullDayOtMinutes')}>
-                <input
-                  name="fullDayOtMinutes"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  defaultValue={editing?.fullDayOtMinutes ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-            </div>
-          </fieldset>
-
-          {/* 7c834696 rev 2 point 4 — these two are PAY, not a calculation setting.
-              core/payroll.ts prefillShiftDifferential reads shift.differential to prefill a payroll
-              component, so removing them would leave live premiums unmaintainable. */}
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">
-              {t('shiftPremiumLegend')}{' '}
-              <span className="font-normal text-muted-foreground">({t('shiftPremiumHint')})</span>
-            </legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t('diffLabel')}>
-                <select name="differentialKind" defaultValue={editing?.differential?.kind ?? ''} className={inputCls}>
-                  <option value="">{t('diffNone')}</option>
-                  <option value="percent">{t('diffPercent')}</option>
-                  <option value="flat_hourly">{t('diffFlatHourly')}</option>
-                  <option value="flat_per_shift">{t('diffPerShift')}</option>
-                </select>
-              </Field>
-              <Field label={t('diffValue')}>
-                <input
-                  name="differentialValue"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  defaultValue={editing?.differential?.value ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-            </div>
-          </fieldset>
-
-          {/* ── cf21e554 stage 2 · the reference OVERTIME SCHEDULE tab ─────────────────────────────────
-              The one thing still behind a disclosure, because it is a repeating grid most shifts leave
-              empty. A <details> HIDES its children without unmounting them, which is why it is a <details>
-              and not a conditional render: the grid must keep posting even while it is closed. */}
-          <details className="group rounded-lg border border-border" open={otWindows.length > 0}>
-            <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-foreground marker:content-none">
-              <span className="inline-flex items-center gap-2">
-                <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
-                  ▸
-                </span>
-                {t('otScheduleLegend')}
+        {/* ── SECTION 4 · OVERTIME AND PAY FOR THIS SHIFT ─────────────────────────────────────────────
+            Closed by default — most shifts leave both empty — but stays MOUNTED (a <details> hides its
+            children without unmounting them): a conditional render here would delete every overtime window
+            on the next save. 7c834696 rev 2 — the premium is PAY, not a calculation setting; it stays with
+            the shift because each shift has its own value and core/payroll.ts prefillShiftDifferential
+            reads it directly. */}
+        <details className="group rounded-lg border border-border" open={otWindows.length > 0 || !!editing?.differential}>
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-foreground marker:content-none">
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
+                ▸
               </span>
-            </summary>
-            <div className="border-t border-border px-3 py-3">
+              <span className="font-mono text-xs font-normal tabular-nums text-muted-foreground">04</span>
+              {t('shiftOvertimePayLegend')}
+            </span>
+          </summary>
+          <div className="space-y-6 border-t border-border p-4">
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-foreground">{t('otScheduleLegend')}</h3>
               <ShiftOtWindowFields
                 defaultRows={otWindows.map((w) => ({
                   label: w.label ?? '',
@@ -360,8 +276,33 @@ export async function ShiftForm({
                 }))}
               />
             </div>
-          </details>
-        </Card>
+            <fieldset>
+              <legend className="mb-1.5 text-sm font-medium text-foreground">
+                {t('shiftPremiumLegend')} <span className="font-normal text-muted-foreground">({t('shiftPremiumHint')})</span>
+              </legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={t('diffLabel')}>
+                  <select name="differentialKind" defaultValue={editing?.differential?.kind ?? ''} className={inputCls}>
+                    <option value="">{t('diffNone')}</option>
+                    <option value="percent">{t('diffPercent')}</option>
+                    <option value="flat_hourly">{t('diffFlatHourly')}</option>
+                    <option value="flat_per_shift">{t('diffPerShift')}</option>
+                  </select>
+                </Field>
+                <Field label={t('diffValue')}>
+                  <input
+                    name="differentialValue"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    defaultValue={editing?.differential?.value ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+            </fieldset>
+          </div>
+        </details>
 
         <div className="flex items-center gap-3">
           <button className={btnPrimary}>{editing ? t('saveShift') : t('addShift')}</button>
@@ -369,19 +310,14 @@ export async function ShiftForm({
             {t('cancelEdit')}
           </Link>
         </div>
-        </ShiftScheduleGroupProvider>
       </form>
 
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
         <p className="text-xs text-muted-foreground">{t('breakPaidHint')}</p>
-        {/* 6340aecb — the sequence rules the service enforces, said once where the operator can read them
-            instead of discovered one refusal at a time. */}
         <p className="text-xs text-muted-foreground">{t('shiftTimeSequenceHint')}</p>
-        {/* f3321963 — Semi-Flexi rule + Full-Flexi future-release placeholder. */}
         <p className="text-xs text-muted-foreground">{t('shiftTypeSemiFlexiNote')}</p>
         <p className="text-xs text-muted-foreground">{t('shiftTypeFullFlexiNote')}</p>
-        <p className="text-xs text-muted-foreground">{t('generalMoreTabNote')}</p>
       </div>
     </div>
   );

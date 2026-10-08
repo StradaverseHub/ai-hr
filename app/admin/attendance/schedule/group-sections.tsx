@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
-import type { AttendanceRuleView } from '@/core/attendance-rule';
+import { countEmploymentsInRule, type AttendanceRuleView } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
+import { weekDayKindFor, weekPatternFor } from '@/core/week-pattern';
 import {
   Badge,
   Card,
@@ -30,6 +31,7 @@ import {
   saveScheduleGroupOvertimeAction,
   saveScheduleGroupWeekAction,
 } from './actions';
+import { ScheduleGroupWeekEditor } from '@/components/schedule-group-week-editor';
 
 /**
  * ─── 665de026 (r331) · ONE SCHEDULE GROUP, ONE SCREEN ────────────────────────────────────────────────
@@ -156,6 +158,10 @@ export async function ScheduleGroupSections({
   const shifts = await listShiftsForTenant(s);
   const kinds = dayKindsOf(rule, typedWeek);
   const declaresWeek = ISO_DAYS.some((d) => kinds[d] !== 'rest');
+  // r429 (f6819e19) · D7 — "Shifts in this group" (shift.rule_id = group; for Standard, rule_id NULL on
+  // every shift that never joined one — this filter already reads that correctly, nothing special-cased).
+  const groupShifts = shifts.filter((sh) => sh.ruleId === rule.id);
+  const groupEmploymentCount = await countEmploymentsInRule(s, rule.id);
 
   /** A refusal is shown INSIDE the section it belongs to, and nowhere else, so it is never printed twice. */
   const bannerFor = (key: ScheduleSectionKey) => (section === key ? error : undefined);
@@ -305,6 +311,20 @@ export async function ScheduleGroupSections({
    * REST IS DERIVED, NEVER STORED: a weekday in none of the three arrays is a Rest day, exactly as on
    * `shift`. There is no fourth column.
    */
+  // r429 (f6819e19) · D7 — the group's week, resolved as `ScheduleGroupWeekEditor` resolves it, for the
+  // VIEW page's read-only "Shifts in this group" list (no live selects there, so no "after" column).
+  const storedGroupWeek = {
+    pattern: ISO_DAYS.filter((d) => kinds[d] === 'full'),
+    halfPattern: ISO_DAYS.filter((d) => kinds[d] === 'half'),
+    offPattern: ISO_DAYS.filter((d) => kinds[d] === 'off'),
+  };
+  const shiftsInGroupReadOnly = groupShifts.map((sh) => {
+    const resolved = weekPatternFor(storedGroupWeek, { pattern: sh.weeklyPattern, halfPattern: sh.halfPattern, offPattern: sh.offPattern });
+    const named = ISO_DAYS.map((d) => [d, weekDayKindFor(resolved, d)] as const).filter(([, k]) => k !== 'rest');
+    const text = named.length > 0 ? named.map(([d, k]) => `${tp(DAY_KEY[d])} ${trs(DAY_KIND_KEY[k])}`).join(' · ') : t('weekNoneShort');
+    return { shift: sh, text, source: resolved.source };
+  });
+
   const workingDay = (
     <>
       <ErrorBanner message={bannerFor('workingDay')} />
@@ -319,46 +339,71 @@ export async function ScheduleGroupSections({
                 submission that carried no day fields would decode to the second and CLEAR the group's
                 week. See ./actions.ts saveScheduleGroupWeekAction. */}
             <input type="hidden" name="weekEditor" value="1" />
-            <div className="flex flex-wrap gap-1.5 p-4">
-              {ISO_DAYS.map((d) => (
-                <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
-                  <span className="text-xs font-medium text-foreground">{tp(DAY_KEY[d])}</span>
-                  <select
-                    name={`dayKind_${d}`}
-                    defaultValue={kinds[d]}
-                    aria-label={tp(DAY_KEY[d])}
-                    className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                  >
-                    {/* The reporter's four words, from the namespace that already owns them (roster), not
-                        a second copy under this screen's namespace. Two spellings of one setting is how
-                        two screens start describing the same stored value differently. */}
-                    <option value="full">{trs(DAY_KIND_KEY.full)}</option>
-                    <option value="half">{trs(DAY_KIND_KEY.half)}</option>
-                    <option value="off">{trs(DAY_KIND_KEY.off)}</option>
-                    <option value="rest">{trs(DAY_KIND_KEY.rest)}</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-            <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('weekRestNote')}</p>
+            {/* r429 (f6819e19) · D7 — the seven selects AND the live "Shifts in this group" preview, one
+                client island so the warning it shows can never disagree with what this Save will do. */}
+            <ScheduleGroupWeekEditor
+              initialKinds={kinds}
+              shifts={groupShifts.map((sh) => ({
+                id: sh.id,
+                name: sh.name,
+                code: sh.code,
+                startTime: sh.startTime,
+                endTime: sh.endTime,
+                pattern: sh.weeklyPattern,
+                halfPattern: sh.halfPattern,
+                offPattern: sh.offPattern,
+              }))}
+              employmentCount={groupEmploymentCount}
+              groupName={rule.name}
+            />
             <div className="flex items-center gap-3 border-t border-border px-4 py-3">
               <button className={btnPrimary}>{tr('save')}</button>
             </div>
           </form>
-        ) : declaresWeek ? (
-          <>
-            <div className="flex flex-wrap gap-1.5 p-4">
-              {ISO_DAYS.map((d) => (
-                <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
-                  <span className="text-xs font-medium text-foreground">{tp(DAY_KEY[d])}</span>
-                  <span className="text-xs text-muted-foreground">{trs(DAY_KIND_KEY[kinds[d]])}</span>
-                </div>
-              ))}
-            </div>
-            <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('weekRestNote')}</p>
-          </>
         ) : (
-          <p className="p-4 text-sm text-muted-foreground">{t('weekNone')}</p>
+          <>
+            {declaresWeek ? (
+              <>
+                <div className="flex flex-wrap gap-1.5 p-4">
+                  {ISO_DAYS.map((d) => (
+                    <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
+                      <span className="text-xs font-medium text-foreground">{tp(DAY_KEY[d])}</span>
+                      <span className="text-xs text-muted-foreground">{trs(DAY_KIND_KEY[kinds[d]])}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('weekRestNote')}</p>
+              </>
+            ) : (
+              <p className="p-4 text-sm text-muted-foreground">{t('weekNone')}</p>
+            )}
+            {/* r429 (f6819e19) · D7 — "Shifts in this group" (read-only half: VIEW offers no selects to
+                preview a change FROM, so there is only "the week in force today", no "after"). */}
+            <div className="border-t border-border">
+              <h3 className="px-4 pt-3 text-sm font-medium text-foreground">
+                {t('shiftsInGroupTitle')} <span className="text-muted-foreground">({groupShifts.length})</span>
+              </h3>
+              {shiftsInGroupReadOnly.length === 0 ? (
+                <p className="px-4 pb-4 pt-1 text-sm text-muted-foreground">{t('shiftsInGroupEmpty')}</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {shiftsInGroupReadOnly.map(({ shift: sh, text, source }) => (
+                    <li key={sh.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+                      <Link href={`/admin/attendance/${sh.id}`} className="text-primary hover:underline">
+                        {sh.code ? `${sh.code} — ` : ''}
+                        {sh.name}
+                      </Link>
+                      <span className="text-right text-xs text-muted-foreground">
+                        {text}
+                        {' · '}
+                        {source === 'group' ? t('shiftsInGroupFromGroup') : t('shiftsInGroupFromShift')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
         )}
       </Card>
     </>

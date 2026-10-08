@@ -408,6 +408,26 @@ describe('b8aa3466 item 7 — the daily cut-off', () => {
     const { out } = await punchDay(shift.id, TUE, '22:00:00', '06:00:00', `co_${randomUUID()}@t.local`);
     expect(out.workedMinutes).toBe(480);
   });
+
+  /**
+   * r429 (f6819e19) · D6 — A WRAPPED BREAK, WITH THE DAILY CUT-OFF ALSO ON. Two independent anchoring
+   * rules (core/attendance.ts anchorToShift for the punch and the break window; core/shift-break-rules.ts
+   * breakRowMinutes for the row's own stored length) must agree on where "23:45–00:15" sits once the
+   * shift has its OWN cut-off clock instead of the hard-coded 12-hour guess. Pinned because the plan's own
+   * BUILD NOTES call this combination out by name.
+   */
+  it('a break that crosses midnight is still deducted correctly with the daily cut-off ALSO on', async () => {
+    const shift = await nightShift({
+      dailyCutoffEnabled: true,
+      dailyCutoffTime: '02:00:00',
+      breakPeriods: [{ start: '23:45:00', end: '00:15:00' }],
+    });
+    const row = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, shift.id)).then((r) => r[0]);
+    expect(row.breakMinutes, 'wrap-aware length, not negative').toBe(30);
+    // 480-minute span (22:00→06:00) less the 30-minute wrapped break = 450.
+    const { out } = await punchDay(shift.id, TUE, '22:00:00', '06:00:00', `wrapco_${randomUUID()}@t.local`);
+    expect(out.workedMinutes).toBe(450);
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
