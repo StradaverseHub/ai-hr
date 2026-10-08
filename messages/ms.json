@@ -373,7 +373,7 @@
     "myLeave": "Cuti Saya",
     "leaveOverview": "Permohonan Cuti",
     "leaveHistory": "Status Permohonan Cuti",
-    "leaveCreditHistory": "Sejarah Kredit Cuti",
+    "leaveCreditHistory": "Status Kredit Cuti",
     "leaveDetails": "Butiran Cuti",
     "myTeam": "Pasukan Saya",
     "lifecycle": "Orientasi & IT",
@@ -14423,7 +14423,7 @@
     }
   },
   "leaveCreditHistory": {
-    "title": "Sejarah Kredit Cuti",
+    "title": "Status Kredit Cuti",
     "description": "Setiap Kredit Cuti yang anda mohon, dan apa yang telah berlaku kepada setiap kredit sejak itu.",
     "export": "Eksport",
     "approvalStatus": "Status Kelulusan",

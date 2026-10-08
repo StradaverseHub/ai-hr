@@ -373,7 +373,7 @@
     "myLeave": "Nghỉ phép của tôi",
     "leaveOverview": "Đơn xin nghỉ phép",
     "leaveHistory": "Trạng thái đơn xin nghỉ phép",
-    "leaveCreditHistory": "Lịch sử tín dụng nghỉ phép",
+    "leaveCreditHistory": "Trạng thái tín dụng nghỉ phép",
     "leaveDetails": "Chi tiết nghỉ phép",
     "myTeam": "Nhóm của tôi",
     "lifecycle": "Tiếp nhận & IT",
@@ -14423,7 +14423,7 @@
     }
   },
   "leaveCreditHistory": {
-    "title": "Lịch sử tín dụng nghỉ phép",
+    "title": "Trạng thái tín dụng nghỉ phép",
     "description": "Mọi tín dụng nghỉ phép bạn đã yêu cầu, và những gì đã xảy ra với từng khoản tín dụng kể từ đó.",
     "export": "Xuất",
     "approvalStatus": "Trạng thái phê duyệt",

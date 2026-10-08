@@ -373,7 +373,7 @@
     "myLeave": "การลาของฉัน",
     "leaveOverview": "คำขอลา",
     "leaveHistory": "สถานะคำขอลา",
-    "leaveCreditHistory": "ประวัติเครดิตวันลา",
+    "leaveCreditHistory": "สถานะเครดิตวันลา",
     "leaveDetails": "รายละเอียดวันลา",
     "myTeam": "ทีมของฉัน",
     "lifecycle": "ปฐมนิเทศและไอที",
@@ -14423,7 +14423,7 @@
     }
   },
   "leaveCreditHistory": {
-    "title": "ประวัติเครดิตวันลา",
+    "title": "สถานะเครดิตวันลา",
     "description": "เครดิตวันลาทุกรายการที่คุณขอ และสิ่งที่เกิดขึ้นกับเครดิตแต่ละรายการนับจากนั้น",
     "export": "ส่งออก",
     "approvalStatus": "สถานะการอนุมัติ",

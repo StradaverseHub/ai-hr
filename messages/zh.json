@@ -373,7 +373,7 @@
     "myLeave": "我的休假",
     "leaveOverview": "休假申请",
     "leaveHistory": "休假申请状态",
-    "leaveCreditHistory": "假期额度记录",
+    "leaveCreditHistory": "假期额度状态",
     "leaveDetails": "假期明细",
     "myTeam": "我的团队",
     "lifecycle": "入职与IT",
@@ -14423,7 +14423,7 @@
     }
   },
   "leaveCreditHistory": {
-    "title": "假期额度记录",
+    "title": "假期额度状态",
     "description": "您申请过的每一笔假期额度，以及此后每笔额度的去向。",
     "export": "导出",
     "approvalStatus": "审批状态",

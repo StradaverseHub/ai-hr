@@ -373,7 +373,7 @@
     "myLeave": "My Leave",
     "leaveOverview": "Leave Request",
     "leaveHistory": "Leave Request Status",
-    "leaveCreditHistory": "Leave Credit History",
+    "leaveCreditHistory": "Leave Credit Status",
     "leaveDetails": "Leave Details",
     "myTeam": "My Team",
     "lifecycle": "Onboarding & IT",
@@ -14423,7 +14423,7 @@
     }
   },
   "leaveCreditHistory": {
-    "title": "Leave Credit History",
+    "title": "Leave Credit Status",
     "description": "Every Leave Credit you have requested, and what has happened to each credit since.",
     "export": "Export",
     "approvalStatus": "Approval Status",
