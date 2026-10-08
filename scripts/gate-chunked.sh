@@ -94,7 +94,7 @@ DIRTY_AT_START=$(git status --porcelain | head -1)
 # BOTH vitest projects, or this "full suite" is not one: node runs test/**/*.test.ts and dom runs
 # test/**/*.dom.test.tsx. Globbing only the first silently dropped five files. The browser project
 # (*.browser.test.tsx) is deliberately outside `pnpm vitest run` and stays out here too.
-{ find test -name '*.test.ts'; find test -name '*.dom.test.tsx'; } | sort > "$OUT/all-files.txt"
+{ find test -type f -name '*.test.ts'; find test -type f -name '*.dom.test.tsx'; } | sort > "$OUT/all-files.txt"
 ALL=()
 while IFS= read -r f; do ALL+=("$f"); done < "$OUT/all-files.txt"
 TOTAL=${#ALL[@]}

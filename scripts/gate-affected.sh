@@ -130,7 +130,7 @@ fi
 
 BROWSER_COUNTED=0
 if [ "$BROWSER" = "1" ]; then
-  NB=$(find test -name '*.browser.test.tsx' | wc -l | tr -d ' ')
+  NB=$(find test -type f -name '*.browser.test.tsx' | wc -l | tr -d ' ')
   echo; echo "════ browser: pnpm test:browser ($NB files) — a .tsx or .css file changed ════"
   pnpm test:browser > "$OUT/browser.log" 2>&1
   RC=$?

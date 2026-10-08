@@ -133,10 +133,24 @@ route loading shells, pack drift ratchets, the top-bar overlap guard); real-brow
   commit (the affected tier always runs a changed test file); neither tier is a substitute for gating the
   commit that ships, which is why the receipt names a sha and the release checks it.
 
+## Measured on first use (r417, 2026-10-08)
+
+- Full gate at 0455b908, `CHUNKS=20 VITEST_MAX_WORKERS=3`: 1,224 of 1,224 counted (466 no-DB + 758 DB).
+  Part (a) 107 s, green, on the closed port. Part (b) 1,607 s; wall 1,716 s (28.6 min) against r415's ~25.
+  Chunk 5 ran during a load spike (load average 98, another project) and took 322 s with 3 hook timeouts and
+  zero AssertionErrors; the three files re-ran green in 8.5 s. The other chunks took 48–139 s each, of which
+  rebuild + migrate is ~8 s.
+- So the no-DB split is worth about two minutes, not ten: the ~460 no-DB files were never the expensive part.
+  The DB files at 3 workers are. The next lever is part (b)'s chunk count and worker count, now that each
+  chunk holds only DB files (`CHUNKS=12` would give ~63 files per chunk, the size r415 ran at) — not measured.
+- Affected tier on a className-only commit in `components/ui/anchored-panel.tsx`: 33 files (7 related,
+  2 source mentions, 26 guards; 18 no-DB + 15 DB) plus the 6-file browser project, in 55 s.
+
 ## Consequences
 
-- A presentational round (r416's diff classifies as allowed) is gated in minutes, not ~25.
-- The full gate stops paying cluster rebuilds and low worker counts for ~460 files that need neither.
+- A presentational round (r416's diff classifies as allowed) is gated in about a minute, not ~25.
+- The full gate stops paying cluster rebuilds and low worker counts for ~460 files that need neither — a
+  small saving (above); the DB chunks still dominate.
 - A receipt is now the only path to a release; an operator who skips the gate is refused, not silently
   served a bare suite run that dies on this machine.
 - The DB classifier's correctness is re-proven by every full gate (part (a) on a closed port). Its known
