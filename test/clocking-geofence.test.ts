@@ -64,12 +64,13 @@ import {
   checkOut,
   decideAttendanceCorrection,
   haversineMetres,
-  importAttendancePunches,
   requestAttendanceCorrection,
   GeolocationRequiredError,
   OutsideGeofenceError,
 } from '../core/attendance';
 import { withTenant, type SessionContext } from '../db/client';
+import { commitClockingImport, createClockingMapping } from '../core/attendance-clocking-import';
+import { importPunchCsv } from './helpers/punch-import';
 
 let b: Base;
 const uniqEmail = () => `geo_${randomUUID().slice(0, 8)}@t.local`;
@@ -696,7 +697,15 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 });
 
 describe('import + correction geo-nulling (ADR-0070)', () => {
-  it('import overwrites a web check-in: geo fields nulled, method import — no contradictory rows', async () => {
+  /**
+   * ⚠️ r424 (50ed39e1) — THIS CASE USED TO READ "import overwrites a web check-in: geo fields nulled,
+   * method import". That was the retired importer's rule: it REPLACED the whole day, so the web check-in
+   * and its geofence attestation were simply written over. An import now ADDS clockings and never writes
+   * over a day: a file without In/Out codes may not add to a Clock-screen day at all (its lines are
+   * listed), and a coded file adds its clock-out beside the web check-in. What survives from the old case
+   * is its point — no contradictory row: the end an import supplies carries NO geofence reading.
+   */
+  it('import never overwrites a web check-in; the end an import supplies carries no geo reading', async () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'ImpSite', lat: HQ.lat, lng: HQ.lng });
     const [p] = await owner.db
@@ -712,15 +721,45 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
     let row = await attendanceRow(emp.id, '2026-07-06');
     expect(row.checkInGeofenceStatus).toBe('pass');
 
+    // An uncoded file on a Clock-screen day: refused, the web check-in and its attestation intact.
     const csv = 'Staff ID,Timestamp\nIMP1,2026-07-06 09:05:00\nIMP1,2026-07-06 18:10:00';
-    const result = await importAttendancePunches(a, { csvText: csv, dryRun: false });
-    expect(result.imported).toBe(1);
+    const result = await importPunchCsv(a, csv);
+    expect(result.imported).toBe(0);
     row = await attendanceRow(emp.id, '2026-07-06');
-    expect(row.checkInAt).toBe('09:05:00');
-    expect(row.checkInMethod).toBe('import');
-    expect(row.checkInGeofenceStatus).toBeNull();
-    expect(row.checkInClockingLocationId).toBeNull();
+    expect(row.checkInAt).toBe('09:00:00');
+    expect(row.checkInMethod).toBe('web');
+    expect(row.checkInGeofenceStatus).toBe('pass');
+
+    // A coded file adds its clock-out; the check-in stays the web one, the clock-out has no geo reading.
+    const mappingId = await createClockingMapping(a, {
+      name: 'Geo coded',
+      description: '',
+      deviceName: '',
+      fileType: 'csv',
+      layout: 'delimited',
+      delimiter: ',',
+      hasHeader: false,
+      encoding: 'utf-8',
+      active: true,
+      fields: { cardId: { column: 1 }, day: { column: 2 }, month: { column: 3 }, year: { column: 4 }, hours: { column: 5 }, minute: { column: 6 }, inOutCode: { column: 7 } },
+      inOutCodes: [
+        { code: 'I', direction: 'in' },
+        { code: 'O', direction: 'out' },
+      ],
+      sampleLines: [],
+      sampleFileName: '',
+    });
+    const text = 'IMP1,06,07,2026,18,10,O';
+    const coded = await commitClockingImport(a, { mappingId, text, fileName: 'geo.csv', fileBytes: text.length });
+    expect(coded.imported).toBe(1);
+    row = await attendanceRow(emp.id, '2026-07-06');
+    expect(row.checkInAt).toBe('09:00:00');
+    expect(row.checkInMethod).toBe('web');
+    expect(row.checkInGeofenceStatus).toBe('pass');
+    expect(row.checkOutAt).toBe('18:10:00');
     expect(row.checkOutMethod).toBe('import');
+    expect(row.checkOutGeofenceStatus).toBeNull();
+    expect(row.checkOutClockingLocationId).toBeNull();
   });
 
   it('import check-in then web check-out: in=import, out=web with out-geo stamped', async () => {
@@ -737,7 +776,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
     await assign(a, emp.id, [site]);
 
     const csv = 'Staff ID,Timestamp\nMIX1,2026-07-06 09:00:00';
-    await importAttendancePunches(a, { csvText: csv, dryRun: false });
+    await importPunchCsv(a, csv);
     let row = await attendanceRow(emp.id, '2026-07-06');
     expect(row.checkInMethod).toBe('import');
     expect(row.checkOutAt).toBeNull();

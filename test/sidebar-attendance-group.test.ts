@@ -652,7 +652,9 @@ describe('sidebar Attendance labels (f60cd403 rename)', () => {
     expect(en.nav.myRecords).not.toBe(en.nav.attendanceRecords);
   });
 
-  it('renames Attendance import → Import', () => {
-    expect(en.nav.attendanceImport).toBe('Import');
+  // r424 (50ed39e1) — renamed again, at the reporter's request: the row opens "Import Clocking Data"
+  // (a mapping, a file, a preview and a log), not a bare "Import". Label only; the key is unchanged.
+  it('renames Attendance import → Import → Import Clocking Data', () => {
+    expect(en.nav.attendanceImport).toBe('Import Clocking Data');
   });
 });

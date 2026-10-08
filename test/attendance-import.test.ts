@@ -3,13 +3,20 @@
  * columns; the reconcile is roster-aware: a rostered night shift (22:00→06:00) pairs the two punches that
  * straddle midnight into ONE row on the shift's start date, while an unrostered employee falls back to
  * calendar-day grouping. Unmatched refs are reported; dry-run writes nothing.
+ *
+ * r424 (50ed39e1) — the old reconcile function is RETIRED and these cases now drive its replacement, the
+ * built-in "AIHR Standard Template" mapping through core/attendance-clocking-import.ts. The promises are
+ * the same and are asserted the same way; what changed is the write: clockings are ADDED to the day as
+ * punch rows (method 'import') instead of the day being replaced, and every import leaves a log. The new
+ * rules have their own file, test/clocking-import.test.ts.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { importAttendancePunches } from '../core/attendance';
+import { commitClockingImport, validateClockingImport } from '../core/attendance-clocking-import';
+import { BUILTIN_MAPPING_ID } from '../lib/clocking-file';
 import { assignShift, createShift } from '../core/roster';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
 
@@ -28,6 +35,9 @@ async function makeEmp(code: string, ic: string) {
   await owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: b.tenantId, personId: p.id, icNumber: ic });
   return e.id;
 }
+
+const importCsv = (ctx: ReturnType<typeof adminCtx>, text: string) =>
+  commitClockingImport(ctx, { mappingId: BUILTIN_MAPPING_ID, text, fileName: 'punches.csv', fileBytes: text.length });
 
 async function attendanceRow(employmentId: string, date: string) {
   const [row] = await owner.db
@@ -76,9 +86,10 @@ describe('punch reconcile (ADR-0032 C6)', () => {
     const ctx = adminCtx(b);
     const emp = await makeEmp('E100', '900101011234');
     const csv = 'staff,time\nE100,2026-07-01 08:00:00\nE100,2026-07-01 17:00:00';
-    const r = await importAttendancePunches(ctx, { csvText: csv, dryRun: false });
-    expect(r.imported).toBe(1);
-    expect(r.unmatchedRefs).toHaveLength(0);
+    const r = await importCsv(ctx, csv);
+    expect(r.daysUpdated).toBe(1);
+    expect(r.imported).toBe(2); // two clockings, one day
+    expect(r.counts.unmatchedCard).toBe(0);
     const row = await attendanceRow(emp, '2026-07-01');
     expect(row.checkInAt).toBe('08:00:00');
     expect(row.checkOutAt).toBe('17:00:00');
@@ -96,8 +107,8 @@ describe('punch reconcile (ADR-0032 C6)', () => {
     await assignShift(ctx, { employmentId: emp, shiftDate: '2026-07-01', shiftId });
     // Punches straddle midnight: clock-in 22:00 on the 1st, clock-out 06:00 on the 2nd.
     const csv = 'staff,time\nN200,2026-07-01 22:00:00\nN200,2026-07-02 06:00:00';
-    const r = await importAttendancePunches(ctx, { csvText: csv, dryRun: false });
-    expect(r.imported).toBe(1); // ONE business day, not two
+    const r = await importCsv(ctx, csv);
+    expect(r.daysUpdated).toBe(1); // ONE business day, not two
     const d1 = await attendanceRow(emp, '2026-07-01');
     expect(d1.checkInAt).toBe('22:00:00');
     expect(d1.checkOutAt).toBe('06:00:00');
@@ -108,20 +119,25 @@ describe('punch reconcile (ADR-0032 C6)', () => {
   it('reports unmatched references and imports nothing for them', async () => {
     const ctx = adminCtx(b);
     await makeEmp('E100', '900101011234');
-    const r = await importAttendancePunches(ctx, { csvText: 'staff,time\nGHOST,2026-07-01 08:00:00', dryRun: false });
+    const r = await importCsv(ctx, 'staff,time\nGHOST,2026-07-01 08:00:00');
     expect(r.imported).toBe(0);
-    expect(r.unmatchedRefs).toEqual(['GHOST']);
+    expect(r.counts.unmatchedCard).toBe(1);
+    const preview = await validateClockingImport(ctx, { mappingId: BUILTIN_MAPPING_ID, text: 'staff,time\nGHOST,2026-07-01 08:00:00' });
+    expect(preview.errorRows.map((x) => [x.cardRef, x.result])).toEqual([['GHOST', 'unmatched_card']]);
   });
 
   it('dry-run previews the same rows but writes nothing', async () => {
     const ctx = adminCtx(b);
     const emp = await makeEmp('E100', '900101011234');
     const csv = 'staff,time\nE100,2026-07-01 08:00:00\nE100,2026-07-01 17:00:00';
-    const r = await importAttendancePunches(ctx, { csvText: csv, dryRun: true });
-    expect(r.dryRun).toBe(true);
-    expect(r.imported).toBe(0);
-    expect(r.preview).toHaveLength(1);
-    expect(r.preview[0].workedMinutes).toBe(480);
+    // Validate is the dry run. It reports what each LINE will do; the day's worked minutes are computed
+    // only when the clockings are really added (they depend on what else is on the day by then).
+    const r = await validateClockingImport(ctx, { mappingId: BUILTIN_MAPPING_ID, text: csv });
+    expect(r.counts).toMatchObject({ total: 2, valid: 2, employees: 1, firstDate: '2026-07-01', lastDate: '2026-07-01' });
+    expect(r.validRows.map((x) => [x.employmentId, x.direction])).toEqual([
+      [emp, 'in'],
+      [emp, 'out'],
+    ]);
     expect(await attendanceRow(emp, '2026-07-01')).toBeUndefined();
   });
 });
