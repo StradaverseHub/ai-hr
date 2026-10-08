@@ -525,6 +525,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // 639bf4a5 rev 2 (r338) — the register is a child of this node again, in the 5cb199b3 order it
       // always held relative to Attendance allowance, at the address r336 gave it and under the label
       // the reporter asked for. r336 had moved it to components/sidebar.tsx and they contested that.
+      // r423 (83c0d3c8) — "Locations" is the clocking location list again (/admin/work-locations/clocking);
+      // the work location listing that row opened since r338 sits directly beneath it as "Work Locations".
+      '/admin/work-locations/clocking',
       '/admin/work-locations',
       // 3fb1a611 (r299) — '/admin/toil' (Time off in lieu) STOOD HERE and is gone: RETIRED above.
     ]);
@@ -818,6 +821,8 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // move: the page calls requireAdmin() in its own body throughout, which is this file's premise and
       // is pinned by test/work-location-organization-relocation.test.ts.
       '/admin/work-locations',
+      // r423 — the clocking list ("Locations"), admin-only like its sibling.
+      '/admin/work-locations/clocking',
     ]) {
       expect(gate(href), `${href} stays adminOnly`).toEqual({ adminOnly: true, managerUp: undefined });
     }
@@ -975,7 +980,11 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // GUARD below without an exemption — and it is the key ADR-0054 minted, left unrendered when r336
       // introduced `nav.physicalWorkLocation`. That newer key is deleted (see the orphan case at the
       // foot of this file); `nav.clockingLocation` stays deleted from r336.
-      '/admin/work-locations': 'Locations',
+      // r423 (83c0d3c8) — "Locations" moved with the function it names to the CLOCKING location list;
+      // the work location listing it opened from r338 reads "Work Locations" (key `workLocations`, the
+      // camelCase of that string, so THE GUARD below holds without an exemption).
+      '/admin/work-locations/clocking': 'Locations',
+      '/admin/work-locations': 'Work Locations',
 
       // 3fb1a611 (r299) — '/admin/toil': 'Time off in lieu' STOOD HERE: the row is RETIRED (a redirect stub to
       // Leave Config › Leave Credit). `nav.timeOffInLieu` stays in the catalogues, unrendered.

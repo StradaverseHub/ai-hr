@@ -489,7 +489,6 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(await readClockingAssignments(employmentId)).toEqual([siteB.id]);
     });
   });
-  });
 
   // ── §4 Employment ─────────────────────────────────────────────────────────────────────────────────
   describe('§4 Employment — absent is not blank, through the consolidated door', () => {
@@ -595,7 +594,8 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       );
       expect(result.ok).toBe(false);
       expect(result.failedSection).toBe('clocking');
-      expect(result.error).toContain('Choose at least one clocking location, or turn geofencing off.');
+      // The translator is mocked to echo key names here; the key is the plan's sentence in en.json.
+      expect(result.error).toBe('locationRequired');
       expect(result.saved, 'the card that DID commit is named so the client can mark it clean').toEqual([
         'holiday',
       ]);

@@ -411,6 +411,15 @@ async function runAction(action: (fd: FormData) => Promise<void>, fields: Record
   return LAST_REDIRECT;
 }
 const count = (html: string, needle: string) => html.split(needle).length - 1;
+/** The whole <input …> tag containing `needle` — React's attribute order is not the screen's business. */
+const inputTag = (html: string, needle: string) => {
+  // Every fragment of `needle` (split on spaces between attributes) must be in ONE <input> tag, in any order.
+  const parts = needle.match(/\S+="[^"]*"/g) ?? [needle];
+  const tags = html.match(/<input[^>]*>/g) ?? [];
+  const hit = tags.filter((tag) => parts.every((p) => tag.includes(p)));
+  expect(hit.length, `exactly one <input> carries ${needle}`).toBe(1);
+  return hit[0];
+};
 /** Strip <script> before counting — a key in the RSC payload is not a screen (CLAUDE.md §8). */
 const visible = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, '');
 
@@ -543,7 +552,7 @@ describe('r423 — Save lands on the clocking list at the row; a refusal keeps t
   });
 
   it('a REFUSED save from the NEW page stays on the new page with the reason and every typed value — nothing written', async () => {
-    const typed = { ...FULL, name: 'Refused', radiusM: '' };
+    const typed: Record<string, string | string[]> = { ...FULL, name: 'Refused', radiusM: '' };
     const back = await runAction(createClockingLocationAction, typed);
     expect(back.startsWith(`${CLOCKING_NEW_PAGE}?`)).toBe(true);
     const params = new URLSearchParams(back.split('?')[1]);
@@ -556,7 +565,7 @@ describe('r423 — Save lands on the clocking list at the row; a refusal keeps t
     expect(html).toContain('value="Refused"');
     expect(html).toContain('1 Jalan Test, KL');
     expect(html, 'the blank radius stays blank — nothing was invented').toMatch(/name="radiusM"[^>]*value=""/);
-    expect(html, 'the ticked company stays ticked').toMatch(new RegExp(`name="companyIds" value="${b.companyId}" checked=""`));
+    expect(inputTag(html, `name="companyIds" value="${b.companyId}"`), 'the ticked company stays ticked').toContain('checked=""');
   });
 
   it('no company ticked is refused in the admin’s words', async () => {
@@ -651,8 +660,11 @@ describe('r423 — the pages render', () => {
     assertClockingOrder(html);
     assertPostedFields(html, { linked: false });
     for (const id of [b.companyId, coB]) expect(html, 'every company offered as a tick').toContain(`name="companyIds" value="${id}"`);
-    expect(html, 'nothing pre-ticked on a new location').not.toMatch(/name="companyIds"[^>]*checked=""/);
-    expect(html, 'Active is the default status').toMatch(/name="status" value="active" checked=""/);
+    for (const id of [b.companyId, coB]) {
+      expect(inputTag(html, `name="companyIds" value="${id}"`), 'nothing pre-ticked on a new location').not.toContain('checked=""');
+    }
+    expect(inputTag(html, 'name="status" value="active"'), 'Active is the default status').toContain('checked=""');
+    expect(inputTag(html, 'name="status" value="inactive"')).not.toContain('checked=""');
     expect(html, 'Malaysian states are offered').toContain('<option value="Selangor">Selangor</option>');
     expect(count(html, '>save<')).toBe(1);
     expect(count(html, '>cancel<')).toBe(1);
@@ -660,13 +672,9 @@ describe('r423 — the pages render', () => {
     expect(html).toContain('>© OpenStreetMap contributors</p>');
     expect(html).toContain('Address search: Nominatim');
     expect(html).toMatch(/<button type="button" disabled=""[^>]*>Satellite<\/button>/);
-    const inputTag = (field: string) => {
-      const i = at(html, `name="${field}"`);
-      return html.slice(html.lastIndexOf('<input', i), html.indexOf('>', i) + 1);
-    };
     for (const field of ['lat', 'lng', 'radiusM']) {
-      expect(inputTag(field), `${field} is still a plain typed box`).toContain('type="number"');
-      expect(inputTag(field), `${field} is still required by the form itself`).toContain('required=""');
+      expect(inputTag(html, `name="${field}"`), `${field} is still a plain typed box`).toContain('type="number"');
+      expect(inputTag(html, `name="${field}"`), `${field} is still required by the form itself`).toContain('required=""');
     }
     expect(html, 'no work-location link on a new location').not.toContain('name="locationId"');
     expect(html).not.toContain('<iframe');
@@ -679,7 +687,7 @@ describe('r423 — the pages render', () => {
     expect(html).toContain('editClockingTitle');
     expect(html).toContain('value="Gate A"');
     expect(html).toContain('value="200"');
-    expect(html).toMatch(new RegExp(`name="companyIds" value="${b.companyId}" checked=""`));
+    expect(inputTag(html, `name="companyIds" value="${b.companyId}"`)).toContain('checked=""');
     expect(html).toMatch(/<option value="Selangor" selected="">/);
     expect(html).toContain(`<input type="hidden" name="clockingLocationId" value="${id}"`);
     // 0fe1ca2e — the work-location link is READ-ONLY, still on the form and still posted.

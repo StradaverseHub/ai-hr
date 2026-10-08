@@ -410,7 +410,7 @@ describe('r423 — migration 0517 is journalled and says what it must', () => {
     for (const col of ['clocking_location_id', 'distance_m', 'radius_m']) {
       expect(m517).toContain(`ALTER TABLE "attendance_clock_capture" ALTER COLUMN "${col}" DROP NOT NULL`);
     }
-    expect((m517.match(/RAISE NOTICE/g) ?? []).length).toBe(2);
+    expect((m517.match(/RAISE NOTICE '/g) ?? []).length, 'two counted reports, one per data block').toBe(2);
     expect(m517, 'the override column is kept').not.toContain('DROP COLUMN "geofence_radius_m"');
   });
 });

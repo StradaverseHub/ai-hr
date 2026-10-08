@@ -933,8 +933,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     // deleted in the same commit: a live-looking nav key nothing renders is how a retired row comes back.
     screenKey: 'locations',
     // r423 (83c0d3c8) — the href follows the "Locations" function to the CLOCKING location list. The work
-    // location listing ('/admin/work-locations') is a second menu row, "Work Locations", but NOT a second
-    // screenKey: both are the same permission identity they have always been, so no stored grant changes
+    // location listing ('/admin/work-locations') is a second menu row, "Work Locations", but it gets no
+    // screen column of its own: both are the same permission identity they have always been, so no stored grant changes
     // meaning and nobody gains or loses either screen. Its routes stay on this column below.
     href: '/admin/work-locations/clocking',
     labelKey: 'nav.locations',
