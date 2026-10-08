@@ -45,6 +45,9 @@ const BOUNDARIES = [
   // by the facade. Listed BOTH here and in ALWAYS_ALLOWED so the guard treats it exactly as it treats
   // core/payroll-individual-txn.ts — outsiders may not import it, insiders may.
   'core/back-pay',
+  // r424 (50ed39e1) — the closed-run read the clocking import refuses days on. Payroll implementation, kept
+  // out of core/payroll.ts (pinned byte-identical by r415); listed here AND in ALWAYS_ALLOWED like back-pay.
+  'core/payroll-closed-runs',
   'core/payroll-cycle',
   'core/payroll-config',
   'core/payroll-policy',
@@ -71,6 +74,7 @@ const ALWAYS_ALLOWED = [
   'packs/payroll/', // the pack itself: wiring (index.ts) + service facade
   'core/payroll.ts', // implementation files import each other freely
   'core/back-pay.ts', // 2ef69d1e — Back Pay (Arrears); see the BOUNDARIES note above
+  'core/payroll-closed-runs.ts', // r424 — see the BOUNDARIES note above
   'core/payroll-cycle.ts',
   'core/payroll-config.ts',
   'core/payroll-policy.ts',

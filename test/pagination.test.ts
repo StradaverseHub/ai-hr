@@ -242,7 +242,9 @@ describe('fc776376 — one implementation, not a sixth', () => {
       'app/payroll/configuration/pcb/page.tsx',
       'app/payroll/configuration/skbbk/page.tsx',
       'app/admin/personnel/import/employee-import.tsx',
-      'app/attendance/import/punch-import.tsx',
+      // r424 (50ed39e1) — punch-import.tsx STOOD HERE and is deleted; the import preview is now
+      // clocking-import.tsx, still a capped preview (500 rendered rows), not a paged list.
+      'app/attendance/import/clocking-import.tsx',
       'app/payroll/history-import/history-import.tsx',
       'app/admin/leave/import/leave-ledger-import.tsx',
       'app/approvals/leave-date-breakdown.tsx',
