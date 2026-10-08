@@ -1,0 +1,40 @@
+Attendance > Locations – Company Listing UI/UX Redesign
+Module: Attendance > Locations
+Issue 1: Company Listing UI/UX
+The Locations page currently displays all companies directly on the first page under the COMPANIES section.
+Displaying the complete company list immediately makes the page crowded and is not user-friendly, especially when the organization has a large number of companies.
+Required UI/UX Improvement
+Redesign the COMPANIES listing to provide a cleaner and more scalable company selection interface.
+The preferred design should allow users to:
+•	View companies in a clean and organized format.
+•	Avoid displaying the full company/location details for every company on the initial screen.
+•	Use a View More, Expand, View Locations, or similar action to access the locations belonging to a selected company.
+•	Keep the initial page focused on company selection rather than displaying all location records.
+•	Clearly indicate the number of locations configured under each company where applicable.
+•	Provide a consistent and modern card/list design for each company.
+•	Maintain the existing Location functions and workflow after the company is selected.
+Example UI concept:
+COMPANIES
+Company	Locations	Action
+ABC Sdn Bhd	5 Locations	View Locations
+XYZ Sdn Bhd	3 Locations	View Locations
+DEF Sdn Bhd	8 Locations	View Locations
+The exact UI design can be improved based on the existing HRMS design system, but the main objective is to avoid displaying all company/location information at once on the first page.
+Expected Behaviour
+When entering Attendance > Locations, the system should initially present a clean company-level view.
+After selecting View Locations / View More for a company, the user can access the existing locations and continue using the existing View / Add / Edit functions.
+The existing Location functionality, data, workflow, and business logic shall remain unchanged. This requirement is primarily a UI/UX improvement.
+________________________________________
+Issue 2: Remove "Work Locations" Sub-menu
+The system has now implemented the Location sub-menu under Attendance.
+The existing Work Locations sub-menu is therefore redundant and should no longer be displayed.
+Required Fix
+•	Remove Work Locations from the Attendance menu listing.
+•	Retain Locations as the active menu for managing work/attendance locations.
+•	Do not remove or modify the underlying Location functionality or existing records.
+•	Ensure all existing Location functions are accessible through Attendance > Locations.
+Expected Menu
+Attendance
+•	Locations
+•	[Other existing Attendance menus]
+Work Locations should no longer appear as a separate menu item.
