@@ -2969,6 +2969,13 @@
       "when": 1791500000000,
       "tag": "0516_lifecycle_module",
       "breakpoints": true
+    },
+    {
+      "idx": 517,
+      "version": "7",
+      "when": 1791600000000,
+      "tag": "0517_clocking_location_companies",
+      "breakpoints": true
     }
   ]
 }

@@ -130,6 +130,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'toil_policy', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP for the TOIL module (the leave credit policy). One row on ABC Comapny.' },
   { table: 'holiday', column: 'company_id', disposition: 'config', note: 'Company-specific holidays. One in a holiday group refuses (see the dependents).' },
   { table: 'label_company_assignment', column: 'company_id', disposition: 'config', note: 'Which shared system labels this company uses. Removes the link, never the label.' },
+  { table: 'clocking_location_company', column: 'company_id', disposition: 'config', note: 'r423 (0517) — which shared clocking locations this company may use. Removes the link, never the location. A company with employees refuses first, so no assigned employee loses a usable site this way.' },
   {
     table: 'usage_snapshot',
     column: 'company_id',

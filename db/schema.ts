@@ -463,6 +463,10 @@ export const clockingLocation = pgTable(
     // coalesce(report_label, name) for that one column and nothing else does). The service stores NULL
     // for a blank label, so the rule lives where it is decided rather than in a CHECK.
     reportLabel: text('report_label'),
+    // r423 (migration 0517) — the Malaysian state the site is in. DISPLAY AND FILTERING ONLY: it never
+    // drives holidays (the company's own country/state does). Validated in core/clocking-location.ts against
+    // the selected companies' countries (core/state-vocabulary validateStateFor), never by a CHECK.
+    state: text('state'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -473,6 +477,31 @@ export const clockingLocation = pgTable(
     check('clocking_location_lat_range', sql`${t.lat} BETWEEN -90 AND 90`),
     check('clocking_location_lng_range', sql`${t.lng} BETWEEN -180 AND 180`),
     check('clocking_location_radius_m_ck', sql`${t.radiusM} IS NULL OR ${t.radiusM} > 0`),
+  ],
+);
+
+// clocking_location_company = which COMPANIES may use a shared clocking location (r423, migration 0517,
+// ADR-0070 amended). The location stays ONE record per physical place; this join is the list of companies
+// whose employees may be given it. At least one per location (enforced by core/clocking-location.ts, not a
+// trigger). RLS: INSERT/DELETE app.is_group_admin(); SELECT for group admins, the administrators of the
+// company, and employees OF the company (their own Clock screen asks whether their site is open to them).
+// ON DELETE CASCADE from the location: the rows are its own parts.
+export const clockingLocationCompany = pgTable(
+  'clocking_location_company',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    clockingLocationId: uuid('clocking_location_id')
+      .notNull()
+      .references(() => clockingLocation.id, { onDelete: 'cascade' }),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('clocking_location_company_uq').on(t.clockingLocationId, t.companyId),
+    index('clocking_location_company_company_idx').on(t.tenantId, t.companyId),
   ],
 );
 
@@ -990,6 +1019,10 @@ export const employment = pgTable(
     // authoritative distance lives on clocking_location.radius_m (one per site); this column, when set,
     // replaces it for THIS employee at EVERY site. Null while enabled is valid and means "use each site's
     // own radius" — which is why the old employment_geofence_radius_required CHECK is gone (0419).
+    // r423 (0517) — geofencingEnabled is the employee's ONE switch, "Use Geofencing for Clocking": ON =
+    // every clocking is compared with an assigned, active location open to the employee's company; OFF =
+    // the position is recorded and not compared. The override below is RETIRED: kept (nothing destroyed),
+    // no longer read or written — each site's own radius is the only radius.
     geofencingEnabled: boolean('geofencing_enabled').notNull().default(false),
     geofenceRadiusM: integer('geofence_radius_m'),
     // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on the
@@ -3872,8 +3905,10 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   decodedWidth: integer('decoded_width').notNull(), decodedHeight: integer('decoded_height').notNull(),
   deviceId: uuid('device_id').notNull().references(() => employeeDevice.id),
   lat: doublePrecision('lat').notNull(), lng: doublePrecision('lng').notNull(), accuracyM: doublePrecision('accuracy_m').notNull(),
-  clockingLocationId: uuid('clocking_location_id').notNull().references((): AnyPgColumn => clockingLocation.id),
-  distanceM: integer('distance_m').notNull(), radiusM: integer('radius_m').notNull(),
+  // r423 (0517) — NULL together when the employee's geofencing switch is OFF: the position is recorded, it is
+  // simply not compared with a site. Present together for every geofenced capture (core/attendance-clock.ts).
+  clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
+  distanceM: integer('distance_m'), radiusM: integer('radius_m'),
   commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest').notNull(),
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
