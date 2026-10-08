@@ -70,7 +70,6 @@
  * built here by design.
  */
 import {
-  Building2,
   CreditCard,
   CalendarClock,
   CalendarCog,
@@ -552,14 +551,29 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * glyphs ALONE, and no sibling in this node carries it.
      */
     /**
-     * r423 (83c0d3c8) — "Locations" IS THE CLOCKING LOCATION LIST NOW, and the work location listing it
-     * used to open has a row of its own beneath it, "Work Locations", otherwise unchanged. Both are the
-     * same `locations` screen column in lib/permissions.ts (no new grant, no new permission identity).
-     * Building2 for the work sites so the collapsed rail — which renders glyphs alone — can tell the two
-     * apart; no sibling in this node carries it.
+     * r423 (83c0d3c8) — "Locations" IS THE CLOCKING LOCATION LIST NOW. Until r428 the work location
+     * listing it used to open had a row of its own beneath it, "Work Locations" (Building2, so the
+     * collapsed rail — which renders glyphs alone — could tell the two apart). Both were always the same
+     * `locations` screen column in lib/permissions.ts (no new grant, no new permission identity either
+     * time), which is exactly what makes the row below possible rather than merely convenient.
+     *
+     * ⚠️ r428 (83c0d3c8 contest) — THE "WORK LOCATIONS" ROW IS DELETED, NOT MOVED AND NOT RETIRED-WITH-A-
+     * SURVIVING-SCREEN (the e4471e3c RETIRED shape in test/attendance-pack.test.ts does not fit: that
+     * shape is for a row whose FUNCTION absorbed into a sibling screen reached some other way; here the
+     * function is still reached — it is INSIDE the row immediately above). The reporter contested two
+     * things at once: the crowded first-page listing, and "remove Work Locations, keep Locations as the
+     * one menu for both". `ownedSubpaths` is how the SECOND half is built: the former listing's whole
+     * content is the "Work locations" section of a company's own view on THIS row's own screen
+     * (`/admin/work-locations/clocking?company=<id>`, ../clocking/page.tsx step 2), so there is no second
+     * screen left for a second row to open — a row pointing at the same address this one already owns
+     * would be the duplicate-menu complaint the reporter raised about the FIRST screen, reintroduced for
+     * the second. The OLD address (`/admin/work-locations`, unmoved since r336) survives as a guarded
+     * redirect stub (../../app/admin/work-locations/page.tsx) that forwards here, resolving `?focus=` to
+     * its company — so a bookmark still lands on a real screen; `ownedSubpaths` is what keeps the ROW lit
+     * while an operator is standing on a page at that now-redirected address (test/attendance-pack-drift
+     * is unaffected: the ratchet is about imports, not menus or highlighting).
      */
-    { href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true },
-    { href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true },
+    { href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true, ownedSubpaths: ['/admin/work-locations'] },
     //
     // e776d17d reserves the "Overtime Configuration" child slot here (after Attendance allowance, before Roster).
     // 3fb1a611 (r299) — the Time off in lieu row (/admin/toil, label key timeOffInLieu) STOOD HERE and is

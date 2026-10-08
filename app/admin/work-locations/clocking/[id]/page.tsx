@@ -21,21 +21,31 @@ import { UUID_RE, clockingEditPage, clockingFocusHref } from '../form-fields';
  * DELETE LIVES HERE, for a group administrator: it was a row action on the old register and the plan's
  * list carries View / Edit / Deactivate only. It is refused by the service while any assignment or
  * attendance record references the location, which is said in the confirmation.
+ *
+ * r428 (83c0d3c8 contest) — opened from a company's own view (the list's step 2) as well as from the bare
+ * list; `?company=` is re-validated against THIS location's own `site.companies`, never trusted from the
+ * url alone, so Back and the Edit link both land on that company's view rather than the bare list.
  */
 export default async function ViewClockingLocationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.locations');
   const { id: rawId } = await params;
+  const sp = await searchParams;
   if (!UUID_RE.test(rawId)) notFound();
 
   const site = (await listClockingLocations(s, { status: 'all' })).find((cl) => cl.id === rawId);
   if (!site) notFound();
   const groupAdmin = isGroupAdmin(s);
-  const listHref = clockingFocusHref(site.id);
+  const rawCompany = typeof sp.company === 'string' ? sp.company : '';
+  const returnCompany = UUID_RE.test(rawCompany) && site.companies.some((c) => c.id === rawCompany) ? rawCompany : undefined;
+  const listHref = clockingFocusHref(site.id, returnCompany);
+  const editHref = `${clockingEditPage(site.id)}${returnCompany ? `?company=${returnCompany}` : ''}`;
 
   const facts: [string, string][] = [
     [t('locationName'), site.name],
@@ -63,7 +73,7 @@ export default async function ViewClockingLocationPage({
         back={{ href: listHref, label: t('backToLocations') }}
         actions={
           groupAdmin ? (
-            <Link href={clockingEditPage(site.id)} className={btnGhost}>
+            <Link href={editHref} className={btnGhost}>
               {t('edit')}
             </Link>
           ) : undefined

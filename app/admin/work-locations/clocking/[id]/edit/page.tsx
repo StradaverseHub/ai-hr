@@ -29,6 +29,12 @@ import {
  *
  * Writing is the GROUP administrator's (core assertGroupAdmin + RLS app.is_group_admin()). Anyone else who
  * opens this address is sent the read-only View instead: there is no form they could save.
+ *
+ * r428 (83c0d3c8 contest) — opened from a company's own view now (the list's step 2) as well as from the
+ * bare list; `?company=` is untrusted and is honoured only when it NAMES one of THIS location's own
+ * `site.companies` — re-validated against the real record, never a query — so Back, Cancel and Save all
+ * land on that company's view rather than the bare list, and a forged id cannot claim a company the
+ * location is not even open to.
  */
 export default async function EditClockingLocationPage({
   params,
@@ -47,7 +53,10 @@ export default async function EditClockingLocationPage({
   if (!site) notFound();
   if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));
 
-  const listHref = clockingFocusHref(site.id);
+  // r428 — re-validated against THIS location's own companies, never trusted from the url alone.
+  const rawCompany = typeof sp.company === 'string' ? sp.company : '';
+  const returnCompany = UUID_RE.test(rawCompany) && site.companies.some((c) => c.id === rawCompany) ? rawCompany : undefined;
+  const listHref = clockingFocusHref(site.id, returnCompany);
   const error = typeof sp.error === 'string' ? sp.error : undefined;
   const [{ companies, stateOptions }, linkableLocations] = await Promise.all([
     clockingFormOptions(s),
@@ -90,6 +99,7 @@ export default async function EditClockingLocationPage({
         assignedCount={site.assignedCount}
         error={error}
         cancelHref={listHref}
+        returnCompany={returnCompany}
       />
     </div>
   );

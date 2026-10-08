@@ -292,6 +292,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // to being the clocking location list, so this listing got a row of its own beneath it, at its
     // unchanged address, on the same `locations` screen column. Building2, not a second MapPin: the
     // collapsed rail renders glyphs alone.
+    //
+    // ⚠️ r428 (83c0d3c8 contest) — AND THE ROW RETIRED, declared in RETIRED below rather than this line
+    // being deleted: the oracle's whole point is that a row that disappears WITHOUT a line somewhere still
+    // fails. The length math below (EXPECTED.length + ADDED_SINCE.length − …) still needs this literal
+    // counted here exactly once — see RETIRED's own comment for why retirement, not a move or a fold.
     { href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true },
     // r424 (50ed39e1) — FILE STRUCTURE MAPPING: how each clocking device writes its file. A genuinely new
     // row for a genuinely new screen, admin-only and beside Card Assignment (the other half of device
@@ -363,6 +368,22 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     {
       href: '/admin/attendance-policy/schedule',
       why: 'Work Schedule — its per-company working-week editor is the Company Policy Settings card on the Schedule screen’s General tab, and since 6d091cc0 (r301) the tenant overtime rates, registered devices and backup-shift coverage are the Work Schedule & Overtime Rates card beside it. This route is a requireAdmin() redirect to that card (#work-schedule-overtime), kept registered because the screenKey is a permission identity.',
+    },
+    /**
+     * r428 (83c0d3c8 contest) — Work Locations. The reporter asked to remove the row and keep "Locations"
+     * as the one menu for both kinds, with every function of the old listing reachable from it. Its
+     * content did not go to a sibling screen reached some other way (which is what the shape above is
+     * for) — it became the "Work locations" SECTION of a company's own view on THIS SAME SCREEN, the row
+     * directly above (`/admin/work-locations/clocking?company=<id>`, ../clocking/page.tsx step 2). A
+     * second row pointing at an address this one already owns would be the duplicate-menu complaint the
+     * reporter raised about the crowded first screen, reintroduced for the second — so `ownedSubpaths`
+     * on the row above keeps it lit instead (test/sidebar-attendance-group.test.ts). The old address is a
+     * requireAdmin() redirect stub that resolves `?focus=` to its company and forwards to that view, kept
+     * registered because the screenKey is a permission identity.
+     */
+    {
+      href: '/admin/work-locations',
+      why: 'Work Locations — folded into the company view of Attendance › Locations (r428, 83c0d3c8 contest); see the note on the row above. The route survives as a requireAdmin() redirect stub (app/admin/work-locations/page.tsx), kept registered because the screenKey is a permission identity.',
     },
   ] as const;
   const retiredHrefs: string[] = RETIRED.map((r) => r.href);
@@ -535,10 +556,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // 639bf4a5 rev 2 (r338) — the register is a child of this node again, in the 5cb199b3 order it
       // always held relative to Attendance allowance, at the address r336 gave it and under the label
       // the reporter asked for. r336 had moved it to components/sidebar.tsx and they contested that.
-      // r423 (83c0d3c8) — "Locations" is the clocking location list again (/admin/work-locations/clocking);
-      // the work location listing that row opened since r338 sits directly beneath it as "Work Locations".
+      // r423 (83c0d3c8) — "Locations" is the clocking location list again (/admin/work-locations/clocking).
+      // r428 (83c0d3c8 contest) — its sibling, "Work Locations", STOOD HERE directly beneath it and is
+      // gone: RETIRED above. The function it opened is now a SECTION of this same row's own screen.
       '/admin/work-locations/clocking',
-      '/admin/work-locations',
       // 3fb1a611 (r299) — '/admin/toil' (Time off in lieu) STOOD HERE and is gone: RETIRED above.
     ]);
     // Self-service keeps Clock in/out first (5249d43f) with Records beside it, and Attendance Request
@@ -829,11 +850,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // r424 — how a device writes its file is admin configuration, like the card mapping above it.
       '/admin/attendance/file-mappings',
       '/admin/attendance-allowance',
-      // 639bf4a5 rev 2 (r338) — back on this list with the row. Its gate never weakened through either
-      // move: the page calls requireAdmin() in its own body throughout, which is this file's premise and
-      // is pinned by test/work-location-organization-relocation.test.ts.
-      '/admin/work-locations',
-      // r423 — the clocking list ("Locations"), admin-only like its sibling.
+      // r423 — the clocking list ("Locations"). r428 (83c0d3c8 contest) — its sibling, '/admin/work-
+      // locations', STOOD HERE and is gone: retired from the node (RETIRED above), not merely regated.
+      // Its page still calls requireAdmin() in its own body as a redirect stub, pinned by
+      // test/work-location-organization-relocation.test.ts, not by this per-row node check.
       '/admin/work-locations/clocking',
     ]) {
       expect(gate(href), `${href} stays adminOnly`).toEqual({ adminOnly: true, managerUp: undefined });
@@ -996,11 +1016,14 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // GUARD below without an exemption — and it is the key ADR-0054 minted, left unrendered when r336
       // introduced `nav.physicalWorkLocation`. That newer key is deleted (see the orphan case at the
       // foot of this file); `nav.clockingLocation` stays deleted from r336.
-      // r423 (83c0d3c8) — "Locations" moved with the function it names to the CLOCKING location list;
-      // the work location listing it opened from r338 reads "Work Locations" (key `workLocations`, the
-      // camelCase of that string, so THE GUARD below holds without an exemption).
+      // r423 (83c0d3c8) — "Locations" moved with the function it names to the CLOCKING location list.
+      // r428 (83c0d3c8 contest) — its sibling, '/admin/work-locations': 'Work Locations', STOOD HERE and
+      // is gone: `adminRows` is derived from the live pack (line ~933 above), so a retired row drops out
+      // of this map on its own — nothing to assert here any more. `nav.workLocations` is DELETED (not
+      // merely unrendered) from all six catalogues, the r336/r338 `physicalWorkLocation`/`clockingLocation`
+      // precedent: a live-looking nav key nothing renders is how a retired row comes back. See the orphan
+      // case at the foot of this file.
       '/admin/work-locations/clocking': 'Locations',
-      '/admin/work-locations': 'Work Locations',
 
       // 3fb1a611 (r299) — '/admin/toil': 'Time off in lieu' STOOD HERE: the row is RETIRED (a redirect stub to
       // Leave Config › Leave Credit). `nav.timeOffInLieu` stays in the catalogues, unrendered.
@@ -1065,6 +1088,13 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // left lying about. Its replacement is asserted present beside it — a deletion with nothing on the
       // other side would be a lost label, not a rename.
       expect(cat.nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation`).toBeUndefined();
+      // r428 (83c0d3c8 contest) — AND NOW `nav.workLocations` IS DEAD TOO, the SAME reason the two lines
+      // above kill their own keys: the row it labelled is retired (RETIRED above), its function folded
+      // into a SECTION of the row above it rather than moved to a different menu, so there is no new row
+      // anywhere for the key to label instead. The r338 precedent this round was built against, cited in
+      // the build notes: delete the nav key when nothing renders it, never leave it lying about as a live-
+      // looking label a future round could re-attach to a resurrected row.
+      expect(cat.nav.workLocations, `${loc}: dead nav.workLocations (r428)`).toBeUndefined();
       expect(typeof cat.nav.locations, `${loc}: nav.locations labels the row again`).toBe('string');
       expect(typeof cat.nav.attendance, `${loc}: nav.attendance is still used by the matrix`).toBe('string');
       // 0bade264 (r209) — AND IT MUST NOT SAY THE SAME THING AS THE MENU ABOVE IT, IN ANY LOCALE. This

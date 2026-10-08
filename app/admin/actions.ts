@@ -2734,18 +2734,45 @@ async function clockingRefusalMessage(e: unknown): Promise<string> {
   return publicErrorMessage(e);
 }
 
+/**
+ * r428 (83c0d3c8 contest) — the posted `returnCompany`, shape-checked. It arrives in a FormData, so it is
+ * UNTRUSTED the same way every other posted id here is: a malformed value is simply dropped rather than
+ * built into a redirect target. The page that posted it has already re-validated it against a real
+ * record (the location's own companies, or the admin's own option set) BEFORE rendering the hidden field,
+ * but this layer never relies on that — it only ever appends a syntactically valid uuid to a query.
+ */
+function returnCompanyOf(fd: FormData): string | undefined {
+  const raw = String(fd.get('returnCompany') ?? '').trim();
+  return UUID_RE.test(raw) ? raw : undefined;
+}
+
+/** The clocking list, or a company's own view of it when `returnCompany` names one. */
+function clockingListHref(returnCompany?: string): string {
+  return returnCompany ? `${CLOCKING_LIST}?company=${returnCompany}` : CLOCKING_LIST;
+}
+
 /** Refused: back onto the page the form was on, the reason beside the fields, everything typed echoed. */
-async function clockingRefused(page: string, typed: ClockingFormValues, companyIds: string[], e: unknown): Promise<never> {
+async function clockingRefused(
+  page: string,
+  typed: ClockingFormValues,
+  companyIds: string[],
+  e: unknown,
+  returnCompany?: string,
+): Promise<never> {
   const params = new URLSearchParams();
   params.set('error', await clockingRefusalMessage(e));
   for (const field of CLOCKING_FIELDS) params.set(typedKey(field), typed[field]);
   params.set(TYPED_COMPANY_IDS, companyIds.filter((id) => UUID_RE.test(id)).join(','));
+  // r428 — carried through so the page re-renders knowing which company it was opened from.
+  if (returnCompany) params.set('company', returnCompany);
   redirect(`${page}?${params.toString()}`);
 }
 
-/** Saved: the clocking list, landed on the row, highlighted; a radius advisory rides along as the toast. */
-async function clockingSaved(id: string, warning: RadiusAdvisory | null): Promise<never> {
-  revalidatePath(CLOCKING_LIST);
+/** Saved: the clocking list (or a company's own view of it), landed on the row, highlighted; a radius
+ *  advisory rides along as the toast. */
+async function clockingSaved(id: string, warning: RadiusAdvisory | null, returnCompany?: string): Promise<never> {
+  const dest = clockingListHref(returnCompany);
+  revalidatePath(dest);
   const params = new URLSearchParams({ saved: '1', focus: id });
   if (warning) {
     const t = await getTranslations('admin.locations');
@@ -2756,13 +2783,14 @@ async function clockingSaved(id: string, warning: RadiusAdvisory | null): Promis
         : t('radiusWarningWide', { radius: warning.radiusM }),
     );
   }
-  redirect(`${CLOCKING_LIST}?${params.toString()}#row-${id}`);
+  redirect(`${dest}${dest.includes('?') ? '&' : '?'}${params.toString()}#row-${id}`);
 }
 
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   const typed = clockingFieldsOf(fd);
   const companyIds = companyIdsOf(fd);
+  const returnCompany = returnCompanyOf(fd);
   let saved: ClockingLocationWriteResult | null = null;
   try {
     saved = await createClockingLocation(user, {
@@ -2781,10 +2809,10 @@ export async function createClockingLocationAction(fd: FormData) {
       active: typed.status !== 'inactive',
     });
   } catch (e) {
-    await clockingRefused(CLOCKING_NEW_PAGE, typed, companyIds, e);
+    await clockingRefused(CLOCKING_NEW_PAGE, typed, companyIds, e, returnCompany);
   }
   // clockingRefused never returns; a refusal has already redirected.
-  await clockingSaved(saved!.id, saved!.warning);
+  await clockingSaved(saved!.id, saved!.warning, returnCompany);
 }
 
 export async function updateClockingLocationAction(fd: FormData) {
@@ -2793,6 +2821,7 @@ export async function updateClockingLocationAction(fd: FormData) {
   if (!UUID_RE.test(clockingLocationId)) fail(CLOCKING_LIST, new Error('Clocking location not found'));
   const typed = clockingFieldsOf(fd);
   const companyIds = companyIdsOf(fd);
+  const returnCompany = returnCompanyOf(fd);
   let saved: ClockingLocationWriteResult | null = null;
   try {
     saved = await updateClockingLocation(user, {
@@ -2811,9 +2840,9 @@ export async function updateClockingLocationAction(fd: FormData) {
       active: typed.status === 'active' ? true : typed.status === 'inactive' ? false : undefined,
     });
   } catch (e) {
-    await clockingRefused(clockingEditPage(clockingLocationId), typed, companyIds, e);
+    await clockingRefused(clockingEditPage(clockingLocationId), typed, companyIds, e, returnCompany);
   }
-  await clockingSaved(clockingLocationId, saved!.warning);
+  await clockingSaved(clockingLocationId, saved!.warning, returnCompany);
 }
 
 /**
@@ -2823,22 +2852,24 @@ export async function updateClockingLocationAction(fd: FormData) {
  */
 export async function archiveClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const dest = clockingListHref(returnCompanyOf(fd));
   try {
     await archiveClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
-    fail(CLOCKING_LIST, e);
+    redirect(withQueryParam(dest, 'error', publicErrorMessage(e)));
   }
-  ok(CLOCKING_LIST);
+  ok(dest);
 }
 
 export async function restoreClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const dest = clockingListHref(returnCompanyOf(fd));
   try {
     await restoreClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
-    fail(CLOCKING_LIST, e);
+    redirect(withQueryParam(dest, 'error', publicErrorMessage(e)));
   }
-  ok(CLOCKING_LIST);
+  ok(dest);
 }
 
 export async function deleteClockingLocationAction(fd: FormData) {

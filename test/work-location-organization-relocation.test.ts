@@ -84,7 +84,11 @@ vi.mock('next/headers', () => ({
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
+// r428 (83c0d3c8 contest) — the default export is the REDIRECT STUB now (`WorkLocationsRedirect`); the
+// import name is kept because every reference below the "THE OLD ADDRESSES STILL RESOLVE" section is
+// about exactly that — the stub's own behaviour, not a page that renders.
 import WorkLocationsPage from '../app/admin/work-locations/page';
+import ClockingListPage from '../app/admin/work-locations/clocking/page';
 import NewLocationPage from '../app/admin/work-locations/new/page';
 import ViewLocationPage from '../app/admin/work-locations/[id]/page';
 import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
@@ -115,90 +119,55 @@ const OLD_HREF = '/admin/locations';
 const SIDEBAR = read('components/sidebar.tsx');
 const PACK = read('packs/attendance/index.ts');
 const LIST_SRC = read('app/admin/work-locations/page.tsx');
+/** r428 — the company's "Work locations" section now lives on the clocking list's CompanyView half. */
+const CLOCKING_SRC = read('app/admin/work-locations/clocking/page.tsx');
 /** Count occurrences of the QUOTED href, so a prose mention in a comment is not a nav row. */
 const countQuoted = (haystack: string, href: string) => haystack.split(`'${href}'`).length - 1;
 
-// ───────────────────────── (a) UNDER ATTENDANCE, NOT UNDER ORGANIZATION ─────────────────────────
+// ───────────────────────── (a) RETIRED FROM THE RAIL, FOLDED INTO THE ROW ABOVE ─────────────────────────
 
-describe('639bf4a5 (a) — the row is under Attendance and is NOT under Organization', () => {
-  /**
-   * r423 (83c0d3c8) — UPDATED, NOT LOOSENED. "Locations" (labelKey `locations`) opens the CLOCKING location
-   * list now; this work location listing kept its address and moved to a row of its own, "Work Locations"
-   * (labelKey `workLocations`), directly beneath it — still a child of the attendance settings node, still
-   * after Attendance allowance, still administrators only.
-   */
-  it('is a child of the attendance settings node, labelled `workLocations`, under "Locations", after Attendance allowance', () => {
-    const node = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
-    const row = node.children.find((c) => c.href === HREF);
-    expect(row, 'the Work Locations row is a child of the Attendance settings node').toBeTruthy();
-    expect(row!.labelKey, 'and it is labelled "Work Locations"').toBe('workLocations');
-    expect(row!.adminOnly, 'administrators only, as it always was').toBe(true);
-    const hrefs = node.children.map((c) => c.href);
-    expect(hrefs.indexOf(HREF), 'it comes after Attendance allowance').toBeGreaterThan(
-      hrefs.indexOf('/admin/attendance-allowance'),
-    );
-    expect(hrefs.indexOf(HREF), 'directly under Locations (the clocking list)').toBe(hrefs.indexOf(CLOCKING_LIST) + 1);
-    expect(node.children.find((c) => c.href === CLOCKING_LIST)?.labelKey).toBe('locations');
-    expect(PACK, 'declared in the pack source, not mounted from elsewhere').toContain(
-      `{ href: '${HREF}', labelKey: 'workLocations', icon: Building2, adminOnly: true }`,
-    );
-  });
-
-  it('is NOT a row under Organization — not moved-and-copied, and not left behind', () => {
-    // ⚠️ BOTH DIRECTIONS. The likeliest way to get this wrong is to add the attendance row without
-    // removing the Administration one: the rail would offer the register twice.
-    expect(countQuoted(SIDEBAR, HREF), 'no hand-written row in components/sidebar.tsx').toBe(0);
+/**
+ * ⚠️ r428 (83c0d3c8 contest) — THIS SECTION ASSERTED "A ROW OF ITS OWN" UNTIL NOW, AND THE REVERSAL IS THE
+ * REPORTER'S. They contested two things at once: the crowded first-page listing (sections (b)-(h) below,
+ * now rewritten around the company-first screens), and "remove Work Locations, keep Locations as the one
+ * menu for both kinds". So the row this section used to pin is GONE — not moved a third time, retired. The
+ * exhaustive nav-row oracle (EXPECTED/ADDED_SINCE/RETIRED, the exact-set and highlighting guards) lives in
+ * test/attendance-pack.test.ts and test/sidebar-attendance-group.test.ts; this section keeps only the
+ * claims unique to THIS file's subject — the OLD address's own fate.
+ */
+describe('r428 (83c0d3c8 contest) (a) — Work Locations is gone from the rail; its old address is a guarded stub the Locations row owns', () => {
+  it('no row anywhere names the retired function, under either address', () => {
+    // `countQuoted` would also match the SAME quoted HREF inside `ownedSubpaths: […]` on the row above —
+    // correct, since that is not a row of its own — so the row-specific shape `href: '…'` is counted.
+    expect((SIDEBAR + PACK).split(`href: '${HREF}'`).length - 1, `${HREF} must have no menu row anywhere`).toBe(0);
+    expect(countQuoted(SIDEBAR + PACK, OLD_HREF), `${OLD_HREF} must have no menu row anywhere`).toBe(0);
     expect(SIDEBAR, 'and not under the r336 label either').not.toContain("labelKey: 'physicalWorkLocation'");
-    // The Organization row itself is untouched and still there — a guard that only said "ours is gone"
-    // would pass on a sidebar that had lost the neighbour too.
+    expect(PACK, 'nor the retired label key').not.toContain("labelKey: 'workLocations'");
+    // The Organization row itself is untouched — a guard that only said "ours is gone" would pass on a
+    // sidebar that had lost the neighbour too.
     expect(countQuoted(SIDEBAR, '/admin/organization'), 'Organization keeps its own row').toBe(1);
-    expect(countQuoted(SIDEBAR + PACK, HREF), `${HREF} appears exactly once across the rail sources`).toBe(1);
-    expect(countQuoted(SIDEBAR + PACK, OLD_HREF), `${OLD_HREF} must have no row anywhere`).toBe(0);
   });
 
-  it('lights its own row, and the Organization row it used to sit beside does NOT', () => {
-    const orgRow = { href: '/admin/organization' };
-    const mineRow = { href: HREF };
-    expect(isNavRowActive(HREF, '', mineRow), 'its own row lights').toBe(true);
-    expect(isNavRowActive(HREF, '', orgRow), 'the Organization row does NOT').toBe(false);
-    // …and it stays lit on every one of the dedicated screens, which is the point of keeping them under
-    // the same address rather than minting a sibling route for each.
-    for (const sub of [`${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`]) {
-      expect(isNavRowActive(sub, '', mineRow), `${sub} keeps the row lit`).toBe(true);
+  it('the Locations row owns the retired address for highlighting, and a bookmark through the stub still lights it', () => {
+    const node = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
+    const row = node.children.find((c) => c.href === CLOCKING_LIST);
+    expect(row, 'the Locations row is a child of the Attendance settings node').toBeTruthy();
+    expect(row!.ownedSubpaths, 'and it owns the retired address').toEqual([HREF]);
+    for (const sub of [HREF, `${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`]) {
+      expect(isNavRowActive(sub, '', row!), `${sub} keeps "Locations" lit via ownedSubpaths`).toBe(true);
     }
-    // r423 — the clocking screens are under this address too, and belong to the MORE SPECIFIC "Locations"
-    // row: the flyout lights the longest matching href (components/sidebar.tsx activeChildHref).
-    for (const sub of [CLOCKING_LIST, `${CLOCKING_LIST}/new`, `${CLOCKING_LIST}/abc/edit`]) {
-      expect(isHrefActive(sub, '', CLOCKING_LIST), `${sub} lights Locations`).toBe(true);
-      expect(CLOCKING_LIST.length, 'and Locations is the longer, winning href').toBeGreaterThan(HREF.length);
-    }
-    // …and an attendance sibling does not claim it.
-    const siblings = attendancePack
-      .navNodes!.flatMap((n) => n.children)
-      .map((c) => c.href)
-      .filter((h) => h !== HREF);
-    expect(siblings.some((h) => isHrefActive(HREF, '', h)), 'no sibling row claims this address').toBe(false);
+    // …and the Organization row does not light for it — ownership is the Locations row's alone.
+    expect(isNavRowActive(HREF, '', { href: '/admin/organization' }), 'Organization does not light').toBe(false);
   });
 
-  it('is entitlement-gated by `attendance` again — stated, not hidden', () => {
-    /**
-     * MODULE_OF_HREF (components/sidebar.tsx) is `ATTENDANCE_NODES.flatMap((n) => n.children...)`, so a
-     * child of the settings node IS in the map by construction. `attendance` is billable (isCore:false in
-     * packs/catalog.ts), which means the register is behind the attendance entitlement — exactly the
-     * fault 4509d2b8 moved Holidays out of this node to FIX, accepted here because the reporter asked for
-     * this structure and the tenant holds the module. Asserted as a PROPERTY of the descriptor rather
-     * than by grepping the map, so it cannot quietly stop being true.
-     *
-     * ⚠️ UN-GATING IS A ONE-LINE CHANGE if the reporter asks: a hand-written `[HREF, …]` pair would have
-     * to be excluded from the map instead. Nothing else about this round depends on the gating.
-     */
-    const inNodes = attendancePack.navNodes!.flatMap((n) => n.children).some((c) => c.href === HREF);
-    expect(inNodes, 'the row is a nav-node child, which is what puts it in MODULE_OF_HREF').toBe(true);
-    expect(SIDEBAR, 'MODULE_OF_HREF is still derived from the pack, not hand-written per row').toContain(
-      "ATTENDANCE_NODES.flatMap((n) => n.children.map((c) => [c.href, 'attendance'] as const))",
-    );
-    // …and nobody has quietly added a hand-written exemption for it, which would be the silent un-gating.
-    expect(SIDEBAR).not.toMatch(new RegExp(`\\[\\s*'${HREF}'\\s*,\\s*'[^']+'\\s*\\]`));
+  it('the old address is a requireAdmin() redirect stub, guard first, landing on the Locations screen', () => {
+    const stub = read('app/admin/work-locations/page.tsx');
+    const guard = stub.indexOf('requireAdmin()');
+    const fwd = stub.indexOf('redirect(');
+    expect(guard, 'guards itself').toBeGreaterThan(-1);
+    expect(fwd, 'and forwards').toBeGreaterThan(-1);
+    expect(guard, 'guard BEFORE redirect — a non-administrator is refused, never told where it went').toBeLessThan(fwd);
+    expect(stub, 'forwards to the clocking list, the screen "Locations" now opens').toContain('CLOCKING_LIST');
   });
 });
 
@@ -296,15 +265,20 @@ describe('639bf4a5 (e) — Add, View and Edit each have a route of their own, al
     }
   });
 
-  it('the listing renders NO form, and links out to the three screens instead', () => {
+  it('the company view renders NO location form, and links out to the three screens instead', () => {
     // ⚠️ THE ABSENCE IS THE REQUIREMENT, in the reporter's own words: "No form inline above or below the
     // listing." Asserted on the SOURCE as well as on the markup below, because a form that only renders
     // for one role would be absent from a single render and present in the product.
-    expect(LIST_SRC, 'the company listing posts nothing').not.toContain('<form');
-    expect(LIST_SRC, 'and posts no location action').not.toMatch(/action=\{(create|update|archive|restore)LocationAction\}/);
-    expect(LIST_SRC, 'Add opens its own screen').toContain('LOCATION_NEW_PAGE');
-    expect(LIST_SRC, 'View opens its own screen').toContain('locationViewPage(l.id)');
-    expect(LIST_SRC, 'Edit opens its own screen').toContain('locationEditPage(l.id)');
+    //
+    // r428 (83c0d3c8 contest) — the OLD address (LIST_SRC) is a redirect stub now and trivially posts
+    // nothing; the company listing itself is the "Work locations" section of CLOCKING_SRC's CompanyView.
+    expect(LIST_SRC, 'the old address is a stub, nothing to post there at all').not.toContain('<form');
+    expect(CLOCKING_SRC, 'the company view posts nothing for a location either').not.toMatch(
+      /action=\{(create|update|archive|restore)LocationAction\}/,
+    );
+    expect(CLOCKING_SRC, 'Add opens its own screen').toContain('LOCATION_NEW_PAGE');
+    expect(CLOCKING_SRC, 'View opens its own screen').toContain('locationViewPage(l.id)');
+    expect(CLOCKING_SRC, 'Edit opens its own screen').toContain('locationEditPage(l.id)');
   });
 });
 
@@ -322,8 +296,14 @@ function toMarkup(tree: unknown): string {
 }
 /** Strip <script> before counting — a key in the RSC payload is not a screen (CLAUDE.md §8). */
 const visible = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, '');
-const renderList = async (sp: Record<string, string> = {}) =>
-  visible(toMarkup(await WorkLocationsPage({ searchParams: Promise.resolve(sp) })));
+/**
+ * r428 (83c0d3c8 contest) — THE LISTING MOVED. `WorkLocationsPage` (the old `../page.tsx`) is a redirect
+ * stub now and THROWS on render; the company-based work-location listing this file is about is the "Work
+ * locations" SECTION of `ClockingListPage`'s step 2, reached with `?company=<id>`. Omitting `company`
+ * renders step 1 (the company list) instead — used deliberately by a few cases below, never by accident.
+ */
+const renderList = async (sp: Record<string, string> = {}) => visible(toMarkup(await ClockingListPage({ searchParams: Promise.resolve(sp) })));
+const renderCompany = async (companyId: string, sp: Record<string, string> = {}) => renderList({ company: companyId, ...sp });
 const renderNew = async (sp: Record<string, string> = {}) =>
   visible(toMarkup(await NewLocationPage({ searchParams: Promise.resolve(sp) })));
 const renderView = async (id: string, sp: Record<string, string> = {}) =>
@@ -331,8 +311,18 @@ const renderView = async (id: string, sp: Record<string, string> = {}) =>
 const renderEdit = async (id: string, sp: Record<string, string> = {}) =>
   visible(toMarkup(await EditLocationPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) })));
 
-/** Only the table body: a company name printed in the unmapped-branch card below is not a listing row. */
-const tbody = (html: string) => html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
+/** renderToStaticMarkup escapes `&` inside an attribute value as `&amp;`. */
+const esc = (s: string) => s.replace(/&/g, '&amp;');
+
+/**
+ * Only the WORK LOCATIONS table body: a company's own view has the clocking table's `<tbody>` FIRST (its
+ * own SectionCard, index 1) and the work-locations one SECOND (index 2) — `lastIndexOf` reaches past both,
+ * never the clocking rows, and a company name printed in the unmapped-branch card below is past both too.
+ */
+const tbody = (html: string) => {
+  const open = html.lastIndexOf('<tbody');
+  return html.slice(open, html.indexOf('</tbody>', open));
+};
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
 /** Run a server action to its redirect and return where it sent the browser. */
@@ -375,14 +365,19 @@ beforeEach(async () => {
   ADMIN = await adminFor(null);
 });
 
-describe('639bf4a5 (b) — EVERY company is a row, whether or not it has a location', () => {
-  it('the listing shows all three companies, the two without a location included, and the count matches listCompanies', async () => {
-    /**
-     * ⚠️ THIS IS THE ITEM. The reporter's words: "Every company appears, whether or not it has a
-     * location — that is what makes Add useful." Before r338 the page rendered one card per company and
-     * a card was only useful if you scrolled to it; the failure this case exists for is a listing built
-     * from the LOCATIONS table, which would silently show only the companies that already have one.
-     */
+/**
+ * r428 (83c0d3c8 contest) REWORKS THIS SECTION'S WHOLE SUBJECT. "Every company appears, whether or not it
+ * has a location" was a property of a TENANT-WIDE listing; there is no longer one. The reporter's actual
+ * point — a company with nothing is never silently absent, and stays one click from getting its first
+ * location — now has two halves, each tested where it lives: STEP 1 (the company list) says "None yet"
+ * for an empty company rather than omitting it, and STEP 2 (that company's own view) offers Add Work
+ * Location regardless of whether it already has one. STATUS IS NO LONGER DERIVED EITHER: a company-level
+ * "Active/Inactive" word made sense when one row spoke for a whole company; inside one company's own view
+ * every location has its OWN real status column (`colStatus`), which is why `statusLegend` retired with
+ * the company-level reading of the word.
+ */
+describe('r428 (83c0d3c8 contest) (b) — STEP 1 never omits an empty company; STEP 2 always offers Add', () => {
+  it('STEP 1 lists all three companies, "None yet" for the two without a location, matching listCompanies', async () => {
     const second = await addCompany('Beta Sdn Bhd');
     await addCompany('Gamma Sdn Bhd');
     await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
@@ -394,98 +389,106 @@ describe('639bf4a5 (b) — EVERY company is a row, whether or not it has a locat
       'Gamma Sdn Bhd',
     ]);
 
-    const rows = tbody(await renderList());
+    const html = await renderList();
     for (const c of companies) {
-      expect(count(rows, c.name), `${c.name} is a row, exactly once`).toBe(1);
+      expect(count(html, c.name), `${c.name} is a row, exactly once`).toBe(1);
     }
-    // The two with nothing say so, and carry the Add that gives them one.
-    expect(rows, 'a company with no location still has a row').toContain(`id="company-${second}"`);
-    expect(count(rows, 'statusInactive'), 'two companies read Inactive').toBe(2);
-    expect(count(rows, 'statusActive'), 'and one reads Active').toBe(1);
-    expect(count(rows, `href="${LOCATION_NEW_PAGE}?companyId=${second}"`), 'Add, for the empty one').toBe(1);
-    expect(
-      count(rows, `href="${LOCATION_NEW_PAGE}?companyId=${b.companyId}"`),
-      'and for the one that already has a location — a second location must stay creatable',
-    ).toBe(1);
+    // The two with nothing say so, and still carry a View Locations link to get their first one.
+    expect(count(html, 'noneYet'), 'two companies have no work location yet').toBeGreaterThanOrEqual(2);
+    expect(html).toContain(`href="${CLOCKING_LIST}?company=${second}"`);
   });
 
-  it('STATUS IS DERIVED, AND THE PAGE SAYS SO: a company whose only location is archived reads Inactive', async () => {
-    // `location` has no active/inactive column — the screens have archive / restore. Inventing a status
-    // nobody can set would be worse than having none, so the word is defined on screen and derived here.
+  it('STEP 2 of an EMPTY company offers Add Work Location, and says so once one exists', async () => {
+    // `withFrom` always carries this view's own `?company=` back through `&from=` — the href is a
+    // PREFIX check, never an exact closing quote, for that reason throughout this file now.
+    const html = await renderCompany(b.companyId);
+    expect(html, 'no work locations yet').toContain('noWorkLocationsYet');
+    expect(html).toContain(esc(`href="${LOCATION_NEW_PAGE}?companyId=${b.companyId}&from=`));
+
+    await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+    const after = await renderCompany(b.companyId);
+    expect(after, 'the empty-state is gone once one exists').not.toContain('noWorkLocationsYet');
+    expect(after).toContain('Headquarters');
+    expect(after, 'Add is still offered — a company with one location must be able to gain a second').toContain(
+      esc(`href="${LOCATION_NEW_PAGE}?companyId=${b.companyId}&from=`),
+    );
+  });
+
+  it('STATUS IS A REAL PER-ROW COLUMN NOW, not a derived company-level word', async () => {
+    // `location` has no active/inactive column — the screens have archive / restore. The row reads its
+    // OWN archive stamp, not a word inferred across every location the company holds.
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    expect(tbody(await renderList()), 'live location ⇒ Active').toContain('statusActive');
+    expect(tbody(await renderCompany(b.companyId)), 'live location ⇒ Active').toContain('statusActive');
 
     await archiveLocation(ADMIN, { locationId: loc });
-    const rows = tbody(await renderList());
-    expect(rows, 'its only location archived ⇒ Inactive').toContain('statusInactive');
+    const rows = tbody(await renderCompany(b.companyId));
+    expect(rows, 'archived ⇒ Archived, on its own row').toContain('statusArchived');
     expect(rows, 'and NOT Active').not.toContain('statusActive');
-    // …and the location itself is still listed, with its own badge: archiving hides nothing.
+    // …and the location itself is still listed: archiving hides nothing.
     expect(rows, 'the archived location still renders — its history stays reachable').toContain('Headquarters');
-    expect(rows).toContain('statusArchived');
-    // The legend is on the page, outside the table, in the catalogue's own words.
-    expect(await renderList(), 'the derived word is defined on screen').toContain('statusLegend');
+    // The derived company-level word is retired WITH the tenant-wide listing it described.
     const legend = catalog('en').admin.locations.statusLegend!;
-    expect(legend, 'and the definition is the one this code implements').toMatch(/at least one location/i);
-    expect(legend).toMatch(/archiv/i);
+    expect(legend, 'retired, not merely unrendered').toMatch(/^\[retired r428 — /);
   });
 });
 
-describe('639bf4a5 (c) — a company with TWO locations renders BOTH, under one company cell', () => {
-  it('two lines, one rowSpan’d company name, one derived status, View/Edit on each and Add on the last', async () => {
-    /**
-     * ⚠️ THE REPORTER'S EXAMPLE SHOWS ONE LOCATION PER COMPANY; THEIR DATA DOES NOT. Production on
-     * 2026-09-25: 13 companies, 6 with a location, 8 locations. So the decision had to be made and said
-     * out loud, and it is: EVERY location gets its own line, `rowSpan`ned under one Company cell and one
-     * Status cell. Nothing is summarised as "+1 more" and nothing is hidden behind a count — which is the
-     * failure this case exists to catch, because a listing that renders `rows[0]` alone would pass every
-     * other assertion in this file.
-     */
+/**
+ * r428 (83c0d3c8 contest) — NO MORE rowSpan. One company is in view now, so the company cell this section
+ * used to pin no longer exists at all; what survives is the reporter's real point, restated for a single
+ * company's table: every location gets its own line, nothing is summarised as "+1 more", and each line
+ * carries its own View/Edit.
+ */
+describe('r428 (83c0d3c8 contest) (c) — a company with TWO locations: both render as plain rows, View/Edit on each', () => {
+  it('two addressable rows, no rowSpan, no "+1 more", Add offered once at the section level', async () => {
     const { id: hq } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     const { id: yard } = await createLocation(ADMIN, { companyId: b.companyId, code: 'YARD', name: 'North Yard' });
 
-    const rows = tbody(await renderList());
+    const rows = tbody(await renderCompany(b.companyId));
     expect(rows, 'the first location is a line').toContain('Headquarters');
     expect(rows, 'and so is the second — not a count, not a "+1 more"').toContain('North Yard');
     expect(rows).not.toMatch(/\+\s*\d+\s*more/i);
-    expect(count(rows, 'Acme Sdn Bhd'), 'the company is named ONCE, across both lines').toBe(1);
-    // react-dom/server emits the JSX spelling (`rowSpan="2"`); HTML attribute names are case-insensitive,
-    // so the assertion is too rather than pinning React's own casing.
-    const spans = rows.match(/row[Ss]pan="2"/g) ?? [];
-    expect(spans.length, 'Company and Status both span the two lines; Location and Action do not').toBe(2);
-    // Each line carries its OWN way in, and the company's Add sits on the last line of the block.
+    expect(rows, 'no rowSpan — nothing is grouped by company any more').not.toContain('rowSpan');
+    // ⚠️ THE CLOSING QUOTE IS LOAD-BEARING: locationEditPage(id) is locationViewPage(id) + '/edit', so a
+    // prefix match would count the Edit link as a second View and pass on a row that had lost one. Each
+    // link carries `?from=` (withFrom — neither bare path has a query of its own), right after the id.
     for (const id of [hq, yard]) {
-      // ⚠️ THE CLOSING QUOTE IS LOAD-BEARING: locationEditPage(id) is locationViewPage(id) + '/edit', so a
-      // prefix match would count the Edit link as a second View and pass on a row that had lost one.
-      expect(count(rows, `href="${locationViewPage(id)}"`), `View for ${id}`).toBe(1);
-      expect(count(rows, `href="${locationEditPage(id)}"`), `Edit for ${id}`).toBe(1);
+      expect(count(rows, `href="${locationViewPage(id)}?from=`), `View for ${id}`).toBe(1);
+      expect(count(rows, `href="${locationEditPage(id)}?from=`), `Edit for ${id}`).toBe(1);
     }
-    expect(count(rows, `href="${LOCATION_NEW_PAGE}?companyId=${b.companyId}"`), 'one Add for the company').toBe(1);
     expect(count(rows, `id="row-${hq}"`) + count(rows, `id="row-${yard}"`), 'two addressable rows').toBe(2);
+    // Add is ONE button for the section now (SectionCard's aside), not a per-row link.
+    const full = await renderCompany(b.companyId);
+    expect(count(full, esc(`href="${LOCATION_NEW_PAGE}?companyId=${b.companyId}&from=`)), 'one Add for the company').toBe(1);
   });
 });
 
 describe('639bf4a5 (d) — the listing is scoped by adminOnly, not by the company switcher', () => {
-  it('a company-scoped admin sees THEIR company and not the sister company', async () => {
+  it('a company-scoped admin sees THEIR company on step 1, and a foreign ?company= falls back to it rather than disclosing the sister company', async () => {
     /**
      * app/admin/organization/page.tsx: *the filter IS the permission boundary*. Feedback ab77dc1f is the
      * incident — a tenant-wide list disclosed how many companies the organisation has to someone whose
-     * access did not otherwise reveal it. A listing that showed every company to an admin scoped to one
-     * would repeat it, and would also offer an Add the database refuses.
+     * access did not otherwise reveal it. r428 — a company-scoped admin's STEP 1 lists only companies they
+     * administer (unchanged), and `?company=<foreign id>` is a comparison against that same set: it never
+     * reaches the company's locations at all, so there is nothing for it to disclose.
      */
     const other = await addCompany('Sister Sdn Bhd');
     await createLocation(ADMIN, { companyId: other, code: 'SIS', name: 'Sister Site' });
 
-    const group = tbody(await renderList());
-    expect(group, 'a GROUP admin sees both').toContain('Sister Sdn Bhd');
+    const group = await renderList();
+    expect(group, 'a GROUP admin sees both on step 1').toContain('Sister Sdn Bhd');
     expect(group).toContain('Acme Sdn Bhd');
 
     ADMIN = await adminFor(b.companyId);
     expect((await listCompanies(ADMIN, { adminOnly: true })).map((c) => c.name)).toEqual(['Acme Sdn Bhd']);
-    const scoped = tbody(await renderList());
+    const scoped = await renderList();
     expect(scoped, 'their own company is listed').toContain('Acme Sdn Bhd');
     expect(scoped, 'the sister company is NOT — neither its name…').not.toContain('Sister Sdn Bhd');
-    expect(scoped, '…nor its site').not.toContain('Sister Site');
-    expect(scoped, '…nor an Add that would be refused').not.toContain(`companyId=${other}`);
+
+    // r428 — requesting the sister company DIRECTLY falls back to step 1, never a query for its rows.
+    const foreign = await renderCompany(other);
+    expect(foreign, 'falls back to the company list').toContain('companiesSection');
+    expect(foreign, '…its site is never reached').not.toContain('Sister Site');
+
     // …and the dedicated screens draw the same boundary rather than trusting the link that reached them.
     const sisterLoc = (await listLocations(await adminFor(null), [other], {}))[0];
     await expect(renderView(sisterLoc.id), 'View refuses an out-of-scope location').rejects.toThrow('NEXT_NOT_FOUND');
@@ -497,11 +500,11 @@ describe('639bf4a5 (d) — the listing is scoped by adminOnly, not by the compan
   });
 
   it('the listing reads listCompanies with adminOnly and does NOT narrow by the company switcher', () => {
-    expect(LIST_SRC).toContain('await listCompanies(s, { adminOnly: true })');
+    expect(CLOCKING_SRC).toContain('await listCompanies(s, { adminOnly: true })');
     // 0f1802bf — a master-data screen ignores the switcher, exactly as the Organization listing does.
     // Without this the count on the page would be a cookie's opinion rather than the permission boundary.
     // CODE ONLY — the file header explains WHY the switcher is not consulted and names it to do so.
-    const code = LIST_SRC.replace(/\/\*[\s\S]*?\*\//g, '')
+    const code = CLOCKING_SRC.replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n')
       .filter((l) => !/^\s*(\/\/|\*)/.test(l))
       .join('\n');
@@ -510,40 +513,43 @@ describe('639bf4a5 (d) — the listing is scoped by adminOnly, not by the compan
 });
 
 describe('639bf4a5 (f) — Save, Cancel and Back all land on the listing, query preserved', () => {
-  const FROM = `${LOCATIONS_LIST}?saved=1&focus=11111111-1111-4111-8111-111111111111`;
-  /** renderToStaticMarkup escapes `&` inside an attribute. */
-  const esc = (s: string) => s.replace(/&/g, '&amp;');
+  // r428 — the realistic shape `withFrom` produces today: the company's own view, not the bare retired
+  // address. `workLocationsReturnTo`'s whitelist is a PREFIX check on `/admin/work-locations`, so the
+  // bare address still passes it too — exercised separately below ("a FORGED returnTo"). A function, not
+  // a constant: `b` (the fixture company) is not assigned until `beforeEach`, after this module evaluates.
+  const FROM = () => `${CLOCKING_LIST}?company=${b.companyId}&saved=1&focus=11111111-1111-4111-8111-111111111111`;
 
   it('Back and Cancel on the Add screen carry the listing’s own query', async () => {
-    const html = await renderNew({ companyId: b.companyId, from: FROM });
-    expect(count(html, `href="${esc(FROM)}"`), 'Back and Cancel, both of them').toBe(2);
+    const html = await renderNew({ companyId: b.companyId, from: FROM() });
+    expect(count(html, `href="${esc(FROM())}"`), 'Back and Cancel, both of them').toBe(2);
     expect(html, 'and the form posts the same destination back for the Save').toContain(
-      `name="returnTo" value="${esc(FROM)}"`,
+      `name="returnTo" value="${esc(FROM())}"`,
     );
   });
 
   it('Back and Cancel on the View and Edit screens carry it too', async () => {
     const { id } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
-    const view = await renderView(id, { from: FROM });
-    expect(view, 'View’s Back').toContain(`href="${esc(FROM)}"`);
-    const edit = await renderEdit(id, { from: FROM });
-    expect(count(edit, `href="${esc(FROM)}"`), 'Edit’s Back and Cancel').toBe(2);
-    expect(edit).toContain(`name="returnTo" value="${esc(FROM)}"`);
+    const view = await renderView(id, { from: FROM() });
+    expect(view, 'View’s Back').toContain(`href="${esc(FROM())}"`);
+    const edit = await renderEdit(id, { from: FROM() });
+    expect(count(edit, `href="${esc(FROM())}"`), 'Edit’s Back and Cancel').toBe(2);
+    expect(edit).toContain(`name="returnTo" value="${esc(FROM())}"`);
   });
 
-  it('a SAVE lands on the listing at the row it just wrote, keeping what the operator was filtered on', async () => {
+  it('a SAVE lands on the COMPANY’S OWN VIEW at the row it just wrote, keeping what the operator was filtered on', async () => {
     const created = await runAction(createLocationAction, {
       companyId: b.companyId,
       code: 'HQ',
       name: 'Headquarters',
       country: 'MY',
       branch: '',
-      returnTo: FROM,
+      returnTo: FROM(),
     });
     const [row] = await listLocations(ADMIN, [b.companyId], {});
     // The stale `focus` of the page they came from is REPLACED, not appended — a save that carried the
-    // previous row along would highlight a row nobody just touched.
-    expect(created).toBe(`${LOCATIONS_LIST}?saved=1&focus=${row.id}#row-${row.id}`);
+    // previous row along would highlight a row nobody just touched. `company=` survives: it is part of
+    // the PATH's own query, never touched by the saved/focus replacement.
+    expect(created).toBe(`${CLOCKING_LIST}?company=${b.companyId}&saved=1&focus=${row.id}#row-${row.id}`);
 
     const edited = await runAction(updateLocationAction, {
       locationId: row.id,
@@ -551,13 +557,15 @@ describe('639bf4a5 (f) — Save, Cancel and Back all land on the listing, query 
       name: 'Head Office',
       country: 'MY',
       branch: '',
-      returnTo: `${LOCATIONS_LIST}?saved=1&focus=${row.id}`,
+      returnTo: `${CLOCKING_LIST}?company=${b.companyId}&saved=1&focus=${row.id}`,
     });
-    expect(edited).toBe(`${LOCATIONS_LIST}?saved=1&focus=${row.id}#row-${row.id}`);
-    // …and the listing really does highlight exactly that row when it lands.
-    const html = await renderList({ saved: '1', focus: row.id });
+    expect(edited).toBe(`${CLOCKING_LIST}?company=${b.companyId}&saved=1&focus=${row.id}#row-${row.id}`);
+    // …and the company view really does highlight exactly that row when it lands.
+    const html = await renderCompany(b.companyId, { saved: '1', focus: row.id });
     expect(html).toContain(`id="row-${row.id}"`);
-    expect(count(html, 'bg-muted/50'), 'exactly one row highlighted').toBe(1);
+    // StackedHead's OWN header styling also carries `bg-muted/50` (the tinted Classic header row), so the
+    // needle for a highlighted ROW is the one only StackedRow's conditional class produces.
+    expect(count(html, '@max-3xl:py-4 bg-muted/50'), 'exactly one row highlighted').toBe(1);
     expect(html, 'and says so').toContain('locationSaved');
   });
 
@@ -627,8 +635,8 @@ describe('639bf4a5 (h) — create, edit, archive and restore still work, from th
     expect(rows.map((l) => l.code), 'the site was written').toEqual(['HQ']);
     const locId = rows[0].id;
 
-    // …and it is on the listing, and on its own two screens.
-    expect(tbody(await renderList()), 'the site renders on the listing').toContain('Headquarters');
+    // …and it is on the company's own view, and on its own two screens.
+    expect(tbody(await renderCompany(b.companyId)), 'the site renders on the company view').toContain('Headquarters');
     expect(await renderView(locId), 'and on its View screen').toContain('Headquarters');
     expect(await renderEdit(locId)).toContain(`name="locationId" value="${locId}"`);
 
@@ -679,7 +687,7 @@ describe('639bf4a5 (h) — create, edit, archive and restore still work, from th
       { companyId: b.companyId, branch: 'BUKIT JALIL', headcount: 1 },
     ]);
     expect(await resolveLocationForBranch(ADMIN, b.companyId, 'BUKIT JALIL')).toBeNull();
-    expect(await renderList(), 'the listing says so, beneath the table').toContain('unmappedBranchesHeading');
+    expect(await renderCompany(b.companyId), 'the company view says so, beneath the table').toContain('unmappedBranchesHeading');
 
     // AFTER: the Add screen's form maps a location to it.
     const back = await runAction(createLocationAction, {
@@ -697,19 +705,28 @@ describe('639bf4a5 (h) — create, edit, archive and restore still work, from th
     expect(await listUnmappedBranches(ADMIN, [b.companyId]), 'and the gap is closed').toEqual([]);
     // BOTH DIRECTIONS on the screen: the heading was there, and now it is not — without this the
     // assertion above would pass on a page that simply never renders the block.
-    expect(await renderList(), 'the heading is gone once the branch is mapped').not.toContain('unmappedBranchesHeading');
+    expect(await renderCompany(b.companyId), 'the heading is gone once the branch is mapped').not.toContain('unmappedBranchesHeading');
   });
 
   /**
    * r423 (83c0d3c8) REVERSES r338's "a location's clocking points move with it onto its own screens". The
    * reporter asked for clocking locations to be set up location-first and opened to companies, so every
    * one is on Attendance › Locations and NONE renders under a work location — linked or not.
+   *
+   * r428 (83c0d3c8 contest) — "on the listing" now means the DEDICATED work-location screens (View/Edit,
+   * checked below) AND the company view's own WORK LOCATIONS SECTION specifically — never its Clocking
+   * locations section, which legitimately shows every clocking location open to the company, linked or
+   * not. Checking the whole company-view page would be vacuous (the clocking section is SUPPOSED to show
+   * "North Gate"); the work-locations section is sliced out first, the same way the column-order case
+   * above does, so the absence being asserted is the one this item actually won.
    */
-  it('no clocking location renders on a work location’s screens or on the listing, linked or not', async () => {
+  it('no clocking location renders on a work location’s screens, or in the company view’s WORK LOCATIONS section, linked or not', async () => {
     const { id: hq } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     const { id: gate } = await createClockingLocation(ADMIN, { name: 'North Gate', lat: 3.139, lng: 101.6869, radiusM: 200, locationId: hq, companyIds: [b.companyId] });
     const { id: floating } = await createClockingLocation(ADMIN, { name: 'Floating Point', lat: 3.15, lng: 101.69, radiusM: 200, companyIds: [b.companyId] });
-    for (const html of [await renderView(hq), await renderEdit(hq), await renderList()]) {
+    const companyView = await renderCompany(b.companyId);
+    const workSection = companyView.slice(companyView.indexOf("title={t('workLocationsSection')}"));
+    for (const html of [await renderView(hq), await renderEdit(hq), workSection]) {
       expect(html).not.toContain(`id="row-${gate}"`);
       expect(html).not.toContain(`id="row-${floating}"`);
       expect(html).not.toContain('North Gate');
@@ -717,7 +734,13 @@ describe('639bf4a5 (h) — create, edit, archive and restore still work, from th
       expect(html, 'no "add a clocking point" under a work location').not.toContain(`${CLOCKING_NEW_PAGE}?addPoint=`);
       expect(html).not.toContain('offRegisterLink');
     }
-    expect(await renderList(), 'the listing is headed Work Locations').toContain('workLocationsTitle');
+    // …and the Clocking locations section of the SAME page legitimately DOES show both — the property
+    // this case must not accidentally also be asserting the absence of.
+    expect(companyView, 'the clocking section shows the linked one').toContain(`id="row-${gate}"`);
+    expect(companyView, 'and the unlinked one').toContain(`id="row-${floating}"`);
+    // r428 — the standalone "Work Locations" H1 is retired with the page; the company view's work-
+    // location section carries the new section heading instead.
+    expect(companyView, 'the company view has its own Work locations section').toContain('workLocationsSection');
   });
 
   it('[id] is shape-checked before any query — junk never reaches a uuid column', async () => {
@@ -859,8 +882,6 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
       'colStatus',
       'colAction',
       'statusInactive',
-      'statusLegend',
-      'companySummary',
       'newLocationTitle',
       'editLocationTitle',
       'viewLocationTitle',
@@ -868,10 +889,44 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
       'sectionSite',
       'branchHint',
       // r423 retired clockingPointsHeading, clockingPointsAfterSave and the three offRegister* keys (no
-      // clocking location is shown under a work location now); it minted the two below.
+      // clocking location is shown under a work location now); it minted the one below.
       'archivedNote',
-      'workLocationsTitle',
-      'backToWorkLocations',
+      // r428 (83c0d3c8 contest) — `statusLegend`, `companySummary`, `workLocationsTitle` and
+      // `backToWorkLocations` STOOD HERE and are retired WITH the standalone listing they described
+      // (bracket-noted, identical across locales by the house convention — asserting them "distinct from
+      // English" would fail by design). The company-first screens minted the keys below instead.
+      'companyListDescription',
+      'findCompanySection',
+      'companySearchPlaceholder',
+      'companiesSection',
+      'companiesCount',
+      'colClockingLocations',
+      'colWorkLocations',
+      'locationsCountLabel',
+      'noneYet',
+      'inactiveCountNote',
+      'archivedCountNote',
+      'viewLocationsCta',
+      'orphanCompanyName',
+      'orphanRowNote',
+      'locationsTotalSummary',
+      'sharedCountNote',
+      'companyListNote',
+      'backToAllCompanies',
+      'companyViewDescription',
+      'clockingLocationsSection',
+      'clockingSectionDescription',
+      'colSharedWith',
+      'notShared',
+      'otherCompaniesCount',
+      'sharedWithNote',
+      'workLocationsSection',
+      'workLocationsSectionDescription',
+      'addWorkLocationCta',
+      'noWorkLocationsYet',
+      'workLocationsSummary',
+      'restoreArchivedNote',
+      'backToCompany',
     ];
     /**
      * ⚠️ ONE DECLARED EXEMPTION, AND IT IS A FACT ABOUT THE LANGUAGE RATHER THAN A MISSING TRANSLATION:
@@ -894,26 +949,30 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
     expect(catalog('ms').admin.locations.colStatus, 'ms: "Status" is the Malay word, not an English leftover').toBe('Status');
   });
 
-  it('the page title reads the same as the menu row, in every locale — for both rows', () => {
-    // The screen the reporter clicks and the heading they land on must be the same words. r423: "Locations"
-    // heads the clocking list, "Work Locations" heads this listing.
+  it('the page title reads the same as the menu row, in every locale', () => {
+    // The screen the reporter clicks and the heading they land on must be the same words. "Locations"
+    // heads the company list (step 1) and is the only row left to check this against — r428 retired the
+    // second row this case used to check a pair for; `workLocationsSection` is a SECTION heading inside
+    // the screen now, not a page title answering to a menu row of its own.
     for (const loc of LOCALES) {
       const c = catalog(loc);
       expect(c.admin.locations.pageTitle, `${loc}: page title equals the nav label`).toBe(c.nav.locations);
-      expect(c.admin.locations.workLocationsTitle, `${loc}: Work Locations title equals its nav label`).toBe(c.nav.workLocations);
     }
   });
 
-  it('the two retired nav keys are gone from all six, and nothing resolves either', () => {
+  it('the three retired nav keys are gone from all six, and nothing resolves any of them', () => {
     for (const loc of LOCALES) {
       expect(catalog(loc).nav.clockingLocation, `${loc}: dead nav.clockingLocation (r336)`).toBeUndefined();
       expect(catalog(loc).nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation (r338)`).toBeUndefined();
+      // r428 (83c0d3c8 contest) — AND NOW `nav.workLocations` TOO, same reason: the row it labelled is
+      // retired, its function folded into a section of the row above rather than moved to a new one.
+      expect(catalog(loc).nav.workLocations, `${loc}: dead nav.workLocations (r428)`).toBeUndefined();
     }
-    expect(SIDEBAR + PACK, 'no nav row still points at either retired key').not.toMatch(
-      /labelKey: '(clockingLocation|physicalWorkLocation)'/,
+    expect(SIDEBAR + PACK, 'no nav row still points at any retired key').not.toMatch(
+      /labelKey: '(clockingLocation|physicalWorkLocation|workLocations)'/,
     );
     expect(read('lib/permissions.ts'), 'and neither does the access matrix').not.toMatch(
-      /'nav\.(clockingLocation|physicalWorkLocation)'/,
+      /'nav\.(clockingLocation|physicalWorkLocation|workLocations)'/,
     );
   });
 });
@@ -967,5 +1026,64 @@ describe('639bf4a5 — the /admin/locations addresses redirect, guard first; the
         `${junk} never reaches a redirect target`,
       ).rejects.toThrow('NEXT_NOT_FOUND');
     }
+  });
+});
+
+// ─────────────────────────── r428: THE OLD /admin/work-locations ADDRESS ───────────────────────────
+
+/**
+ * r428 (83c0d3c8 contest) — `/admin/work-locations` is a NEW member of the "old address redirects" family
+ * (its own stub rather than one of the three above, because it resolves `?focus=` to a COMPANY, which
+ * none of those three do). Executed end to end against a real database, not merely read off the source —
+ * the `?focus=` resolution is exactly the kind of claim a source-shape check cannot see going wrong.
+ */
+describe('r428 — the /admin/work-locations address redirects, guard first, and resolves ?focus= to its company', () => {
+  it('no ?focus= at all: forwards to the bare company list (step 1)', async () => {
+    LAST_REDIRECT = '';
+    await expect(WorkLocationsPage({ searchParams: Promise.resolve({ saved: '1' }) })).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT).toBe(`${CLOCKING_LIST}?saved=1`);
+  });
+
+  it('?focus=<a real work-location id>: resolves its company and forwards there, every other param carried through', async () => {
+    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+    LAST_REDIRECT = '';
+    await expect(
+      WorkLocationsPage({ searchParams: Promise.resolve({ saved: '1', focus: loc }) }),
+    ).rejects.toThrow('NEXT_REDIRECT');
+    // URLSearchParams preserves insertion order: `forward()` walks `sp` first (saved, focus), THEN the
+    // resolved `company` is added — so `company` lands LAST, not merged alphabetically or re-ordered.
+    expect(LAST_REDIRECT).toBe(`${CLOCKING_LIST}?saved=1&focus=${loc}&company=${b.companyId}`);
+  });
+
+  it('?focus= names a location OUTSIDE this admin’s scope: resolves nothing, falls back to step 1 rather than disclosing it', async () => {
+    const other = await addCompany('Sister Sdn Bhd');
+    const { id: sisterLoc } = await createLocation(ADMIN, { companyId: other, code: 'SIS', name: 'Sister Site' });
+    ADMIN = await adminFor(b.companyId);
+    LAST_REDIRECT = '';
+    await expect(
+      WorkLocationsPage({ searchParams: Promise.resolve({ focus: sisterLoc }) }),
+    ).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT, 'no company= — the id never resolved for this admin').toBe(`${CLOCKING_LIST}?focus=${sisterLoc}`);
+  });
+
+  it('?focus= is junk or unknown: ignored, never built into a query', async () => {
+    for (const junk of ['not-a-uuid', '00000000-0000-4000-8000-000000000000', "'; drop table location; --"]) {
+      LAST_REDIRECT = '';
+      await expect(WorkLocationsPage({ searchParams: Promise.resolve({ focus: junk }) })).rejects.toThrow('NEXT_REDIRECT');
+      // Built the same way the stub itself builds it (URLSearchParams encoding — `+` for a space, not
+      // `%20`), so the comparison is about company= being ABSENT, not about matching encodeURIComponent.
+      expect(LAST_REDIRECT, `${JSON.stringify(junk)} still forwards, just with nothing resolved`).toBe(
+        `${CLOCKING_LIST}?${new URLSearchParams({ focus: junk }).toString()}`,
+      );
+    }
+  });
+
+  it('guards itself before it forwards', () => {
+    const src = read('app/admin/work-locations/page.tsx');
+    const guard = src.indexOf('await requireAdmin()');
+    const fwd = src.indexOf('redirect(');
+    expect(guard, 'calls requireAdmin()').toBeGreaterThan(-1);
+    expect(fwd, 'and forwards').toBeGreaterThan(-1);
+    expect(guard, 'guards before it forwards').toBeLessThan(fwd);
   });
 });
