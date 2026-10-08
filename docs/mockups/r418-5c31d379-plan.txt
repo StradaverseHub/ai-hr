@@ -1,0 +1,35 @@
+VERDICT: Small fixes to what is already there   ·   SIZE: Small to Medium
+
+WHAT WE'LL CHANGE
+
+- Borang A, the identity number: it follows the employee's status, the same status payroll already uses to decide their EPF rate.
+  - Malaysian citizen: the IC (MyKad) number.
+  - Permanent resident: the MyPR number.
+  - Non-citizen: the passport number.
+  A non-citizen with a passport number is no longer stopped for having no IC. If the number that applies is missing, the message names that number, for example "Passport number". This is the same rule we are putting on Borang 8A (your other request), so both forms agree.
+
+- Borang A, people with no EPF contribution: anyone whose employer share and employee share are both RM0.00 for the payroll cycles you chose is left off the form. They are left off the preview, the PDF, the text copy and the counts. Page totals, the number of employees and the grand total are worked out only from the people who remain. If either share is not zero, the person stays on the form. Payroll records are not changed.
+
+- EPF shelf: the "Borang BBCB — Not built yet" card is removed. BBCD (Borang Bayaran Caruman Bulanan) stays. You confirmed BBCB was the same form.
+
+WHAT YOU'LL GET
+
+Borang A lists only the people who actually contributed, with the right identity number for each of them, and the EPF shelf shows each form once.
+
+GOOD TO KNOW
+
+- The status comes from the EPF citizenship status on each employee's statutory record. If it is wrong there, their EPF rate is also wrong, so it is the one place to correct.
+
+- We hold a permanent resident's MyPR number in the same box as an IC number, because the two cards use the same 12-digit format.
+
+- The i-Akaun upload file follows the same rule for who is listed, so the file and the form always agree. If KWSP needs the people with zero contributions in the file, tell us and we will keep them in the file only.
+
+- We are keeping the name BBCD, the name printed on the form you sent us. We could not find a different official name for it on KWSP's current forms list.
+
+- No EPF amounts change.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Use the shared helper from r418 e74af58c (localization/my/statutory-identity.ts). Borang A read: identity column from the helper; readiness names the helper's the missing field. Zero rows: filter rows where employer and employee shares are both 0 (to the sen) BEFORE pagination, in the Borang A read (one place), so preview, PDF, text, i-Akaun file and the BBCD amount all follow; the "nothing to file" refusal still applies to the form when no rows remain; the i-Akaun file's zero-month behaviour (r407 refuseEmpty:false) stays: a month with members but every share zero still builds the file, now with no member rows — check the EPFORMA2 writer handles zero rows (r407 verifier ran buildBorangAFile with no employees: header, employer, trailer). Remove planned epf.borang-bbcb (retire its keys, never delete; update the planned-forms exact-set guards and the shelfOrder pin in test/borang-a.test.ts). Tests: helper branches; zero row excluded and totals recomputed at 1, 2, 3 sheets; one-share-nonzero row kept; BBCD amount unchanged; Select All bytes. No migration.

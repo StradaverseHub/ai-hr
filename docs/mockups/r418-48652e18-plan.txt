@@ -1,0 +1,25 @@
+VERDICT: Small change   ·   SIZE: Small
+
+WHAT WE'LL CHANGE
+
+- On Admin > Organisation, Bank Account tab, "Add new bank account" moves to the top of the page, above the accounts you already have. It shows as one closed button. Click it and the fields open; after you save or cancel, it closes again.
+
+- "Remove" on a bank account now asks first. A box names the account, its bank and the last four digits of its account number, and says that all its details will be deleted. Only "Yes, remove" deletes it. "Cancel" closes the box and changes nothing.
+
+- After a removal, a short message confirms which account was removed.
+
+WHAT YOU'LL GET
+
+Adding an account takes no scrolling, and an account can no longer be deleted by a slip of the mouse.
+
+GOOD TO KNOW
+
+- We are not adding an undo. A removed account still needs to be entered again if it was removed by mistake, but the confirmation box makes that much less likely.
+
+- If an account is used by a statutory body's payment details or as a payroll paying account, the system still refuses to remove it and says why, as it does today.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+components/company-panel.tsx bank tab: move the add form above the list inside a closed-by-default disclosure (button aria-expanded; closes on successful save via the action's redirect/revalidate and on Cancel). Remove uses components/ui/confirm-submit.tsx (the house confirm pattern) with bank name and last 4 digits of the account number only (never the full number in the dialog) and a "Yes, remove" / "Cancel" pair; success toast via the existing ?success channel naming bank + last 4. Monolith and Classic. Keys in 6 locales. Check removeBankProfile's existing refusals (referenced by a statutory authority or a paying account) still surface. Tests: DOM test (disclosure closed by default, opens, Remove requires confirm, Cancel leaves the form unsubmitted, dialog shows last 4 only); the read-only view (r403) unchanged. No migration.

@@ -1,0 +1,38 @@
+VERDICT: Small fix to what is already there   ·   SIZE: Small
+
+WHAT YOU TOLD US
+
+Borang 8A stopped you with "Employee D — IC", although Employee D is not Malaysian. You asked that the identity number follow the employee's nationality: the IC number for a Malaysian, the passport number for anyone else, and that a non-Malaysian with a passport is never blocked for having no IC. You are right: Borang 8A asked every employee for an IC number.
+
+WHAT WE'LL CHANGE
+
+- The identity number on Borang 8A follows the employee's status, the same status payroll already uses for contributions:
+  - Malaysian citizen: the IC (MyKad) number.
+  - Permanent resident: the MyPR number.
+  - Non-citizen: the passport number.
+
+- A non-citizen with a passport number is no longer stopped for having no IC. Their passport number prints in the identity column.
+
+- If the number that applies is genuinely missing, the message names that number, for example "Passport number" for a non-citizen, so you know exactly what to fill in.
+
+- The same rule applies to the EIS (SIP) contribution schedule, which lists the same people.
+
+WHAT YOU'LL GET
+
+Borang 8A goes through for staff of every nationality, with the right identity number on each line.
+
+GOOD TO KNOW
+
+- The status comes from the employee's EPF citizenship status on their statutory record (citizen, permanent resident or non-citizen). The same field decides their EPF rate. If someone's status is wrong there, their contribution rate is wrong as well, so it is the one place to correct.
+
+- We hold a permanent resident's MyPR number in the same box as an IC number, because the two cards use the same 12-digit format.
+
+- If a citizen has no IC number on file but has a non-Malaysian nationality and a passport number, the passport number is used rather than blocking the form.
+
+- No SOCSO or EIS amounts change.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+One shared, pure helper (localization/my/statutory-identity.ts, client-safe) used by Borang 8A, the SIP schedule and Borang A (item 5c31d379): input epfCitizenship, nationality, icNumber, passportNumber; output { value, kind one of ic, mypr, passport or null, missing one of IC, MyPR number, Passport number, IC or passport number, or null }. Rule: non_citizen → passport; pr → ic as MyPR; citizen or none → ic, else passport when nationality is set and not Malaysian (isMalaysianNationality), else missing IC (or "IC or passport number" when nationality is non-Malaysian). Production today: one non_citizen with passport and no IC (the reported case) and one Singaporean recorded citizen with an IC (keeps printing the IC). 8A read adds passport_number, epf_citizenship, nationality; readiness uses the missing field; the ASSIST upload file is NOT changed in this item (its identity field is PERKESO's own spec) — check and report what it carries. Tests: every branch of the helper; the reported case passes; a non_citizen without passport blocks naming "Passport number"; Select All bytes unchanged for the existing all-citizen fixture. No migration.

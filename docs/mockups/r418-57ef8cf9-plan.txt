@@ -1,0 +1,25 @@
+VERDICT: Small change   ·   SIZE: Small
+
+WHAT WE'LL CHANGE
+
+- Two panels at the foot of Payroll > Statutory Forms are removed: "Compliance worklist · CP22 / CP22A" and "New joiners in" the month. The Income Tax (LHDN) section is now the one place for CP22 and CP22A: open the form, choose the company, then pick the person from the list of recent joiners or leavers.
+
+- Nothing else on the page changes, and no employee, joining or tax record is touched. CP22 and CP22A are filled in exactly as they are today.
+
+- Old links that pointed at the removed worklist open the Statutory Forms page instead of a broken section.
+
+WHAT YOU'LL GET
+
+A shorter Statutory Forms page with each form in one place.
+
+GOOD TO KNOW
+
+- The list of people inside CP22 and CP22A's own Open Form step stays. It is the same list the old worklist showed, so nothing you used it for is lost.
+
+- The page no longer reads that list when it opens, which also makes it a little quicker.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+app/payroll/statutory-forms/page.tsx: remove the worklist section and the db46d9a2 month-cohort panel and their reads (complianceWorklist, the cohort read) from the landing page only; complianceWorklist stays (the r413 event screen uses it). Keep ?companyId and the worklist anchor bookmarks resolving to the page (no 404). Retire the panel's keys, never delete. Grep tests pinning the worklist on this page (statutory-forms-page, cp22-month-cohort, r413-event-select) and update them to the reversed decision without loosening; keep cp22-month-cohort's data tests if the cohort function is still used elsewhere, else move them with the function. No migration.
