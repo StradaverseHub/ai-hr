@@ -16,6 +16,8 @@ beforeEach(()=>{location.path='/leave/history';});
 // list — that second case is the gate, asserted from the rendered rail rather than from the map.
 // r404 (42e55e2b) — UPDATED, NOT LOOSENED: Leave Details (/leave/details) is the fourth row and is core leave,
 // so it is listed with AND without the `toil` module; only Leave Credit History is gated.
+// r426 (b3da5f59) — UPDATED, NOT LOOSENED: that row now reads "Leave Credit Status" (same key nav.leaveCreditHistory,
+// same href /leave/credit); the three name lookups below pin the new wording.
 describe('My Leave uses the shared sidebar flyout',()=>{
  it.each([false,true])('keeps leaf links outside the rail and swaps/dismisses one panel in collapsed=%s',collapsed=>{
   const {container}=show(collapsed);const rail=container.querySelector('aside')!;expect(rail).not.toBeNull();
@@ -27,7 +29,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/details']);
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
-  expect(within(panel).getByRole('link',{name:'Leave Credit History'})).not.toHaveAttribute('aria-current');
+  expect(within(panel).getByRole('link',{name:'Leave Credit Status'})).not.toHaveAttribute('aria-current');
   // The old name is gone from the panel, not merely joined by the new one.
   expect(within(panel).queryByRole('link',{name:'Leave Overview'})).toBeNull();
   const attendance=screen.getByRole('button',{name:'My Attendance'});fireEvent.click(attendance);
@@ -59,7 +61,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   const home=screen.getByRole('button',{name:messages.nav.sectionHome});expect(home).toHaveAttribute('aria-expanded','false');fireEvent.click(home);
   fireEvent.click(screen.getByRole('button',{name:'My Leave'}));
   expect(within(screen.getByRole('navigation',{name:'My Leave'})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/details']);
-  expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit History'})).toBeNull();
+  expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit Status'})).toBeNull();
   off.unmount();
   show(false,['toil']);
   const leave=screen.getByRole('button',{name:'My Leave'});
@@ -67,7 +69,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   fireEvent.click(leave);
   const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit','/leave/details']);
-  expect(within(panel).getByRole('link',{name:'Leave Credit History'})).toHaveAttribute('aria-current','page');
+  expect(within(panel).getByRole('link',{name:'Leave Credit Status'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
   expect(within(panel).getByRole('link',{name:'Leave Request Status'})).not.toHaveAttribute('aria-current');
  });
