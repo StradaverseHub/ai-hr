@@ -94,9 +94,17 @@ export function StackedRow({ children, className }: { children: React.ReactNode;
  *  - `title-inline` top-left with its label inline in front (`LINE 4`);
  *  - `aside`   top-right, no label printed (the status word);
  *  - `full`    the whole row width, label above (actions, a long reason);
+ *  - `split`   a status word with a reason under it: the cell dissolves (`display:contents`) so the word
+ *              (wrap it in `stackedSplitWordCls`) goes top-right and the reason (`stackedSplitNoteCls`)
+ *              takes the full width at the foot of the block;
  *  - default   one of two columns, label above.
  */
-export type StackedCellRole = 'title' | 'title-inline' | 'aside' | 'full';
+export type StackedCellRole = 'title' | 'title-inline' | 'aside' | 'full' | 'split';
+
+/** Inside a `split` cell: the status word, placed top-right when stacked. */
+export const stackedSplitWordCls = '@max-3xl:col-start-2 @max-3xl:row-start-1 @max-3xl:justify-self-end @max-3xl:text-right';
+/** Inside a `split` cell: the reason, the whole width at the foot of the block when stacked. */
+export const stackedSplitNoteCls = '@max-3xl:col-span-2';
 
 const LABEL_BEFORE =
   '@max-3xl:before:mb-1 @max-3xl:before:block @max-3xl:before:font-sans @max-3xl:before:text-[13px] @max-3xl:before:font-medium @max-3xl:before:normal-case @max-3xl:before:tracking-normal @max-3xl:before:text-muted-foreground @max-3xl:before:content-[attr(data-label)] @max-3xl:before:[overflow-wrap:anywhere] ' +
@@ -111,6 +119,7 @@ const ROLE_CLS: Record<StackedCellRole | 'cell', string> = {
     '@max-3xl:col-start-1 @max-3xl:row-start-1 @max-3xl:font-semibold @max-3xl:before:mr-1.5 @max-3xl:before:mb-0 @max-3xl:before:inline',
   ),
   aside: '@max-3xl:col-start-2 @max-3xl:row-start-1 @max-3xl:text-right',
+  split: '@max-3xl:contents',
 };
 
 export function StackedTd({
@@ -142,7 +151,7 @@ export function StackedTd({
           ? ROLE_CLS[cellRole ?? 'cell']
           : cellRole === 'full'
             ? '@max-3xl:col-span-2'
-            : cellRole === 'title' || cellRole === 'aside'
+            : cellRole === 'title' || cellRole === 'aside' || cellRole === 'split'
               ? ROLE_CLS[cellRole]
               : '',
         className,

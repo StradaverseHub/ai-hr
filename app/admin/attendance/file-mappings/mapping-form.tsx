@@ -45,6 +45,7 @@ import { formatDmy } from '@/lib/date-display';
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
 import type { ClockingMappingInput } from '@/packs/attendance/service';
 import { saveClockingMappingAction } from './actions';
+import { FixedWidthRuler } from './fixed-width-ruler';
 
 type DelimChoice = 'comma' | 'tab' | 'semicolon' | 'other';
 type CodeRow = { code: string; direction: 'in' | 'out' | '' };
@@ -279,15 +280,6 @@ export function MappingForm({
     </div>
   );
 
-  // r427 — the fixed-width preview in blocks of ten positions that wrap to the section's width, with no field
-  // names on the ruler (they overlapped); each field is its own labelled row below. The field being typed in
-  // is marked by an underline on its positions.
-  const BLOCK = 10;
-  const blocks = Array.from({ length: Math.ceil(maxLen / BLOCK) }, (_, b) =>
-    Array.from({ length: Math.min(BLOCK, maxLen - b * BLOCK) }, (_, i) => b * BLOCK + i + 1),
-  );
-  const cellW = 'inline-block w-[14px] shrink-0 text-center';
-  const focusMark = 'shadow-[inset_0_-2px_0_0_#f97316] monolith:shadow-[inset_0_-2px_0_0_var(--signal)]';
   const readsOf = (f: ClockingField) => (firstData && fields[f] ? (extractFields(firstData, def).values[f] ?? '') : '');
   const lineReads = (f: ClockingField) => (
     <span className={`${typeHelpCls} min-w-0 [overflow-wrap:anywhere]`}>
@@ -597,36 +589,15 @@ export function MappingForm({
 
         {hasSample && layout === 'fixed_width' && (
           <div className="space-y-3 pb-2">
-            <div className="flex flex-wrap gap-x-4 gap-y-3 font-mono text-sm" data-ruler>
-              {blocks.map((positions, b) => (
-                <div key={b} className="flex flex-col gap-0.5" data-ruler-block>
-                  <div className="flex text-[10px] text-muted-foreground monolith:text-mid" aria-hidden>
-                    {positions.map((pos) => (
-                      <span key={pos} className={`${cellW} relative`}>
-                        {pos === positions[0] || pos % 5 === 0 ? <span className="absolute left-1/2 -translate-x-1/2">{pos}</span> : '·'}
-                      </span>
-                    ))}
-                  </div>
-                  {shownFixed.map((line, li) => (
-                    <div key={li} className={`flex ${hasHeader && li === 0 ? 'italic opacity-60' : ''}`}>
-                      {positions.map((pos) => {
-                        const owner = posOwner(pos);
-                        const ch = line[pos - 1] ?? '';
-                        return (
-                          <span
-                            key={pos}
-                            className={`${cellW} ${owner ? SHADE_CLS[SHADE[owner]] : ''} ${owner && owner === focusField ? focusMark : ''}`}
-                            title={owner ? `${fieldLabel(owner)} · ${pos}` : String(pos)}
-                          >
-                            {ch === ' ' || ch === '' ? ' ' : ch}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
+            <FixedWidthRuler
+              lines={shownFixed}
+              maxLen={maxLen}
+              hasHeader={hasHeader}
+              ownerOf={posOwner}
+              shadeOf={(o) => SHADE_CLS[SHADE[o]]}
+              titleOf={(o, pos) => `${fieldLabel(o)} · ${pos}`}
+              focused={focusField}
+            />
             {shadeLegend}
           </div>
         )}
@@ -657,28 +628,33 @@ export function MappingForm({
             <FormRow key={f} label={fieldLabel(f)} htmlFor={`${uid}-start-${f}`} required={req}>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span aria-hidden className={`inline-block h-3 w-3 shrink-0 border border-border ${SHADE_CLS[SHADE[f]]}`} />
-                <input
-                  id={`${uid}-start-${f}`}
-                  aria-label={`${fieldLabel(f)} ${t('form.colStart')}`}
-                  inputMode="numeric"
-                  className={`${inputCls} w-20`}
-                  value={posFields[f]?.start || ''}
-                  onFocus={() => setFocusField(f)}
-                  onBlur={() => setFocusField((c) => (c === f ? null : c))}
-                  onChange={(e) => setPos(f, 'start', e.target.value)}
-                />
+                {/* A sized box around each input: inputCls carries w-full, which beats a w-20 on the same element. */}
+                <span className="w-20 shrink-0">
+                  <input
+                    id={`${uid}-start-${f}`}
+                    aria-label={`${fieldLabel(f)} ${t('form.colStart')}`}
+                    inputMode="numeric"
+                    className={inputCls}
+                    value={posFields[f]?.start || ''}
+                    onFocus={() => setFocusField(f)}
+                    onBlur={() => setFocusField((c) => (c === f ? null : c))}
+                    onChange={(e) => setPos(f, 'start', e.target.value)}
+                  />
+                </span>
                 <span aria-hidden className="text-muted-foreground">
                   –
                 </span>
-                <input
-                  aria-label={`${fieldLabel(f)} ${t('form.colEnd')}`}
-                  inputMode="numeric"
-                  className={`${inputCls} w-20`}
-                  value={posFields[f]?.end || ''}
-                  onFocus={() => setFocusField(f)}
-                  onBlur={() => setFocusField((c) => (c === f ? null : c))}
-                  onChange={(e) => setPos(f, 'end', e.target.value)}
-                />
+                <span className="w-20 shrink-0">
+                  <input
+                    aria-label={`${fieldLabel(f)} ${t('form.colEnd')}`}
+                    inputMode="numeric"
+                    className={inputCls}
+                    value={posFields[f]?.end || ''}
+                    onFocus={() => setFocusField(f)}
+                    onBlur={() => setFocusField((c) => (c === f ? null : c))}
+                    onChange={(e) => setPos(f, 'end', e.target.value)}
+                  />
+                </span>
                 {lineReads(f)}
               </div>
             </FormRow>
@@ -788,11 +764,11 @@ export function MappingForm({
                     <StackedTd label={t('form.line')} role="title-inline" className="text-muted-foreground monolith:text-mid">
                       {l.lineNo}
                     </StackedTd>
-                    <StackedTd label={t('form.colCardId')} className="font-mono text-xs">
+                    <StackedTd label={t('form.colCardId')} className="font-mono text-xs leading-5">
                       {l.cardRef || '—'}
                     </StackedTd>
                     {fields.deviceId && (
-                      <StackedTd label={t('form.colDeviceId')} className="font-mono text-xs">
+                      <StackedTd label={t('form.colDeviceId')} className="font-mono text-xs leading-5">
                         {l.deviceRef ?? '—'}
                       </StackedTd>
                     )}

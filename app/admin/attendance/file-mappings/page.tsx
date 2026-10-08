@@ -152,7 +152,7 @@ export default async function FileMappingsPage({
                         <ConfirmSubmit
                           variant="ghost"
                           size="sm"
-                          className="h-auto px-0 py-0 text-destructive"
+                          className="h-auto px-0 py-0 text-destructive monolith:min-h-0 monolith:border-signal-text monolith:text-sm monolith:text-signal-text"
                           description={t('list.deleteConfirm', { name: m.name })}
                           confirmLabel={t('list.delete')}
                         >

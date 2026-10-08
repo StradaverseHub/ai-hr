@@ -15,7 +15,7 @@ import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
 import { FormRow, SectionCard, noteCls, typeHelpCls } from '@/components/ui/section-card';
-import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh, stackedSplitNoteCls, stackedSplitWordCls } from '@/components/ui/stacked-table';
 import { StatCells } from '@/components/ui/stat-cells';
 import { decodeClockingBytes, physicalLines, type ClockingEncoding } from '@/lib/clocking-file';
 import { MAX_IMPORT_CSV_BYTES, MAX_IMPORT_FILE_BYTES } from '@/lib/import-file';
@@ -311,7 +311,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
                       <StackedTd label={t('import.colLine')} role="title-inline" className="tabular-nums text-muted-foreground monolith:text-mid">
                         {r.lineNo.toLocaleString('en')}
                       </StackedTd>
-                      <StackedTd label={t('import.colCardId')} className="font-mono text-xs">
+                      <StackedTd label={t('import.colCardId')} className="font-mono text-xs leading-5">
                         {r.cardRef || '—'}
                       </StackedTd>
                       <StackedTd label={t('import.colEmployee')}>{r.employeeName ?? '—'}</StackedTd>
@@ -322,9 +322,11 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
                         {r.time ? r.time.slice(0, 5) : r.timeText || '—'}
                       </StackedTd>
                       <StackedTd label={t('import.colInOut')}>{r.direction ? t(`dirShort.${r.direction}`) : '—'}</StackedTd>
-                      <StackedTd label={t('import.colStatus')} role="aside" hideLabel className="@3xl:min-w-64">
-                        <ResultPill result={r.result} label={r.result === 'imported' ? t('import.statusValid') : t(`resultShort.${r.result}`)} />
-                        {r.result !== 'imported' && <div className={`mt-0.5 ${typeHelpCls}`}>{lineMessage(t, r)}</div>}
+                      <StackedTd label={t('import.colStatus')} role="split" hideLabel className="@3xl:min-w-64">
+                        <span className={`block ${stackedSplitWordCls}`}>
+                          <ResultPill result={r.result} label={r.result === 'imported' ? t('import.statusValid') : t(`resultShort.${r.result}`)} />
+                        </span>
+                        {r.result !== 'imported' && <div className={`mt-0.5 ${typeHelpCls} ${stackedSplitNoteCls}`}>{lineMessage(t, r)}</div>}
                       </StackedTd>
                     </StackedRow>
                   ))}

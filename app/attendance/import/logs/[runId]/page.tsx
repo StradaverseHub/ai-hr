@@ -6,7 +6,7 @@ import { Button, PageHeader, inputCls } from '@/components/ui';
 import { getClockingImportRun, listClockingImportRuns } from '@/packs/attendance/service';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
 import { LabelValue, LabelValueList, SectionCard, SubHeading, typeHelpCls } from '@/components/ui/section-card';
-import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh, stackedSplitNoteCls, stackedSplitWordCls } from '@/components/ui/stacked-table';
 import { StatCells } from '@/components/ui/stat-cells';
 import { lineMessage, ResultPill } from '../../line-view';
 import { RunStatusPill } from '../run-status';
@@ -155,7 +155,7 @@ export default async function ClockingImportLogPage({
                   <StackedTd label={t('log.colLine')} role="title-inline" className="tabular-nums text-muted-foreground monolith:text-mid">
                     {l.lineNo.toLocaleString('en')}
                   </StackedTd>
-                  <StackedTd label={t('log.colCardId')} className="font-mono text-xs">
+                  <StackedTd label={t('log.colCardId')} className="font-mono text-xs leading-5">
                     {l.cardRef || '—'}
                   </StackedTd>
                   <StackedTd label={t('log.colEmployee')}>{l.employeeName ?? '—'}</StackedTd>
@@ -166,9 +166,11 @@ export default async function ClockingImportLogPage({
                     {l.punchTime ? l.punchTime.slice(0, 5) : l.result === 'invalid_time' ? l.message || '—' : '—'}
                   </StackedTd>
                   {tab === 'errors' ? (
-                    <StackedTd label={t('log.colError')} role="full">
-                      <ResultPill result={l.result} label={t(`resultShort.${l.result}`)} />
-                      <div className={`mt-0.5 ${typeHelpCls}`}>
+                    <StackedTd label={t('log.colError')} role="split" hideLabel>
+                      <span className={`block ${stackedSplitWordCls}`}>
+                        <ResultPill result={l.result} label={t(`resultShort.${l.result}`)} />
+                      </span>
+                      <div className={`mt-0.5 ${typeHelpCls} ${stackedSplitNoteCls}`}>
                         {lineMessage(t, { result: l.result, detail: l.result === 'duplicate' || l.result === 'unknown_in_out_code' ? l.message : '' })}
                       </div>
                     </StackedTd>
