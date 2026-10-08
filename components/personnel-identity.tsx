@@ -209,6 +209,7 @@ export function IdentityFields({
         <PassportFields
           mode="form"
           requiredTrio={!isMY}
+          dmyDisplay
           value={{
             passportNumber,
             passportIssueDate,

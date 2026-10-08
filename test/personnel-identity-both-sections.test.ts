@@ -90,9 +90,14 @@ describe('Identity sections — NRIC gated by nationality, passport always (5586
     const PASSPORT = readFileSync(root + 'components/passport-fields.tsx', 'utf8');
     expect(PASSPORT, 'the group applies requiredTrio to the number/issue/expiry trio only')
       .toContain('const req = props.mode === \'form\' && props.requiredTrio;');
-    for (const f of ['passportNumber', 'passportIssueDate', 'passportExpiryDate']) {
-      expect(PASSPORT.includes(`box('${f}'`), `${f} is in the required trio`).toBe(true);
+    expect(PASSPORT.includes(`box('passportNumber', { required: req`), 'passportNumber is in the required trio').toBe(true);
+    // r422 — the two dates go through `dateBox`, which draws the DD-MMM-YYYY DateField where the Personnel
+    // profile opts in and the native box otherwise. The trio's `req` must reach BOTH branches.
+    for (const f of ['passportIssueDate', 'passportExpiryDate']) {
+      expect(PASSPORT.includes(`dateBox('${f}'`), `${f} is in the required trio`).toBe(true);
     }
+    expect(PASSPORT, 'the DateField branch carries the trio requiredness').toContain('required={req}');
+    expect(PASSPORT, 'the native branch carries the trio requiredness').toContain("box(key, { type: 'date', required: req })");
     // The Issuing Country picker (searchable Combobox) is part of the passport group.
     expect(PASSPORT.includes("picker('passportIssuingCountry'")).toBe(true);
     expect(PASSPORT.includes('<Combobox')).toBe(true);

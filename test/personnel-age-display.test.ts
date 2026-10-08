@@ -128,7 +128,8 @@ describe('drift guards (source assertions)', () => {
   it('the Personnel page renders the shared group and hands it the tenant-resolved today', () => {
     expect(page).toContain("import { BirthDateFields } from '@/components/birth-date-fields';");
     expect(page).toContain(
-      '<BirthDateFields mode="form" inputId="profile-dob-input" dateOfBirth={emp.dateOfBirth} today={today} />',
+      // r422 — `dmyDisplay` opts the profile's box into DD-MMM-YYYY; same id, name and today as before.
+      '<BirthDateFields mode="form" inputId="profile-dob-input" dateOfBirth={emp.dateOfBirth} today={today} dmyDisplay />',
     );
     // The DOB input keeps its id: components/ic-dob-autofill.tsx writes the MyKad-derived date straight onto
     // that DOM node, so losing the id silently breaks item 354a500d with nothing else going red.

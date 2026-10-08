@@ -9,6 +9,8 @@ import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { FamilyFormDialog } from './family-form-dialog';
 import { inputCls } from './ui';
+import { DateField } from './ui/date-field';
+import { formatDmy } from '@/lib/date-display';
 import { PayStructureFields, type PayModeOption } from './pay-structure-fields';
 import { CurrencySelect } from './currency-select';
 import { editCompensationAction, supersedeCompensationAction } from '@/app/admin/personnel/[employmentId]/actions';
@@ -87,6 +89,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
       if (!q) return true;
       const hay = [
         r.effectiveDate,
+        formatDmy(r.effectiveDate),
         `${r.currency} ${fmt(r.basic)}`,
         r.previous != null ? fmt(r.previous) : '',
         r.incrementAmount != null ? fmt(r.incrementAmount) : '',
@@ -182,7 +185,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
     <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">{t('effectiveDate')}</span>
-        <input name="effectiveFrom" type="date" required defaultValue={r.effectiveDate} className={inputCls} />
+        <DateField name="effectiveFrom" required defaultValue={r.effectiveDate} className={inputCls} label={t('effectiveDate')} />
       </label>
       {/* r374 (item 7dbaf677) — `required` DROPPED here too, and the two forms HAD to move together.
           This is the EDIT half of the same screen whose Add half dropped it; leaving one of them is how
@@ -318,7 +321,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
             ) : (
               pageRows.map((r) => (
                 <tr key={r.id} className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}>
-                  <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.effectiveDate}</td>
+                  <td className="whitespace-nowrap px-4 py-2 tabular-nums">{formatDmy(r.effectiveDate)}</td>
                   <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
                     {r.currency} {fmt(r.basic)}
                   </td>

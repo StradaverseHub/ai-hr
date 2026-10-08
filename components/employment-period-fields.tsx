@@ -24,6 +24,7 @@
  */
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
+import { DateField } from '@/components/ui/date-field';
 import { DRAFT_PERIOD_UNITS } from '@/lib/employee-draft-schema';
 
 /** `people.detail.employmentInfo.*` label key for the period — the Personnel card's own word for it. */
@@ -108,10 +109,29 @@ export function EmploymentPeriodField(
  */
 export function ConfirmationDateField(
   props:
-    | { mode: 'form'; value: string | null | undefined; name?: string }
+    | {
+        mode: 'form';
+        value: string | null | undefined;
+        name?: string;
+        /** r422 — OPT-IN: draw the box as DD-MMM-YYYY (components/ui/date-field.tsx); same name, same ISO
+         *  value posted. The Personnel profile passes it; the Create New Employee draft does not. */
+        dmyDisplay?: boolean;
+      }
     | { mode: 'controlled'; value: string | null | undefined; onChange: (value: string) => void },
 ) {
   const t = useTranslations('people.detail');
+  if (props.mode === 'form' && props.dmyDisplay) {
+    return (
+      <Field label={t('employmentInfo.confirmationDate')}>
+        <DateField
+          name={props.name ?? 'confirmationDate'}
+          defaultValue={props.value ?? ''}
+          className={inputCls}
+          label={t('employmentInfo.confirmationDate')}
+        />
+      </Field>
+    );
+  }
   return (
     <Field label={t('employmentInfo.confirmationDate')}>
       <input

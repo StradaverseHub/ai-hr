@@ -564,7 +564,8 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     expect(profile).toContain("tScheme('unmatchedWarning'");
     expect(profile).toContain("tScheme('unmatchedNoGrade')");
     expect(profile).toContain("t('recalcColGrade')");
-    expect(profile).toContain('{r.tookEffectOn}');
+    // r422 — still the change's own effective date, drawn DD-MMM-YYYY (lib/date-display.ts).
+    expect(profile).toContain('{formatDmy(r.tookEffectOn)}');
     // Rendered in BOTH states of the card: the one that matters most is "some types resolved, some did not".
     expect((profile.match(/\{schemeUnmatchedNotice\}/g) ?? []).length).toBe(2);
 
