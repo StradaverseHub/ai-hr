@@ -1,0 +1,119 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+WHAT YOU ASKED FOR
+
+A setting, Attendance File Structure Mapping, where an administrator describes once how each clocking device writes its CSV or TXT file (which column or character positions hold each field, and what its In/Out codes mean), helped by a sample file that is shown but not imported. Then a separate Import Clocking Data screen with a preview, import of the valid lines, and a log of every line not imported and why.
+
+THE SITUATION TODAY
+
+1. Attendance > Import already exists, for one fixed layout only: a CSV of employee reference and date-time ("staff_id, timestamp") pasted into a text box. No other layouts, no fixed-width TXT, no In/Out code.
+
+2. Matching already works as you describe. Card Assignment and the employee's Attendance tab hold one Card ID per employee; the import matches on it first, then on Employee ID or IC. Leading zeros are kept, and one card cannot belong to two employees.
+
+3. It keeps no log. Problems are shown on screen and are gone when you leave the page.
+
+4. Something you should know: it replaces the whole day (earliest punch in, latest out), writing over Clock screen clockings and times already corrected through an approved attendance request.
+
+WHAT WE'LL CHANGE
+
+Attendance > File Structure Mapping (new menu row, beside Card Assignment)
+
+1. A list with Mapping Name, File Type, Layout, Device, Status and Last Used, and View, Edit, Duplicate, Deactivate or Activate, and Delete. Delete only for a mapping never used; a used one is deactivated instead.
+
+2. Today's layout stays as a built-in mapping, "AIHR Standard Template", view only.
+
+3. The New Mapping page has Mapping Name, Description, Device, File Type (CSV or TXT), Layout (separated by a character, or fixed width), Delimiter (comma, tab, semicolon or another character you type), Has Header Row, Character Encoding (UTF-8 by default, also UTF-16 and Windows-1252) and Status.
+
+4. Drop or browse a sample file. Its first 20 lines are shown in columns and kept with the mapping for Edit. Nothing in it is imported.
+
+5. Separated files: drag a field onto a column heading, or choose the column from a list. Both do the same thing.
+
+6. Fixed-width files: type each field's start and end position. A numbered ruler and shading on the sample lines show at once if a field is one character off.
+
+7. In/Out codes: a table of device code and meaning (Clock In or Clock Out), pre-filled from the sample. An unknown code is reported, never guessed.
+
+8. Test with the sample shows what each sample line reads as before you save.
+
+9. Card ID, Day, Month, Year, Hours and Minute are required; Device ID and In Out Code are optional. A missing one refuses Save with "Mapping cannot be saved. Please configure the following required fields:" and the missing names. Names must be unique.
+
+Attendance > Import Clocking Data (the current Import row, renamed)
+
+10. Choose an active mapping, drop the file, press Validate. Nothing is saved at this step.
+
+11. The preview shows the counts and a table of Line, Card ID, Employee, Date, Time, In/Out and Status.
+
+12. Import Valid Records saves the valid lines and skips the rest; one bad line never stops the others. The checks run again at that moment.
+
+13. Times are read as printed, Malaysia time, no conversion. A two-digit year 26 means 2026. Month 13, day 35, 31 September, hour 25, minute 75 or a future date are invalid.
+
+14. Card IDs match exactly (surrounding spaces ignored) against employees employed on that date whom the importer may manage. A card outside your companies is reported as not found, naming no one.
+
+15. A duplicate is a clocking already recorded for the same employee, day and minute (and In or Out, when coded), from any source or earlier in the file. It is skipped and listed, so importing a file twice adds nothing twice.
+
+16. Imported clockings are added to the day, never written over it. The day is then worked out as for multiple clockings on the Clock screen: first in, last out.
+
+17. Without In/Out codes, a day's lines are read in time order as in, out, in, out. An odd number leaves the day open and flagged for review, as the Clock screen does. Uncoded lines cannot add to a day that has Clock screen clockings; they are listed.
+
+18. Days corrected through an approved request, or inside a closed pay run, are not changed; their lines are listed. A day in a processed pay run is updated and that run shows its "needs recalculation" notice. An approved overtime plan is applied as at clock-out.
+
+Import logs
+
+19. Every import gets a log with all the fields and counts you listed. Failed is the sum of duplicates, unmatched cards, invalid date/time and other errors.
+
+20. Status: Successful (all imported), Completed with Errors (some), No Records Imported (none, for example a repeat file), Failed (stopped, nothing saved, reason shown).
+
+21. A log lists every line not imported with its line number, card ID, employee where known and error. Logs are kept; the file is not. The preview warns if the same file was imported before.
+
+Who can do it
+
+22. Administrators set up mappings and import, as today. Mappings are shared by all companies, since a device file does not say which company it is for.
+
+WHAT HAPPENS TO WHAT IS ALREADY SAVED
+
+1. Days imported in the past, Card IDs and all other attendance are not touched.
+
+2. Files in today's format now follow the new rules: they add instead of replacing, skip duplicates and corrected days, and leave a log.
+
+WHAT IS NOT DONE
+
+1. No dragging on fixed-width files. Positions are typed, with the shaded preview to check them.
+
+2. Excel files are not accepted on this screen; device exports are CSV or TXT.
+
+3. One file can be up to about 900 KB, roughly 25,000 lines. A larger file needs splitting into two.
+
+4. Only the three encodings above. Others can be added if a device needs one.
+
+5. Leading zeros are not ignored when matching: 001234 and 1234 are different cards, as they are today.
+
+6. Seconds are not read; clockings are kept to the minute.
+
+7. An imported clocking cannot be deleted from the import log. A wrong time is fixed with an attendance correction, as today.
+
+8. Imports are not checked against clocking locations or registered phones, as today.
+
+9. Files are uploaded by hand. No automatic pick-up from the device.
+
+Pictures attached: the File Structure Mapping list, New Mapping for a separated file and for a fixed-width file, the Import Clocking Data preview, and an import log.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Current state (read on main 3501742c). Existing importer: app/attendance/import/page.tsx (requireAdmin :8), punch-import.tsx (textarea only, :84-95), actions.ts dryRun/commit :8-20 → core/attendance.ts importAttendancePunches :5241. Parser lib/attendance-csv.ts parseAttendanceCsv :14 (comma only, staff_id + YYYY-MM-DD HH:MM[:SS]). Matching :5248-5279: non-terminated employments visible through RLS (attendance_rls can_see_employment OR can_admin_payroll_employment, 0099:103, re-expressed in 0515:127), flat map code → IC digits → card_id last (card wins). Grouping :5330-5345 by roster window ±180 min else calendar day; first = in, last = out :5352. Write :5371-5428 upserts attendance (onConflict employment_id+attendance_date) with method 'import', geo nulled, remarks 'Imported (terminal)'; writes NO attendance_punch rows; overwrites web-clocked days and approved corrections (decideAttendanceCorrection writes aggregate times directly :3448-3480); no payroll interlock; no run log; event attendance.imported per day :5445. Card ID: employment.card_id (schema.ts:886, 0474, unique (tenant_id, card_id) WHERE NOT NULL incl. terminated), core/attendance-card.ts assertCardIdFree :80, setEmploymentCardId :130; screens app/admin/card-assignment/page.tsx, personnel page :2496-2512. Multi-punch: attendance_punch (schema.ts:3882; direction in/out; method clock_method web|import :3757), recomputeDayFromPunches core/attendance.ts:1636 (first-in/last-out, balanced rule, unbalanced → null checkout), checkOutTx legacy synthesis of an 'in' punch from a row with no children :1860. Device gate bypassed for imports by construction (:1683 comment); ADR-0070 terminal punches skip geofence (:5368 comment). Pay-run interlock pattern: core/attendance-recompute.ts :379-475 using packs/payroll/service batchesCoveringAttendanceDates (core/payroll.ts:1224, processed only) + markBatchNeedsRecalc (no-op for draft/closed). Run-log precedent: employee_import_run (schema.ts:9044, 0341 RLS tenant AND app.is_admin(), file not stored, derived status, IMPORT_RUN_ERROR_CAP core/import.ts:78). Upload limits lib/import-file.ts MAX_IMPORT_CSV_BYTES 900_000 :32 (server action body), drop-zone precedent app/admin/leave-config/history-import/leave-history-import.tsx :240-280. Nav: packs/attendance/index.ts ATTENDANCE_NAV (labelKey attendanceSettings = the reporter's "Attendance > Settings"; group admin) :317, Import row :431, Card Assignment :436; lib/permissions.ts attendancePolicy column routes :864-880 (requireAdmin). Admin roles hr_admin/super_admin (lib/authz.ts:6).
+
+Migration 0518. Journal max idx 515 (entries.length 423 — never use). 0516 = unmerged claude/chgb-onboarding-assets-module-c5e840 (when 1791500000000); 0517 = r423 build/r423-clocking (0 commits yet; its plan says when 1791600000000). Use when 1791700000000 and re-check both branches' journals at merge; land after r423.
+- enums clocking_file_type (csv, txt), clocking_file_layout (delimited, fixed_width), clocking_import_line_result (imported, duplicate, unmatched_card, invalid_date, invalid_time, unknown_in_out_code, missing_value, line_too_short, ambiguous_card, not_employed_on_date, future_date, day_corrected, period_closed, uncoded_on_clocked_day, other).
+- clocking_file_mapping: id, tenant_id, name, description, device_name, file_type, layout, delimiter text null, has_header bool, encoding text CHECK in ('utf-8','utf-16le','utf-16be','windows-1252'), active bool default true, fields jsonb (per field {column} or {start,end}; validated in service, required six), in_out_codes jsonb [{code, direction}], sample_lines jsonb (≤20 strings), created_by_user_id, created_at, updated_at; unique (tenant_id, lower(name)). RLS ALL: tenant AND app.is_admin(). GRANT to ai_hr_app.
+- clocking_import_run: id, tenant_id, mapping_id FK RESTRICT (null for built-in), mapping_name, mapping_snapshot jsonb, file_name, file_bytes, file_sha256, created_by_person_id, created_by_user_id, created_at, total_lines, valid_lines, imported_lines, duplicate_lines, unmatched_card_lines, invalid_datetime_lines, other_error_lines, failure_reason text null. Status DERIVED (failure_reason → Failed; imported=0 → No Records Imported; failed=0 → Successful; else Completed with Errors). RLS tenant AND app.is_admin(). Index (tenant_id, created_at).
+- clocking_import_line: id, tenant_id, run_id FK CASCADE, line_no, card_ref, employment_id null, device_ref, punch_date null, punch_time null, direction null, result, message, raw_line (only when result <> imported, ≤500 chars), attendance_punch_id null FK ON DELETE SET NULL. RLS tenant AND app.is_admin() AND (employment_id IS NULL OR app.can_see_employment(employment_id)) — verify helper names in 0515 before writing. GRANT. Index (run_id, line_no).
+- No change to attendance or attendance_punch (link lives on the line row). Check erasure/anonymisation sweeps for attendance tables and add clocking_import_line (card_ref, raw_line).
+
+Code. lib/clocking-file.ts (pure, DB-free): parseWithMapping(text, mapping) → per-line {lineNo, fields, errors}; delimited split (quoted CSV via lib/csv if usable), fixed-width slice 1-based inclusive, trim, header skip, blank lines skipped and not counted, two-digit year → 20YY, real-calendar date check, 0-23 / 0-59, code lookup case-insensitive trimmed. Built-in mapping wraps parseAttendanceCsv. Decode in the browser with TextDecoder(encoding), strip BOM, enforce MAX_IMPORT_CSV_BYTES on decoded text; server re-parses text, never trusts the client preview. core/clocking-import.ts via packs/attendance/service (drift ratchet): validateClockingImport (dry run, no writes) and commitClockingImport (one transaction; re-validates; run row written in that tx; on throw, write a Failed run row in a separate tx with failure_reason, best-effort like recordImportRun core/import.ts:1250). Matching: card_id → employee_code → IC as today, restricted to employments active on punch_date (hired_on/join_date ≤ date ≤ terminated_on), >1 hit → ambiguous_card. Business day: reuse the roster-window assignment from importAttendancePunches (extract it). Per (employment, business day): refuse if approved attendance_correction with proposed_check_in/out; refuse if a CLOSED payroll_batch covers the date (add a closed-batch sibling of batchesCoveringAttendanceDates in core/payroll, exported via packs/payroll/service); synthesise legacy punch children from the aggregate (both in and out) when the row has none, method from the row; dedupe against existing punches (minute + direction when coded, minute only when uncoded) and earlier file lines; uncoded file on a day with any method='web' punch → uncoded_on_clocked_day; insert attendance_punch method 'import', geo columns null, no clock_capture; create the aggregate row if missing (dayType from scheduleFor); recomputeDayFromPunches; applyApprovedOtPlanTx as checkOutTx does :1920; appendEvent attendance.imported with runId. Then batchesCoveringAttendanceDates over changed days + markBatchNeedsRecalc, and a run event attendance-clocking-import.run (counts only). Retire importAttendancePunches (callers: app/attendance/import/actions.ts and tests listed below) rather than keeping two writers.
+Decisions recorded: uncoded alternation replaces earliest/latest for odd-count days (day left open, matches R45 multi-clock rule); import adds, never overwrites (reverses the current upsert); duplicates count as failed (reporter's arithmetic); file not stored (0341 precedent); mappings tenant-wide (0474 tenant-wide card rationale); scope = RLS visibility, unmatched message does not reveal out-of-scope employees.
+
+Screens. /admin/attendance/file-mappings (list), /new, /[mappingId] (view), /[mappingId]/edit; /attendance/import (rebuilt: mapping select + drop zone + preview, preview capped at 500 rendered rows with tabs/filter, counts over all lines); /attendance/import/logs and /attendance/import/logs/[runId]. All requireAdmin → add to the attendancePolicy SCREENS routes in the same commit as the pages (test/function-access.test.ts). Nav: new row nav.fileStructureMapping "File Structure Mapping" after cardAssignment; nav.attendanceImport → "Import Clocking Data" (label only); six locales; update exact-set nav guards (test/attendance-menu-relocation.test.ts and the sidebar attendance-group guard). Drag-to-column: native HTML5 drag on the delimited preview headers with the select list as the keyboard path; no drag for fixed width. Mockups docs/mockups/r424-50ed39e1-*.png.
+
+Overlap with r423 (geofencing, 0517): both edit core/attendance.ts (r423: resolveGeofence, capture path, admin checkIn; r424: the import block and a shared business-day helper), packs/attendance/index.ts nav, messages nav.*, lib/permissions.ts, and the attendance nav guards. Imports never call resolveGeofence; r423's "geofencing not required" switch does not apply. Merge r423 first and rebase.
+
+Tests. Pure parser (delimited, tab, semicolon, other char, header, BOM, UTF-16 decode, fixed width incl. short line, two-digit year, 31-Sep, 25:10, unknown code). DB: card vs code vs IC precedence kept; terminated-before-date not matched; out-of-scope card → unmatched without name (company-admin ctx); re-import of same file → 0 imported, all duplicates, status No Records Imported; coded multi-punch day balanced; uncoded 3-punch day left open; legacy imported day re-imported → duplicates (synthesis); approved correction day untouched; closed run day refused; processed run marked needs-recalc; OT plan re-applied; one bad line does not abort; Failed run row survives a forced throw; mapping delete refused once used; name uniqueness; RLS cross-tenant on all three tables. Update attendance-import, 44bc1c33-card-assignment, plan-ot, attendance-device, clocking-geofence, attendance-pack, import-template, attendance-recompute where they call importAttendancePunches (update, not delete). Measure a 25,000-line commit locally (RISK: one transaction with per-day scheduleFor). Render check on a dev server (round-scoped port) for all six routes; pnpm test:browser for the preview table width. Full gate + gate:shadow (migration). ADR: clocking file mapping and import semantics (adds, never overwrites; amends ADR-0032 C6 and ADR-0070's terminal-punch note).
