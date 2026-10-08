@@ -128,14 +128,41 @@ like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HI
 
 ## 4. The gate
 
+Two tiers (ADR-0094). Pick by asking the classifier, never by judgement: `gate-affected.sh` refuses
+(exit 3, `FULL GATE REQUIRED` + every reason) whenever the full tier is needed.
+
+    # AFFECTED tier — only when EVERY file changed since the deployed commit is presentational or docs
+    bash scripts/gate-affected.sh > /tmp/aihr-gate-affected.log 2>&1          # [BASE]; default: built_ref on the box, else main
+
+    # FULL tier — everything else (and always when a migration, lib/, core/, packs/, actions, routes, scripts or config changed)
     pnpm exec tsc --noEmit
     CHUNKS=6 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1   # harness background flag, never a bare &
     pnpm exec next build
     env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow            # whenever a migration is involved
 
-- The suite is ~768 node + ~46 dom files and writes more WAL than this machine retires: never a bare
-  `pnpm vitest run` for the full suite. The chunked gate rebuilds the cluster per chunk and asserts
-  vitest COUNTED as many files as it was asked (a file whose worker fails to spawn is not counted).
+- **Affected tier is allowed** only when every changed file is: `components/**` (no `'use server'`),
+  `app/globals.css`, `messages/*.json`, `docs/**`, `*.md`, `test/**` (not the vitest setup files),
+  `public/**` (not `public/forms/**`), or an `app/**/page|layout|loading.tsx` whose changed lines contain
+  none of `await`, `import `, `scoped`, `session`, `redirect(`, `notFound(`, `permission`, `sql`, `db.`,
+  `withTenant`, `'use server'`, `fetch(`, `process.env`, `export async function`, `export function`,
+  `searchParams`. All of `lib/` is FULL. It refuses a dirty tree. It runs `vitest related` + every test
+  naming a changed file + every `-guard`/`-drift`/pack-drift guard + `pnpm test:browser` on a .tsx/.css
+  change, under both lock slots, one cluster rebuild if any of those touch the DB. Green writes
+  `.gate-receipt.json` `tier: "affected"`; red writes nothing. It does NOT run `tsc` or `next build`
+  (release runs `tsc`; the box builds before it migrates).
+- **The full gate runs in two parts.** (a) every no-DB file in ONE run through `vitest.nodb.config.ts`
+  (no globalSetup, `VITEST_MAX_WORKERS_NODB`, default 6), with every DB URL on a CLOSED port so a
+  misclassified file fails rather than passing on a leftover cluster; (b) the DB files chunked with a
+  rebuild per chunk, as before. Which side a file is on is computed (`scripts/gate-db-classify.ts`;
+  `$GATE_OUT/classify.tsv` says why), never hand-listed, and doubt means DB. `GATE_NODB_PROOF=1` runs
+  part (a) alone. Logs: `nodb.log` and `chunkN.log` in `$GATE_OUT` (default `/tmp/aihr-gate`). A green
+  full run on a clean tree writes `.gate-receipt.json` `tier: "full"`. Both scripts print the load
+  average first (a slow run under another project's 35 workers explains itself) and take both test-lock
+  slots themselves unless the caller already holds them.
+- The suite is ~1,220 node + dom files and writes more WAL than this machine retires: never a bare
+  `pnpm vitest run` for the full suite. The chunked gate rebuilds the cluster per DB chunk and asserts
+  vitest COUNTED as many files as it was asked (a file whose worker fails to spawn is not counted), and
+  that parts (a) + (b) counted the whole suite.
   `CHUNKS=6` is part of the command: the script's default of 3 fills the RAM disk.
 - One vitest per cluster at a time, and nothing else on the cluster during a gate: no agent tests, no
   dev server. Parallel agents each get their own `TEST_DB_NAMESPACE`; never invent one otherwise.
@@ -190,14 +217,21 @@ data directories are what the slow background drain is for.
 ## 7. Deploy
 
 Deploy is automatic after a green gate (the owner's standing override of ADR-0045's human gate).
-Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (tsc; vitest
-unless `.gate-receipt.json` matches HEAD; `rsync --delete`; `deploy.sh` on the box; marks the item
-deployed) — or `pnpm improve:deploy <worktree>` for a round that closes NO board item, which is the
-same four steps and no board write → `sudo systemctl restart aihr` on the box (you may) → run any
+Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (gate receipt
+check; tsc; `rsync --delete`; `deploy.sh` on the box; marks the item deployed) — or
+`pnpm improve:deploy <worktree>` for a round that closes NO board item, which is the same steps and no
+board write → `sudo systemctl restart aihr` on the box (you may) → run any
 script the round depends on
 → prove arrival with the zero-line dry-run of §3 → `GET localhost:3000/` on the box returns **401**
 (the password gate: healthy) → record the round (§12) → `graphify update .` (§11).
 
+- **The release never runs vitest** (r417, ADR-0094). It ships only a HEAD that `.gate-receipt.json`
+  covers (`result: PASS`, `sha` = HEAD) and prints the tier. `tier: "full"` (or a pre-tier receipt) ships.
+  `tier: "affected"` is re-judged against the diff from the DEPLOYED commit (`built_ref`) to HEAD with
+  the gate's own classifier: if that now needs FULL (more commits landed, a lib/ file crept in) or the
+  box cannot be asked, it REFUSES with the reasons. A missing, stale or red receipt refuses too. The fix
+  is always to run the gate (§4), never to hand-write a receipt. The gate is run on the commit that
+  ships: gate the merged main, or merge nothing after gating.
 - Server: `ssh -p 8288 ubuntu@203.142.6.241`, app `/opt/ai-hr`, no git checkout there. Default `node`
   is v18 and lacks `--env-file`; run scripts as
   `cd /opt/ai-hr && set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/<x>.ts`.
