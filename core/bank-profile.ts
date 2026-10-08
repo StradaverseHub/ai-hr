@@ -149,12 +149,14 @@ export async function upsertCompanyBankProfile(ctx: SessionContext, p: CompanyBa
  *  unchanged and still carries no account number (ADR-0030 Layer-0). */
 export async function removeCompanyBankProfile(
   ctx: SessionContext,
-  p: { id: string },
+  p: { id: string; companyId?: string },
 ): Promise<{ id: string; bank: string; debitAccountNo: string } | { id: null }> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .delete(companyBankProfile)
-      .where(eq(companyBankProfile.id, p.id))
+      // r419 verify D1 — scoped by company when the caller names one, as the update path already is: a
+      // tenant-wide admin posting company B's account from company A's screen deletes nothing.
+      .where(p.companyId ? and(eq(companyBankProfile.id, p.id), eq(companyBankProfile.companyId, p.companyId)) : eq(companyBankProfile.id, p.id))
       .returning({
         id: companyBankProfile.id,
         companyId: companyBankProfile.companyId,

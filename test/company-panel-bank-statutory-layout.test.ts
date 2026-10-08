@@ -152,7 +152,9 @@ describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
     expect(panel.match(/aria-expanded/g) ?? [], 'exactly one thing in this file expands').toHaveLength(1);
     const addAt = panel.indexOf('data-bank-add');
     expect(addAt, 'the add-a-bank-account block exists').toBeGreaterThan(-1);
-    const addBlock = panel.slice(addAt, panel.indexOf('</div>\n            {/* R46: a company may hold SEVERAL', addAt));
+    const addEnd = panel.indexOf('</div>\n            {/* R46: a company may hold SEVERAL', addAt);
+    expect(addEnd, 'the add block\'s end marker is found (a renamed marker must not widen the slice to the file)').toBeGreaterThan(addAt);
+    const addBlock = panel.slice(addAt, addEnd);
     expect(addBlock.length, 'the add block slice is real').toBeGreaterThan(400);
     expect(addBlock, 'and the one toggle is its button').toContain('aria-expanded={bankAddOpen}');
     expect(addBlock).toContain("t('bankAccountAdd')");

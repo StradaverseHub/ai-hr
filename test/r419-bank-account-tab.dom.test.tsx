@@ -200,11 +200,12 @@ describe('Remove asks first', () => {
   it('names every statutory body paid from the account — removing it leaves them with no paying account', async () => {
     const bp = profile();
     const body = (authority: string, bankProfileId: string | null) => ({ id: `sa-${authority}`, authority, accountNo: null, bankProfileId });
-    const { user } = setup([bp], [body('epf', bp.id), body('socso', null)]);
+    const { user } = setup([bp], [body('epf', bp.id), body('socso', null), body('lhdn', 'bp-other')]);
     const dialog = await openRemove(user);
     const text = dialog.textContent ?? '';
     expect(text).toContain(ORG.authority_epf);
-    expect(text, 'a body paid from another account is not named').not.toContain(ORG.authority_socso);
+    expect(text, 'a body with no paying account is not named').not.toContain(ORG.authority_socso);
+    expect(text, 'a body paid from ANOTHER account is not named').not.toContain(ORG.authority_lhdn);
     expect(text).toContain(ORG.bankRemoveConfirmPaysBodies.replace('{bodies}', ORG.authority_epf));
   });
 

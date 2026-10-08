@@ -537,7 +537,7 @@ export async function removeCompanyBankProfileAction(formData: FormData) {
   const companyId = String(formData.get('companyId'));
   let removed: Awaited<ReturnType<typeof removeCompanyBankProfile>> = { id: null };
   try {
-    removed = await removeCompanyBankProfile(s, { id: String(formData.get('id')) });
+    removed = await removeCompanyBankProfile(s, { id: String(formData.get('id')), companyId });
   } catch (e) {
     failCompany(e, companyId, companyTab(formData));
   }
