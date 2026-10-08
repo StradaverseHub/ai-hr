@@ -12,7 +12,8 @@ import { STATUTORY_FILED_STATUSES } from '@/db/schema';
 /**
  * 6babf4f6 — THE CP22 / CP22A WORKLIST MOVED OFF THIS PAGE, to Payroll → Statutory Forms.
  *
- * It is not gone: it renders there, unchanged, driven by the same `complianceWorklist`. It sat here
+ * It is not gone: it renders there, driven by the same `complianceWorklist` (r418: no longer as a panel at the
+ * foot of Statutory Forms, but as the choose-the-employee list behind its CP22 and CP22A cards). It sat here
  * only because Statutory Forms did not exist yet, and CP22 (new joiner) and CP22A (cessation) are LHDN
  * statutory notices — exactly what somebody opening Statutory Forms is looking for, and not what
  * somebody opening the general Reports page is. One home each, so nobody has to check both.
@@ -66,8 +67,10 @@ export default async function ReportsPage({
           teaches people it was removed. */}
       <p className="text-sm text-muted-foreground">
         {t('worklistMoved')}{' '}
-        <Link href="/payroll/statutory-forms#worklist" className="text-primary hover:underline">
-          {t('worklistMovedLink')}
+        {/* r418 (item 57ef8cf9) — the worklist panel this pointed at (`#worklist`) is gone; the LHDN shelf is
+            where CP22 and CP22A open now, so the link goes there and says so. `worklistMovedLink` is retired. */}
+        <Link href="/payroll/statutory-forms?body=lhdn" className="text-primary hover:underline">
+          {t('worklistMovedLinkLhdn')}
         </Link>
       </p>
 

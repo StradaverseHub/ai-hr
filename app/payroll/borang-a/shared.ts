@@ -135,6 +135,18 @@ export function borangARows(form: BorangAForm): BorangARow[] {
 }
 
 /**
+ * r418 (item 5c31d379) — THE ROWS AS THE i-AKAUN FILE SEES THEM: the IC FIELD as stored in the IC slot, not
+ * the printed identity number. The printed column now follows the EPF citizenship status (a non-citizen's
+ * passport), but the file's 02 record has a 12-digit IC field and no passport field on the one real EPFORMA2
+ * file in this repository (test/fixtures/kwsp-borang-a-epforma2.txt), so the file is NOT changed: it carries
+ * what it carried before r418, and a passport-only person is refused by name rather than written into it.
+ * ONE place, used by the file's readiness list and by its writer, so the two cannot disagree.
+ */
+export function borangAFileRows(form: BorangAForm): BorangARow[] {
+  return borangARows(form).map((r) => ({ ...r, ic: r.icNumber }));
+}
+
+/**
  * Resolve, validate, generate and gate — for a caller that already holds the request's query.
  *
  * FAILS CLOSED TWICE, and answers the SAME 'not-found' for every way of being refused: a malformed id, a
@@ -221,7 +233,7 @@ export async function loadBorangA(p: {
     missing,
     headerMissing,
     repMissing: missingBorangARep(result.meta.formHeader),
-    fileReadiness: borangAFileReadiness({ employerRef: form.employerRef, rows: borangARows(form) }),
+    fileReadiness: borangAFileReadiness({ employerRef: form.employerRef, rows: borangAFileRows(form) }),
     periodOverridden: contributionPeriodOverridden(form.payrollPeriodKey, form.contributionPeriodKey),
     summary: result.meta.summary ?? [],
     notes: result.meta.notes ?? [],
@@ -281,7 +293,8 @@ export async function loadBorangAFile(p: {
   }
 
   const form = loaded.form;
-  const rows = borangARows(form);
+  // r418 — the IC field, never the printed passport. See `borangAFileRows`.
+  const rows = borangAFileRows(form);
   const period = form.contributionPeriodKey;
   const batchRaw = p.query.get('batch') ?? '';
   const batchNo = /^\d{1,5}$/.test(batchRaw) ? Number(batchRaw) : 1;

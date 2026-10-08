@@ -270,6 +270,8 @@ const rowN = (i: number): BorangARow => ({
   employmentId: `e${i}`,
   memberNo: String(10000000 + i),
   ic: String(800101010000 + i),
+  idKind: 'ic',
+  icNumber: String(800101010000 + i),
   name: `PERSON ${i}`,
   staffNo: `S${i}`,
   wage: Math.round((3000 + i * 13.37) * 100) / 100,

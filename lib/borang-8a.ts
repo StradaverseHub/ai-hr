@@ -55,8 +55,20 @@ export type Borang8ARow = {
   stopDate: string;
   /** Column (2) STATUS — blank for a continuing employee, exactly as the specimen leaves it. */
   status: string;
-  /** Column (3) NO. KAD PENGENALAN. */
+  /**
+   * Column (3) NO. KAD PENGENALAN — the identity number that APPLIES to the person (r418, item e74af58c):
+   * the IC for a citizen, the MyPR number for a permanent resident, the passport number for a non-citizen.
+   * Decided once, in the read, by `statutoryIdentityFor` (localization/my/statutory-identity.ts).
+   */
   ic: string;
+  /** r418 — which document `ic` is: 'ic' | 'mypr' | 'passport', or '' when nothing applicable is on file. */
+  idKind: string;
+  /**
+   * r418 — the IC FIELD as stored, for the PERKESO ASSIST upload file ONLY. Not printed. That file's field 3
+   * is "Identification Number / SOCSO Foreign Worker Number" on PERKESO's own spec, which names no passport,
+   * so the file keeps carrying what it carried before r418; only the paper form's column (3) changed.
+   */
+  icNumber: string;
   /** Column (4) NAMA PEKERJA (MENGIKUT KAD PENGENALAN). */
   name: string;
   /** Column (5) Caruman, in RM. */
@@ -289,6 +301,10 @@ export function borang8AFrom(p: {
     stopDate: str(r.stopDate),
     status: str(r.status),
     ic: str(r.ic),
+    idKind: str(r.idKind),
+    // r418 — ABSENT ⇒ a row shaped before r418, whose `ic` WAS the IC field; the read always sets it (to ''
+    // when the person has no IC), so a present-but-empty value never falls back to the printed number.
+    icNumber: r.icNumber == null ? str(r.ic) : str(r.icNumber),
     name: str(r.name),
     contribution: round2(Number(r.contribution) || 0),
     // 18c1d92b — the upload file's four legs and the wage, carried through the same reconstruction the

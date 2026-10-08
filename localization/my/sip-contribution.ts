@@ -8,8 +8,11 @@
  *   • NO EIS CALCULATION, anywhere: JUMLAH CARUMAN is the two legs the 8A read took off the payslips;
  *   • ONE cycle selection: `params.runSeqs` is honoured by the 8A read and nowhere else, which is the only
  *     reason the catalog entry may declare `runSelection`;
- *   • THE SAME REFUSALS: the readiness list is the 8A read's, unchanged — a missing identity card number
- *     (printed on this schedule too), a month whose runs were charged on different SOCSO/EIS wages, and a
+ *   • THE SAME IDENTITY NUMBER: since r418 the 8A read's `ic` is the number that APPLIES to the person — IC,
+ *     MyPR number or passport, by EPF citizenship status (localization/my/statutory-identity.ts) — so this
+ *     schedule's NO. KAD PENGENALAN column follows the same rule with no code of its own;
+ *   • THE SAME REFUSALS: the readiness list is the 8A read's, unchanged — a missing identity number, named
+ *     precisely ("IC", "MyPR number", "Passport number" or "IC or passport number"), a month whose runs were charged on different SOCSO/EIS wages, and a
  *     selection that holds no SOCSO/EIS at all (a bonus-only selection names every person with
  *     SOCSO_NOT_IN_SELECTION_REASON, whose words already say "SOCSO or EIS"). `hasBatch` and
  *     `selectionEmpty` pass through the same way.
@@ -74,7 +77,7 @@ export async function sipContributionReport(ctx: SessionContext, params: ReportP
     rows: rows.map((r): ReportRow => ({ ...r })),
     totals: base.meta.hasBatch && !base.meta.selectionEmpty ? { contribution: total } : {},
     // r412 verify D3 — a person LEFT OFF this schedule (no EIS charged) must not block it for a fact that only
-    // matters to a line they are not on: a missing IC (a passport-only foreign worker) or an inconsistent
+    // matters to a line they are not on: a missing identity number (r418: of whichever kind applies) or an inconsistent
     // SOCSO wage. The selection fact stays, so a bonus-only choice is still refused with every person named.
     readiness: base.readiness
       .map((r) =>

@@ -696,7 +696,15 @@ export type BorangAFileReadiness = {
  */
 export function borangAFileReadiness(p: {
   employerRef: string;
-  rows: readonly { employmentId: string; name: string; memberNo: string; ic: string; wageRecorded: boolean }[];
+  rows: readonly {
+    employmentId: string;
+    name: string;
+    memberNo: string;
+    ic: string;
+    wageRecorded: boolean;
+    /** r418 — which document the PRINTED form shows. Only used to word a refusal; never changes the field. */
+    idKind?: string;
+  }[];
 }): BorangAFileReadiness {
   const employer: string[] = [];
   const ref = String(p.employerRef ?? '').trim();
@@ -726,7 +734,13 @@ export function borangAFileReadiness(p: {
       employees.push({
         employmentId: r.employmentId,
         name: r.name,
-        problem: icDigits.length === 0 ? 'no identity card number' : `identity card number has ${icDigits.length} digits, not ${icWidth}`,
+        problem:
+          icDigits.length === 0
+            ? r.idKind === 'passport'
+              ? // r418 — the printed Borang A shows this person's passport; this file cannot carry one.
+                `only a passport number is on file, and the upload file's identity field holds a ${icWidth}-digit identity card number`
+              : 'no identity card number'
+            : `identity card number has ${icDigits.length} digits, not ${icWidth}`,
       });
     }
     if (!r.wageRecorded) {

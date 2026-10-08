@@ -144,13 +144,21 @@ describe('the main screen is a directory: no company, year or month gates the fo
    * a round whose whole point is removing the filter bar above them.
    */
   // r413 (item 79f3f64d, step 2) — the CP22 ROW now opens the event-selection screen (one press, no
-  // placeholder, so still not templated); the WORKLIST it used to scroll to stays at its anchor.
-  it('keeps the CP22 worklist reachable at its own anchor', () => {
+  // placeholder, so still not templated); the WORKLIST it used to scroll to stayed at its anchor.
+  // ⚠️ r418 (item 57ef8cf9) — REVERSED: the worklist and the month cohort are GONE from the directory (the
+  // reporter asked). The directory therefore needs NO company and NO month at all — which completes r256's
+  // "the form list takes none of the three". The list those panels showed is the event screen's, one press on.
+  it('takes no company or month at all now that the CP22 worklist has left it', () => {
     expect(linkById.get('my.cp22')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22');
+    expect(linkById.get('my.cp22a')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22a');
     expect(TEMPLATED.test(linkById.get('my.cp22')!.href)).toBe(false);
-    expect(DIRECTORY).toContain('id="worklist"');
-    expect(DIRECTORY).toContain('complianceWorklist');
-    expect(DIRECTORY).toContain('cp22MonthCohort');
+    expect(DIRECTORY.length).toBeGreaterThan(5000);
+    expect(DIRECTORY).not.toContain('id="worklist"');
+    expect(DIRECTORY).not.toContain('complianceWorklist');
+    expect(DIRECTORY).not.toContain('cp22MonthCohort');
+    expect(DIRECTORY).not.toContain('name="companyId"');
+    expect(DIRECTORY).not.toContain('name="month"');
+    expect(code('app/payroll/statutory-forms/event/page.tsx')).toContain('complianceWorklist(s, {');
   });
 });
 
