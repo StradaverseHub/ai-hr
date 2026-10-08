@@ -136,7 +136,7 @@ Two tiers (ADR-0094). Pick by asking the classifier, never by judgement: `gate-a
 
     # FULL tier — everything else (and always when a migration, lib/, core/, packs/, actions, routes, scripts or config changed)
     pnpm exec tsc --noEmit
-    CHUNKS=6 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1   # harness background flag, never a bare &
+    CHUNKS=8 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1   # harness background flag, never a bare &
     pnpm exec next build
     env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow            # whenever a migration is involved
 
@@ -163,7 +163,8 @@ Two tiers (ADR-0094). Pick by asking the classifier, never by judgement: `gate-a
   `pnpm vitest run` for the full suite. The chunked gate rebuilds the cluster per DB chunk and asserts
   vitest COUNTED as many files as it was asked (a file whose worker fails to spawn is not counted), and
   that parts (a) + (b) counted the whole suite.
-  `CHUNKS=6` is part of the command: the script's default of 3 fills the RAM disk.
+  `CHUNKS=8` is part of the command: the script's default of 3 fills the 8 GB RAM disk, and in r422 one
+  chunk of 6 did too (88 files red on "No space left on device"); at 8 the peak was 22%, same wall time.
 - One vitest per cluster at a time, and nothing else on the cluster during a gate: no agent tests, no
   dev server. Parallel agents each get their own `TEST_DB_NAMESPACE`; never invent one otherwise.
 - Red gate: `grep -c AssertionError /tmp/aihr-gate/chunkN.log` FIRST. Zero assertion errors means the
