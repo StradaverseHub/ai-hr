@@ -8,7 +8,7 @@ WHAT WE'LL CHANGE
   - Non-citizen: the passport number.
   A non-citizen with a passport number is no longer stopped for having no IC. If the number that applies is missing, the message names that number, for example "Passport number". This is the same rule we are putting on Borang 8A (your other request), so both forms agree.
 
-- Borang A, people with no EPF contribution: anyone whose employer share and employee share are both RM0.00 for the payroll cycles you chose is left off the form. They are left off the preview, the PDF, the text copy and the counts. Page totals, the number of employees and the grand total are worked out only from the people who remain. If either share is not zero, the person stays on the form. Payroll records are not changed.
+- Borang A, people with no EPF contribution: anyone whose employer share and employee share are both RM0.00 for the payroll cycles you chose is left off the form. They are left off the preview, the PDF, the text copy and the counts. Page totals, the number of employees and the grand total are worked out only from the people who remain. If either share is not zero, the person stays on the form. Payroll records are not changed. The review screen lists by name everyone left off this way, so if someone is missing because their EPF setting is wrong, you can see it and fix it.
 
 - EPF shelf: the "Borang BBCB — Not built yet" card is removed. BBCD (Borang Bayaran Caruman Bulanan) stays. You confirmed BBCB was the same form.
 
