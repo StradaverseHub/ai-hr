@@ -1,5 +1,9 @@
 VERDICT: Small change   ·   SIZE: Small
 
+A CORRECTION TO OUR EARLIER PLAN
+
+The first version of this plan said the system refuses to remove a bank account that a statutory body pays from. That was wrong. Today the account is removed, and any statutory body paid from it is quietly left with no paying account. This version of the plan says what really happens, and the confirmation box now warns you about it.
+
 WHAT WE'LL CHANGE
 
 - On Admin > Organisation, Bank Account tab, "Add new bank account" moves to the top of the page, above the accounts you already have. It shows as one closed button. Click it and the fields open; after you save or cancel, it closes again.
@@ -16,10 +20,10 @@ GOOD TO KNOW
 
 - We are not adding an undo. A removed account still needs to be entered again if it was removed by mistake, but the confirmation box makes that much less likely.
 
-- If an account is used by a statutory body's payment details or as a payroll paying account, the system still refuses to remove it and says why, as it does today.
+- If a statutory body (for example EPF or SOCSO) is paid from the account, the confirmation box names that body and tells you it will have no paying account until you choose another on the Statutory tab. The removal is not blocked; you are told before you confirm.
 
 ------------------------------------------------------------
 
 BUILD NOTES (technical - skip this if you are reviewing the request)
 
-components/company-panel.tsx bank tab: move the add form above the list inside a closed-by-default disclosure (button aria-expanded; closes on successful save via the action's redirect/revalidate and on Cancel). Remove uses components/ui/confirm-submit.tsx (the house confirm pattern) with bank name and last 4 digits of the account number only (never the full number in the dialog) and a "Yes, remove" / "Cancel" pair; success toast via the existing ?success channel naming bank + last 4. Monolith and Classic. Keys in 6 locales. Check removeBankProfile's existing refusals (referenced by a statutory authority or a paying account) still surface. Tests: DOM test (disclosure closed by default, opens, Remove requires confirm, Cancel leaves the form unsubmitted, dialog shows last 4 only); the read-only view (r403) unchanged. No migration.
+components/company-panel.tsx bank tab: move the add form above the list inside a closed-by-default disclosure (button aria-expanded; closes on successful save via the action's redirect/revalidate and on Cancel). Remove uses components/ui/confirm-submit.tsx (the house confirm pattern) with bank name and last 4 digits of the account number only (never the full number in the dialog) and a "Yes, remove" / "Cancel" pair; success toast via the existing ?success channel naming bank + last 4. Monolith and Classic. Keys in 6 locales. removeCompanyBankProfile refuses nothing: a statutory authority's bank_profile_id is SET NULL (0276); the dialog names every body paid from the account (statutoryAuthorities filtered by bankProfileId). Tests: DOM test (disclosure closed by default, opens, Remove requires confirm, Cancel leaves the form unsubmitted, dialog shows last 4 only); the read-only view (r403) unchanged. No migration.
