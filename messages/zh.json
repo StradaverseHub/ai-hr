@@ -11386,7 +11386,7 @@
       "button": "下载 CSV"
     },
     "downloadTemplate": {
-      "button": "下载模板"
+      "button": "下载 CSV 模板"
     },
     "editableRow": {
       "save": "保存",

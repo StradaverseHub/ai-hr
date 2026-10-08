@@ -11386,7 +11386,7 @@
       "button": "Download CSV"
     },
     "downloadTemplate": {
-      "button": "Download Template"
+      "button": "Download CSV template"
     },
     "editableRow": {
       "save": "Save",
