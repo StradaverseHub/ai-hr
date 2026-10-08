@@ -105,12 +105,7 @@ export default async function Cp22PreviewPage({
       <PageHeader
         title={t('previewTitle')}
         description={t('previewDescription', { name: particulars.employee.fullName })}
-        // r418 (item 57ef8cf9) — back to the choose-the-employee list this screen is opened from (CP22A's own
-        // viewer does the same); the worklist panel it used to return to is gone, and `previewBack` is retired.
-        back={{
-          href: `/payroll/statutory-forms/event?form=my.cp22&companyId=${encodeURIComponent(particulars.companyId)}`,
-          label: t('previewBackList'),
-        }}
+        back={{ href: '/payroll/statutory-forms#worklist', label: t('previewBack') }}
       />
 
       {/* The correction that is owed before anything is produced, not after LHDN asks. */}

@@ -617,7 +617,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
       for (const k of ['worklistTitle', 'worklistDescription', 'worklistEmpty', 'colForm', 'colNotifyBy', 'colReason']) {
         expect(m.payroll.statutoryForms[k], `${loc} statutoryForms.${k}`).toMatch(/^\[retired r418/);
       }
-      for (const k of ['monthTitle', 'monthHint', 'monthEmpty', 'monthEmptyHint', 'downloadAll', 'downloadAllTitle', 'colHireDate', 'columnHeading', 'missingTaxNo', 'missingIdentityNo', 'missingEmployerNo', 'reviewLink', 'reviewLinkTitle', 'previewBack']) {
+      for (const k of ['monthTitle', 'monthHint', 'monthEmpty', 'monthEmptyHint', 'downloadAll', 'downloadAllTitle', 'colHireDate', 'columnHeading', 'missingTaxNo', 'missingIdentityNo', 'missingEmployerNo', 'reviewLink', 'reviewLinkTitle']) {
         expect(m.payroll.cp22[k], `${loc} cp22.${k}`).toMatch(/^\[retired r418/);
       }
       expect(m.payroll.cp22a.worklistLinkTitle, loc).toMatch(/^\[retired r418/);
@@ -627,19 +627,31 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     }
   });
 
-  // r418 — the in-app links that pointed at `#worklist` no longer do: an anchor with no element is not a
-  // broken page (an old BOOKMARK still opens Statutory Forms at the top), but a link we write ourselves should
-  // land somewhere that holds what it promises.
+  // r418 — an anchor with no element is not a broken page (an old BOOKMARK still opens Statutory Forms at
+  // the top), but a link we write ourselves should land somewhere that holds what it promises. The Reports
+  // pointer now goes to the LHDN shelf and says so.
   it('are gone from Reports — and the page says where they went, without pointing at the removed anchor', () => {
     expect(REPORTS_PAGE).not.toContain('complianceWorklist');
     expect(REPORTS_PAGE).not.toContain('#worklist');
     expect(REPORTS_PAGE).toContain('/payroll/statutory-forms?body=lhdn');
     expect(REPORTS_PAGE).toContain("t('worklistMovedLinkLhdn')");
+  });
+
+  // r418 — THE CP22 REVIEW SCREEN IS BYTE-PINNED to its r413 baseline (test/r413-event-select.test.ts and
+  // test/r415-cp21.test.ts: "CP22 did not move"), so its back link keeps its href, which now simply opens
+  // Statutory Forms at the top. What changes is what the link SAYS: it no longer promises a worklist.
+  it('the CP22 review screen\'s back link opens Statutory Forms and says so, in every locale', () => {
     const cp22Review = code('app/payroll/cp22/[employmentId]/preview/page.tsx');
-    expect(cp22Review).not.toContain('#worklist');
-    expect(cp22Review).toContain('/payroll/statutory-forms/event?form=my.cp22&companyId=');
-    expect(cp22Review).toContain("t('previewBackList')");
-    expect(en.payroll.cp22.previewBackList).toBe(en.payroll.cp22a.viewerBack);
+    expect(cp22Review).toContain("back={{ href: '/payroll/statutory-forms#worklist', label: t('previewBack') }}");
+    expect(en.payroll.cp22.previewBack).toBe('Back to Statutory Forms');
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(read(`messages/${loc}.json`));
+      // Tamil inflects the page name inside the phrase (படிவங்கள் → படிவங்களுக்கு), so it is checked by stem.
+      const stem = loc === 'ta' ? m.payroll.statutoryForms.pageTitle.slice(0, -2) : m.payroll.statutoryForms.pageTitle;
+      expect(stem.length, loc).toBeGreaterThan(2);
+      expect(m.payroll.cp22.previewBack, loc).toContain(stem);
+      expect(m.payroll.cp22.previewBack.toLowerCase(), loc).not.toContain('worklist');
+    }
   });
 
   /**

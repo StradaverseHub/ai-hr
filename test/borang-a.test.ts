@@ -860,6 +860,10 @@ describe('the KWSP 6 page furniture', () => {
       'employer',
       'employmentId',
       'ic',
+      // r418 (item 5c31d379) — two fields, neither of them the reserved column: which document `ic` is, and
+      // the stored IC field the i-Akaun file reads. Added deliberately; the reserved N K column still has none.
+      'icNumber',
+      'idKind',
       'memberNo',
       'name',
       'staffNo',
