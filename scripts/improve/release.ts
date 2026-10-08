@@ -58,8 +58,16 @@ export const DEPLOY_STATE_DIR = process.env.AIHR_DEPLOY_STATE_DIR ?? '/var/tmp/a
 /** Must match deploy/deploy-state.sh. test/r291-detached-deploy.test.ts pins that the two agree. */
 export const DEPLOY_STATE_SENTINEL = '<<<AIHR-DEPLOY-STATE-9d3f41>>>';
 
-function run(cmd: string, args: string[], cwd?: string): void {
-  execFileSync(cmd, args, { stdio: 'inherit', cwd, maxBuffer: 64 * 1024 * 1024 });
+function run(cmd: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv): void {
+  execFileSync(cmd, args, { stdio: 'inherit', cwd, env: env ?? process.env, maxBuffer: 64 * 1024 * 1024 });
+}
+
+/**
+ * r417 — tsc needs more than node's default heap now (measured: out of memory at the default, green at
+ * 6144 MB, the figure CLAUDE.md §4 already gives `next build`). An operator-set NODE_OPTIONS wins.
+ */
+export function tscEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return base.NODE_OPTIONS?.includes('max-old-space-size') ? base : { ...base, NODE_OPTIONS: `${base.NODE_OPTIONS ?? ''} --max-old-space-size=6144`.trim() };
 }
 
 /** SSH options shared by every remote call here: no prompts, and a connect that fails rather than hangs. */
@@ -395,7 +403,7 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   }
 
   console.log('→ final gate: npx tsc --noEmit');
-  run('npx', ['tsc', '--noEmit'], p.worktree);
+  run('npx', ['tsc', '--noEmit'], p.worktree, tscEnv());
 
   // 2. Announce the release on the box BEFORE a single byte of source moves. See buildPendingCommand.
   console.log(`→ announcing ${head.slice(0, 7)} on the server (so an interrupted rsync is detectable)`);

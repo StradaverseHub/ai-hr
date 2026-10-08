@@ -88,3 +88,12 @@ describe('release.ts wiring (source shape — the decision itself is executed ab
     expect(src).not.toMatch(/run\(\s*'pnpm'\s*,\s*\[\s*'vitest'/);
   });
 });
+
+describe('r417 · release.ts runs tsc with a heap it can finish in', () => {
+  it('adds --max-old-space-size=6144 unless the operator set one', async () => {
+    const { tscEnv } = await import('../scripts/improve/release');
+    expect(tscEnv({}).NODE_OPTIONS).toBe('--max-old-space-size=6144');
+    expect(tscEnv({ NODE_OPTIONS: '--enable-source-maps' }).NODE_OPTIONS).toBe('--enable-source-maps --max-old-space-size=6144');
+    expect(tscEnv({ NODE_OPTIONS: '--max-old-space-size=8192' }).NODE_OPTIONS).toBe('--max-old-space-size=8192');
+  });
+});
