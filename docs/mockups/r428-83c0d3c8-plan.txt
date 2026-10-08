@@ -1,0 +1,83 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+WHAT YOU ASKED FOR
+
+You contested the Locations change delivered on 8 October with two points. First, Attendance > Locations shows all companies and location details on its first page, under the COMPANIES heading, which is crowded and does not scale to many companies. You asked for a clean company-level first screen (Company, number of locations, View Locations), and for the existing View, Add and Edit to work as today once a company is chosen, with no change to the data, rules or workflow. Second, you asked us to remove the Work Locations row from the Attendance menu and keep Locations as the one menu for work and attendance locations, without removing any function or record, so that everything the Work Locations page did is reachable from Attendance > Locations.
+
+THE SITUATION TODAY
+
+1. Attendance > Locations lists every clocking location in one table. Its Companies column (the heading prints in capitals, COMPANIES) lists every company each location is open to. On the live system both clocking locations are open to every company, so each row carries the full list of company names. That is the crowding you describe.
+
+2. Attendance > Work Locations is a second page that also lists every company, with each company's work locations underneath. A work location is where an employee works, and it shows on the employee's employment record. It is a different thing from a clocking location (a place with an allowed distance where employees may clock in), and both are in use.
+
+3. A clocking location can be open to several companies. This was approved on 8 October and stays.
+
+4. Only group administrators create and edit clocking locations. Company administrators see only the companies they administer. Both stay.
+
+WHAT WE'LL CHANGE
+
+Attendance > Locations, first screen
+
+1. One line per company: Company, Clocking Locations (how many are open to that company, with "1 inactive" underneath where it applies), Work Locations (how many the company has, with "1 archived" underneath where it applies), and View Locations. A company with none says "None yet". No location details are shown on this screen.
+
+2. A search box finds a company by its own name or by the name of one of its locations.
+
+3. A clocking location shared by several companies is counted under each of those companies, so the column does not add up to the total. The total number of clocking locations and work locations is shown once, under the list.
+
+4. The "+ New Clocking Location" button stays at the top for group administrators. Creating a location works exactly as today: enter the location, then tick the companies allowed to use it.
+
+5. If a clocking location is open to no company at all (this can happen when a company is deleted), group administrators see one extra line, "Not open to any company", so it is never lost.
+
+After View Locations (one company)
+
+6. The page is headed with the company name and has a link back to all companies. It has two sections.
+
+7. Clocking locations: the same columns, search, Status filter and actions as today (View, Edit, Deactivate or Activate). The long list of company names is replaced by a short "Shared With" column ("Not shared", or "2 other companies"). The full list of companies stays on each location's View page. A location shared with several companies appears under each of them, and a change made from any of them applies to all of them.
+
+8. "+ New Clocking Location" from inside a company starts with that company already ticked.
+
+9. Work locations: the company's work locations with View and Edit, archived ones shown as Archived, an "+ Add Work Location" button, and the note about branches that have no work location yet. These are the same screens and rules as today's Work Locations page.
+
+10. Save, Cancel and Back on any of these screens return to the same company, not to the first screen.
+
+Menu
+
+11. The Work Locations row is removed from the Attendance menu. Locations stays highlighted on every location screen, including a work location's own pages.
+
+12. An old link or bookmark to the Work Locations page opens Attendance > Locations instead (on the right company where the link names a work location).
+
+Who sees what
+
+13. Group administrators see every company and every count. Company administrators see only the companies they administer and the counts for those companies. For a company administrator, Shared With names only other companies they administer, and never a count of companies they cannot see.
+
+WHAT HAPPENS TO WHAT IS ALREADY SAVED
+
+Nothing changes. Every clocking location, work location, company link and employee assignment stays exactly as it is. This only changes how the screens are arranged.
+
+WHAT IS NOT DONE
+
+1. No change to what a location holds, who may create or edit it, or how clocking is checked.
+
+2. There is no longer one table listing every clocking location of every company at once. A location is found through any company it is open to, or by typing its name in the company search.
+
+3. The New, Edit and View pages of a location are not redesigned in this round.
+
+Pictures attached: the company list, one company's locations, the Attendance menu before and after, and the company list on a phone. They show the standard look; Classic follows the same layout.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Read on main 835b0f27. Not rendered (gate running; no dev server). Which screen the contest describes: app/admin/work-locations/clocking/page.tsx (nav "Locations", packs/attendance/index.ts:561). Its thead is uppercase (components/ui.tsx:39 theadCls), so th colCompanies (:137) prints COMPANIES; each row stacks one chip per company (:159-167). Production: 2 locations each open to every company (r423 entry: 30 clocking_location_company rows). The Work Locations page (app/admin/work-locations/page.tsx, header "Company", rowSpan per company, :186-260) is the second crowded listing and the menu row the contest removes (packs/attendance/index.ts:562).
+
+Routes (no new route, no new SCREENS entry):
+- /admin/work-locations/clocking with no valid ?company= = company list (step 1). With ?company=<id> (already validated against listCompanies(s,{adminOnly:true}), page.tsx:66-70) = company view (step 2). ?company=none (group admin only) = locations with zero clocking_location_company rows; needs a listClockingLocations option (e.g. companyId: 'none' → not exists) in core/clocking-location.ts:627, exported via packs/attendance/service.
+- Step 1 data: listCompanies adminOnly (company admins: app.is_admin_for scope, same as today); listClockingLocations(s,{status:'all'}) grouped by row.companies ids (companies already filtered to visible ones, :679-687) → total + inactive per company; listLocations(s, companyIds, {includeArchived:true}) → live + archived per company. Distinct totals in the footer. Search: company name OR any visible clocking/work location name (in-memory over loaded rows, q capped 200).
+- Step 2: existing table filtered by companyId; drop the Company select; Companies column → "Shared With" = companies.length-1 for group admin ("Not shared"/"N other companies"); for non-group admin list other visible names or "—" (never a count; r423 rule). Work locations section = today's work-locations page body restricted to that company (rows, Archived tag, Add via LOCATION_NEW_PAGE?companyId=, unmapped branches from listUnmappedBranches for that company). Monolith SectionCard / label style from r427 (when r427 has merged; otherwise existing Card + PageHeader).
+- /admin/work-locations/page.tsx becomes a requireAdmin redirect stub (app/admin/locations/redirect-stub.ts idiom) to CLOCKING_LIST; if ?focus= is a work-location uuid, resolve its company (RLS read) and forward ?company=&saved=&focus=. Keeps the permissions route (lib/permissions.ts:970) guarded for function-access.
+- Return paths: work-location screens already accept from= under /admin/work-locations (lib/return-to.ts:178-190 whitelist allows /admin/work-locations/clocking?company=…); pass withWorkLocationsFrom(dest, here) from step 2. Back label backToWorkLocations → new key backToCompany ({company}); retire the old key. Clocking: clockingFocusHref (form-fields.ts:42) and clockingSaved/archive/restore (app/admin/actions.ts:2747-2840) take an optional returnCompany posted as a hidden field, UUID_RE-checked, re-validated by the page (never trusted). New page: ?company= prefills companyIds when no typed echo (clocking/new/page.tsx:63) and only if in clockingFormOptions companies.
+- Nav: delete the workLocations row (packs/attendance/index.ts:562); add ownedSubpaths: ['/admin/work-locations'] to the Locations child (components/sidebar.tsx:617-622, nav-flyout.tsx:79) so it stays lit on work-location screens. Delete nav.workLocations in six locales, following r338's nav.physicalWorkLocation precedent (dead-key guard at test/attendance-pack.test.ts:1067); retire admin.locations keys (workLocationsTitle, statusLegend, companySummary, pageDescription, backToWorkLocations) only after grepping computed forms.
+
+Tests to UPDATE (not delete): attendance-pack.test.ts:295 exact-set, sidebar-attendance-group, attendance-menu-relocation, sidebar-system-settings-group, work-location-organization-relocation (:130-143 row, :720 render, :873/:903 title=nav label), clocking-location-page (:143-165, :227), clocking-location-shared (:346 and the zero-form source scan of work-locations/page.tsx). New: step-1 counts (shared location counted per company; inactive/archived split; company admin sees no other company and no count of others); ?company= foreign id falls back to step 1; orphan row group-admin only; /admin/work-locations redirect incl. focus→company; Save/Cancel/Archive return to ?company=; ownedSubpaths highlight via isHrefActive truth table. Browser test at 390 and 1280: no document overflow on both steps. Render check both steps in Monolith and Classic. lib/ and core/ change → FULL gate. ADR-0070 note: browsing is company-first, creation stays location-first.
+
+Mockups: docs/mockups/r428-83c0d3c8-company-list.png, -company-locations.png, -menu.png, -phone-company-list.png.
