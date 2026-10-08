@@ -52,6 +52,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
+import { DateField } from '@/components/ui/date-field';
 import { completedYearsAt } from '@/lib/completed-years';
 
 /** What an <input type="date"> can hold: '' or a complete yyyy-mm-dd. A stored draft can hold neither (it
@@ -66,6 +67,10 @@ type Mode =
       /** DOM id for the input. The Personnel page must pass 'profile-dob-input' — ic-dob-autofill.tsx
        *  looks the field up by that id to autofill from a MyKad number. */
       inputId?: string;
+      /** r422 — OPT-IN: draw the box as DD-MMM-YYYY (components/ui/date-field.tsx). Same id, name and ISO
+       *  value, so the IC autofill and setPersonDetails are untouched. The Personnel profile passes it; the
+       *  Create New Employee draft does not. */
+      dmyDisplay?: boolean;
     }
   | { mode: 'controlled'; onChange: (value: string) => void };
 
@@ -104,21 +109,32 @@ export function BirthDateFields(props: BirthDateFieldsProps) {
   return (
     <>
       <Field label={t('birthDate')} className={props.fieldClassName}>
-        <input
-          type="date"
-          className={inputCls}
-          {...(props.mode === 'form'
-            ? {
-                id: props.inputId,
-                name: 'dateOfBirth',
-                defaultValue: stored,
-                onChange: (e: React.ChangeEvent<HTMLInputElement>) => setTyped(e.target.value),
-              }
-            : {
-                value,
-                onChange: (e: React.ChangeEvent<HTMLInputElement>) => props.onChange(e.target.value),
-              })}
-        />
+        {props.mode === 'form' && props.dmyDisplay ? (
+          <DateField
+            id={props.inputId}
+            name="dateOfBirth"
+            defaultValue={stored}
+            onChange={(e) => setTyped(e.target.value)}
+            className={inputCls}
+            label={t('birthDate')}
+          />
+        ) : (
+          <input
+            type="date"
+            className={inputCls}
+            {...(props.mode === 'form'
+              ? {
+                  id: props.inputId,
+                  name: 'dateOfBirth',
+                  defaultValue: stored,
+                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => setTyped(e.target.value),
+                }
+              : {
+                  value,
+                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => props.onChange(e.target.value),
+                })}
+          />
+        )}
         {props.hint && <p className="mt-1 text-xs text-muted-foreground">{props.hint}</p>}
       </Field>
       {/* System-calculated, deliberately NOT an input — nothing to type, nothing to save. "Not Available"

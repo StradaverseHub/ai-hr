@@ -2851,14 +2851,19 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
  * exactly the phased approach the request describes. When one is built it leaves this list and joins
  * MY_REPORTS (or MY_STATUTORY_LINKS) at the SAME `shelfOrder`, and the screen is not touched.
  *
- * Borang BBCB is listed exactly as the reporter wrote it. We could not identify which KWSP form it is,
- * and its hint says so rather than guessing — building against a guess is the mistake this whole item
- * exists to avoid.
+ * Borang BBCB WAS listed exactly as the reporter wrote it, because we could not identify which KWSP form it
+ * was and building against a guess is the mistake this whole item exists to avoid. r418 (item 5c31d379):
+ * the reporter confirmed it is the same form as BBCD, which is built (`my.borang-bbcd`), so the planned card
+ * is gone — see the note where it stood below.
  */
 export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // 9c8dad7a — `epf.borang-a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list and
   // joined MY_REPORTS at the same shelfOrder 2, exactly as `perkeso.borang-8a` did one round earlier.
-  { id: 'epf.borang-bbcb', labelKey: 'planned_epf_borang_bbcb', hintKey: 'planned_epf_borang_bbcb_hint', body: 'epf', cadence: 'monthly', shelfOrder: 3 },
+  // r418 (item 5c31d379) — `epf.borang-bbcb` STOOD HERE at shelfOrder 3 and is deliberately gone, and NOT
+  // because it was built under that name: the reporter confirmed "Borang BBCB" is the same form as BBCD
+  // (Borang Bayaran Caruman Bulanan), which r411 built as `my.borang-bbcd`. Two cards for one form is what
+  // the shelf exists to prevent, so the planned one left and BBCD keeps the name printed on the reporter's
+  // own sample. Its two message keys are marked "[retired r418 …]" in every locale rather than deleted.
   // 8ca344bf — `perkeso.borang-8a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list
   // and joined MY_REPORTS at the same shelfOrder 2, which is exactly the path this type's doc-comment
   // describes. Its two message keys went with it; the shelf and this screen were not touched.

@@ -29,6 +29,10 @@ GOOD TO KNOW
 
 - If a citizen has no IC number on file but has a non-Malaysian nationality and a passport number, the passport number is used rather than blocking the form.
 
+- The column keeps the heading printed on the agency's own form (No. Kad Pengenalan), even on a line that carries a passport number, because that is how the form itself is laid out.
+
+- The PERKESO upload file is a separate matter. Its one identity box takes a 12-digit IC number or a 12-character SOCSO foreign worker number. Employee D has no IC, and the SOCSO number on their record is shorter than 12 characters, so the upload file names them and leaves them out rather than writing something PERKESO may reject. If your PERKESO officer tells you how a shorter foreign worker number should be entered, tell us and we will add it. The printed Borang 8A itself is not held back.
+
 - No SOCSO or EIS amounts change.
 
 ------------------------------------------------------------

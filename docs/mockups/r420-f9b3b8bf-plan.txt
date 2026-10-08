@@ -1,0 +1,23 @@
+VERDICT: Small change   ·   SIZE: Small
+
+WHAT WE'LL CHANGE
+
+- On Admin > Personnel Management > Import Employees, the CSV button now reads "Download CSV template", beside "Download Excel template". Both buttons say which kind of file they give you.
+
+- The same button appears on the other import screens that offer a CSV template, for example the roster and leave imports. It gets the same clearer name there too, because it is the same button and always downloads a CSV file.
+
+- The files themselves do not change.
+
+WHAT YOU'LL GET
+
+You can tell the two templates apart at a glance.
+
+GOOD TO KNOW
+
+- We wrote "template" in small letters to match the Excel button as it appears today. The new name is translated in all six languages.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+components.downloadTemplate.button relabelled in 6 locales (the shared components/download-template.tsx always builds a CSV via buildTemplateCsv). Employee import DOM test updated to the new name. Screens using the component: grep "<DownloadTemplate" (6 sites). No code change. No migration.

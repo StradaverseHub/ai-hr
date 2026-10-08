@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { Button } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { DateField } from '@/components/ui/date-field';
 import {
   deleteEmployeeDocumentAction,
   replaceEmployeeDocumentAction,
@@ -32,7 +33,11 @@ export type DocumentVM = {
   typeLabel: string;
   sizeLabel: string;
   uploadedBy: string | null;
+  /** Display stamp, "10-Jul-2026 17:32" (r422). */
   uploadedAt: string;
+  /** r422 — the upload's Kuala Lumpur calendar day as yyyy-mm-dd, which the Uploaded-from filter compares
+   *  (the display stamp is no longer sortable text). Absent → read off a legacy "yyyy-mm-dd hh:mm" stamp. */
+  uploadedOn?: string;
   updatedBy: string | null;
   updatedAt: string;
   inlineViewable: boolean;
@@ -72,8 +77,8 @@ export function DocumentsManager({
     return docs.filter((d) => {
       if (cat && d.category !== cat) return false;
       if (type && d.typeLabel !== type) return false;
-      // Uploaded-date filter: uploadedAt is "YYYY-MM-DD HH:MM"; keep rows uploaded on/after the chosen day.
-      if (from && d.uploadedAt.slice(0, 10) < from) return false;
+      // Uploaded-date filter: keep rows uploaded on/after the chosen day, compared as yyyy-mm-dd.
+      if (from && (d.uploadedOn ?? d.uploadedAt.slice(0, 10)) < from) return false;
       if (needle) {
         const hay = `${d.title} ${d.fileName} ${d.category ?? ''} ${d.uploadedBy ?? ''}`.toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -204,7 +209,7 @@ export function DocumentsManager({
           </select>
           <label className="flex items-center gap-1 text-xs text-muted-foreground">
             {t('uploadedFrom')}
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={`${inputCls} w-auto`} />
+            <DateField value={from} onChange={(e) => setFrom(e.target.value)} className={`${inputCls} w-auto`} label={t('uploadedFrom')} />
           </label>
         </div>
       )}

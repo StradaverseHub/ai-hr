@@ -301,11 +301,23 @@ describe('the CP22 copy says what the download is', () => {
       payroll: { cp22: Record<string, string>; statutoryForms: Record<string, string> };
     };
 
-  const NEW_KEYS = [
+  // ⚠️ r418 (item 57ef8cf9) — THE MONTH PANEL LEFT STATUTORY FORMS (the reporter asked), so the keys that
+  // were ITS words are RETIRED, never deleted, in every locale — and pinned as retired here, so a later round
+  // cannot quietly reuse a retired key for new words. `cp22MonthCohort` itself is still used by
+  // /payroll/cp22/batch, which is why the data tests above stay. The review screen's own keys stay live.
+  const RETIRED_R418 = [
     'monthTitle',
     'monthHint',
     'monthEmpty',
     'monthEmptyHint',
+    'downloadAll',
+    'downloadAllTitle',
+    'colHireDate',
+    'missingTaxNo',
+    'missingIdentityNo',
+    'missingEmployerNo',
+  ];
+  const LIVE_KEYS = [
     // 88076362 — `branchLabel` / `branchPlaceholder` were DELETED, not renamed away from a live screen.
     // They labelled a month-card input that stamped box 1 of the 2020 page's "Kepada / To" block; the 2021
     // form has no such block, so the input was removed rather than left to discard what was typed into it.
@@ -314,28 +326,30 @@ describe('the CP22 copy says what the download is', () => {
     'reviewSubmitTo',
     'reviewSubmitToPlaceholder',
     'reviewSubmitToNote',
-    'downloadAll',
-    'downloadAllTitle',
     'notFilingTitle',
     'notFiling',
-    'colHireDate',
-    'missingTaxNo',
-    'missingIdentityNo',
-    'missingEmployerNo',
   ];
 
-  it.each(LOCALES)('%s carries every new key, with its placeholders intact', (loc) => {
+  it.each(LOCALES)('%s carries every live key, with no placeholder, and every r418-retired key marked retired', (loc) => {
     const cp22 = messages(loc).payroll.cp22;
-    for (const k of NEW_KEYS) expect(cp22[k], `${loc}.${k}`).toBeTruthy();
-    // An ICU {placeholder} rendered without its argument THROWS at render time, behind a 200 — so the
-    // arguments the screen passes and the ones the string names have to be pinned per locale.
-    expect(cp22.monthTitle).toContain('{month}');
-    expect(cp22.monthEmpty).toContain('{month}');
-    expect(cp22.monthEmptyHint).toContain('{company}');
-    expect(cp22.missingEmployerNo).toContain('{company}');
-    for (const k of ['monthHint', 'reviewSubmitTo', 'reviewSubmitToPlaceholder', 'downloadAll', 'notFilingTitle', 'notFiling', 'colHireDate', 'missingTaxNo', 'missingIdentityNo']) {
+    for (const k of LIVE_KEYS) expect(cp22[k], `${loc}.${k}`).toBeTruthy();
+    for (const k of ['reviewSubmitTo', 'reviewSubmitToPlaceholder', 'notFilingTitle', 'notFiling']) {
+      expect(cp22[k], `${loc}.${k}`).not.toMatch(/\{/);
+      expect(cp22[k], `${loc}.${k}`).not.toMatch(/retired/);
+    }
+    for (const k of RETIRED_R418) {
+      expect(cp22[k], `${loc}.${k}`).toMatch(/^\[retired r418/);
+      // A retired value is never rendered, and must not carry an ICU argument that would throw if it were.
       expect(cp22[k], `${loc}.${k}`).not.toMatch(/\{/);
     }
+  });
+
+  // r418 — and no screen renders a retired one: the month panel was its only reader.
+  it('no screen reads a retired month-panel key', () => {
+    const page = code('app/payroll/statutory-forms/page.tsx');
+    expect(page.length).toBeGreaterThan(5000);
+    for (const k of RETIRED_R418) expect(page, k).not.toContain(`tCp22('${k}'`);
+    expect(page).not.toContain('cp22MonthCohort');
   });
 
   // Since 1 September 2024 a CP22 must go through e-CP22 on MyTax; posted and hand-delivered forms are not

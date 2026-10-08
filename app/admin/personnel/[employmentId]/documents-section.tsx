@@ -7,6 +7,8 @@ import { getTranslations } from 'next-intl/server';
 import { Card, SectionHeader } from '@/components/ui';
 import { listEmployeeDocuments } from '@/core/employee-documents';
 import type { SessionContext } from '@/db/client';
+import { formatDmyTime } from '@/lib/date-display';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { DocumentsManager, type DocumentVM } from './documents-manager';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -29,10 +31,9 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function formatDateTime(d: Date): string {
-  // Deterministic UTC ISO minute (avoids server/client TZ hydration drift): "2026-07-10 09:32".
-  return new Date(d).toISOString().slice(0, 16).replace('T', ' ');
-}
+// r422 — the stamps are drawn as "10-Jul-2026 17:32": the date AND the time on the Kuala Lumpur clock
+// (lib/date-display.ts formatDmyTime). Still deterministic — an explicit time zone, never the host's or the
+// browser's — so the server render and hydration cannot drift apart, which is what the UTC minute was for.
 
 export async function DocumentsSection({ s, employmentId }: { s: SessionContext; employmentId: string }) {
   const t = await getTranslations('people.detail.documents');
@@ -47,9 +48,10 @@ export async function DocumentsSection({ s, employmentId }: { s: SessionContext;
     typeLabel: TYPE_LABEL[r.mimeType] ?? r.mimeType,
     sizeLabel: formatSize(r.sizeBytes),
     uploadedBy: r.uploadedBy,
-    uploadedAt: formatDateTime(r.uploadedAt),
+    uploadedAt: formatDmyTime(r.uploadedAt),
+    uploadedOn: todayInKualaLumpur(new Date(r.uploadedAt)),
     updatedBy: r.updatedBy,
-    updatedAt: formatDateTime(r.updatedAt),
+    updatedAt: formatDmyTime(r.updatedAt),
     inlineViewable: INLINE_VIEWABLE.has(r.mimeType),
   }));
   const categories = [...new Set(docs.map((d) => d.category).filter((c): c is string => !!c))].sort();

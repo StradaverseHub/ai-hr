@@ -44,6 +44,8 @@ import {
 import { balanceStoryTypeId } from '@/lib/shared-leave-balance';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { DateField } from '@/components/ui/date-field';
+import { formatDmy, formatDmyTime } from '@/lib/date-display';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Create New Employee wizard.
 import { PersonDetailsFields } from '@/components/person-details-fields';
@@ -1172,7 +1174,7 @@ export default async function EmployeePage({
               this server-action form, with NO function prop crossing the server→client boundary (the r123
               fault). `inputId` is not cosmetic — components/ic-dob-autofill.tsx finds this field by that id
               and writes the DOB derived from a MyKad number straight onto the DOM node. */}
-          <BirthDateFields mode="form" inputId="profile-dob-input" dateOfBirth={emp.dateOfBirth} today={today} />
+          <BirthDateFields mode="form" inputId="profile-dob-input" dateOfBirth={emp.dateOfBirth} today={today} dmyDisplay />
           {/* 35b7af0a group 1 — Gender and Marital Status are now ONE shared field group
               (components/person-details-fields.tsx), rendered identically here and on the Create New
               Employee wizard. The option lists come from lib/person-vocabulary.ts, the same master lists
@@ -1358,10 +1360,10 @@ export default async function EmployeePage({
         </select>
       </Field>
       <Field label={t('payComponentEffectiveFrom')}>
-        <input name="effectiveFrom" type="date" required defaultValue={emp.hiredOn} className={inputCls} />
+        <DateField name="effectiveFrom" required defaultValue={emp.hiredOn} className={inputCls} label={t('payComponentEffectiveFrom')} />
       </Field>
       <Field label={t('payComponentEffectiveTo')}>
-        <input name="effectiveTo" type="date" className={inputCls} />
+        <DateField name="effectiveTo" className={inputCls} label={t('payComponentEffectiveTo')} />
       </Field>
       <div className="sm:col-span-2">
         <Field label={t('payComponentRemarks')}>
@@ -1416,8 +1418,8 @@ export default async function EmployeePage({
                       </td>
                       <td className="py-2 pr-3 font-mono text-xs">{pc.currency}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(pc.amount))}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{pc.validFrom}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{pc.validTo ?? '—'}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(pc.validFrom)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(pc.validTo)}</td>
                       <td className="py-2 pr-3">{prorate ? t('prorateYes') : t('prorateNo')}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{pc.remarks ?? '—'}</td>
                       <td className="py-2 pr-3">
@@ -1497,10 +1499,10 @@ export default async function EmployeePage({
         />
       </Field>
       <Field label={t('cp38From')}>
-        <input name="validFrom" type="date" required defaultValue={r?.validFrom ?? thisMonthStart} className={inputCls} />
+        <DateField name="validFrom" required defaultValue={r?.validFrom ?? thisMonthStart} className={inputCls} label={t('cp38From')} />
       </Field>
       <Field label={t('cp38To')}>
-        <input name="validTo" type="date" defaultValue={r?.validTo ?? ''} className={inputCls} />
+        <DateField name="validTo" defaultValue={r?.validTo ?? ''} className={inputCls} label={t('cp38To')} />
       </Field>
       <div className="sm:col-span-2">
         <Field label={t('cp38Remarks')}>
@@ -1584,8 +1586,8 @@ export default async function EmployeePage({
                     <tr key={r.id} className="border-b border-border/60 align-top">
                       <td className="py-2 pr-3 font-mono text-xs">{r.cp38Ref}</td>
                       <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(r.amount))}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validFrom}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validTo ?? t('cp38Open')}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(r.validFrom)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validTo ? formatDmy(r.validTo) : t('cp38Open')}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{r.remarks ?? '—'}</td>
                       <td className="py-2 pr-3">
                         <Badge variant={closed ? 'default' : 'success'}>
@@ -1803,7 +1805,7 @@ export default async function EmployeePage({
     );
     const dobField = (
       <Field label={t('family.dateOfBirth')}>
-        <input name="dateOfBirth" type="date" defaultValue={d?.dateOfBirth ?? ''} className={inputCls} />
+        <DateField name="dateOfBirth" defaultValue={d?.dateOfBirth ?? ''} className={inputCls} label={t('family.dateOfBirth')} />
       </Field>
     );
     const phoneField = (
@@ -1942,7 +1944,7 @@ export default async function EmployeePage({
         {section === 'spouse' && (
           <>
             <Field label={t('family.marriageDate')}>
-              <input name="marriageDate" type="date" defaultValue={d?.marriageDate ?? ''} className={inputCls} />
+              <DateField name="marriageDate" defaultValue={d?.marriageDate ?? ''} className={inputCls} label={t('family.marriageDate')} />
             </Field>
             <Field label={t('family.marriageStatusLabel')}>
               <select name="marriageStatus" defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
@@ -2076,7 +2078,7 @@ export default async function EmployeePage({
                     </span>
                   </td>
                   <td className="py-2 pr-3">{familyRelationshipLabel(d.relationship)}</td>
-                  <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
+                  <td className="whitespace-nowrap py-2 pr-3">{formatDmy(d.dateOfBirth)}</td>
                   {/* r351 — BOTH TAKEN AT THE PAGE'S OWN KUALA LUMPUR DATE, not at real UTC now.
                       `childAgeYears` and `isChildReliefEligible` both default `asOf` to `new Date()`, and
                       this page resolves `todayInKualaLumpur()` for everything else it prints — including the
@@ -2194,7 +2196,7 @@ export default async function EmployeePage({
         <input name="toYm" type="month" defaultValue={q?.toYm ?? ''} className={inputCls} />
       </Field>
       <Field label={t('qualification.graduationDate')}>
-        <input name="graduationDate" type="date" defaultValue={q?.graduationDate ?? ''} className={inputCls} />
+        <DateField name="graduationDate" defaultValue={q?.graduationDate ?? ''} className={inputCls} label={t('qualification.graduationDate')} />
       </Field>
       <Field label={t('qualification.major')}>
         <input name="major" defaultValue={q?.major ?? ''} className={inputCls} />
@@ -2270,7 +2272,7 @@ export default async function EmployeePage({
                     <td className="py-2 pr-3 font-medium">{qualificationLabelOf(q.qualification)}</td>
                     <td className="py-2 pr-3">{q.institute ?? '—'}</td>
                     <td className="py-2 pr-3">{q.major ?? '—'}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{q.graduationDate ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{formatDmy(q.graduationDate)}</td>
                     <td className="py-2 pr-3">
                       {q.isHighest ? <Badge variant="success">{t('qualification.highestBadge')}</Badge> : '—'}
                     </td>
@@ -2357,6 +2359,7 @@ export default async function EmployeePage({
               defaultType={emp.shiftType}
               defaultShiftId={emp.defaultShiftId}
               defaultEffectiveFrom={today}
+              dmyDisplay
               shifts={assignableShifts.map((sh) => ({
                 id: sh.id,
                 label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
@@ -2389,7 +2392,7 @@ export default async function EmployeePage({
                   <tbody>
                     {shiftHistory.map((h) => (
                       <tr key={h.id} className="border-b border-border/60 align-top">
-                        <td className="py-2 pr-3 whitespace-nowrap text-foreground">{h.effectiveFrom}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap text-foreground">{formatDmy(h.effectiveFrom)}</td>
                         <td className="py-2 pr-3 text-muted-foreground">
                           {h.previousShiftName
                             ? `${h.previousShiftCode ?? '—'} — ${h.previousShiftName}`
@@ -2402,7 +2405,7 @@ export default async function EmployeePage({
                         <td className="py-2 whitespace-nowrap text-muted-foreground">
                           {h.recordedOnRelease
                             ? t('shiftHistoryRecordedOnRelease')
-                            : h.changedAt.slice(0, 10)}
+                            : formatDmy(h.changedAt)}
                         </td>
                       </tr>
                     ))}
@@ -2643,7 +2646,7 @@ export default async function EmployeePage({
                 {/* An em dash, never a guessed date: the record shows no applied movement that could have
                     moved this employee between schemes. AGENTS 28 — an absent value asserts nothing, a
                     wrong one asserts something false. */}
-                <div className="text-base font-semibold tabular-nums">{scheme.effectiveFrom ?? '—'}</div>
+                <div className="text-base font-semibold tabular-nums">{formatDmy(scheme.effectiveFrom)}</div>
                 {scheme.serviceYears != null && (
                   <div className="text-xs text-muted-foreground">
                     {tScheme('serviceYears', { years: scheme.serviceYears })}
@@ -2770,6 +2773,7 @@ export default async function EmployeePage({
                   hiddenParams={from ? { from } : {}}
                   // r303 (31492f74): HR's per-line sentences, naming the pool when this row's figures are one.
                   hrExplanation={personnelHrExplanation(s, b.sharedBalance)}
+                  dmyDates
                 />
               )}
             </div>
@@ -2826,7 +2830,7 @@ export default async function EmployeePage({
                 <tr key={r.id} className="border-b border-border last:border-0">
                   {/* `tookEffectOn` is the change's own effective date where the writer knew it, and the
                       posting date otherwise — one column, never two dates fighting over one heading. */}
-                  <td className="px-4 py-2 tabular-nums">{r.tookEffectOn}</td>
+                  <td className="px-4 py-2 tabular-nums">{formatDmy(r.tookEffectOn)}</td>
                   <td className="px-4 py-2">{r.leaveTypeName}</td>
                   {/* An em dash where no grade change was recorded, and where the grade has since left
                       the catalogue: an absent value asserts nothing, a guessed one asserts something
@@ -2929,12 +2933,12 @@ export default async function EmployeePage({
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label={t('effectiveDate')}>
-          <input
+          <DateField
             name="effectiveFrom"
-            type="date"
             required
             defaultValue={salaryRows.length ? today : emp.hiredOn}
             className={inputCls}
+            label={t('effectiveDate')}
           />
           {salaryRows.length === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
@@ -3004,7 +3008,7 @@ export default async function EmployeePage({
                 {activeDerived.row.currency} {fmtMoney(activeDerived.basic)}
               </span>
               <span className="text-xs text-muted-foreground">
-                {t('compMeta', { validFrom: activeDerived.row.validFrom })}
+                {t('compMeta', { validFrom: formatDmy(activeDerived.row.validFrom) })}
               </span>
             </div>
             {activeDerived.incrementAmount != null && activeDerived.incrementAmount !== 0 && (
@@ -3244,6 +3248,7 @@ export default async function EmployeePage({
           "today" — two instants, and on a child's 18th birthday two different answers. */}
       <IdentityTaxCard key={`${emp.employmentId}:${taxSelection?.version??0}:${statutory?.taxCircumstance??'legacy'}`}
         embedded
+        dmyDates
         action={setTaxAction}
         employmentId={emp.employmentId}
         personId={emp.personId}
@@ -3610,7 +3615,7 @@ export default async function EmployeePage({
                       </span>
                       <span className="text-muted-foreground">
                         {m.hireCorrection.by ? `${t('movement.hireCorrection.by', { name: m.hireCorrection.by })} · ` : ''}
-                        {todayInKualaLumpur(m.hireCorrection.at)}
+                        {formatDmy(m.hireCorrection.at)}
                       </span>
                     </div>
                     <details>
@@ -3642,7 +3647,7 @@ export default async function EmployeePage({
                   </div>
                 )}
               </td>
-              <td className="px-4 py-2.5 font-mono text-xs">{m.effectiveDate}</td>
+              <td className="px-4 py-2.5 font-mono text-xs">{formatDmy(m.effectiveDate)}</td>
               {/* Reconstructed AS OF the row's effective date in core/movement.ts — never a live read of the
                   employee's current placement, which would print today's values on a row from years ago. */}
               <td className="px-4 py-2.5 text-muted-foreground">{m.company ?? '—'}</td>
@@ -3699,7 +3704,7 @@ export default async function EmployeePage({
                             ? t('movement.cancelConfirmTitle')
                             : t('movement.rollbackConfirmTitle')
                         }
-                        subtitle={`${movementKindLabel(m.kind)} · ${m.effectiveDate}`}
+                        subtitle={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
                         description={
                           m.status === 'pending'
                             ? t('movement.cancelConfirmDescription')
@@ -3785,11 +3790,11 @@ export default async function EmployeePage({
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.columns.effectiveDate')}</dt>
-          <dd className="font-medium text-foreground">{movementDetailData.row.effectiveDate}</dd>
+          <dd className="font-medium text-foreground">{formatDmy(movementDetailData.row.effectiveDate)}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.columns.endDate')}</dt>
-          <dd className="font-medium text-foreground">{movementDetailData.row.endDate ?? '—'}</dd>
+          <dd className="font-medium text-foreground">{formatDmy(movementDetailData.row.endDate)}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.detail.recordedBy')}</dt>
@@ -3801,7 +3806,7 @@ export default async function EmployeePage({
           <dt className="text-xs text-muted-foreground">{t('movement.detail.recordedAt')}</dt>
           <dd className="font-medium text-foreground">
             {movementDetailData.occurredAt
-              ? movementDetailData.occurredAt.toISOString().slice(0, 16).replace('T', ' ')
+              ? formatDmyTime(movementDetailData.occurredAt)
               : '—'}
           </dd>
         </div>
@@ -3819,7 +3824,7 @@ export default async function EmployeePage({
               ? t('movement.correctedBadge')
               : t('movement.reversedBadge')}
           </span>{' '}
-          · {movementDetailData.row.reversed.at.toISOString().slice(0, 16).replace('T', ' ')}
+          · {formatDmyTime(movementDetailData.row.reversed.at)}
           {/* 10fcf6df — WHO rolled it back, beside WHEN. Resolved in the projection from the reversal
               event's own actor, so this cannot disagree with the audit trail. */}
           {movementDetailData.row.reversed.by
@@ -3834,7 +3839,7 @@ export default async function EmployeePage({
         <div className="border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{t('movement.hireCorrection.badge')}</span>
           {' · '}
-          {todayInKualaLumpur(movementDetailData.hireCorrection.at)}
+          {formatDmy(movementDetailData.hireCorrection.at)}
           {movementDetailData.hireCorrection.by
             ? ` · ${t('movement.hireCorrection.by', { name: movementDetailData.hireCorrection.by })}`
             : ''}
@@ -4015,7 +4020,7 @@ export default async function EmployeePage({
     canCreateMovement && hireCorrection && hireCorrectionOptions
       ? (() => {
           const recordLabel = (r: { kind: string | null; effectiveDate: string }) =>
-            `${r.kind ? movementKindLabel(r.kind) : t('movement.hireCorrection.untaggedRecord')} ${r.effectiveDate}`;
+            `${r.kind ? movementKindLabel(r.kind) : t('movement.hireCorrection.untaggedRecord')} ${formatDmy(r.effectiveDate)}`;
           const FIELD_LABEL: Record<HireCorrectionField, string> = {
             departmentId: t('movement.field.department'),
             positionId: t('movement.field.position'),
@@ -4050,14 +4055,14 @@ export default async function EmployeePage({
             {
               key: 'groupJoinDate',
               label: t('employmentInfo.groupJoinDate'),
-              value: hireCorrection.groupJoinDate,
+              value: formatDmy(hireCorrection.groupJoinDate),
               pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('groupJoinDateCorrection') }),
               note: t('movement.hireCorrection.payslipRefusal'),
             },
             {
               key: 'joinDate',
               label: t('employmentInfo.joinDate'),
-              value: hireCorrection.joinDate ?? '—',
+              value: formatDmy(hireCorrection.joinDate),
               pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('joinDateChange') }),
               note: t('movement.hireCorrection.payslipRefusal'),
             },
@@ -4079,7 +4084,7 @@ export default async function EmployeePage({
               <SectionHeader title={t('movement.hireCorrection.title')} />
               <HireCorrectionForm
                 employmentId={employmentId}
-                heading={`${movementKindLabel('hired')} · ${hireCorrection.hiredOn}`}
+                heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
                 readOnly={readOnly}
                 cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
@@ -4092,7 +4097,7 @@ export default async function EmployeePage({
   const changeHistoryCard = admin ? (
     <Card id="section-change-history" className="overflow-hidden">
       <SectionHeader title={t('changeHistory')} count={changeHistory.length} />
-      <AuditTable rows={changeHistory} nowMs={Date.now()} />
+      <AuditTable rows={changeHistory} nowMs={Date.now()} dmyDates />
     </Card>
   ) : null;
 
@@ -4177,7 +4182,7 @@ export default async function EmployeePage({
   // Information card; the computation stays here beside the other service figures it shares inputs with.
   const yearOfServiceLabel = fmtServiceYmd(emp.hiredOn);
   const yearOfServiceTooltip = emp.hiredOn
-    ? t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: emp.hiredOn, asOf: today })
+    ? t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: formatDmy(emp.hiredOn), asOf: formatDmy(today) })
     : null;
   // 8ebabbf2 / 89ea527b — the view-only renderer for every field that left the Employment tab's forms. A
   // DISABLED <input> rather than plain text on purpose: it keeps the card's existing look and the field's
@@ -4227,7 +4232,7 @@ export default async function EmployeePage({
                 <li key={m.id}>
                   {t('employmentInfo.pendingMovementItem', {
                     kind: movementKindLabel(m.kind),
-                    date: m.effectiveDate,
+                    date: formatDmy(m.effectiveDate),
                   })}
                 </li>
               ))}
@@ -4463,13 +4468,13 @@ export default async function EmployeePage({
               movement tag, so a forged submit cannot set them either. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t('employmentInfo.groupJoinDate')}>
-              {readOnlyValue(emp.hiredOn)}
+              {readOnlyValue(emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
               </p>
             </Field>
             <Field label={t('employmentInfo.joinDate')}>
-              {readOnlyValue(emp.joinDate)}
+              {readOnlyValue(emp.joinDate ? formatDmy(emp.joinDate) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
               </p>
@@ -4525,7 +4530,7 @@ export default async function EmployeePage({
                 single mutator of the underlying extended/final columns (kept — they still drive the derived
                 probation status). Only the standard Confirmation Date stays editable here. */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ConfirmationDateField mode="form" value={emp.confirmationDate} />
+              <ConfirmationDateField mode="form" value={emp.confirmationDate} dmyDisplay />
             </div>
           </div>
 
@@ -4549,21 +4554,21 @@ export default async function EmployeePage({
               <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label={t('employmentInfo.contractStartDate')}>
-                  <input
+                  <DateField
                     name="contractStartDate"
-                    type="date"
                     required
                     defaultValue={emp.contractStartDate ?? emp.hiredOn}
                     className={inputCls}
+                    label={t('employmentInfo.contractStartDate')}
                   />
                 </Field>
                 <Field label={t('employmentInfo.contractEndDate')}>
-                  <input
+                  <DateField
                     name="contractEndDate"
-                    type="date"
                     required
                     defaultValue={emp.contractEndDate ?? emp.provisionalEndOn ?? ''}
                     className={inputCls}
+                    label={t('employmentInfo.contractEndDate')}
                   />
                 </Field>
               </div>
@@ -4610,13 +4615,13 @@ export default async function EmployeePage({
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field label={t('employmentInfo.tenderResignationDate')}>
-                <input name="tenderResignationDate" type="date" defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} />
+                <DateField name="tenderResignationDate" defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} label={t('employmentInfo.tenderResignationDate')} />
               </Field>
               <Field label={t('employmentInfo.resignationDate')}>
-                <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+                <DateField name="resignationDate" defaultValue={emp.resignationDate ?? ''} className={inputCls} label={t('employmentInfo.resignationDate')} />
               </Field>
               <Field label={t('employmentInfo.lastWorkingDate')}>
-                <input name="lastWorkingDate" type="date" defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} />
+                <DateField name="lastWorkingDate" defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} label={t('employmentInfo.lastWorkingDate')} />
               </Field>
             </div>
             <p className="text-xs text-muted-foreground">{t('employmentInfo.lifecycleDeferredNote')}</p>
@@ -4691,7 +4696,7 @@ export default async function EmployeePage({
                     {superiorLabel(h.employeeCode, h.name)}
                   </Link>
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {h.validFrom} → {h.validTo}
+                    {formatDmy(h.validFrom)} → {formatDmy(h.validTo)}
                   </span>
                 </li>
               ))}
@@ -4721,7 +4726,7 @@ export default async function EmployeePage({
                       {d.delegateName}
                     </Link>
                     <span className="text-xs text-muted-foreground">
-                      {d.validFrom} → {d.validTo ?? '—'}
+                      {formatDmy(d.validFrom)} → {formatDmy(d.validTo)}
                     </span>
                   </span>
                   <form action={endDelegationAction}>
@@ -4753,10 +4758,10 @@ export default async function EmployeePage({
               </select>
             </Field>
             <Field label={t('delegationFrom')}>
-              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
+              <DateField name="validFrom" required defaultValue={today} className={inputCls} label={t('delegationFrom')} />
             </Field>
             <Field label={t('delegationTo')}>
-              <input name="validTo" type="date" className={inputCls} />
+              <DateField name="validTo" className={inputCls} label={t('delegationTo')} />
             </Field>
             <div>
               <button className={btnPrimary}>{t('delegationAdd')}</button>
@@ -4897,7 +4902,7 @@ export default async function EmployeePage({
             </div>
           </Field>
           <Field label={t('effectiveDate')}>
-            <input name="effectiveDate" type="date" required defaultValue={suggestedEffectiveDate} className={inputCls} />
+            <DateField name="effectiveDate" required defaultValue={suggestedEffectiveDate} className={inputCls} label={t('effectiveDate')} />
           </Field>
           <div>
             <button className={btnPrimary}>{t('locationConfirm')}</button>
@@ -4935,7 +4940,7 @@ export default async function EmployeePage({
             </select>
           </Field>
           <Field label={t('effectiveDate')}>
-            <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+            <DateField name="effectiveDate" required defaultValue={today} className={inputCls} label={t('effectiveDate')} />
           </Field>
           <div>
             <button className={btnPrimary}>{t('setLocation')}</button>
@@ -4959,7 +4964,7 @@ export default async function EmployeePage({
             <tr key={r.id}>
               <td className="px-4 py-2.5 text-foreground">{r.leaveType}</td>
               <td className="px-4 py-2.5 text-muted-foreground">
-                {r.startDate} → {r.endDate}
+                {formatDmy(r.startDate)} → {formatDmy(r.endDate)}
               </td>
               <td className="px-4 py-2.5 tabular-nums">{t('daysCount', { days: Number(r.days) })}</td>
               <td className="px-4 py-2.5">
@@ -5208,7 +5213,7 @@ export default async function EmployeePage({
           code: emp.employeeCode ?? '—',
           email: emp.email,
           company: emp.company,
-          hiredOn: emp.hiredOn,
+          hiredOn: formatDmy(emp.hiredOn),
         })}
         actions={
           <>
@@ -5345,7 +5350,7 @@ export default async function EmployeePage({
                   Labelled Group Join Date so the summary card and the Employment tab name the same date the
                   same way. The value is unchanged and neither date moved. */}
               <dt className="text-xs text-muted-foreground">{t('headerGroupJoinDate')}</dt>
-              <dd className="font-medium text-foreground">{emp.hiredOn}</dd>
+              <dd className="font-medium text-foreground">{formatDmy(emp.hiredOn)}</dd>
             </div>
             {/* b75b2a23 — Year of Service, moved here from the Employment tab so service length is visible
                 the moment a profile opens. Same read-only Y/M/D figure from the Group Join Date (computed

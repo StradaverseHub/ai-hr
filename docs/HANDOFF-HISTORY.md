@@ -1,3 +1,30 @@
+## r422 — 2026-10-08 · main@24403990a4e1f07f4837c5c276b00c1b4726da48 · migration none
+
+**Scope.** 7e784380: every date on the Personnel employee profile reads DD-MMM-YYYY ("31-Jan-2026"). `lib/date-display.ts` (formatDmy / formatDmyTime / formatDmyInText: fixed English months, a yyyy-mm-dd is read off the string and never through `new Date`, instants on the Kuala Lumpur clock) and `components/ui/date-field.tsx` (native date input kept, same name and ISO value, drawn under a DMY box). Shared components opt in by prop; the wizard, Leave, Audit and Schedule screens are unchanged. Exports, PDFs and letters stay ISO. Deployed; live after restart (401, /health 200, zero-line dry-run from the deployed tree). Board: approved plan byte-identical to the pushed text; build-start, build-complete and deployed recorded at 24403990.
+
+**Decisions.**
+- Document upload stamps and movement recorded/reversed times now print Kuala Lumpur time instead of UTC (up to 8 h visible shift); shift-history "changed on" is the KL day.
+- The builder's two WIP commits were squashed onto main (tree identical) before gating, so the gated sha is the shipped sha and main fast-forwarded to it.
+
+**Gate.** Full. First run RED with 88 files in chunk 1 of 6, all "No space left on device" on the 8 GB RAM-disk cluster (the r422 DB test ran in chunk 6, green). Re-run at CHUNKS=8: 1232 of 1232 (470 + 762), 1142 s, peak disk 22% per chunk. tsc clean; `next build` clean. `pnpm test:browser` not run (full tier does not include it).
+
+**Not done / owed.** Dialog date inputs, the contract-employee block and the leave side panel are formatted in code but not covered by the render sweep. Classic at 390 company switcher (pre-existing). `ai_hr_r422` dev DB to drop.
+
+## r421 — 2026-10-08 · main@6972b6994c952792f6d1c563b40eb2a22133725f · migration none
+
+**Scope.** One gate, five pieces: r417 tiered gate (ADR-0094), r418 statutory identity + Borang A zero-EPF rows + BBCB card + Statutory Forms panels (e74af58c contested, 5c31d379, 57ef8cf9), r419 bank account tab (48652e18), r420 CSV template label (f9b3b8bf). Deployed with `improve:deploy`; live after restart (401, /health 200). Board: all five items planned, plans re-pushed after review corrections; record deployed only on byte-identical approval.
+
+**Decisions.**
+- Identity on 8A / SIP / Borang A / BBCD follows `employee_statutory_my.epf_citizenship`, not the free-text nationality (a Singaporean recorded citizen with an IC would otherwise newly block): non_citizen → passport; pr → the IC field as MyPR; citizen → IC, else passport when nationality is non-Malaysian. Upload files UNCHANGED: ASSIST field 3 is a 12-character IC / SOCSO foreign-worker number and the KWSP 02 record has a 12-digit IC field only; a passport-only person is refused there by name. A SOCSO-number fallback was built and REVERTED: the one non-citizen's SOCSO number is 9 characters and the writer takes exactly 12 — how PERKESO pads it is UNKNOWN; both plans ask the reporter.
+- Borang A drops rows whose employer and employee shares are both zero (to the sen) before pagination; the review screen NAMES who was left off (a zero from a data slip must not vanish).
+- Bank account Remove refuses nothing (the FK unroutes a statutory body); the dialog names every body paid from the account. Remove is now scoped by company (a tenant-wide admin could delete company B's account from company A's screen). The first plan wrongly said removal is refused; corrected on the board.
+- Tiered gate: affected tier for presentational changes (56 s measured); full gate in two parts, 468 no-DB files once on a closed-port DB, 761 DB files chunked — 22.8 min this round. release.ts never runs vitest; tsc runs with a 6144 MB heap (it ran out of memory at the default).
+- The merge carried the gate receipt forward by hand (tree byte-identical to the gated sha). The new rule forbids that; next round fast-forwards main or re-gates.
+
+**Gate.** Full, GREEN first pass: 1229 of 1229 (468 + 761), 1366 s.
+
+**Not done / owed.** Passport holders in the KWSP and PERKESO upload files (formats unknown). `/payroll/cp22/batch` still exists with nothing linking to it. Stale BBCB/#worklist prose in a few comments. Classic at 390: company switcher crushed by the bell (pre-existing).
+
 ## r416 — 2026-10-08 · main@151bf343ab556666a350421288a6b6553419c5cd · migration none
 
 **Scope.** Owner report: "can't log out or change company after new theme". Reproduced in Chromium (Monolith, 1440 and 390): the header's `monolith-rv` reveal keeps a transform on <header>, making it a stacking context, so the company menu and the account menu (z-50 inside it) painted UNDER <main> — the page showed through the company list and "Customize Dashboard" covered "Log out". On a phone the company switcher was also crushed to 0px. Fix: `monolith:relative monolith:z-30` on the header; `monolith:min-w-[5.5rem]` on the switcher wrapper. Classic untouched. Live after restart (401, /health 200, zero-line dry-run).

@@ -142,7 +142,8 @@ import { REPLACEMENT_ELIGIBILITY_CRITERIA, type ReplacementRequestEligibility } 
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacementLeaveFrom } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
-import { isMyBankKey } from '@/lib/my-banks';
+import { isMyBankKey, myBankLabel } from '@/lib/my-banks';
+import { accountLast4 } from '@/lib/bank-account-last4';
 import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
 import { COMPANY_DELETE_REFUSAL_KEY } from '@/lib/company-delete';
 // 65b22c00 — the consolidated General-tab Save. Both contracts live outside this file because a
@@ -534,13 +535,25 @@ export async function removeCompanyBankProfileAction(formData: FormData) {
   // 65b22c00 — the form posts the ROW id (identity is the row, not the company), so the panel now also
   // carries the company id: without it this action cannot name the screen it was pressed on.
   const companyId = String(formData.get('companyId'));
+  let removed: Awaited<ReturnType<typeof removeCompanyBankProfile>> = { id: null };
   try {
-    await removeCompanyBankProfile(s, { id: String(formData.get('id')) });
+    removed = await removeCompanyBankProfile(s, { id: String(formData.get('id')), companyId });
   } catch (e) {
     failCompany(e, companyId, companyTab(formData));
   }
   const t = await getTranslations('admin.organization');
-  okCompany(companyId, t('removedToast'), companyTab(formData));
+  // 48652e18 (r419) — the message names WHICH account went: its bank and the last four characters of
+  // its number, read from the deleted ROW (not from anything the form posted), and never the whole
+  // number — this string travels in the URL. A number of four characters or fewer is named by bank only.
+  // ⚠️ The service refuses nothing and returns `{ id: null }` when no row matched (an unknown id, or RLS);
+  // that case keeps the old bare "Removed" rather than naming an account nobody deleted.
+  let msg = t('removedToast');
+  if (removed.id !== null) {
+    const bank = myBankLabel(removed.bank);
+    const last4 = accountLast4(removed.debitAccountNo);
+    msg = last4 ? t('bankRemovedToast', { bank, last4 }) : t('bankRemovedToastNoDigits', { bank });
+  }
+  okCompany(companyId, msg, companyTab(formData));
 }
 
 // R46 orgbank (84719377) — per-authority statutory payment configuration. One form per authority; the

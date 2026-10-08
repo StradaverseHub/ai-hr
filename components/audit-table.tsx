@@ -15,6 +15,7 @@ import {
   type ActionKind,
   type ModuleKey,
 } from '@/lib/audit-format';
+import { formatDmyInText, formatDmyTime } from '@/lib/date-display';
 
 /** Colour-coded action badge classes (light + dark). High-impact actions (delete/supersede/archive)
  *  read as warnings; the rest are informational. */
@@ -31,7 +32,18 @@ const ACTION_BADGE: Record<ActionKind, string> = {
 /** Append-only event ledger, rendered as scannable rows with an expandable payload diff. Each row shows
  *  a module chip + a colour-coded action badge; expanding reveals the before→after comparison and the
  *  absolute timestamp. PII (bank/IC/salary) is masked by describePayload. Server component — no client JS. */
-export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: number }) {
+export async function AuditTable({
+  rows,
+  nowMs,
+  dmyDates = false,
+}: {
+  rows: AuditRow[];
+  nowMs: number;
+  /** r422 — OPT-IN: draw the absolute timestamp as "31-Jan-2026 14:05" (Kuala Lumpur clock) and every
+   *  yyyy-mm-dd inside a payload value as DD-MMM-YYYY (lib/date-display.ts). The Personnel profile's
+   *  Change History passes it; the Audit screens do not and are unchanged. */
+  dmyDates?: boolean;
+}) {
   const t = await getTranslations('components.auditTable');
   if (rows.length === 0) {
     return <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('empty')}</p>;
@@ -91,7 +103,7 @@ export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: num
                 <time
                   className="shrink-0 tabular-nums text-xs text-muted-foreground"
                   dateTime={new Date(r.occurredAt).toISOString()}
-                  title={new Date(r.occurredAt).toLocaleString()}
+                  title={dmyDates ? formatDmyTime(new Date(r.occurredAt)) : new Date(r.occurredAt).toLocaleString()}
                 >
                   {relativeTime(r.occurredAt, nowMs)}
                 </time>
@@ -103,12 +115,14 @@ export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: num
                 {detail.map((d, i) => (
                   <div key={i} className="flex gap-2">
                     <dt className="text-muted-foreground">{d.key}</dt>
-                    <dd className={d.changed ? 'font-medium text-foreground' : 'tabular-nums'}>{d.value}</dd>
+                    <dd className={d.changed ? 'font-medium text-foreground' : 'tabular-nums'}>{dmyDates ? formatDmyInText(d.value) : d.value}</dd>
                   </div>
                 ))}
                 <div className="flex gap-2 pt-0.5 text-[10px] text-muted-foreground/70">
                   <dt>{t('at')}</dt>
-                  <dd className="tabular-nums">{new Date(r.occurredAt).toLocaleString()}</dd>
+                  <dd className="tabular-nums">
+                    {dmyDates ? formatDmyTime(new Date(r.occurredAt)) : new Date(r.occurredAt).toLocaleString()}
+                  </dd>
                 </div>
                 <div className="pt-0.5 text-[10px] text-muted-foreground/70">{t('sequence', { seq: r.sequence })}</div>
               </dl>

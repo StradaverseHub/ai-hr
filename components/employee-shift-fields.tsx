@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
+import { DateField } from '@/components/ui/date-field';
 
 type ShiftOption = { id: string; label: string };
 
@@ -33,12 +34,16 @@ export function EmployeeShiftFields({
   defaultShiftId,
   shifts,
   defaultEffectiveFrom,
+  dmyDisplay = false,
 }: {
   defaultType: 'fixed' | 'roster';
   defaultShiftId: string | null;
   shifts: ShiftOption[];
   /** Today in the tenant's calendar (todayInKualaLumpur), resolved on the server. */
   defaultEffectiveFrom: string;
+  /** r422 — OPT-IN: draw the Effective date as DD-MMM-YYYY (components/ui/date-field.tsx), posting the same
+   *  ISO value. The Personnel profile passes it; Schedule Assignment does not and is unchanged. */
+  dmyDisplay?: boolean;
 }) {
   const t = useTranslations('people.detail');
   const [type, setType] = useState<'fixed' | 'roster'>(defaultType);
@@ -75,13 +80,23 @@ export function EmployeeShiftFields({
           requiredAriaLabel={t('requiredField')}
           className="sm:ml-auto"
         >
-          <input
-            name="effectiveFrom"
-            type="date"
-            required
-            defaultValue={defaultEffectiveFrom}
-            className={inputCls}
-          />
+          {dmyDisplay ? (
+            <DateField
+              name="effectiveFrom"
+              required
+              defaultValue={defaultEffectiveFrom}
+              className={inputCls}
+              label={t('shiftEffectiveDateLabel')}
+            />
+          ) : (
+            <input
+              name="effectiveFrom"
+              type="date"
+              required
+              defaultValue={defaultEffectiveFrom}
+              className={inputCls}
+            />
+          )}
         </Field>
       </div>
       <p className="text-xs text-muted-foreground">

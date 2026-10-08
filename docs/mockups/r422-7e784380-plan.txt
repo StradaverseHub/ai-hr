@@ -1,0 +1,27 @@
+VERDICT: Small to medium change   ·   SIZE: Medium
+
+WHAT WE'LL CHANGE
+
+- Every date shown in a selected employee's profile in Personnel Management uses one format: DD-MMM-YYYY, for example 31-Jan-2026 or 08-Oct-2026. That covers Group Join Date, Join Date, confirmation, resignation and last working dates, contract start and end dates, effective dates in the employment history and movements, document and review dates, and every other date on the profile's tabs.
+
+- Date boxes you type or pick a date in, on the same profile, show the chosen date the same way, for example 31-Jan-2026. Clicking the box still opens the calendar to pick a date, as today.
+
+- Only how the date looks changes. The date stored, every calculation that uses it (years of service, leave, payroll), and every check on it stay exactly as they are.
+
+WHAT YOU'LL GET
+
+One date format throughout the employee profile, so no date reads as 2026-01-31 on one line and 31-Jan-2026 on the next.
+
+GOOD TO KNOW
+
+- The month is always written in English short form (Jan, Feb, Mar and so on), whichever language the system is shown in, so the format stays the same for everyone.
+
+- This request covers the employee profile in Personnel Management. Other screens keep their current date format for now. If you want the same format everywhere, raise a new request and we will plan it across the system.
+
+- Exported files (Excel, CSV and statutory forms) are not changed by this request, because their date formats are set by what each file or agency expects.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+One pure formatter lib/date-display.ts formatDmy(iso) → "31-Jan-2026" (English month abbreviations, en-GB parts or a fixed table; parse YYYY-MM-DD as a calendar date, never through new Date() in local time — no timezone shift); null/blank → "—". Apply to every date rendered as text under app/admin/personnel/[employmentId]/** (page.tsx and its sections: employment info, history, movements, documents, reviews, family, statutory, salary): grep for ISO renders ({x.someDate}, toLocaleDateString, formatDate from lib/utils) and route them through formatDmy. Editable dates on the same profile: a shared components/ui/date-field.tsx — a native input type=date kept for picking and posting (name and ISO value unchanged, so every action is untouched) with the visible value drawn as formatDmy (overlay text or a sibling display; the native picker opened by click/showPicker; keyboard accessible; aria-label carries the formatted date). Monolith and Classic. Do not touch exports, PDFs, other modules, or any server action. Tests: formatDmy cases (month ends, leap day, blank, malformed); no raw YYYY-MM-DD text node in the rendered profile (DOM sweep over the page's text, asserting the sweep saw dates); date-field posts the same ISO value; existing personnel tests green. No migration.

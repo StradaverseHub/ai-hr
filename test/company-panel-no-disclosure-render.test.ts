@@ -303,8 +303,16 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     const html = render('en', richProps);
     // Bank account editor for a saved account (was fold #2).
     expect(html).toContain('value="512345678901"');
-    // The blank add-an-account form (was fold #3) — a second Corporate ID box, empty.
-    expect(html.match(/name="corporateId"/g) ?? []).toHaveLength(3); // 2 saved + 1 blank
+    // ⚠️ UPDATED BY 48652e18 (r419), NOT LOOSENED. The blank add-an-account form (was fold #3) was asserted
+    // present on arrival (3 = 2 saved + 1 blank). The reporter has since asked for it to be ONE CLOSED
+    // BUTTON above the accounts, so on arrival it is the button, not the form: exactly the two saved
+    // editors, plus a closed toggle. Opening it is driven for real in test/r419-bank-account-tab.dom.test.tsx.
+    expect(html.match(/name="corporateId"/g) ?? []).toHaveLength(2); // 2 saved; the blank form is behind the button
+    const en = messagesFor('en').admin.organization as Record<string, string>;
+    const addBtn = /<button[^>]*>[^<]*<\/button>/g;
+    const add = (html.match(addBtn) ?? []).find((b) => b.includes(inMarkup(en.bankAccountAdd)));
+    expect(add, 'the add button is on the tab').toBeTruthy();
+    expect(add, 'and it is closed on arrival').toContain('aria-expanded="false"');
     /**
      * ⚠️ THE STATUTORY HALF OF THIS CASE MOVED WITH ITS SUBJECT (15e5bd93 rev 2, r353) AND IS ASSERTED
      * NEGATIVELY HERE. It counted one payment form per authority — first to keep the card's Open/Edit

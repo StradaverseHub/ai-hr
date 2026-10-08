@@ -35,6 +35,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useLocale, useTranslations } from 'next-intl';
 import { Info, X } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
+import { formatDmy } from '@/lib/date-display';
+import { DateField } from '@/components/ui/date-field';
 // 4a1abc4a: every day figure in this column goes through the ONE shared formatter, so the panel and the
 // balance grid behind it cannot print the same number two ways.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
@@ -131,6 +133,7 @@ export function LeaveDetailsPanel({
   triggerClassName,
   hrExplanation,
   voice = 'hr',
+  dmyDates = false,
 }: {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
@@ -202,6 +205,8 @@ export function LeaveDetailsPanel({
    * `leave.breakdown.explainSelf` instead. Every other sentence is already person-neutral and is shared.
    */
   voice?: 'hr' | 'self';
+  /** r422 — OPT-IN: draw every date as DD-MMM-YYYY (lib/date-display.ts). The Personnel profile passes it. */
+  dmyDates?: boolean;
 }) {
   const t = useTranslations('leave.breakdown');
   const locale = useLocale();
@@ -283,7 +288,7 @@ export function LeaveDetailsPanel({
     for (const [k, a] of Object.entries(args ?? {})) {
       if ('days' in a) out[k] = fmtDays(a.days);
       else if ('signedDays' in a) out[k] = a.signedDays > 0 ? `+${fmtDays(a.signedDays)}` : fmtDays(a.signedDays);
-      else if ('date' in a) out[k] = a.date;
+      else if ('date' in a) out[k] = dateText(a.date);
       else if ('text' in a) out[k] = a.text;
       else if ('count' in a) out[k] = a.count;
       else if ('choice' in a) out[k] = a.choice;
@@ -324,6 +329,10 @@ export function LeaveDetailsPanel({
   // ESS gate: shown when config is not applied (admin) OR the key is not explicitly false (missing ⇒ visible).
   const show = (key?: string) => !applyEssConfig || key == null || data.essView?.[key as keyof typeof data.essView] !== false;
 
+  // r422 — OPT-IN (the Personnel profile): every date this panel draws reads DD-MMM-YYYY. Off, a date is
+  // drawn exactly as before, so Leave Details, Employee Balances and My Leave are unchanged.
+  const dateText = (iso: string) => (dmyDates ? formatDmy(iso) : iso);
+
   const iconVisual = leaveVisual({ color: visual.color, icon: visual.icon, code: visual.code });
   const HeaderIcon = iconVisual.Icon;
 
@@ -335,7 +344,7 @@ export function LeaveDetailsPanel({
       if (f.omitWhenNull) return null;
       return f.format === 'date' ? t('noExpiry') : PLACEHOLDER;
     }
-    if (f.format === 'date') return String(raw);
+    if (f.format === 'date') return dateText(String(raw));
     return typeof raw === 'number' ? fmtDays(raw) : String(raw);
   };
 
@@ -444,7 +453,7 @@ export function LeaveDetailsPanel({
                   value is offered under both names. A note is an already-formatted string either way; ICU
                   ignores the argument a given message does not use, so `expiresOn` is untouched. */}
               {note && f.noteLabelKey && (
-                <p className="mt-0.5 pl-3 text-xs text-muted-foreground">{t(f.noteLabelKey, { date: note, value: note })}</p>
+                <p className="mt-0.5 pl-3 text-xs text-muted-foreground">{t(f.noteLabelKey, { date: dateText(note), value: dateText(note) })}</p>
               )}
               {/* r303 — HR only: how THIS employee's figure was reached, then HR's own explanation (if written)
                   as a plain paragraph. No icon, no hover: the reader asked "why this number", so it is on the page. */}
@@ -541,7 +550,7 @@ export function LeaveDetailsPanel({
                 </span>
                 <span className="truncate">{data.leaveType}</span>
               </Dialog.Title>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t('panelSubtitle', { date: asOf })}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('panelSubtitle', { date: dateText(asOf) })}</p>
             </div>
             <Dialog.Close asChild>
               <button
@@ -579,12 +588,21 @@ export function LeaveDetailsPanel({
               )}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('asAtDate')}
-                <input
-                  type="date"
-                  name="asOf"
-                  defaultValue={asOf}
-                  className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
-                />
+                {dmyDates ? (
+                  <DateField
+                    name="asOf"
+                    defaultValue={asOf}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
+                    label={t('asAtDate')}
+                  />
+                ) : (
+                  <input
+                    type="date"
+                    name="asOf"
+                    defaultValue={asOf}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                )}
               </label>
               <button
                 type="submit"
@@ -634,7 +652,7 @@ export function LeaveDetailsPanel({
                   eligibility.verdict !== 'default_table' && (
                   <div className="mt-2 border-t border-current/20 pt-2">
                     {eligibility.verdict === 'not_active' ? (
-                      <p>{t('eligibilityNotActive', { date: asOf })}</p>
+                      <p>{t('eligibilityNotActive', { date: dateText(asOf) })}</p>
                     ) : eligibility.verdict === 'no_rules' ? (
                       <p>{t('eligibilityNoRules')}</p>
                     ) : (
@@ -647,7 +665,7 @@ export function LeaveDetailsPanel({
                             <li key={r.id}>
                               <span className="font-medium">{r.name}</span>
                               {' — '}
-                              {t(RULE_STATE_COPY[r.state], { date: r.validTo ?? r.validFrom })}
+                              {t(RULE_STATE_COPY[r.state], { date: dateText(r.validTo ?? r.validFrom) })}
                               {/* The axis this employee fails, named from the rule editor's own vocabulary.
                                   The VALUE is deliberately not quoted here: it is the reader's own record,
                                   and labelling a stored value needs the catalogue only the admin screen

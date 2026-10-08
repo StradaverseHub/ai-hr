@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { DateField } from '@/components/ui/date-field';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction, editMovementEventAction } from './actions';
@@ -472,12 +473,12 @@ export function MovementNewEvent({
         {showEffectiveDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('form.effectiveDate')}
-            <input
+            <DateField
               name="effectiveDate"
-              type="date"
               required
               defaultValue={edit?.effectiveDate ?? today}
               className={inputCls}
+              label={t('form.effectiveDate')}
             />
             {DATE_VALUE_KINDS.includes(behaviour) && (
               <span className="text-xs text-muted-foreground">
@@ -498,12 +499,12 @@ export function MovementNewEvent({
             {/* ae9350f2 — for a Termination this slot IS the Last Working Day, and it is mandatory. Same
                 column, same meaning as on a Resignation; only the label differs so it reads as what it is. */}
             {isTermination ? t('form.lastWorkingDay') : t('form.endDate')}
-            <input
+            <DateField
               name="endDate"
-              type="date"
               required={behaviour === 'probationExtension' || isTermination}
               defaultValue={edit?.endDate ?? ''}
               className={inputCls}
+              label={isTermination ? t('form.lastWorkingDay') : t('form.endDate')}
             />
           </label>
         )}
@@ -545,7 +546,7 @@ export function MovementNewEvent({
             {showResignationDate && (
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('form.resignationDate')}
-                <input name="resignationDate" type="date" required className={inputCls} />
+                <DateField name="resignationDate" required className={inputCls} label={t('form.resignationDate')} />
               </label>
             )}
 

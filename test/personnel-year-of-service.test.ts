@@ -188,7 +188,10 @@ describe('drift guards (source assertions)', () => {
   });
 
   it('the i-badge tooltip carries the Group Join Date and the as-of date (native title + aria-label)', () => {
-    expect(src).toContain("t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: emp.hiredOn, asOf: today })");
+    // r422 — both dates are drawn DD-MMM-YYYY (lib/date-display.ts); still the Group Join Date and today.
+    expect(src).toContain(
+      "t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: formatDmy(emp.hiredOn), asOf: formatDmy(today) })",
+    );
     expect(src).toContain('title={yearOfServiceTooltip}');
     expect(src).toContain('aria-label={yearOfServiceTooltip}');
   });

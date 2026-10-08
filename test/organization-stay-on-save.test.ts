@@ -225,7 +225,10 @@ describe('§1 every save on a company lands back on THAT company', () => {
     ] as [string, () => Promise<unknown>][]) {
       const { pathname, q } = parse(await redirectOf(run));
       expect(pathname, name).toBe(`${LIST}/${b.companyId}`);
-      expect(q.get('toast'), name).toBe('Removed');
+      // ⚠️ UPDATED BY 48652e18 (r419): the bank remove now NAMES the account it removed. This fixture's
+      // number is '99' — two characters, so "the last four" would be the whole number and the message
+      // names the bank only. The four-digit case is test/r419-bank-account-tab.test.ts.
+      expect(q.get('toast'), name).toBe(name === 'removeBankProfile' ? 'Removed the CIMB Bank account' : 'Removed');
     }
   });
 

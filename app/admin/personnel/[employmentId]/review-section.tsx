@@ -8,6 +8,8 @@ import { Card, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { reviewDocumentsFor, reviewProfile, type ReviewType } from '@/core/employment-review';
 import { reviewsFor } from '@/core/employment-review';
 import type { SessionContext } from '@/db/client';
+import { DateField } from '@/components/ui/date-field';
+import { formatDmy } from '@/lib/date-display';
 import { saveReviewLetterAction, setReviewEndDateAction, startReviewAction, uploadReviewDocumentAction } from './actions';
 
 const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
@@ -38,9 +40,9 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
           {profile.reviewType && (
             <>
               <dt className="text-muted-foreground">{t('endDate')}</dt>
-              <dd className="tabular-nums">{profile.endDate ?? '—'}</dd>
+              <dd className="tabular-nums">{formatDmy(profile.endDate)}</dd>
               <dt className="text-muted-foreground">{t('dueDate')}</dt>
-              <dd className="tabular-nums">{profile.dueDate ?? '—'}</dd>
+              <dd className="tabular-nums">{formatDmy(profile.dueDate)}</dd>
             </>
           )}
         </dl>
@@ -69,7 +71,7 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
                 ))}
               </select>
             </label>
-            <input name="endDate" type="date" required className={inputCls} />
+            <DateField name="endDate" required className={inputCls} label={t('endDate')} />
             <button className={btnPrimary}>{t('setEndDate')}</button>
           </form>
         ) : profile.reviewType ? (

@@ -3,6 +3,7 @@
 import { formatQualifyingChildCount } from '@/localization/child-qualification';
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { formatDmy } from '@/lib/date-display';
 // 04b88724 (r340 fix pass) — the CLIENT-SAFE country-pack seam (ADR-0080 rung 5b, D4). This island prices
 // the child-relief grid the admin is typing into, and it now does so by calling the PACK's own
 // `childReliefFor` — the very function `pack.payroll.childReliefAmountFor` is built on — instead of
@@ -190,6 +191,7 @@ export function IdentityTaxCard({
   taxNumberSharedWith = [],
   country = 'MY',
   embedded = false,
+  dmyDates = false,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   employmentId: string;
@@ -218,6 +220,9 @@ export function IdentityTaxCard({
    * everybody who is not a duplicate, which is almost everybody.
    */
   taxNumberSharedWith?: string[];
+  /** r422 — OPT-IN: the child-relief sentences name their as-of day as DD-MMM-YYYY (lib/date-display.ts).
+   *  The Personnel profile passes it; the Create New Employee draft does not and is unchanged. */
+  dmyDates?: boolean;
   /**
    * 04b88724 — which country pack prices the child relief, matching the `packFor('MY')` the Personnel
    * detail page already resolves server-side for the same employee. A prop rather than a literal in the
@@ -663,7 +668,7 @@ export function IdentityTaxCard({
                     storedAmount: fmtRM(childRelief.storedReliefRM),
                     count: fmtCount(qualifying),
                     amount: fmtRM(reliefRM),
-                    date: childRelief.asOf,
+                    date: dmyDates ? formatDmy(childRelief.asOf) : childRelief.asOf,
                   })}
                 </span>
               )}
@@ -930,7 +935,7 @@ export function IdentityTaxCard({
                   <p className="mt-2 text-xs text-amber-700 dark:text-amber-400" data-child-none-eligible>
                     {t('childQualifyingNoneEligible', {
                       count: childRelief.familyChildren,
-                      date: childRelief.asOf,
+                      date: dmyDates ? formatDmy(childRelief.asOf) : childRelief.asOf,
                     })}
                   </p>
                 )}

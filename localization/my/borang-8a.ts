@@ -14,7 +14,10 @@
  *   • `company_statutory_my.ssm_registration_no` — the MyCoID box. REUSED, not duplicated: it is already
  *     what feeds the ASSIST upload file's ssm/MyCoID field (localization/my/socso-eis-file.ts ~line 140).
  *     Adding a `mycoid_no` column beside it would give one number two homes that can disagree.
- *   • `employee_statutory_my.ic_number` — column (3), and the only per-employee field this form needs.
+ *   • `employee_statutory_my.ic_number` — column (3) for a citizen, and a permanent resident's MyPR number.
+ *   • r418 (item e74af58c) — `employee_statutory_my.passport_number`, `epf_citizenship` and
+ *     `person.nationality`: column (3) for a non-citizen is the PASSPORT number. Which number applies is
+ *     decided by `statutoryIdentityFor` (./statutory-identity.ts), the one rule Borang A shares.
  *   • `employment.join_date` / `hired_on` / `terminated_on` — column (1).
  * `socso_status_code` is the one field that genuinely does not exist, and it is deliberately NOT added.
  * See THE STATUS COLUMN below.
@@ -77,6 +80,9 @@ import {
   type Borang8ARow,
 } from '../../lib/borang-8a';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
+// r418 (item e74af58c) — which identity number column (3) prints, by EPF citizenship status. One rule, shared
+// with the Borang A read, so the two forms can never ask one person for two different documents.
+import { statutoryIdentityFor, type StatutoryIdentity } from './statutory-identity';
 // r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
 // summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
 import {
@@ -262,6 +268,11 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         employmentId: payslip.employmentId,
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
+        // r418 — the three facts `statutoryIdentityFor` decides column (3) from. LEFT joined: a person with
+        // no statutory row reads null throughout, which the rule treats as a citizen with nothing on file.
+        passportNumber: employeeStatutoryMy.passportNumber,
+        epfCitizenship: employeeStatutoryMy.epfCitizenship,
+        nationality: person.nationality,
         joinDate: employment.joinDate,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
@@ -308,7 +319,10 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
     type Acc = {
       employmentId: string;
       name: string;
+      /** The IC field as stored — the PERKESO ASSIST file's identity box reads THIS, never the passport. */
       ic: string | null;
+      /** r418 — what column (3) prints, and why not when it cannot (`statutoryIdentityFor`). */
+      identity: StatutoryIdentity;
       startIso: string | null;
       stopIso: string | null;
       terminationType: string | null;
@@ -370,6 +384,12 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           employmentId: s.employmentId,
           name: s.name,
           ic: s.ic,
+          identity: statutoryIdentityFor({
+            epfCitizenship: s.epfCitizenship,
+            nationality: s.nationality,
+            icNumber: s.ic,
+            passportNumber: s.passportNumber,
+          }),
           // The date they joined THIS employer, not the group service date — the same distinction Form E
           // Part A makes, and the one an entity transfer moves.
           startIso: s.joinDate ?? s.hiredOn,
@@ -422,7 +442,12 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         // r408 — B / H / M from the records (PERKESO's own code list); S and T only when typed on the
         // review screen, which overlays this in the loader.
         status: borang8AStatusFor(a, periodKey),
-        ic: a.ic ?? '',
+        // r418 (item e74af58c) — column (3) follows the EPF citizenship status: IC, MyPR number or passport.
+        ic: a.identity.value,
+        idKind: a.identity.kind ?? '',
+        // The IC field as stored, for the ASSIST upload file only: PERKESO's field 3 is "Identification
+        // Number / SOCSO Foreign Worker Number" — not a passport — so that file is NOT changed by r418.
+        icNumber: a.ic ?? '',
         name: a.name,
         contribution: a.socso,
         socsoEmployer: a.socsoEmployer,
@@ -457,7 +482,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           employmentId: a.employmentId,
           name: a.name,
           missing: [
-            !a.ic ? 'IC' : null,
+            // r418 (item e74af58c) — the PRECISE number that applies and is absent: "IC", "MyPR number",
+            // "Passport number" or "IC or passport number". A non-citizen with a passport is no longer here.
+            a.identity.missing,
             a.wageInconsistent ? SOCSO_WAGE_INCONSISTENT_REASON : null,
             // r372 (item f022dd70) — THE THIRD REASON, AND IT IS A SELECTION FACT RATHER THAN A DATA ONE.
             // The salary stamped on a bonus or off-cycle run is the whole month's, because the kernel

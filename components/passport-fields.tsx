@@ -34,6 +34,7 @@
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Field, inputCls } from '@/components/ui';
+import { DateField } from '@/components/ui/date-field';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
 
 export type PassportValue = {
@@ -78,6 +79,10 @@ export function PassportFields(
         /** Personnel only: a non-Malaysian's passport is their primary identification, so the trio is
          *  marked required. Advisory — the server re-derives it from `person.nationality`. */
         requiredTrio: boolean;
+        /** r422 — OPT-IN: draw the two dates as DD-MMM-YYYY (components/ui/date-field.tsx), posting the same
+         *  names and ISO values. The Personnel profile passes it; the Create New Employee draft (controlled
+         *  mode) does not. */
+        dmyDisplay?: boolean;
       })
     | (Common & { mode: 'controlled'; onChange: (patch: PassportPatch) => void }),
 ) {
@@ -95,6 +100,14 @@ export function PassportFields(
         : { value: v[key] ?? '', onChange: (e) => props.onChange({ [key]: e.target.value }) })}
     />
   );
+
+  /** A date box: the r422 DD-MMM-YYYY field where the caller opted in, else the native one as before. */
+  const dateBox = (key: 'passportIssueDate' | 'passportExpiryDate', label: string) =>
+    props.mode === 'form' && props.dmyDisplay ? (
+      <DateField name={key} defaultValue={v[key] ?? ''} required={req} className={inputCls} label={label} />
+    ) : (
+      box(key, { type: 'date', required: req })
+    );
 
   /** One catalog picker. The Combobox already speaks both dialects (a hidden `name`d input, or
    *  `onValueChange`), which is why the nationality picker could share it first. */
@@ -117,8 +130,8 @@ export function PassportFields(
       <Field label={t('passportNumber')}>
         {box('passportNumber', { required: req, placeholder: t('passportNumberPlaceholder') })}
       </Field>
-      <Field label={t('passportIssueDate')}>{box('passportIssueDate', { type: 'date', required: req })}</Field>
-      <Field label={t('passportExpiryDate')}>{box('passportExpiryDate', { type: 'date', required: req })}</Field>
+      <Field label={t('passportIssueDate')}>{dateBox('passportIssueDate', t('passportIssueDate'))}</Field>
+      <Field label={t('passportExpiryDate')}>{dateBox('passportExpiryDate', t('passportExpiryDate'))}</Field>
       <Field label={t('passportIssuingCountry')}>{picker('passportIssuingCountry', props.countryOptions)}</Field>
       {/* e4b541c6 — the ISO alpha-2 the CP39's `Kod Negara` column wants. A SEPARATE field from the
           issuing country above, which is fed from the tenant's nationality list and therefore holds a

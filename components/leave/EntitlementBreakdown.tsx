@@ -142,6 +142,7 @@ export function EntitlementBreakdown({
   triggerClassName,
   hrExplanation,
   voice,
+  dmyDates,
 }: {
   data: EntitlementBreakdownData;
   /** §1 Leave Summary figures from the balance row (leaveBalances). */
@@ -167,6 +168,8 @@ export function EntitlementBreakdown({
   hrExplanation?: HrLeaveSummaryExplanation;
   /** r404 — `'self'` on My Leave › Leave Details: the explanation addresses the reader ("you"). Omit ⇒ HR's voice. */
   voice?: 'hr' | 'self';
+  /** r422 — OPT-IN, forwarded: the panel draws its dates as DD-MMM-YYYY. Only the Personnel profile passes it. */
+  dmyDates?: boolean;
 }) {
   return (
     <LeaveDetailsPanel
@@ -181,6 +184,7 @@ export function EntitlementBreakdown({
       triggerClassName={triggerClassName}
       hrExplanation={hrExplanation}
       voice={voice}
+      dmyDates={dmyDates}
       /* r212 — the notice rides INSIDE the breakdown the server already loaded, so every page that renders
          this adapter shows it without a prop of its own. Wiring it as a sibling prop instead would have
          meant editing each of the four host pages, and the one that forgot would have silently kept the
