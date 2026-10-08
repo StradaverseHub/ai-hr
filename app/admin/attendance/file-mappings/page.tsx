@@ -4,8 +4,11 @@ import { requireAdmin } from '@/lib/authz';
 import { builtinMappingLastUsed, listClockingMappings } from '@/packs/attendance/service';
 import { BUILTIN_MAPPING_ID, BUILTIN_MAPPING_NAME } from '@/lib/clocking-file';
 import { formatDmy } from '@/lib/date-display';
-import { Button, Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
+import { Button, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { SectionCard, noteCls, typeHelpCls, typeLabelCls } from '@/components/ui/section-card';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StatusWord } from '@/components/ui/status-word';
 import { deleteClockingMappingAction, duplicateClockingMappingAction, setClockingMappingActiveAction } from './actions';
 import { layoutLabel } from './labels';
 
@@ -39,11 +42,16 @@ export default async function FileMappingsPage({
   const total = mappings.length + 1;
   const active = mappings.filter((m) => m.active).length + 1;
 
-  const th = 'px-3 py-2 font-medium';
-  const td = 'px-3 py-2.5';
-  const link = 'text-primary underline-offset-2 hover:underline';
+  const link = 'text-primary underline-offset-2 hover:underline monolith:text-ink monolith:underline';
+  // r427 — Classic's pill string is unchanged; Monolith writes the status as a word.
   const pill = (on: boolean) =>
     `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${on ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`;
+  const statusWord = (on: boolean) => (
+    <StatusWord tone={on ? 'ink' : 'mid'} className={pill(on)}>
+      {on ? t('status.active') : t('status.inactive')}
+    </StatusWord>
+  );
+  const actionsCls = 'flex flex-wrap items-center justify-end gap-x-3 gap-y-1 @max-3xl:justify-start';
 
   return (
     <div className="mx-auto max-w-[90rem] space-y-6">
@@ -60,137 +68,148 @@ export default async function FileMappingsPage({
       />
       {sp.error && <ErrorBanner message={sp.error} />}
 
-      <form method="get" className="grid gap-3 sm:grid-cols-[1fr_12rem_12rem_auto] sm:items-end">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('list.search')}
-          <input name="q" defaultValue={sp.q ?? ''} className={inputCls} placeholder={t('list.searchPlaceholder')} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('list.fileTypeFilter')}
-          <select name="type" defaultValue={type} className={inputCls}>
-            <option value="">{t('list.all')}</option>
-            <option value="csv">{t('fileType.csv')}</option>
-            <option value="txt">{t('fileType.txt')}</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('list.statusFilter')}
-          <select name="status" defaultValue={status} className={inputCls}>
-            <option value="">{t('list.all')}</option>
-            <option value="active">{t('status.active')}</option>
-            <option value="inactive">{t('status.inactive')}</option>
-          </select>
-        </label>
-        <Button type="submit" variant="outline">
-          {t('list.apply')}
-        </Button>
-      </form>
+      {/* r427 (50ed39e1 contest) — two sections: the filters, then the list. Same filters, columns and actions. */}
+      <SectionCard index={1} title={t('sec.findMapping')}>
+        <form method="get" className="grid gap-3 @2xl:grid-cols-[minmax(0,1fr)_12rem_12rem_auto] @2xl:items-end">
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className={typeLabelCls}>{t('list.search')}</span>
+            <input name="q" defaultValue={sp.q ?? ''} className={inputCls} placeholder={t('list.searchPlaceholder')} />
+          </label>
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className={typeLabelCls}>{t('list.fileTypeFilter')}</span>
+            <select name="type" defaultValue={type} className={inputCls}>
+              <option value="">{t('list.all')}</option>
+              <option value="csv">{t('fileType.csv')}</option>
+              <option value="txt">{t('fileType.txt')}</option>
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className={typeLabelCls}>{t('list.statusFilter')}</span>
+            <select name="status" defaultValue={status} className={inputCls}>
+              <option value="">{t('list.all')}</option>
+              <option value="active">{t('status.active')}</option>
+              <option value="inactive">{t('status.inactive')}</option>
+            </select>
+          </label>
+          <Button type="submit" variant="outline">
+            {t('list.apply')}
+          </Button>
+        </form>
+      </SectionCard>
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className={th}>{t('list.colName')}</th>
-                <th className={th}>{t('list.colFileType')}</th>
-                <th className={th}>{t('list.colLayout')}</th>
-                <th className={th}>{t('list.colDevice')}</th>
-                <th className={th}>{t('list.colStatus')}</th>
-                <th className={th}>{t('list.colLastUsed')}</th>
-                <th className={`${th} text-right`}>{t('list.colActions')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((m) => (
-                <tr key={m.id} className={m.active ? '' : 'text-muted-foreground'}>
-                  <td className={`${td} font-medium`}>{m.name}</td>
-                  <td className={td}>{t(`fileType.${m.fileType}`)}</td>
-                  <td className={`${td} text-muted-foreground`}>{layoutLabel(t, m)}</td>
-                  <td className={td}>{m.deviceName || '—'}</td>
-                  <td className={td}>
-                    <span className={pill(m.active)}>{m.active ? t('status.active') : t('status.inactive')}</span>
-                  </td>
-                  <td className={`${td} tabular-nums`}>{m.lastUsedAt ? formatDmy(m.lastUsedAt) : t('list.neverUsed')}</td>
-                  <td className={td}>
-                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                      <Link className={link} href={`/admin/attendance/file-mappings/${m.id}`}>
-                        {t('list.view')}
-                      </Link>
-                      <Link className={link} href={`/admin/attendance/file-mappings/${m.id}/edit`}>
-                        {t('list.edit')}
-                      </Link>
-                      <form action={duplicateClockingMappingAction}>
+      <SectionCard index={2} title={t('sec.mappings')}>
+        <StackedTable label={t('sec.mappings')}>
+          <StackedHead>
+            <StackedTh>{t('list.colName')}</StackedTh>
+            <StackedTh>{t('list.colFileType')}</StackedTh>
+            <StackedTh>{t('list.colLayout')}</StackedTh>
+            <StackedTh>{t('list.colDevice')}</StackedTh>
+            <StackedTh>{t('list.colStatus')}</StackedTh>
+            <StackedTh>{t('list.colLastUsed')}</StackedTh>
+            <StackedTh className="text-right">{t('list.colActions')}</StackedTh>
+          </StackedHead>
+          <StackedBody>
+            {rows.map((m) => (
+              <StackedRow key={m.id} className={m.active ? '' : 'text-muted-foreground monolith:text-mid'}>
+                <StackedTd label={t('list.colName')} role="title" className="font-medium">
+                  {m.name}
+                </StackedTd>
+                <StackedTd label={t('list.colFileType')}>{t(`fileType.${m.fileType}`)}</StackedTd>
+                <StackedTd label={t('list.colLayout')} className="text-muted-foreground monolith:text-mid">
+                  {layoutLabel(t, m)}
+                </StackedTd>
+                <StackedTd label={t('list.colDevice')}>{m.deviceName || '—'}</StackedTd>
+                <StackedTd label={t('list.colStatus')} role="aside" hideLabel>
+                  {statusWord(m.active)}
+                </StackedTd>
+                <StackedTd label={t('list.colLastUsed')} className="tabular-nums">
+                  {m.lastUsedAt ? formatDmy(m.lastUsedAt) : t('list.neverUsed')}
+                </StackedTd>
+                <StackedTd label={t('list.colActions')} role="full" hideLabel>
+                  <div className={actionsCls}>
+                    <Link className={link} href={`/admin/attendance/file-mappings/${m.id}`}>
+                      {t('list.view')}
+                    </Link>
+                    <Link className={link} href={`/admin/attendance/file-mappings/${m.id}/edit`}>
+                      {t('list.edit')}
+                    </Link>
+                    <form action={duplicateClockingMappingAction}>
+                      <input type="hidden" name="mappingId" value={m.id} />
+                      <button type="submit" className={link}>
+                        {t('list.duplicate')}
+                      </button>
+                    </form>
+                    <form action={setClockingMappingActiveAction}>
+                      <input type="hidden" name="mappingId" value={m.id} />
+                      <input type="hidden" name="active" value={m.active ? 'false' : 'true'} />
+                      <button type="submit" className={link}>
+                        {m.active ? t('list.deactivate') : t('list.activate')}
+                      </button>
+                    </form>
+                    {!m.lastUsedAt && (
+                      <form action={deleteClockingMappingAction}>
                         <input type="hidden" name="mappingId" value={m.id} />
-                        <button type="submit" className={link}>
-                          {t('list.duplicate')}
-                        </button>
+                        <ConfirmSubmit
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-0 py-0 text-destructive"
+                          description={t('list.deleteConfirm', { name: m.name })}
+                          confirmLabel={t('list.delete')}
+                        >
+                          {t('list.delete')}
+                        </ConfirmSubmit>
                       </form>
-                      <form action={setClockingMappingActiveAction}>
-                        <input type="hidden" name="mappingId" value={m.id} />
-                        <input type="hidden" name="active" value={m.active ? 'false' : 'true'} />
-                        <button type="submit" className={link}>
-                          {m.active ? t('list.deactivate') : t('list.activate')}
-                        </button>
-                      </form>
-                      {!m.lastUsedAt && (
-                        <form action={deleteClockingMappingAction}>
-                          <input type="hidden" name="mappingId" value={m.id} />
-                          <ConfirmSubmit
-                            variant="ghost"
-                            size="sm"
-                            className="h-auto px-0 py-0 text-destructive"
-                            description={t('list.deleteConfirm', { name: m.name })}
-                            confirmLabel={t('list.delete')}
-                          >
-                            {t('list.delete')}
-                          </ConfirmSubmit>
-                        </form>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {builtinShown && (
-                <tr>
-                  <td className={`${td} font-medium`}>
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      {BUILTIN_MAPPING_NAME}
-                      <span className="rounded border border-border px-1.5 py-0.5 text-xs font-normal">{t('list.builtin')}</span>
+                    )}
+                  </div>
+                </StackedTd>
+              </StackedRow>
+            ))}
+            {builtinShown && (
+              <StackedRow>
+                <StackedTd label={t('list.colName')} role="title" className="font-medium">
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    {BUILTIN_MAPPING_NAME}
+                    <span className="rounded border border-border px-1.5 py-0.5 text-xs font-normal monolith:rounded-none monolith:border-mid monolith:font-mono monolith:text-[10px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid">
+                      {t('list.builtin')}
                     </span>
-                  </td>
-                  <td className={td}>{t('fileType.csv')}</td>
-                  <td className={`${td} text-muted-foreground`}>{t('layoutName.builtin')}</td>
-                  <td className={td}>{t('list.anyDevice')}</td>
-                  <td className={td}>
-                    <span className={pill(true)}>{t('status.active')}</span>
-                  </td>
-                  <td className={`${td} tabular-nums`}>{builtinLast ? formatDmy(builtinLast) : t('list.neverUsed')}</td>
-                  <td className={`${td} text-right`}>
+                  </span>
+                </StackedTd>
+                <StackedTd label={t('list.colFileType')}>{t('fileType.csv')}</StackedTd>
+                <StackedTd label={t('list.colLayout')} className="text-muted-foreground monolith:text-mid">
+                  {t('layoutName.builtin')}
+                </StackedTd>
+                <StackedTd label={t('list.colDevice')}>{t('list.anyDevice')}</StackedTd>
+                <StackedTd label={t('list.colStatus')} role="aside" hideLabel>
+                  {statusWord(true)}
+                </StackedTd>
+                <StackedTd label={t('list.colLastUsed')} className="tabular-nums">
+                  {builtinLast ? formatDmy(builtinLast) : t('list.neverUsed')}
+                </StackedTd>
+                <StackedTd label={t('list.colActions')} role="full" hideLabel>
+                  <div className={actionsCls}>
                     <Link className={link} href={`/admin/attendance/file-mappings/${BUILTIN_MAPPING_ID}`}>
                       {t('list.view')}
                     </Link>
-                  </td>
-                </tr>
-              )}
-              {rows.length === 0 && !builtinShown && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('list.empty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  </div>
+                </StackedTd>
+              </StackedRow>
+            )}
+            {rows.length === 0 && !builtinShown && (
+              <StackedRow>
+                <StackedTd label={t('list.colName')} role="full" hideLabel colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  {t('list.empty')}
+                </StackedTd>
+              </StackedRow>
+            )}
+          </StackedBody>
+        </StackedTable>
+        <div className={`mt-3 flex flex-wrap items-start justify-between gap-x-6 gap-y-2 ${typeHelpCls}`}>
+          <span>{t('list.summary', { count: total, active })}</span>
+          <span>{t('list.deleteNote')}</span>
         </div>
-      </Card>
+      </SectionCard>
 
-      <div className="flex flex-wrap items-start justify-between gap-2 text-sm text-muted-foreground">
-        <span>{t('list.summary', { count: total, active })}</span>
-        <span>{t('list.deleteNote')}</span>
-      </div>
-      <p className="border-l-2 border-primary bg-muted/40 px-4 py-3 text-sm">
-        {t.rich('list.inactiveNote', { b: (c) => <strong>{c}</strong> })}
-      </p>
+      <p className={noteCls}>{t.rich('list.inactiveNote', { b: (c) => <strong>{c}</strong> })}</p>
     </div>
   );
 }

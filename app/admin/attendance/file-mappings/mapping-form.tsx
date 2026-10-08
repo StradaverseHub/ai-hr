@@ -7,15 +7,23 @@
  * for a fixed-width file, the In/Out code table pre-filled from the sample, a live "Test with the sample",
  * and the required-field refusal in the reporter's own words.
  *
+ * r427 (50ed39e1 contest) — LOOK ONLY: six numbered sections of label-and-value rows (components/ui/
+ * section-card.tsx), the fixed-width ruler in wrapping blocks of ten, the sample columns as a list on a narrow
+ * section. Every state, handler, check and saved value is r424's, unchanged.
+ *
  * The browser decides nothing that sticks. The required-field rule shown here is lib/clocking-file.ts
  * validateMappingDef — the same function the service runs before it saves — and the service re-runs it.
  */
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useId, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
-import { Button, Card, inputCls } from '@/components/ui';
+import { Button, inputCls } from '@/components/ui';
+import { FormRow, SectionCard, typeHelpCls, typeLabelCls } from '@/components/ui/section-card';
+import { Segmented } from '@/components/ui/segmented';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StatusWord } from '@/components/ui/status-word';
 import {
   CLOCKING_FIELDS,
   REQUIRED_CLOCKING_FIELDS,
@@ -62,57 +70,6 @@ const SHADE_CLS = {
   code: 'bg-amber-200/60 dark:bg-amber-500/25',
 } as const;
 
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  disabled,
-  label,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  disabled?: boolean;
-  label: string;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap overflow-hidden rounded-md border border-input">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={value === o.value}
-          disabled={disabled}
-          onClick={() => onChange(o.value)}
-          className={`min-h-9 px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
-            value === o.value ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <span className="mb-1 block text-sm font-medium">
-      {children}
-      {required && <span className="ml-0.5 text-destructive">*</span>}
-    </span>
-  );
-}
-
-function SectionTitle({ n, children }: { n: number; children: React.ReactNode }) {
-  return (
-    <h2 className="border-t border-border pt-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-      {n} · {children}
-    </h2>
-  );
-}
-
 export function MappingForm({
   mappingId,
   initial,
@@ -152,6 +109,9 @@ export function MappingForm({
   const [dropCol, setDropCol] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // r427 — which fixed-width field is being typed in, so its positions are marked on the ruler. Look only.
+  const [focusField, setFocusField] = useState<ClockingField | null>(null);
+  const uid = useId();
 
   const delimiter = layout === 'fixed_width' ? null : delimChoice === 'other' ? otherChar.slice(0, 1) : DELIM[delimChoice];
   const fields: Partial<Record<ClockingField, FieldSpec>> = layout === 'delimited' ? colFields : posFields;
@@ -305,7 +265,7 @@ export function MappingForm({
   };
 
   const shadeLegend = (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+    <div className={`flex flex-wrap items-center gap-x-5 gap-y-1 ${typeHelpCls}`}>
       <span className="inline-flex items-center gap-1.5">
         <span className={`inline-block h-3 w-3 ${SHADE_CLS.strong}`} /> {t('form.shadeLegendStrong')}
       </span>
@@ -319,121 +279,129 @@ export function MappingForm({
     </div>
   );
 
+  // r427 — the fixed-width preview in blocks of ten positions that wrap to the section's width, with no field
+  // names on the ruler (they overlapped); each field is its own labelled row below. The field being typed in
+  // is marked by an underline on its positions.
+  const BLOCK = 10;
+  const blocks = Array.from({ length: Math.ceil(maxLen / BLOCK) }, (_, b) =>
+    Array.from({ length: Math.min(BLOCK, maxLen - b * BLOCK) }, (_, i) => b * BLOCK + i + 1),
+  );
+  const cellW = 'inline-block w-[14px] shrink-0 text-center';
+  const focusMark = 'shadow-[inset_0_-2px_0_0_#f97316] monolith:shadow-[inset_0_-2px_0_0_var(--signal)]';
+  const readsOf = (f: ClockingField) => (firstData && fields[f] ? (extractFields(firstData, def).values[f] ?? '') : '');
+  const lineReads = (f: ClockingField) => (
+    <span className={`${typeHelpCls} min-w-0 [overflow-wrap:anywhere]`}>
+      {t('form.colLineReads')} <span className="whitespace-pre font-mono text-foreground monolith:text-ink">{readsOf(f) || '—'}</span>
+    </span>
+  );
+
   return (
     <div className="space-y-6">
-      {/* 1 · DETAILS */}
-      <section className="space-y-4">
-        <SectionTitle n={1}>{t('form.secDetails')}</SectionTitle>
-        <div className="grid gap-4 md:grid-cols-3">
-          <label className="block">
-            <Label required>{t('form.name')}</Label>
-            <input className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <label className="block">
-            <Label>{t('form.device')}</Label>
-            <input className={inputCls} value={deviceName} maxLength={100} onChange={(e) => setDeviceName(e.target.value)} />
-          </label>
-          <div>
-            <Label>{t('form.status')}</Label>
-            <Segmented
-              label={t('form.status')}
-              value={active ? 'active' : 'inactive'}
-              onChange={(v) => setActive(v === 'active')}
-              options={[
-                { value: 'active', label: t('status.active') },
-                { value: 'inactive', label: t('status.inactive') },
-              ]}
-            />
-          </div>
-        </div>
-        <label className="block">
-          <Label>{t('form.description')}</Label>
-          <input className={inputCls} value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
-        </label>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div>
-            <Label required>{t('form.fileType')}</Label>
-            <Segmented
-              label={t('form.fileType')}
-              value={fileType}
-              onChange={setFileType}
-              options={[
-                { value: 'csv', label: t('fileType.csv') },
-                { value: 'txt', label: t('fileType.txt') },
-              ]}
-            />
-          </div>
-          <div>
-            <Label required>{t('form.layout')}</Label>
-            <Segmented
-              label={t('form.layout')}
-              value={layout}
-              onChange={setLayout}
-              options={[
-                { value: 'delimited', label: t('form.layoutDelimited') },
-                { value: 'fixed_width', label: t('form.layoutFixed') },
-              ]}
-            />
-          </div>
-          <div>
-            <Label required={layout === 'delimited'}>{t('form.delimiter')}</Label>
-            {layout === 'delimited' ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Segmented
-                  label={t('form.delimiter')}
-                  value={delimChoice}
-                  onChange={setDelimChoice}
-                  options={[
-                    { value: 'comma', label: t('form.delimComma') },
-                    { value: 'tab', label: t('form.delimTab') },
-                    { value: 'semicolon', label: t('form.delimSemicolon') },
-                    { value: 'other', label: t('form.delimOther') },
-                  ]}
-                />
-                {delimChoice === 'other' && (
-                  <input
-                    aria-label={t('form.otherChar')}
-                    className={`${inputCls} w-16 text-center font-mono`}
-                    value={otherChar}
-                    maxLength={1}
-                    onChange={(e) => setOtherChar(e.target.value.slice(0, 1))}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className={`${inputCls} flex items-center bg-muted/60 text-muted-foreground`}>{t('form.delimiterNotUsed')}</div>
-            )}
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div>
-            <Label>{t('form.hasHeader')}</Label>
-            <Segmented
-              label={t('form.hasHeader')}
-              value={hasHeader ? 'yes' : 'no'}
-              onChange={(v) => setHasHeader(v === 'yes')}
-              options={[
-                { value: 'yes', label: t('form.yes') },
-                { value: 'no', label: t('form.no') },
-              ]}
-            />
-          </div>
-          <label className="block">
-            <Label>{t('form.encoding')}</Label>
-            <select className={inputCls} value={encoding} onChange={(e) => setEncoding(e.target.value as ClockingEncoding)}>
-              <option value="utf-8">{t('form.encodingUtf8')}</option>
-              <option value="utf-16le">{t('form.encodingUtf16le')}</option>
-              <option value="utf-16be">{t('form.encodingUtf16be')}</option>
-              <option value="windows-1252">{t('form.encodingWin1252')}</option>
-            </select>
-            <span className="mt-1 block text-xs text-muted-foreground">{t('form.encodingHint')}</span>
-          </label>
-        </div>
-      </section>
+      {/* 01 · DETAILS */}
+      <SectionCard index={1} title={t('form.secDetails')}>
+        <FormRow label={t('form.name')} htmlFor={`${uid}-name`} required>
+          <input id={`${uid}-name`} className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
+        </FormRow>
+        <FormRow label={t('form.device')} htmlFor={`${uid}-device`}>
+          <input id={`${uid}-device`} className={inputCls} value={deviceName} maxLength={100} onChange={(e) => setDeviceName(e.target.value)} />
+        </FormRow>
+        <FormRow label={t('form.status')}>
+          <Segmented
+            label={t('form.status')}
+            value={active ? 'active' : 'inactive'}
+            onChange={(v) => setActive(v === 'active')}
+            options={[
+              { value: 'active', label: t('status.active') },
+              { value: 'inactive', label: t('status.inactive') },
+            ]}
+          />
+        </FormRow>
+        <FormRow label={t('form.description')} htmlFor={`${uid}-description`}>
+          <input
+            id={`${uid}-description`}
+            className={inputCls}
+            value={description}
+            maxLength={500}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </FormRow>
+      </SectionCard>
 
-      {/* 2 · SAMPLE FILE */}
-      <section className="space-y-3">
-        <SectionTitle n={2}>{t('form.secSample')}</SectionTitle>
+      {/* 02 · FILE FORMAT */}
+      <SectionCard index={2} title={t('sec.fileFormat')}>
+        <FormRow label={t('form.fileType')} required>
+          <Segmented
+            label={t('form.fileType')}
+            value={fileType}
+            onChange={setFileType}
+            options={[
+              { value: 'csv', label: t('fileType.csv') },
+              { value: 'txt', label: t('fileType.txt') },
+            ]}
+          />
+        </FormRow>
+        <FormRow label={t('form.layout')} required>
+          <Segmented
+            label={t('form.layout')}
+            value={layout}
+            onChange={setLayout}
+            options={[
+              { value: 'delimited', label: t('form.layoutDelimited') },
+              { value: 'fixed_width', label: t('form.layoutFixed') },
+            ]}
+          />
+        </FormRow>
+        <FormRow label={t('form.delimiter')} required={layout === 'delimited'}>
+          {layout === 'delimited' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented
+                label={t('form.delimiter')}
+                value={delimChoice}
+                onChange={setDelimChoice}
+                options={[
+                  { value: 'comma', label: t('form.delimComma') },
+                  { value: 'tab', label: t('form.delimTab') },
+                  { value: 'semicolon', label: t('form.delimSemicolon') },
+                  { value: 'other', label: t('form.delimOther') },
+                ]}
+              />
+              {delimChoice === 'other' && (
+                <input
+                  aria-label={t('form.otherChar')}
+                  className={`${inputCls} w-16 text-center font-mono`}
+                  value={otherChar}
+                  maxLength={1}
+                  onChange={(e) => setOtherChar(e.target.value.slice(0, 1))}
+                />
+              )}
+            </div>
+          ) : (
+            <div className={`${inputCls} flex h-auto min-h-9 items-center bg-muted/60 text-muted-foreground`}>{t('form.delimiterNotUsed')}</div>
+          )}
+        </FormRow>
+        <FormRow label={t('form.hasHeader')}>
+          <Segmented
+            label={t('form.hasHeader')}
+            value={hasHeader ? 'yes' : 'no'}
+            onChange={(v) => setHasHeader(v === 'yes')}
+            options={[
+              { value: 'yes', label: t('form.yes') },
+              { value: 'no', label: t('form.no') },
+            ]}
+          />
+        </FormRow>
+        <FormRow label={t('form.encoding')} htmlFor={`${uid}-encoding`} help={t('form.encodingHint')}>
+          <select id={`${uid}-encoding`} className={inputCls} value={encoding} onChange={(e) => setEncoding(e.target.value as ClockingEncoding)}>
+            <option value="utf-8">{t('form.encodingUtf8')}</option>
+            <option value="utf-16le">{t('form.encodingUtf16le')}</option>
+            <option value="utf-16be">{t('form.encodingUtf16be')}</option>
+            <option value="windows-1252">{t('form.encodingWin1252')}</option>
+          </select>
+        </FormRow>
+      </SectionCard>
+
+      {/* 03 · SAMPLE FILE */}
+      <SectionCard index={3} title={t('form.secSample')}>
         <input
           ref={fileRef}
           type="file"
@@ -445,59 +413,72 @@ export function MappingForm({
             e.target.value = '';
           }}
         />
-        {hasSample ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-4 py-3 text-sm">
-            <span className="min-w-0 break-all">
-              <strong>{sampleName || '—'}</strong>{' '}
-              <span className="text-muted-foreground">
-                ·{' '}
-                {sample.total != null
-                  ? t('form.sampleLoaded', { lines: sample.total, shown: sample.lines.length })
-                  : t('form.sampleKept', { shown: sample.lines.length })}
+        <FormRow label={t('form.secSample')}>
+          {hasSample ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border bg-card px-4 py-3 text-sm monolith:rounded-none monolith:border-ink monolith:bg-transparent">
+              <span className="min-w-0 break-all">
+                <strong>{sampleName || '—'}</strong>{' '}
+                <span className="text-muted-foreground monolith:text-mid">
+                  ·{' '}
+                  {sample.total != null
+                    ? t('form.sampleLoaded', { lines: sample.total, shown: sample.lines.length })
+                    : t('form.sampleKept', { shown: sample.lines.length })}
+                </span>
               </span>
-            </span>
-            <button type="button" className="text-sm text-primary underline underline-offset-2" onClick={() => fileRef.current?.click()}>
-              {t('form.replaceFile')}
-            </button>
-          </div>
-        ) : (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => fileRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+              <button
+                type="button"
+                className="text-sm text-primary underline underline-offset-2 monolith:text-ink"
+                onClick={() => fileRef.current?.click()}
+              >
+                {t('form.replaceFile')}
+              </button>
+            </div>
+          ) : (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('Files')) {
+                  e.preventDefault();
+                  setDragging(true);
+                }
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
                 e.preventDefault();
-                fileRef.current?.click();
-              }
-            }}
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('Files')) {
-                e.preventDefault();
-                setDragging(true);
-              }
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f) void loadFile(f);
-            }}
-            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
-              dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/40'
-            }`}
-          >
-            <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
-            <div className="text-sm font-medium">{t('form.dropSample')}</div>
-            <p className="text-xs text-muted-foreground">{t('form.dropSampleHint')}</p>
-          </div>
-        )}
-        {fileError && <p className="text-sm text-destructive">{fileError}</p>}
+                setDragging(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) void loadFile(f);
+              }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors monolith:rounded-none monolith:border monolith:border-ink ${
+                dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/40'
+              }`}
+            >
+              <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
+              <div className="text-sm font-medium">{t('form.dropSample')}</div>
+              <p className={typeHelpCls}>{t('form.dropSampleHint')}</p>
+            </div>
+          )}
+          {fileError && <p className="mt-2 text-sm text-destructive monolith:text-signal-text">{fileError}</p>}
+          {!hasSample && <p className={`mt-2 ${typeHelpCls}`}>{t('form.noSample')}</p>}
+        </FormRow>
+      </SectionCard>
 
+      {/* 04 · FIELD MAPPING / POSITIONS */}
+      <SectionCard
+        index={4}
+        title={layout === 'delimited' ? t('form.secFields') : t('form.secPositions')}
+        description={hasSample ? (layout === 'delimited' ? t('form.dragHint') : t('form.positionHint')) : undefined}
+      >
         {hasSample && layout === 'delimited' && (
-          <>
-            <p className="text-sm text-muted-foreground">{t('form.dragHint')}</p>
+          <div className="space-y-4 pb-2">
             <div className="flex flex-wrap gap-2">
               {CLOCKING_FIELDS.map((f) => {
                 const done = !!colFields[f];
@@ -514,8 +495,10 @@ export function MappingForm({
                       setDragField(null);
                       setDropCol(null);
                     }}
-                    className={`cursor-grab select-none rounded px-2.5 py-1 text-sm active:cursor-grabbing ${
-                      done ? 'bg-foreground text-background' : 'border border-dashed border-primary bg-primary/10 text-primary'
+                    className={`cursor-grab select-none rounded px-2.5 py-1 text-sm active:cursor-grabbing monolith:rounded-none ${
+                      done
+                        ? 'bg-foreground text-background'
+                        : 'border border-dashed border-primary bg-primary/10 text-primary monolith:border-ink monolith:bg-transparent monolith:text-ink'
                     } ${dragField === f ? 'opacity-70 ring-2 ring-primary' : ''}`}
                   >
                     <span aria-hidden className="mr-1 opacity-60">
@@ -527,335 +510,327 @@ export function MappingForm({
                 );
               })}
             </div>
-            <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium uppercase">{t('form.line')}</th>
-                    {Array.from({ length: nCols }, (_, i) => i + 1).map((col) => {
-                      const owner = columnOwner(col);
-                      return (
-                        <th
-                          key={col}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            setDropCol(col);
-                          }}
-                          onDragLeave={() => setDropCol((c) => (c === col ? null : c))}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const f = (e.dataTransfer.getData('text/plain') || dragField) as ClockingField | null;
-                            if (f && (CLOCKING_FIELDS as readonly string[]).includes(f)) assignColumn(f, col);
-                            setDropCol(null);
-                            setDragField(null);
-                          }}
-                          className={`min-w-28 px-3 py-2 align-top font-medium ${dropCol === col ? 'bg-primary/15' : ''}`}
-                        >
-                          <div className="uppercase">{t('form.column', { n: col })}</div>
-                          <div className="mt-1 h-5">
-                            {owner ? (
-                              <span className="rounded bg-foreground px-1.5 py-0.5 text-[11px] uppercase text-background">{fieldLabel(owner)}</span>
-                            ) : dragField ? (
-                              <span className="rounded border border-dashed border-primary px-1.5 py-0.5 text-[11px] uppercase text-primary">
-                                {t('form.dropHere')}
-                              </span>
-                            ) : null}
-                          </div>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border font-mono text-xs">
-                  {grid.slice(0, 6).map((cells, i) => (
-                    <tr key={i} className={hasHeader && i === 0 ? 'italic text-muted-foreground' : ''}>
-                      <td className="px-3 py-2 text-muted-foreground">{hasHeader && i === 0 ? t('form.headerLine') : i + 1}</td>
-                      {Array.from({ length: nCols }, (_, c) => (
-                        <td key={c} className="whitespace-pre px-3 py-2">
-                          {cells[c] ?? ''}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {grid.length > 6 && (
+            {/* The sample as columns: a table you can drop a field onto on a wide section; on a narrow one a
+                list of columns (the column is then chosen in the rows below — dragging needs a mouse). */}
+            <div className="@container min-w-0">
+              <div className="hidden overflow-x-auto rounded-md border border-border @3xl:block monolith:rounded-none monolith:border-0">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground monolith:bg-transparent monolith:font-mono monolith:text-[11px] monolith:tracking-[0.12em] monolith:text-mid">
                     <tr>
-                      <td className="px-3 py-2 text-muted-foreground">…</td>
-                      <td colSpan={nCols} className="px-3 py-2 font-sans text-muted-foreground">
-                        {t('form.moreLines', { count: grid.length - 6 })}
-                      </td>
+                      <th className="px-3 py-2 font-medium uppercase monolith:border-b monolith:border-ink monolith:font-normal">{t('form.line')}</th>
+                      {Array.from({ length: nCols }, (_, i) => i + 1).map((col) => {
+                        const owner = columnOwner(col);
+                        return (
+                          <th
+                            key={col}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setDropCol(col);
+                            }}
+                            onDragLeave={() => setDropCol((c) => (c === col ? null : c))}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const f = (e.dataTransfer.getData('text/plain') || dragField) as ClockingField | null;
+                              if (f && (CLOCKING_FIELDS as readonly string[]).includes(f)) assignColumn(f, col);
+                              setDropCol(null);
+                              setDragField(null);
+                            }}
+                            className={`min-w-28 px-3 py-2 align-top font-medium monolith:border-b monolith:border-ink monolith:font-normal ${dropCol === col ? 'bg-primary/15' : ''}`}
+                          >
+                            <div className="uppercase">{t('form.column', { n: col })}</div>
+                            <div className="mt-1 h-5">
+                              {owner ? (
+                                <span className="rounded bg-foreground px-1.5 py-0.5 text-[11px] uppercase text-background monolith:rounded-none">{fieldLabel(owner)}</span>
+                              ) : dragField ? (
+                                <span className="rounded border border-dashed border-primary px-1.5 py-0.5 text-[11px] uppercase text-primary">
+                                  {t('form.dropHere')}
+                                </span>
+                              ) : null}
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border font-mono text-xs monolith:divide-hairline">
+                    {grid.slice(0, 6).map((cells, i) => (
+                      <tr key={i} className={hasHeader && i === 0 ? 'italic text-muted-foreground' : ''}>
+                        <td className="px-3 py-2 text-muted-foreground">{hasHeader && i === 0 ? t('form.headerLine') : i + 1}</td>
+                        {Array.from({ length: nCols }, (_, c) => (
+                          <td key={c} className="whitespace-pre px-3 py-2">
+                            {cells[c] ?? ''}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    {grid.length > 6 && (
+                      <tr>
+                        <td className="px-3 py-2 text-muted-foreground">…</td>
+                        <td colSpan={nCols} className="px-3 py-2 font-sans text-muted-foreground">
+                          {t('form.moreLines', { count: grid.length - 6 })}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <dl className="grid grid-cols-1 @3xl:hidden" data-sample-columns>
+                {Array.from({ length: nCols }, (_, i) => i + 1).map((col) => {
+                  const owner = columnOwner(col);
+                  const firstTwo = (hasHeader ? grid.slice(1) : grid).slice(0, 2).map((r) => r[col - 1] ?? '');
+                  return (
+                    <div key={col} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border py-2 monolith:border-hairline">
+                      <dt className={typeLabelCls}>{t('form.column', { n: col })}</dt>
+                      <dd className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span className="whitespace-pre font-mono text-xs [overflow-wrap:anywhere]">{firstTwo.join('   ')}</span>
+                        {owner && (
+                          <span className="rounded bg-foreground px-1.5 py-0.5 text-[11px] uppercase text-background monolith:rounded-none">{fieldLabel(owner)}</span>
+                        )}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
             </div>
-          </>
+          </div>
         )}
 
         {hasSample && layout === 'fixed_width' && (
-          <>
-            <p className="text-sm text-muted-foreground">{t('form.positionHint')}</p>
-            <div className="overflow-x-auto rounded-md border border-border bg-card p-3">
-              <div className="inline-block min-w-full font-mono text-sm">
-                {/* Field labels at their start positions, on two staggered rows so neighbouring short
-                    fields (day, month) do not print over each other. */}
-                {[0, 1].map((row) => (
-                  <div key={row} className="flex pl-8 text-[10px] uppercase text-muted-foreground">
-                    {Array.from({ length: maxLen }, (_, i) => {
-                      const pos = i + 1;
-                      const order = CLOCKING_FIELDS.filter((k) => posFields[k]?.start).sort(
-                        (a, b) => (posFields[a]!.start ?? 0) - (posFields[b]!.start ?? 0),
-                      );
-                      const f = order.find((k, idx) => posFields[k]?.start === pos && idx % 2 === row);
-                      return (
-                        <span key={pos} className="relative inline-block w-[1.4ch] shrink-0">
-                          {f && <span className="absolute left-0 top-0 whitespace-nowrap border-l border-muted-foreground pl-0.5">{fieldLabel(f)}</span>}
-                          &nbsp;
-                        </span>
-                      );
-                    })}
-                  </div>
-                ))}
-                {/* Numbered ruler */}
-                <div className="flex pl-8 text-[10px] text-muted-foreground">
-                  {Array.from({ length: maxLen }, (_, i) => {
-                    const pos = i + 1;
-                    return (
-                      <span key={pos} className="relative inline-block w-[1.4ch] shrink-0 text-center">
-                        {pos === 1 || pos % 5 === 0 ? <span className="absolute left-0">{pos}</span> : '·'}
+          <div className="space-y-3 pb-2">
+            <div className="flex flex-wrap gap-x-4 gap-y-3 font-mono text-sm" data-ruler>
+              {blocks.map((positions, b) => (
+                <div key={b} className="flex flex-col gap-0.5" data-ruler-block>
+                  <div className="flex text-[10px] text-muted-foreground monolith:text-mid" aria-hidden>
+                    {positions.map((pos) => (
+                      <span key={pos} className={`${cellW} relative`}>
+                        {pos === positions[0] || pos % 5 === 0 ? <span className="absolute left-1/2 -translate-x-1/2">{pos}</span> : '·'}
                       </span>
-                    );
-                  })}
-                </div>
-                {shownFixed.map((line, li) => (
-                  <div key={li} className={`flex items-center border-t border-border/60 py-1 ${hasHeader && li === 0 ? 'italic opacity-60' : ''}`}>
-                    <span className="inline-block w-8 shrink-0 text-xs text-muted-foreground">{hasHeader && li === 0 ? 'H' : li + 1}</span>
-                    {Array.from({ length: maxLen }, (_, i) => {
-                      const owner = posOwner(i + 1);
-                      const ch = line[i] ?? '';
-                      return (
-                        <span
-                          key={i}
-                          className={`inline-block w-[1.4ch] shrink-0 text-center ${owner ? SHADE_CLS[SHADE[owner]] : ''}`}
-                          title={owner ? `${fieldLabel(owner)} · ${i + 1}` : String(i + 1)}
-                        >
-                          {ch === ' ' || ch === '' ? ' ' : ch}
-                        </span>
-                      );
-                    })}
+                    ))}
                   </div>
-                ))}
-              </div>
+                  {shownFixed.map((line, li) => (
+                    <div key={li} className={`flex ${hasHeader && li === 0 ? 'italic opacity-60' : ''}`}>
+                      {positions.map((pos) => {
+                        const owner = posOwner(pos);
+                        const ch = line[pos - 1] ?? '';
+                        return (
+                          <span
+                            key={pos}
+                            className={`${cellW} ${owner ? SHADE_CLS[SHADE[owner]] : ''} ${owner && owner === focusField ? focusMark : ''}`}
+                            title={owner ? `${fieldLabel(owner)} · ${pos}` : String(pos)}
+                          >
+                            {ch === ' ' || ch === '' ? ' ' : ch}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
             {shadeLegend}
-          </>
+          </div>
         )}
-        {!hasSample && <p className="text-sm text-muted-foreground">{t('form.noSample')}</p>}
-      </section>
 
-      {/* 3 · FIELD MAPPING / POSITIONS */}
-      <section className="space-y-3">
-        <SectionTitle n={3}>{layout === 'delimited' ? t('form.secFields') : t('form.secPositions')}</SectionTitle>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{t('form.colField')}</th>
-                  {layout === 'delimited' ? (
-                    <th className="px-3 py-2 font-medium">{t('form.colSource')}</th>
-                  ) : (
-                    <>
-                      <th className="px-3 py-2 font-medium">{t('form.colStart')}</th>
-                      <th className="px-3 py-2 font-medium">{t('form.colEnd')}</th>
-                    </>
-                  )}
-                  <th className="px-3 py-2 font-medium">{t('form.colLineReads')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {CLOCKING_FIELDS.map((f) => {
-                  const req = REQUIRED_CLOCKING_FIELDS.includes(f);
-                  const reads = firstData && fields[f] ? (extractFields(firstData, def).values[f] ?? '') : '';
-                  return (
-                    <tr key={f}>
-                      <td className="px-3 py-2 font-medium">
-                        {fieldLabel(f)}
-                        {req && <span className="ml-0.5 text-destructive">*</span>}
-                      </td>
-                      {layout === 'delimited' ? (
-                        <td className="px-3 py-2">
-                          <select
-                            aria-label={fieldLabel(f)}
-                            className={`${inputCls} min-w-40`}
-                            value={colFields[f]?.column ?? ''}
-                            onChange={(e) => assignColumn(f, e.target.value ? Number(e.target.value) : null)}
-                          >
-                            <option value="">{t('form.chooseColumn')}</option>
-                            {Array.from({ length: colOptions }, (_, i) => i + 1).map((c) => (
-                              <option key={c} value={c}>
-                                {t('form.column', { n: c })}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      ) : (
-                        <>
-                          <td className="px-3 py-2">
-                            <input
-                              aria-label={`${fieldLabel(f)} ${t('form.colStart')}`}
-                              inputMode="numeric"
-                              className={`${inputCls} w-20`}
-                              value={posFields[f]?.start || ''}
-                              onChange={(e) => setPos(f, 'start', e.target.value)}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              aria-label={`${fieldLabel(f)} ${t('form.colEnd')}`}
-                              inputMode="numeric"
-                              className={`${inputCls} w-20`}
-                              value={posFields[f]?.end || ''}
-                              onChange={(e) => setPos(f, 'end', e.target.value)}
-                            />
-                          </td>
-                        </>
-                      )}
-                      <td className="whitespace-pre px-3 py-2 font-mono text-xs">{reads || '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="space-y-3 text-sm">
-            {fields.inOutCode ? (
-              <>
-                <p>
-                  {t('form.codesTitle')} <span className="text-muted-foreground">{t('form.codesUsed')}</span>
-                </p>
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">{t('form.colDeviceCode')}</th>
-                      <th className="px-3 py-2 font-medium">{t('form.colMeaning')}</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {codes.map((c, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-2">
-                          <input
-                            aria-label={t('form.colDeviceCode')}
-                            className={`${inputCls} w-20 font-mono sm:w-28`}
-                            value={c.code}
-                            maxLength={20}
-                            onChange={(e) => setCodes((cs) => cs.map((x, j) => (j === i ? { ...x, code: e.target.value } : x)))}
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <select
-                            aria-label={t('form.colMeaning')}
-                            className={`${inputCls} min-w-32`}
-                            value={c.direction}
-                            onChange={(e) =>
-                              setCodes((cs) => cs.map((x, j) => (j === i ? { ...x, direction: e.target.value as CodeRow['direction'] } : x)))
-                            }
-                          >
-                            <option value="">{t('form.chooseMeaning')}</option>
-                            <option value="in">{t('direction.in')}</option>
-                            <option value="out">{t('direction.out')}</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setCodes((cs) => cs.filter((_, j) => j !== i))}>
-                            {t('form.remove')}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <button type="button" className="text-primary underline underline-offset-2" onClick={() => setCodes((cs) => [...cs, { code: '', direction: '' }])}>
-                  {t('form.addCode')}
-                </button>
-                <p className="text-xs text-muted-foreground">
-                  {foundCodes.length ? t('form.codesFound', { codes: foundCodes.join(', ') }) : t('form.codesNone')}
-                </p>
-              </>
-            ) : null}
-            <p className="text-xs text-muted-foreground">{t('form.noCodeHint')}</p>
-            <p className="text-xs text-muted-foreground">{t('form.spacesHint')}</p>
-            {layout === 'fixed_width' && <p className="text-xs text-muted-foreground">{t('form.shortLineHint')}</p>}
-          </div>
+        {CLOCKING_FIELDS.map((f) => {
+          const req = REQUIRED_CLOCKING_FIELDS.includes(f);
+          return layout === 'delimited' ? (
+            <FormRow key={f} label={fieldLabel(f)} htmlFor={`${uid}-col-${f}`} required={req}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <select
+                  id={`${uid}-col-${f}`}
+                  aria-label={fieldLabel(f)}
+                  className={`${inputCls} w-full max-w-56`}
+                  value={colFields[f]?.column ?? ''}
+                  onChange={(e) => assignColumn(f, e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">{t('form.chooseColumn')}</option>
+                  {Array.from({ length: colOptions }, (_, i) => i + 1).map((c) => (
+                    <option key={c} value={c}>
+                      {t('form.column', { n: c })}
+                    </option>
+                  ))}
+                </select>
+                {lineReads(f)}
+              </div>
+            </FormRow>
+          ) : (
+            <FormRow key={f} label={fieldLabel(f)} htmlFor={`${uid}-start-${f}`} required={req}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span aria-hidden className={`inline-block h-3 w-3 shrink-0 border border-border ${SHADE_CLS[SHADE[f]]}`} />
+                <input
+                  id={`${uid}-start-${f}`}
+                  aria-label={`${fieldLabel(f)} ${t('form.colStart')}`}
+                  inputMode="numeric"
+                  className={`${inputCls} w-20`}
+                  value={posFields[f]?.start || ''}
+                  onFocus={() => setFocusField(f)}
+                  onBlur={() => setFocusField((c) => (c === f ? null : c))}
+                  onChange={(e) => setPos(f, 'start', e.target.value)}
+                />
+                <span aria-hidden className="text-muted-foreground">
+                  –
+                </span>
+                <input
+                  aria-label={`${fieldLabel(f)} ${t('form.colEnd')}`}
+                  inputMode="numeric"
+                  className={`${inputCls} w-20`}
+                  value={posFields[f]?.end || ''}
+                  onFocus={() => setFocusField(f)}
+                  onBlur={() => setFocusField((c) => (c === f ? null : c))}
+                  onChange={(e) => setPos(f, 'end', e.target.value)}
+                />
+                {lineReads(f)}
+              </div>
+            </FormRow>
+          );
+        })}
+        <div className="space-y-1 pt-3">
+          <p className={typeHelpCls}>{t('form.spacesHint')}</p>
+          {layout === 'fixed_width' && <p className={typeHelpCls}>{t('form.shortLineHint')}</p>}
         </div>
 
         {(showMissing || (submitted && validation.problems.length > 0)) && (
-          <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div
+            role="alert"
+            className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive monolith:rounded-none monolith:border-0 monolith:border-l-2 monolith:border-signal monolith:bg-transparent monolith:text-signal-text"
+          >
             <p className="font-semibold">{t('form.cannotSave')}</p>
-            {validation.missing.length > 0 && (
-              <p>{t('form.missingFields', { fields: validation.missing.map(fieldLabel).join(', ') })}</p>
-            )}
+            {validation.missing.length > 0 && <p>{t('form.missingFields', { fields: validation.missing.map(fieldLabel).join(', ') })}</p>}
             {validation.problems.map((p) => (
               <p key={p}>{t(`form.problem.${p}`)}</p>
             ))}
           </div>
         )}
-      </section>
+      </SectionCard>
 
-      {/* 4 · TEST WITH THE SAMPLE */}
-      <section className="space-y-3">
-        <SectionTitle n={4}>{t('form.secTest')}</SectionTitle>
-        {hasSample ? (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">{t('form.line')}</th>
-                    <th className="px-3 py-2 font-medium">{t('form.colCardId')}</th>
-                    {fields.deviceId && <th className="px-3 py-2 font-medium">{t('form.colDeviceId')}</th>}
-                    <th className="px-3 py-2 font-medium">{t('form.colDate')}</th>
-                    <th className="px-3 py-2 font-medium">{t('form.colTime')}</th>
-                    <th className="px-3 py-2 font-medium">{t('form.colInOut')}</th>
-                    <th className="px-3 py-2 font-medium">{t('form.colResult')}</th>
+      {/* 05 · IN / OUT CODE VALUES */}
+      <SectionCard index={5} title={t('form.codesTitle')} description={fields.inOutCode ? t('form.codesUsed') : undefined}>
+        {fields.inOutCode ? (
+          <div className="space-y-3">
+            <table className="w-full max-w-2xl text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground monolith:font-mono monolith:text-[11px] monolith:tracking-[0.12em] monolith:text-mid">
+                <tr>
+                  <th className="py-2 pr-3 font-medium monolith:font-normal">{t('form.colDeviceCode')}</th>
+                  <th className="py-2 pr-3 font-medium monolith:font-normal">{t('form.colMeaning')}</th>
+                  <th className="py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border border-t border-border monolith:divide-hairline monolith:border-ink">
+                {codes.map((c, i) => (
+                  <tr key={i}>
+                    <td className="py-2 pr-3">
+                      <input
+                        aria-label={t('form.colDeviceCode')}
+                        className={`${inputCls} w-20 font-mono sm:w-28`}
+                        value={c.code}
+                        maxLength={20}
+                        onChange={(e) => setCodes((cs) => cs.map((x, j) => (j === i ? { ...x, code: e.target.value } : x)))}
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <select
+                        aria-label={t('form.colMeaning')}
+                        className={`${inputCls} min-w-32`}
+                        value={c.direction}
+                        onChange={(e) =>
+                          setCodes((cs) => cs.map((x, j) => (j === i ? { ...x, direction: e.target.value as CodeRow['direction'] } : x)))
+                        }
+                      >
+                        <option value="">{t('form.chooseMeaning')}</option>
+                        <option value="in">{t('direction.in')}</option>
+                        <option value="out">{t('direction.out')}</option>
+                      </select>
+                    </td>
+                    <td className="py-2 text-right">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground monolith:underline"
+                        onClick={() => setCodes((cs) => cs.filter((_, j) => j !== i))}
+                      >
+                        {t('form.remove')}
+                      </button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {test.map((l) => {
-                    const r = resultText(l);
-                    return (
-                      <tr key={l.lineNo}>
-                        <td className="px-3 py-2 text-muted-foreground">{l.lineNo}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{l.cardRef || '—'}</td>
-                        {fields.deviceId && <td className="px-3 py-2 font-mono text-xs">{l.deviceRef ?? '—'}</td>}
-                        <td className="px-3 py-2 tabular-nums">{l.date ? formatDmy(l.date) : l.dateText || '—'}</td>
-                        <td className="px-3 py-2 tabular-nums">{l.time ? l.time.slice(0, 5) : l.timeText || '—'}</td>
-                        <td className="px-3 py-2">{l.direction ? t(`direction.${l.direction}`) : (l.code ?? '—')}</td>
-                        <td className={`px-3 py-2 ${r ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                          {r ?? t('form.readable')}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                ))}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              className="text-sm text-primary underline underline-offset-2 monolith:text-ink"
+              onClick={() => setCodes((cs) => [...cs, { code: '', direction: '' }])}
+            >
+              {t('form.addCode')}
+            </button>
+            <p className={typeHelpCls}>{foundCodes.length ? t('form.codesFound', { codes: foundCodes.join(', ') }) : t('form.codesNone')}</p>
+          </div>
+        ) : null}
+        <p className={`${fields.inOutCode ? 'mt-1' : ''} ${typeHelpCls}`}>{t('form.noCodeHint')}</p>
+      </SectionCard>
+
+      {/* 06 · TEST WITH THE SAMPLE */}
+      <SectionCard index={6} title={t('form.secTest')} description={t('form.testIntro')}>
+        {hasSample ? (
+          <StackedTable label={t('form.secTest')}>
+            <StackedHead>
+              <StackedTh>{t('form.line')}</StackedTh>
+              <StackedTh>{t('form.colCardId')}</StackedTh>
+              {fields.deviceId && <StackedTh>{t('form.colDeviceId')}</StackedTh>}
+              <StackedTh>{t('form.colDate')}</StackedTh>
+              <StackedTh>{t('form.colTime')}</StackedTh>
+              <StackedTh>{t('form.colInOut')}</StackedTh>
+              <StackedTh>{t('form.colResult')}</StackedTh>
+            </StackedHead>
+            <StackedBody>
+              {test.map((l) => {
+                const r = resultText(l);
+                return (
+                  <StackedRow key={l.lineNo}>
+                    <StackedTd label={t('form.line')} role="title-inline" className="text-muted-foreground monolith:text-mid">
+                      {l.lineNo}
+                    </StackedTd>
+                    <StackedTd label={t('form.colCardId')} className="font-mono text-xs">
+                      {l.cardRef || '—'}
+                    </StackedTd>
+                    {fields.deviceId && (
+                      <StackedTd label={t('form.colDeviceId')} className="font-mono text-xs">
+                        {l.deviceRef ?? '—'}
+                      </StackedTd>
+                    )}
+                    <StackedTd label={t('form.colDate')} className="tabular-nums">
+                      {l.date ? formatDmy(l.date) : l.dateText || '—'}
+                    </StackedTd>
+                    <StackedTd label={t('form.colTime')} className="tabular-nums">
+                      {l.time ? l.time.slice(0, 5) : l.timeText || '—'}
+                    </StackedTd>
+                    <StackedTd label={t('form.colInOut')}>{l.direction ? t(`direction.${l.direction}`) : (l.code ?? '—')}</StackedTd>
+                    <StackedTd label={t('form.colResult')} role="aside" hideLabel>
+                      <StatusWord tone={r ? 'signal' : 'ink'} className={r ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-400'}>
+                        {r ?? t('form.readable')}
+                      </StatusWord>
+                    </StackedTd>
+                  </StackedRow>
+                );
+              })}
+            </StackedBody>
+          </StackedTable>
         ) : (
-          <p className="text-sm text-muted-foreground">{t('form.testNoSample')}</p>
+          <p className={typeHelpCls}>{t('form.testNoSample')}</p>
         )}
-        <p className="text-xs text-muted-foreground">{t('form.testIntro')}</p>
-      </section>
+      </SectionCard>
 
       {serverError && (
-        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive monolith:rounded-none monolith:border-0 monolith:border-l-2 monolith:border-signal monolith:bg-transparent monolith:text-signal-text"
+        >
           {serverError}
         </div>
       )}
       <div className="flex flex-wrap justify-end gap-2">
-        <Link href="/admin/attendance/file-mappings" className="inline-flex min-h-9 items-center rounded-md border border-input px-4 text-sm hover:bg-muted">
+        <Link
+          href="/admin/attendance/file-mappings"
+          className="inline-flex min-h-9 items-center rounded-md border border-input px-4 text-sm hover:bg-muted monolith:rounded-none monolith:border-ink"
+        >
           {t('form.cancel')}
         </Link>
         <Button type="button" onClick={save} disabled={pending}>

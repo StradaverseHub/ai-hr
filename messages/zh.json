@@ -15935,6 +15935,16 @@
       "prev": "‹ 上一页",
       "next": "下一页 ›",
       "notFound": "此导入日志不存在。"
+    },
+    "sec": {
+      "findMapping": "查找映射",
+      "mappings": "映射",
+      "fileFormat": "文件格式",
+      "importDetails": "导入详情",
+      "lineCounts": "行数统计",
+      "lines": "行",
+      "recentImports": "最近的导入",
+      "failedMadeUp": "失败记录的构成"
     }
   }
 }

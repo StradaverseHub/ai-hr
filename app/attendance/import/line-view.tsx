@@ -4,6 +4,7 @@
  */
 import type { ImportLineView } from '@/packs/attendance/service';
 import { formatDmy } from '@/lib/date-display';
+import { StatusWord } from '@/components/ui/status-word';
 
 export function lineMessage(
   t: (k: string, v?: Record<string, string>) => string,
@@ -24,5 +25,10 @@ export function ResultPill({ result, label }: { result: ImportLineView['result']
       : result === 'duplicate'
         ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300'
         : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400';
-  return <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
+  // r427 — Classic's pill string is unchanged; Monolith writes it as a status word (ink when imported, signal otherwise).
+  return (
+    <StatusWord tone={result === 'imported' ? 'ink' : 'signal'} className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {label}
+    </StatusWord>
+  );
 }

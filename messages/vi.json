@@ -15935,6 +15935,16 @@
       "prev": "‹ Trước",
       "next": "Tiếp ›",
       "notFound": "Nhật ký nhập này không tồn tại."
+    },
+    "sec": {
+      "findMapping": "Tìm ánh xạ",
+      "mappings": "Ánh xạ",
+      "fileFormat": "Định dạng tệp",
+      "importDetails": "Chi tiết lần nhập",
+      "lineCounts": "Số dòng",
+      "lines": "Các dòng",
+      "recentImports": "Lần nhập gần đây",
+      "failedMadeUp": "Bản ghi thất bại gồm"
     }
   }
 }

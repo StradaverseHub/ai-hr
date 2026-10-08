@@ -8,12 +8,15 @@
  * checked on the decoded text, which is what crosses the server action. Everything else — reading the
  * lines, matching cards, duplicates, refusals — is decided on the server, at Validate and again at Import.
  */
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useId, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
+import { FormRow, SectionCard, noteCls, typeHelpCls } from '@/components/ui/section-card';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StatCells } from '@/components/ui/stat-cells';
 import { decodeClockingBytes, physicalLines, type ClockingEncoding } from '@/lib/clocking-file';
 import { MAX_IMPORT_CSV_BYTES, MAX_IMPORT_FILE_BYTES } from '@/lib/import-file';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
@@ -39,6 +42,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
   const [dragging, setDragging] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
+  const uid = useId();
 
   const mapping = mappings.find((m) => m.id === mappingId) ?? null;
   const text = useMemo(() => (bytes && mapping ? decodeClockingBytes(bytes, mapping.encoding) : ''), [bytes, mapping]);
@@ -121,33 +125,34 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
   const dateRange =
     c?.firstDate && c.lastDate ? (c.firstDate === c.lastDate ? formatDmy(c.firstDate) : `${formatDmy(c.firstDate)} – ${formatDmy(c.lastDate)}`) : '—';
 
+  // r427 (50ed39e1 contest) — LOOK ONLY. The three steps as a ruled row, then "01 Mapping and file" and
+  // "02 Validation result" as sections; counts as one row of figures; the preview a table that stacks on a
+  // narrow section. Same state, handlers, counts, tabs, search and 500-row cap as r424.
   const step = (n: number, label: string, on: boolean) => (
-    <div className={`flex-1 px-3 py-2 text-xs font-medium uppercase tracking-widest ${on ? 'bg-foreground text-background' : 'text-muted-foreground'}`}>
+    <li
+      aria-current={on ? 'step' : undefined}
+      className={`min-w-0 border-b-2 pb-2 text-xs font-medium uppercase tracking-widest [overflow-wrap:anywhere] monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:tracking-[0.12em] ${
+        on ? 'border-foreground text-foreground monolith:border-signal monolith:text-ink' : 'border-border text-muted-foreground monolith:border-hairline monolith:text-mid'
+      }`}
+    >
       {n} · {label}
-    </div>
+    </li>
   );
-  const tile = (value: number | string, label: string, warn = false) => (
-    <div className="border-b border-r border-border p-4">
-      <div className={`text-2xl font-semibold tabular-nums ${warn ? 'text-destructive' : ''}`}>{value}</div>
-      <div className="mt-1 text-[11px] uppercase tracking-widest text-muted-foreground">{label}</div>
-    </div>
-  );
+  const alertCls =
+    'rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive monolith:rounded-none monolith:border-0 monolith:border-l-2 monolith:border-signal monolith:bg-transparent monolith:text-signal-text';
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col overflow-hidden rounded-md border border-border sm:flex-row">
+      <ol className="grid grid-cols-3 gap-3">
         {step(1, t('import.step1'), !preview)}
         {step(2, t('import.step2'), !!preview)}
         {step(3, t('import.step3'), false)}
-      </div>
+      </ol>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">
-            {t('import.mapping')}
-            <span className="ml-0.5 text-destructive">*</span>
-          </span>
+      <SectionCard index={1} title={t('import.step1')}>
+        <FormRow label={t('import.mapping')} htmlFor={`${uid}-mapping`} required>
           <select
+            id={`${uid}-mapping`}
             className={inputCls}
             value={mappingId}
             onChange={(e) => {
@@ -161,15 +166,14 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
               </option>
             ))}
           </select>
-          <Link href="/admin/attendance/file-mappings" className="mt-1 inline-block text-xs text-primary underline-offset-2 hover:underline">
+          <Link
+            href="/admin/attendance/file-mappings"
+            className="mt-1.5 inline-block text-xs text-primary underline-offset-2 hover:underline monolith:text-[13px] monolith:text-ink monolith:underline"
+          >
             {t('import.manageMappings')}
           </Link>
-        </label>
-        <div>
-          <span className="mb-1 block text-sm font-medium">
-            {t('import.file')}
-            <span className="ml-0.5 text-destructive">*</span>
-          </span>
+        </FormRow>
+        <FormRow label={t('import.file')} required>
           <input
             ref={fileRef}
             type="file"
@@ -182,11 +186,12 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
             }}
           />
           {bytes ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border bg-card px-3 py-2 text-sm monolith:rounded-none monolith:border-ink monolith:bg-transparent">
               <span className="min-w-0 break-all">
-                <strong>{fileName}</strong> <span className="text-muted-foreground">· {t('import.fileInfo', { size: fmtSize(bytes.length), lines: lineCount })}</span>
+                <strong>{fileName}</strong>{' '}
+                <span className="text-muted-foreground monolith:text-mid">· {t('import.fileInfo', { size: fmtSize(bytes.length), lines: lineCount })}</span>
               </span>
-              <button type="button" className="text-primary underline underline-offset-2" onClick={() => fileRef.current?.click()}>
+              <button type="button" className="text-primary underline underline-offset-2 monolith:text-ink" onClick={() => fileRef.current?.click()}>
                 {t('import.replaceFile')}
               </button>
             </div>
@@ -212,122 +217,129 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
                 const f = e.dataTransfer.files?.[0];
                 if (f) void loadFile(f);
               }}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
+              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors monolith:rounded-none monolith:border monolith:border-ink ${
                 dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/40'
               }`}
             >
               <UploadCloud className="h-5 w-5 text-muted-foreground" aria-hidden />
               <div className="text-sm font-medium">{t('import.dropFile')}</div>
-              <p className="text-xs text-muted-foreground">{t('import.dropFileHint')}</p>
+              <p className={typeHelpCls}>{t('import.dropFileHint')}</p>
             </div>
           )}
-        </div>
-      </div>
-
-      {!preview && (
-        <div className="flex justify-end">
-          <Button onClick={validate} disabled={pending || !bytes || !mappingId}>
-            {pending ? t('import.validating') : t('import.validate')}
-          </Button>
-        </div>
-      )}
+        </FormRow>
+        {!preview && (
+          <div className="flex justify-end pt-4">
+            <Button onClick={validate} disabled={pending || !bytes || !mappingId}>
+              {pending ? t('import.validating') : t('import.validate')}
+            </Button>
+          </div>
+        )}
+      </SectionCard>
 
       {error && (
-        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div role="alert" className={alertCls}>
           {error}
         </div>
       )}
 
       {preview && c && (
         <>
-          <h2 className="border-t border-border pt-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">{t('import.resultTitle')}</h2>
-          {preview.previousImport && (
-            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-              {t('import.previousImport', { at: formatDmyTime(preview.previousImport.at), name: preview.previousImport.fileName || '—' })}{' '}
-              <Link className="underline" href={`/attendance/import/logs/${preview.previousImport.runId}`}>
-                {t('import.viewPrevious')}
-              </Link>
-            </div>
-          )}
-          <div className="grid grid-cols-2 border-l border-t border-border lg:grid-cols-4">
-            {tile(c.total.toLocaleString('en'), t('import.total'))}
-            {tile(c.valid.toLocaleString('en'), t('import.valid'))}
-            {tile(c.unmatchedCard.toLocaleString('en'), t('import.cardNotFound'), c.unmatchedCard > 0)}
-            {tile(c.invalidDateTime.toLocaleString('en'), t('import.invalidDateTime'), c.invalidDateTime > 0)}
-            {tile(c.duplicate.toLocaleString('en'), t('import.duplicate'), c.duplicate > 0)}
-            {tile(c.otherError.toLocaleString('en'), t('import.otherErrors'), c.otherError > 0)}
-            {tile(c.employees.toLocaleString('en'), t('import.employees'))}
-            {tile(dateRange, t('import.datesInFile'))}
-          </div>
+          <SectionCard index={2} title={t('import.resultTitle')}>
+            <div className="space-y-5">
+              {preview.previousImport && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200 monolith:rounded-none monolith:border-0 monolith:border-l-2 monolith:border-signal monolith:bg-transparent monolith:text-ink">
+                  {t('import.previousImport', { at: formatDmyTime(preview.previousImport.at), name: preview.previousImport.fileName || '—' })}{' '}
+                  <Link className="underline" href={`/attendance/import/logs/${preview.previousImport.runId}`}>
+                    {t('import.viewPrevious')}
+                  </Link>
+                </div>
+              )}
+              <StatCells
+                cells={[
+                  { label: t('import.total'), value: c.total.toLocaleString('en') },
+                  { label: t('import.valid'), value: c.valid.toLocaleString('en') },
+                  { label: t('import.cardNotFound'), value: c.unmatchedCard.toLocaleString('en'), warn: c.unmatchedCard > 0 },
+                  { label: t('import.invalidDateTime'), value: c.invalidDateTime.toLocaleString('en'), warn: c.invalidDateTime > 0 },
+                  { label: t('import.duplicate'), value: c.duplicate.toLocaleString('en'), warn: c.duplicate > 0 },
+                  { label: t('import.otherErrors'), value: c.otherError.toLocaleString('en'), warn: c.otherError > 0 },
+                  { label: t('import.employees'), value: c.employees.toLocaleString('en') },
+                  { label: t('import.datesInFile'), value: dateRange, text: true },
+                ]}
+              />
 
-          <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4">
-            <div role="tablist" className="flex gap-4 text-sm">
-              {(
-                [
-                  ['all', t('import.tabAll', { count: c.total.toLocaleString('en') })],
-                  ['valid', t('import.tabValid', { count: c.valid.toLocaleString('en') })],
-                  ['errors', t('import.tabErrors', { count: errorsTotal.toLocaleString('en') })],
-                ] as const
-              ).map(([k, label]) => (
-                <button
-                  key={k}
-                  role="tab"
-                  type="button"
-                  aria-selected={tab === k}
-                  onClick={() => setTab(k)}
-                  className={`border-b-2 pb-1 ${tab === k ? 'border-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <input className={`${inputCls} w-full sm:w-72`} placeholder={t('import.searchRows')} value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div role="tablist" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                  {(
+                    [
+                      ['all', t('import.tabAll', { count: c.total.toLocaleString('en') })],
+                      ['valid', t('import.tabValid', { count: c.valid.toLocaleString('en') })],
+                      ['errors', t('import.tabErrors', { count: errorsTotal.toLocaleString('en') })],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <button
+                      key={k}
+                      role="tab"
+                      type="button"
+                      aria-selected={tab === k}
+                      onClick={() => setTab(k)}
+                      className={`border-b-2 pb-1 ${
+                        tab === k
+                          ? 'border-foreground font-medium monolith:border-ink'
+                          : 'border-transparent text-muted-foreground hover:text-foreground monolith:text-mid'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input className={`${inputCls} w-full sm:w-72`} placeholder={t('import.searchRows')} value={q} onChange={(e) => setQ(e.target.value)} />
+              </div>
 
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{t('import.colLine')}</th>
-                  <th className="px-3 py-2 font-medium">{t('import.colCardId')}</th>
-                  <th className="px-3 py-2 font-medium">{t('import.colEmployee')}</th>
-                  <th className="px-3 py-2 font-medium">{t('import.colDate')}</th>
-                  <th className="px-3 py-2 font-medium">{t('import.colTime')}</th>
-                  <th className="px-3 py-2 font-medium">{t('import.colInOut')}</th>
-                  <th className="px-3 py-2 font-medium">{t('import.colStatus')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {shownRows.map((r) => (
-                  <tr key={r.lineNo}>
-                    <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.lineNo.toLocaleString('en')}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{r.cardRef || '—'}</td>
-                    <td className="px-3 py-2">{r.employeeName ?? '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums">{r.date ? formatDmy(r.date) : r.dateText || '—'}</td>
-                    <td className="px-3 py-2 tabular-nums">{r.time ? r.time.slice(0, 5) : r.timeText || '—'}</td>
-                    <td className="px-3 py-2">{r.direction ? t(`dirShort.${r.direction}`) : '—'}</td>
-                    <td className="min-w-64 px-3 py-2">
-                      <ResultPill
-                        result={r.result}
-                        label={r.result === 'imported' ? t('import.statusValid') : t(`resultShort.${r.result}`)}
-                      />
-                      {r.result !== 'imported' && <div className="mt-0.5 text-xs text-muted-foreground">{lineMessage(t, r)}</div>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2 text-sm text-muted-foreground">
-            <span>{t('import.showing', { shown: shownRows.length.toLocaleString('en'), total: tabTotal.toLocaleString('en') })}</span>
-            <span>{t('import.checksAgain')}</span>
-          </div>
-          {(c.total > preview.errorRows.length + preview.validRows.length) && (
-            <p className="text-xs text-muted-foreground">{t('import.previewCapped', { errors: '2,000', valid: '500' })}</p>
-          )}
-          <p className="border-l-2 border-primary bg-muted/40 px-4 py-3 text-sm">
-            {t.rich('import.errorsNotImported', { b: (x) => <strong>{x}</strong> })}
-          </p>
+              <StackedTable label={t('import.step2')}>
+                <StackedHead>
+                  <StackedTh>{t('import.colLine')}</StackedTh>
+                  <StackedTh>{t('import.colCardId')}</StackedTh>
+                  <StackedTh>{t('import.colEmployee')}</StackedTh>
+                  <StackedTh>{t('import.colDate')}</StackedTh>
+                  <StackedTh>{t('import.colTime')}</StackedTh>
+                  <StackedTh>{t('import.colInOut')}</StackedTh>
+                  <StackedTh>{t('import.colStatus')}</StackedTh>
+                </StackedHead>
+                <StackedBody>
+                  {shownRows.map((r) => (
+                    <StackedRow key={r.lineNo}>
+                      <StackedTd label={t('import.colLine')} role="title-inline" className="tabular-nums text-muted-foreground monolith:text-mid">
+                        {r.lineNo.toLocaleString('en')}
+                      </StackedTd>
+                      <StackedTd label={t('import.colCardId')} className="font-mono text-xs">
+                        {r.cardRef || '—'}
+                      </StackedTd>
+                      <StackedTd label={t('import.colEmployee')}>{r.employeeName ?? '—'}</StackedTd>
+                      <StackedTd label={t('import.colDate')} className="whitespace-nowrap tabular-nums">
+                        {r.date ? formatDmy(r.date) : r.dateText || '—'}
+                      </StackedTd>
+                      <StackedTd label={t('import.colTime')} className="tabular-nums">
+                        {r.time ? r.time.slice(0, 5) : r.timeText || '—'}
+                      </StackedTd>
+                      <StackedTd label={t('import.colInOut')}>{r.direction ? t(`dirShort.${r.direction}`) : '—'}</StackedTd>
+                      <StackedTd label={t('import.colStatus')} role="aside" hideLabel className="@3xl:min-w-64">
+                        <ResultPill result={r.result} label={r.result === 'imported' ? t('import.statusValid') : t(`resultShort.${r.result}`)} />
+                        {r.result !== 'imported' && <div className={`mt-0.5 ${typeHelpCls}`}>{lineMessage(t, r)}</div>}
+                      </StackedTd>
+                    </StackedRow>
+                  ))}
+                </StackedBody>
+              </StackedTable>
+              <div className={`flex flex-wrap justify-between gap-2 ${typeHelpCls}`}>
+                <span>{t('import.showing', { shown: shownRows.length.toLocaleString('en'), total: tabTotal.toLocaleString('en') })}</span>
+                <span>{t('import.checksAgain')}</span>
+              </div>
+              {c.total > preview.errorRows.length + preview.validRows.length && (
+                <p className={typeHelpCls}>{t('import.previewCapped', { errors: '2,000', valid: '500' })}</p>
+              )}
+            </div>
+          </SectionCard>
+          <p className={noteCls}>{t.rich('import.errorsNotImported', { b: (x) => <strong>{x}</strong> })}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"

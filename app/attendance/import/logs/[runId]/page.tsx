@@ -5,6 +5,9 @@ import { requireAdmin } from '@/lib/authz';
 import { Button, PageHeader, inputCls } from '@/components/ui';
 import { getClockingImportRun, listClockingImportRuns } from '@/packs/attendance/service';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
+import { LabelValue, LabelValueList, SectionCard, SubHeading, typeHelpCls } from '@/components/ui/section-card';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StatCells } from '@/components/ui/stat-cells';
 import { lineMessage, ResultPill } from '../../line-view';
 import { RunStatusPill } from '../run-status';
 import { RunsTable } from '../runs-table';
@@ -47,12 +50,12 @@ export default async function ClockingImportLogPage({
     return `/attendance/import/logs/${run.id}?${u.toString()}`;
   };
 
-  const meta = 'text-xs text-muted-foreground';
-  const tile = (value: number, label: string, warn = false) => (
-    <div className="border-b border-r border-border p-4">
-      <div className={`text-2xl font-semibold tabular-nums ${warn && value > 0 ? 'text-destructive' : ''}`}>{value.toLocaleString('en')}</div>
-      <div className="mt-1 text-[11px] uppercase tracking-widest text-muted-foreground">{label}</div>
-    </div>
+  // r427 (50ed39e1 contest) — LOOK ONLY: four separate sections (details, counts, lines, recent imports), never
+  // one inside another. Same figures, tabs, reason filter and 200-line pages as r424.
+  const tabCls = (on: boolean) =>
+    `border-b-2 pb-1 ${on ? 'border-foreground font-medium monolith:border-ink' : 'border-transparent text-muted-foreground hover:text-foreground monolith:text-mid'}`;
+  const part = (value: number) => (
+    <span className={`tabular-nums monolith:font-mono ${value > 0 ? 'text-destructive monolith:text-signal-text' : ''}`}>{value.toLocaleString('en')}</span>
   );
 
   return (
@@ -64,142 +67,145 @@ export default async function ClockingImportLogPage({
         actions={<RunStatusPill status={run.status} label={t(`runStatus.${run.status}`)} />}
       />
 
-      <dl className="grid gap-4 border-y border-border py-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <dt className={meta}>{t('log.at')}</dt>
-          <dd className="font-medium tabular-nums">{formatDmyTime(run.createdAt)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className={meta}>{t('log.fileName')}</dt>
-          <dd className="break-all font-medium">{run.fileName || '—'}</dd>
-        </div>
-        <div>
-          <dt className={meta}>{t('log.mappingName')}</dt>
-          <dd className="font-medium">{run.mappingName || '—'}</dd>
-        </div>
-        <div>
-          <dt className={meta}>{t('log.user')}</dt>
-          <dd className="font-medium">{run.userName ?? t('logs.unknownUser')}</dd>
-        </div>
-      </dl>
+      <SectionCard index={1} title={t('sec.importDetails')}>
+        <LabelValueList columns={2}>
+          <LabelValue label={t('log.at')} value={<span className="tabular-nums">{formatDmyTime(run.createdAt)}</span>} />
+          <LabelValue label={t('log.fileName')} value={<span className="break-all">{run.fileName || '—'}</span>} />
+          <LabelValue label={t('log.mappingName')} value={run.mappingName || '—'} />
+          <LabelValue label={t('log.user')} value={run.userName ?? t('logs.unknownUser')} />
+        </LabelValueList>
+      </SectionCard>
 
       {run.failureReason && (
-        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive monolith:rounded-none monolith:border-0 monolith:border-l-2 monolith:border-signal monolith:bg-transparent monolith:text-signal-text"
+        >
           {t('log.failedReason', { reason: run.failureReason })}
         </div>
       )}
 
-      <div className="grid grid-cols-2 border-l border-t border-border lg:grid-cols-4">
-        {tile(run.totalLines, t('log.total'))}
-        {tile(run.validLines, t('log.valid'))}
-        {tile(run.importedLines, t('log.imported'))}
-        {tile(run.failedLines, t('log.failed'), true)}
-        {tile(run.duplicateLines, t('log.duplicates'), true)}
-        {tile(run.unmatchedCardLines, t('log.unmatched'), true)}
-        {tile(run.invalidDatetimeLines, t('log.invalidDateTime'), true)}
-        {tile(run.otherErrorLines, t('log.otherErrors'), true)}
-      </div>
-      <p className="text-sm text-muted-foreground">{t('log.formula', { days: run.daysUpdated, employees: run.employeesUpdated })}</p>
+      <SectionCard index={2} title={t('sec.lineCounts')}>
+        <StatCells
+          cells={[
+            { label: t('log.total'), value: run.totalLines.toLocaleString('en') },
+            { label: t('log.valid'), value: run.validLines.toLocaleString('en') },
+            { label: t('log.imported'), value: run.importedLines.toLocaleString('en') },
+            { label: t('log.failed'), value: run.failedLines.toLocaleString('en'), warn: run.failedLines > 0 },
+          ]}
+        />
+        <SubHeading>{t('sec.failedMadeUp')}</SubHeading>
+        <LabelValueList columns={2}>
+          <LabelValue label={t('log.duplicates')} value={part(run.duplicateLines)} />
+          <LabelValue label={t('log.unmatched')} value={part(run.unmatchedCardLines)} />
+          <LabelValue label={t('log.invalidDateTime')} value={part(run.invalidDatetimeLines)} />
+          <LabelValue label={t('log.otherErrors')} value={part(run.otherErrorLines)} />
+        </LabelValueList>
+        <p className={`mt-3 ${typeHelpCls}`}>{t('log.formula', { days: run.daysUpdated, employees: run.employeesUpdated })}</p>
+      </SectionCard>
 
-      <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4">
-        <div className="flex gap-4 text-sm">
-          <Link
-            href={href({ tab: 'errors', reason: undefined })}
-            className={`border-b-2 pb-1 ${tab === 'errors' ? 'border-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            {t('log.tabNotImported', { count: notImported.length.toLocaleString('en') })}
-          </Link>
-          <Link
-            href={href({ tab: 'imported', reason: undefined })}
-            className={`border-b-2 pb-1 ${tab === 'imported' ? 'border-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            {t('log.tabImported', { count: imported.length.toLocaleString('en') })}
-          </Link>
-        </div>
-        {tab === 'errors' && reasons.length > 0 && (
-          <form method="get" className="flex items-center gap-2">
-            <input type="hidden" name="tab" value="errors" />
-            <select name="reason" defaultValue={reason} className={`${inputCls} w-64`} aria-label={t('log.allReasons')}>
-              <option value="">{t('log.allReasons')}</option>
-              {reasons.map((r) => (
-                <option key={r} value={r}>
-                  {t(`resultShort.${r}`)}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="outline">
-              {t('log.filter')}
-            </Button>
-          </form>
-        )}
-      </div>
-
-      <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">{t('log.colLine')}</th>
-              <th className="px-3 py-2 font-medium">{t('log.colCardId')}</th>
-              <th className="px-3 py-2 font-medium">{t('log.colEmployee')}</th>
-              <th className="px-3 py-2 font-medium">{t('log.colDate')}</th>
-              <th className="px-3 py-2 font-medium">{t('log.colTime')}</th>
-              <th className="px-3 py-2 font-medium">{tab === 'errors' ? t('log.colError') : t('log.colInOut')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {shown.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                  {t('log.noLines')}
-                </td>
-              </tr>
+      <SectionCard index={3} title={t('sec.lines')}>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+              <Link href={href({ tab: 'errors', reason: undefined })} className={tabCls(tab === 'errors')}>
+                {t('log.tabNotImported', { count: notImported.length.toLocaleString('en') })}
+              </Link>
+              <Link href={href({ tab: 'imported', reason: undefined })} className={tabCls(tab === 'imported')}>
+                {t('log.tabImported', { count: imported.length.toLocaleString('en') })}
+              </Link>
+            </div>
+            {tab === 'errors' && reasons.length > 0 && (
+              <form method="get" className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <input type="hidden" name="tab" value="errors" />
+                <select name="reason" defaultValue={reason} className={`${inputCls} min-w-0 flex-1 sm:w-64 sm:flex-none`} aria-label={t('log.allReasons')}>
+                  <option value="">{t('log.allReasons')}</option>
+                  {reasons.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`resultShort.${r}`)}
+                    </option>
+                  ))}
+                </select>
+                <Button type="submit" variant="outline">
+                  {t('log.filter')}
+                </Button>
+              </form>
             )}
-            {shown.map((l) => (
-              <tr key={l.lineNo}>
-                <td className="px-3 py-2 tabular-nums text-muted-foreground">{l.lineNo.toLocaleString('en')}</td>
-                <td className="px-3 py-2 font-mono text-xs">{l.cardRef || '—'}</td>
-                <td className="px-3 py-2">{l.employeeName ?? '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums">
-                  {l.punchDate ? formatDmy(l.punchDate) : l.result === 'invalid_date' ? l.message || '—' : '—'}
-                </td>
-                <td className="px-3 py-2 tabular-nums">
-                  {l.punchTime ? l.punchTime.slice(0, 5) : l.result === 'invalid_time' ? l.message || '—' : '—'}
-                </td>
-                <td className="px-3 py-2">
-                  {tab === 'errors' ? (
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      <ResultPill result={l.result} label={t(`resultShort.${l.result}`)} />
-                      <span>{lineMessage(t, { result: l.result, detail: l.result === 'duplicate' || l.result === 'unknown_in_out_code' ? l.message : '' })}</span>
-                    </span>
-                  ) : l.direction ? (
-                    t(`dirShort.${l.direction}`)
-                  ) : (
-                    '—'
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span>{t('log.showing', { shown: shown.length.toLocaleString('en'), total: pool.length.toLocaleString('en') })}</span>
-        {pages > 1 && (
-          <span className="flex gap-3">
-            {page > 1 && <Link className="text-primary" href={href({ page: page - 1 })}>{t('log.prev')}</Link>}
-            <span>
-              {page} / {pages}
-            </span>
-            {page < pages && <Link className="text-primary" href={href({ page: page + 1 })}>{t('log.next')}</Link>}
-          </span>
-        )}
-        {tab === 'errors' && notImported.length > 0 && <span>{t('log.fixHint')}</span>}
-      </div>
+          </div>
 
-      <section className="space-y-3 border-t border-border pt-4">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{t('logs.recent')}</h2>
+          <StackedTable label={t('sec.lines')}>
+            <StackedHead>
+              <StackedTh>{t('log.colLine')}</StackedTh>
+              <StackedTh>{t('log.colCardId')}</StackedTh>
+              <StackedTh>{t('log.colEmployee')}</StackedTh>
+              <StackedTh>{t('log.colDate')}</StackedTh>
+              <StackedTh>{t('log.colTime')}</StackedTh>
+              <StackedTh>{tab === 'errors' ? t('log.colError') : t('log.colInOut')}</StackedTh>
+            </StackedHead>
+            <StackedBody>
+              {shown.length === 0 && (
+                <StackedRow>
+                  <StackedTd label={t('log.colLine')} role="full" hideLabel colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    {t('log.noLines')}
+                  </StackedTd>
+                </StackedRow>
+              )}
+              {shown.map((l) => (
+                <StackedRow key={l.lineNo}>
+                  <StackedTd label={t('log.colLine')} role="title-inline" className="tabular-nums text-muted-foreground monolith:text-mid">
+                    {l.lineNo.toLocaleString('en')}
+                  </StackedTd>
+                  <StackedTd label={t('log.colCardId')} className="font-mono text-xs">
+                    {l.cardRef || '—'}
+                  </StackedTd>
+                  <StackedTd label={t('log.colEmployee')}>{l.employeeName ?? '—'}</StackedTd>
+                  <StackedTd label={t('log.colDate')} className="whitespace-nowrap tabular-nums">
+                    {l.punchDate ? formatDmy(l.punchDate) : l.result === 'invalid_date' ? l.message || '—' : '—'}
+                  </StackedTd>
+                  <StackedTd label={t('log.colTime')} className="tabular-nums">
+                    {l.punchTime ? l.punchTime.slice(0, 5) : l.result === 'invalid_time' ? l.message || '—' : '—'}
+                  </StackedTd>
+                  {tab === 'errors' ? (
+                    <StackedTd label={t('log.colError')} role="full">
+                      <ResultPill result={l.result} label={t(`resultShort.${l.result}`)} />
+                      <div className={`mt-0.5 ${typeHelpCls}`}>
+                        {lineMessage(t, { result: l.result, detail: l.result === 'duplicate' || l.result === 'unknown_in_out_code' ? l.message : '' })}
+                      </div>
+                    </StackedTd>
+                  ) : (
+                    <StackedTd label={t('log.colInOut')}>{l.direction ? t(`dirShort.${l.direction}`) : '—'}</StackedTd>
+                  )}
+                </StackedRow>
+              ))}
+            </StackedBody>
+          </StackedTable>
+          <div className={`flex flex-wrap items-center justify-between gap-2 ${typeHelpCls}`}>
+            <span>{t('log.showing', { shown: shown.length.toLocaleString('en'), total: pool.length.toLocaleString('en') })}</span>
+            {pages > 1 && (
+              <span className="flex gap-3">
+                {page > 1 && (
+                  <Link className="text-primary monolith:text-ink monolith:underline" href={href({ page: page - 1 })}>
+                    {t('log.prev')}
+                  </Link>
+                )}
+                <span>
+                  {page} / {pages}
+                </span>
+                {page < pages && (
+                  <Link className="text-primary monolith:text-ink monolith:underline" href={href({ page: page + 1 })}>
+                    {t('log.next')}
+                  </Link>
+                )}
+              </span>
+            )}
+            {tab === 'errors' && notImported.length > 0 && <span>{t('log.fixHint')}</span>}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard index={4} title={t('sec.recentImports')}>
         <RunsTable runs={recent} currentId={run.id} />
-      </section>
+      </SectionCard>
     </div>
   );
 }

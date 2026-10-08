@@ -15935,6 +15935,16 @@
       "prev": "‹ Previous",
       "next": "Next ›",
       "notFound": "This import log does not exist."
+    },
+    "sec": {
+      "findMapping": "Find a mapping",
+      "mappings": "Mappings",
+      "fileFormat": "File format",
+      "importDetails": "Import details",
+      "lineCounts": "Line counts",
+      "lines": "Lines",
+      "recentImports": "Recent imports",
+      "failedMadeUp": "Failed records are made up of"
     }
   }
 }

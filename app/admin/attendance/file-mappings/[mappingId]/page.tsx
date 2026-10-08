@@ -5,7 +5,8 @@ import { requireAdmin } from '@/lib/authz';
 import { builtinMappingLastUsed, getClockingMapping } from '@/packs/attendance/service';
 import { BUILTIN_MAPPING_ID, BUILTIN_MAPPING_NAME, CLOCKING_FIELDS, REQUIRED_CLOCKING_FIELDS } from '@/lib/clocking-file';
 import { formatDmy } from '@/lib/date-display';
-import { Button, Card, PageHeader } from '@/components/ui';
+import { Button, PageHeader } from '@/components/ui';
+import { LabelValue, LabelValueList, SectionCard, typeHelpCls, typeValueCls } from '@/components/ui/section-card';
 import { layoutLabel } from '../labels';
 
 /**
@@ -17,37 +18,31 @@ export default async function FileMappingViewPage({ params }: { params: Promise<
   const { mappingId } = await params;
   const t = await getTranslations('clockingFile');
   const back = { href: '/admin/attendance/file-mappings', label: t('form.back') };
-  const dl = 'grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4';
-  const dt = 'text-xs text-muted-foreground';
+  const pre = 'overflow-x-auto rounded-md bg-muted/50 p-3 font-mono text-xs monolith:rounded-none monolith:border-l-2 monolith:border-ink monolith:bg-transparent';
 
+  // r427 (50ed39e1 contest) — the same facts as before, in labelled sections of label-and-value pairs.
   if (mappingId === BUILTIN_MAPPING_ID) {
     const last = await builtinMappingLastUsed(s);
     return (
       <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader back={back} title={BUILTIN_MAPPING_NAME} description={t('view.builtinIntro')} />
-        <Card className="space-y-4 p-5">
-          <dl className={dl}>
-            <div>
-              <dt className={dt}>{t('list.colFileType')}</dt>
-              <dd>{t('fileType.csv')}</dd>
-            </div>
-            <div>
-              <dt className={dt}>{t('list.colLayout')}</dt>
-              <dd>{t('layoutName.builtin')}</dd>
-            </div>
-            <div>
-              <dt className={dt}>{t('list.colDevice')}</dt>
-              <dd>{t('list.anyDevice')}</dd>
-            </div>
-            <div>
-              <dt className={dt}>{t('view.lastUsed')}</dt>
-              <dd>{last ? formatDmy(last) : t('list.neverUsed')}</dd>
-            </div>
-          </dl>
-          <p className="text-sm">{t('view.builtinFormat')}</p>
-          <pre className="overflow-x-auto rounded-md bg-muted/50 p-3 font-mono text-xs">{`staff_id,timestamp\n001234,2026-10-01 08:15\n001234,2026-10-01 17:32`}</pre>
-          <p className="text-sm text-muted-foreground">{t('view.noCodes')}</p>
-        </Card>
+        <SectionCard index={1} title={t('form.secDetails')}>
+          <LabelValueList columns={2}>
+            <LabelValue label={t('list.colDevice')} value={t('list.anyDevice')} />
+            <LabelValue label={t('view.lastUsed')} value={last ? formatDmy(last) : t('list.neverUsed')} />
+          </LabelValueList>
+        </SectionCard>
+        <SectionCard index={2} title={t('sec.fileFormat')}>
+          <LabelValueList columns={2}>
+            <LabelValue label={t('list.colFileType')} value={t('fileType.csv')} />
+            <LabelValue label={t('list.colLayout')} value={t('layoutName.builtin')} />
+          </LabelValueList>
+          <p className={`mt-4 ${typeValueCls}`}>{t('view.builtinFormat')}</p>
+          <pre className={`mt-3 ${pre}`}>{`staff_id,timestamp\n001234,2026-10-01 08:15\n001234,2026-10-01 17:32`}</pre>
+        </SectionCard>
+        <SectionCard index={3} title={t('form.codesTitle')}>
+          <p className={typeHelpCls}>{t('view.noCodes')}</p>
+        </SectionCard>
       </div>
     );
   }
@@ -67,92 +62,66 @@ export default async function FileMappingViewPage({ params }: { params: Promise<
           </Button>
         }
       />
-      <Card className="space-y-5 p-5">
-        <dl className={dl}>
-          <div>
-            <dt className={dt}>{t('list.colFileType')}</dt>
-            <dd>{t(`fileType.${m.fileType}`)}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('list.colLayout')}</dt>
-            <dd>{layoutLabel(t, m)}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('list.colDevice')}</dt>
-            <dd>{m.deviceName || '—'}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('list.colStatus')}</dt>
-            <dd>{m.active ? t('status.active') : t('status.inactive')}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('form.hasHeader')}</dt>
-            <dd>{m.hasHeader ? t('form.yes') : t('form.no')}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('form.encoding')}</dt>
-            <dd>{m.encoding}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('view.lastUsed')}</dt>
-            <dd>{m.lastUsedAt ? formatDmy(m.lastUsedAt) : t('list.neverUsed')}</dd>
-          </div>
-          <div>
-            <dt className={dt}>{t('view.updated')}</dt>
-            <dd>{formatDmy(m.updatedAt)}</dd>
-          </div>
-        </dl>
+      <SectionCard index={1} title={t('form.secDetails')}>
+        <LabelValueList columns={2}>
+          <LabelValue label={t('list.colDevice')} value={m.deviceName || '—'} />
+          <LabelValue label={t('list.colStatus')} value={m.active ? t('status.active') : t('status.inactive')} />
+          <LabelValue label={t('view.lastUsed')} value={m.lastUsedAt ? formatDmy(m.lastUsedAt) : t('list.neverUsed')} />
+          <LabelValue label={t('view.updated')} value={formatDmy(m.updatedAt)} />
+        </LabelValueList>
+      </SectionCard>
 
-        <div>
-          <h2 className="mb-2 text-sm font-semibold">{t('view.fields')}</h2>
-          <table className="w-full max-w-xl text-sm">
-            <tbody className="divide-y divide-border">
-              {CLOCKING_FIELDS.map((f) => {
-                const spec = m.fields[f];
-                return (
-                  <tr key={f}>
-                    <td className="py-1.5 pr-4 font-medium">
-                      {t(`fields.${f}`)}
-                      {REQUIRED_CLOCKING_FIELDS.includes(f) && <span className="ml-0.5 text-destructive">*</span>}
-                    </td>
-                    <td className="py-1.5 text-muted-foreground">
-                      {!spec
-                        ? t('form.notMapped')
-                        : 'column' in spec
-                          ? t('view.columnN', { n: spec.column })
-                          : t('view.position', { start: spec.start, end: spec.end })}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <SectionCard index={2} title={t('sec.fileFormat')}>
+        <LabelValueList columns={2}>
+          <LabelValue label={t('list.colFileType')} value={t(`fileType.${m.fileType}`)} />
+          <LabelValue label={t('list.colLayout')} value={layoutLabel(t, m)} />
+          <LabelValue label={t('form.hasHeader')} value={m.hasHeader ? t('form.yes') : t('form.no')} />
+          <LabelValue label={t('form.encoding')} value={m.encoding} />
+        </LabelValueList>
+      </SectionCard>
 
+      <SectionCard index={3} title={m.layout === 'fixed_width' ? t('form.secPositions') : t('form.secFields')}>
+        <LabelValueList columns={2}>
+          {CLOCKING_FIELDS.map((f) => {
+            const spec = m.fields[f];
+            return (
+              <LabelValue
+                key={f}
+                label={t(`fields.${f}`)}
+                required={REQUIRED_CLOCKING_FIELDS.includes(f)}
+                valueClassName={spec ? undefined : 'text-muted-foreground monolith:text-mid'}
+                value={
+                  !spec
+                    ? t('form.notMapped')
+                    : 'column' in spec
+                      ? t('view.columnN', { n: spec.column })
+                      : t('view.position', { start: spec.start, end: spec.end })
+                }
+              />
+            );
+          })}
+        </LabelValueList>
+      </SectionCard>
+
+      <SectionCard index={4} title={t('form.codesTitle')}>
         {m.fields.inOutCode ? (
-          <div>
-            <h2 className="mb-2 text-sm font-semibold">{t('form.codesTitle')}</h2>
-            <ul className="space-y-1 text-sm">
-              {m.inOutCodes.map((c) => (
-                <li key={c.code}>
-                  <code className="rounded bg-muted px-1.5 py-0.5">{c.code}</code> → {t(`direction.${c.direction}`)}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <LabelValueList columns={2}>
+            {m.inOutCodes.map((c) => (
+              <LabelValue key={c.code} label={<span className="font-mono normal-case tracking-normal">{c.code}</span>} value={t(`direction.${c.direction}`)} />
+            ))}
+          </LabelValueList>
         ) : (
-          <p className="text-sm text-muted-foreground">{t('view.noCodes')}</p>
+          <p className={typeHelpCls}>{t('view.noCodes')}</p>
         )}
+      </SectionCard>
 
-        <div>
-          <h2 className="mb-2 text-sm font-semibold">{t('view.sample')}</h2>
-          {m.sampleLines.length ? (
-            <pre className="max-h-80 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs">{m.sampleLines.join('\n')}</pre>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('view.noSampleKept')}</p>
-          )}
-        </div>
-      </Card>
+      <SectionCard index={5} title={t('view.sample')}>
+        {m.sampleLines.length ? (
+          <pre className={`max-h-80 overflow-auto ${pre}`}>{m.sampleLines.join('\n')}</pre>
+        ) : (
+          <p className={typeHelpCls}>{t('view.noSampleKept')}</p>
+        )}
+      </SectionCard>
     </div>
   );
 }

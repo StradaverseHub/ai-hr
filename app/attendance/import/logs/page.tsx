@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { PageHeader } from '@/components/ui';
+import { Card, PageHeader } from '@/components/ui';
 import { listClockingImportRuns } from '@/packs/attendance/service';
 import { RunsTable } from './runs-table';
 
@@ -12,7 +12,10 @@ export default async function ClockingImportLogsPage() {
   return (
     <div className="mx-auto max-w-[90rem] space-y-6">
       <PageHeader back={{ href: '/attendance/import', label: t('back') }} title={t('title')} description={t('description')} />
-      <RunsTable runs={runs} />
+      {/* r427 — one light section around the list (Classic: a white card; Monolith: an ink rule). */}
+      <Card className="p-5 monolith:p-0 monolith:pt-4">
+        <RunsTable runs={runs} />
+      </Card>
     </div>
   );
 }

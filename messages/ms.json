@@ -15935,6 +15935,16 @@
       "prev": "‹ Sebelumnya",
       "next": "Seterusnya ›",
       "notFound": "Log import ini tidak wujud."
+    },
+    "sec": {
+      "findMapping": "Cari pemetaan",
+      "mappings": "Pemetaan",
+      "fileFormat": "Format fail",
+      "importDetails": "Butiran import",
+      "lineCounts": "Kiraan baris",
+      "lines": "Baris",
+      "recentImports": "Import terkini",
+      "failedMadeUp": "Rekod gagal terdiri daripada"
     }
   }
 }
