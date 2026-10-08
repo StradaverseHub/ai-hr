@@ -185,3 +185,5 @@ export const withAttendanceTenant = withModuleTenant('attendance');
 export const withClaimsTenant = withModuleTenant('claims');
 export const withPayrollTenant = withModuleTenant('payroll');
 export const withPerformanceTenant = withModuleTenant('performance');
+/** ADR-0095 — onboarding / offboarding / IT requisitions / assets. */
+export const withLifecycleTenant = withModuleTenant('lifecycle');

@@ -139,6 +139,14 @@ const CLAIMS_LINKS = modulePackById('claims')!.navLinks!;
 const CLAIMS_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'main')!;
 const CLAIMS_CONFIG_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'admin')!;
 
+// Lifecycle nav rows (ADR-0095): onboarding / offboarding / IT requisitions / assets. Two flat rows like
+// Claims: the hub in the top group (every employee — requesting equipment and a new hire's own checklist
+// are self-service; the staff screens redirect a requester back to the hub), and Module Config in the
+// Administration group (gated adminOnly wholesale by the group).
+const LIFECYCLE_LINKS = modulePackById('lifecycle')!.navLinks!;
+const LIFECYCLE_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'main')!;
+const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 'admin')!;
+
 // Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
 // contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
 // it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
@@ -196,6 +204,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // whole item's rev3 exists to avoid.
   ...(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const),
   ...CLAIMS_LINKS.map((l) => [l.href, 'claims'] as const),
+  ...LIFECYCLE_LINKS.map((l) => [l.href, 'lifecycle'] as const),
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
   // ADR-0083 r233 — the Control Tower left the payroll pack's nav, so the flatMap above no longer reaches
   // it. Still payroll-gated because payroll is its only LIVE domain: a tenant without it would open a
@@ -357,6 +366,7 @@ const GROUPS: Group[] = [
       // Attendance CONFIG menu moved into Administration — see the admin group below.
       MY_ATTENDANCE_NODE,
       CLAIMS_ROW,
+      LIFECYCLE_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       // ADR-0082 slice 4 — sits beside Knowledge Base because they answer the same shape of question,
       // one from documents and one from the employee's own records. Module-gated via MODULE_OF_HREF
@@ -459,6 +469,7 @@ const GROUPS: Group[] = [
       // (test/attendance-menu-relocation.test.ts).
       ATTENDANCE_NODE,
       CLAIMS_CONFIG_ROW,
+      LIFECYCLE_CONFIG_ROW,
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
       PAYROLL_NODE,

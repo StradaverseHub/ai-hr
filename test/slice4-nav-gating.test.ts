@@ -64,9 +64,12 @@ describe('slice 4 — which modules the rail may advertise', () => {
     // for the same reason as system_explorer's. It is the first entry here that OWNS TABLES (test_case /
     // test_run, 0482) while still being packBacked:false — which changes nothing about this guard, and is
     // worth writing down because "not pack-backed" has meant "owns nothing" for every earlier entry.
+    // ADR-0095 — `lifecycle` joined: pack-backed (packs/lifecycle), two nav rows (the hub for everyone and Module
+    // Config in Administration), mapped from the pack's navLinks like Claims.
     expect(sellable.sort()).toEqual([
       'attendance',
       'claims',
+      'lifecycle',
       'payroll',
       'performance',
       'system_explorer',
@@ -128,6 +131,7 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
   const ROOTS: Record<string, string> = {
     attendance: 'app/attendance/page.tsx',
     claims: 'app/claims/page.tsx',
+    lifecycle: 'app/lifecycle/page.tsx',
     payroll: 'app/payroll/page.tsx',
     performance: 'app/performance/page.tsx',
     // deec1691 — moved here from the operator plane at r79 and sold as a module (default OFF).

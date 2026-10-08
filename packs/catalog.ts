@@ -94,6 +94,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { code: 'attendance', name: 'Attendance', category: 'hr', description: 'Clock-in, rosters, shifts and attendance records.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 110 },
   { code: 'claims', name: 'Claims', category: 'hr', description: 'Expense claims, approval and payout.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 120 },
   { code: 'performance', name: 'Performance', category: 'hr', description: 'Review cycles, goals and compensation recommendations.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 130 },
+  { code: 'lifecycle', name: 'Onboarding, Offboarding & IT Assets', category: 'hr', description: 'New-employee onboarding and leaver offboarding checklists, IT requisitions, the asset register and asset requests.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 140 },
 
   // ── Billable sub-modules: a behaviour inside a parent pack's service, with NO pack of its own ───
   { code: 'toil', name: 'Time Off In Lieu', category: 'hr', description: 'Bank overtime as replacement leave instead of cash.', dependsOn: ['leave', 'attendance'], billable: true, isCore: false, parentModule: 'leave', packBacked: false, sortOrder: 200 },
@@ -409,6 +410,14 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
    * it cannot later become a real deployment flag that outranks what a customer bought.
    */
   system_testing: 'SYSTEM_TESTING_ENABLED',
+  /**
+   * ADR-0095 — the Lifecycle module (onboarding, offboarding, IT requisitions, assets). NEW, so it never
+   * had a legacy gate. Same idiom as `system_explorer`: `LIFECYCLE_ENABLED` is a RESERVED name that no
+   * tracked env file sets and no application source reads. `null` would be wrong for the reason stated
+   * on `system_explorer` (it would force the code into the parity set pinned to migration 0313 and
+   * grant the module to every existing tenant). A missing `tenant_module` row is disabled (C7).
+   */
+  lifecycle: 'LIFECYCLE_ENABLED',
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */

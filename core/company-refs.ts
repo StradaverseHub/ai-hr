@@ -83,6 +83,9 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'employee_import_run', column: 'company_id', disposition: 'employees', note: 'A bulk employee import into this company: the record of who was created and from which file.' },
   { table: 'employment_tax_scheme_my', column: 'company_id', disposition: 'employees', note: 'An employee\'s declared Malaysian tax scheme. Per employment, so it is an employee record.' },
   { table: 'employment_tax_selection_my', column: 'company_id', disposition: 'employees', note: 'An employee\'s tax-scheme selection and its provenance. Per employment.' },
+  { table: 'lc_case', column: 'company_id', disposition: 'employees', note: 'An onboarding or offboarding case (ADR-0095): the checklist that follows a person into or out of the company, with their staff-only intake details. An employee-lifecycle record, so it refuses like one.' },
+  { table: 'it_requisition', column: 'company_id', disposition: 'employees', note: 'An IT requisition or return raised for a person (ADR-0095), with its approval trail and the checklist of what was provisioned or revoked. Evidence of who had access.' },
+  { table: 'it_asset_request', column: 'company_id', disposition: 'employees', note: 'An employee\'s equipment request (ADR-0095) with its approval trail.' },
 
   // ── payroll: any row refuses ─────────────────────────────────────────────────────────────────────────
   { table: 'payroll_batch', column: 'company_id', disposition: 'payroll', note: 'A payroll run. Its payslips hang off it, so this is where every payslip is counted.' },
@@ -100,6 +103,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'review_cycle', column: 'company_id', disposition: 'other', note: 'A performance review cycle run for this company.' },
   { table: 'tenant_module', column: 'company_id', disposition: 'other', note: 'A module grant scoped to this company. Composite key with tenant_id. Entitlement is the platform\'s to remove.' },
   { table: 'module_change_request', column: 'company_id', disposition: 'other', note: 'A module activation request for this company. Composite key with tenant_id.' },
+  { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
+  { table: 'it_asset', column: 'company_id', disposition: 'other', note: 'An IT asset registered to this company (ADR-0095), with its holder history. The register is a record of who held what.' },
 
   // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
   { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
@@ -109,6 +114,9 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'company_payroll_config', column: 'company_id', disposition: 'config', note: 'Cut-off and pay days. Before payroll_policy, which it references.' },
   { table: 'payroll_policy', column: 'company_id', disposition: 'config', note: 'The company\'s payroll policies.' },
   { table: 'payslip_information_setting', column: 'company_id', disposition: 'config', note: 'Payslip display settings. One row on ABC Comapny on production.' },
+  { table: 'lc_company_config', column: 'company_id', disposition: 'config', note: 'The company\'s IT approval levels and access systems (ADR-0095). Setup only.' },
+  { table: 'lc_step_def', column: 'company_id', disposition: 'config', note: 'Company-specific onboarding / offboarding step definitions (ADR-0095). Setup only; steps already ticked on cases live on the cases.' },
+  { table: 'it_provision_def', column: 'company_id', disposition: 'config', note: 'The company\'s extra IT requisition / return checklist items (ADR-0095). Setup only; the items on a requisition live on the requisition.' },
   { table: 'payroll_cycle', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP: createCompany seeds six. Six rows on ABC Comapny — the rows that made Delete fail.' },
   { table: 'payroll_anomaly_config', column: 'company_id', disposition: 'config', note: 'Per-company payroll anomaly detector settings.' },
   { table: 'payroll_permission_grant', column: 'company_id', disposition: 'config', note: 'Per-company payroll permission overrides. ON DELETE CASCADE already; deleted explicitly for one rule.' },

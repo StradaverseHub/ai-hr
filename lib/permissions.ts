@@ -972,6 +972,16 @@ export const SCREENS: readonly ScreenEntry[] = [
   // registered on `leaveConfig` above, behind the same requireAdmin guard, so nobody who could open the old
   // page loses access. (a324a4b3 had renamed its label nav.toilPolicy → nav.timeOffInLieu.)
   {
+    // ADR-0095 — the Lifecycle module's Module Config. requireAdmin; the module's own staff screens under
+    // /lifecycle carry no matrix guard of their own (their level check is the module's staff table, which
+    // is not a role), exactly like /claims.
+    screenKey: 'lifecycleConfig',
+    href: '/admin/lifecycle',
+    labelKey: 'nav.lifecycleConfig',
+    guard: 'requireAdmin',
+    routes: ['/admin/lifecycle'],
+  },
+  {
     screenKey: 'claimsConfig',
     href: '/admin/claims',
     labelKey: 'nav.claimsConfig',

@@ -35,6 +35,7 @@ export const MODULE_CODES_WITH_NAV = [
   'attendance',
   'claims',
   'leave',
+  'lifecycle',
   'payroll',
   'performance',
   // deec1691 — the System Analysis & Dependency Explorer under Admin. The first entry here that is
