@@ -9367,3 +9367,288 @@ export const payslipInformationSetting = pgTable(
     fields: jsonb('fields').$type<string[]>().notNull(),
   },
 );
+
+// ──────────────────── Lifecycle module (ADR-0095, migration 0516) ────────────────────
+// Employee ONBOARDING / OFFBOARDING cases, IT requisitions, the asset register and asset requests.
+// Unrelated to the first-login product tour (core/onboarding.ts, ADR-0018). The business group of the
+// source handover IS a company here. Tables are `lc_*` (cases and config) and `it_*` (IT and assets).
+
+/** Module staff: who may work, approve and fulfil. hr_admin / super_admin are staff at level 3 implicitly. */
+export const lcStaff = pgTable(
+  'lc_staff',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    userId: uuid('user_id').notNull().references(() => appUser.id),
+    /** NULL = every company in the tenant. */
+    companyId: uuid('company_id').references(() => company.id),
+    level: text('level').notNull(), // agent | manager
+    createdAt: createdAt(),
+  },
+);
+
+export const lcStepDef = pgTable('lc_step_def', {
+  id: id(),
+  tenantId: tenantId(),
+  kind: text('kind').notNull(), // onboarding | offboarding
+  companyId: uuid('company_id').references(() => company.id),
+  stepKey: text('step_key').notNull(),
+  phase: integer('phase').notNull(),
+  label: text('label').notNull(),
+  ownerTeam: text('owner_team').notNull().default(''),
+  hrms: boolean('hrms').notNull().default(false),
+  rule: text('rule').notNull().default('always'), // always | carpark | laptop | outcome_accepted | outcome_rejected
+  sort: integer('sort').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+export const itProvisionDef = pgTable('it_provision_def', {
+  id: id(),
+  tenantId: tenantId(),
+  kind: text('kind').notNull(), // requisition | return
+  companyId: uuid('company_id').references(() => company.id),
+  itemKey: text('item_key').notNull(),
+  name: text('name').notNull(),
+  sort: integer('sort').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+export const lcCustomField = pgTable('lc_custom_field', {
+  id: id(),
+  tenantId: tenantId(),
+  kind: text('kind').notNull(),
+  fieldKey: text('field_key').notNull(),
+  label: text('label').notNull(),
+  fieldType: text('field_type').notNull().default('text'),
+  required: boolean('required').notNull().default(false),
+  options: jsonb('options').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  companyIds: jsonb('company_ids').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  sort: integer('sort').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+export const lcCompanyConfig = pgTable('lc_company_config', {
+  companyId: uuid('company_id').primaryKey().references(() => company.id),
+  tenantId: tenantId(),
+  approvalLevels: integer('approval_levels').notNull().default(1),
+  accessSystems: jsonb('access_systems').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+});
+
+export const lcCase = pgTable('lc_case', {
+  id: id(),
+  tenantId: tenantId(),
+  kind: text('kind').notNull(), // onboarding | offboarding
+  number: text('number').notNull(),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  status: text('status').notNull().default('in_progress'), // in_progress | completed | cancelled
+  fullName: text('full_name').notNull(),
+  employeeNo: text('employee_no').notNull(),
+  jobTitle: text('job_title'),
+  department: text('department'),
+  supervisor: text('supervisor'),
+  gbsTa: text('gbs_ta'),
+  joinDate: date('join_date'),
+  hireType: text('hire_type').notNull().default('new_hire'),
+  replacedPerson: text('replaced_person'),
+  laptopRequired: boolean('laptop_required').notNull().default(true),
+  deviceType: text('device_type'),
+  carparkRequired: boolean('carpark_required').notNull().default(false),
+  floorBuilding: text('floor_building'),
+  accessSystems: jsonb('access_systems').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  emailRequired: boolean('email_required').notNull().default(true),
+  /** STAFF ONLY. Never in the new-hire view, an email or an unmasked export. */
+  costCentre: text('cost_centre'),
+  nricPassport: text('nric_passport'),
+  newhireEmail: text('newhire_email'),
+  itOwnerUserId: uuid('it_owner_user_id').references(() => appUser.id),
+  resignationDate: date('resignation_date'),
+  lastWorkingDay: date('last_working_day'),
+  outcome: text('outcome').notNull().default('pending'), // pending | accepted | rejected
+  outcomeSetBy: uuid('outcome_set_by'),
+  outcomeSetAt: timestamp('outcome_set_at', { withTimezone: true }),
+  workLocation: text('work_location'),
+  deviceReturnedDate: date('device_returned_date'),
+  deviceName: text('device_name'),
+  balanceLeave: numeric('balance_leave', { precision: 6, scale: 2 }),
+  redeployedTo: text('redeployed_to'),
+  notes: text('notes'),
+  custom: jsonb('custom').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  personId: uuid('person_id').references(() => person.id),
+  employmentId: uuid('employment_id').references(() => employment.id),
+  daaTokenHash: text('daa_token_hash'),
+  daaSubmittedAt: timestamp('daa_submitted_at', { withTimezone: true }),
+  daa: jsonb('daa').$type<Record<string, unknown>>(),
+  cancelReason: text('cancel_reason'),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdBy: uuid('created_by').references(() => appUser.id),
+  createdAt: createdAt(),
+});
+
+export const lcCaseStep = pgTable(
+  'lc_case_step',
+  {
+    caseId: uuid('case_id').notNull().references(() => lcCase.id),
+    tenantId: tenantId(),
+    stepKey: text('step_key').notNull(),
+    done: boolean('done').notNull().default(false),
+    doneBy: uuid('done_by').references(() => appUser.id),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    reference: text('reference'),
+    notes: text('notes'),
+  },
+  (t) => [primaryKey({ columns: [t.caseId, t.stepKey] })],
+);
+
+export const lcHistory = pgTable('lc_history', {
+  id: id(),
+  tenantId: tenantId(),
+  refType: text('ref_type').notNull(), // case | requisition | asset | asset_request
+  refId: uuid('ref_id').notNull(),
+  action: text('action').notNull(),
+  detail: jsonb('detail').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  actorUserId: uuid('actor_user_id'),
+  actorName: text('actor_name'),
+  at: timestamp('at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const lcComment = pgTable('lc_comment', {
+  id: id(),
+  tenantId: tenantId(),
+  caseId: uuid('case_id').notNull().references(() => lcCase.id),
+  authorUserId: uuid('author_user_id').references(() => appUser.id),
+  authorName: text('author_name'),
+  body: text('body').notNull(),
+  at: timestamp('at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const itRequisition = pgTable('it_requisition', {
+  id: id(),
+  tenantId: tenantId(),
+  number: text('number').notNull(),
+  kind: text('kind').notNull(), // requisition | return | standalone
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  caseId: uuid('case_id').references(() => lcCase.id),
+  status: text('status').notNull().default('open'), // open | in_progress | completed | cancelled
+  fullName: text('full_name').notNull(),
+  employeeNo: text('employee_no').notNull(),
+  jobTitle: text('job_title'),
+  department: text('department'),
+  costCentre: text('cost_centre'),
+  workLocation: text('work_location'),
+  contact: text('contact'),
+  username: text('username'),
+  laptopRequired: boolean('laptop_required').notNull().default(true),
+  deviceType: text('device_type'),
+  accessories: text('accessories'),
+  accessSystems: jsonb('access_systems').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  floorBuilding: text('floor_building'),
+  emailStatus: text('email_status'),
+  adStatus: text('ad_status'),
+  assignedToUserId: uuid('assigned_to_user_id').references(() => appUser.id),
+  notes: text('notes'),
+  device: jsonb('device').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  returnDetails: jsonb('return_details').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  approvalLevels: integer('approval_levels').notNull().default(1),
+  approvalStatus: text('approval_status').notNull().default('pending'), // pending | pending_l2 | approved | rejected
+  l1By: uuid('l1_by'),
+  l1At: timestamp('l1_at', { withTimezone: true }),
+  l1Action: text('l1_action'),
+  l2By: uuid('l2_by'),
+  l2At: timestamp('l2_at', { withTimezone: true }),
+  l2Action: text('l2_action'),
+  approvalNotes: text('approval_notes'),
+  cancelReason: text('cancel_reason'),
+  createdBy: uuid('created_by').references(() => appUser.id),
+  createdAt: createdAt(),
+});
+
+export const itRequisitionItem = pgTable(
+  'it_requisition_item',
+  {
+    requisitionId: uuid('requisition_id').notNull().references(() => itRequisition.id),
+    tenantId: tenantId(),
+    itemKey: text('item_key').notNull(),
+    name: text('name').notNull(),
+    sort: integer('sort').notNull().default(0),
+    status: text('status').notNull().default('pending'), // pending | done | na
+    doneBy: uuid('done_by').references(() => appUser.id),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    note: text('note'),
+  },
+  (t) => [primaryKey({ columns: [t.requisitionId, t.itemKey] })],
+);
+
+export const itAsset = pgTable('it_asset', {
+  id: id(),
+  tenantId: tenantId(),
+  code: text('code').notNull(),
+  assetTag: text('asset_tag'),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  assetType: text('asset_type').notNull(),
+  status: text('status').notNull().default('in_stock'),
+  manufacturer: text('manufacturer'),
+  model: text('model'),
+  serialNo: text('serial_no'),
+  hostname: text('hostname'),
+  os: text('os'),
+  cpu: text('cpu'),
+  ram: text('ram'),
+  storage: text('storage'),
+  leased: boolean('leased').notNull().default(false),
+  leaseEnd: date('lease_end'),
+  purchaseDate: date('purchase_date'),
+  purchaseCost: numeric('purchase_cost', { precision: 12, scale: 2 }),
+  warrantyEnd: date('warranty_end'),
+  licence: jsonb('licence').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  userName: text('user_name'),
+  userEmployeeNo: text('user_employee_no'),
+  userDepartment: text('user_department'),
+  userEmail: text('user_email'),
+  issuedOn: date('issued_on'),
+  location: text('location'),
+  requisitionId: uuid('requisition_id').references(() => itRequisition.id),
+  extra: jsonb('extra').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  createdBy: uuid('created_by').references(() => appUser.id),
+  createdAt: createdAt(),
+});
+
+export const itAssetCatalogue = pgTable('it_asset_catalogue', {
+  id: id(),
+  tenantId: tenantId(),
+  itemCode: text('item_code').notNull(),
+  itemName: text('item_name').notNull(),
+  category: text('category').notNull(), // hardware | software
+  description: text('description'),
+  approvalLevels: integer('approval_levels').notNull().default(1),
+  active: boolean('active').notNull().default(true),
+});
+
+export const itAssetRequest = pgTable('it_asset_request', {
+  id: id(),
+  tenantId: tenantId(),
+  number: text('number').notNull(),
+  catalogueId: uuid('catalogue_id').notNull().references(() => itAssetCatalogue.id),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  requesterUserId: uuid('requester_user_id').notNull().references(() => appUser.id),
+  fullName: text('full_name').notNull(),
+  employeeNo: text('employee_no'),
+  department: text('department'),
+  jobTitle: text('job_title'),
+  justification: text('justification'),
+  quantity: integer('quantity').notNull().default(1),
+  preferredDate: date('preferred_date'),
+  handlerUserId: uuid('handler_user_id').references(() => appUser.id),
+  status: text('status').notNull().default('requested'),
+  approvalLevels: integer('approval_levels').notNull().default(1),
+  l1By: uuid('l1_by'),
+  l1At: timestamp('l1_at', { withTimezone: true }),
+  l1Action: text('l1_action'),
+  l2By: uuid('l2_by'),
+  l2At: timestamp('l2_at', { withTimezone: true }),
+  l2Action: text('l2_action'),
+  approvalNotes: text('approval_notes'),
+  assetId: uuid('asset_id').references(() => itAsset.id),
+  notes: text('notes'),
+  cancelReason: text('cancel_reason'),
+  createdAt: createdAt(),
+});

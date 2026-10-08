@@ -31,3 +31,4 @@ import '@/packs/claims';
 import '@/packs/performance';
 import '@/packs/leave';
 import '@/packs/payroll';
+import '@/packs/lifecycle';

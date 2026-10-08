@@ -2962,6 +2962,13 @@
       "when": 1791400000000,
       "tag": "0515_set_based_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 516,
+      "version": "7",
+      "when": 1791500000000,
+      "tag": "0516_lifecycle_module",
+      "breakpoints": true
     }
   ]
 }
