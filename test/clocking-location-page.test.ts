@@ -70,7 +70,12 @@ import EditClockingLocationPage from '../app/admin/work-locations/clocking/[id]/
 import ViewClockingLocationPage from '../app/admin/work-locations/clocking/[id]/page';
 import ClockingListPage from '../app/admin/work-locations/clocking/page';
 import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
-import { createClockingLocationAction, updateClockingLocationAction } from '../app/admin/actions';
+import {
+  archiveClockingLocationAction,
+  createClockingLocationAction,
+  restoreClockingLocationAction,
+  updateClockingLocationAction,
+} from '../app/admin/actions';
 import {
   CLOCKING_FIELDS,
   CLOCKING_LIST,
@@ -144,66 +149,122 @@ describe('r423 — the routes exist, guard themselves, and sit on the locations 
   });
 
   /**
-   * r423 REVERSES r338's "Locations opens the company listing": the reporter asked for clocking locations to
-   * be set up location-first, so "Locations" opens the clocking list and the company listing has a row of
-   * its own, "Work Locations". Exactly one row each across the rail's two sources, no `#fragment` on either
-   * (the active predicate splits on `?` only), and the clocking row is the more specific href so the flyout's
-   * longest-match rule lights the right one.
+   * r423 REVERSED r338's "Locations opens the company listing": the reporter asked for clocking locations
+   * to be set up location-first, so "Locations" opens the clocking list.
+   *
+   * r428 (83c0d3c8 contest) — AND "WORK LOCATIONS" IS GONE, the second half of the same contest: the
+   * reporter asked to remove the row and keep "Locations" as the one menu for both kinds. ONE row now,
+   * across both rail sources, owning its retired sibling's old address for highlighting (`ownedSubpaths`)
+   * rather than a second row pointing at a screen the first one already opens.
    */
-  it('the menu: "Locations" opens the clocking list, "Work Locations" the company listing, one row each', () => {
+  it('the menu: ONE row, "Locations", owning the retired Work Locations address for highlighting', () => {
     const sidebar = read('components/sidebar.tsx');
     const pack = read('packs/attendance/index.ts');
-    expect(pack).toContain("{ href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true }");
-    expect(pack).toContain("{ href: '/admin/work-locations', labelKey: 'workLocations', icon: Building2, adminOnly: true }");
+    expect(pack).toContain(
+      "{ href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true, ownedSubpaths: ['/admin/work-locations'] }",
+    );
     expect((sidebar + pack).split("href: '/admin/work-locations/clocking'").length - 1).toBe(1);
-    expect((sidebar + pack).split("href: '/admin/work-locations'").length - 1).toBe(1);
+    expect(pack, 'no second row for the retired Work Locations screen').not.toContain("labelKey: 'workLocations'");
     expect(pack, 'no row for the forms — they are reached from the list').not.toContain("'/admin/work-locations/clocking/new'");
     expect(pack, 'the label key it carried before r336 is still retired').not.toContain("labelKey: 'clockingLocation',");
+    const stub = read(REGISTER);
+    expect(stub, 'the old address guards itself before it forwards').toContain('requireAdmin()');
+    expect(stub, 'and lands on the Locations screen').toContain('CLOCKING_LIST');
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(read(`messages/${loc}.json`)) as { nav: Record<string, string> };
-      expect(m.nav.workLocations, `${loc} nav.workLocations`).toBeTruthy();
-      expect(m.nav.workLocations, `${loc}: the two rows read differently`).not.toBe(m.nav.locations);
+      // r428 — DELETED, not merely unrendered: a live-looking nav key nothing renders is how a retired
+      // row comes back (the r336/r338 clockingLocation/physicalWorkLocation precedent, in reverse).
+      expect(m.nav.workLocations, `${loc}: dead nav.workLocations`).toBeUndefined();
     }
   });
 });
 
-describe('r423 — the list: the plan’s columns, filters, and row actions; no inline clocking form anywhere', () => {
+describe('r428 (83c0d3c8 contest) — STEP 1: the company list, its search, and its columns', () => {
   const list = withoutComments(read(LIST));
-  const register = withoutComments(read(REGISTER));
-  const locationEdit = withoutComments(read(LOCATION_EDIT));
-  const locationView = withoutComments(read(LOCATION_VIEW));
 
-  it('the eight columns in the plan’s order', () => {
-    const cols = ['locationName', 'address', 'colState', 'gpsCoordinates', 'geofencingRadius', 'colCompanies', 'colStatus', 'colActions'];
-    const measured = cols.map((c) => ({ c, at: at(list, `<th className={`) && at(list, `{t('${c}')}</th>`) })).sort((a, b) => a.at - b.at).map((x) => x.c);
+  it('the company-list columns, in the plan’s order', () => {
+    const cols = ['colCompany', 'colClockingLocations', 'colWorkLocations', 'colAction'];
+    const measured = cols.map((c) => ({ c, at: at(list, `{t('${c}')}</StackedTh>`) })).sort((a, b) => a.at - b.at).map((x) => x.c);
     expect(measured, `the header order, as measured: ${measured.join(' → ')}`).toEqual(cols);
   });
 
-  it('a GET filter form: search (name or address), Company, Status All / Active / Inactive', () => {
+  it('a GET search form: company name or any of its location names, in memory, capped at 200', () => {
     expect(list).toContain('<form method="get" action={CLOCKING_LIST}');
-    expect(list).toContain('name="q"');
-    expect(list).toContain('name="company"');
-    expect(list).toContain('name="status"');
-    for (const v of ['all', 'active', 'inactive']) expect(list).toContain(`<option value="${v}">`);
-    expect(list, '?company= is honoured only when it names a company the caller administers').toContain(
-      "companies.some((c) => c.id === one('company')) ? one('company') : ''",
-    );
-    expect(list).toContain('listClockingLocations(s, { status, q, companyId: companyId || undefined })');
+    expect(list.indexOf('name="q"'), 'the search box is in CompanyList').toBeLessThan(list.indexOf('async function CompanyView'));
+    expect(list).toContain("one('q').slice(0, 200)");
+  });
+
+  it('the orphan row is offered only to a group administrator, and only when one exists', () => {
+    expect(list).toContain("groupAdmin ? clockingRows.filter((r) => r.companies.length === 0) : []");
+    expect(list).toContain("orphanRows.length > 0 &&");
+  });
+
+  it('the New button is a group admin’s, at the top', () => {
+    expect(list, 'the New button is a group admin’s').toMatch(/groupAdmin \? \(\s*<Link href=\{CLOCKING_NEW_PAGE\} className=\{btnPrimary\}>/);
+  });
+
+  it('no form on this screen posts a clocking or work-location write', () => {
+    expect(list, 'no clocking create/update on this screen').not.toMatch(/action=\{(create|update)ClockingLocationAction\}/);
+    for (const field of ['lat', 'lng', 'radiusM', 'companyIds', 'code']) {
+      expect(list, `no ${field} box anywhere on this screen`).not.toContain(`name="${field}"`);
+    }
+  });
+});
+
+describe('r428 (83c0d3c8 contest) — STEP 2: a company’s own view, its columns, filters, and row actions', () => {
+  const list = withoutComments(read(LIST));
+  const locationEdit = withoutComments(read(LOCATION_EDIT));
+  const locationView = withoutComments(read(LOCATION_VIEW));
+  const register = withoutComments(read(REGISTER));
+  // Only the CompanyView half: a `t('xxx')` string shared with CompanyList (there are none among the
+  // eight below) would otherwise measure the wrong occurrence.
+  const view = list.slice(list.indexOf('async function CompanyView'));
+
+  it('the eight clocking columns in the plan’s order — Companies replaced by Shared With', () => {
+    const cols = ['locationName', 'address', 'colState', 'gpsCoordinates', 'geofencingRadius', 'colSharedWith', 'colStatus', 'colActions'];
+    const measured = cols.map((c) => ({ c, at: at(view, `{t('${c}')}</StackedTh>`) })).sort((a, b) => a.at - b.at).map((x) => x.c);
+    expect(measured, `the header order, as measured: ${measured.join(' → ')}`).toEqual(cols);
+    expect(view, 'the chip list is gone, not merely renamed').not.toContain("t('colCompanies')");
+  });
+
+  it('a GET filter form scoped to the company: search, Status All / Active / Inactive, NO Company select', () => {
+    expect(view).toContain('<form method="get" action={CLOCKING_LIST}');
+    expect(view).toContain('<input type="hidden" name="company" value={companyId} />');
+    expect(view).toContain('name="q"');
+    expect(view).toContain('name="status"');
+    expect(view, 'the Company select is dropped — the company IS the screen now').not.toContain('name="company"\n');
+    for (const v of ['all', 'active', 'inactive']) expect(view).toContain(`<option value="${v}">`);
+    expect(view, 'the Company select is dropped — the company IS the screen now').not.toContain('<select name="company"');
+    expect(view).toContain('listClockingLocations(s, { status, q, companyId })');
   });
 
   it('row actions: View for everyone; Edit and Deactivate (asks first, with the count) or Activate for a group admin', () => {
-    expect(list).toContain('id={`row-${cl.id}`}');
-    expect(list).toContain("cl.id === focus && 'bg-muted/50'");
-    const view = at(list, 'href={clockingViewPage(cl.id)}');
-    const gate = at(list, '{groupAdmin && (');
-    expect(view).toBeLessThan(gate);
-    const admin = list.slice(gate);
-    expect(admin).toContain('href={clockingEditPage(cl.id)}');
+    expect(view).toContain('id={`row-${cl.id}`}');
+    expect(view).toContain("cl.id === focus ? 'bg-muted/50' : ''");
+    const viewLink = at(view, 'href={viewHref}');
+    const gate = at(view, '{groupAdmin && (');
+    expect(viewLink).toBeLessThan(gate);
+    const admin = view.slice(gate);
+    expect(admin).toContain('href={editHref}');
     expect(admin).toContain('action={archiveClockingLocationAction}');
     expect(admin).toContain('action={restoreClockingLocationAction}');
     expect(admin).toContain("description={t('deactivateConfirmDescription', { name: cl.name, count: cl.assignedCount })}");
     expect(admin).toContain("{t('activate')}");
-    expect(list, 'the New button is a group admin’s').toMatch(/groupAdmin \? \(\s*<Link href=\{CLOCKING_NEW_PAGE\} className=\{btnPrimary\}>/);
+  });
+
+  it('the New button, when offered from inside a company, pre-ticks that company', () => {
+    expect(view).toContain("`${CLOCKING_NEW_PAGE}${isOrphan ? '' : `?company=${companyId}`}`");
+  });
+
+  it('the work-location table: Code, Name, Branch, Status, Actions — a real per-row status, no rowSpan', () => {
+    // colStatus/colActions are shared with the clocking table above it; the work-locations SectionCard
+    // (index 2) is where this table's own occurrences of them live.
+    const workSection = view.slice(view.indexOf("title={t('workLocationsSection')}"));
+    const cols = ['code', 'name', 'branch', 'colStatus', 'colActions'];
+    const measured = cols.map((c) => ({ c, at: at(workSection, `{t('${c}')}</StackedTh>`) })).sort((a, b) => a.at - b.at).map((x) => x.c);
+    expect(measured, `the work-location header order, as measured: ${measured.join(' → ')}`).toEqual(cols);
+    expect(view, 'no rowSpan — one company is in view, so nothing is grouped').not.toContain('rowSpan');
+    expect(view).toContain("l.archivedAt ? t('statusArchived') : t('statusActive')");
   });
 
   it('no screen renders a clocking input or posts a clocking create / update except the form itself', () => {
@@ -216,7 +277,7 @@ describe('r423 — the list: the plan’s columns, filters, and row actions; no 
     }
   });
 
-  it('the work location screens show no clocking location at all any more (r423 reverses r338)', () => {
+  it('the dedicated work-location screens show no clocking location at all (r423 reversed r338; r428 moved the listing, not this rule)', () => {
     for (const [name, code] of [['register', register], ['location edit', locationEdit], ['location view', locationView]] as const) {
       expect(code, `${name} reads no clocking register`).not.toContain('listClockingLocations');
       expect(code, `${name} renders no clocking rows`).not.toContain('ClockingPointRows');
@@ -224,7 +285,9 @@ describe('r423 — the list: the plan’s columns, filters, and row actions; no 
       expect(code, `${name} links to no clocking editor`).not.toContain('clockingEditPage');
     }
     expect(fs.existsSync(path.join(root, 'app/admin/work-locations/clocking-points.tsx')), 'the row component is gone').toBe(false);
-    expect(register).toContain("title={t('workLocationsTitle')}");
+    // r428 — the standalone listing's own H1 retired WITH the page; the register is a redirect stub now.
+    expect(register, 'the register is a guarded redirect stub, not a screen').toContain('requireAdmin()');
+    expect(register, 'and renders no page of its own').not.toContain('PageHeader');
   });
 });
 
@@ -291,11 +354,14 @@ describe('r423 — the form: the reporter’s order, Companies and Status, Back,
     expect(form, 'no embed: the framed third-party map is the option that still needs a key').not.toContain('<ifr' + 'ame');
   });
 
-  it('both pages are headed, Back and Cancel go to the clocking list, and only a group admin gets a form', () => {
-    expect(newPage).toMatch(/title=\{t\('newClockingTitle'\)\}[\s\S]*?back=\{\{ href: CLOCKING_LIST, label: t\('backToLocations'\) \}\}/);
-    expect(newPage).toContain('cancelHref={CLOCKING_LIST}');
+  it('both pages are headed, Back and Cancel go to the clocking list (or the company it was opened from), and only a group admin gets a form', () => {
+    // r428 — `backHref`/`listHref` default to the bare list and become company-scoped only when a
+    // re-validated `?company=` is present (tested in the dedicated "returnCompany" describe below).
+    expect(newPage).toMatch(/title=\{t\('newClockingTitle'\)\}[\s\S]*?back=\{\{ href: backHref, label: t\('backToLocations'\) \}\}/);
+    expect(newPage).toContain("const backHref = returnCompany ? `${CLOCKING_LIST}?company=${returnCompany}` : CLOCKING_LIST;");
+    expect(newPage).toContain('cancelHref={backHref}');
     expect(editPage).toMatch(/title=\{t\('editClockingTitle'\)\}[\s\S]*?back=\{\{ href: listHref, label: t\('backToLocations'\) \}\}/);
-    expect(editPage).toContain('const listHref = clockingFocusHref(site.id);');
+    expect(editPage).toContain('const listHref = clockingFocusHref(site.id, returnCompany);');
     expect(editPage).toContain('cancelHref={listHref}');
     expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
@@ -328,11 +394,16 @@ describe('r423 — the actions land on the clocking list and never leave the Loc
   const rowActions = code.slice(archiveAt, at(code, 'export async function deleteClockingLocationAction') + 600);
 
   it('create refuses to the new page, update to the edit page; both succeed to the list at the row', () => {
-    expect(create).toContain('await clockingRefused(CLOCKING_NEW_PAGE, typed, companyIds, e);');
-    expect(update).toContain('await clockingRefused(clockingEditPage(clockingLocationId), typed, companyIds, e);');
-    expect(create).toContain('await clockingSaved(saved!.id, saved!.warning);');
-    expect(update).toContain('await clockingSaved(clockingLocationId, saved!.warning);');
-    expect(helpers).toContain('redirect(`${CLOCKING_LIST}?${params.toString()}#row-${id}`);');
+    // r428 — both calls carry the re-validated `returnCompany` through to the refusal too, so Cancel on a
+    // refused save still returns to the company the operator was standing in.
+    expect(create).toContain('await clockingRefused(CLOCKING_NEW_PAGE, typed, companyIds, e, returnCompany);');
+    expect(update).toContain('await clockingRefused(clockingEditPage(clockingLocationId), typed, companyIds, e, returnCompany);');
+    expect(create).toContain('await clockingSaved(saved!.id, saved!.warning, returnCompany);');
+    expect(update).toContain('await clockingSaved(clockingLocationId, saved!.warning, returnCompany);');
+    // r428 — the destination is the bare list OR the company's own view (clockingListHref), never a
+    // hardcoded CLOCKING_LIST, and the existing query (`?company=`) is extended with `&`, never a second `?`.
+    expect(helpers).toContain('const dest = clockingListHref(returnCompany);');
+    expect(helpers).toContain("redirect(`${dest}${dest.includes('?') ? '&' : '?'}${params.toString()}#row-${id}`);");
     expect(helpers).toContain("new URLSearchParams({ saved: '1', focus: id })");
     expect(helpers).toContain('for (const field of CLOCKING_FIELDS) params.set(typedKey(field), typed[field]);');
     expect(helpers).toContain("params.set(TYPED_COMPANY_IDS, companyIds.filter((id) => UUID_RE.test(id)).join(','));");
@@ -344,7 +415,12 @@ describe('r423 — the actions land on the clocking list and never leave the Loc
     expect(create).toContain("active: typed.status !== 'inactive'");
     expect(helpers, 'the two company refusals in the admin’s words').toContain("t('companyInUse', { count: e.count, companies: e.companyNames.join(', ') })");
     expect(helpers).toContain("t('companiesRequired')");
-    for (const verb of ['archive', 'restore', 'delete']) expect(rowActions, verb).toContain('CLOCKING_LIST');
+    expect(rowActions, 'delete still redirects to the bare list').toContain('CLOCKING_LIST');
+    // r428 — archive/restore land on `clockingListHref(returnCompanyOf(fd))` now (the bare list, or the
+    // company's own view when `returnCompany` was posted), never a bare `CLOCKING_LIST` of their own.
+    for (const verb of ['archive', 'restore']) {
+      expect(rowActions, verb).toContain('const dest = clockingListHref(returnCompanyOf(fd));');
+    }
     expect(code, 'the r338 "home is the work location" helper is gone').not.toContain('clockingPointBase');
   });
 
@@ -397,7 +473,8 @@ function toMarkup(tree: unknown): string {
 const renderLocationEdit = async (id: string, sp: Record<string, string> = {}) =>
   toMarkup(await EditLocationPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) }));
 const renderList = async (sp: Record<string, string> = {}) => toMarkup(await ClockingListPage({ searchParams: Promise.resolve(sp) }));
-const renderView = async (id: string) => toMarkup(await ViewClockingLocationPage({ params: Promise.resolve({ id }) }));
+const renderView = async (id: string, sp: Record<string, string> = {}) =>
+  toMarkup(await ViewClockingLocationPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) }));
 const renderNew = async (sp: Record<string, string> = {}) => toMarkup(await NewClockingLocationPage({ searchParams: Promise.resolve(sp) }));
 const renderEdit = async (id: string, sp: Record<string, string> = {}) =>
   toMarkup(await EditClockingLocationPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) }));
@@ -464,7 +541,9 @@ function assertPostedFields(html: string, opts: { linked: boolean }): void {
   const open = html.lastIndexOf('<form', html.indexOf('sectionGps'));
   expect(open, 'the form is on the page').toBeGreaterThan(-1);
   const form = html.slice(open, html.indexOf('</form>', open));
-  const posted = [...new Set([...form.matchAll(/\sname="([^"]+)"/g)].map((m) => m[1]))].filter((n) => n !== 'clockingLocationId');
+  const posted = [...new Set([...form.matchAll(/\sname="([^"]+)"/g)].map((m) => m[1]))].filter(
+    (n) => n !== 'clockingLocationId' && n !== 'returnCompany',
+  );
   // r423 — the single-valued fields plus the companies; the work-location link is posted only when one exists.
   const expected = [...CLOCKING_FIELDS.filter((f) => opts.linked || f !== 'locationId'), 'companyIds'].sort();
   expect([...posted].sort(), `the form posts: ${posted.join(', ')}`).toEqual(expected);
@@ -513,7 +592,7 @@ beforeEach(async () => {
 });
 
 describe('r423 — Save lands on the clocking list at the row; a refusal keeps the page open with everything typed', () => {
-  it('a save from the NEW page creates the location (companies, state, label) and lands on the list, highlighted', async () => {
+  it('a save with no company context (the top-level New button) creates the location and lands on step 1 — nothing to highlight there, but the save is still said', async () => {
     const back = await runAction(createClockingLocationAction, FULL);
     const site = (await listClockingLocations(ADMIN)).find((l) => l.name === 'HQ — North Gate');
     expect(site, 'the location was written').toBeTruthy();
@@ -523,10 +602,29 @@ describe('r423 — Save lands on the clocking list at the row; a refusal keeps t
     expect(site?.companies.map((c) => c.id)).toEqual([b.companyId]);
     expect(back).toBe(`${CLOCKING_LIST}?saved=1&focus=${site!.id}#row-${site!.id}`);
 
+    // r428 — no `?company=` on this redirect (FULL carries no returnCompany), so it lands on STEP 1, the
+    // company list: no clocking-location row exists there to highlight, but the save is still confirmed.
     const html = visible(await renderList({ saved: '1', focus: site!.id }));
     expect(html).toContain('saved');
+    expect(html, 'step 1 has no row for a clocking location to highlight').not.toContain(`id="row-${site!.id}"`);
+  });
+
+  /**
+   * r428 (83c0d3c8 contest) — "Save, Cancel and Back … return to the same company" (plan point 10). A save
+   * posted WITH `returnCompany` (the hidden field the form carries when opened from inside a company's own
+   * view) lands on THAT company's screen, at the row, highlighted — the behaviour the plan promises.
+   */
+  it('a save WITH returnCompany lands on that company’s own view, at the row, highlighted', async () => {
+    const back = await runAction(createClockingLocationAction, { ...FULL, returnCompany: b.companyId });
+    const site = (await listClockingLocations(ADMIN)).find((l) => l.name === 'HQ — North Gate');
+    expect(back).toBe(`${CLOCKING_LIST}?company=${b.companyId}&saved=1&focus=${site!.id}#row-${site!.id}`);
+
+    const html = visible(await renderList({ company: b.companyId, saved: '1', focus: site!.id }));
+    expect(html).toContain('saved');
     expect(html).toContain(`id="row-${site!.id}"`);
-    expect(count(html, 'bg-muted/50'), 'exactly one row highlighted').toBe(1);
+    // StackedHead's OWN header styling also carries `bg-muted/50` (the tinted Classic header row), so the
+    // needle for a highlighted ROW is the one only StackedRow's conditional class produces.
+    expect(count(html, '@max-3xl:py-4 bg-muted/50'), 'exactly one row highlighted').toBe(1);
   });
 
   it('a LINKED save ALSO lands on the clocking list — never on the work location’s screen (r423 reverses r338)', async () => {
@@ -768,56 +866,63 @@ describe('r423 — the pages render', () => {
     expect(html).not.toContain('National (default)');
   });
 
-  it('the LIST as a group admin: the columns, the companies, View / Edit / Deactivate, Activate for an inactive one', async () => {
+  it('STEP 2 as a group admin: the columns, Shared With, View / Edit / Deactivate, Activate for an inactive one', async () => {
     const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'XYZ Sdn Bhd' });
     const { id: a } = await mkSite({ name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, reportLabel: 'GA', companyIds: [b.companyId, coB], state: 'Selangor', address: 'Jalan Kota' });
     const { id: c } = await mkSite({ name: 'Old Store', lat: HQ.lat, lng: HQ.lng, radiusM: 100 });
     await owner.db.update(schema.clockingLocation).set({ archivedAt: new Date() }).where(eq(schema.clockingLocation.id, c));
-    const html = visible(await renderList());
+    const html = visible(await renderList({ company: b.companyId }));
     expect(html).toContain(`id="row-${a}"`);
     expect(html).toContain(`id="row-${c}"`);
     expect(html).toContain('Jalan Kota');
     expect(html).toContain('>Selangor<');
-    expect(html).toContain('>Acme Sdn Bhd<');
-    expect(html).toContain('>XYZ Sdn Bhd<');
+    // r428 — the chip list is gone; Gate A (open to b.companyId + coB) reads "1 other company", Old Store
+    // (open only to b.companyId) reads "Not shared". No company NAME is printed on this screen any more.
+    expect(html).toContain('otherCompaniesCount');
+    expect(html).toContain('notShared');
+    expect(html, 'no company chip list on this screen any more').not.toContain('>XYZ Sdn Bhd<');
     expect(count(html, '>view<'), 'View on every row').toBe(2);
     expect(count(html, '>edit<'), 'Edit on every row').toBe(2);
-    expect(count(html, `href="${clockingViewPage(a)}"`)).toBe(1);
+    expect(count(html, `href="${clockingViewPage(a)}?company=${b.companyId}"`)).toBe(1);
     expect(count(html, 'deactivate'), 'Deactivate on the active row (button + confirm label)').toBeGreaterThanOrEqual(1);
     expect(count(html, '>activate<'), 'Activate on the inactive one').toBe(1);
-    expect(html).toContain(`href="${CLOCKING_NEW_PAGE}"`);
+    expect(html).toContain(`href="${CLOCKING_NEW_PAGE}?company=${b.companyId}"`);
     for (const field of ['lat', 'lng', 'radiusM', 'reportLabel']) expect(html, `no ${field} box on the list`).not.toContain(`name="${field}"`);
-    // The filters narrow it.
-    const inactive = visible(await renderList({ status: 'inactive' }));
+    // The filters narrow it, within the company.
+    const inactive = visible(await renderList({ company: b.companyId, status: 'inactive' }));
     expect(inactive).toContain(`id="row-${c}"`);
     expect(inactive).not.toContain(`id="row-${a}"`);
+    const searched = visible(await renderList({ company: b.companyId, q: 'kota' }));
+    expect(searched).toContain(`id="row-${a}"`);
+    expect(searched).not.toContain(`id="row-${c}"`);
+    // Gate A also appears under its OTHER company — the plan's "a shared location appears under each".
     const byCo = visible(await renderList({ company: coB }));
     expect(byCo).toContain(`id="row-${a}"`);
     expect(byCo).not.toContain(`id="row-${c}"`);
-    const searched = visible(await renderList({ q: 'kota' }));
-    expect(searched).toContain(`id="row-${a}"`);
-    expect(searched).not.toContain(`id="row-${c}"`);
   });
 
   /**
    * Plan point 2 — a company administrator sees, READ-ONLY, only the locations open to companies they
    * administer, and only those company names. r272's property (a reader who may not edit still gets a View)
-   * is kept.
+   * is kept. Plan point 13 — Shared With, for a company admin, names only OTHER companies they administer,
+   * never a count of companies they cannot see.
    */
-  it('the LIST and the pages as a COMPANY-SCOPED admin: only their companies’ locations and names; View, no Edit, no form', async () => {
+  it('STEP 2 as a COMPANY-SCOPED admin: only their companies’ locations, no count of a company they cannot see; View, no Edit, no form', async () => {
     const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'Hidden Co' });
     const { id: shared } = await mkSite({ name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 200, reportLabel: 'GB', companyIds: [b.companyId, coB] });
     const { id: other } = await mkSite({ name: 'Other Co Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 200, companyIds: [coB] });
     ADMIN = await adminFor(b.companyId);
-    const list = visible(await renderList());
+    const list = visible(await renderList({ company: b.companyId }));
     expect(list).toContain('companyAdminReadOnly');
     expect(list).toContain(`id="row-${shared}"`);
     expect(list, 'a location open only to another company is not listed').not.toContain(`id="row-${other}"`);
-    expect(list).toContain('>Acme Sdn Bhd<');
+    // r428 — Shared Gate IS open to Hidden Co too, but this admin cannot see Hidden Co, so Shared With
+    // reads "not shared" FOR THEM — never a count that would imply a company they cannot see exists.
+    expect(list).toContain('notShared');
     expect(list, 'and another company’s NAME is never shown').not.toContain('Hidden Co');
     expect(list, 'no Edit control for this role').not.toContain('>edit<');
     expect(list).toContain('>view<');
-    expect(list).not.toContain(`href="${CLOCKING_NEW_PAGE}"`);
+    expect(list).not.toContain(`href="${CLOCKING_NEW_PAGE}`);
     const view = visible(await renderView(shared));
     expect(view).toContain('Shared Gate');
     expect(view).not.toContain('Hidden Co');
@@ -828,5 +933,74 @@ describe('r423 — the pages render', () => {
     const newPage = visible(await renderNew());
     expect(newPage).toContain('sharedManagedByGroupAdmin');
     expect(newPage).not.toContain('<form');
+
+    // r428 — a company this admin does NOT administer falls back to step 1, never a query for its rows.
+    const foreign = visible(await renderList({ company: coB }));
+    expect(foreign, 'falls back to the company list').toContain('companiesSection');
+    expect(foreign, 'and shows none of coB’s locations').not.toContain('Other Co Gate');
+  });
+});
+
+/**
+ * r428 (83c0d3c8 contest) — plan point 10: "Save, Cancel and Back on any of these screens return to the
+ * same company, not to the first screen." Each clocking screen re-validates `?company=` against a REAL
+ * record before trusting it (the New page against the caller's own option set, the View/Edit pages
+ * against the location's own `companies`) — never echoed from the url alone.
+ */
+describe('r428 — returnCompany: every way out of a clocking screen opened from a company lands back on it', () => {
+  /** renderToStaticMarkup escapes `&` inside an attribute value as `&amp;`. */
+  const esc = (s: string) => s.replace(/&/g, '&amp;');
+
+  it('the New page: `?company=` ticks that company and carries it through Save, Cancel and a refusal', async () => {
+    const newPage = visible(await renderNew({ company: b.companyId }));
+    expect(inputTag(newPage, `name="companyIds" value="${b.companyId}"`), 'pre-ticked from ?company=').toContain('checked=""');
+    expect(count(newPage, `href="${CLOCKING_LIST}?company=${b.companyId}"`), 'Back and Cancel both carry it').toBe(2);
+    expect(newPage).toContain(`name="returnCompany" value="${b.companyId}"`);
+
+    // An id naming no real company (not in clockingFormOptions — a group admin's option set is every
+    // company, so nothing short of a non-existent id ever fails this comparison) is never trusted:
+    // nothing pre-ticked, no returnCompany.
+    const bogus = visible(await renderNew({ company: '00000000-0000-4000-8000-000000000000' }));
+    expect(bogus).not.toContain('name="returnCompany"');
+
+    // A refusal carries the company through so Cancel still returns to it.
+    const back = await runAction(createClockingLocationAction, { ...FULL, name: 'Refused', radiusM: '', returnCompany: b.companyId });
+    expect(back).toContain(`company=${b.companyId}`);
+  });
+
+  it('the Edit page: `?company=` is re-validated against the LOCATION’s own companies, never trusted blindly', async () => {
+    const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'XYZ Sdn Bhd' });
+    const { id } = await mkSite({ name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, companyIds: [b.companyId, coB] });
+    const edit = visible(await renderEdit(id, { company: b.companyId }));
+    expect(count(edit, esc(`href="${CLOCKING_LIST}?company=${b.companyId}&focus=${id}#row-${id}"`)), 'Back and Cancel').toBe(2);
+    expect(edit).toContain(`name="returnCompany" value="${b.companyId}"`);
+
+    // A company this location is NOT open to is dropped, not echoed into a redirect.
+    const { id: unrelatedCo } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'Unrelated' });
+    const stray = visible(await renderEdit(id, { company: unrelatedCo }));
+    expect(stray).not.toContain('name="returnCompany"');
+    expect(count(stray, `href="${CLOCKING_LIST}?focus=${id}#row-${id}"`), 'falls back to the bare row').toBe(2);
+
+    const back = await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: id, companyIds: [b.companyId, coB], returnCompany: coB });
+    expect(back).toBe(`${CLOCKING_LIST}?company=${coB}&saved=1&focus=${id}#row-${id}`);
+  });
+
+  it('the View page: Back and the Edit link both carry a re-validated `?company=`', async () => {
+    const { id: coB } = await (await import('../core/admin')).createCompany(ADMIN, { legalName: 'XYZ Sdn Bhd' });
+    const { id } = await mkSite({ name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, companyIds: [b.companyId, coB] });
+    const view = visible(await renderView(id, { company: coB }));
+    expect(view).toContain(esc(`href="${CLOCKING_LIST}?company=${coB}&focus=${id}#row-${id}"`));
+    expect(view).toContain(`href="${clockingEditPage(id)}?company=${coB}"`);
+  });
+
+  it('Archive and Restore carry returnCompany and land back on that company’s view', async () => {
+    const { id } = await mkSite({ name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200 });
+    const archived = await runAction(archiveClockingLocationAction, { clockingLocationId: id, returnCompany: b.companyId });
+    expect(archived).toBe(`${CLOCKING_LIST}?company=${b.companyId}`);
+    const restored = await runAction(restoreClockingLocationAction, { clockingLocationId: id, returnCompany: b.companyId });
+    expect(restored).toBe(`${CLOCKING_LIST}?company=${b.companyId}`);
+    // No returnCompany posted (the orphan view, or a stray call): the bare list, exactly as before r428.
+    const bare = await runAction(archiveClockingLocationAction, { clockingLocationId: id });
+    expect(bare).toBe(CLOCKING_LIST);
   });
 });

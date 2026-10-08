@@ -251,7 +251,9 @@ describe('f9afd1ce — core/clocking-location.ts: every writer asserts group-adm
     // r423 — the options are the list's filters; `companyId` is "open to this company", a filter over the
     // join table, never an owner column on the location.
     expect(service).toMatch(/export function listClockingLocations\(\s*ctx: SessionContext,\s*opts: ListClockingLocationsOptions = \{\},?\s*\)/);
-    expect(service).toContain('companyId?: string;');
+    // r428 (83c0d3c8 contest) — the literal `'none'` joined the type: the company-first company list's
+    // orphan row ("not open to any company") reads it, a `not exists` filter rather than a `= id` one.
+    expect(service).toContain("companyId?: string | 'none';");
     expect(service).not.toContain('CrossCompanyClockingLocationError');
     expect(service).not.toContain('clockingLocation.companyId');
     // The row carries the companies the location is OPEN to; "Used by" (derived from assignments) is gone.
@@ -287,17 +289,25 @@ describe('f9afd1ce / r423 — the screens', () => {
     const view = read('app/admin/work-locations/clocking/[id]/page.tsx');
     const page = read('app/admin/work-locations/page.tsx');
     expect(list).toContain('const groupAdmin = isGroupAdmin(s);');
-    expect(list).toContain('await listClockingLocations(s, { status, q, companyId: companyId || undefined })');
+    // r428 (83c0d3c8 contest) — company-first: the list is ALWAYS scoped to one company (step 2) now, so
+    // the read no longer has an optional `|| undefined` companyId; step 1's own read is unscoped by design.
+    expect(list).toContain('await listClockingLocations(s, { status, q, companyId })');
     for (const src of [list, view]) expect(src, 'through the facade, never the implementation').toContain("from '@/packs/attendance/service'");
     expect(list).toContain("t('companyAdminReadOnly')");
     expect(view).toContain("t('sharedManagedByGroupAdmin')");
-    expect(list).toContain("t('colCompanies')");
+    // r428 (83c0d3c8 contest) — the chip list retired with the tenant-wide table it decorated; the
+    // company-scoped table reads "Shared With" instead (colSharedWith), never the old column.
+    expect(list).toContain("t('colSharedWith')");
+    expect(list).not.toContain("t('colCompanies')");
     expect(list).not.toContain("t('usedBy')");
     for (const src of [list, view, page]) {
       expect(src).not.toContain('action={createClockingLocationAction}');
       expect(src).not.toContain('action={updateClockingLocationAction}');
     }
-    expect(page, 'the work location listing renders no form at all').not.toContain('<form');
+    // r428 — the old address is a redirect stub now (app/admin/work-locations/page.tsx); trivially no
+    // form, kept as a guard against a future round quietly regrowing one there instead of in the company
+    // view (CLOCKING_SRC-equivalent content lives on `list` now, already checked above).
+    expect(page, 'the old address (now a stub) renders no form at all').not.toContain('<form');
     const form = read('app/admin/work-locations/clocking/clocking-form.tsx');
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
     expect(form, 'no OWNER company field').not.toContain('name="companyId"');
@@ -341,15 +351,15 @@ describe('f9afd1ce / r423 — the screens', () => {
         'radiusMetresLabel',
         'cancel',
         'saved',
-        // r423 — the list, the form's new sections, and the work location listing's own title.
+        // r423 — the list, the form's new sections.
         'pageTitle',
-        'workLocationsTitle',
-        'colCompanies',
         'sectionCompanies',
         'sectionStatus',
         'companiesRequired',
         'companyInUse',
         'deactivateConfirmDescription',
+        // r428 (83c0d3c8 contest) — "Shared With" replaces the chip list.
+        'colSharedWith',
       ]) {
         expect(m.admin.locations[k], `${loc} admin.locations.${k}`).toBeTruthy();
         expect(m.admin.locations[k], `${loc} admin.locations.${k} is live`).not.toMatch(/^\[retired/);
@@ -358,6 +368,11 @@ describe('f9afd1ce / r423 — the screens', () => {
       // over English, so removing a key from en.json alone would leave the old sentence for a Malay reader).
       for (const k of ['usedBy', 'coordinates', 'linkedOutOfScopeGroupTitle', 'addClocking', 'clockingPointsHeading', 'offRegisterTitle', 'offRegisterDescription', 'offRegisterLink']) {
         expect(m.admin.locations[k], `${loc} admin.locations.${k} retired in r423`).toMatch(/^\[retired r423 — /);
+      }
+      // r428 (83c0d3c8 contest) — the standalone Work Locations listing's own strings, and the chip list
+      // the company-scoped table no longer renders, retired the same way.
+      for (const k of ['workLocationsTitle', 'statusLegend', 'companySummary', 'pageDescription', 'backToWorkLocations', 'colCompanies']) {
+        expect(m.admin.locations[k], `${loc} admin.locations.${k} retired in r428`).toMatch(/^\[retired r428 — /);
       }
       for (const k of ['noSharedSites', 'linkedPoints', 'geofencingToggle', 'radiusOverrideLabel']) {
         expect(m.people.detail.clocking[k], `${loc} people.detail.clocking.${k} retired in r423`).toMatch(/^\[retired r423 — /);

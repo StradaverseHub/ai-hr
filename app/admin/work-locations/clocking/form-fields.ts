@@ -38,8 +38,16 @@ export const CLOCKING_LIST = '/admin/work-locations/clocking';
 export const CLOCKING_NEW_PAGE = '/admin/work-locations/clocking/new';
 export const clockingViewPage = (id: string) => `/admin/work-locations/clocking/${id}`;
 export const clockingEditPage = (id: string) => `/admin/work-locations/clocking/${id}/edit`;
-/** The list, landed on one location's row and highlighted: what Back and Cancel return to (nothing saved). */
-export const clockingFocusHref = (id: string) => `${CLOCKING_LIST}?focus=${id}#row-${id}`;
+/**
+ * The list, landed on one location's row and highlighted: what Back and Cancel return to (nothing saved).
+ *
+ * r428 (83c0d3c8 contest) — an optional second argument carries the COMPANY this screen was opened from
+ * (the company-first redesign's step 2), so Back lands on that company's view rather than the bare list.
+ * Only a VALID uuid is accepted here — the two callers (the View and Edit pages) re-validate it against
+ * the location's own `companies` before passing it in, because this function itself does not query.
+ */
+export const clockingFocusHref = (id: string, companyId?: string) =>
+  `${CLOCKING_LIST}?${companyId ? `company=${companyId}&` : ''}focus=${id}#row-${id}`;
 /**
  * 639bf4a5 rev 2 (r338) removed an earlier `clockingRowHref`, because the register it pointed at had
  * stopped rendering clocking rows. r423's `clockingFocusHref` is its successor, for the list that renders

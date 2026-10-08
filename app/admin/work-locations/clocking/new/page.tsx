@@ -4,7 +4,7 @@ import { listLocations } from '@/core/location';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { ClockingLocationForm } from '../clocking-form';
 import { clockingFormOptions } from '../form-data';
-import { CLOCKING_LIST, readTypedClockingValues, readTypedCompanyIds, type ClockingFormValues } from '../form-fields';
+import { CLOCKING_LIST, UUID_RE, readTypedClockingValues, readTypedCompanyIds, type ClockingFormValues } from '../form-fields';
 
 /**
  * f9afd1ce rev 2 (r267) — NEW clocking location, on a page of its own.
@@ -18,6 +18,14 @@ import { CLOCKING_LIST, readTypedClockingValues, readTypedCompanyIds, type Clock
  * requireAdmin(), registered on the same `locations` screen column in lib/permissions.ts. WRITE authority
  * is the group administrator's (core assertGroupAdmin + RLS app.is_group_admin()), so a company-scoped
  * admin who opens this address gets the one-line note and no form — the list never links them here.
+ *
+ * r428 (83c0d3c8 contest) — opened from the LIST's company view now ("+ New Clocking Location" inside a
+ * company starts with that company ticked), as well as from the top-level company list (no `?company=`,
+ * nothing pre-ticked, same as before). `?company=` is untrusted and is honoured only when it names one of
+ * `clockingFormOptions(s).companies` — a COMPARISON against the real option set, never a query — so a
+ * forged id cannot pre-tick, nor be echoed into `returnCompany`, a company this admin cannot open a
+ * location to. It wins only when nothing was already TYPED (a refusal's echo takes precedence), and it is
+ * carried through as `returnCompany` so Save, Cancel and Back land back on that company's own view.
  */
 export default async function NewClockingLocationPage({
   searchParams,
@@ -46,6 +54,11 @@ export default async function NewClockingLocationPage({
     listLocations(s, [], {}),
   ]);
 
+  // r428 — re-validated against the real option set, never trusted from the url alone.
+  const rawCompany = typeof sp.company === 'string' ? sp.company : '';
+  const returnCompany = UUID_RE.test(rawCompany) && companies.some((c) => c.id === rawCompany) ? rawCompany : undefined;
+  const backHref = returnCompany ? `${CLOCKING_LIST}?company=${returnCompany}` : CLOCKING_LIST;
+
   // WHAT WAS TYPED, echoed by a refused save (app/admin/actions.ts), wins over the blank page.
   const values: ClockingFormValues = {
     name: '',
@@ -60,14 +73,16 @@ export default async function NewClockingLocationPage({
     status: 'active',
     ...readTypedClockingValues(sp),
   };
-  const companyIds = readTypedCompanyIds(sp) ?? [];
+  // r428 — `?company=` prefills the one tick only when nothing was already typed (a refusal's own echo,
+  // including an explicitly EMPTY one, always wins).
+  const companyIds = readTypedCompanyIds(sp) ?? (returnCompany ? [returnCompany] : []);
 
   return (
     <div className={pageWideCls}>
       <PageHeader
         title={t('newClockingTitle')}
         description={t('clockingDescription')}
-        back={{ href: CLOCKING_LIST, label: t('backToLocations') }}
+        back={{ href: backHref, label: t('backToLocations') }}
       />
       <ClockingLocationForm
         t={t}
@@ -78,7 +93,8 @@ export default async function NewClockingLocationPage({
         stateOptions={stateOptions}
         linkableLocations={linkableLocations.map((l) => ({ id: l.id, code: l.code, name: l.name, companyName: l.companyName }))}
         error={error}
-        cancelHref={CLOCKING_LIST}
+        cancelHref={backHref}
+        returnCompany={returnCompany}
       />
     </div>
   );

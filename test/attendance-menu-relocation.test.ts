@@ -100,10 +100,17 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       // dedicated screens. So the row is in this list again, and this file's premise holds for it
       // exactly as before — the page calls requireAdmin() in its own BODY, and the row is not what
       // protects it. The old '/admin/locations' address stays a guarded redirect stub with no row.
-      // r423 (83c0d3c8) — "Locations" opens the clocking list now; the work location listing has a row
-      // of its own ("Work Locations") directly beneath it.
+      // r423 (83c0d3c8) — "Locations" opens the clocking list now; the work location listing had a row
+      // of its own ("Work Locations") directly beneath it, until r428.
+      //
+      // ⚠️ r428 (83c0d3c8 contest) — "WORK LOCATIONS" IS GONE FROM `adminRoutes`, because that list is
+      // DERIVED from the live pack (line ~39 above) and the row is retired, not merely re-addressed —
+      // nothing to declare here. Its OLD address, `/admin/work-locations`, is a guarded redirect stub now
+      // (like `/admin/locations` before it): no longer a menu row, so it moves OUT of this derived list
+      // and into the it.each loop below beside the other address-only guards, for the same reason that
+      // loop gives for '/admin/locations' — a screen reachable only by URL is precisely the screen whose
+      // own guard is the only thing protecting it.
       '/admin/work-locations/clocking',
-      '/admin/work-locations',
       // 3fb1a611 (r299) — '/admin/toil' STOOD HERE: the row left with the page, which is a redirect stub to
       // Leave Config › Leave Credit now (see test/r299-leave-credit-screens.test.ts).
     ]);
@@ -149,6 +156,14 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // the three NEW dedicated screens (/new, /[id], /[id]/edit) and the unlinked-points screen, are
     // covered in test/work-location-organization-relocation.test.ts and by test/function-access.test.ts,
     // which walks every guarded page.tsx on disk against lib/permissions.ts in both directions.
+    //
+    // ⚠️ r428 (83c0d3c8 contest) — AND NOW THE ROW ITSELF IS GONE, the SAME shape as '/admin/toil' below
+    // in reverse: the address is a requireAdmin() redirect stub with no menu row anywhere (RETIRED in
+    // test/attendance-pack.test.ts, test/sidebar-attendance-group.test.ts), not an unguarded one — it
+    // still resolves a session and refuses a non-administrator before it forwards, so it still belongs in
+    // THIS loop rather than the unguarded-stub exclusion '/admin/toil' earns below. '/admin/work-
+    // locations' left the derived `adminRoutes` array above for exactly this reason (it is no longer a
+    // nav-node child); this loop is address-based, not pack-derived, so the case for it stays here.
     '/admin/work-locations',
     // r423 — the clocking list, the "Locations" row's screen again.
     '/admin/work-locations/clocking',

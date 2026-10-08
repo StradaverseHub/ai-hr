@@ -136,13 +136,15 @@ describe('§B · the picker: one selection, two views of it', () => {
   });
 });
 
-describe('§C · the company coupling — removed by r272, made REAL and explicit by r423', () => {
-  it('the list prints the companies a location is OPEN to, never the company of a linked work location', () => {
+describe('§C · the company coupling — removed by r272, made REAL and explicit by r423 (r428: summarised, never the linked work location)', () => {
+  it('the list derives Shared With from the companies a location is OPEN to, never the company of a linked work location', () => {
     // r272 removed a company name printed on a clocking group heading because a clocking site HAD no
     // company — the name came from an optional linked work `location`, which made the register read as
-    // company configuration. r423 (83c0d3c8) gives a location an explicit list of companies allowed to use
-    // it, so the list prints THOSE (the Companies column) and still never the linked location's company.
-    expect(admin).toContain('cl.companies.map((c) =>');
+    // company configuration. r423 (83c0d3c8) gave a location an explicit list of companies allowed to use
+    // it; r428 (83c0d3c8 contest) summarises that list as "Shared With" once the screen is scoped to one
+    // company (sharedWith(cl.companies), never the linked location's company — the property survives the
+    // chip list it used to be spelled out as).
+    expect(admin).toContain('sharedWith(cl.companies)');
     expect(admin).not.toContain('locationCompanyName');
     expect(admin).not.toContain('g.companyName');
     // The work location screens keep their own identity header (Work Locations is otherwise unchanged).
@@ -176,12 +178,14 @@ describe('§D · the list says what state a site is in, and lets a reader open i
     // r423 — every row carries View (a read-only page of its own, clocking/[id]); Edit and Deactivate /
     // Activate follow only for a group administrator. The property r272 won — a reader who may not edit
     // can still open a location — is asserted as: View precedes the group-admin gate, outside it.
-    const view = admin.indexOf('href={clockingViewPage(cl.id)}');
+    // r428 — the hrefs are built once per row (viewHref/editHref, carrying the company this screen was
+    // opened from) rather than called inline; the SAME property is asserted against those variables.
+    const view = admin.indexOf('href={viewHref}');
     const gate = admin.indexOf('{groupAdmin && (', view);
     expect(view).toBeGreaterThanOrEqual(0);
     expect(gate).toBeGreaterThan(view);
     expect(admin.slice(view, gate)).toContain("t('view')");
-    expect(admin.slice(gate)).toContain('href={clockingEditPage(cl.id)}');
+    expect(admin.slice(gate)).toContain('href={editHref}');
   });
 
   it('every string this round minted exists in all six catalogues and is translated', () => {
