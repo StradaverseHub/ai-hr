@@ -12,6 +12,7 @@ import { sql, eq } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { lcHistory, person } from '../db/schema';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { withLifecycleTenant } from './module-gate';
 
 export const withTenant = withLifecycleTenant;
@@ -112,7 +113,8 @@ export async function recordConfig(
   });
 }
 
-export const todayUtc = (): string => new Date().toISOString().slice(0, 10);
+/** Today's date on the Malaysian business calendar (CLAUDE.md §8: a date from an instant goes through this). */
+export const todayMy = (): string => todayInKualaLumpur();
 export const isIsoDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
 export const clean = (v: unknown, max = 500): string | null => {
   const x = String(v ?? '').trim();

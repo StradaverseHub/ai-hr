@@ -11,7 +11,7 @@ import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-o
 import type { SessionContext, Tx } from '../db/client';
 import { company, itAsset, lcHistory } from '../db/schema';
 import { ASSET_STATUSES, ASSET_TYPES, ASSET_TYPE_CODE, normaliseCompanyCode, type AssetStatus, type AssetType } from './lifecycle-defaults';
-import { LEVEL, LifecycleError, clean, cleanDate, nextSeq, recordChange, requireLevel, todayUtc, withTenant } from './lifecycle-base';
+import { LEVEL, LifecycleError, clean, cleanDate, nextSeq, recordChange, requireLevel, todayMy, withTenant } from './lifecycle-base';
 
 export type AssetInput = {
   companyId: string; assetType: AssetType; status?: AssetStatus; assetTag?: string | null;
@@ -60,7 +60,7 @@ export async function registerAsset(ctx: SessionContext, p: AssetInput): Promise
       location: clean(p.location, 200), licence: p.licence ?? {}, extra: p.extra ?? {},
       userName: status === 'issued' ? clean(p.userName, 200) : null, userEmployeeNo: status === 'issued' ? clean(p.userEmployeeNo, 60) : null,
       userDepartment: status === 'issued' ? clean(p.userDepartment, 120) : null, userEmail: status === 'issued' ? clean(p.userEmail, 200) : null,
-      issuedOn: status === 'issued' ? todayUtc() : null, createdBy: ctx.userId ?? null,
+      issuedOn: status === 'issued' ? todayMy() : null, createdBy: ctx.userId ?? null,
     }).returning({ id: itAsset.id });
     await recordChange(tx, ctx, { refType: 'asset', refId: r!.id, action: 'asset.registered', detail: { code, status }, eventType: 'lifecycle-asset.registered', eventRef: { code, status } });
     return { id: r!.id, code };
@@ -91,7 +91,7 @@ export async function updateAsset(ctx: SessionContext, code: string, patch: Part
       if (patch.status === 'issued') {
         const name = clean(patch.userName);
         if (!name) throw new LifecycleError('An issued asset needs a named user.');
-        Object.assign(set, { userName: name, userEmployeeNo: clean(patch.userEmployeeNo, 60), userDepartment: clean(patch.userDepartment, 120), userEmail: clean(patch.userEmail, 200), issuedOn: todayUtc() });
+        Object.assign(set, { userName: name, userEmployeeNo: clean(patch.userEmployeeNo, 60), userDepartment: clean(patch.userDepartment, 120), userEmail: clean(patch.userEmail, 200), issuedOn: todayMy() });
       } else {
         // Anything other than Issued means nobody holds it now; the history keeps who held it.
         Object.assign(set, { userName: null, userEmployeeNo: null, userDepartment: null, userEmail: null, issuedOn: null });
@@ -138,7 +138,7 @@ export async function listAssets(ctx: SessionContext, f: AssetFilters = {}): Pro
     if (f.status) conds.push(eq(itAsset.status, f.status));
     if (f.holderEmployeeNo) conds.push(sql`lower(${itAsset.userEmployeeNo}) = lower(${f.holderEmployeeNo})`);
     if (f.expiringWarranty) {
-      const today = todayUtc();
+      const today = todayMy();
       const to = new Date(Date.parse(`${today}T00:00:00Z`) + 30 * 86400000).toISOString().slice(0, 10);
       conds.push(and(gte(itAsset.warrantyEnd, today), lte(itAsset.warrantyEnd, to))!);
     }
@@ -188,7 +188,7 @@ export async function issueAssetTx(
   if (a.status !== 'in_stock' && a.status !== 'returned') {
     throw new LifecycleError(`Asset ${code} is ${a.status.replace('_', ' ')} and cannot be issued.`, 'conflict');
   }
-  const issuedOn = todayUtc();
+  const issuedOn = todayMy();
   const [u] = await tx.update(itAsset).set({
     status: 'issued', userName: holder.name, userEmployeeNo: holder.employeeNo, userDepartment: holder.department, userEmail: holder.email,
     issuedOn, requisitionId: link.requisitionId ?? a.requisitionId,

@@ -82,6 +82,8 @@ export type CaseCommon = {
 export type OnboardingInput = CaseCommon & {
   joinDate: string; hireType?: 'new_hire' | 'replacement'; replacedPerson?: string | null; laptopRequired?: boolean | string; deviceType?: string | null;
   carparkRequired?: boolean | string; floorBuilding?: string | null; accessSystems?: string[]; emailRequired?: boolean | string;
+  /** Set by the spreadsheet import: "file, sheet, row", recorded in the case history. */
+  importedFrom?: string | null;
 };
 export type OffboardingInput = CaseCommon & {
   resignationDate: string; lastWorkingDay?: string | null; workLocation?: string | null; deviceName?: string | null; balanceLeave?: number | null;
@@ -136,7 +138,7 @@ export async function createOnboardingCase(ctx: SessionContext, p: OnboardingInp
         username: email, laptopRequired: laptop, deviceType: p.deviceType, accessSystems: systems, floorBuilding: p.floorBuilding, assignedToUserId: p.itOwnerUserId,
         notes: p.notes,
       });
-      await recordChange(tx, ctx, { refType: 'case', refId: c!.id, action: 'case.created', detail: { number, requisition: req.number }, eventType: 'lifecycle-case.created', subjectEmploymentId: c!.employmentId, eventRef: { number, kind: 'onboarding', requisition: req.number } });
+      await recordChange(tx, ctx, { refType: 'case', refId: c!.id, action: 'case.created', detail: { number, requisition: req.number, importedFrom: clean(p.importedFrom, 200) }, eventType: 'lifecycle-case.created', subjectEmploymentId: c!.employmentId, eventRef: { number, kind: 'onboarding', requisition: req.number } });
       return { id: c!.id, number, requisitionNumber: req.number };
     });
   } catch (e) {
