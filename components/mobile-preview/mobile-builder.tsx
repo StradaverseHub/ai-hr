@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowDown, ArrowUp, Check, Clock, Files, Home, Inbox, Moon, Save, Send, ShieldCheck, Smartphone, Sun, Undo2, UserRound, Users } from 'lucide-react';
 import { changeMobileDesignAction } from '@/app/mobile-preview/actions';
+import { UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, type MobileBuilderState, type MobileDesign } from '@/lib/mobile-design';
 import { MobileApp, type Tab } from './mobile-app';
 import type { MobilePreviewData } from './types';
@@ -24,9 +25,19 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
   const current = state.releases[0];
   const displayed = mode === 'draft' ? design : current?.config ?? DEFAULT_MOBILE_DESIGN;
   useEffect(() => {
-    const before = (event: BeforeUnloadEvent) => { if (!discarding.current && (dirty || pending)) event.preventDefault(); };
-    window.addEventListener('beforeunload', before); return () => window.removeEventListener('beforeunload', before);
-  }, [dirty, pending]);
+    const before = (event: BeforeUnloadEvent) => { if (!discarding.current && (dirty || pending)) { event.preventDefault(); event.returnValue = ''; } };
+    const leave = (event: MouseEvent) => {
+      if (!dirty || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download') || anchor.closest('[data-mobile-builder]') || anchor.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      event.preventDefault(); event.stopPropagation();
+      if (window.confirm(t('discard'))) { discarding.current = true; window.location.assign(url.href); }
+    };
+    window.addEventListener('beforeunload', before); document.addEventListener('click', leave, true);
+    return () => { window.removeEventListener('beforeunload', before); document.removeEventListener('click', leave, true); };
+  }, [dirty, pending, t]);
   function edit<K extends keyof MobileDesign>(key: K, value: MobileDesign[K]) { setDesign(d => ({ ...d, [key]: value })); setMessage(''); setError(''); setReview(null); }
   async function change(command: 'save' | 'publish' | 'rollback', revision?: number) {
     if (locked.current) return;
@@ -63,7 +74,7 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
     </div></li>)}</ol>;
   }
   const screens = [{ id: 'home', icon: Home }, { id: 'clock', icon: Clock }, { id: 'leave', icon: Files }, { id: 'team', icon: Users }, { id: 'requests', icon: Send }, { id: 'inbox', icon: Inbox }, { id: 'me', icon: UserRound }] as const;
-  return <section className={styles.builder} aria-label={t('title')}>
+  return <section data-mobile-builder className={styles.builder} aria-label={t('title')}>
     <header className={styles.header}><div><h1>{t('title')}</h1><p><strong>{state.tenantName}</strong> · {t('tenantOnly')}</p></div><div className={styles.actions}>
       <span className={styles.draftState}><span data-dirty={dirty} />{dirty ? t('unsaved') : t('draftSaved')}</span>
       <button type="button" disabled={pending || !dirty || mode !== 'draft'} onClick={() => void change('save')}><Save size={16} />{t(pending ? 'working' : 'save')}</button>

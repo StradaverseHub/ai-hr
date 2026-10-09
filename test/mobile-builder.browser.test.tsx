@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MobileBuilder } from '../components/mobile-preview/mobile-builder';
 import { DEFAULT_MOBILE_DESIGN, type MobileBuilderState } from '../lib/mobile-design';
@@ -44,6 +44,14 @@ describe('tenant mobile builder in a real browser', () => {
     expect(ui.queryByText('Tenant Studio')).toBeNull();
     fireEvent.click(ui.getByRole('button', { name: 'Confirm clock-in with a tap' }));
     expect(fetch).not.toHaveBeenCalled(); expect(changeMobileDesignAction).not.toHaveBeenCalled();
+  });
+  it('keeps unsaved edits when leaving through a client navigation is cancelled', () => {
+    const ui = mount();
+    fireEvent.change(ui.getByRole('textbox', { name: 'App brand name' }), { target: { value: 'Keep my edits' } });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const link = document.createElement('a'); link.href = '/dashboard'; document.body.append(link);
+    try { expect(fireEvent.click(link)).toBe(false); expect(confirm).toHaveBeenCalledTimes(1); expect(ui.getByText('Keep my edits')).toBeTruthy(); }
+    finally { link.remove(); }
   });
   it('requires saved changes and an explicit tenant publish confirmation, then preserves history', async () => {
     const ui = mount();
