@@ -6,9 +6,9 @@ import * as schema from '../db/schema';
 import { adminCtx,closeAll,createAppUser,eventTypesFor,latestEventPayload,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base } from './harness';
 import { type SessionContext,withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { createClockingLocation,setClockingControl } from '../core/clocking-location';
+import { createClockingLocation,setClockingControl,setAttendancePhotoSetting } from '../core/clocking-location';
 import { registerDevice,revokeDevice } from '../core/attendance-device';
-import { captureEmployeeClock,clockCapturePhoto,purgeClockPhoto,ClockConflictError,type ClockIntent } from '../core/attendance-clock';
+import { captureEmployeeClock,clockCapturePhoto,purgeClockPhoto,ClockConflictError,AttendancePhotoRequiredError,type ClockIntent } from '../core/attendance-clock';
 import { ownClockToday } from '../core/attendance-clock-read';
 import { checkIn,decideAttendanceCorrection,requestAttendanceCorrection,myAttendanceCorrections,MissingAttendanceRejectReasonError,OutsideGeofenceError } from '../core/attendance';
 import { decodeClockPhoto,CLOCK_PHOTO_MAX_BYTES } from '../lib/attendance-photo';
@@ -24,18 +24,25 @@ async function subject(opts:{geofenced?:boolean}={}){
  const userId=await createAppUser(b.tenantId,h.personId,'employee');
  const ctx:SessionContext={tenantId:b.tenantId,userId,personId:h.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId),grants:[{role:'employee',companyId:null}]};
  const site=await createClockingLocation(admin,{name:'Synthetic Office '+randomUUID(),lat:3,lng:101,radiusM:100,companyIds:[b.companyId]});if(opts.geofenced!==false)await setClockingControl(admin,{employmentId:h.employmentId,enabled:true,clockingLocationIds:[site.id]});
+ // r430 — device registration is kept in the fixture ONLY for the "revoked device never blocks a capture"
+ // test below; captureEmployeeClockTx never looks at it any more (deviceGateExempt:true, unconditionally).
  const device=await registerDevice(ctx,{employmentId:h.employmentId,label:'Synthetic browser'});
+ // r430 — this fixture's employee is explicitly set to Required so every existing photo/digest/conflict/
+ // purge assertion below keeps testing exactly what it tested before (a photo was unconditionally
+ // mandatory pre-r430); the NEW optional/not_required behaviour has its own dedicated tests
+ // (test/attendance-clock-photo-setting.test.ts).
+ await setAttendancePhotoSetting(admin,{employmentId:h.employmentId,setting:'required'});
  const photo=await sharp({create:{width:80,height:60,channels:3,background:'#246'}}).jpeg().toBuffer();
- const intent:ClockIntent={action:'in',requestId:randomUUID(),deviceToken:device.deviceToken,lat:3,lng:101,accuracy:10,photo,mime:'image/jpeg'};
+ const intent:ClockIntent={action:'in',requestId:randomUUID(),lat:3,lng:101,accuracy:10,photo,mime:'image/jpeg'};
  return {admin,ctx,h,site,device,intent};
 }
 const clockAt=(iso:string)=>{vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(iso));};
 
 describe('r378 private capture command integrity',()=>{
- it('mandatory photo/device, and the geofence for a geofenced employee, despite policy flags off; no partial rows on failure',async()=>{
+ it('mandatory photo (this fixture is Required), and the geofence for a geofenced employee, despite policy flags off; no partial rows on failure',async()=>{
   const x=await subject();
   await expect(captureEmployeeClock(x.ctx,{...x.intent,photo:Buffer.from('not an image')})).rejects.toThrow();
-  await expect(captureEmployeeClock(x.ctx,{...x.intent,deviceToken:randomUUID()})).rejects.toThrow('registered');
+  await expect(captureEmployeeClock(x.ctx,{...x.intent,photo:undefined})).rejects.toBeInstanceOf(AttendancePhotoRequiredError);
   await expect(captureEmployeeClock(x.ctx,{...x.intent,lat:5})).rejects.toThrow();
   await expect(captureEmployeeClock(x.ctx,{...x.intent,accuracy:NaN})).rejects.toThrow('accuracy');
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
@@ -48,7 +55,7 @@ describe('r378 private capture command integrity',()=>{
   const receipt=await captureEmployeeClock(x.ctx,x.intent);
   vi.setSystemTime(new Date(todayInKualaLumpur()+'T09:02:00+08:00'));
   expect(await captureEmployeeClock(x.ctx,x.intent)).toEqual(receipt);
-  for(const altered of [{action:'out' as const},{deviceToken:randomUUID()},{lat:3.00001},{accuracy:11},{photo:await sharp({create:{width:40,height:30,channels:3,background:'#934'}}).jpeg().toBuffer()}]) await expect(captureEmployeeClock(x.ctx,{...x.intent,...altered})).rejects.toBeInstanceOf(ClockConflictError);
+  for(const altered of [{action:'out' as const},{lat:3.00001},{accuracy:11},{photo:await sharp({create:{width:40,height:30,channels:3,background:'#934'}}).jpeg().toBuffer()}]) await expect(captureEmployeeClock(x.ctx,{...x.intent,...altered})).rejects.toBeInstanceOf(ClockConflictError);
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(1);
   const punches=await owner.db.select().from(schema.attendancePunch);expect(punches).toHaveLength(1);expect(punches[0].clockCaptureId).toBe(receipt.id);expect(punches[0].punchAt).toBe('09:00:10');
   expect(await eventTypesFor(b.tenantId,receipt.id)).toEqual(['attendance.clock.captured']);
@@ -59,7 +66,7 @@ describe('r378 private capture command integrity',()=>{
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(results.filter(r=>r.status==='rejected')).toHaveLength(1);
   vi.setSystemTime(new Date(todayInKualaLumpur()+'T09:00:40+08:00'));
   await captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()});
-  const today=await ownClockToday(x.ctx,x.intent.deviceToken,{lat:3,lng:101,accuracy:10});
+  const today=await ownClockToday(x.ctx,{lat:3,lng:101,accuracy:10});
   expect(today.clockedIn).toBe(false);expect(today.workedSeconds).toBe(30);expect(today.captures).toHaveLength(2);
   const [day]=await owner.db.select().from(schema.attendance);expect(day.workedMinutes).toBe(0);
  });
@@ -70,7 +77,7 @@ describe('r378 private capture command integrity',()=>{
     vi.setSystemTime(new Date(date+'T09:00:'+seconds+'+08:00'));
     await captureEmployeeClock(x.ctx,{...x.intent,action,requestId:randomUUID()});
   }
-  const today=await ownClockToday(x.ctx,x.intent.deviceToken,{lat:3,lng:101,accuracy:10});
+  const today=await ownClockToday(x.ctx,{lat:3,lng:101,accuracy:10});
   expect(today.workedSeconds).toBe(35);expect(today.clockedIn).toBe(false);expect(today.captures).toHaveLength(4);
   const [day]=await owner.db.select().from(schema.attendance);
   expect(day.workedMinutes).toBe(0);expect(day.otMinutes).toBe(0);
@@ -121,10 +128,11 @@ describe('r378 private capture command integrity',()=>{
   await expect(withTenant(x.ctx,tx=>tx.insert(schema.attendanceClockCapture).values({...row,id:randomUUID(),requestId:randomUUID(),employmentId:other.employmentId}))).rejects.toThrow();
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(1);
  });
- it('revoked device cannot make a new action but an exact accepted replay returns its historical receipt',async()=>{
+ it('r430: a revoked (or never-registered) device never blocks a capture — device is no longer part of the capture protocol at all; exact replay still returns its historical receipt',async()=>{
   const x=await subject(),receipt=await captureEmployeeClock(x.ctx,x.intent);await revokeDevice(x.admin,{deviceId:x.device.deviceId});
   expect(await captureEmployeeClock(x.ctx,x.intent)).toEqual(receipt);
-  await expect(captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()})).rejects.toThrow('registered');
+  const out=await captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()});
+  expect(out.direction).toBe('out');
  });
 });
 
@@ -172,7 +180,7 @@ describe('r423 · the switch decides the Clock screen',()=>{
  it('switch OFF: the clocking is accepted anywhere, the position recorded, no site/distance/radius, punch not_enforced',async()=>{
   const x=await subject({geofenced:false});clockAt(todayInKualaLumpur()+'T09:00:10+08:00');
   const far={...x.intent,lat:5.4,lng:100.3};
-  const before=await ownClockToday(x.ctx,far.deviceToken,{lat:far.lat,lng:far.lng,accuracy:10});
+  const before=await ownClockToday(x.ctx,{lat:far.lat,lng:far.lng,accuracy:10});
   expect(before.geofencingRequired).toBe(false);expect(before.locationValid,'a valid fix is all that is needed').toBe(true);
   const receipt=await captureEmployeeClock(x.ctx,far);
   const [cap]=await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id,receipt.id));
@@ -180,13 +188,13 @@ describe('r423 · the switch decides the Clock screen',()=>{
   expect(cap.clockingLocationId).toBeNull();expect(cap.distanceM).toBeNull();expect(cap.radiusM).toBeNull();
   const [punch]=await owner.db.select().from(schema.attendancePunch);expect(punch.geofenceStatus).toBe('not_enforced');expect(punch.clockCaptureId).toBe(receipt.id);
   expect(await latestEventPayload(b.tenantId,receipt.id,'attendance.clock.captured')).toMatchObject({clockingLocationId:null,geofence:'not_enforced'});
-  // The photo and the registered phone are still required with the switch OFF.
-  await expect(captureEmployeeClock(x.ctx,{...far,action:'out',requestId:randomUUID(),deviceToken:randomUUID()})).rejects.toThrow('registered');
+  // r430 — the registered-device requirement is GONE entirely, independently of the geofencing switch; the
+  // photo requirement below comes from this fixture's Required attendancePhotoSetting, an orthogonal rule.
   await expect(captureEmployeeClock(x.ctx,{...far,action:'out',requestId:randomUUID(),photo:Buffer.from('nope')})).rejects.toThrow();
  });
  it('switch ON: outside the radius is refused, nothing written, and the refused attempt is in the audit trail',async()=>{
   const x=await subject();clockAt(todayInKualaLumpur()+'T09:00:10+08:00');
-  const today=await ownClockToday(x.ctx,x.intent.deviceToken,{lat:5,lng:101,accuracy:10});
+  const today=await ownClockToday(x.ctx,{lat:5,lng:101,accuracy:10});
   expect(today.geofencingRequired).toBe(true);expect(today.locationValid).toBe(false);
   await expect(captureEmployeeClock(x.ctx,{...x.intent,lat:5})).rejects.toBeInstanceOf(OutsideGeofenceError);
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);

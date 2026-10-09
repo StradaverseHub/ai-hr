@@ -57,15 +57,22 @@ describe('7ac6b4db · the date and the shift being clocked against', () => {
     expect(client).not.toContain('toLocaleDateString');
   });
 
-  it('the Current shift card uses the same resolved identity and window, with only an explicit Switch preview', () => {
+  it('the Current shift card uses the same resolved identity and window — r430: read-only, no Switch preview', () => {
     const client = codeOnly(read(CLIENT));
     expect(client).toContain("t('currentShift')");
-    expect(client).toContain("shown?.name??(today.shift.code===initial.shift.code?shiftName:today.shift.code)??t('noShiftAssigned')");
-    expect(client).toContain("shown?.start??today.shift.start??'—'");
-    expect(client).toContain("shown?.end??today.shift.end??'—'");
-    expect(client).toContain('shiftOptions.length>1&&');
+    // r430 — the Switch link (and the `shown` state it cycled through) is removed entirely: Current Shift
+    // is always the employee's actually-assigned shift, falling back to the raw code only when `today`'s
+    // resolved shift has moved on from the one `shiftName` was resolved against at initial render.
+    expect(client).toContain('(today.shift.code===initial.shift.code?shiftName:today.shift.code)??t(\'noShiftAssigned\')');
+    expect(client).toContain("today.shift.start??'—'");
+    expect(client).toContain("today.shift.end??'—'");
+    expect(client).not.toContain('shiftOptions');
+    expect(client).not.toContain('shown?.');
     expect(read(PAGE)).toContain('s.code===resolved?.shiftCode');
     expect(read(PAGE)).toContain('shiftName={shift?.name??null}');
+    // shiftOptions is gone from the page's CODE too (codeOnly strips the retirement comment, which still
+    // names it) — only `shifts` (the full list, for the name lookup) remains.
+    expect(codeOnly(read(PAGE))).not.toContain('shiftOptions');
   });
 
   it('a day that resolves to NO shift says so, rather than rendering an empty card', () => {
@@ -80,18 +87,25 @@ describe('7ac6b4db · the date and the shift being clocked against', () => {
   });
 });
 
-describe('r378 · mandatory private camera capture supersedes deliberate absence', () => {
-  it('requires front-camera review, cleanup and the private authenticated capture endpoint', () => {
+describe('r378/r430 · private camera capture, now CONDITIONAL on attendancePhotoSetting, supersedes deliberate absence', () => {
+  it('offers front-camera review, cleanup and the private authenticated capture endpoint — mandatory only when Required', () => {
     const client = codeOnly(read(CLIENT));
     expect(client).toContain("getUserMedia({video:{facingMode:'user'},audio:false})");
-    expect(client).toContain("body.set('photo',photo,'attendance.jpg')");
-    expect(client).toContain('if(!photo||!action||busy)return');
+    expect(client).toContain("if(photo)body.set('photo',photo,'attendance.jpg')");
+    // r430 — confirm() no longer refuses without a photo (Optional/Not Required both reach it); the
+    // REQUIRED setting is enforced server-side (AttendancePhotoRequiredError), never by this early return.
+    expect(client).not.toContain('if(!photo||!action||busy)return');
+    expect(client).toContain('if(busy)return');
     expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");
     expect(client).toContain('stream.current?.getTracks().forEach(track=>track.stop())');
     expect(client).not.toContain('type="file"');
     expect(client).not.toContain('requestFullscreen');
     const command = codeOnly(read('/core/attendance-clock.ts'));
-    expect(command).toContain('decodeClockPhoto(p.photo, p.mime)');
+    // r430 — decodeClockPhoto is now called CONDITIONALLY (photoSetting !== 'not_required' && p.photo),
+    // never unconditionally on p.photo/p.mime (both are optional on ClockIntent now).
+    expect(command).toContain('decodeClockPhoto(p.photo, p.mime');
+    expect(command).toContain("photoSetting !== 'not_required' && p.photo");
+    expect(command).toContain("if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError()");
     expect(command).toContain('const me = await myEmployment(ctx)');
     expect(command).toContain('clockCaptureId: captureId');
     const migration = read('/db/migrations/0500_attendance_clock_evidence.sql');

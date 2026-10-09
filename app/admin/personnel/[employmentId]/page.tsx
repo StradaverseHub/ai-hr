@@ -1071,7 +1071,7 @@ export default async function EmployeePage({
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
     // r423 — the clocking card's heading is "Location assignment" (one merged section), so the bar names
     // it by that heading; `cardTitle` ("Clocking locations & geofencing") named the old two-form card.
-    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle'))],
+    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],
     job: [t('employmentInfo.title')],
     // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
     // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
@@ -2511,6 +2511,46 @@ export default async function EmployeePage({
             </Field>
             <p className="pb-2 text-xs text-muted-foreground">{ta('cardNoneNote')}</p>
           </form>
+    </Card>
+  ) : null;
+
+  /**
+   * r430 (board item b8ca6efe) — Web Clocking's per-employee Attendance Photo setting: Required (a photo
+   * must be taken or the clocking is refused), Optional (the employee may take one or skip it), or Not
+   * Required (no camera step at all). Every employee starts Not Required. A plain `<fieldset>`, not a
+   * `<form>`: this card has no standalone per-card action (unlike clockingCard above it), so there is no
+   * implicit-submission risk to guard against, and `runTabSave`'s own `sectionFormData` always forces the
+   * trusted top-level employmentId regardless of what a section posts — a per-section hidden copy would be
+   * one more chance for a crafted payload to point a write at a different record, not less.
+   * Native radio inputs (not the client `Segmented` primitive) so this stays a plain server-rendered
+   * control the Attendance tab's existing DOM-diffing Save (lib/tab-save-dom.ts) can read without any
+   * client-side state of its own — the same shape app/admin/work-locations/clocking/clocking-form.tsx uses
+   * for its Status radios, styled as a row of pill buttons with `has-[:checked]:`.
+   */
+  const webClockingPhotoCard = admin && !emp.terminatedOn ? (
+    <Card id="section-web-clocking">
+      <SectionHeader title={tc('webClockingTitle')} />
+      <fieldset data-save-section="photo" className="p-4">
+        <legend className="mb-2 text-sm font-medium">{tc('attendancePhotoLabel')}</legend>
+        <div role="radiogroup" aria-label={tc('attendancePhotoLabel')} className="flex flex-wrap gap-1.5">
+          {(['required', 'optional', 'not_required'] as const).map((v) => (
+            <label
+              key={v}
+              className="min-h-9 cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground monolith:rounded-none monolith:border-ink monolith:bg-transparent monolith:text-ink has-[:checked]:monolith:bg-ink has-[:checked]:monolith:text-bone"
+            >
+              <input
+                type="radio"
+                name="attendancePhotoSetting"
+                value={v}
+                defaultChecked={emp.attendancePhotoSetting === v}
+                className="sr-only"
+              />
+              {tc(v === 'required' ? 'attendancePhotoRequired' : v === 'optional' ? 'attendancePhotoOptional' : 'attendancePhotoNotRequired')}
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">{tc('attendancePhotoHint')}</p>
+      </fieldset>
     </Card>
   ) : null;
 
@@ -5074,6 +5114,9 @@ export default async function EmployeePage({
                 on, and above Clocking so the two "which rules judge this person" cards read together. */}
             {scheduleGroupCard}
             {clockingCard}
+            {/* r430 — Web Clocking's Attendance Photo setting, directly after Clocking & Geofencing: both
+                are "what does this employee's own self-capture clocking require" cards. */}
+            {webClockingPhotoCard}
           </TabSaveScope>
         )}
         {locationCard}

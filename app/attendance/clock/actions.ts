@@ -7,7 +7,6 @@
  * the session, never a form field (ADR-0015).
  */
 import { publicErrorMessage } from '@/lib/public-error';
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -18,19 +17,10 @@ import {
   GeolocationRequiredError,
   OutsideGeofenceError,
 } from '@/core/attendance';
-import { DeviceNotRegisteredError, registerDevice } from '@/core/attendance-device';
 
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
 
 const PAGE = '/attendance/clock';
-
-/** Resolve the caller's own employment from the session — never from a form field. */
-async function resolveMe() {
-  const s = await getSession();
-  const me = await myEmployment(s);
-  if (!me) throw new Error('This account is not linked to an employee profile.');
-  return { s, employmentId: me.employmentId };
-}
 
 /** SERVER clock — the date/time the punch is recorded at. The browser's clock is display-only.
  *  Both halves are read in MYT: the date used to be toISOString() (UTC), so a punch between midnight
@@ -84,18 +74,10 @@ export async function clockOutAction(_formData: FormData) {
   redirect('/attendance/clock');
 }
 
-/**
- * Self-service device registration (5249d43f). Called DIRECTLY from the client island (not a form
- * action) because the minted token must reach the browser exactly once to be stored in localStorage —
- * a redirect would drop it. Errors return as data (the island toasts them).
- */
-export async function registerDeviceAction(p: { label: string }): Promise<{ deviceToken?: string; error?: string }> {
-  try {
-    const { s, employmentId } = await resolveMe();
-    const { deviceToken } = await registerDevice(s, { employmentId, label: p.label });
-    revalidatePath(PAGE);
-    return { deviceToken };
-  } catch (e) {
-    return { error: publicErrorMessage(e) };
-  }
-}
+// r430 — registerDeviceAction (self-service device registration) DELETED here. Its only caller was
+// clock-client.tsx's Register button, which this round removes along with the rest of the device-gate UI;
+// an unreferenced 'use server' export is still a live, callable RPC endpoint (the same reasoning
+// app/admin/personnel/[employmentId]/actions.ts's retired setEmploymentGradeAction comment gives), so it
+// is deleted rather than left unreferenced. core/attendance-device.ts's registerDevice/revokeDevice/
+// listRegisteredDevices/enforceDeviceGateTx are UNCHANGED — the admin Attendance Policy screen and the
+// policy-gated admin Daily path still use them.

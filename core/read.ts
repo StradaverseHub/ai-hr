@@ -2435,6 +2435,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         // ADR-0070: per-employee Clocking Location & Geofencing enforcement toggle + radius.
         geofencingEnabled: employment.geofencingEnabled,
         geofenceRadiusM: employment.geofenceRadiusM,
+        // r430 — per-employee Web Clocking photo requirement (Personnel › Attendance › Web Clocking card).
+        attendancePhotoSetting: employment.attendancePhotoSetting,
         // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on
         // the Employment tab's Employment Information card (all nullable; null = not set).
         probationMonths: employment.probationMonths,

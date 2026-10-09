@@ -2,12 +2,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
-import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employeeDevice, domainEvent } from '../db/schema';
+import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment } from './read';
 import { appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
-import { DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 
@@ -15,8 +14,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class ClockConflictError extends Error {}
 export class CorrectedClockConflictError extends ClockConflictError {}
 export class ClockLocationError extends Error {}
-export type ClockIntent = { action: 'in' | 'out'; requestId: string; deviceToken: string; lat: number; lng: number; accuracy: number; photo: Buffer; mime: string };
-const publicReceipt = (row: typeof attendanceClockCapture.$inferSelect) => ({ id: row.id, direction: row.direction, recordedAt: row.serverRecordedAt.toISOString(), date: row.attendanceDate, photoAvailable: row.photoPurgedAt == null });
+// r430 — thrown server-side when the employee's attendance_photo_setting is 'required' and the request
+// carried no photo. Never trust the client's own idea of the setting (components/attendance-clock-button.tsx
+// and the admin Daily page are untouched by this — this is Web Clocking's own capture path only).
+export class AttendancePhotoRequiredError extends Error {}
+// r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device); photo/mime are now
+// OPTIONAL — whether one is required, optional or ignored is decided server-side from the employee's own
+// attendance_photo_setting, never from what the client chooses to send.
+export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number; lng: number; accuracy: number; photo?: Buffer; mime?: string };
+// r430 — photoAvailable must also check photoDigest: a capture with NO photo (not_required, or optional
+// skipped) has photoPurgedAt null too (nothing was ever purged), which would otherwise misreport a photo
+// that was never taken as available.
+const publicReceipt = (row: typeof attendanceClockCapture.$inferSelect) => ({ id: row.id, direction: row.direction, recordedAt: row.serverRecordedAt.toISOString(), date: row.attendanceDate, photoAvailable: row.photoDigest != null && row.photoPurgedAt == null });
 
 /**
  * r423 — the employee's "Use Geofencing for Clocking" switch decides the geofence here, as it does for every
@@ -42,20 +51,25 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
 async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
   const me = await myEmployment(ctx);
   if (!me) throw new Error('No active employee profile');
-  if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId) || !UUID.test(p.deviceToken)) throw new Error('Invalid clock request');
+  if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
   if (![p.lat, p.lng, p.accuracy].every(Number.isFinite) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180 || p.accuracy < 0) throw new ClockLocationError('Valid location and accuracy are required');
-  const photo = await decodeClockPhoto(p.photo, p.mime);
-  const commandDigest = createHash('sha256').update(JSON.stringify([p.action, p.deviceToken, p.lat, p.lng, p.accuracy, photo.photoDigest])).digest('hex');
   return withTenant(ctx, async tx => {
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
+    // r430 — the employee's OWN attendance_photo_setting decides, read fresh from the row every time
+    // (never trusted from the client). required: refuse outright with no photo, before any write.
+    // optional: validate a photo if one was sent, otherwise proceed without one. not_required: a photo is
+    // never decoded or stored even if the client sent one.
+    const [empRow] = await tx.select({ attendancePhotoSetting: employment.attendancePhotoSetting }).from(employment).where(eq(employment.id, me.employmentId)).limit(1);
+    const photoSetting = empRow?.attendancePhotoSetting ?? 'not_required';
+    if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError();
+    const photo = photoSetting !== 'not_required' && p.photo ? await decodeClockPhoto(p.photo, p.mime ?? 'image/jpeg') : null;
+    const commandDigest = createHash('sha256').update(JSON.stringify([p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? ''])).digest('hex');
     const [accepted] = await tx.select().from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, me.employmentId), eq(attendanceClockCapture.requestId, p.requestId))).limit(1);
     if (accepted) {
       if (accepted.commandDigest !== commandDigest) throw new ClockConflictError('This request already recorded a different clock action');
       return publicReceipt(accepted);
     }
-    const [device] = await tx.select({ id: employeeDevice.id }).from(employeeDevice).where(and(eq(employeeDevice.employmentId, me.employmentId), eq(employeeDevice.deviceToken, p.deviceToken), isNull(employeeDevice.revokedAt))).limit(1);
-    if (!device) throw new DeviceNotRegisteredError();
     const now = new Date();
     let date = todayInKualaLumpur(now);
     const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
@@ -69,9 +83,10 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
     }
     const [lastCapture] = await tx.select({ direction: attendanceClockCapture.direction, time: attendanceClockCapture.serverRecordedAt }).from(attendanceClockCapture).where(eq(attendanceClockCapture.employmentId, me.employmentId)).orderBy(desc(attendanceClockCapture.serverRecordedAt), desc(attendanceClockCapture.id)).limit(1);
     const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), eq(attendance.attendanceDate, date))).limit(1).for('update');
-    // The aggregate is authoritative after a correction; original captured punches remain evidence.
-    const open = !!day?.checkIn && !day.checkOut;
-    if (p.action === 'in' && open || p.action === 'out' && !open) throw new ClockConflictError('Clock action does not match the current attendance state');
+    // r430 — the direction/state mismatch guard that used to require strict in-then-out is GONE: Clock In
+    // and Clock Out are both always allowed, in any order. checkInTx/checkOutTx (core/attendance.ts) accept
+    // either on an already-open or already-closed day; checkOutTx creates the day row itself when none
+    // exists yet (an out-first day), and the aggregate stores and flags it rather than refusing it.
     if (lastCapture && now.getTime() <= lastCapture.time.getTime()) throw new ClockConflictError('Clocking must follow the previous accepted event');
     const priorPunches = day ? await tx.select({time:attendancePunch.punchAt,captureId:attendancePunch.clockCaptureId}).from(attendancePunch).where(eq(attendancePunch.attendanceId,day.id)) : [];
     // Approved clock corrections own the aggregate. Retained punches remain evidence and must
@@ -95,10 +110,15 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
     if (geo.enforced && (!geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null)) throw new Error('An assigned clocking location is required');
     const site = geo.enforced ? { clockingLocationId: geo.clockingLocationId, distanceM: geo.distanceM, radiusM: geo.radiusM } : { clockingLocationId: null, distanceM: null, radiusM: null };
     const captureId = randomUUID();
-    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo, deviceId: device.id, lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
-    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceToken: p.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
-    await tx.update(employeeDevice).set({ lastUsedAt: now }).where(eq(employeeDevice.id, device.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { captureId, direction: p.action, serverRecordedAt: now.toISOString(), deviceId: device.id, clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
+    // r430 — the six photo columns are spread ONLY when a photo exists (nullable since 0520; CHECK enforces
+    // they land null together). deviceId is never set any more for a Web Clocking capture (nullable since
+    // 0520 too) — there is no registered device to attribute it to.
+    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
+    // r430 — deviceGateExempt:true: Web Clocking's own self-capture path is fully exempt from the
+    // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
+    // admin Daily page's checkInAction/checkOutAction never set this and stay fully policy-gated.
+    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceGateExempt: true, clockCaptureId: captureId, preciseOrder }, tx);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
   });
 }

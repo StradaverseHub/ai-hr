@@ -1811,18 +1811,36 @@ function deriveDayFromPunchList(
   const maxAt = (xs: string[]) => xs.reduce((a, b) => (compareClock(b, a) > 0 ? b : a));
   const checkInAt = ins.length ? minAt(ins) : fallbackCheckInAt;
   const balanced = ins.length >= 1 && ins.length === outs.length;
-  const checkOutAt = balanced && outs.length ? maxAt(outs) : null;
-  if (!checkInAt) {
-    // No punches and no fallback anchor — nothing to derive (defensive; a check-in always seeds one).
+  // r430 — checkOutAt is now computed for STORAGE/VISIBILITY independently of `balanced`: a clock-out with
+  // no matching clock-in (or any other unbalanced mix) must still land on the row, never vanish. Only a
+  // BALANCED day is handed to deriveAttendance below — an unbalanced one keeps worked/OT null so the
+  // read-time 'odd' flag (core/attendance-derive.ts flagOf, hasIn !== hasOut) surfaces it for a manager,
+  // the same way a lone clock-in with no clock-out already does today.
+  const checkOutAt = outs.length ? maxAt(outs) : null;
+  if (!checkInAt && !checkOutAt) {
+    // No punches and no fallback anchor at all — the true zero-punch defensive case; nothing to derive.
     return {
       set: null,
       result: { status: 'present' as const, workedMinutes: null, otMinutes: null, checkInAt: null, checkOutAt: null },
     };
   }
-  const d = deriveAttendance(sched, checkInAt, checkOutAt, attendanceDate);
+  if (!checkInAt) {
+    // r430 — an OUT-FIRST day: a clock-out with no clock-in beforehand. The old code returned `set: null`
+    // here (checkInAt falsy bailed out entirely), which silently dropped the clock-out from the aggregate
+    // even though the punch itself was correctly saved — exactly the incident this round exists to surface.
+    // Stored and flagged instead: checkOutAt lands on the row, checkInAt stays null, worked/OT stay null
+    // (nothing to compute without an in-punch).
+    return {
+      set: { checkInAt: null, checkOutAt, status: 'present' as const, workedMinutes: null, otMinutes: null },
+      result: { status: 'present' as const, workedMinutes: null, otMinutes: null, checkInAt: null, checkOutAt },
+    };
+  }
+  const d = deriveAttendance(sched, checkInAt, balanced ? checkOutAt : null, attendanceDate);
   const { status, workedMinutes, otMinutes } = d;
   return {
     // 7c834696: worked/OT are written exactly as before; the stage-1 columns are added alongside them.
+    // Byte-identical to pre-r430 for every balanced (completed/paired) day: checkOutAt here is the same
+    // value the old `balanced && outs.length ? maxAt(outs) : null` produced whenever balanced is true.
     set: { checkInAt, checkOutAt, status, workedMinutes, otMinutes, ...stage1Columns(d) },
     result: { status, workedMinutes, otMinutes, checkInAt: checkInAt as string | null, checkOutAt },
   };
@@ -1830,14 +1848,17 @@ function deriveDayFromPunchList(
 
 export async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
     // written (policy OFF ⇒ no-op). Terminal imports bypass by construction (they never call checkIn).
-    await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
+    // r430 — Web Clocking's own self-capture path is a documented, deliberate exemption from this gate
+    // regardless of the policy (ADR-0070 amendment): deviceGateExempt:true skips the call entirely. The
+    // admin Daily page's checkInAction/checkOutAction never set it, so that path stays fully policy-gated.
+    if (!p.deviceGateExempt) await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
 
     const [existing] = await tx
       .select({ id: attendance.id, dayType: attendance.dayType })
@@ -1962,24 +1983,51 @@ export async function checkIn(
 
 export async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
-    // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there.
-    await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
+    // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
+    // deviceGateExempt escape hatch).
+    if (!p.deviceGateExempt) await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
 
-    const [rec] = await tx
+    const [existingRec] = await tx
       .select()
       .from(attendance)
       .where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date)))
       .limit(1);
-    if (!rec) throw new Error('No check-in recorded for this day');
 
-    // Resolve the roster/policy schedule, then freeze the day-type stamped at check-in (tolerating legacy
-    // rows). On a non-cross-midnight schedule check-out must be after the last punch; a cross-midnight shift
-    // may legitimately check out at an earlier time-of-day (next day) — but never at the exact last-punch time.
+    // Resolve the roster/policy schedule — needed either to freeze the day-type stamped at check-in
+    // (tolerating legacy rows) or, for a brand-new out-first row, to stamp it in the first place.
     const sched0 = await scheduleFor(tx, p.employmentId, p.date);
+
+    let rec: typeof attendance.$inferSelect;
+    if (existingRec) {
+      rec = existingRec;
+    } else {
+      // r430 — a clock-out with NO prior clock-in is now allowed rather than refused ("No check-in
+      // recorded for this day"). Create the day row with no check-in, mirroring checkInTx's own-row
+      // creation (above) but with every check-in field left null/placeholder — this IS the "no check-in
+      // yet" state, not an inferred one. deriveDayFromPunchList (recomputeDayFromPunches below) is what
+      // makes the out-punch VISIBLE on the aggregate once it lands, the same way a forgotten clock-out
+      // already surfaces via the 'odd' flag.
+      const [row] = await tx
+        .insert(attendance)
+        .values({
+          tenantId: ctx.tenantId,
+          employmentId: p.employmentId,
+          attendanceDate: p.date,
+          checkInAt: null,
+          status: 'present',
+          dayType: sched0.dayType,
+          checkInMethod: null,
+        })
+        .returning();
+      rec = row;
+    }
+
+    // On a non-cross-midnight schedule check-out must be after the last punch; a cross-midnight shift
+    // may legitimately check out at an earlier time-of-day (next day) — but never at the exact last-punch time.
     const sched: ResolvedSchedule = rec.dayType ? { ...sched0, dayType: rec.dayType } : sched0;
 
     // R45 Multiple Clocking: a checkout after a completed pair now APPENDS an out-punch (was: throw
@@ -5614,16 +5662,19 @@ export async function addImportedPunchesBatchTx(
       });
     }
     if (!existing) {
+      // r430 — status/checkInAt are no longer hardcoded here: `set` is PROVABLY non-null for this caller
+      // (fallbackCheckInAt is always `existing?.checkInAt ?? d.punches[0].time`, a real string, since an
+      // imported day always has at least one punch by construction), so deriveDayFromPunchList's own
+      // status/checkInAt always win via the spread below — the two hardcoded values TS now correctly
+      // flags as dead (TS2783) were always silently overwritten, never actually read.
       newRows.push({
         id: attendanceId,
         tenantId: ctx.tenantId,
         employmentId: d.employmentId,
         attendanceDate: d.day,
-        status: 'present',
         dayType: sched.dayType,
         remarks: 'Imported (terminal)',
         checkInMethod: 'import',
-        checkInAt: d.punches[0].time,
         ...(set ?? {}),
         ...ends,
       });
