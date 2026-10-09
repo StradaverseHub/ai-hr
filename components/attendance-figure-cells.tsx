@@ -99,6 +99,10 @@ export type AttendanceFigureCellsProps = {
   hasRow: boolean;
   /** The stored working, read and validated on the server by core/attendance-explain.ts. Plain data. */
   explanation: AttendanceExplanation;
+  /** r433 (faca1cfb) — render ONE `<td>` (that figure only) instead of all eight. The day screen lists only
+   *  the items that apply, one table row each, and still wants the same working on hover. Omitted ⇒ the
+   *  eight cells exactly as before. */
+  only?: 'lateness' | 'earlyOut' | 'flat' | 'ot00' | 'ot10' | 'ot15' | 'ot20' | 'ot30';
 };
 
 export function AttendanceFigureCells({
@@ -107,6 +111,7 @@ export function AttendanceFigureCells({
   ot,
   hasRow,
   explanation,
+  only,
 }: AttendanceFigureCellsProps) {
   const t = useTranslations('attendance');
   const te = useTranslations('attendance.explain');
@@ -252,6 +257,13 @@ export function AttendanceFigureCells({
   // No attendance row ⇒ nothing was computed, so the cells stay exactly as they were: plain text, no
   // affordance, no panel. Offering "no working was recorded" against a day that has no record at all
   // would answer a question nobody asked.
+  if (only) {
+    const isOt = only !== 'lateness' && only !== 'earlyOut';
+    const text = only === 'lateness' ? fmtShort(lateMinutes) : only === 'earlyOut' ? fmtShort(earlyOutMinutes) : fmtHours2(ot[only]);
+    if (!hasRow) return <td className={CELL}>{text}</td>;
+    return <td className={CELL}>{explainable(isOt ? `ot-${only}` : only, isOt ? 'overtime' : only, text)}</td>;
+  }
+
   if (!hasRow) {
     return (
       <>

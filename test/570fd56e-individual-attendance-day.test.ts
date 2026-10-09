@@ -24,6 +24,8 @@ const LIST = '/app/attendance/individual/page.tsx';
 const DAY = '/app/attendance/individual/[date]/page.tsx';
 /** dae7a10f — the one-action admin correction that now sits on that screen. */
 const ACTION = '/app/attendance/individual/[date]/actions.ts';
+/** r433 — the day screen's presentational parts (the Overtime rows live here, around the same island). */
+const PARTS = '/components/attendance-day-parts.tsx';
 const FORMAT = '/components/attendance-format.ts';
 const PERMISSIONS = '/lib/permissions.ts';
 
@@ -74,8 +76,14 @@ describe('570fd56e · the eight calculation columns moved, and did not vanish', 
 describe('570fd56e · the day screen is not a second source of anything', () => {
   it('renders the figures through the SAME island and the SAME working as the list did', () => {
     const day = read(DAY);
-    expect(day.includes("from '@/components/attendance-figure-cells'")).toBe(true);
-    expect(day.includes('explanation={explainAttendanceDay(row.calcTrace)}')).toBe(true);
+    // r433 — the island is now rendered by the day screen's parts file, once per listed row. The page
+    // reads the working from the stored trace with the SAME reader and hands it down; pin each half.
+    const parts = read(PARTS);
+    expect(day.includes("from '@/components/attendance-day-parts'")).toBe(true);
+    expect(parts.includes("from '@/components/attendance-figure-cells'")).toBe(true);
+    expect(parts.includes('<AttendanceFigureCells')).toBe(true);
+    expect(day.includes('explainAttendanceDay(row.calcTrace)')).toBe(true);
+    expect(/figures=\{\{[\s\S]*?explanation,[\s\S]*?\}\}/.test(day), 'the page hands the rows the working').toBe(true);
     // The same range read, for one date — not a new per-day read that could resolve a day differently.
     expect(day.includes('attendanceForEmploymentRange(s, selected.employmentId, date, date)')).toBe(true);
   });

@@ -1641,6 +1641,23 @@ export function employmentScheduleGroupId(
   });
 }
 
+/** r433 (faca1cfb) — the NAME of this employment's Schedule Group, or null when it is in none. Display only:
+ *  the one read behind the Employee Information section of the attendance day screen. No event. */
+export function employmentScheduleGroupName(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ name: attendanceRule.name })
+      .from(employment)
+      .innerJoin(attendanceRule, eq(attendanceRule.id, employment.attendanceRuleId))
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    return row?.name ?? null;
+  });
+}
+
 /**
  * Put one employment in a Schedule Group, or take it out of one (`attendanceRuleId: null`).
  *
