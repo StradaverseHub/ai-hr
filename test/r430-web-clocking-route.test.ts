@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, harnessSnapshot, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 
 let b: Base;
@@ -44,7 +44,7 @@ async function hire() {
   await owner.db
     .insert(schema.roleAssignment)
     .values({ tenantId: b.tenantId, appUserId: u.id, companyId: null, role: 'employee' });
-  CALLER = { tenantId: b.tenantId, userId: u.id, personId: e.personId, grants: [{ role: 'employee', companyId: null }] };
+  CALLER = { tenantId: b.tenantId, userId: u.id, personId: e.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId), grants: [{ role: 'employee', companyId: null }] };
   return e.employmentId;
 }
 

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, harnessSnapshot, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { checkIn, checkOut, listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
 // r430 — Web Clocking's own self-capture path; see the "web clocking self-capture stays exempt" test below.
@@ -68,7 +68,7 @@ async function employeeCtxFor(personId: string): Promise<SessionContext> {
   await owner.db
     .insert(schema.roleAssignment)
     .values({ tenantId: b.tenantId, appUserId: u.id, companyId: null, role: 'employee' });
-  return { tenantId: b.tenantId, userId: u.id, personId, grants: [{ role: 'employee', companyId: null }] };
+  return { tenantId: b.tenantId, userId: u.id, personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId), grants: [{ role: 'employee', companyId: null }] };
 }
 
 const dayRow = (employmentId: string) =>

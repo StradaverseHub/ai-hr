@@ -21,7 +21,7 @@ import sharp from 'sharp';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { withTenant } from '../db/client';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, harnessSnapshot, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { checkIn, checkOut } from '../core/attendance';
 import { flagOf } from '../core/attendance-derive';
@@ -60,7 +60,7 @@ async function employeeCtxFor(personId: string): Promise<SessionContext> {
   await owner.db
     .insert(schema.roleAssignment)
     .values({ tenantId: b.tenantId, appUserId: u.id, companyId: null, role: 'employee' });
-  return { tenantId: b.tenantId, userId: u.id, personId, grants: [{ role: 'employee', companyId: null }] };
+  return { tenantId: b.tenantId, userId: u.id, personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId), grants: [{ role: 'employee', companyId: null }] };
 }
 
 const dayRow = (employmentId: string) =>

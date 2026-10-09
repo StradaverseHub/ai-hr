@@ -29,3 +29,14 @@ ALTER TABLE "attendance_clock_capture" ALTER COLUMN "photo_digest" DROP NOT NULL
 ALTER TABLE "attendance_clock_capture" ADD CONSTRAINT "attendance_clock_capture_photo_together" CHECK (
   num_nonnulls("photo_captured_at", "photo_mime_type", "photo_size", "decoded_width", "decoded_height", "photo_digest") IN (0, 6)
 );
+--> statement-breakpoint
+-- The 0500 payload CHECK demands photo_bytes/thumbnail_bytes unless the photo was PURGED, which a capture
+-- with no photo at all (attendance_photo_setting 'not_required', or 'optional' and skipped) can never
+-- satisfy. Widen it with a third, explicit branch: no photo, no purge marker, and (by the *_photo_together
+-- CHECK above) no photo metadata either. The two original branches are unchanged.
+ALTER TABLE "attendance_clock_capture" DROP CONSTRAINT "attendance_clock_capture_payload";--> statement-breakpoint
+ALTER TABLE "attendance_clock_capture" ADD CONSTRAINT "attendance_clock_capture_payload" CHECK (
+  (photo_purged_at IS NULL AND photo_purge_event_id IS NULL AND photo_bytes IS NOT NULL AND thumbnail_bytes IS NOT NULL AND octet_length(photo_bytes)=photo_size AND octet_length(thumbnail_bytes) BETWEEN 1 AND 2097152)
+  OR (photo_purged_at IS NOT NULL AND photo_purge_event_id IS NOT NULL AND photo_bytes IS NULL AND thumbnail_bytes IS NULL)
+  OR (photo_purged_at IS NULL AND photo_purge_event_id IS NULL AND photo_bytes IS NULL AND thumbnail_bytes IS NULL AND photo_size IS NULL)
+);
