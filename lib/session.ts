@@ -282,14 +282,15 @@ export async function getMobileSession(
   const header = opts.authorization !== undefined ? opts.authorization : (await headers()).get('authorization');
   const token = parseBearer(header);
   if (!token) throw new AuthRequiredError('A bearer access token is required.');
+  const clientId = process.env.WORKOS_CLIENT_ID;
+  if (!clientId) throw new AuthRequiredError('Mobile sign-in is not configured on this deployment.');
   let jwks = opts.jwks;
   if (!jwks) {
-    const clientId = process.env.WORKOS_CLIENT_ID;
-    if (!clientId) throw new AuthRequiredError('Mobile sign-in is not configured on this deployment.');
     jwks = workosJwks(clientId);
   }
   const { subject } = await verifyAccessToken(token, {
     jwks,
+    clientId,
     issuer: process.env.WORKOS_JWT_ISSUER || 'https://api.workos.com/',
     audience: process.env.WORKOS_JWT_AUDIENCE || undefined,
   });

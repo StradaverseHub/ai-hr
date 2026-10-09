@@ -15,6 +15,7 @@ import {
   type JwksSource,
 } from '../lib/mobile-api/jwt';
 
+const CLIENT_ID = 'client_mobile_test';
 const NOW = 1_900_000_000; // a fixed clock; expiry is tested against it, never against a sleep
 
 function keypair(kid: string) {
@@ -36,7 +37,7 @@ function signToken(
 
 const K1 = keypair('k1');
 const staticJwks = (keys: Jwk[]): JwksSource => async () => keys;
-const good = { sub: 'user_01ABC', sid: 'session_01XYZ', iss: 'https://api.workos.com/', exp: NOW + 300, iat: NOW - 10 };
+const good = { client_id: CLIENT_ID, sub: 'user_01ABC', sid: 'session_01XYZ', iss: 'https://api.workos.com/', exp: NOW + 300, iat: NOW - 10 };
 
 async function refusal(p: Promise<unknown>): Promise<unknown> {
   return p.then(
@@ -47,21 +48,21 @@ async function refusal(p: Promise<unknown>): Promise<unknown> {
 
 describe('verifyAccessToken — a valid token', () => {
   it('returns the subject, session id and expiry', async () => {
-    const out = await verifyAccessToken(signToken(K1.privateKey, good), { jwks: staticJwks([K1.jwk]), now: NOW });
+    const out = await verifyAccessToken(signToken(K1.privateKey, good), { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW });
     expect(out).toEqual({ subject: 'user_01ABC', sessionId: 'session_01XYZ', expiresAt: NOW + 300 });
   });
 
   it('accepts a key published without `alg`/`use` (both are optional in a JWK)', async () => {
     const { alg: _a, use: _u, ...bare } = K1.jwk;
-    const out = await verifyAccessToken(signToken(K1.privateKey, good), { jwks: staticJwks([bare]), now: NOW });
+    const out = await verifyAccessToken(signToken(K1.privateKey, good), { clientId: CLIENT_ID, jwks: staticJwks([bare]), now: NOW });
     expect(out.subject).toBe('user_01ABC');
   });
 
   it('tolerates 30 s of clock skew at expiry, and not 31', async () => {
     const t = signToken(K1.privateKey, { ...good, exp: NOW - 29 });
-    expect((await verifyAccessToken(t, { jwks: staticJwks([K1.jwk]), now: NOW })).subject).toBe('user_01ABC');
+    expect((await verifyAccessToken(t, { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW })).subject).toBe('user_01ABC');
     const late = signToken(K1.privateKey, { ...good, exp: NOW - 31 });
-    expect(await refusal(verifyAccessToken(late, { jwks: staticJwks([K1.jwk]), now: NOW }))).toBeInstanceOf(
+    expect(await refusal(verifyAccessToken(late, { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW }))).toBeInstanceOf(
       AuthRequiredError,
     );
   });
@@ -104,33 +105,42 @@ describe('verifyAccessToken — every refusal is an AuthRequiredError (401: sign
     ['payload is a JSON array', () => signToken(K1.privateKey, [] as unknown as Record<string, unknown>)],
   ];
   it.each(cases)('%s', async (_name, make) => {
-    expect(await refusal(verifyAccessToken(make(), { jwks, now: NOW }))).toBeInstanceOf(AuthRequiredError);
+    expect(await refusal(verifyAccessToken(make(), { clientId: CLIENT_ID, jwks, now: NOW }))).toBeInstanceOf(AuthRequiredError);
   });
 
   it('refuses a key whose published alg is not RS256, even though the signature is valid', async () => {
     const t = signToken(K1.privateKey, good);
-    const e = await refusal(verifyAccessToken(t, { jwks: staticJwks([{ ...K1.jwk, alg: 'RS512' }]), now: NOW }));
+    const e = await refusal(verifyAccessToken(t, { clientId: CLIENT_ID, jwks: staticJwks([{ ...K1.jwk, alg: 'RS512' }]), now: NOW }));
     expect(e).toBeInstanceOf(AuthRequiredError);
     // Non-vacuity: the same token with the same key published as RS256 verifies.
-    expect((await verifyAccessToken(t, { jwks: staticJwks([K1.jwk]), now: NOW })).subject).toBe(good.sub);
+    expect((await verifyAccessToken(t, { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW })).subject).toBe(good.sub);
   });
 
   it('refuses a key published for encryption (`use: enc`)', async () => {
     const t = signToken(K1.privateKey, good);
-    const e = await refusal(verifyAccessToken(t, { jwks: staticJwks([{ ...K1.jwk, use: 'enc' }]), now: NOW }));
+    const e = await refusal(verifyAccessToken(t, { clientId: CLIENT_ID, jwks: staticJwks([{ ...K1.jwk, use: 'enc' }]), now: NOW }));
     expect(e).toBeInstanceOf(AuthRequiredError);
   });
 });
 
 describe('verifyAccessToken — deployment claim profile', () => {
+  it('requires this application’s signed client_id even when another application shares the signing key', async () => {
+    const opts = { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW };
+    expect((await verifyAccessToken(signToken(K1.privateKey, good), opts)).subject).toBe(good.sub);
+    for (const client_id of [undefined, 'client_other_app', 42, [CLIENT_ID], '']) {
+      await expect(verifyAccessToken(signToken(K1.privateKey, { ...good, client_id }), opts)).rejects.toBeInstanceOf(AuthRequiredError);
+    }
+    await expect(verifyAccessToken(signToken(K1.privateKey, { ...good, client_id: '' }), { ...opts, clientId: '' })).rejects.toBeInstanceOf(AuthRequiredError);
+  });
+
   it('requires exactly the configured custom issuer', async () => {
     const token = signToken(K1.privateKey, { ...good, iss: 'https://auth.example.com/' });
-    const opts = { jwks: staticJwks([K1.jwk]), now: NOW, issuer: 'https://auth.example.com/' };
+    const opts = { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW, issuer: 'https://auth.example.com/' };
     expect((await verifyAccessToken(token, opts)).subject).toBe(good.sub);
     await expect(verifyAccessToken(signToken(K1.privateKey, good), opts)).rejects.toBeInstanceOf(AuthRequiredError);
   });
   it('enforces an explicitly configured audience, including standard array claims', async () => {
-    const opts = { jwks: staticJwks([K1.jwk]), now: NOW, audience: 'aihr-mobile' };
+    const opts = { clientId: CLIENT_ID, jwks: staticJwks([K1.jwk]), now: NOW, audience: 'aihr-mobile' };
     for (const aud of ['aihr-mobile', ['other', 'aihr-mobile']]) {
       expect((await verifyAccessToken(signToken(K1.privateKey, { ...good, aud }), opts)).subject).toBe(good.sub);
     }
@@ -145,20 +155,20 @@ describe('verifyAccessToken — key rotation', () => {
     const K2 = keypair('k2');
     const src = vi.fn<JwksSource>(async ({ refresh }) => (refresh ? [K1.jwk, K2.jwk] : [K1.jwk]));
     const t = signToken(K2.privateKey, good, { alg: 'RS256', kid: 'k2' });
-    expect((await verifyAccessToken(t, { jwks: src, now: NOW })).subject).toBe(good.sub);
+    expect((await verifyAccessToken(t, { clientId: CLIENT_ID, jwks: src, now: NOW })).subject).toBe(good.sub);
     expect(src.mock.calls.map((c) => c[0].refresh)).toEqual([false, true]);
   });
 
   it('a kid that is still unknown after the refresh is refused, with no second refresh', async () => {
     const src = vi.fn<JwksSource>(async () => [K1.jwk]);
     const t = signToken(keypair('k9').privateKey, good, { alg: 'RS256', kid: 'k9' });
-    expect(await refusal(verifyAccessToken(t, { jwks: src, now: NOW }))).toBeInstanceOf(AuthRequiredError);
+    expect(await refusal(verifyAccessToken(t, { clientId: CLIENT_ID, jwks: src, now: NOW }))).toBeInstanceOf(AuthRequiredError);
     expect(src).toHaveBeenCalledTimes(2);
   });
 
   it('a known kid never forces a refresh', async () => {
     const src = vi.fn<JwksSource>(async () => [K1.jwk]);
-    await verifyAccessToken(signToken(K1.privateKey, good), { jwks: src, now: NOW });
+    await verifyAccessToken(signToken(K1.privateKey, good), { clientId: CLIENT_ID, jwks: src, now: NOW });
     expect(src).toHaveBeenCalledTimes(1);
   });
 });
@@ -286,7 +296,7 @@ describe('workosJwks — the production key source', () => {
       // Non-vacuity: a token actually signed by the new key cannot be verified by the old cache.
       const rotatedKey = keypair('rotated');
       const token = signToken(rotatedKey.privateKey, { ...good, exp: Math.floor(Date.now() / 1000) + 300 }, { alg: 'RS256', kid: rotatedKey.jwk.kid });
-      expect(await refusal(verifyAccessToken(token, { jwks: src }))).toBeInstanceOf(JwksUnavailableError);
+      expect(await refusal(verifyAccessToken(token, { clientId: CLIENT_ID, jwks: src }))).toBeInstanceOf(JwksUnavailableError);
       expect(fetchImpl).toHaveBeenCalledTimes(2); // the outage retry remains throttled
     } finally { vi.useRealTimers(); }
   });

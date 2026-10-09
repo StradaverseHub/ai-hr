@@ -71,6 +71,11 @@ different project's connected WorkOS credentials.
 Server issuer default is WorkOS's documented `https://api.workos.com/`. Configure
 `WORKOS_JWT_ISSUER` for an exact verified custom Auth API issuer. Configure `WORKOS_JWT_AUDIENCE`
 only if the actual token profile supplies an audience; default AuthKit tokens do not document one.
+The signed `client_id` must equal the server's `WORKOS_CLIENT_ID`; missing, wrong or malformed claims
+are refused. FACT: the AI HR and default Stradaverse staging applications share a public signing key.
+The JWKS URL alone does not bind an application. [WorkOS applications](https://workos.com/docs/authkit/applications)
+documents `client_id` as the application context. Verify the actual issuer and claim profile during
+staging sign-in before cutover; an environment-wide static JWT template is not an application boundary.
 Signature verification alone does not establish immediate session revocation: measure the
 access-token expiry window and verify WorkOS logout/revocation before a real-data pilot.
 

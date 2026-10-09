@@ -12,16 +12,16 @@
  *   • ONE algorithm, RS256 — named in the token header AND, when present, on the key. `alg: none`, HS256
  *     (the classic public-key-as-HMAC-secret confusion) and every other value are refused before any key
  *     is touched.
- *   • The key is chosen by `kid` from the WorkOS JWKS for THIS deployment's client id
- *     (`https://api.workos.com/sso/jwks/<clientId>`, workos.com/docs/user-management/sessions, read
- *     2026-09-30). A token signed for another WorkOS client finds no key and is refused.
+ *   • The key is chosen by `kid` from the configured WorkOS JWKS. Applications in one environment can
+ *     share keys: the JWKS URL does NOT bind an application. The signed `client_id` claim must exactly
+ *     match this deployment's configured client (workos.com/docs/authkit/applications, 2026-10-09).
  *   • `exp` is REQUIRED and enforced; `nbf` is enforced when present; both with 30 s of skew.
  *   • `sub` is REQUIRED. `iss` must match this deployment's configured AuthKit issuer.
  *
  * FACT (2026-10-09): workos.com/docs/authkit/sessions documents `iss` as https://api.workos.com/,
  * or the custom auth domain when configured. A custom issuer must be configured explicitly; we never
- * learn it from the untrusted token. These AuthKit tokens have no documented `aud` claim. Client-scoped
- * keys bind the application; an audience is enforced only if the deployment explicitly configures one
+ * learn it from the untrusted token. These AuthKit tokens have no documented default `aud` claim.
+ * The signed `client_id` binds the application; an audience is enforced only if configured
  * after verifying its token contract. OAuth Connect tokens are a different profile.
  *
  * Everything that fails throws `AuthRequiredError` (a 401 to the app, i.e. "sign in again"), EXCEPT a
@@ -81,7 +81,7 @@ function pickKey(keys: Jwk[], kid: string): Jwk | undefined {
  */
 export async function verifyAccessToken(
   token: string,
-  opts: { jwks: JwksSource; now?: number; issuer?: string; audience?: string },
+  opts: { jwks: JwksSource; clientId: string; now?: number; issuer?: string; audience?: string },
 ): Promise<VerifiedAccessToken> {
   const parts = token.split('.');
   if (parts.length !== 3 || parts.some((p) => p.length === 0)) throw new AuthRequiredError('Malformed access token.');
@@ -107,6 +107,7 @@ export async function verifyAccessToken(
   if (!ok) throw new AuthRequiredError('Access token signature is invalid.');
 
   const claims = decodeSegment(p);
+  if (!opts.clientId || claims.client_id !== opts.clientId) throw new AuthRequiredError('Access token application is invalid.');
   if (claims.iss !== (opts.issuer ?? 'https://api.workos.com/')) throw new AuthRequiredError('Access token issuer is invalid.');
   if (opts.audience !== undefined && !(claims.aud === opts.audience ||
     (Array.isArray(claims.aud) && claims.aud.every((value) => typeof value === 'string') && claims.aud.includes(opts.audience)))) {

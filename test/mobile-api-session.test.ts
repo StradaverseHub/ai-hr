@@ -19,8 +19,9 @@ import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedB
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwks: JwksSource = async () => [{ ...(publicKey.export({ format: 'jwk' }) as Jwk), kid: 'test-k1', alg: 'RS256' }];
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-function bearer(sub: string, ttlSeconds = 300): string {
-  const input = `${b64({ alg: 'RS256', kid: 'test-k1', typ: 'JWT' })}.${b64({ sub, iss: 'https://api.workos.com/', exp: Math.floor(Date.now() / 1000) + ttlSeconds })}`;
+const CLIENT_ID = 'client_mobile_test';
+function bearer(sub: string, ttlSeconds = 300, clientId = CLIENT_ID): string {
+  const input = `${b64({ alg: 'RS256', kid: 'test-k1', typ: 'JWT' })}.${b64({ sub, client_id: clientId, iss: 'https://api.workos.com/', exp: Math.floor(Date.now() / 1000) + ttlSeconds })}`;
   return `Bearer ${input}.${cryptoSign('sha256', Buffer.from(input), privateKey).toString('base64url')}`;
 }
 
@@ -58,6 +59,7 @@ beforeAll(async () => {
   await migrateTestDb();
 });
 beforeEach(async () => {
+  vi.stubEnv('WORKOS_CLIENT_ID', CLIENT_ID);
   await resetDb();
   base = await seedBase();
 });
@@ -69,6 +71,13 @@ afterAll(async () => {
 });
 
 describe('getMobileSession — a verified token resolves through principal_by_subject', () => {
+  it('refuses another application’s signed token for the same live user and shared key', async () => {
+    const a = await employeeLogin('Mobile Application Boundary');
+    expect((await getMobileSession({ authorization: bearer(a.subject), jwks })).userId).toBe(a.userId);
+    const e = await refusal(getMobileSession({ authorization: bearer(a.subject, 300, 'client_other_app'), jwks }));
+    expect(e).toBeInstanceOf(AuthRequiredError);
+    expect((e as Error).message).toMatch(/application/);
+  });
   it('yields the same SessionContext shape the web path builds, entitlements included', async () => {
     const a = await employeeLogin('Mobile Aina');
     const s = await getMobileSession({ authorization: bearer(a.subject), jwks });
@@ -125,10 +134,12 @@ describe('getMobileSession — bearer only, fail closed', () => {
   it('refuses everything while WORKOS_CLIENT_ID is unset — even a token that would verify', async () => {
     const a = await employeeLogin('Mobile Eng');
     vi.stubEnv('WORKOS_CLIENT_ID', '');
-    // No injected jwks: this is the production path, which must not reach the network without a client id.
-    const e = await refusal(getMobileSession({ authorization: bearer(a.subject) }));
-    expect(e).toBeInstanceOf(AuthRequiredError);
-    expect((e as Error).message).toMatch(/not configured/);
+    // Neither the production key fetch nor an injected test key may bypass the application binding.
+    for (const keySource of [undefined, jwks]) {
+      const e = await refusal(getMobileSession({ authorization: bearer(a.subject), jwks: keySource }));
+      expect(e).toBeInstanceOf(AuthRequiredError);
+      expect((e as Error).message).toMatch(/not configured/);
+    }
   });
 
   it('never reads the demo cookie or the dev switcher (the share-gate bypass depends on it)', () => {

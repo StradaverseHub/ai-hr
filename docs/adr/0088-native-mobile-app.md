@@ -92,7 +92,7 @@ creating a second source of truth for any business rule.
   class, wiped on the first launch after a reinstall. It always replaces a rotated token, per RFC 9700.
   It sends the access token as `Authorization: Bearer`.
 - **Server side.** `lib/session.ts` gains **one** alternative source of the WorkOS subject: a bearer JWT
-  verified against the client's JWKS (signature, `exp`, exact issuer, and audience only when the
+  verified against the configured JWKS (signature, `exp`, exact issuer, signed `client_id`, and audience only when the
   verified token contract defines one). After that the path is
   identical: `principal_by_subject` → `resolveWorkosPrincipal` → `SessionContext` → the existing core
   services under the existing RLS. There is no second user table and no mobile-only permission. The demo
@@ -328,6 +328,14 @@ derived time that is signed and anchored.
   the exact configured issuer. AuthKit has no documented default audience; `WORKOS_JWT_AUDIENCE` enforces
   one only for an explicitly verified JWT contract. This corrects the earlier implementation's omission
   of issuer checks without guessing an OAuth Connect audience.
+- **FACT (application binding, 2026-10-09):** the dedicated AI HR and default Stradaverse staging
+  applications return the same public signing key. A client-specific JWKS URL does not isolate an app.
+  The verifier now requires the signed `client_id` to match configured `WORKOS_CLIENT_ID`, including
+  when the signing-key source is injected for testing. This corrects the previous key-isolation claim.
+  [WorkOS applications](https://workos.com/docs/authkit/applications) documents this application claim;
+  [JWT templates](https://workos.com/docs/authkit/jwt-templates) are environment-wide, so adding a static
+  audience to all tokens would not create per-application isolation. Confirm the real issuer/claim
+  profile before cutover; undocumented legacy tokens are refused rather than bypassing this boundary.
 - **RECOMMENDATION implemented:** signing-key fetches share one flight per client, retry at most once
   per minute after a failure, and serve outage cache only until thirty minutes after the last successful
   fetch. Beyond that the API returns unavailable, never a credential refusal.
