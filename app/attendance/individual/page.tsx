@@ -3,11 +3,12 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
-import { flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
+import { flagOf, statusOf } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
 import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
-import { fmtMin, fmtDayDate, fmtDayName } from '@/components/attendance-format';
+import { fmtDayDate, fmtDayName } from '@/components/attendance-format';
+import { AttendanceDayCells, AttendanceTrailRow, dayCellLabels } from '@/components/attendance-day-cells';
 import { cookies } from 'next/headers';
 import {
   CollapsibleEmployeePanel,
@@ -55,19 +56,8 @@ export default async function IndividualAttendancePage({
   const locale = await getLocale();
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  const statusText: Record<AttendanceStatus, string> = {
-    present: t('statusPresent'),
-    absent: t('statusAbsent'),
-    rest: t('statusRest'),
-    off: t('statusOff'),
-    ph: t('statusPh'),
-    on_leave: t('statusOnLeave'),
-  };
-  const flagText: Record<Exclude<AttendanceFlag, null>, string> = {
-    late: t('flagLate'),
-    under: t('flagUnder'),
-    odd: t('flagOdd'),
-  };
+  // r432 — status/flag wording and the cells/trail are shared with Daily Attendance (components/attendance-day-cells).
+  const labels = dayCellLabels(t);
   const todayIso = todayInKualaLumpur();
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   const from = sp.from && dateRe.test(sp.from) ? sp.from : firstOfMonth(todayIso);
@@ -226,24 +216,7 @@ export default async function IndividualAttendancePage({
                     <tr>
                       <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">{fmtDayDate(r.date, locale)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{fmtDayName(r.date, locale)}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{r.shiftCode ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkInAt?.slice(0, 5) ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
-                      <td className="px-3 py-2.5">
-                        {/* Only Absent in red; every other status uses the standard text colour. */}
-                        <span className={`capitalize ${status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
-                          {statusText[status]}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {flag ? (
-                          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{flagText[flag]}</span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
+                      <AttendanceDayCells row={r} status={status} flag={flag} labels={labels} />
                       <td className="px-3 py-2.5">
                         <Link
                           href={`/attendance/individual/${r.date}?emp=${encodeURIComponent(selectedEmp!)}&from=${from}&to=${to}`}
@@ -253,28 +226,7 @@ export default async function IndividualAttendancePage({
                         </Link>
                       </td>
                     </tr>
-                    {showTrail && (
-                      <tr className="bg-muted/20">
-                        <td colSpan={10} className="px-3 py-2">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                            <span className="font-medium uppercase tracking-wide">{t('punchTrail')}</span>
-                            {punches.map((p, i) => (
-                              <span
-                                key={i}
-                                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 tabular-nums"
-                              >
-                                <span className="font-medium text-foreground">{p.punchAt.slice(0, 5)}</span>
-                                <span className={p.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}>
-                                  {p.direction === 'in' ? t('punchIn') : t('punchOut')}
-                                </span>
-                                {i === 0 && <span className="text-[10px] uppercase">· {t('punchFirst')}</span>}
-                                {i === punches.length - 1 && <span className="text-[10px] uppercase">· {t('punchLast')}</span>}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                    {showTrail && <AttendanceTrailRow punches={punches} colSpan={10} labels={labels} />}
                     </Fragment>
                   );
                 })}

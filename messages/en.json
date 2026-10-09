@@ -2957,7 +2957,9 @@
       "chooseEmployee": "Choose an employee…",
       "dateFrom": "Date From",
       "dateTo": "Date To",
-      "pickEmployeePrompt": "Select an employee to view their attendance history."
+      "pickEmployeePrompt": "Select an employee to view their attendance history.",
+      "search": "Search",
+      "searchPlaceholder": "Name or employee ID"
     },
     "colDay": "Day",
     "colException": "Exception",
@@ -3359,7 +3361,8 @@
     "rejectRequired": "A rejection explanation of 1–1000 characters is required.",
     "clockEvidenceGeofenced": "{site} · distance {distance} m of {radius} m allowed",
     "clockEvidenceNotRequired": "Geofencing not required",
-    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m"
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m",
+    "dailyCalcNote": "Lateness, early out and overtime figures are one click away in View/Edit, exactly as on Individual Attendance."
   },
   "org": {
     "title": "Org chart",

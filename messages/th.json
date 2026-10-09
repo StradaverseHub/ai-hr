@@ -2957,7 +2957,9 @@
       "chooseEmployee": "เลือกพนักงาน…",
       "dateFrom": "วันที่เริ่มต้น",
       "dateTo": "วันที่สิ้นสุด",
-      "pickEmployeePrompt": "เลือกพนักงานเพื่อดูประวัติการเข้างาน"
+      "pickEmployeePrompt": "เลือกพนักงานเพื่อดูประวัติการเข้างาน",
+      "search": "ค้นหา",
+      "searchPlaceholder": "ชื่อหรือรหัสพนักงาน"
     },
     "colDay": "วัน",
     "colException": "ข้อยกเว้น",
@@ -3359,7 +3361,8 @@
     "rejectRequired": "ต้องมีคำอธิบายการปฏิเสธ 1–1000 อักขระ",
     "clockEvidenceGeofenced": "{site} · ระยะ {distance} ม. จากที่อนุญาต {radius} ม.",
     "clockEvidenceNotRequired": "ไม่ต้องใช้เขตพื้นที่",
-    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} ม."
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} ม.",
+    "dailyCalcNote": "ตัวเลขการมาสาย ออกก่อนเวลา และล่วงเวลา อยู่ที่ ดู/แก้ไข เพียงคลิกเดียว เช่นเดียวกับการเข้างานรายบุคคล"
   },
   "org": {
     "title": "ผังองค์กร",
