@@ -1,3 +1,21 @@
+## r430 — 2026-10-09 · main@b3d5d88ff4dc5761dd7b41d8b076c333baca1d95 · migration 0520
+
+**Scope.** b8ca6efe: Web Clocking. The Switch link and shift options are gone (Current Shift is the assigned one, read-only); Clock In and Clock Out are always available (the three in-then-out guards removed: the direction/state check in `attendance-clock.ts`, `checkOutTx`'s "no check-in" refusal now creates the day row, and `deriveDayFromPunchList` stores an out-first day's clock-out so the read-time 'odd' flag surfaces it); a per-employee Attendance Photo setting (Required / Optional / Not Required, default Not Required) on Personnel › Attendance in a "Web Clocking" card, read server-side on every capture; Optional shows Take Photo / Skip Photo; device registration is removed from Web Clocking (`deviceGateExempt` on `checkInTx`/`checkOutTx`, `deviceToken` out of the route contract and today route). `core/attendance-device.ts`, the Attendance Policy screen and the `/me` quick-clock button are unchanged. Migration 0520: enum, `employment.attendance_photo_setting`, `attendance_clock_capture` photo columns nullable with a six-together CHECK, and the 0500 `payload` CHECK widened with a no-photo branch.
+
+**How it was found.** Built ~30 files UNCOMMITTED by the same stalled earlier session as r428/r429, for an item then still `planned`; the reporter approved it while this session ran. Merged with main (journal union 0519, 0520).
+
+**Defects the gates found in the inherited build, all fixed.** (1) The 0500 `payload` CHECK demanded photo bytes, so every photo-less capture — the new DEFAULT — would have been refused; widened in 0520 (unapplied, edited in place). (2) `checkOutAt` was stored for every unbalanced day, closing an in-out-in day that R45 and the clocking import require to stay open; now stored only when the day has no clock-in. (3) Test contexts lacked entitlements; the import-parity exclusion, two personnel card-list pins, the personnel gated-card set and the r395 filler (`photo_captured_at`) were updated.
+
+**Gate.** Five full runs. Reds: real defects above; then chunk 6 `53200 out of shared memory` (three runs in four, zero real assertions) — fixed at the cause with `max_locks_per_transaction = 256` in `scripts/dev-db-rebuild.sh`; then one load-sensitive dom test (`payroll-txn-import-screen`, untouched, 3/3 green alone). Final: GREEN 1246 of 1246, `tsc` clean, `next build` clean (needs `NODE_OPTIONS=--max-old-space-size=10240`), `gate:shadow` PASS 428/428.
+
+**Production.** Before deploy: 0 of 3 companies had Require Registered Device on, so the bypass drops no existing gate; 5 registered devices (3 active) are untouched. After: 401, /health 200, ref b3d5d88f, 428 migrations, all 91 employments `not_required`, zero-line dry-run.
+
+**Decision for the reporter, said plainly.** Today every employee must take a photo every time; after this nobody does until HR sets Required or Optional for that person. HR must set the people who should still be photographed.
+
+**Closed with no build.** b3da5f59 (My Leave rename, shipped r426) and 48652e18 (Bank Account tab: closed Add above the list, Remove asks first, names the paid statutory bodies, shipped r419 as the corrected revision 2) had been reset to planned when their plans were re-pushed after deploy; the reporter approved them again and they were verified against the code on main and marked deployed (refs 3fbc3bc3 and d04524a1). Board at the end: 0 planned, 0 approved, 0 building, 1022 deployed.
+
+**Not done / owed.** The Web Clocking screen itself was not rendered (the dev user has no employee profile); it is covered by `clock-redesign`, `7ac6b4db`, `r430-web-clocking` and the route test and by source inspection. ADR-0070's device-gate section was not amended. The separate `/me` quick-clock button still honours Require Registered Device.
+
 ## r428 + r429 — 2026-10-09 · main@cfb3a6672672d093c83d4aa77927ec8c3b2c0105 · migration 0519
 
 **Scope.** 83c0d3c8 (contest): Attendance › Locations is company-first (company list with counts, View Locations, search; per-company clocking and work-location sections); the Work Locations menu row is retired and `/admin/work-locations` is a guarded redirect stub (`?focus=` resolves to its company). f6819e19: Shift page split from the Schedule Group — Shift Information / Working Time / always-visible Breaks table with per-row checks (start before end, no overlap, inside the shift, night-shift break may cross midnight); overtime windows and premium in a closed panel; Working Days moved up on the Schedule Group page; migration 0519 moves the whole-shift flexible allowance onto break rows where exact.
@@ -8,7 +26,7 @@
 
 **Deploy.** `improve:deploy` (no board write) — a production-database read for the item ids was denied, so the two items were NOT marked deployed. Box: 401, /health 200, ref cfb3a667, zero-line dry-run. 0519 on production: 2 shifts carried the whole-shift flexible break; 1 converted, 1 (AM4, no break rows) left unchanged with the switch on, as the plan said.
 
-**Not done / owed.** Board items 83c0d3c8 and f6819e19 are still `building`: run `improve:mark-deployed` for each. 3 `planned` items (b8ca6efe, b3da5f59, 48652e18) await the reporter; r430 (b8ca6efe) has an unapproved uncommitted build in `build/r430-webclocking`. Local Postgres on 5433 was down and rebuilt with `dev-db-rebuild.sh`.
+**Not done / owed.** (Superseded 2026-10-09: 83c0d3c8 and f6819e19 were marked deployed on the board once the production read was permitted, build ref cfb3a667.) Local Postgres on 5433 was down and rebuilt with `dev-db-rebuild.sh`.
 
 ## r427 — 2026-10-08 · main@97c45e5d1e355531f7d0bca577cfeaf10ad68fea · migration none
 
