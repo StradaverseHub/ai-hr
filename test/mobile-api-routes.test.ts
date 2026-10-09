@@ -65,24 +65,24 @@ const year = () => Number(todayInKualaLumpur().slice(0, 4));
 /** A distinctive salary, so "it is not in the response" cannot be satisfied by an unrelated figure. */
 const BASIC = '7345.67';
 
-async function hire(name: string, basic = BASIC) {
-  const a = adminCtx(base);
+async function hire(name: string, basic = BASIC, tenantBase = base) {
+  const a = adminCtx(tenantBase);
   const e = await hireEmployee(a, {
     person: { fullName: name, primaryEmail: `${name.toLowerCase().replace(/\s+/g, '')}@acme.test` },
-    companyId: base.companyId,
-    departmentId: base.deptA,
+    companyId: tenantBase.companyId,
+    departmentId: tenantBase.deptA,
     employmentType: 'full_time',
     hiredOn: '2026-01-01',
   });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: Number(basic), monthlyAllowance: 412.34, effectiveFrom: '2026-01-01' });
   await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
-  const userId = await createAppUser(base.tenantId, e.personId, 'employee');
+  const userId = await createAppUser(tenantBase.tenantId, e.personId, 'employee');
   const ctx: SessionContext = {
-    tenantId: base.tenantId,
+    tenantId: tenantBase.tenantId,
     userId,
     roles: ['employee'],
     personId: e.personId,
-    entitlements: harnessSnapshot(base.tenantId),
+    entitlements: harnessSnapshot(tenantBase.tenantId),
   };
   return { ...e, ctx };
 }
@@ -206,6 +206,25 @@ describe('GET /notifications', () => {
 });
 
 describe('GET /leave', () => {
+  it('keeps two real tenants separate and refuses the other tenant’s employment selector', async () => {
+    const a = await hire('Tenant A Employee');
+    const other = await seedBase();
+    const b = await hire('Tenant B Employee', BASIC, other);
+    expect(a.ctx.tenantId).not.toBe(b.ctx.tenantId);
+    for (const [self, foreign] of [[a, b], [b, a]]) {
+      caller = self.ctx;
+      const mine = await call(getMe, 'me');
+      expect(mine.res.status).toBe(200);
+      const employments = mine.body.employments as Array<{ employmentId: string }>;
+      expect(employments.map((e) => e.employmentId)).toEqual([self.employmentId]);
+      expect(mine.text).not.toContain(foreign.employmentId);
+      const refused = await call(getLeave, `leave?employmentId=${foreign.employmentId}`);
+      expect(refused.res.status).toBe(400);
+      expect(refused.body).toEqual({ error: 'bad_request' });
+      expect((await call(getLeave, `leave?employmentId=${self.employmentId}`)).res.status).toBe(200);
+    }
+  });
+
   it('returns the web dashboard’s card fronts, figure for figure, and no breakdown', async () => {
     const a = await hire('Leave Anis');
     caller = a.ctx;
