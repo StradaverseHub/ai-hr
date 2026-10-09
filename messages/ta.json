@@ -2957,7 +2957,9 @@
       "chooseEmployee": "ஒரு பணியாளரைத் தேர்ந்தெடுக்கவும்…",
       "dateFrom": "தேதி முதல்",
       "dateTo": "தேதி வரை",
-      "pickEmployeePrompt": "வருகை வரலாற்றைக் காண ஒரு பணியாளரைத் தேர்ந்தெடுக்கவும்."
+      "pickEmployeePrompt": "வருகை வரலாற்றைக் காண ஒரு பணியாளரைத் தேர்ந்தெடுக்கவும்.",
+      "search": "தேடு",
+      "searchPlaceholder": "பெயர் அல்லது பணியாளர் எண்"
     },
     "colDay": "நாள்",
     "colException": "விதிவிலக்கு",
@@ -3359,7 +3361,8 @@
     "rejectRequired": "1–1000 எழுத்துகளுடன் நிராகரிப்பு விளக்கம் தேவை.",
     "clockEvidenceGeofenced": "{site} · தூரம் {distance} மீ ({radius} மீ அனுமதி)",
     "clockEvidenceNotRequired": "புவிவேலி தேவையில்லை",
-    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} மீ"
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} மீ",
+    "dailyCalcNote": "தாமதம், முன்கூட்டிய வெளியேற்றம், கூடுதல் நேர விவரங்கள் தனிநபர் வருகையைப் போலவே பார்/திருத்து என்பதில் ஒரே கிளிக்கில் கிடைக்கும்."
   },
   "org": {
     "title": "நிறுவன அமைப்பு",

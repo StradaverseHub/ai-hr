@@ -2957,7 +2957,9 @@
       "chooseEmployee": "选择员工…",
       "dateFrom": "起始日期",
       "dateTo": "结束日期",
-      "pickEmployeePrompt": "选择一名员工以查看其考勤记录。"
+      "pickEmployeePrompt": "选择一名员工以查看其考勤记录。",
+      "search": "搜索",
+      "searchPlaceholder": "姓名或员工编号"
     },
     "colDay": "星期",
     "colException": "异常",
@@ -3359,7 +3361,8 @@
     "rejectRequired": "请输入 1–1000 字的拒绝说明。",
     "clockEvidenceGeofenced": "{site} · 距离 {distance} 米（允许 {radius} 米）",
     "clockEvidenceNotRequired": "无需地理围栏",
-    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} 米"
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} 米",
+    "dailyCalcNote": "迟到、早退和加班数据在“查看/编辑”中一键即达，与个人考勤相同。"
   },
   "org": {
     "title": "组织架构图",

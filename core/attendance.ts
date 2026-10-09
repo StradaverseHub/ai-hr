@@ -2382,7 +2382,99 @@ export function attendanceForDate(
   companyIds?: string[],
   opts?: { departmentId?: string },
 ) {
+  return withTenant(ctx, (tx) => attendanceDayRowsTx(tx, date, companyIds, opts));
+}
+
+/**
+ * r432 (e721a355) — the Daily Attendance list, paged IN SQL. `attendanceForDate` derives shift, leave and
+ * holiday context for every active employee in scope and the page then sliced the result in memory; for a
+ * large company that is thousands of derivations to show twenty-five rows. This selects the page's
+ * employment ids first (name / employee-code search and the department filter applied in SQL, ordered by
+ * employee code), then runs the SAME derivation (`attendanceDayRowsTx`, one body for both callers, so the
+ * two can never decide a day differently) for those ids only.
+ *
+ * `total` counts every employment matching the filters, ignoring the page. `q` is trimmed and capped at
+ * `ATTENDANCE_DAILY_Q_MAX`; LIKE wildcards in it are escaped so a typed "%" or "_" matches itself.
+ * Fenced exactly as attendanceForDate is: withTenant + the employment/person row-level security.
+ */
+export const ATTENDANCE_DAILY_Q_MAX = 200;
+
+export function attendanceForDatePage(
+  ctx: SessionContext,
+  date: string,
+  companyIds: string[] | undefined,
+  opts: { departmentId?: string; q?: string; limit: number; offset: number },
+) {
   return withTenant(ctx, async (tx) => {
+    const q = (opts.q ?? '').trim().slice(0, ATTENDANCE_DAILY_Q_MAX);
+    const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+    const where = and(
+      isNull(employment.terminatedOn),
+      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+      opts.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
+      q ? sql`(${person.fullName} ilike ${like} or ${employment.employeeCode} ilike ${like})` : undefined,
+    );
+    const currentAssignment = and(
+      eq(assignment.employmentId, employment.id),
+      isNull(assignment.validTo),
+      isNull(assignment.supersededAt),
+    );
+    const [counted] = await tx
+      .select({ n: sql<number>`count(distinct ${employment.id})::int` })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignment)
+      .where(where);
+    const total = counted?.n ?? 0;
+    const idRows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignment)
+      .where(where)
+      .groupBy(employment.id, employment.employeeCode, person.fullName)
+      .orderBy(sql`${employment.employeeCode} asc nulls last`, asc(person.fullName), asc(employment.id))
+      .limit(opts.limit)
+      .offset(opts.offset);
+    const ids = idRows.map((r) => r.id);
+    if (!ids.length) return { rows: [], total };
+    const derived = await attendanceDayRowsTx(tx, date, companyIds, { employmentIds: ids });
+    const order = new Map(ids.map((id, i) => [id, i]));
+    derived.sort((a, b) => order.get(a.employmentId)! - order.get(b.employmentId)!);
+    return { rows: derived, total };
+  });
+}
+
+/**
+ * r432 — the punch trail for a set of attendance days (the Daily list's "several clockings" line), one read
+ * for the whole page. Keyed by attendanceId like attendancePunchesForRange; time-of-day order within a day.
+ */
+export function attendancePunchesForDays(ctx: SessionContext, attendanceIds: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const byAttendance = new Map<string, { punchAt: string; direction: 'in' | 'out' }[]>();
+    if (!attendanceIds.length) return byAttendance;
+    const punches = await tx
+      .select({ attendanceId: attendancePunch.attendanceId, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
+      .from(attendancePunch)
+      .where(inArray(attendancePunch.attendanceId, attendanceIds))
+      .orderBy(asc(attendancePunch.attendanceId), asc(attendancePunch.punchAt), asc(attendancePunch.id));
+    punches.sort((a, b) => toMinutes(a.punchAt) - toMinutes(b.punchAt));
+    for (const pch of punches) {
+      const list = byAttendance.get(pch.attendanceId) ?? [];
+      list.push({ punchAt: pch.punchAt, direction: pch.direction as 'in' | 'out' });
+      byAttendance.set(pch.attendanceId, list);
+    }
+    return byAttendance;
+  });
+}
+
+async function attendanceDayRowsTx(
+  tx: Tx,
+  date: string,
+  companyIds?: string[],
+  opts?: { departmentId?: string; employmentIds?: string[] },
+) {
+  {
     // Current assignment (≤1 per employment) — only needed to filter by department; a leftJoin keeps every
     // employee visible when no department filter is applied.
     const currentAssignment = and(
@@ -2447,6 +2539,7 @@ export function attendanceForDate(
           isNull(employment.terminatedOn),
           companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
           opts?.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
+          opts?.employmentIds ? inArray(employment.id, opts.employmentIds.length ? opts.employmentIds : ['']) : undefined,
         ),
       )
       .orderBy(person.fullName);
@@ -2616,7 +2709,7 @@ export function attendanceForDate(
       }
       return { ...r, context, ...shiftDisplay };
     });
-  });
+  }
 }
 
 export type AttendanceRangeRow = {

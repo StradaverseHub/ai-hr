@@ -2957,7 +2957,9 @@
       "chooseEmployee": "Pilih pekerja…",
       "dateFrom": "Tarikh Dari",
       "dateTo": "Tarikh Hingga",
-      "pickEmployeePrompt": "Pilih seorang pekerja untuk melihat sejarah kehadiran mereka."
+      "pickEmployeePrompt": "Pilih seorang pekerja untuk melihat sejarah kehadiran mereka.",
+      "search": "Cari",
+      "searchPlaceholder": "Nama atau ID pekerja"
     },
     "colDay": "Hari",
     "colException": "Pengecualian",
@@ -3359,7 +3361,8 @@
     "rejectRequired": "Penjelasan penolakan 1–1000 aksara diperlukan.",
     "clockEvidenceGeofenced": "{site} · jarak {distance} m daripada {radius} m yang dibenarkan",
     "clockEvidenceNotRequired": "Geopagar tidak diperlukan",
-    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m"
+    "clockEvidenceCoordinates": "{lat}, {lng} ± {accuracy} m",
+    "dailyCalcNote": "Angka kelewatan, keluar awal dan kerja lebih masa hanya satu klik lagi di Lihat/Edit, sama seperti pada Kehadiran Individu."
   },
   "org": {
     "title": "Carta organisasi",
