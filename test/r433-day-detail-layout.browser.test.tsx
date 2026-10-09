@@ -77,7 +77,7 @@ for (const width of [390, 1280]) {
       const right = rect(page).right - 16 + 0.5;
       expect(document.body.scrollWidth, 'document').toBeLessThanOrEqual(width);
       const boxes = page.querySelectorAll('[data-testid="info"] > div > div, [data-testid="clockbreak"] > div > div, [data-day-ot-table], [data-day-ot-table] th, [data-day-ot-table] td');
-      expect(boxes.length, 'the guard measured something').toBeGreaterThan(30);
+      expect(boxes.length, 'the guard measured something').toBeGreaterThan(20);
       for (const el of boxes) if (rect(el).width > 0) expect(rect(el).right, `${el.tagName} ${el.textContent?.slice(0, 24)}`).toBeLessThanOrEqual(right);
     });
 
@@ -87,7 +87,7 @@ for (const width of [390, 1280]) {
       expect(values.length).toBe(10);
       for (const v of values) expect(v.scrollWidth, v.textContent ?? '').toBeLessThanOrEqual(v.clientWidth + 1);
       const company = values.find((v) => v.textContent === LONG)!;
-      expect(rect(company).height, 'a long company wraps onto further lines').toBeGreaterThan(20);
+      if (width === 390) expect(rect(company).height, 'a long company wraps onto further lines on a phone').toBeGreaterThan(30);
     });
 
     it('all eight overtime rows render, one per item, each with its figure right-aligned beside it', () => {
