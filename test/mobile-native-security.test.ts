@@ -154,12 +154,13 @@ describe('native device gate', () => {
     }
     expect(f.state.getSnapshot().employmentId).toBe('employment-one');
   });
-  it.each(['background', 'logout', 'dispose'] as const)('ignores a late successful unlock after %s', async (change) => {
+  it.each(['background', 'blur', 'logout', 'dispose'] as const)('ignores a late successful unlock after %s', async (change) => {
     const f = sessionFixture(); const prompt = deferred<boolean>();
     f.ports.authenticate.mockReturnValueOnce(prompt.promise);
     const pending = f.state.initialize(); await drain();
     expect(f.ports.authenticate).toHaveBeenCalledTimes(1);
     if (change === 'background') f.state.setVisibility('background');
+    else if (change === 'blur') f.state.blur();
     else if (change === 'logout') await f.state.signOut();
     else f.state.dispose();
     prompt.resolve(true); await pending;

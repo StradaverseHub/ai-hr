@@ -78,7 +78,8 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
         ...(next !== 'active' && snapshot.status === 'signedIn' ? { status: 'locked' as const } : {}) });
     },
     blur() {
-      if (snapshot.status === 'signedIn') update({ status: 'locked' });
+      if (snapshot.unlocking) generation += 1; // the notification shade must invalidate a pending prompt too
+      update({ unlocking: false, ...(snapshot.status === 'signedIn' ? { status: 'locked' as const } : {}) });
     },
     dispose() { generation += 1; listeners.clear(); },
   };
