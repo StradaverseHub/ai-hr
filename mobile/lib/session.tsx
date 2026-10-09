@@ -16,7 +16,7 @@ type Session = ReturnType<Controller['getSnapshot']> & {
 };
 const Ctx = createContext<Session | null>(null);
 
-/** Native protection is enabled before protected data screens mount. No screenshot permission. */
+/** Native protection is enabled before protected data screens mount; no runtime permission prompt. */
 let screenProtection: Promise<void> | null = null;
 function protectScreen() {
   if (!screenProtection) {

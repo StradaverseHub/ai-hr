@@ -347,8 +347,9 @@ describe('0db616f3 · a valid row that is still worth saying something about', (
         'This month has a bonus run, and BONUS is going to the salary run. Put \u201cbonus\u201d in the Payroll Cycle column to send it to the bonus run instead.',
       ),
     ).toBeInTheDocument();
+    // Preview appears before the upload transition finishes; wait for the real ready action.
     // A warning is not an error: the operator can still import.
-    expect(screen.getByRole('button', { name: 'Import 1 valid record' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Import 1 valid record' })).toBeEnabled();
   });
 
   it('says nothing at all when there is nothing to say', async () => {
