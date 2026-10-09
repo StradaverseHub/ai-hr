@@ -268,6 +268,29 @@ describe('workosJwks — the production key source', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('a shared outage keeps known-key verification available but never calls a rotated token invalid', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn<typeof fetch>(async () => okResponse([K1.jwk]));
+      const src = workosJwks(freshClient(), fetchImpl);
+      await src({ refresh: false });
+      vi.advanceTimersByTime(11 * 60_000);
+      let release!: (value: Response) => void;
+      fetchImpl.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+      const cached = src({ refresh: false });
+      const rotated = refusal(src({ refresh: true }));
+      expect(fetchImpl).toHaveBeenCalledTimes(2); // both callers share the failed network request
+      release(new Response('', { status: 503 }));
+      expect(await cached).toEqual([K1.jwk]);
+      expect(await rotated).toBeInstanceOf(JwksUnavailableError);
+      // Non-vacuity: a token actually signed by the new key cannot be verified by the old cache.
+      const rotatedKey = keypair('rotated');
+      const token = signToken(rotatedKey.privateKey, { ...good, exp: Math.floor(Date.now() / 1000) + 300 }, { alg: 'RS256', kid: rotatedKey.jwk.kid });
+      expect(await refusal(verifyAccessToken(token, { jwks: src }))).toBeInstanceOf(JwksUnavailableError);
+      expect(fetchImpl).toHaveBeenCalledTimes(2); // the outage retry remains throttled
+    } finally { vi.useRealTimers(); }
+  });
+
   it('rejects malformed key entries as an availability error', async () => {
     const src = workosJwks(freshClient(), (async () => new Response(JSON.stringify({ keys: [null] }))) as typeof fetch);
     await expect(src({ refresh: false })).rejects.toBeInstanceOf(JwksUnavailableError);

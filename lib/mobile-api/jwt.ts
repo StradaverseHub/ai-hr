@@ -148,13 +148,18 @@ export function workosJwks(clientId: string, fetchImpl: typeof fetch = fetch): J
   return async ({ refresh }) => {
     const cached = jwksCache.get(url);
     const age = cached ? Date.now() - cached.fetchedAt : Infinity;
+    // A known cached key can survive a bounded outage. A missing key needs a successful refresh:
+    // otherwise a real key rotation would be misreported as invalid credentials (and log the user out).
+    const duringOutage = (error: JwksUnavailableError): Jwk[] => {
+      if (!refresh && cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
+      throw error;
+    };
     if (cached && age < JWKS_TTL_MS && (!refresh || age < JWKS_MIN_REFRESH_MS)) return cached.keys;
     const pending = jwksFlights.get(url);
-    if (pending) return pending;
+    if (pending) return pending.catch(duringOutage);
     const failure = jwksFailures.get(url);
     if (failure && Date.now() < failure.retryAt) {
-      if (cached && age < JWKS_MAX_AGE_MS) return cached.keys;
-      throw failure.error;
+      return duringOutage(failure.error);
     }
     const flight = (async () => {
       try {
@@ -172,11 +177,10 @@ export function workosJwks(clientId: string, fetchImpl: typeof fetch = fetch): J
       } catch (cause) {
         const error = new JwksUnavailableError(cause instanceof Error ? cause.message : String(cause));
         jwksFailures.set(url, { retryAt: Date.now() + JWKS_MIN_REFRESH_MS, error });
-        if (cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
         throw error;
       }
     })().finally(() => { if (jwksFlights.get(url) === flight) jwksFlights.delete(url); });
     jwksFlights.set(url, flight);
-    return flight;
+    return flight.catch(duringOutage);
   };
 }
