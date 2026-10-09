@@ -25,7 +25,7 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
   const [tab, setTab] = useState<Tab>(initialTab);
   const [appearance, setAppearance] = useState<'light' | 'dark'>(design.appearance === 'light' ? 'light' : 'dark');
   const [control, setControl] = useState<'flow' | 'punch' | 'rail'>(design.clockLayout);
-  const [motion, setMotion] = useState(design.motion === 'standard');
+  const [motion, setMotion] = useState<boolean | null>(null);
   useEffect(() => { if (design.appearance !== 'system') return; const q = matchMedia('(prefers-color-scheme: dark)'); const change = () => setAppearance(q.matches ? 'dark' : 'light'); change(); q.addEventListener('change', change); return () => q.removeEventListener('change', change); }, [design.appearance]);
   const shownAppearance = previewAppearance ?? appearance;
   const [large, setLarge] = useState(false);
@@ -136,11 +136,11 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
     case 'me': content = <>{heading(t('live.yourSpace'))}<section className={styles.identity}><span className={styles.monogram}>{initials}</span><h3>{data.person.name ?? t('live.account')}</h3><p>{data.person.employeeCode ?? t('live.notLinked')}</p><p>{data.employment?.position}</p><small>{data.employment?.company}</small></section>
       {data.employment && row(t('live.employment'), [data.employment.department, data.employment.company].filter(Boolean).join(' · '), '/me')}
       {section(t('live.documents'), state(data.payslips, slips => slips.length ? slips.map(p => row(p.period, p.company, `/me/payslip/${p.id}`, p.id)) : empty(t('live.noDocuments'))))}
-      <label className={styles.preference}><span>{t('live.motion')}</span><input type="checkbox" checked={motion} onChange={e => setMotion(e.target.checked)} /></label>
+      <label className={styles.preference}><span>{t('live.motion')}</span><input type="checkbox" checked={motion ?? design.motion === 'standard'} onChange={e => setMotion(e.target.checked)} /></label>
       <label className={styles.preference}><span>{t('live.largerText')}</span><input type="checkbox" checked={large} onChange={e => setLarge(e.target.checked)} /></label>
       </>; break;
   }
-  return <div className={styles.preview} data-appearance={shownAppearance} data-motion={embedded ? design.motion === 'standard' : motion} data-large={large} data-corners={design.corners} data-embedded={embedded}
+  return <div className={styles.preview} data-appearance={shownAppearance} data-motion={motion ?? design.motion === 'standard'} data-large={large} data-corners={design.corners} data-embedded={embedded}
     style={{ '--mark': MOBILE_ACCENTS[design.accent][shownAppearance], '--brand-button': MOBILE_ACCENTS[design.accent].button, '--brand-button-ink': MOBILE_ACCENTS[design.accent].onButton } as CSSProperties}
     onClickCapture={event => { if (designOnly && (event.target as HTMLElement).closest('a')) event.preventDefault(); }}>
     {!embedded && <><div className={styles.toolbar}>

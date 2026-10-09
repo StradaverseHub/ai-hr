@@ -61,4 +61,4 @@ export function resolveMobileDesign(value: unknown): MobileDesign {
   try { return parseMobileDesign(value); } catch { return parseMobileDesign(DEFAULT_MOBILE_DESIGN); }
 }
 export type MobileDesignRelease = { revision: number; publishedAt: string; config: MobileDesign };
-export type MobileBuilderState = { draft: MobileDesign; draftRevision: number; releases: MobileDesignRelease[] };
+export type MobileBuilderState = { tenantName: string; draft: MobileDesign; draftRevision: number; releases: MobileDesignRelease[] };

@@ -22,7 +22,7 @@ const data: MobilePreviewData = {
   leave: { status: 'ready', data: Array.from({ length: 6 }, (_, n) => ({ id: String(n), name: `Leave ${n}`, available: n, balance: n, taken: 0, pending: 0, takenOnly: false, sharedWith: [], canRequest: true, notice: null, cycleStart: '2026-01-01', cycleEnd: '2026-12-31' })) },
   requests: { status: 'ready', data: { items: [], total: 0 } }, claims: { status: 'disabled' }, team: { status: 'disabled' }, tasks: { status: 'ready', data: [] }, inbox: { status: 'disabled' }, payslips: { status: 'disabled' },
 };
-const state = (): MobileBuilderState => ({ draft: structuredClone(DEFAULT_MOBILE_DESIGN), draftRevision: 0, releases: [] });
+const state = (): MobileBuilderState => ({ tenantName: 'Test Tenant', draft: structuredClone(DEFAULT_MOBILE_DESIGN), draftRevision: 0, releases: [] });
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
 function mount(initial = state(), locale: keyof typeof catalogues = 'en', width = 1200) {
   return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur"><div style={{ width, maxWidth: '100%' }}><MobileBuilder data={data} initial={initial} /></div></NextIntlClientProvider>);

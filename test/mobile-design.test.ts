@@ -45,7 +45,9 @@ describe('tenant mobile builder, published snapshots and RLS', () => {
     const results = await Promise.allSettled([changeMobileDesign(admin, 'save', 0, config('First')), changeMobileDesign(admin, 'save', 0, config('Second'))]);
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
-    await changeMobileDesign(admin, 'publish', 1);
+    const publishes = await Promise.allSettled([changeMobileDesign(admin, 'publish', 1), changeMobileDesign(admin, 'publish', 1)]);
+    expect(publishes.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(publishes.filter(r => r.status === 'rejected')).toHaveLength(1);
     const first = await publishedMobileDesign(admin);
     await changeMobileDesign(admin, 'save', 2, config('New look')); await changeMobileDesign(admin, 'publish', 3);
     await expect(changeMobileDesign(admin, 'rollback', 3, 1)).rejects.toMatchObject({ reason: 'conflict' });

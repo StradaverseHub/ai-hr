@@ -28,7 +28,7 @@ export default async function MobilePreviewPage({ searchParams }: { searchParams
         {t('builder.liveWarning')}
       </div>
       <div className="flex justify-center py-2">
-        <MobileApp key={`${s.userId}:${data.employment?.id ?? 'none'}`} data={data} design={published.config} />
+        <MobileApp key={`${s.userId}:${data.employment?.id ?? 'none'}:${published.revision}`} data={data} design={published.config} />
       </div>
     </div>
   );

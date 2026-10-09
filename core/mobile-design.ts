@@ -2,14 +2,14 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { mobileDesignDraft, mobileDesignRelease } from '../db/schema';
+import { mobileDesignDraft, mobileDesignRelease, tenant } from '../db/schema';
 import { isGroupAdmin } from '../lib/authz';
 import { DEFAULT_MOBILE_DESIGN, parseMobileDesign, resolveMobileDesign, type MobileBuilderState, type MobileDesignRelease } from '../lib/mobile-design';
 
 export class MobileDesignError extends Error {
   constructor(public readonly reason: 'forbidden' | 'conflict' | 'invalid_design' | 'missing_release') { super(reason); }
 }
-function admin(ctx: SessionContext) { if (!isGroupAdmin(ctx)) throw new MobileDesignError('forbidden'); }
+function admin(ctx: SessionContext): asserts ctx is SessionContext & { userId: string } { if (!ctx.userId || !isGroupAdmin(ctx)) throw new MobileDesignError('forbidden'); }
 function revision(value: unknown): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) throw new MobileDesignError('invalid_design');
   return Number(value);
@@ -23,9 +23,10 @@ export async function publishedMobileDesign(ctx: SessionContext): Promise<Mobile
 export async function mobileBuilderState(ctx: SessionContext): Promise<MobileBuilderState> {
   admin(ctx);
   return withTenant(ctx, async tx => {
+    const [tenantRow] = await tx.select({ name: tenant.name }).from(tenant).where(eq(tenant.id, ctx.tenantId));
     const [d] = await tx.select().from(mobileDesignDraft).where(eq(mobileDesignDraft.tenantId, ctx.tenantId)).for('share');
     const releases = await tx.select().from(mobileDesignRelease).where(eq(mobileDesignRelease.tenantId, ctx.tenantId)).orderBy(desc(mobileDesignRelease.revision)).limit(20);
-    return { draft: resolveMobileDesign(d?.config ?? DEFAULT_MOBILE_DESIGN), draftRevision: d?.revision ?? 0,
+    return { tenantName: tenantRow?.name ?? ctx.tenantId, draft: resolveMobileDesign(d?.config ?? DEFAULT_MOBILE_DESIGN), draftRevision: d?.revision ?? 0,
       releases: releases.map(r => ({ revision: r.revision, publishedAt: r.publishedAt.toISOString(), config: resolveMobileDesign(r.config) })) };
   });
 }
