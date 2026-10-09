@@ -7,7 +7,7 @@
  *   1. The route is registered in lib/permissions.ts SCREENS with the scopedSession guard.
  *   2. The page actually enforces that guard (calls scopedSession) — registration alone isn't enough.
  *   3. The sidebar exposes exactly one /mobile-preview nav entry.
- *   4. The home screen lists the reporter's six feature tiles in the specified 3×2 order.
+ *   4. The owner replaced the mock tiles with Monolith's five live task destinations.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,21 +37,12 @@ describe('mobile-preview module (ca2f2fef)', () => {
     expect(matches.length).toBe(1);
   });
 
-  it('the home screen lists the six feature tiles in the reporter order', () => {
+  it('the live preview presents the five task destinations without sample identities', () => {
     const src = read('components/mobile-preview/mobile-app.tsx');
-    const order = [
-      'feature.attendance',
-      'feature.leave',
-      'feature.claim',
-      'feature.payroll',
-      'feature.performance',
-      'feature.setting',
-    ];
-    let cursor = -1;
-    for (const key of order) {
-      const at = src.indexOf(key, cursor + 1);
-      expect(at, `${key} appears after the previous tile`).toBeGreaterThan(cursor);
-      cursor = at;
-    }
+    for (const id of ['home', 'clock', 'requests', 'inbox', 'me']) expect(src).toContain(`id: '${id}'`);
+    expect(src).not.toContain('Aisyah Rahman');
+    expect(src).toContain('MobilePreviewData');
+    const page = read('app/mobile-preview/page.tsx');
+    expect(page).toContain('loadMobilePreview(s, scopeIds, locale)');
   });
 });

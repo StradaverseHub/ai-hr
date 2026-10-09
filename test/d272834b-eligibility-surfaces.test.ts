@@ -387,28 +387,17 @@ describe('d272834b · the remediation report lists and never reverses', () => {
   });
 });
 
-describe('d272834b · the Mobile App Preview carries no leave data to gate', () => {
-  /**
-   * ⚠️ THE BRIEF NAMED FOUR SURFACES AND ONE OF THEM DOES NOT EXIST AS A SURFACE. `/mobile-preview` is a
-   * design mock (ca2f2fef): `app/mobile-preview/page.tsx`'s only server call is the session guard, and
-   * `components/mobile-preview/mobile-app.tsx` prints THREE hardcoded figures — Annual 12.0, Sick 14.0,
-   * Unpaid 0.0 — from the message catalogue. It never reads `leave_type`, never reads an employment, and
-   * never mentions Maternity Leave, so there is nothing on it for an eligibility rule to apply to. Saying
-   * "the mobile preview is now gated" would have been a claim about a screen that holds no data.
-   *
-   * This guard exists so that stays TRUE rather than merely true today. The moment that mock is wired to a
-   * real balance read it becomes a fourth employee-facing surface, and it goes red here until whoever wires
-   * it has decided which side of `includeIneligible` it is on.
-   */
-  it('reads no employee, no leave type and no balance — so wiring it up must fail this guard', () => {
-    const src = readFileSync(new URL('../components/mobile-preview/mobile-app.tsx', import.meta.url), 'utf8');
+describe('d272834b · Mobile App Preview inherits the employee eligibility owner', () => {
+  // Owner explicitly replaced sample data with authorized live data. Integration and no-leak proof:
+  // test/mobile-preview-live.test.ts. The preview must never read the unrestricted catalogue itself.
+  it('loads the existing masked, eligible dashboard through the authenticated web page', () => {
+    const loader = readFileSync(new URL('../app/mobile-preview/data.ts', import.meta.url), 'utf8');
+    expect(loader.length).toBeGreaterThan(1000);
+    expect(loader).toContain('myLeaveDashboard(s, me!.employmentId, { today, locale })');
+    expect(loader).not.toContain('includeIneligible: true');
+    expect(loader).not.toMatch(/listLeaveTypes\(/);
     const page = readFileSync(new URL('../app/mobile-preview/page.tsx', import.meta.url), 'utf8');
-    for (const forbidden of ['leaveBalances', 'myLeaveDashboard', 'listEligibleLeaveTypesFor', '@/core/read', '@/core/my-leave']) {
-      expect(src.includes(forbidden), `the mock must not read ${forbidden}`).toBe(false);
-      expect(page.includes(forbidden), `the preview page must not read ${forbidden}`).toBe(false);
-    }
-    // And the figures really are literals rather than a read that merely looks like one.
-    expect(src).toMatch(/\[t\('leaveBalance\.annual'\), '12\.0'\]/);
+    expect(page).toContain('await scopedSession()');
   });
 });
 

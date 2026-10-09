@@ -302,6 +302,28 @@ derived time that is signed and anchored.
    - One public listing (not a managed-Play private app).
    - The release pipeline.
 
+## Mobile App Preview (2026-10-09)
+
+The owner selected Monolith Flow and requires the in-system preview to use the viewer's authorized
+records. `/mobile-preview` therefore consumes existing web services under `scopedSession()`; it does
+not call the mobile API with a web cookie or accept a user/employment selector from the browser.
+Own records resolve through `myEmployment`, matching the existing web clock. Team membership is
+resolved afresh by `resolveMyTeamScope`, narrowed by the company switcher. A primary employment is
+shown here; the native app's explicit employment picker remains a separate delivery.
+
+The server maps only displayed fields into a serializable DTO. Leave cards come from
+`myLeaveDashboard`, preserving eligibility, hidden figures, taken-only types and shared pools without
+summing or inventing balances. Own history is explicitly filtered even when an admin could read
+more; inbox reads remain recipient-scoped. Payslip links require closed and released records and
+carry no compensation amounts. Disabled, unavailable and empty sections are distinct.
+
+Both themes and clock layout comparisons render the same authorized snapshot. Refresh re-runs the
+server reads. Navigation and appearance are local state only: clocking, leave submissions and
+approval decisions open their existing guarded workflows. Viewing this preview neither writes an
+attendance record nor marks a notification as read. Access tests exercise populated peer and tenant
+records, current reporting relationships, company narrowing and compensation stripping; browser
+checks cover all six locales, both themes and every returned leave type.
+
 ## Consequences
 
 - There are now two front doors, server actions and `/api/mobile/v1`. Both converge at `getSession()` and
