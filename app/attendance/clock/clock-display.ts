@@ -106,11 +106,8 @@ export function formatElapsed(totalSeconds: number): string {
   return `${pad(Math.floor(s / 3600))}h ${pad(Math.floor((s % 3600) / 60))}m ${pad(s % 60)}s`;
 }
 
-/** One selectable shift for the header's Switch affordance. */
-export type ShiftOption = { code: string | null; name: string; start: string; end: string };
-
-/** The Switch link renders only when there is genuinely something to switch between (>1 option today);
- *  for employees without shift options it stays hidden rather than being a dead link. */
-export function showShiftSwitch(optionCount: number): boolean {
-  return optionCount > 1;
-}
+// r430 — ShiftOption and showShiftSwitch RETIRED here. The Switch link (and the shiftOptions list it
+// cycled through) is removed entirely: the Current Shift shown is always the one actually assigned to the
+// employee through their Shift or Schedule Group, read-only, with nothing on this screen to pick a
+// different one. showShiftSwitch(optionCount) was already dead code outside its own test before this
+// round (clock-client.tsx inlined the same >1 check rather than calling it).

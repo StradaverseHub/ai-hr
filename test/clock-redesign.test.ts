@@ -27,7 +27,6 @@ import {
   latestSessionStart,
   ringState,
   secondsOf,
-  showShiftSwitch,
   type ClockPunch,
 } from '../app/attendance/clock/clock-display';
 
@@ -145,26 +144,30 @@ describe('formatElapsed', () => {
   });
 });
 
-describe('showShiftSwitch — the Switch link is hidden rather than dead', () => {
-  it('renders only when there is more than one option', () => {
-    expect(showShiftSwitch(0)).toBe(false);
-    expect(showShiftSwitch(1)).toBe(false);
-    expect(showShiftSwitch(2)).toBe(true);
-  });
-});
+// r430 — showShiftSwitch and its describe block are DELETED here, not retired: the function itself was
+// already dead code outside this very test (clock-client.tsx inlined the same >1 check rather than calling
+// it) before this round removed the Switch link, and the export is now gone from clock-display.ts entirely.
 
 // ─── Source guards on the client island ('use client' — not renderable in a node test) ───────────────
 
 const ISLAND = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/clock-client.tsx'), 'utf8');
 const CAPTURE = fs.readFileSync(path.resolve(__dirname, '../components/attendance-clock-button.tsx'), 'utf8');
 
-describe('clock-client source guards (r378 approved camera replacement for af552c5d)', () => {
-  it('blocks both clock actions during capture/request and guards duplicate confirmation', () => {
-    expect(ISLAND).toMatch(/const blocked=busy\|\|camera\|\|!!action\|\|!synced\|\|!today\.deviceValid\|\|!today\.locationValid/);
-    expect(ISLAND).toContain('disabled={blocked||today.clockedIn}');
-    expect(ISLAND).toContain('disabled={blocked||!today.clockedIn}');
-    expect(ISLAND).toContain('if(!photo||!action||busy)return;setBusy(true)');
-    expect(ISLAND).toContain('disabled={busy} onClick={confirm}');
+describe('clock-client source guards (r430 — Switch removed, always-on buttons, device gate removed, conditional photo)', () => {
+  it('both Clock In and Clock Out are ALWAYS enabled (no clock-state gating) and guard duplicate confirmation', () => {
+    expect(ISLAND).toMatch(/const blocked=busy\|\|camera\|\|!!action\|\|!synced\|\|!today\.locationValid/);
+    expect(ISLAND).not.toContain('today.deviceValid');
+    // r430 — neither button is gated by today.clockedIn any more: clocking out with no clock-in first, or
+    // clocking in again after a clock-out, are both allowed. `blocked` alone (busy/camera/action/sync/geo)
+    // is the only reason either button is ever disabled.
+    expect(ISLAND).toContain("disabled={blocked} onClick={()=>startClock('in')}");
+    expect(ISLAND).toContain("disabled={blocked} onClick={()=>startClock('out')}");
+    expect(ISLAND).not.toContain('blocked||today.clockedIn');
+    expect(ISLAND).not.toContain('blocked||!today.clockedIn');
+    // confirm() no longer requires a photo (Required/Optional/Not Required all reach it); only busy guards
+    // against a duplicate submit.
+    expect(ISLAND).toContain('if(busy)return;setBusy(true)');
+    expect(ISLAND).not.toContain('if(!photo||!action||busy)return');
     expect(ISLAND).toContain('body:command.current.body');
   });
   /** r423 — the third pill state: switch OFF, a valid fix → "Location recorded — geofencing not required". */
@@ -180,9 +183,14 @@ describe('clock-client source guards (r378 approved camera replacement for af552
     expect(READ).toContain('locationValid = result.enforced ? !!result.clockingLocationId : true');
     expect(READ).not.toContain('required:true');
   });
-  it('hides Switch unless there is more than one assignable shift', () => {
-    expect(ISLAND).toMatch(/shiftOptions\.length>1&&<button/);
-    expect(ISLAND).toContain('setShiftIdx(i=>(i+1)%shiftOptions.length)');
+  it('the Switch link is GONE entirely — there is no shift-switching control on the client island at all', () => {
+    // Not 'shiftOptions'/'registerDeviceAction': this file's own retirement comments name them, so a plain
+    // substring check on the whole source would fail on the documentation, not the code. setShiftIdx/
+    // showShiftSwitch/switchShift are unambiguous — no comment needs to spell a removed state setter or
+    // i18n key to explain what changed.
+    for (const needle of ['setShiftIdx', 'showShiftSwitch', "t('switchShift')"]) {
+      expect(ISLAND, needle).not.toContain(needle);
+    }
   });
   it('anchors the clock and worked duration to authenticated server values plus a monotonic delta', () => {
     expect(ISLAND).toContain("fetch('/api/time',{cache:'no-store'})");
@@ -192,19 +200,43 @@ describe('clock-client source guards (r378 approved camera replacement for af552
     expect(ISLAND).toContain('now-Date.parse(today.serverNow)');
     expect(ISLAND).not.toContain('Date.now()');
   });
-  it('renders separate accessible green IN and red OUT controls with state-specific disabling', () => {
-    expect(ISLAND).toContain("onClick={()=>openCamera('in')}");
-    expect(ISLAND).toContain("onClick={()=>openCamera('out')}");
+  it('renders separate accessible green IN and red OUT controls, both always clickable', () => {
+    expect(ISLAND).toContain("onClick={()=>startClock('in')}");
+    expect(ISLAND).toContain("onClick={()=>startClock('out')}");
     expect(ISLAND).toContain('bg-[#12795A]');
     expect(ISLAND).toContain('bg-[#B3402A]');
     expect(ISLAND).toContain('min-h-14');
     expect(ISLAND).toContain('disabled:opacity-[.35]');
   });
-  it('keeps one mandatory photo/device/location writer and redirects legacy self-service entry points', () => {
+  // r430 — was "keeps one mandatory photo/device/location writer": the device half of that claim is now
+  // false by design (DELETED, not kept) and the photo half is now CONDITIONAL, not mandatory. Split into
+  // two guards so each makes one true claim rather than one that silently went half-wrong.
+  it('removes the registered-device badge, Register card and device-token plumbing entirely', () => {
+    // Not 'registerDeviceAction': this file's own retirement comment names it (see the header note).
+    for (const needle of [
+      'getStoredDeviceToken(',
+      'storeDeviceToken(',
+      'suggestDeviceLabel(',
+      'today.deviceValid',
+      "t('deviceRegisteredHint')",
+      "t('registerDevice')",
+    ]) {
+      expect(ISLAND, needle).not.toContain(needle);
+    }
+    expect(ISLAND).not.toMatch(/\bimport\s*\{\s*registerDeviceAction/);
+  });
+  it('runs a conditional photo flow from the employee’s own attendancePhotoSetting — required/optional/not_required, never decided client-side', () => {
+    expect(ISLAND).toContain('today.attendancePhotoSetting');
+    expect(ISLAND).toContain("setting==='required'");
+    expect(ISLAND).toContain("setting==='not_required'");
+    expect(ISLAND).toContain("today.attendancePhotoSetting==='optional'");
+    expect(ISLAND).toContain("t('skipPhoto')");
+    // The photo FormData field is set only when a photo exists — never unconditional any more.
+    expect(ISLAND).toContain("if(photo)body.set('photo',photo,'attendance.jpg')");
+  });
+  it('keeps the geolocation capture and the one private clock endpoint; legacy self-service entry points stay dead redirects', () => {
     expect(ISLAND).toContain('navigator.geolocation.getCurrentPosition');
     expect(ISLAND).toContain("navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})");
-    expect(ISLAND).toContain('deviceToken:getStoredDeviceToken()');
-    expect(ISLAND).toContain("body.set('photo',photo,'attendance.jpg')");
     expect(ISLAND).toContain("fetch('/api/attendance/clock',{method:'POST'");
     expect(ISLAND).toContain('stream.current?.getTracks().forEach(track=>track.stop())');
     for (const [file, names] of [

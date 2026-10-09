@@ -202,7 +202,7 @@ describe('§1 the Schedule Group field on the Personnel Attendance tab', () => {
     expect(page).toContain('data-save-section="schedule"');
     // `covers` prints the card names on the sticky bar; a card in the scope but not named is a bar that
     // owns more than it says (r255/r256 both had to correct that).
-    expect(page).toContain("attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle'))],");
+    expect(page).toContain("attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],");
     expect(ACTIONS()).toContain('schedule: applyScheduleGroupSection,');
   });
 

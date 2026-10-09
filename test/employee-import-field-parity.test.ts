@@ -254,6 +254,7 @@ const REGISTRY: Record<string, RegistryTable> = {
           'costAllocation',
           'geofencingEnabled',
           'geofenceRadiusM',
+          'attendancePhotoSetting',
           'paymentMethod',
         ],
       },

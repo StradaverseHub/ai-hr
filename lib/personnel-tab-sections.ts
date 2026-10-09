@@ -120,7 +120,12 @@ export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'ot
 // r423 (83c0d3c8) — `clocking` and `geofencing` MERGED into one `clocking` section: the "Use Geofencing for
 // Clocking" switch and the locations it needs are one rule ("on requires a location") with one writer
 // (setClockingControl), so they can no longer be saved apart. `geofencing` is gone, not renamed.
-export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'card'] as const;
+// r430 (board item b8ca6efe) ADDED `photo` — the Web Clocking Attendance Photo setting
+// (employment.attendance_photo_setting). Bucket (a) on the classification's own test: one column
+// overwritten with a value a Discard can put straight back, no dated record opened. Placed AFTER
+// `clocking` (it renders directly under it — both are "what does this employee's own clocking require"
+// cards) and BEFORE `card`, which stays LAST for the reason its own comment above gives.
+export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'photo', 'card'] as const;
 
 /**
  * Employment (the `job` tab). One section: the Employment Dates card.

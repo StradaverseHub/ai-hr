@@ -890,6 +890,13 @@ export const terminationTypeEnum = pgEnum('termination_type', [
   'other',
 ]);
 
+// r430 (board item b8ca6efe, migration 0520) — per-employee Web Clocking photo requirement. Default
+// 'not_required' for every employee (today's behaviour — a photo was always mandatory — changes only once
+// HR sets this per person). Declared HERE, ahead of `employment`, because it is referenced as that table's
+// column type below (a later `const` would be a temporal-dead-zone error at module load). See
+// core/attendance-clock.ts captureEmployeeClockTx, which enforces it SERVER-SIDE.
+export const attendancePhotoSettingEnum = pgEnum('attendance_photo_setting', ['required', 'optional', 'not_required']);
+
 // employment = the durable Person↔Company relationship. Multiple concurrent = multi-company.
 export const employment = pgTable(
   'employment',
@@ -1025,6 +1032,13 @@ export const employment = pgTable(
     // no longer read or written — each site's own radius is the only radius.
     geofencingEnabled: boolean('geofencing_enabled').notNull().default(false),
     geofenceRadiusM: integer('geofence_radius_m'),
+    // r430 (board item b8ca6efe, migration 0520) — Web Clocking's per-employee Attendance Photo setting:
+    // required (a photo must be taken or the clocking is refused), optional (the employee may take one or
+    // skip it), or not_required (no camera step at all). Every employee starts on not_required — today's
+    // photo-always-mandatory behaviour changes only once HR turns this on for a person, same shape as
+    // geofencingEnabled above. Enforced SERVER-SIDE in core/attendance-clock.ts captureEmployeeClockTx —
+    // never trust the client's own idea of this setting.
+    attendancePhotoSetting: attendancePhotoSettingEnum('attendance_photo_setting').notNull().default('not_required'),
     // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on the
     // Employment tab's new Employment Information card. All NULLABLE and additive — an existing employment
     // with every column NULL behaves exactly as before (field-capture only; business rules follow in a
@@ -3895,24 +3909,35 @@ export const attendance = pgTable(
 // Stage-1 scope: capture + first-in/last-out summation. Deferred (stage 2, documented GAP): per-pair
 // unpaid-break, pre-shift/early-OT attribution, split shifts, cross-midnight multi-punch.
 export const attendancePunchDirectionEnum = pgEnum('attendance_punch_direction', ['in', 'out']);
+// r430 (migration 0520) — device_id and the six photo columns are now NULLABLE: Web Clocking no longer
+// registers a device (device_id is null for every capture going forward, kept only for historical rows),
+// and a photo is no longer always taken (attendance_photo_setting 'optional' skipped, or 'not_required').
+// The CHECK below is a genuinely new nullable SET, so it is written explicitly rather than relying on a
+// comment — unlike the geofence columns' "null together" convention just below, which stays comment-only.
 export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   id: id(), tenantId: tenantId(), employmentId: uuid('employment_id').notNull().references(() => employment.id),
   attendanceDate: date('attendance_date').notNull(), direction: attendancePunchDirectionEnum('direction').notNull(),
   requestId: uuid('request_id').notNull(), serverRecordedAt: timestamp('server_recorded_at', { withTimezone: true }).notNull(),
-  photoCapturedAt: timestamp('photo_captured_at', { withTimezone: true }).notNull(),
-  photoMimeType: text('photo_mime_type').notNull(), photoSize: integer('photo_size').notNull(),
+  photoCapturedAt: timestamp('photo_captured_at', { withTimezone: true }),
+  photoMimeType: text('photo_mime_type'), photoSize: integer('photo_size'),
   photoBytes: bytea('photo_bytes'), thumbnailBytes: bytea('thumbnail_bytes'),
-  decodedWidth: integer('decoded_width').notNull(), decodedHeight: integer('decoded_height').notNull(),
-  deviceId: uuid('device_id').notNull().references(() => employeeDevice.id),
+  decodedWidth: integer('decoded_width'), decodedHeight: integer('decoded_height'),
+  deviceId: uuid('device_id').references(() => employeeDevice.id),
   lat: doublePrecision('lat').notNull(), lng: doublePrecision('lng').notNull(), accuracyM: doublePrecision('accuracy_m').notNull(),
   // r423 (0517) — NULL together when the employee's geofencing switch is OFF: the position is recorded, it is
   // simply not compared with a site. Present together for every geofenced capture (core/attendance-clock.ts).
   clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
   distanceM: integer('distance_m'), radiusM: integer('radius_m'),
-  commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest').notNull(),
+  commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest'),
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
-  index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt)]);
+  index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt),
+  // r430 — the six photo columns (device_id excluded: it is independently nullable, always null going
+  // forward) are null together: either every one was captured, or none was.
+  check(
+    'attendance_clock_capture_photo_together',
+    sql`num_nonnulls(${t.photoCapturedAt}, ${t.photoMimeType}, ${t.photoSize}, ${t.decodedWidth}, ${t.decodedHeight}, ${t.photoDigest}) IN (0, 6)`,
+  )]);
 
 export const attendancePunch = pgTable(
   'attendance_punch',

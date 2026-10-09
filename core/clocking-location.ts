@@ -856,3 +856,46 @@ export function setClockingControl(
     return { employmentId: p.employmentId, enabled: p.enabled, clockingLocationIds: afterIds };
   });
 }
+
+/**
+ * r430 (board item b8ca6efe, migration 0520) — THE ONE WRITER of an employee's Web Clocking Attendance
+ * Photo setting: required (a photo must be taken or the clocking is refused), optional (the employee may
+ * take one or skip it), or not_required (no camera step at all, the default every employee starts on).
+ * Lives beside setClockingControl — same "employee-level attendance capture rule" cohesion, same column
+ * family on `employment`. Read SERVER-SIDE and enforced at every clock-in/out
+ * (core/attendance-clock.ts captureEmployeeClockTx); this writer only changes which rule applies, never
+ * enforces it itself.
+ */
+export type AttendancePhotoSetting = 'required' | 'optional' | 'not_required';
+
+export function setAttendancePhotoSetting(
+  ctx: SessionContext,
+  p: { employmentId: string; setting: AttendancePhotoSetting },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ attendancePhotoSetting: employment.attendancePhotoSetting })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+    const updated = await tx
+      .update(employment)
+      .set({ attendancePhotoSetting: p.setting })
+      .where(eq(employment.id, p.employmentId))
+      .returning({ id: employment.id });
+    if (!updated.length) throw new Error('Employment not found, or you may not change it.');
+    // Substrate (ADR-0006): consistent with attendance.card.assigned/cleared and
+    // attendance.device.registered/revoked — a per-employee attendance-capture RULE change, not a punch.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'attendance.photo-setting.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: before.attendancePhotoSetting, after: p.setting },
+    });
+    return { employmentId: p.employmentId, attendancePhotoSetting: p.setting };
+  });
+}

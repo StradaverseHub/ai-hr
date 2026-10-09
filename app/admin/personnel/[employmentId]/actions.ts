@@ -44,7 +44,7 @@ import {
 // f513ec02 — the Schedule Group card's writer. It carries the REVERSE of the allowed-shift refusal (the
 // group moves while the shift stands still), which is why it lives beside that refusal in core/roster.ts.
 import { setEmploymentScheduleGroup } from '@/core/roster';
-import { setClockingControl, ClockingLocationRequiredError, ClockingLocationNotAvailableError } from '@/packs/attendance/service';
+import { setClockingControl, ClockingLocationRequiredError, ClockingLocationNotAvailableError, setAttendancePhotoSetting, type AttendancePhotoSetting } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
 import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionMidMonthError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
@@ -1938,6 +1938,7 @@ export async function saveAttendanceTabAction(formData: FormData): Promise<TabSa
     holiday: applyHolidayCalendarSection,
     schedule: applyScheduleGroupSection,
     clocking: applyClockingControlSection,
+    photo: applyAttendancePhotoSection,
     card: applyCardIdSection,
   });
 }
@@ -2259,4 +2260,25 @@ export async function setClockingControlAction(formData: FormData) {
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * r430 (board item b8ca6efe) — save ONLY the Web Clocking Attendance Photo setting. No standalone per-card
+ * action exists for this one (the card has no `action={…}` form, only the Attendance tab's consolidated
+ * Save reaches it — see the note on webClockingPhotoCard in page.tsx), so this is reached ONLY through
+ * saveAttendanceTabAction → runTabSave, unlike its siblings above which also keep an individually-postable
+ * door. An unrecognised value falls back to 'not_required' — the three radios never post anything else, so
+ * this only matters against a crafted request, and refusing outright would be reachable from THIS door
+ * alone, which is worse than the safe default every employee already starts on.
+ */
+async function applyAttendancePhotoSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const raw = String(formData.get('attendancePhotoSetting') ?? '');
+  const setting: AttendancePhotoSetting = raw === 'required' || raw === 'optional' ? raw : 'not_required';
+  await setAttendancePhotoSetting(s, {
+    employmentId: String(formData.get('employmentId')),
+    setting,
+  });
 }

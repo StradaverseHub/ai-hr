@@ -2990,6 +2990,13 @@
       "when": 1791800000000,
       "tag": "0519_shift_flexible_break_to_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1791900000000,
+      "tag": "0520_web_clocking_photo_setting",
+      "breakpoints": true
     }
   ]
 }
