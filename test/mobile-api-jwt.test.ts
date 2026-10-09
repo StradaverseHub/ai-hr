@@ -72,7 +72,7 @@ describe('verifyAccessToken — every refusal is an AuthRequiredError (401: sign
   const jwks = staticJwks([K1.jwk]);
   const cases: Array<[string, () => string]> = [
     ['wrong issuer under a trusted key', () => signToken(K1.privateKey, { ...good, iss: 'https://attacker.example/' })],
-    ['no issuer', () => signToken(K1.privateKey, { sub: good.sub, exp: NOW + 300 })],
+    ['no issuer', () => signToken(K1.privateKey, { ...good, iss: undefined })],
     ['expired', () => signToken(K1.privateKey, { ...good, exp: NOW - 60 })],
     ['no exp claim', () => signToken(K1.privateKey, { ...good, exp: undefined })],
     ['exp not a number', () => signToken(K1.privateKey, { ...good, exp: String(NOW + 300) })],
