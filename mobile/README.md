@@ -21,6 +21,9 @@ do not reuse another project's credentials. Server cutover and account bootstrap
 - Credential writes are serialized. A login generation owns each browser exchange, refresh and
   request. Logout immediately invalidates the generation and removes private screens. Late results
   cannot restore a session, overwrite a newer login or turn an old refusal into a new account's logout.
+- Each native sign-in attempt creates a new AuthRequest with fresh random state and PKCE values.
+  A cancelled attempt's callback cannot be exchanged during a later attempt. The regression loads
+  Expo's installed request, PKCE and callback parser alongside the actual sign-in screen.
 - On first launch without the sandbox installation marker, surviving Keychain credentials are
   deleted before the marker is created. An OS/storage failure leaves the gate closed and retries.
   Explicit logout marks the sandbox as signed out before awaiting deletion. A surviving credential
@@ -46,8 +49,8 @@ do not reuse another project's credentials. Server cutover and account bootstrap
 
 ## Release verification
 
-FACT: regression tests exercise the actual credential/session controllers and the client transport
-and rendered loading hook with injected OS/network ports. They do not exercise iOS Keychain,
+FACT: regression tests exercise the actual credential/session controllers, installed OAuth request
+and callback parser, client transport and rendered loading hook with injected OS/network ports. They do not exercise iOS Keychain,
 Android Keystore, TLS negotiation, browser cookies or biometric hardware.
 
 UNKNOWN until checked on staging and physical devices:

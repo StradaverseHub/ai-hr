@@ -319,6 +319,9 @@ derived time that is signed and anchored.
 - **FACT (security hardening, 2026-10-09):** credential mutations are serialized and owned by a login
   generation. Logout invalidates pending browser/refresh operations immediately. A stale response cannot
   restore credentials, clear a newer refresh flight or sign out a newer account.
+- **FACT:** every native browser sign-in attempt owns a fresh OAuth request, random state and PKCE
+  verifier. The installed Expo hook previously reused these after cancellation; an SDK-backed
+  regression reproduces the stale callback exchange before the fix and verifies refusal after it.
 - **FACT:** the native foundation requires HTTPS origins, hides private routes when inactive, locks on
   background/Android blur, enables native capture/app-switcher protection before reading a stored session,
   and wipes surviving Keychain refresh credentials before creating its first-install sandbox marker.

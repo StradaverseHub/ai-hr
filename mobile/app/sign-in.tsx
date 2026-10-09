@@ -3,6 +3,7 @@
  * expo-auth-session generates the verifier and challenge and checks `state` on return.
  */
 import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
@@ -21,29 +22,28 @@ export default function SignIn() {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [failed, setFailed] = useState(false);
-  const [request, , promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: config.workosClientId,
-      redirectUri: redirectUri(),
-      responseType: AuthSession.ResponseType.Code,
-      usePKCE: true,
-      scopes: [],
-      extraParams: { provider: 'authkit' },
-    },
-    discovery,
-  );
-
   if (session.status === 'signedIn') return <Redirect href="/" />;
 
   const onSignIn = async () => {
-    if (pending.current || !request || problem) return;
+    if (pending.current || problem) return;
     pending.current = true;
     const owner = beginSignIn();
     setFailed(false);
     setBusy(true);
     try {
-      const r = await promptAsync();
-      if (r.type === 'success' && typeof r.params.code === 'string' && request?.codeVerifier) {
+      // A hook-held request reuses its state/verifier after cancellation. Each browser attempt
+      // must own fresh values so a delayed callback cannot complete a subsequent attempt.
+      const request = new AuthSession.AuthRequest({
+        clientId: config.workosClientId,
+        redirectUri: redirectUri(),
+        responseType: AuthSession.ResponseType.Code,
+        state: Crypto.randomUUID(),
+        usePKCE: true,
+        scopes: [],
+        extraParams: { provider: 'authkit' },
+      });
+      const r = await request.promptAsync(discovery);
+      if (r.type === 'success' && typeof r.params.code === 'string' && request.codeVerifier) {
         await completeSignIn(r.params.code, request.codeVerifier, owner);
         await session.markSignedIn(owner);
         router.replace('/');
@@ -68,7 +68,7 @@ export default function SignIn() {
           {t('notConfigured')} {problem}
         </Text>
       ) : (
-        <Button title={busy ? t('signingIn') : t('signInButton')} disabled={busy || !request} onPress={() => void onSignIn()} />
+        <Button title={busy ? t('signingIn') : t('signInButton')} disabled={busy} onPress={() => void onSignIn()} />
       )}
       {failed && <Text style={styles.problem}>{t('signInFailed')}</Text>}
       {session.error && <Text style={styles.problem}>{t('genericError')}</Text>}
