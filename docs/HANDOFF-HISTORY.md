@@ -12,6 +12,8 @@
 
 **Decision for the reporter, said plainly.** Today every employee must take a photo every time; after this nobody does until HR sets Required or Optional for that person. HR must set the people who should still be photographed.
 
+**Closed with no build.** b3da5f59 (My Leave rename, shipped r426) and 48652e18 (Bank Account tab: closed Add above the list, Remove asks first, names the paid statutory bodies, shipped r419 as the corrected revision 2) had been reset to planned when their plans were re-pushed after deploy; the reporter approved them again and they were verified against the code on main and marked deployed (refs 3fbc3bc3 and d04524a1). Board at the end: 0 planned, 0 approved, 0 building, 1022 deployed.
+
 **Not done / owed.** The Web Clocking screen itself was not rendered (the dev user has no employee profile); it is covered by `clock-redesign`, `7ac6b4db`, `r430-web-clocking` and the route test and by source inspection. ADR-0070's device-gate section was not amended. The separate `/me` quick-clock button still honours Require Registered Device.
 
 ## r428 + r429 — 2026-10-09 · main@cfb3a6672672d093c83d4aa77927ec8c3b2c0105 · migration 0519
@@ -24,7 +26,7 @@
 
 **Deploy.** `improve:deploy` (no board write) — a production-database read for the item ids was denied, so the two items were NOT marked deployed. Box: 401, /health 200, ref cfb3a667, zero-line dry-run. 0519 on production: 2 shifts carried the whole-shift flexible break; 1 converted, 1 (AM4, no break rows) left unchanged with the switch on, as the plan said.
 
-**Not done / owed.** Board items 83c0d3c8 and f6819e19 are still `building`: run `improve:mark-deployed` for each. 3 `planned` items (b8ca6efe, b3da5f59, 48652e18) await the reporter; r430 (b8ca6efe) has an unapproved uncommitted build in `build/r430-webclocking`. Local Postgres on 5433 was down and rebuilt with `dev-db-rebuild.sh`.
+**Not done / owed.** (Superseded 2026-10-09: 83c0d3c8 and f6819e19 were marked deployed on the board once the production read was permitted, build ref cfb3a667.) Local Postgres on 5433 was down and rebuilt with `dev-db-rebuild.sh`.
 
 ## r427 — 2026-10-08 · main@97c45e5d1e355531f7d0bca577cfeaf10ad68fea · migration none
 
