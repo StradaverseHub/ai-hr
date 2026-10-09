@@ -383,8 +383,8 @@ describe('Personnel Management rename (4ea70bb7)', () => {
     expect(at(catalogues.en, 'people.import.backLabel')).toBe('Personnel Management');
     expect(at(catalogues.en, 'people.detail.backToPeople')).toBe('People'); // employee-facing, unchanged
     expect(at(catalogues.en, 'people.detail.headerGroupJoinDate')).toBe('Group Join Date');
-    expect(at(catalogues.en, 'people.list.title')).toBe('Personnel');
-    expect(at(catalogues.en, 'nav.people')).toBe('Personnel');
+    expect(at(catalogues.en, 'people.list.title')).toBe('Team Directory');
+    expect(at(catalogues.en, 'nav.people')).toBe('Team Directory');
   });
 
   it.each(LOCALES)('locale %s has DELETED the keys nothing resolves any more', (loc) => {

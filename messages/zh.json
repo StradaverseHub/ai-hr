@@ -286,7 +286,7 @@
     "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
     "myWorkspace": "我的资料",
-    "people": "员工",
+    "people": "团队通讯录",
     "orgChart": "组织架构图",
     "myAbsence": "我的休假",
     "teamLeaveTracker": "团队休假追踪",
@@ -507,7 +507,7 @@
       "withhold": "暂扣"
     },
     "list": {
-      "title": "员工",
+      "title": "团队通讯录",
       "adminTitle": "员工管理",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
       "importCsv": "导入员工",
@@ -1128,7 +1128,6 @@
         "attendancePhotoHint": "控制该员工在网页打卡页面上下班打卡时是否需要拍照。必需：必须拍照。可选：员工可以拍照或跳过。不需要：不显示任何拍照步骤。每位员工的默认设置为不需要。"
       },
       "directorySubtitle": "员工通讯录档案",
-      "viewFullRecord": "查看完整记录",
       "tabs": {
         "profile": "个人资料",
         "family": "家庭",

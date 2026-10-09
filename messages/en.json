@@ -286,7 +286,7 @@
     "dataPrivacy": "Data Privacy",
     "dashboard": "Dashboard",
     "myWorkspace": "My Profile",
-    "people": "Personnel",
+    "people": "Team Directory",
     "orgChart": "Org chart",
     "myAbsence": "My Leave",
     "teamLeaveTracker": "Team Leave Tracker",
@@ -507,7 +507,7 @@
       "withhold": "Withhold"
     },
     "list": {
-      "title": "Personnel",
+      "title": "Team Directory",
       "adminTitle": "Personnel Management",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
       "importCsv": "Import employees",
@@ -1128,7 +1128,6 @@
         "attendancePhotoHint": "Controls whether a photo is needed when this employee clocks in or out on the Web Clocking page. Required: a photo must be taken. Optional: the employee may take one or skip it. Not Required: no camera step is shown. Default for every employee is Not Required."
       },
       "directorySubtitle": "Staff directory profile",
-      "viewFullRecord": "View full record",
       "tabs": {
         "profile": "Profile",
         "family": "Family",

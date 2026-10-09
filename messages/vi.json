@@ -286,7 +286,7 @@
     "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
     "myWorkspace": "Hồ sơ của tôi",
-    "people": "Nhân sự",
+    "people": "Danh bạ nhóm",
     "orgChart": "Sơ đồ tổ chức",
     "myAbsence": "Nghỉ phép của tôi",
     "teamLeaveTracker": "Theo dõi nghỉ phép của nhóm",
@@ -507,7 +507,7 @@
       "withhold": "Tạm giữ"
     },
     "list": {
-      "title": "Nhân sự",
+      "title": "Danh bạ nhóm",
       "adminTitle": "Quản lý Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
       "importCsv": "Nhập nhân viên",
@@ -1128,7 +1128,6 @@
         "attendancePhotoHint": "Kiểm soát việc có cần ảnh khi nhân viên này chấm công vào/ra trên trang Chấm công trên Web hay không. Bắt buộc: phải chụp ảnh. Tùy chọn: nhân viên có thể chụp hoặc bỏ qua. Không bắt buộc: không hiển thị bước chụp ảnh nào. Mặc định cho mọi nhân viên là Không bắt buộc."
       },
       "directorySubtitle": "Hồ sơ danh bạ nhân viên",
-      "viewFullRecord": "Xem hồ sơ đầy đủ",
       "tabs": {
         "profile": "Hồ sơ",
         "family": "Gia đình",
