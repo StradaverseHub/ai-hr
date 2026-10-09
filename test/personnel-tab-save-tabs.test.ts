@@ -764,7 +764,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // UPDATED rather than loosened: Holiday Calendar stays first (item 52a30630), and a bar that gained
       // a card without gaining its name would be the same control-that-lies `covers` exists to prevent.
       expect(page).toContain(
-        "attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle'))]",
+        "attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))]",
       );
       expect(page).toContain("job: [t('employmentInfo.title')]");
       // r256 — Payroll's entry names a SUB-SECTION of a card, not the card. Payment Method is rendered
@@ -825,7 +825,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(
         inAScope.sort(),
         'a conditionally-rendered card inside a save scope must have its name dropped by whenLive',
-      ).toEqual(['clockingCard', 'payrollPolicyCard']);
+      ).toEqual(['clockingCard', 'payrollPolicyCard', 'webClockingPhotoCard']); // r430: the Web Clocking card is gated the same way
       // Payment Method is deliberately NOT dropped: that card IS rendered on a terminated employment,
       // with its select disabled, so naming it describes something the reader can see.
       expect(page).toContain("payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive");

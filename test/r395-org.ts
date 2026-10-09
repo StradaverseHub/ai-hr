@@ -437,7 +437,8 @@ export const OVERRIDES: Record<string, Record<string, string>> = {
   roster_assignment: { is_rest_day: 'true' }, // roster_assignment_shift_xor_rest (shift_id stays null)
   // attendance_clock_capture: the photo/geo CHECKs (a 1-byte "photo" whose size matches, a fix inside the radius).
   attendance_clock_capture: {
-    command_digest: `repeat('a', 64)`, photo_digest: `repeat('b', 64)`, photo_mime_type: `'image/jpeg'`,
+    command_digest: `repeat('a', 64)`, photo_digest: `repeat('b', 64)`, photo_mime_type: `'image/jpeg'`, photo_captured_at: 'now()', // r430: all six photo columns are filled together (attendance_clock_capture_photo_together)
+   
     photo_size: '1', photo_bytes: `'\\x00'::bytea`, thumbnail_bytes: `'\\x00'::bytea`, decoded_width: '1', decoded_height: '1',
     lat: '0', lng: '0', accuracy_m: '0', distance_m: '0', radius_m: '1',
   },

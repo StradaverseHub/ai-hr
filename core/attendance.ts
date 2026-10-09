@@ -1816,7 +1816,10 @@ function deriveDayFromPunchList(
   // BALANCED day is handed to deriveAttendance below — an unbalanced one keeps worked/OT null so the
   // read-time 'odd' flag (core/attendance-derive.ts flagOf, hasIn !== hasOut) surfaces it for a manager,
   // the same way a lone clock-in with no clock-out already does today.
-  const checkOutAt = outs.length ? maxAt(outs) : null;
+  // ...but ONLY where there is no clock-in to anchor the day. A day that HAS a clock-in keeps the pre-r430
+  // rule exactly (an unbalanced one — in, out, in — stays OPEN with no stored clock-out, which the R45
+  // re-open and the clocking-import odd-count tests pin); only the out-first day needs the new storage.
+  const checkOutAt = outs.length && (balanced || !checkInAt) ? maxAt(outs) : null;
   if (!checkInAt && !checkOutAt) {
     // No punches and no fallback anchor at all — the true zero-punch defensive case; nothing to derive.
     return {
