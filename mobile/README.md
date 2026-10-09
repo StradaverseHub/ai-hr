@@ -5,6 +5,14 @@ Run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set the HTTP
 matching public WorkOS client id, then use an iOS/Android development build. No API key or client
 secret belongs in the app. Root TypeScript/build commands exclude this directory; run
 `npm --prefix mobile run typecheck` separately under the repository test locks.
+Root regression tests that exercise the native dependency callers also require `npm ci` in `mobile/`.
+
+FACT (WorkOS Staging checked 2026-10-09): the dedicated **AI HR** application has public client id
+`client_01KWPVYQVXS2MZJP0YY3JXZACB`, a five-minute access-token lifetime, and
+`aihr://auth/callback` registered as both redirect and logout URI. The API server must verify that
+same application's client id. This registration alone does not enable the server or link a user;
+do not reuse another project's credentials. Server cutover and account bootstrap follow
+`docs/WORKOS-CUTOVER.md` with the selected environment's secure settings.
 
 ## Session boundaries
 
