@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
    * `lib/payslip-pdf-fonts.ts` loads fontkit so pdf-lib can subset the Unicode faces the payslip needs.
    * fontkit ships two builds; Turbopack picks the ESM one, `dist/module.mjs`, which does
    * `import { applyDecoratedDescriptor } from '@swc/helpers'` — an export that no longer exists in the
-   * `@swc/helpers` its own range resolves to. Bundled, every payslip PDF route answers 500 with
+   * newer, hoisted `@swc/helpers` selected by the build tracer. Bundled, every payslip PDF route answers 500 with
    * "export 'applyDecoratedDescriptor' was not found … Did you mean _apply_decorated_descriptor?".
    * Observed on a dev server on 2026-09-24, on both PDF routes; the vitest suite is green either way
    * because Node resolves the CJS build (`dist/main.cjs`), which is correct.
@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
    * Listing it here makes Next `require()` it from node_modules at runtime, which is the CJS build, which
    * works — and keeps 1.5 MB of font parser out of the server bundle. Do not remove this line without
    * rendering a Chinese payslip through a running server and looking at the result (CLAUDE.md §8).
+   * Next 16.3 also traces external dynamic imports. The one-line fontkit export-map patch selects its
+   * same verified CJS build for imports, making tracing independent of the private helper hoist.
    */
   serverExternalPackages: ['fontkit'],
 

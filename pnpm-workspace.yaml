@@ -1,3 +1,5 @@
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+patchedDependencies:
+  fontkit@1.9.0: patches/fontkit@1.9.0.patch
