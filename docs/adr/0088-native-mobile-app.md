@@ -331,6 +331,8 @@ derived time that is signed and anchored.
 - **RECOMMENDATION implemented:** signing-key fetches share one flight per client, retry at most once
   per minute after a failure, and serve outage cache only until thirty minutes after the last successful
   fetch. Beyond that the API returns unavailable, never a credential refusal.
+  An unknown key needing a refetch also returns unavailable if that fetch fails; a concurrent
+  known-key request may use its bounded cache without converting the unknown-key outage into a 401.
 
 - **UNKNOWN (Phase 3 spikes, before building on them):** whether iOS can generate an App Attest assertion
   offline; whether iOS has a clock that keeps counting through sleep; whether iOS exposes site Wi-Fi
