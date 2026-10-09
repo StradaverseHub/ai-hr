@@ -7,9 +7,10 @@ import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/
 import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
+import { employmentScheduleGroupName } from '@/core/roster';
 import { clockCaptureEvidence } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
-import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
+import { DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
 import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
 
 /**
@@ -91,9 +92,11 @@ export default async function IndividualAttendanceDayPage({
     );
   }
 
-  const [rows, punchesByAttendance] = await Promise.all([
+  const [rows, punchesByAttendance, scheduleGroup] = await Promise.all([
     attendanceForEmploymentRange(s, selected.employmentId, date, date),
     attendancePunchesForRange(s, selected.employmentId, date, date),
+    // r433 (faca1cfb round 1) — the Schedule Group is `employment.attendance_rule_id`, read for display only.
+    employmentScheduleGroupName(s, selected.employmentId),
   ]);
   const row = rows[0] ?? null;
   /** dae7a10f — the one-action correction is an ADMIN affordance; everyone else keeps the link. */
@@ -147,12 +150,24 @@ export default async function IndividualAttendanceDayPage({
   // a second definition. Null whenever either half is missing (a policy day or a rest day has no shift).
   const breakMinutes = breakMinutesOf(row);
 
-  const Field = ({ label, value }: { label: string; value: string }) => (
-    <div>
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-0.5 text-sm tabular-nums">{value}</div>
-    </div>
-  );
+  // r433 — ONLY THE ITEMS THAT APPLY. The eight fixed columns are gone; each row is built from the day's
+  // STORED results (lateness, early out, the flat bucket and the five rate buckets), the SAME numbers
+  // `otByRate` and the row already carried, and a zero is simply not listed. Labels are the existing
+  // column-heading keys, written as literals so the key-usage guards still see them.
+  const explanation = explainAttendanceDay(row.calcTrace);
+  const otCandidates: { only: 'lateness' | 'earlyOut' | 'flat' | 'ot00' | 'ot10' | 'ot15' | 'ot20' | 'ot30'; label: string; minutes: number }[] = [
+    { only: 'lateness', label: t('colLateness'), minutes: row.lateMinutes ?? 0 },
+    { only: 'earlyOut', label: t('colEarlyOut'), minutes: row.earlyOutMinutes ?? 0 },
+    { only: 'flat', label: t('colOtFlat'), minutes: ot.flat },
+    { only: 'ot00', label: t('colOt00'), minutes: ot.ot00 },
+    { only: 'ot10', label: t('colOt10'), minutes: ot.ot10 },
+    { only: 'ot15', label: t('colOt15'), minutes: ot.ot15 },
+    { only: 'ot20', label: t('colOt20'), minutes: ot.ot20 },
+    { only: 'ot30', label: t('colOt30'), minutes: ot.ot30 },
+  ];
+  const otItems = otCandidates.filter((c) => c.minutes > 0);
+
+  const Field = DayField;
   const DASH = '—';
 
   return (
@@ -173,24 +188,44 @@ export default async function IndividualAttendanceDayPage({
         </div>
       )}
 
-      {/* 1 · SHIFT DETAILS */}
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('daySecShift')} />
-        <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-          <Field label={t('colShiftCode')} value={row.shiftCode ?? DASH} />
-          <Field label={t('colCheckIn')} value={row.shiftStart ?? DASH} />
-          <Field label={t('colCheckOut')} value={row.shiftEnd ?? DASH} />
-          <Field label={t('colShiftHours')} value={fmtMin(row.scheduledMinutes)} />
-        </div>
-        {!row.shiftCode && <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayNoShift')}</div>}
+      {/* r433 (faca1cfb round 1) — 0 · EMPLOYEE INFORMATION. Whose day this is. Every value is a column the
+          scoped employee read already returns, plus the Schedule Group name; nothing is derived here. */}
+      <Card className="overflow-hidden" data-day-section="employee">
+        <SectionHeader title={t('daySecEmployee')} />
+        <DayFieldGrid>
+          <Field label={t('dayInfoName')} value={selected.name} />
+          <Field label={t('colEmployeeId')} value={selected.employeeCode ?? DASH} />
+          <Field label={t('dayInfoCompany')} value={selected.company ?? DASH} />
+          <Field label={t('dayInfoDepartment')} value={selected.department ?? DASH} />
+          <Field label={t('dayInfoPosition')} value={selected.position ?? DASH} />
+          <Field label={t('dayInfoDate')} value={fmtDayDate(date, locale)} />
+          <Field label={t('dayInfoScheduleGroup')} value={scheduleGroup ?? t('dayInfoScheduleGroupNone')} />
+        </DayFieldGrid>
       </Card>
 
-      {/* 2 · BREAK TIME — derived, and captioned as derived. */}
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('daySecBreak')} />
-        <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
+      {/* r433 — 1 · CLOCK DATE AND BREAK TIME. The old Shift details and Break time cards, one section: the
+          date, the shift period and the break together. The break is DERIVED (shift span less net
+          scheduled minutes), never stored, and the caption says so. */}
+      <Card className="overflow-hidden" data-day-section="clock-break">
+        <SectionHeader title={t('daySecClockBreak')} />
+        <DayFieldGrid cols={3}>
+          <Field label={t('dayInfoDate')} value={fmtDayDate(date, locale)} />
+          <Field
+            label={t('dayShiftLabel')}
+            value={
+              row.shiftCode && row.shiftStart && row.shiftEnd
+                ? t('dayShiftPeriod', {
+                    shift: row.shiftCode,
+                    start: row.shiftStart,
+                    end: row.shiftEnd,
+                    hours: fmtMin(row.scheduledMinutes),
+                  })
+                : (row.shiftCode ?? DASH)
+            }
+          />
           <Field label={t('daySecBreak')} value={fmtMin(breakMinutes)} />
-        </div>
+        </DayFieldGrid>
+        {!row.shiftCode && <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayNoShift')}</div>}
         <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayBreakDerived')}</div>
       </Card>
 
@@ -263,38 +298,30 @@ export default async function IndividualAttendanceDayPage({
 
       {/* 4 · OVERTIME + 5 · IRREGULARITY — the eight cells that came off the list, in the SAME island with
           the SAME working, so this screen and the list can never explain one day two ways. */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-day-section="overtime">
         <SectionHeader title={t('daySecOt')} />
-        <p className="px-4 text-xs text-muted-foreground sm:hidden">{t('otScrollHint')}</p><div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-right font-medium">{t('colLateness')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colEarlyOut')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colOtFlat')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colOt00')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colOt15')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colOt20')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('colOt30')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              <tr>
-                <AttendanceFigureCells
-                  lateMinutes={row.lateMinutes}
-                  earlyOutMinutes={row.earlyOutMinutes}
-                  ot={ot}
-                  hasRow={row.attendanceId != null}
-                  explanation={explainAttendanceDay(row.calcTrace)}
-                />
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        {otItems.length === 0 ? (
+          <p data-day-ot-none className="px-4 py-3 text-sm text-muted-foreground">{t('dayOtNone')}</p>
+        ) : (
+          <>
+            <DayOvertimeRows
+              items={otItems.map(({ only, label }) => ({ only, label }))}
+              figures={{
+                lateMinutes: row.lateMinutes,
+                earlyOutMinutes: row.earlyOutMinutes,
+                ot,
+                hasRow: row.attendanceId != null,
+                explanation,
+              }}
+              itemHeading={t('dayOtColItem')}
+              amountHeading={t('dayOtColAmount')}
+              footnote={t('dayOtOnlyApplicable')}
+            />
+          </>
+        )}
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-day-section="irregularity">
         <SectionHeader title={t('daySecIrregular')} />
         <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
           <Field label={t('colStatus')} value={statusText[status]} />
