@@ -40,13 +40,17 @@ import { scheduleGroupViewPath } from '../../attendance-policy/schedule-panel';
 
 export const SCHEDULE_SECTION_KEYS = [
   'general',
+  // r429 (f6819e19) · D7 — WORKING DAY MOVES TO SECOND. It used to be listed seventh, appended after
+  // 07ebd04d gave it storage; this round makes it the section the reporter now opens the page FOR — the
+  // Shift page's own week row is retired (D1), so this is the only place a working week is set at all —
+  // and asks it to carry the live "Shifts in this group" preview beside it. The other five keep their
+  // relative order.
+  'workingDay',
   'holiday',
   'overtime',
   'attendance',
   'request',
   'notification',
-  // 665de026 — the reporter listed "Working Day / Schedule Pattern" SEVENTH, so it is seventh.
-  'workingDay',
 ] as const;
 
 export type ScheduleSectionKey = (typeof SCHEDULE_SECTION_KEYS)[number];

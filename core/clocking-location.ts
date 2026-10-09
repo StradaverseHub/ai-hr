@@ -605,8 +605,15 @@ export type ListClockingLocationsOptions = {
   status?: 'all' | 'active' | 'inactive';
   /** r423 — name or address contains this text (case-insensitive). */
   q?: string;
-  /** r423 — only locations open to this company. */
-  companyId?: string;
+  /**
+   * r423 — only locations open to this company. r428 — the literal `'none'` means the opposite: locations
+   * open to NO company at all (orphaned when the company they were open to was deleted). The group-admin-only
+   * row on Attendance › Locations' company list (./clocking/page.tsx step 1) is what reads this; a company
+   * administrator's own visibility clause below already excludes every orphan regardless of this option,
+   * because `exists (… app.is_admin_for(vc.company_id))` can never be true for a location with zero company
+   * rows — so passing `'none'` from a non-group-admin session is harmless, not merely UI-gated.
+   */
+  companyId?: string | 'none';
 };
 
 /**
@@ -645,7 +652,13 @@ export function listClockingLocations(
         where vc.clocking_location_id = ${clockingLocation.id} and app.is_admin_for(vc.company_id)
       )`);
     }
-    if (opts.companyId) {
+    if (opts.companyId === 'none') {
+      // r428 — the orphan row: open to NOTHING. `not exists` rather than `= 0` count, for the same reason
+      // the positive branch below is `exists`: both read the same junction table the same way.
+      conds.push(sql`not exists (
+        select 1 from clocking_location_company nc where nc.clocking_location_id = ${clockingLocation.id}
+      )`);
+    } else if (opts.companyId) {
       conds.push(sql`exists (
         select 1 from clocking_location_company fc
         where fc.clocking_location_id = ${clockingLocation.id} and fc.company_id = ${opts.companyId}::uuid

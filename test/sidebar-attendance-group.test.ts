@@ -61,10 +61,15 @@ const TICKET_HREFS = [
   // (TICKET_RE_ADDRESSED below). DECLARED here rather than the list being left short, so the "each child
   // is admin-gated" case below covers it the way it covered it before r336 moved it out.
   // r423 (83c0d3c8) — the ticket screen is the CLOCKING location register again ("Locations"), at
-  // /admin/work-locations/clocking; the company-based work location listing r338 put on that row has a row
-  // of its own, "Work Locations", declared beside it so the admin-gate and once-only cases cover it too.
+  // /admin/work-locations/clocking.
+  //
+  // ⚠️ r428 (83c0d3c8 contest) — ITS SIBLING "WORK LOCATIONS" STOOD HERE, with its own row declared
+  // beside this one, and is GONE. The reporter asked to remove the row and keep "Locations" as the one
+  // menu for both kinds; the function it opened is now the "Work locations" SECTION of a company's own
+  // view on THIS SAME ROW's screen (./clocking/page.tsx step 2), not a row of its own — see the dedicated
+  // case below (RETIRED, not merely regated or moved) and `ownedSubpaths` on the row this file reads for
+  // the highlight half.
   '/admin/work-locations/clocking',
-  '/admin/work-locations',
 ] as const;
 
 /**
@@ -139,8 +144,19 @@ const ALL_TICKET_HREFS = [
 // then the Locations register, exactly where 5cb199b3 put them relative to each other. It is at its new
 // address, which is why the second entry is the `now` spelling and not the `was` one.
 // r423 — THREE: Attendance allowance, then Locations (the clocking register, at the ticket's place), then
-// the new Work Locations row directly beneath it.
-const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/work-locations/clocking', '/admin/work-locations'] as const;
+// the Work Locations row directly beneath it.
+// r428 (83c0d3c8 contest) — TWO again: Work Locations retired (RETIRED_HREFS below), its function folded
+// into the row above rather than moved, so there is no third member of the tail any more.
+const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/work-locations/clocking'] as const;
+
+/**
+ * r428 (83c0d3c8 contest) — the one ticket screen RETIRED rather than re-addressed or moved: its row is
+ * gone from the rail entirely (the content it opened is a section of the row above, not a sibling menu
+ * entry), and the OLD address survives only as a guarded redirect stub. A THIRD disposition, deliberately
+ * distinct from TICKET_MOVED_OUT (a different MENU, components/sidebar.tsx SYSTEM_SETTINGS_NODE) and
+ * TICKET_RE_ADDRESSED (a `was` → `now` pair, still a row somewhere): this one is a row nowhere at all.
+ */
+const RETIRED_HREFS = ['/admin/work-locations'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -190,6 +206,36 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
         'redirect(`/admin/leave-config/leave-credit',
       );
     }
+  });
+
+  /**
+   * r428 (83c0d3c8 contest) — WORK LOCATIONS IS GONE FROM THE RAIL, the old address a guarded stub, and
+   * the LOCATIONS ROW owns the old address for highlighting. Three distinct claims, each the failure mode
+   * of dropping one of the others: a row left declared but never removed would render the function
+   * twice; a stub that forwards before guarding would leak the destination to a non-administrator; and no
+   * `ownedSubpaths` would mean a bookmark that lands on step 2 through the stub shows "Locations" unlit.
+   */
+  it('r428: Work Locations has LEFT the rail — folded into the row above, its old address a guarded stub it owns', () => {
+    for (const href of RETIRED_HREFS) {
+      // `countQuoted` would also match the SAME quoted string inside `ownedSubpaths: […]` below — correct,
+      // since that is not a row — so the row-specific shape `href: '…'` is counted directly instead.
+      expect(
+        SRC.split(`href: '${href}'`).length - 1,
+        `${href} still has a nav row somewhere in the rail`,
+      ).toBe(0);
+      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
+      const guard = stub.indexOf('requireAdmin()');
+      const fwd = stub.indexOf('redirect(');
+      expect(guard, `${href} guards itself`).toBeGreaterThan(-1);
+      expect(fwd, `${href} forwards`).toBeGreaterThan(-1);
+      expect(guard, `${href} guards BEFORE it forwards`).toBeLessThan(fwd);
+      expect(stub, `${href} forwards to the Locations screen`).toContain('CLOCKING_LIST');
+    }
+    // The row above OWNS the retired address for highlighting — a bookmark through the stub must still
+    // light "Locations", or the operator lands on step 2 with no nav row lit at all.
+    const row = node.split('\n').find((l) => l.includes(`{ href: '/admin/work-locations/clocking',`));
+    expect(row, 'the Locations row declaration').toBeDefined();
+    expect(row, 'and it owns the retired address for highlighting').toContain("ownedSubpaths: ['/admin/work-locations']");
   });
 
   it('639bf4a5 rev 2: the Locations register is a child of THIS node again, at its r336 address', () => {

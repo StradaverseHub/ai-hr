@@ -206,7 +206,8 @@ describe('roster generation from a weekly pattern (R7 Multi-Shift Phase 2)', () 
     const noPattern = await mkShift({ name: 'NoPat', code: 'NP', weeklyPattern: null });
     await expect(
       generateRosterFromTemplate(ctx, { shiftId: noPattern.id, employmentIds: [empId], from: '2026-07-06', to: '2026-07-12' }),
-    ).rejects.toThrow(/no weekly working-day pattern/i);
+    // r429 (f6819e19) — reworded to point at the Schedule Group, which is where the week lives now.
+    ).rejects.toThrow(/no working days.*Schedule Group/i);
 
     const s = await mkShift();
     await expect(

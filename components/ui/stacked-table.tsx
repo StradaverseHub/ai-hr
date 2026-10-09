@@ -77,9 +77,19 @@ export function StackedBody({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function StackedRow({ children, className }: { children: React.ReactNode; className?: string }) {
+export function StackedRow({
+  children,
+  className,
+  id,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** r428 — an addressable row (`#row-<id>` from a save redirect, or a row a caller wants to highlight). */
+  id?: string;
+}) {
   return (
     <tr
+      id={id}
       role="row"
       className={cn('@max-3xl:grid @max-3xl:grid-cols-2 @max-3xl:gap-x-4 @max-3xl:gap-y-3 @max-3xl:py-4', className)}
     >

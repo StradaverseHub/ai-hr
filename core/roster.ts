@@ -32,6 +32,7 @@ import {
   weekLookupTx,
   weekPatternWorkingDayCount,
 } from './attendance';
+import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule} from '../packs/attendance/service';
 import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
@@ -271,9 +272,14 @@ type NormalizedShift = {
   breakMinutes: number;
   breakPeriods: BreakPeriod[] | null;
   normalMinutesOverride: number | null;
-  weeklyPattern: number[] | null;
-  halfPattern: number[];
-  offPattern: number[];
+  // r429 (f6819e19) · D1 — THE SHIFT PAGE NO LONGER EDITS THE WEEK. UNDEFINED ⇒ omit from the write
+  // (preserve the stored week — it is the live fallback whenever the Schedule Group sets none, per
+  // core/week-pattern.ts weekPatternFor). createShift collapses undefined to NO_WEEK (null/[]/[]: a brand
+  // new shift has nothing to preserve and nothing was ever asked for one). All three move together: either
+  // none of the three posted (preserve all three) or all three validated together, exactly as before.
+  weeklyPattern: number[] | null | undefined;
+  halfPattern: number[] | undefined;
+  offPattern: number[] | undefined;
   dailyCutoffEnabled: boolean;
   dailyCutoffTime: string | null;
   // UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear. Same contract as
@@ -282,25 +288,32 @@ type NormalizedShift = {
   earlyLeaveGraceMinutes: number | null | undefined;
   // 88e94371 — UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear.
   otRule: ShiftOtRule | null | undefined;
+  // r429 (f6819e19) · D2 — the Schedule Group picker is removed from the form; UNDEFINED ⇒ preserve.
   ruleId: string | null | undefined;
   differential: ShiftDifferential | null;
   // cf21e554 stage 1 — plain values: absent ⇒ null (see ShiftInput for why these are not "preserve on
   // undefined" like the three above).
   description: string | null;
-  dayType: ShiftDayType | null;
+  // r429 (f6819e19) · D3 — RECORDED-ONLY, no longer rendered. UNDEFINED ⇒ preserve (copyShift still
+  // copies it directly from the source row, untouched by this function either way).
+  dayType: ShiftDayType | null | undefined;
   category: string | null;
   earlyIn: string | null;
   lateOut: string | null;
   lateOutNextDay: boolean | null;
-  fullDayLeaveMinutes: number | null;
+  fullDayLeaveMinutes: number | null | undefined;
   normalHoursRoundingMinutes: number | null;
-  fullDayOtMinutes: number | null;
+  fullDayOtMinutes: number | null | undefined;
   halfDayFirstOut: string | null;
   halfDaySecondIn: string | null;
   // 6340aecb — absent ⇒ null / false, exactly like the General columns above.
   color: ShiftColorToken | null;
-  flexibleBreakEnabled: boolean;
-  flexibleBreakMinutes: number | null;
+  // r429 (f6819e19) · D4 — THE WHOLE-SHIFT SWITCH IS RETIRED FROM THE FORM. UNDEFINED ⇒ preserve (the one
+  // way a shift the migration could not convert keeps deducting its allowance until someone explicitly
+  // ticks "Stop using it", which posts an EXPLICIT false). updateShift additionally refuses an explicit
+  // true where the STORED value is not already true — see its own comment.
+  flexibleBreakEnabled: boolean | undefined;
+  flexibleBreakMinutes: number | null | undefined;
 };
 
 /** Shared create/update validation. Auto normal-hours is NEVER persisted — it stays span − Σ breaks via the
@@ -326,22 +339,74 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   // clockingRequired=false on EVERY break (the reporter's fixed, non-editable rule); Normal/Full-Flexi keep
   // whatever flags were supplied (absent ⇒ unset, == legacy behaviour, so existing shifts stay byte-identical).
   const semiFlexi = type === 'semi_flexi';
-  // 6340aecb — read BEFORE the windows are normalised, because the shift-level switch decides what a
-  // window's own `flexible` flag is allowed to say (see the loop below). The validation of the ALLOWANCE
-  // still happens after the windows, where `span` and the window sum are both known.
-  const flexibleBreakEnabled = p.flexibleBreakEnabled === true;
+  // r429 (f6819e19) · D4 — THE WHOLE-SHIFT SWITCH IS RETIRED FROM THE FORM. UNDEFINED ⇒ not specified by
+  // this save at all (preserve); an EXPLICIT true/false still runs the validate-or-clear logic below,
+  // exactly as before — the one caller left that can still turn it on (a direct core call; the UI never
+  // posts true any more) or off (the form's own "Stop using it" tick, which posts an explicit false).
+  //
+  // flexibleBreakEnabledForRows is a CONCRETE boolean used only to decide whether THIS SAVE forces every
+  // break row's own `flexible` flag to agree (the loop below) — undefined (preserved) reads as "not
+  // forcing" here, because this is a pure function with no access to the stored row. That is safe by
+  // construction: the new form never posts fresh break rows in the same request it leaves the switch
+  // preserved-on (its Breaks section shows the "Stop using it" panel INSTEAD of the row editor whenever
+  // the stored switch is on — see components/shift-time-fields.tsx), so the one case this shortcut could
+  // get wrong — an UPDATE that preserves an ON switch and ALSO posts fresh rows — never reaches the form.
+  // updateShift closes the gap for every OTHER caller once it has read the stored value (its own comment).
+  const flexibleBreakEnabledSet = p.flexibleBreakEnabled !== undefined;
+  const flexibleBreakEnabled = flexibleBreakEnabledSet ? p.flexibleBreakEnabled === true : undefined;
+  const flexibleBreakEnabledForRows = flexibleBreakEnabled === true;
   let breakPeriods: BreakPeriod[] | null = null;
   let breakMinutes = Math.trunc(p.breakMinutes ?? 0);
   if (!Number.isFinite(breakMinutes) || breakMinutes < 0) throw new Error('Break minutes must be a non-negative number');
   if (p.breakPeriods && p.breakPeriods.length > 0) {
-    breakPeriods = p.breakPeriods.map((bp) => {
-      const start = asShiftTime(bp.start, 'Break start');
-      const end = asShiftTime(bp.end, 'Break end');
-      // start < end also rejects any break that would cross midnight (Phase 1 excludes overnight breaks).
-      if (end <= start) throw new Error('Each break must start before it ends (a break cannot cross midnight)');
-      const inside = crossesMidnight ? start >= startTime || end <= endTime : start >= startTime && end <= endTime;
-      if (!inside) throw new Error('Each break must fall inside the shift span');
-      const out: BreakPeriod = { start, end };
+    // ── r429 (f6819e19) · D6 · BREAK VALIDATION — THE SERVICE IS THE AUTHORITY ──────────────────────
+    // core/shift-break-rules.ts is the ONE place "is this row inside the shift" / "how long is it" /
+    // "does it overlap another row" are decided, so this refusal and the client's live per-row preview
+    // (components/shift-time-fields.tsx) can never disagree about the same row. A HALF-FILLED row is
+    // REFUSED, never silently dropped (the plan's own correction of today's behaviour); a fully BLANK row
+    // (neither time typed — what a new shift's first row opens as) saves nothing and is dropped here,
+    // before any index is handed to a message, so "Break 2" in a refusal is the row the operator sees as
+    // Break 2 even when Break 1 was left blank.
+    const shiftShape = { startTime, endTime, crossesMidnight };
+    const rowLabel = (i: number) => `Break ${i + 1}`;
+    const posted = p.breakPeriods
+      .map((bp, i) => ({ bp, i, start: (bp.start ?? '').trim(), end: (bp.end ?? '').trim() }))
+      .filter(({ start, end }) => !(start === '' && end === ''));
+    for (const { i, start, end } of posted) {
+      const check = checkBreakRow({ start, end }, shiftShape);
+      if (check.kind === 'half') {
+        throw new Error(`${rowLabel(i)} needs ${check.missing === 'end' ? 'an end time' : 'a start time'}, or delete the row.`);
+      }
+      if (check.kind === 'zero') throw new Error(`${rowLabel(i)} cannot be zero minutes long.`);
+      if (check.kind === 'reversed') {
+        throw new Error(`${rowLabel(i)} ends before it starts. Check the times — this shift does not cross midnight.`);
+      }
+      if (check.kind === 'outside') {
+        throw new Error(
+          `${rowLabel(i)} falls outside the shift (${startTime.slice(0, 5)}–${endTime.slice(0, 5)}). A break must fall inside the shift.`,
+        );
+      }
+    }
+    // Overlap is checked across EVERY row that passed above, paid rows included — two breaks sharing a
+    // minute is nonsense whether or not either is paid, and two IDENTICAL rows are an overlap by
+    // construction (core/shift-break-rules.ts).
+    const overlaps = findBreakOverlaps(
+      posted.map(({ start, end }) => ({ start, end })),
+      shiftShape,
+    );
+    if (overlaps.length > 0) {
+      const [earlier, later] = overlaps[0];
+      const a = posted[earlier];
+      const c = posted[later];
+      throw new Error(
+        `${rowLabel(c.i)} overlaps ${rowLabel(a.i)} (${a.start.slice(0, 5)}–${a.end.slice(0, 5)}). Breaks cannot overlap.`,
+      );
+    }
+
+    breakPeriods = posted.map(({ bp, i, start, end }) => {
+      const startN = asShiftTime(start, `${rowLabel(i)} start`);
+      const endN = asShiftTime(end, `${rowLabel(i)} end`);
+      const out: BreakPeriod = { start: startN, end: endN };
       // Semi-Flexi overrides the flags; otherwise persist only flags that were explicitly set (keep the
       // stored JSON minimal so a plain break is { start, end } exactly as before).
       //
@@ -358,7 +423,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       //
       // With the switch OFF — every row stored before migration 0457, and every shift that never turns it
       // on — this is `bp.flexible` unchanged, so nothing about an existing shift moves.
-      const flexible = semiFlexi || flexibleBreakEnabled ? true : bp.flexible;
+      const flexible = semiFlexi || flexibleBreakEnabledForRows ? true : bp.flexible;
       const clockingRequired = semiFlexi ? false : bp.clockingRequired;
       if (flexible != null) out.flexible = flexible;
       if (clockingRequired != null) out.clockingRequired = clockingRequired;
@@ -372,7 +437,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       // contradicts it, and each is refused rather than silently dropped BECAUSE THIS IS MONEY: an
       // operator who typed thirty minutes and got a shift that deducts sixty would find out on a payslip.
       if (bp.flexibleMinutes != null) {
-        if (flexibleBreakEnabled) {
+        if (flexibleBreakEnabledSet && flexibleBreakEnabled) {
           throw new Error(
             'This shift already has one flexible break allowance for the whole shift. Switch that off to give each break its own duration.',
           );
@@ -385,20 +450,24 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
         }
         const mins = Math.trunc(Number(bp.flexibleMinutes));
         if (!Number.isFinite(mins) || mins <= 0) {
-          throw new Error('A flexible break needs an allowed duration in minutes — set one, or set the break to Fixed');
+          throw new Error(`${rowLabel(i)} needs a flexible duration in minutes — set one, from 1 up to the break's own length, or switch it to Fixed.`);
         }
-        // Validated against ITS OWN window, the way the shift-level allowance is validated against the
-        // shift span. NOT the shift-level rule's strict `>=`: that one refuses a break as long as the
-        // whole shift (which would leave no work in the day), whereas an allowance equal to its own
-        // window is the ordinary case — a 12:00–13:00 lunch with a sixty-minute allowance.
-        if (mins > hhmmToMin(end) - hhmmToMin(start)) {
-          throw new Error('A break’s allowed duration cannot be longer than the break window itself');
+        // Validated against ITS OWN WRAP-AWARE window length (core/shift-break-rules.ts breakRowMinutes),
+        // the way the shift-level allowance is validated against the shift span. NOT the shift-level
+        // rule's strict `>=`: that one refuses a break as long as the whole shift (which would leave no
+        // work in the day), whereas an allowance equal to its own window is the ordinary case — a
+        // 12:00–13:00 lunch with a sixty-minute allowance.
+        const windowMinutes = breakRowMinutes(startN, endN);
+        if (mins > windowMinutes) {
+          throw new Error(`${rowLabel(i)}’s flexible duration cannot be longer than the break itself (${windowMinutes} min).`);
         }
         out.flexibleMinutes = mins;
       }
       return out;
     });
-    // Canonical scalar = Σ break durations of the UNPAID windows.
+    // Canonical scalar = Σ break durations of the UNPAID windows, WRAP-AWARE (core/shift-break-rules.ts
+    // breakRowMinutes) so a window that crosses midnight contributes a positive length rather than the
+    // negative one plain `end − start` would give once a wrap is storable.
     //
     // cf21e554 stage 1 — THIS IS THE SINGLE BEHAVIOUR CHANGE ON STORED DATA IN STAGE 1, and it is a NO-OP
     // today: production carries 2 shifts with break windows and NOT ONE window carries `paid`, so every
@@ -417,10 +486,10 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // exists today — `?? the window length` makes this the identical expression it has always been.
     breakMinutes = breakPeriods
       .filter((bp) => bp.paid !== true)
-      .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? hhmmToMin(bp.end) - hhmmToMin(bp.start)), 0);
+      .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? breakRowMinutes(bp.start, bp.end)), 0);
   }
 
-  // ── 6340aecb · THE FLEXIBLE BREAK (migration 0457) ──────────────────────────────────────────────────
+  // ── 6340aecb · THE FLEXIBLE BREAK (migration 0457), RETIRED FROM THE FORM (r429/f6819e19 · D4) ───────
   // A flexible break is an ALLOWANCE, not a clock window: "you may take up to 45 minutes, whenever you
   // like". Two consequences, and both are decided HERE rather than at each reader:
   //
@@ -435,23 +504,29 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   //      12:00–13:00 on the screen as the intended time while the engine stops requiring the clocking to
   //      have covered it.
   //
-  // OFF (absent, and every row stored before 0457) changes nothing at all: break_minutes keeps the value
-  // computed above and the engine keeps the deduction it applies today.
-  let flexibleBreakMinutes = optMinutes(p.flexibleBreakMinutes, 'Flexible break');
-  if (flexibleBreakEnabled) {
-    // Refused rather than stored: a flexible break with no allowance is a switch the engine cannot honour
-    // (and the DB CHECK in 0457 says the same thing — this is the sentence HR sees).
-    if (flexibleBreakMinutes == null || flexibleBreakMinutes <= 0) {
-      throw new Error('A flexible break needs an allowed duration in minutes — set one, or switch Flexible off');
-    }
-    if (flexibleBreakMinutes >= span) {
-      throw new Error('The flexible break allowance must be shorter than the shift span');
-    }
-    breakMinutes = flexibleBreakMinutes;
+  // UNSPECIFIED (undefined — every save from the new form while this switch is not the one thing being
+  // turned off) changes nothing at all: flexibleBreakMinutes preserves too, and break_minutes keeps the
+  // value computed above.
+  let flexibleBreakMinutes: number | null | undefined;
+  if (!flexibleBreakEnabledSet) {
+    flexibleBreakMinutes = undefined;
   } else {
-    // A stored allowance with the switch off would be a number nothing reads; drop it so "off" has exactly
-    // one representation, the same rule lateOutNextDay follows for its own orphaned flag.
-    flexibleBreakMinutes = null;
+    flexibleBreakMinutes = optMinutes(p.flexibleBreakMinutes, 'Flexible break');
+    if (flexibleBreakEnabled) {
+      // Refused rather than stored: a flexible break with no allowance is a switch the engine cannot honour
+      // (and the DB CHECK in 0457 says the same thing — this is the sentence HR sees).
+      if (flexibleBreakMinutes == null || flexibleBreakMinutes <= 0) {
+        throw new Error('A flexible break needs an allowed duration in minutes — set one, or switch Flexible off');
+      }
+      if (flexibleBreakMinutes >= span) {
+        throw new Error('The flexible break allowance must be shorter than the shift span');
+      }
+      breakMinutes = flexibleBreakMinutes;
+    } else {
+      // A stored allowance with the switch off would be a number nothing reads; drop it so "off" has exactly
+      // one representation, the same rule lateOutNextDay follows for its own orphaned flag.
+      flexibleBreakMinutes = null;
+    }
   }
 
   let normalMinutesOverride: number | null = null;
@@ -489,18 +564,35 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     }
     return days;
   };
-  const fullDays = isoDays(p.weeklyPattern, 'Weekly pattern days');
-  const halfPattern = isoDays(p.halfPattern, 'Half-day weekdays');
-  const offPattern = isoDays(p.offPattern, 'Off-day weekdays');
-  for (const [a, b] of [
-    [fullDays, halfPattern],
-    [fullDays, offPattern],
-    [halfPattern, offPattern],
-  ] as const) {
-    if (a.some((d) => b.includes(d))) throw new Error('Each weekday can only be one of Full, Half, Rest or Off');
+  // r429 (f6819e19) · D1 — THE SHIFT PAGE NO LONGER EDITS THE WEEK, AND THE THREE ARRAYS MOVE TOGETHER.
+  // No day field posted at all (every save from the new form) ⇒ undefined ⇒ preserve all three, exactly
+  // as otRule / ruleId preserve when their editors are absent. Any ONE of the three posted (a direct core
+  // call, a script, a test) still validates all three together, treating an absent sibling as empty — the
+  // same rule today's form used when it only ever posted the whole row at once.
+  const weekPosted = p.weeklyPattern !== undefined || p.halfPattern !== undefined || p.offPattern !== undefined;
+  let weeklyPattern: number[] | null | undefined;
+  let halfPattern: number[] | undefined;
+  let offPattern: number[] | undefined;
+  if (!weekPosted) {
+    weeklyPattern = undefined;
+    halfPattern = undefined;
+    offPattern = undefined;
+  } else {
+    const fullDays = isoDays(p.weeklyPattern, 'Weekly pattern days');
+    const half = isoDays(p.halfPattern, 'Half-day weekdays');
+    const off = isoDays(p.offPattern, 'Off-day weekdays');
+    for (const [a, b] of [
+      [fullDays, half],
+      [fullDays, off],
+      [half, off],
+    ] as const) {
+      if (a.some((d) => b.includes(d))) throw new Error('Each weekday can only be one of Full, Half, Rest or Off');
+    }
+    // Empty ⇒ null, preserving "no pattern" — a shift with zero FULL days is not a 7-day rest week.
+    weeklyPattern = fullDays.length > 0 ? fullDays : null;
+    halfPattern = half;
+    offPattern = off;
   }
-  // Empty ⇒ null, preserving "no pattern" — a shift with zero FULL days is not a 7-day rest week.
-  const weeklyPattern: number[] | null = fullDays.length > 0 ? fullDays : null;
 
   // b8aa3466 — the daily cut-off. Enabled with no time is refused rather than stored: the reader could not
   // honour it, and a pair that can hold nonsense eventually does. (0429 shift_daily_cutoff_time_required
@@ -533,11 +625,16 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
 
   // ── cf21e554 stage 1 · the General tab ──────────────────────────────────────────────────────────────
   const description = optText(p.description);
-  const dayType = validateShiftDayType(p.dayType as string | null | undefined);
+  // r429 (f6819e19) · D3 — day_type / full_day_leave_minutes / full_day_ot_minutes are NO LONGER RENDERED
+  // (they were RECORDED ONLY — no engine consumer — and the form said so on the box). UNDEFINED ⇒
+  // preserve, the same contract otRule / ruleId already use for a field whose editor left the form.
+  const dayType = p.dayType === undefined ? undefined : validateShiftDayType(p.dayType as string | null | undefined);
   const category = optText(p.category);
-  const fullDayLeaveMinutes = optMinutes(p.fullDayLeaveMinutes, 'Full-day leave hours');
+  const fullDayLeaveMinutes =
+    p.fullDayLeaveMinutes === undefined ? undefined : optMinutes(p.fullDayLeaveMinutes, 'Full-day leave hours');
   const normalHoursRoundingMinutes = optMinutes(p.normalHoursRoundingMinutes, 'Normal-hours rounding');
-  const fullDayOtMinutes = optMinutes(p.fullDayOtMinutes, 'Full-day overtime hours');
+  const fullDayOtMinutes =
+    p.fullDayOtMinutes === undefined ? undefined : optMinutes(p.fullDayOtMinutes, 'Full-day overtime hours');
   // 6340aecb — the DISPLAY-ONLY colour (see validateShiftColor). Blank ⇒ null ⇒ the Duty Roster keeps its
   // rotating position-keyed palette for this shift, i.e. today's exact appearance.
   const color = validateShiftColor(p.color);
@@ -615,30 +712,30 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   };
 }
 
-/** cf21e554 stage 1 — the General-tab columns, in one place so createShift, updateShift and copyShift
- *  cannot drift apart (the drift that let 7c834696's grace columns be silently cleared by a save). */
+/** cf21e554 stage 1 — the General-tab columns that are ALWAYS CONCRETE (still rendered by the form, so an
+ *  absent box genuinely means "cleared"), in one place so createShift, updateShift and copyShift cannot
+ *  drift apart (the drift that let 7c834696's grace columns be silently cleared by a save).
+ *
+ *  r429 (f6819e19) · D1/D3/D4 — halfPattern / offPattern / dayType / fullDayLeaveMinutes / fullDayOtMinutes
+ *  / flexibleBreakEnabled / flexibleBreakMinutes moved OUT of this helper: their editors left the form, so
+ *  they are now UNDEFINED-PRESERVE like otRule / ruleId, which means create and update need to treat an
+ *  absent value differently (createShift has nothing to preserve; updateShift must omit the key). A single
+ *  spread that is identical in both functions can no longer express that, so each caller below writes them
+ *  explicitly, the same shape otRule / ruleId already used before this round. */
 const generalColumns = (n: NormalizedShift) => ({
-  // b8aa3466 — the 0429 columns ride here so createShift, updateShift and copyShift cannot drift apart.
-  halfPattern: n.halfPattern,
-  offPattern: n.offPattern,
   dailyCutoffEnabled: n.dailyCutoffEnabled,
   dailyCutoffTime: n.dailyCutoffTime,
   description: n.description,
-  dayType: n.dayType,
   category: n.category,
   earlyIn: n.earlyIn,
   lateOut: n.lateOut,
   lateOutNextDay: n.lateOutNextDay,
-  fullDayLeaveMinutes: n.fullDayLeaveMinutes,
   normalHoursRoundingMinutes: n.normalHoursRoundingMinutes,
-  fullDayOtMinutes: n.fullDayOtMinutes,
   halfDayFirstOut: n.halfDayFirstOut,
   halfDaySecondIn: n.halfDaySecondIn,
-  // 6340aecb — the colour and the flexible-break pair ride here for the same reason every column above
-  // does: createShift, updateShift and copyShift cannot drift apart.
+  // 6340aecb — the colour rides here for the same reason every column above does: createShift, updateShift
+  // and copyShift cannot drift apart. (The flexible-break PAIR moved out — see the header above.)
   color: n.color,
-  flexibleBreakEnabled: n.flexibleBreakEnabled,
-  flexibleBreakMinutes: n.flexibleBreakMinutes,
 });
 
 function isUniqueViolation(e: unknown): boolean {
@@ -675,6 +772,18 @@ function shiftUniqueError(e: unknown, n: { name: string; code: string }): Error 
 
 export async function createShift(ctx: SessionContext, p: ShiftInput) {
   const n = normalizeShiftInput(p);
+  // r429 (f6819e19) · D1 — a brand-new shift has nothing to preserve and nothing was ever asked for one:
+  // undefined collapses to NO_WEEK (null / [] / []), not to whatever the caller happened to omit.
+  const weeklyPattern = n.weeklyPattern ?? null;
+  const halfPattern = n.halfPattern ?? [];
+  const offPattern = n.offPattern ?? [];
+  // r429 · D3/D4 — same reasoning: nothing to preserve, so undefined collapses to the column's own "off"
+  // value (null for the recorded-only figures, false/null for the retired flexible-break switch).
+  const dayType = n.dayType ?? null;
+  const fullDayLeaveMinutes = n.fullDayLeaveMinutes ?? null;
+  const fullDayOtMinutes = n.fullDayOtMinutes ?? null;
+  const flexibleBreakEnabled = n.flexibleBreakEnabled ?? false;
+  const flexibleBreakMinutes = n.flexibleBreakMinutes ?? null;
   return withTenant(ctx, async (tx) => {
     let row: { id: string };
     try {
@@ -692,7 +801,9 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           breakMinutes: n.breakMinutes,
           breakPeriods: n.breakPeriods,
           normalMinutesOverride: n.normalMinutesOverride,
-          weeklyPattern: n.weeklyPattern,
+          weeklyPattern,
+          halfPattern,
+          offPattern,
           crossesMidnight: n.crossesMidnight,
           // A brand-new row has nothing to preserve, so undefined collapses to null here (unlike updateShift).
           lateGraceMinutes: n.lateGraceMinutes ?? null,
@@ -700,6 +811,11 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           otRule: n.otRule ?? null,
           ruleId: n.ruleId ?? null,
           differential: n.differential,
+          dayType,
+          fullDayLeaveMinutes,
+          fullDayOtMinutes,
+          flexibleBreakEnabled,
+          flexibleBreakMinutes,
           ...generalColumns(n),
         })
         .returning({ id: shift.id });
@@ -722,12 +838,19 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         breakMinutes: n.breakMinutes,
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
-        weeklyPattern: n.weeklyPattern,
+        weeklyPattern,
+        halfPattern,
+        offPattern,
         lateGraceMinutes: n.lateGraceMinutes ?? null,
         earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes ?? null,
         otRule: n.otRule ?? null,
         ruleId: n.ruleId ?? null,
         hasDifferential: !!n.differential,
+        dayType,
+        fullDayLeaveMinutes,
+        fullDayOtMinutes,
+        flexibleBreakEnabled,
+        flexibleBreakMinutes,
         ...generalColumns(n),
       },
     });
@@ -742,6 +865,35 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
 export async function updateShift(ctx: SessionContext, p: { shiftId: string } & Omit<ShiftInput, 'companyId'>) {
   const n = normalizeShiftInput(p);
   return withTenant(ctx, async (tx) => {
+    // r429 (f6819e19) · D4 — READ THE STORED SWITCH FIRST. Two things need it, and neither can be answered
+    // by this request's own input alone: (1) "turning it ON" is a REFUSAL, and whether this save turns it
+    // on depends on what it was a moment ago; (2) when the stored switch is (or stays) ON, every break row
+    // this save writes must still be FORCED flexible, and normalizeShiftInput — a pure function — cannot
+    // see the stored value to decide that for a save that preserves the switch (undefined) while posting
+    // fresh rows. See the header on `flexibleBreakEnabledForRows` above for why the form itself never
+    // reaches that combination; this is the backstop for every other caller.
+    const [before] = await tx
+      .select({ flexibleBreakEnabled: shift.flexibleBreakEnabled })
+      .from(shift)
+      .where(eq(shift.id, p.shiftId))
+      .limit(1);
+    if (!before) throw new Error('Shift not found (or not visible)');
+    // r429 — THE WHOLE-SHIFT SWITCH CAN NO LONGER BE TURNED ON. The form never offers it; the only shifts
+    // still carrying flexible_break_enabled = true are the ones migration 0519 could not convert exactly,
+    // and they can only ever be switched OFF from here (the "Stop using it" tick) — never back on.
+    if (n.flexibleBreakEnabled === true && before.flexibleBreakEnabled !== true) {
+      throw new Error(
+        'The whole-shift Flexible break has been retired — give each break row its own Flexible minutes instead.',
+      );
+    }
+    const resolvedFlexEnabled = n.flexibleBreakEnabled === undefined ? before.flexibleBreakEnabled : n.flexibleBreakEnabled;
+    // The patch the paragraph above promises: a shift whose EFFECTIVE switch is ON after this save, and
+    // whose rows this save is actually replacing, has every one of those rows forced flexible — the same
+    // rule normalizeShiftInput applies when the switch is posted explicitly true.
+    const breakPeriods =
+      resolvedFlexEnabled && n.breakPeriods
+        ? n.breakPeriods.map((bp) => (bp.paid === true ? bp : { ...bp, flexible: true }))
+        : n.breakPeriods;
     try {
       await tx
         .update(shift)
@@ -752,16 +904,23 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           startTime: n.startTime,
           endTime: n.endTime,
           breakMinutes: n.breakMinutes,
-          breakPeriods: n.breakPeriods,
+          breakPeriods,
           normalMinutesOverride: n.normalMinutesOverride,
-          weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
           // 88e94371 + 7c834696 rev 2 — omit when undefined so a form that no longer carries these fields
           // preserves the stored value (drizzle skips undefined keys in .set).
+          ...(n.weeklyPattern === undefined ? {} : { weeklyPattern: n.weeklyPattern }),
+          ...(n.halfPattern === undefined ? {} : { halfPattern: n.halfPattern }),
+          ...(n.offPattern === undefined ? {} : { offPattern: n.offPattern }),
           ...(n.lateGraceMinutes === undefined ? {} : { lateGraceMinutes: n.lateGraceMinutes }),
           ...(n.earlyLeaveGraceMinutes === undefined ? {} : { earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes }),
           ...(n.otRule === undefined ? {} : { otRule: n.otRule }),
           ...(n.ruleId === undefined ? {} : { ruleId: n.ruleId }),
+          ...(n.dayType === undefined ? {} : { dayType: n.dayType }),
+          ...(n.fullDayLeaveMinutes === undefined ? {} : { fullDayLeaveMinutes: n.fullDayLeaveMinutes }),
+          ...(n.fullDayOtMinutes === undefined ? {} : { fullDayOtMinutes: n.fullDayOtMinutes }),
+          ...(n.flexibleBreakEnabled === undefined ? {} : { flexibleBreakEnabled: n.flexibleBreakEnabled }),
+          ...(n.flexibleBreakMinutes === undefined ? {} : { flexibleBreakMinutes: n.flexibleBreakMinutes }),
           differential: n.differential,
           ...generalColumns(n),
           updatedAt: new Date(),
@@ -783,13 +942,20 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         startTime: n.startTime,
         endTime: n.endTime,
         breakMinutes: n.breakMinutes,
-        breakPeriods: n.breakPeriods,
+        breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
-        weeklyPattern: n.weeklyPattern,
+        ...(n.weeklyPattern === undefined ? {} : { weeklyPattern: n.weeklyPattern }),
+        ...(n.halfPattern === undefined ? {} : { halfPattern: n.halfPattern }),
+        ...(n.offPattern === undefined ? {} : { offPattern: n.offPattern }),
         ...(n.lateGraceMinutes === undefined ? {} : { lateGraceMinutes: n.lateGraceMinutes }),
         ...(n.earlyLeaveGraceMinutes === undefined ? {} : { earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes }),
         ...(n.otRule === undefined ? {} : { otRule: n.otRule }),
         ...(n.ruleId === undefined ? {} : { ruleId: n.ruleId }),
+        ...(n.dayType === undefined ? {} : { dayType: n.dayType }),
+        ...(n.fullDayLeaveMinutes === undefined ? {} : { fullDayLeaveMinutes: n.fullDayLeaveMinutes }),
+        ...(n.fullDayOtMinutes === undefined ? {} : { fullDayOtMinutes: n.fullDayOtMinutes }),
+        ...(n.flexibleBreakEnabled === undefined ? {} : { flexibleBreakEnabled: n.flexibleBreakEnabled }),
+        ...(n.flexibleBreakMinutes === undefined ? {} : { flexibleBreakMinutes: n.flexibleBreakMinutes }),
         hasDifferential: !!n.differential,
         ...generalColumns(n),
       },
@@ -1671,7 +1837,9 @@ export async function setEmploymentScheduleGroupBulk(
  */
 export class ShiftHasNoWorkingPatternError extends Error {
   constructor() {
-    super('That shift has no working days set, so it cannot be used as a backup shift. Set its weekly pattern first.');
+    super(
+      'That shift has no working days, so it cannot be used as a backup shift. Put it in a Schedule Group that has a working week.',
+    );
     this.name = 'ShiftHasNoWorkingPatternError';
   }
 }
@@ -2201,7 +2369,7 @@ export async function generateRosterFromTemplate(
   // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
   // would be a new false rejection introduced by the four-way row.
   if (workingDayCount({ pattern: tpl.pattern, halfPattern: tpl.halfPattern }) === 0) {
-    throw new Error('This shift has no weekly working-day pattern — set one on the shift first');
+    throw new Error('This shift has no working days — put it in a Schedule Group that has a working week');
   }
 
   let employmentIds: string[];

@@ -1,27 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { Fragment, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Card, Field, inputCls } from '@/components/ui';
-// aec53564 (r331) — the ONE resolver for "whose working week is this, the group's or the shift's", plus the
-// two pure conversions between the three stored arrays and the seven dropdowns. A leaf module with no
-// imports, which is what makes it importable from a client island at all (core/attendance.ts is not).
-import { weekDayKindFor, weekFromDayKinds, weekPatternFor } from '@/core/week-pattern';
-import { SHIFT_SCHEDULE_GROUP_ANCHOR, useShiftScheduleGroup } from '@/components/shift-schedule-group';
+import { Field, inputCls } from '@/components/ui';
+import { SectionCard } from '@/components/ui/section-card';
+import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
+import { StatusWord } from '@/components/ui/status-word';
+// r429 (f6819e19) — THE ONE PLACE A BREAK ROW IS CHECKED, shared with core/roster.ts (the leaf module has
+// no imports, which is what makes it importable from this client island at all — the same reason
+// core/week-pattern.ts could be before it).
+import { breakRowIssues, breakRowMinutes, type BreakRowIssue } from '@/core/shift-break-rules';
 
 // cf21e554 stage 1 — `paid` is the reference Break tab's "Paid?" tick. Optional, and ABSENT MEANS UNPAID,
 // so a shift saved before this release round-trips byte-identically (see BreakPeriod in db/schema.ts).
 //
-// b8aa3466 — `flexible` is the new Fixed tick, stored INVERTED and only when TRUE. Fixed (the tick ON) is
-// what every stored window means today, so a legacy row opens ticked and posts back without the key: the
-// JSON is byte-identical unless the operator actually unticks it. f3321963 already defined the flag; this
-// is the first editor for it.
-//
-// r277 (439565ff) — `flexibleMinutes` is THIS ROW'S OWN allowance, held as the raw string the number input
-// carries so an empty box stays empty (ABSENT ≠ 0 — see BreakPeriod in db/schema.ts). It is offered only on
-// a row that is Flexible and unpaid, and only while the shift-level allowance is off; blank posts nothing,
-// which is the break the shift deducts today.
+// r429 (f6819e19) · D4 — `flexible` is now the ONE way to make a break flexible (the whole-shift switch and
+// the inverted "Fixed" tick are both gone from this screen). Ticking it opens `flexibleMinutes`, prefilled
+// with the row's own length; blank keeps meaning "deducted exactly as today" (BreakPeriod in db/schema.ts).
 type BreakRow = { start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: string };
 
 const toMin = (t: string): number => {
@@ -34,66 +29,31 @@ const clock = (mins: number) => `${String(Math.floor(mins / 60) % 24).padStart(2
 
 export type ShiftFormType = 'normal' | 'semi_flexi' | 'full_flexi';
 
-// 6340aecb — the weekly row moved in here with the rest of Working Times. Static literal keys so the i18n
-// coverage test's check C can see every one of them (the same reason shift-form.tsx spelled them out).
-const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
-const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
-const DAY_KIND_KEY = {
-  full: 'dayKindFull',
-  half: 'dayKindHalf',
-  rest: 'dayKindRest',
-  off: 'dayKindOff',
-} as const;
-export type DayKind = keyof typeof DAY_KIND_KEY;
-
 /**
- * R7 Multi-Shift Phase 1 — the shift form's time fields: start/end, repeatable break windows, a LIVE auto
- * normal-hours readout, and a manual override that wins when filled. Valid break rows post as one JSON
- * `breakPeriods` field; with no rows the legacy single `breakMinutes` input is the fallback.
+ * r429 (f6819e19) — THE SHIFT PAGE, REDESIGNED: Working Time and Breaks, as their own numbered r427
+ * sections (components/ui/section-card.tsx). Shift Information (name, label, colour, the read-only
+ * Schedule Group line) is app/admin/attendance/shift-form.tsx's own server-rendered section; the closed
+ * "Overtime and pay" panel is there too. This island owns Working Time and Breaks because the shift type
+ * decides which boxes Working Time asks for and the break rows feed the live normal-hours readout, so the
+ * two sections share state.
  *
- * The live figure here is a DISPLAY preview only — the authoritative math is the shared server helper
- * (core/attendance.ts shiftSpan/netScheduledMinutes), which the service re-derives on save.
+ * GONE FROM THIS SCREEN (D1/D2/D4 of the approved plan): the Mon–Sun working-day row (now set on the
+ * Schedule Group's own page), the Schedule Group picker (ditto — changed from "Shifts allowed" there), the
+ * whole-shift Flexible switch and the inverted "Fixed" tick (replaced by ONE "Flexible" tick per row). NONE
+ * of the four is rendered by this file any more, and none of the four is posted by
+ * app/admin/attendance/shift-actions.ts — core/roster.ts preserves whatever was already stored.
  *
- * b8aa3466 — this island also owns the SHIFT TYPE select, because the type is what decides which of these
- * boxes a shift needs, and that decision has to happen in the browser as the operator changes it:
- *
- *   • Normal      — Time in / Time out. Total normal working hours is prefilled from the times and the
- *                   unpaid breaks and is optional. Half-day cut-off is a clock time.
- *   • Semi Flexi  — the SAME two stored columns, relabelled Earliest time in / Latest time out (that is
- *                   how SemiFlex01 already stores 07:00–20:00; early_in / late_out are recorded-only and
- *                   blank on that row, so promoting those instead would have moved the engine). Total
- *                   normal working hours is REQUIRED with no prefill — without it the engine reads a
- *                   normal day on that shift as the whole 12-hour window and no overtime accrues until
- *                   hour 12. Half-day cut-off is DERIVED (half the required hours of work).
- *   • Full Flexi  — still unpickable, exactly as before. Nothing here turns it on.
- *
- * ── 6340aecb · WHAT THIS COMPONENT NOW IS ────────────────────────────────────────────────────────────
- * It renders TWO of the redesigned screen's four sections — WORKING TIMES and BREAKS — as their own cards,
- * rather than one flat run of boxes. They live together in one client component because they share state:
- * the shift type decides the labels and which boxes are asked for, and the break rows feed the live
- * normal-hours readout. Splitting them into two islands would mean lifting that state into a third.
- *
- * The four boxes that moved IN with the redesign (2nd half start time, the earliest-in / latest-out pair
- * and its next-day tick) are plain uncontrolled inputs — they are here for LAYOUT, not for state, and they
- * post exactly the field names shift-actions.ts already reads.
- *
- * EVERY BOX HAS A PRINTED LABEL. Ten controls used to carry only an aria-label or a placeholder.
- *
- * THE PREVIEW BELOW IS THE SIXTH INLINED COPY of span-minus-break (HANDOFF.md names it the one most likely
- * to drift from core/attendance.ts netScheduledMinutes). Three rules keep it honest, all load-bearing:
- *   • only the UNPAID windows are subtracted — a window's `flexible` flag must NEVER enter breakSum,
- *     because core/roster.ts persists break_minutes as Σ of the UNPAID windows and nothing else;
- *   • when the SHIFT-LEVEL flexible break is on, the ALLOWANCE is the break — core/roster.ts writes it
- *     into break_minutes on save, so the readout must deduct the same figure the engine will;
- *   • a type whose span is not the normal-hours figure SUPPRESSES the preview rather than computing one
- *     from a window it does not mean (Semi Flexi).
+ * THE ONE SURVIVOR: a shift migration 0519 could not convert onto its break rows exactly keeps deducting
+ * its whole-shift allowance until the operator explicitly ticks "Stop using it" (`flexLocked` below) —
+ * never silently, and never offered as a way to turn the switch back ON.
  */
 export function ShiftTimeFields({
   defaultType = 'normal',
   defaultStart = '09:00',
   defaultEnd = '18:00',
-  defaultBreaks = [],
-  defaultBreakMinutes = '60',
+  defaultBreaks,
+  isScalarOnlySource = false,
+  defaultBreakMinutesScalar = '0',
   defaultOverride = '',
   defaultRounding = '',
   defaultHalfDayFirstOut = '',
@@ -103,41 +63,45 @@ export function ShiftTimeFields({
   defaultLateOutNextDay = false,
   defaultDailyCutoffEnabled = false,
   defaultDailyCutoffTime = '',
-  defaultFlexibleBreakEnabled = false,
-  defaultFlexibleBreakMinutes = '',
-  dayKinds,
+  flexLocked = false,
+  lockedAllowanceMinutes = 0,
+  lockedBreakPeriodsJson = '[]',
 }: {
   /** b8aa3466 — the shift template type, now client state because it drives the field set. */
   defaultType?: ShiftFormType;
   defaultStart?: string;
   defaultEnd?: string;
-  /** Edit form: seed the repeatable break-window rows (times as 'HH:MM'). Empty ⇒ single-scalar mode. */
-  defaultBreaks?: BreakRow[];
-  /** Edit form: seed the single break-minutes scalar shown when there are no break-window rows. */
-  defaultBreakMinutes?: string;
+  /** Seeds the break-row table. ALWAYS at least one row — a blank one when the shift has none, so the
+   *  table is never empty (the plan's "a new shift opens with a blank Break 1 row"). */
+  defaultBreaks: BreakRow[];
+  /** r429 (f6819e19) · D5 — true for a shift whose STORED shape is scalar-only (break_minutes > 0, no
+   *  break_periods rows). Shows the labelled scalar box under the table until a real row is typed. */
+  isScalarOnlySource?: boolean;
+  /** The stored break_minutes scalar, for the D5 box above and as the posted value while it is shown. */
+  defaultBreakMinutesScalar?: string;
   /** Edit form: seed the stored normal-minutes figure (empty ⇒ none stored). */
   defaultOverride?: string;
   /** cf21e554 — the shift's Normal-Hours Rounding, so the live readout shows the SAME figure the engine
-   *  will use (netScheduledMinutes rounds the net figure DOWN to a multiple of this). Display only: the
-   *  input itself lives in General Controls. */
+   *  will use (netScheduledMinutes rounds the net figure DOWN to a multiple of this). */
   defaultRounding?: string;
-  /** b8aa3466 — the half-day cut-off (stored half_day_first_out). Normal only; Semi Flexi derives it.
-   *  6340aecb — the reporter's "1st Half End Time"; its partner below is "2nd Half Start Time". */
+  /** b8aa3466 — the half-day cut-off (stored half_day_first_out). Normal only; Semi Flexi derives it. */
   defaultHalfDayFirstOut?: string;
   defaultHalfDaySecondIn?: string;
-  /** 6340aecb — the relabelled pair (stored early_in / late_out; the COLUMNS are unchanged, because both
-   *  are read across attendance and payroll and a rename buys nothing the label does not). */
+  /** 6340aecb — the relabelled pair (stored early_in / late_out). */
   defaultEarlyIn?: string;
   defaultLateOut?: string;
   defaultLateOutNextDay?: boolean;
   /** b8aa3466 — the daily cut-off pair (migration 0429). */
   defaultDailyCutoffEnabled?: boolean;
   defaultDailyCutoffTime?: string;
-  /** 6340aecb — the FLEXIBLE BREAK (migration 0457). Off ⇒ the shift computes exactly as it does today. */
-  defaultFlexibleBreakEnabled?: boolean;
-  defaultFlexibleBreakMinutes?: string;
-  /** b8aa3466 — the four-way weekly row, resolved by the caller from the three stored arrays. */
-  dayKinds: Record<number, DayKind>;
+  /** r429 (f6819e19) · D4 — this shift's whole-shift Flexible break could not be converted by migration
+   *  0519 and is still ON. The Breaks section shows ONLY the "Stop using it" panel until the operator
+   *  opts out, at which point it behaves like any other shift. */
+  flexLocked?: boolean;
+  lockedAllowanceMinutes?: number;
+  /** The shift's CURRENT break_periods, unchanged, resent while `flexLocked` so an edit to an unrelated
+   *  field can never silently wipe them (there is no row editor on screen to repost them). */
+  lockedBreakPeriodsJson?: string;
 }) {
   const t = useTranslations('roster');
   const ta = useTranslations('admin.attendancePolicy');
@@ -145,33 +109,13 @@ export function ShiftTimeFields({
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
   const [breaks, setBreaks] = useState<BreakRow[]>(defaultBreaks);
-  const [breakMinutes, setBreakMinutes] = useState(defaultBreakMinutes);
+  const [breakMinutesScalar, setBreakMinutesScalar] = useState(defaultBreakMinutesScalar);
   const [cutoffOn, setCutoffOn] = useState(defaultDailyCutoffEnabled);
   const [cutoffAt, setCutoffAt] = useState(defaultDailyCutoffTime || '02:00');
-  // 6340aecb — the flexible break. `flexMin` is seeded from the stored allowance, and on a shift that has
-  // never had one it is seeded from the break the shift already deducts, so ticking the box does not
-  // silently propose a different figure than the operator is looking at.
-  const [flexOn, setFlexOn] = useState(defaultFlexibleBreakEnabled);
-  const [flexMin, setFlexMin] = useState(defaultFlexibleBreakMinutes);
-
-  /**
-   * aec53564 — THE WORKING WEEK, AND WHO IS ANSWERING FOR IT.
-   *
-   * `ownKinds` is the SHIFT'S OWN week, seeded from the stored row and kept in state so that picking a
-   * Schedule Group and then clearing it again brings back exactly what the operator had — the shift's week
-   * is the fallback the whole read path depends on and nothing here may quietly overwrite it.
-   *
-   * `week` is `weekPatternFor`'s answer: the group's triple when the group declares one (Full ∪ Half > 0),
-   * the shift's otherwise, with `source` saying which. THE FORM ASKS THAT ONE FUNCTION AND USES WHAT IT
-   * RETURNS — both halves of it. `source` decides whether the row is editable; the triple is what the row
-   * SHOWS, so a greyed row displays the week that is actually in force rather than one nothing obeys.
-   * app/admin/attendance/shift-actions.ts asks the same function about the same POST, so the screen and
-   * the write cannot disagree.
-   */
-  const [ownKinds, setOwnKinds] = useState<Record<number, DayKind>>(dayKinds);
-  const scheduleGroup = useShiftScheduleGroup();
-  const week = weekPatternFor(scheduleGroup, weekFromDayKinds(ownKinds));
-  const decidedBy = week.source === 'group' ? scheduleGroup : null;
+  // r429 — once ticked, the locked panel is gone for the rest of this visit and the ordinary Breaks UI
+  // takes over (seeded from `defaultBreaks`, which for a scalar-only/locked shift is the single blank row).
+  const [stoppedFlex, setStoppedFlex] = useState(false);
+  const showLockedPanel = flexLocked && !stoppedFlex;
 
   const semiFlexi = type === 'semi_flexi';
   /**
@@ -184,63 +128,83 @@ export function ShiftTimeFields({
   const fullFlexi = type === 'full_flexi';
   const hoursRequired = semiFlexi || fullFlexi;
 
-  const validBreaks = breaks.filter((bp) => bp.start && bp.end && bp.end > bp.start);
-  /** r277 — which rows are OFFERED their own allowance box, and therefore post one. Flexible is stored
-   *  INVERTED (`bp.flexible !== true` is the Fixed tick), Semi Flexi forces every row flexible in
-   *  core/roster.ts, a PAID break is never deducted so an allowance on it would move nothing, and the
-   *  SHIFT-LEVEL allowance already answers this question for the whole shift — core/roster.ts refuses to
-   *  store both, so the box must not be offered while that switch is on. */
-  const rowTakesAllowance = (bp: BreakRow) => !flexOn && !bp.paid && (semiFlexi || bp.flexible === true);
-  /** The row's allowance as a NUMBER, or null for "blank ⇒ deduct this row exactly as today". */
+  // end ≤ start ⇒ crosses midnight (mirrors shiftCrossesMidnight; times are HH:MM, lexicographic = chronological)
+  const crosses = !!start && !!end && end <= start;
+  const span = start && end ? (crosses ? toMin(end) + 1440 - toMin(start) : toMin(end) - toMin(start)) : 0;
+  const shiftShape = { startTime: start || '00:00', endTime: end || '00:00', crossesMidnight: crosses };
+
+  /** A row counts as "real" once either time is typed — the table's one blank row does not. */
+  const hasRealRows = breaks.some((bp) => bp.start || bp.end);
+  const showScalarBox = !showLockedPanel && isScalarOnlySource && !hasRealRows;
+
+  // r429 (f6819e19) · D6 — every row's own problem, keyed by its position in `breaks` (the SAME array the
+  // service sees, so "Break 2" here is "Break 2" in a refusal too). Blank rows and rows with no issue are
+  // simply absent from the map.
+  const issues = breakRowIssues(
+    breaks.map((bp) => ({
+      start: bp.start,
+      end: bp.end,
+      paid: bp.paid,
+      flexible: bp.flexible,
+      flexibleMinutes: bp.flexibleMinutes != null && bp.flexibleMinutes.trim() !== '' ? Number(bp.flexibleMinutes) : null,
+    })),
+    shiftShape,
+  );
+  const issueCount = issues.size;
+
+  const issueText = (i: number, issue: BreakRowIssue): string => {
+    switch (issue.code) {
+      case 'half':
+        return issue.missing === 'end' ? t('breakRowHalfMissingEnd', { n: i + 1 }) : t('breakRowHalfMissingStart', { n: i + 1 });
+      case 'zero':
+        return t('breakRowZero', { n: i + 1 });
+      case 'reversed':
+        return t('breakRowReversed', { n: i + 1 });
+      case 'outside':
+        return t('breakRowOutside', { n: i + 1, shiftStart: shiftShape.startTime.slice(0, 5), shiftEnd: shiftShape.endTime.slice(0, 5) });
+      case 'overlap':
+        return t('breakRowOverlap', { n: i + 1, other: issue.otherIndex + 1, otherStart: issue.otherStart.slice(0, 5), otherEnd: issue.otherEnd.slice(0, 5) });
+      case 'flexibleMinutesRequired':
+        return t('breakRowFlexibleRequired', { n: i + 1 });
+      case 'flexibleMinutesRange':
+        return t('breakRowFlexibleRange', { n: i + 1, max: issue.max });
+    }
+  };
+
+  /** Only rows with NO issue, and whose own window is known, contribute a real duration to the preview. */
+  const rowDuration = (bp: BreakRow): number | null => {
+    if (!bp.start || !bp.end) return null;
+    const check = breakRowIssues([{ start: bp.start, end: bp.end }], shiftShape);
+    if (check.size > 0) return null;
+    return breakRowMinutes(bp.start, bp.end);
+  };
   const rowAllowance = (bp: BreakRow): number | null => {
-    if (!rowTakesAllowance(bp)) return null;
+    if (bp.paid || bp.flexible !== true) return null;
     const raw = (bp.flexibleMinutes ?? '').trim();
     const n = Math.trunc(Number(raw));
     return raw !== '' && Number.isFinite(n) && n > 0 ? n : null;
   };
-  // end ≤ start ⇒ crosses midnight (mirrors shiftCrossesMidnight; times are HH:MM, lexicographic = chronological)
-  const crosses = !!start && !!end && end <= start;
-  const span = start && end ? (crosses ? toMin(end) + 1440 - toMin(start) : toMin(end) - toMin(start)) : 0;
-  // Only the UNPAID windows come off — the same rule core/roster.ts applies when it persists break_minutes.
-  // A window's own `flexible` flag deliberately plays no part here: that flag says the window is a target
-  // rather than a fixed clock, and the window is still deducted.
-  //
-  // r277 — …EXCEPT where the row carries its own allowance, which is the one case where `flexible` decides
-  // a number: core/roster.ts then writes that allowance into break_minutes in place of the window's length,
-  // so this readout has to deduct the same figure the engine will. Blank ⇒ the window's length, i.e. the
-  // identical expression this has always been.
-  const windowBreakSum =
-    breaks.length > 0
-      ? validBreaks.filter((bp) => !bp.paid).reduce((acc, bp) => acc + (rowAllowance(bp) ?? toMin(bp.end) - toMin(bp.start)), 0)
-      : Number(breakMinutes) || 0;
-  // 6340aecb — with the SHIFT-LEVEL flexible break on, the allowance IS the shift's break: core/roster.ts
-  // writes it into break_minutes on save, so this readout has to deduct the same number the engine will.
-  const flexMinutes = Number(flexMin) || 0;
-  const breakSum = flexOn && flexMinutes > 0 ? flexMinutes : windowBreakSum;
+  // Only the UNPAID windows come off, exactly as core/roster.ts persists break_minutes. A row with an
+  // allowance contributes the allowance; any other unpaid row contributes its own (issue-free) duration.
+  const windowBreakSum = showScalarBox
+    ? Number(breakMinutesScalar) || 0
+    : breaks
+        .filter((bp) => !bp.paid)
+        .reduce((acc, bp) => acc + (rowAllowance(bp) ?? rowDuration(bp) ?? 0), 0);
+  const breakSum = showLockedPanel ? lockedAllowanceMinutes : windowBreakSum;
   const roundTo = Number(defaultRounding) || 0;
   const net = Math.max(0, span - breakSum);
   const auto = roundTo > 0 ? Math.floor(net / roundTo) * roundTo : net;
 
   // ── b8aa3466 item 4 · TOTAL NORMAL WORKING HOURS ────────────────────────────────────────────────────
-  // ONE control replacing the read-only readout plus the "Override (minutes)" box beside it. Entered as
-  // hours + minutes because that is how the reporter wrote it; STORED AS MINUTES, unchanged — changing the
-  // stored unit would make every saved value 60× wrong.
-  //
-  // Normal: seeded from the computed figure and editable. A value equal to the computed one posts BLANK,
-  // so a shift only carries an override once the operator actually disagrees with the arithmetic — which
-  // is exactly the pre-b8aa3466 storage contract.
-  // Semi Flexi: required, and never seeded from the span (the span is the flexible WINDOW, not a day's work).
   const seed = defaultOverride !== '' ? Number(defaultOverride) : hoursRequired ? null : auto;
   const [totalH, setTotalH] = useState(seed == null ? '' : String(Math.floor(seed / 60)));
   const [totalM, setTotalM] = useState(seed == null ? '' : String(seed % 60));
   const [totalTouched, setTotalTouched] = useState(defaultOverride !== '');
-  // Untouched on a Normal shift ⇒ follow the live arithmetic as the operator edits the times and breaks.
   const shownH = totalTouched || hoursRequired ? totalH : String(Math.floor(auto / 60));
   const shownM = totalTouched || hoursRequired ? totalM : String(auto % 60);
   const totalMinutes =
     shownH === '' && shownM === '' ? null : Math.max(0, (Number(shownH) || 0) * 60 + (Number(shownM) || 0));
-  // What actually POSTS into normalMinutesOverride: blank when it agrees with the computed figure on a
-  // Normal shift (no override stored), the number otherwise.
   const postedOverride =
     totalMinutes == null || (!hoursRequired && totalMinutes === auto) ? '' : String(totalMinutes);
 
@@ -252,50 +216,34 @@ export function ShiftTimeFields({
 
   const setBreak = (i: number, patch: Partial<BreakRow>) => setBreaks((prev) => prev.map((bp, j) => (j === i ? { ...bp, ...patch } : bp)));
 
-  /** Ticking Flexible with nothing typed proposes the break the shift already deducts, so the box never
-   *  starts at a figure that quietly differs from what the operator can see above it. */
-  const toggleFlex = (on: boolean) => {
-    setFlexOn(on);
-    if (on && flexMin.trim() === '' && windowBreakSum > 0) setFlexMin(String(windowBreakSum));
-    // r277 — one allowance for the whole shift and one per break are two answers to the same question, and
-    // core/roster.ts refuses to store both. Clearing the per-row boxes here is what keeps that refusal
-    // unreachable from the screen: the operator sees the rows lose their figures as the switch goes on.
-    if (on) setBreaks((prev) => prev.map((bp) => (bp.flexibleMinutes ? { ...bp, flexibleMinutes: '' } : bp)));
+  /** Ticking Flexible with nothing typed proposes this row's own length, so the box never starts at a
+   *  figure that quietly differs from the duration shown beside it. */
+  const toggleFlexible = (i: number, on: boolean) => {
+    setBreak(i, {
+      flexible: on,
+      flexibleMinutes: on ? (breaks[i].flexibleMinutes ?? (rowDuration(breaks[i]) != null ? String(rowDuration(breaks[i])) : '')) : '',
+    });
   };
 
   return (
     <>
-      {/* ── SECTION 2 · WORKING TIMES ─────────────────────────────────────────────────────────────── */}
-      <Card className="space-y-4 p-4">
-        <h2 className="text-sm font-semibold text-foreground">{t('workingTimesLegend')}</h2>
-
+      {/* ── SECTION 2 · WORKING TIME ───────────────────────────────────────────────────────────────── */}
+      <SectionCard index={2} title={t('workingTimeLegend')}>
         {/* f3321963 — Shift Type. Normal + Semi-Flexi are selectable; Full-Flexi is reserved for a FUTURE
-            enhancement (reporter-sanctioned), so its option stays disabled and the note below explains it.
-            It leads Working Times because it is what decides how every time under it is read. */}
-        <Field label={ta('shiftTypeLabel')}>
-          <select
-            name="shiftTemplateType"
-            value={type}
-            onChange={(e) => setType(e.target.value as ShiftFormType)}
-            className={inputCls}
-          >
-            <option value="normal">{ta('shiftTypeNormal')}</option>
-            <option value="semi_flexi">{ta('shiftTypeSemiFlexi')}</option>
-            {/* r274 (439565ff) — ENABLED. The value was always accepted and stored (migration 0188,
-                core/roster.ts validateShiftType); only this attribute kept it out of reach. */}
-            <option value="full_flexi">{ta('shiftTypeFullFlexi')}</option>
-          </select>
-        </Field>
-
-        {/* 1 + 2 — the SAME two stored columns either way; only the wording changes with the type.
-            6340aecb fix — the Semi-Flexi wording used to be "Earliest time in" / "Latest time out", which
-            after the point-8 rename sat in the SAME four-column row as early_in / late_out, now labelled
-            "Shift Start Time" / "Shift Time Out" and defined by the hint below as the earliest and latest
-            ACCEPTED CLOCKING. Two boxes on one line both claiming to be the earliest is how an operator
-            types the early-in value into start_time — which is a scheduling column, so it would move the
-            shift span, netScheduledMinutes and the OT window. The Semi-Flexi pair is named for what it
-            actually is: the window the required hours may be worked within. */}
+            enhancement (reporter-sanctioned), so its option stays disabled and the note below explains it. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label={ta('shiftTypeLabel')}>
+            <select
+              name="shiftTemplateType"
+              value={type}
+              onChange={(e) => setType(e.target.value as ShiftFormType)}
+              className={inputCls}
+            >
+              <option value="normal">{ta('shiftTypeNormal')}</option>
+              <option value="semi_flexi">{ta('shiftTypeSemiFlexi')}</option>
+              <option value="full_flexi">{ta('shiftTypeFullFlexi')}</option>
+            </select>
+          </Field>
           <Field label={semiFlexi ? t('semiFlexiWindowStart') : t('timeIn')}>
             <input
               name="startTime"
@@ -316,82 +264,60 @@ export function ShiftTimeFields({
               className={inputCls}
             />
           </Field>
-
-          {/* 6340aecb — THE RELABELLED PAIR (request point 8). The COLUMNS are untouched: early_in and
-              late_out are read across attendance and payroll, and a column rename buys nothing the label
-              does not. Only the message VALUES changed, in all six locales. The hint below stays, and is
-              type-aware, because these two names sit in the SAME row as the shift's own times — Time in /
-              Time out on a Normal shift, the flexi window on a Semi Flexi one — and the difference between
-              the two pairs is the whole point of the hint. */}
-          <Field label={ta('shiftEarlyIn')}>
-            <input name="earlyIn" type="time" defaultValue={defaultEarlyIn} className={inputCls} />
-          </Field>
+          {/* r429 (f6819e19) — CROSS MIDNIGHT is shown, never posted: core/roster.ts derives it from
+              start/end on every save (shiftCrossesMidnight), so a control that could disagree with the
+              times is not offered — this one only ever reports what they already say. */}
           <div>
-            <Field label={ta('shiftLateOut')}>
-              <input name="lateOut" type="time" defaultValue={defaultLateOut} className={inputCls} />
-            </Field>
-            <label className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                name="lateOutNextDay"
-                defaultChecked={defaultLateOutNextDay}
-                className="h-3.5 w-3.5 accent-primary"
-              />
-              {ta('shiftLateOutNextDay')}
+            <span className="mb-1.5 block text-sm font-medium text-foreground">{ta('crossMidnightLabel')}</span>
+            <label className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-muted-foreground">
+              <input type="checkbox" checked={crosses} disabled readOnly className="h-3.5 w-3.5 accent-primary" />
+              {crosses ? ta('crossMidnightAutoYes') : ta('crossMidnightAutoNo')}
             </label>
           </div>
         </div>
-        {/* The hint NAMES the boxes above it, so it has to follow the same type switch they do: the Normal
-            wording says "Time in and Time out", and on a Semi Flexi shift there is no box by either name. */}
-        {/* Two STATIC ta(...) calls rather than one call on a computed key: the i18n guard in
-            test/shift-form-sections.test.ts reads literal call sites, and a key it cannot see is a key it
-            cannot check. */}
-        <p className="text-xs text-muted-foreground">
-          {semiFlexi ? ta('shiftClockWindowHintSemi') : ta('shiftClockWindowHint')}
-        </p>
 
-        {/* 3 — Total normal working hours. Hours + minutes on screen, MINUTES in the database. */}
-        <div>
-          <Field label={t('totalNormalWorkingHours')} required={hoursRequired} requiredAriaLabel={t('requiredField')}>
-            <span className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                max={24}
-                required={hoursRequired}
-                value={shownH}
-                onChange={(e) => setTotal(e.target.value, shownM)}
-                className={inputCls}
-                aria-label={t('unitHoursLong')}
-              />
-              <span className="text-xs text-muted-foreground">{t('unitHoursShort')}</span>
-              <input
-                type="number"
-                min={0}
-                max={59}
-                value={shownM}
-                onChange={(e) => setTotal(shownH, e.target.value)}
-                className={inputCls}
-                aria-label={t('unitMinutesLong')}
-              />
-              <span className="text-xs text-muted-foreground">{t('unitMinutesShort')}</span>
-            </span>
+        {/* 3 — Total normal working hours, rounding, and the half-day pair, ONE row (the mockup's layout). */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <Field label={t('totalNormalWorkingHours')} required={hoursRequired} requiredAriaLabel={t('requiredField')}>
+              <span className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={0}
+                  max={24}
+                  required={hoursRequired}
+                  value={shownH}
+                  onChange={(e) => setTotal(e.target.value, shownM)}
+                  className={inputCls}
+                  aria-label={t('unitHoursLong')}
+                />
+                <span className="text-xs text-muted-foreground">{t('unitHoursShort')}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={shownM}
+                  onChange={(e) => setTotal(shownH, e.target.value)}
+                  className={inputCls}
+                  aria-label={t('unitMinutesLong')}
+                />
+                <span className="text-xs text-muted-foreground">{t('unitMinutesShort')}</span>
+              </span>
+            </Field>
+            <input type="hidden" name="normalMinutesOverride" value={postedOverride} />
+          </div>
+          <Field label={ta('shiftNormalHoursRounding')}>
+            <input
+              name="normalHoursRoundingMinutes"
+              type="number"
+              min={0}
+              max={1440}
+              defaultValue={defaultRounding}
+              className={inputCls}
+            />
           </Field>
-          {/* STORAGE STAYS MINUTES — this is the only thing that reaches the database. */}
-          <input type="hidden" name="normalMinutesOverride" value={postedOverride} />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {hoursRequired ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
-          </p>
-        </div>
-
-        {/* 4 — THE HALF-DAY PAIR (request point 9). Both columns already existed; what they never had was a
-            findable home. The first is a clock time on a Normal shift (stored half_day_first_out, which
-            also OVERRIDES the company-wide half-day cut-off for this shift); DERIVED on Semi Flexi from
-            half the required hours of WORK, so nothing is asked for and nothing is posted — which is what
-            makes the server derive it. The second is recorded and validated against the first. */}
-        <div className="grid gap-3 sm:grid-cols-2">
           {semiFlexi ? (
-            <div>
+            <div className="lg:col-span-2">
               <span className="mb-1.5 block text-sm font-medium text-foreground">{t('halfDayCutoffLabel')}</span>
               <p className="text-sm text-foreground">
                 {totalMinutes == null || totalMinutes === 0
@@ -404,302 +330,273 @@ export function ShiftTimeFields({
               </p>
             </div>
           ) : (
-            <div>
-              <Field label={t('halfDayCutoffLabel')}>
-                <input name="halfDayFirstOut" type="time" defaultValue={defaultHalfDayFirstOut} className={inputCls} />
-              </Field>
-              <p className="mt-1 text-xs text-muted-foreground">{t('halfDayCutoffHint')}</p>
-            </div>
-          )}
-          <div>
-            <Field label={ta('shiftHalfDaySecondIn')}>
-              <input name="halfDaySecondIn" type="time" defaultValue={defaultHalfDaySecondIn} className={inputCls} />
+            <Field label={t('halfDayCutoffLabel')}>
+              <input name="halfDayFirstOut" type="time" defaultValue={defaultHalfDayFirstOut} className={inputCls} />
             </Field>
-            <p className="mt-1 text-xs text-muted-foreground">{ta('shiftHalfDayPairHint')}</p>
-          </div>
-        </div>
-
-        {/* 5 — the DAILY CUT-OFF (b8aa3466, migration 0429). */}
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-foreground">{t('dailyCutoffLegend')}</span>
-          <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
-            <input
-              type="checkbox"
-              name="dailyCutoffEnabled"
-              checked={cutoffOn}
-              onChange={(e) => setCutoffOn(e.target.checked)}
-              className="h-3.5 w-3.5 accent-primary"
-            />
-            {t('dailyCutoffUse')}
-          </label>
-          {cutoffOn && (
-            <span className="mt-1.5 block max-w-xs">
-              <Field label={t('dailyCutoffAt')}>
-                <input
-                  name="dailyCutoffTime"
-                  type="time"
-                  required
-                  value={cutoffAt}
-                  onChange={(e) => setCutoffAt(e.target.value)}
-                  className={inputCls}
-                />
-              </Field>
-            </span>
           )}
+          <Field label={ta('shiftHalfDaySecondIn')}>
+            <input name="halfDaySecondIn" type="time" defaultValue={defaultHalfDaySecondIn} className={inputCls} />
+          </Field>
+        </div>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {hoursRequired ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
+        </p>
+
+        {/* 5 — CLOCKING WINDOW AND DAY CUT-OFF, grouped together because neither is a scheduling column
+            (request point 8 / b8aa3466 item 7): the earliest/latest ACCEPTED clocking, and the boundary
+            that decides which calendar day a punch belongs to. */}
+        <div className="mt-5 border-t border-border pt-4">
+          <span className="mb-2 block text-sm font-semibold text-foreground">{ta('clockingWindowCutoffLegend')}</span>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label={ta('shiftEarlyIn')}>
+              <input name="earlyIn" type="time" defaultValue={defaultEarlyIn} className={inputCls} />
+            </Field>
+            <div>
+              <Field label={ta('shiftLateOut')}>
+                <input name="lateOut" type="time" defaultValue={defaultLateOut} className={inputCls} />
+              </Field>
+              <label className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  name="lateOutNextDay"
+                  defaultChecked={defaultLateOutNextDay}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                {ta('shiftLateOutNextDay')}
+              </label>
+            </div>
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-foreground">{t('dailyCutoffLegend')}</span>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  name="dailyCutoffEnabled"
+                  checked={cutoffOn}
+                  onChange={(e) => setCutoffOn(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                {t('dailyCutoffUse')}
+              </label>
+              {cutoffOn && (
+                <span className="mt-1.5 block max-w-xs">
+                  <Field label={t('dailyCutoffAt')}>
+                    <input
+                      name="dailyCutoffTime"
+                      type="time"
+                      required
+                      value={cutoffAt}
+                      onChange={(e) => setCutoffAt(e.target.value)}
+                      className={inputCls}
+                    />
+                  </Field>
+                </span>
+              )}
+            </div>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">{ta('clockingWindowCutoffNote')}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t('dailyCutoffHint')}</p>
         </div>
-
-        {/* 6 — b8aa3466: the Mon–Sun row, seven dropdowns with four choices each. One <select> per weekday
-            posting "full" | "half" | "rest" | "off", decoded server-side in shift-actions.ts into the three
-            ISO-weekday arrays the service expects. It sits in Working Times because which days a shift is
-            worked is a working time, not a general control.
-
-            ── aec53564 (r331) · EDITABLE EXACTLY WHEN NOTHING ELSE IS DECIDING ────────────────────────
-            Since 07ebd04d a Schedule Group may state its own working week, and when it does the group is
-            what every reader in the system obeys — so this row was editing a value nothing read. Measured
-            on production 2026-09-23: of 8 shifts, 6 resolve a rule that declares a week, and their seven
-            dropdowns were dead controls.
-
-            THE ROW IS NOT REMOVED, AND THAT IS THE LOAD-BEARING PART. A group whose pattern is NULL or
-            empty does NOT win (core/week-pattern.ts `weekPatternFor` — a week that matches nothing would
-            book every working day as a rest day and pay rest-day overtime on ordinary work), so the shift's
-            own week is the fallback, and the other 2 production shifts are living on it right now. Greying
-            a control keeps the fallback visible and keeps it stored; deleting the control would have
-            deleted the answer for those two.
-
-            WHAT IS SHOWN WHEN A GROUP DECIDES is `weekPatternFor`'s OWN RETURN VALUE — the group's week,
-            the one in force — not the shift's stored row greyed out. Showing an inert week is the defect
-            this item exists to end, not a gentler version of it. Nothing writes it to the shift: a disabled
-            <select> submits nothing, and shift-actions.ts refuses the fields even when something else
-            posts them.
-
-            IT FOLLOWS THE SELECT LIVE, WITH NO SAVE. `useShiftScheduleGroup` reads the Schedule Group
-            picker in Section 4 through a context provider (components/shift-schedule-group.tsx), so
-            choosing a group greys this row as it is chosen and clearing it brings the shift's own week
-            back, untouched. */}
-        <fieldset>
-          <legend className="mb-1.5 text-sm font-medium text-foreground">{ta('shiftWorkingDays')}</legend>
-          <div className="flex flex-wrap gap-1.5">
-            {ISO_DAYS.map((d) => (
-              <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
-                <span className="text-xs font-medium text-foreground">{ta(DAY_KEY[d])}</span>
-                <select
-                  name={`dayKind_${d}`}
-                  value={weekDayKindFor(week, d)}
-                  onChange={(e) => setOwnKinds({ ...ownKinds, [d]: e.target.value as DayKind })}
-                  disabled={decidedBy != null}
-                  className="rounded border border-border bg-transparent px-1 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label={ta(DAY_KEY[d])}
-                >
-                  <option value="full">{t(DAY_KIND_KEY.full)}</option>
-                  <option value="half">{t(DAY_KIND_KEY.half)}</option>
-                  <option value="rest">{t(DAY_KIND_KEY.rest)}</option>
-                  <option value="off">{t(DAY_KIND_KEY.off)}</option>
-                </select>
-              </div>
-            ))}
-          </div>
-          {decidedBy && (
-            /* The cause of a greyed control, said where the control is — the Schedule Group BY NAME, a link
-               to the section of its page that states the week, and a link back down to the picker that
-               chose it. A greyed row whose reason is somewhere else on the page is a bug report. */
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {ta('shiftWorkingDaysDecidedBy', { group: decidedBy.name })}{' '}
-              <Link href={decidedBy.href} className="text-primary hover:underline">
-                {ta('shiftWorkingDaysDecidedLink')}
-              </Link>{' '}
-              <a href={`#${SHIFT_SCHEDULE_GROUP_ANCHOR}`} className="text-primary hover:underline">
-                {ta('shiftWorkingDaysChangeGroup')}
-              </a>
-            </p>
-          )}
-          <p className="mt-1.5 text-xs text-muted-foreground">{t('dayKindHint')}</p>
-        </fieldset>
-      </Card>
+      </SectionCard>
 
       {/* ── SECTION 3 · BREAKS ────────────────────────────────────────────────────────────────────── */}
-      <Card className="space-y-4 p-4">
-        <h2 className="text-sm font-semibold text-foreground">{t('breaksLabel')}</h2>
-
-        <div>
-          {breaks.length === 0 ? (
-            <Field label={t('breakMins')}>
+      <SectionCard
+        index={3}
+        title={t('breaksLabel')}
+        aside={!showLockedPanel && !showScalarBox ? t('breakDurationAside') : undefined}
+      >
+        {/* r429 (f6819e19) — THE MARKER, OUTSIDE the conditional panel. Ticking "Stop using it" below
+            flips `stoppedFlex`, which immediately swaps the locked panel for the ordinary Breaks editor —
+            the checkbox itself is gone from the DOM the instant that happens, so what the form actually
+            POSTS has to live somewhere that survives the swap. Absent (every shift, and a locked shift
+            not yet opted out) ⇒ undefined ⇒ core/roster.ts preserves the stored switch. */}
+        {stoppedFlex && <input type="hidden" name="stopFlexibleBreak" value="1" />}
+        {showLockedPanel ? (
+          // r429 (f6819e19) — THE "STOP USING IT" PANEL. This shift's whole-shift Flexible break could not
+          // be converted exactly by migration 0519 (its break rows do not add up the same way, or it has
+          // none). It keeps deducting its allowance — byte-identically to today — until this box is ticked
+          // and the form saved; nothing here can turn the switch back ON.
+          <div className={`space-y-3`}>
+            <p className="text-sm text-foreground">{t('breakStopUsingAllowance', { minutes: lockedAllowanceMinutes })}</p>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
               <input
-                name="breakMinutes"
-                type="number"
-                min={0}
-                value={breakMinutes}
-                onChange={(e) => setBreakMinutes(e.target.value)}
-                className={inputCls}
+                type="checkbox"
+                name="stopFlexibleBreak"
+                checked={stoppedFlex}
+                onChange={(e) => setStoppedFlex(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
               />
-            </Field>
-          ) : (
-            <span className="flex flex-col gap-1.5" aria-label={t('breakPeriods')}>
-              {breaks.map((bp, i) => {
-                const rowMinutes = bp.start && bp.end && bp.end > bp.start ? toMin(bp.end) - toMin(bp.start) : null;
-                return (
-                  <span key={i} className="flex flex-wrap items-end gap-1.5">
-                    {/* Sequence No. — the reference grid's first column. */}
-                    <span className="w-5 pb-2 text-right text-xs tabular-nums text-muted-foreground" aria-hidden="true">
-                      {i + 1}.
-                    </span>
-                    <Field label={t('breakStart')}>
-                      <input type="time" value={bp.start} onChange={(e) => setBreak(i, { start: e.target.value })} className={inputCls} />
-                    </Field>
-                    <Field label={t('breakEnd')}>
-                      <input type="time" value={bp.end} onChange={(e) => setBreak(i, { end: e.target.value })} className={inputCls} />
-                    </Field>
-                    {/* This row's own duration — the reference grid's Duration column. */}
-                    <span className="w-16 pb-2 text-xs tabular-nums text-muted-foreground">
-                      {rowMinutes == null ? '—' : hm(rowMinutes)}
-                    </span>
-                    <label className="inline-flex cursor-pointer items-center gap-1 pb-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={bp.paid ?? false}
-                        // r277 — a paid break is not deducted at all, so an allowance beside it would be a
-                        // number that moves nothing; ticking Paid clears it rather than leaving it to be
-                        // refused on save.
-                        onChange={(e) => setBreak(i, { paid: e.target.checked, ...(e.target.checked ? { flexibleMinutes: '' } : {}) })}
-                        className="h-3.5 w-3.5 accent-primary"
-                        aria-label={t('breakPaid')}
-                      />
-                      {t('breakPaid')}
-                    </label>
-                    {/* b8aa3466 — FIXED. Stored inverted as `flexible`, and only when the tick is OFF, so a
-                        window saved before this release posts back byte-identically. Semi Flexi forces every
-                        break flexible in core/roster.ts, so the tick is shown OFF and disabled there rather
-                        than letting the screen promise something the service will overwrite.
-                        6340aecb — the SHIFT-LEVEL flexible break does the same, and for the same reason: with
-                        an allowance on, the engine never tests the clocking against any window, so a ticked
-                        FIXED here would be a promise nothing keeps. core/roster.ts forces the stored flag to
-                        match, so what the operator sees is what the row will hold. */}
-                    <label
-                      className={`inline-flex items-center gap-1 pb-2 text-xs text-muted-foreground ${semiFlexi || flexOn ? 'opacity-60' : 'cursor-pointer'}`}
-                    >
-                      <input
-                        type="checkbox"
-                        disabled={semiFlexi || flexOn}
-                        checked={semiFlexi || flexOn ? false : bp.flexible !== true}
-                        // r277 — going back to Fixed drops this row's allowance: a fixed window IS its own
-                        // clock, so the two cannot both be true and core/roster.ts refuses the pair.
-                        onChange={(e) => setBreak(i, { flexible: !e.target.checked, ...(e.target.checked ? { flexibleMinutes: '' } : {}) })}
-                        className="h-3.5 w-3.5 accent-primary"
-                        aria-label={t('breakFixed')}
-                      />
-                      {t('breakFixed')}
-                    </label>
-                    {/* ── r277 (439565ff) · THIS ROW'S OWN ALLOWANCE ────────────────────────────────
-                        "A sixty-minute lunch and a fifteen-minute tea break can finally have different
-                        allowances." Shown ONLY on a row that is Flexible and unpaid, and only while the
-                        shift-level allowance is off — see rowTakesAllowance. BLANK IS NOT ZERO: an empty
-                        box posts nothing and the row is deducted exactly as it is today. */}
-                    {rowTakesAllowance(bp) && (
-                      <Field label={t('breakRowMinutes')}>
+              {t('breakStopUsingTick')}
+            </label>
+            <p className="text-xs text-muted-foreground">{t('breakStopUsingHint')}</p>
+            {/* Resent UNCHANGED so an edit to an unrelated field on this form can never silently clear
+                them — there is no row editor on screen while this panel shows. */}
+            <input type="hidden" name="breakMinutes" value={defaultBreakMinutesScalar} />
+            <input type="hidden" name="breakPeriods" value={lockedBreakPeriodsJson} />
+          </div>
+        ) : (
+          <>
+            {issueCount > 0 && (
+              <div
+                role="alert"
+                className="mb-3 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive monolith:border-signal monolith:bg-transparent monolith:text-signal-text"
+              >
+                {t('breaksNeedFixing', { count: issueCount })}
+              </div>
+            )}
+            <StackedTable label={t('breaksLabel')}>
+              <StackedHead>
+                <StackedTh>{t('breakSeqLabel')}</StackedTh>
+                <StackedTh>{t('breakStart')}</StackedTh>
+                <StackedTh>{t('breakEnd')}</StackedTh>
+                <StackedTh>{t('breakDurationLabel')}</StackedTh>
+                <StackedTh>{t('breakFlexibleLabel')}</StackedTh>
+                <StackedTh>{t('breakPaid')}</StackedTh>
+                <StackedTh>{t('breakActionLabel')}</StackedTh>
+              </StackedHead>
+              <StackedBody>
+                {breaks.map((bp, i) => {
+                  const duration = rowDuration(bp);
+                  const issue = issues.get(i);
+                  const flexOn = bp.flexible === true;
+                  return (
+                    <Fragment key={i}>
+                    <StackedRow>
+                      <StackedTd label={t('breakSeqLabel')} role="title">
+                        {t('breakSeqValue', { n: i + 1 })}
+                      </StackedTd>
+                      <StackedTd label={t('breakStart')}>
                         <input
-                          type="number"
-                          min={1}
-                          max={rowMinutes ?? undefined}
-                          value={bp.flexibleMinutes ?? ''}
-                          onChange={(e) => setBreak(i, { flexibleMinutes: e.target.value })}
-                          className={`${inputCls} w-24`}
-                          aria-label={t('breakRowMinutes')}
+                          type="time"
+                          value={bp.start}
+                          onChange={(e) => setBreak(i, { start: e.target.value })}
+                          className={inputCls}
+                          aria-label={`${t('breakStart')} ${i + 1}`}
                         />
-                      </Field>
+                      </StackedTd>
+                      <StackedTd label={t('breakEnd')}>
+                        <input
+                          type="time"
+                          value={bp.end}
+                          onChange={(e) => setBreak(i, { end: e.target.value })}
+                          className={inputCls}
+                          aria-label={`${t('breakEnd')} ${i + 1}`}
+                        />
+                      </StackedTd>
+                      <StackedTd label={t('breakDurationLabel')} className="tabular-nums">
+                        {duration == null ? '—' : `${duration} min`}
+                      </StackedTd>
+                      <StackedTd label={t('breakFlexibleLabel')}>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={flexOn}
+                              disabled={semiFlexi}
+                              onChange={(e) => toggleFlexible(i, e.target.checked)}
+                              className="h-3.5 w-3.5 accent-primary"
+                              aria-label={t('breakFlexibleLabel')}
+                            />
+                            {flexOn || semiFlexi ? t('breakFlexibleYes') : t('breakFlexibleNo')}
+                          </label>
+                          {(flexOn || semiFlexi) && !bp.paid && (
+                            <input
+                              type="number"
+                              min={1}
+                              max={duration ?? undefined}
+                              value={bp.flexibleMinutes ?? ''}
+                              onChange={(e) => setBreak(i, { flexibleMinutes: e.target.value })}
+                              className={`${inputCls} w-20`}
+                              aria-label={t('breakRowMinutes')}
+                            />
+                          )}
+                        </span>
+                      </StackedTd>
+                      <StackedTd label={t('breakPaid')}>
+                        <input
+                          type="checkbox"
+                          checked={bp.paid ?? false}
+                          onChange={(e) => setBreak(i, { paid: e.target.checked, ...(e.target.checked ? { flexible: false, flexibleMinutes: '' } : {}) })}
+                          className="h-3.5 w-3.5 accent-primary"
+                          aria-label={t('breakPaid')}
+                        />
+                      </StackedTd>
+                      <StackedTd label={t('breakActionLabel')} role="aside" hideLabel>
+                        <button
+                          type="button"
+                          onClick={() => setBreaks((prev) => (prev.length > 1 ? prev.filter((_, j) => j !== i) : [{ start: '', end: '' }]))}
+                          className="text-rose-600 hover:text-rose-700 dark:text-rose-400 monolith:underline"
+                          aria-label={t('removeBreak')}
+                        >
+                          {t('removeBreak')}
+                        </button>
+                      </StackedTd>
+                    </StackedRow>
+                    {issue && (
+                      <StackedRow className="@max-3xl:pt-0">
+                        <StackedTd label="" role="full" hideLabel colSpan={7} className="pt-0 @max-3xl:pt-0">
+                          <StatusWord tone="signal" className="text-xs text-destructive">
+                            {issueText(i, issue)}
+                          </StatusWord>
+                        </StackedTd>
+                      </StackedRow>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setBreaks((prev) => prev.filter((_, j) => j !== i))}
-                      className="pb-2 text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                      aria-label={t('removeBreak')}
-                    >
-                      ×
-                    </button>
-                  </span>
-                );
-              })}
-              {/* `paid` is emitted ONLY when true and `flexible` ONLY when true, so a break row that predates
-                  either tick posts exactly the { start, end } shape it always posted. */}
+                    </Fragment>
+                  );
+                })}
+              </StackedBody>
+            </StackedTable>
+            <button
+              type="button"
+              onClick={() => setBreaks((prev) => [...prev, { start: '', end: '' }])}
+              className="mt-3 rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted monolith:rounded-none"
+            >
+              {t('addBreak')}
+            </button>
+
+            {showScalarBox && (
+              <div className="mt-4 max-w-xs border-t border-border pt-4">
+                <Field label={t('breakScalarOnlyLabel')}>
+                  <input
+                    name="breakMinutes"
+                    type="number"
+                    min={0}
+                    value={breakMinutesScalar}
+                    onChange={(e) => setBreakMinutesScalar(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('breakScalarOnlyHint', { minutes: Number(breakMinutesScalar) || 0 })}
+                </p>
+              </div>
+            )}
+
+            {/* Every NON-blank row posts — the hidden JSON field the service reads. Blank rows (both times
+                empty) are included too (the server drops them before any index reaches a refusal; see
+                app/admin/attendance/shift-actions.ts parseBreakPeriods / core/roster.ts). */}
+            {!showScalarBox && (
               <input
                 type="hidden"
                 name="breakPeriods"
                 value={JSON.stringify(
-                  validBreaks.map((bp) => ({
+                  breaks.map((bp) => ({
                     start: bp.start,
                     end: bp.end,
                     ...(bp.paid ? { paid: true } : {}),
-                    ...(bp.flexible ? { flexible: true } : {}),
-                    // r277 — and `flexibleMinutes` ONLY when the row is offered one AND a figure is typed,
-                    // so a break row that predates this release still posts the exact shape it always did.
-                    ...(rowAllowance(bp) != null ? { flexibleMinutes: rowAllowance(bp) } : {}),
+                    ...(bp.flexible || semiFlexi ? { flexible: true } : {}),
+                    ...(rowAllowance(bp) != null && !bp.paid ? { flexibleMinutes: rowAllowance(bp) } : {}),
                   })),
                 )}
               />
-            </span>
-          )}
-          <span className="mt-1.5 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setBreaks((prev) => [...prev, { start: '12:00', end: '13:00' }])}
-              className="rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted"
-            >
-              {t('addBreak')}
-            </button>
-            {/* The Fixed tick is DISABLED on a Semi Flexi shift and once the shift-level allowance is on, so
-                the hint beside it must stop telling the operator to untick a control they cannot touch —
-                and must say WHY it is decided for them. */}
-            <span className="text-xs text-muted-foreground">
-              {semiFlexi || flexOn ? t('breakFixedLockedHint') : t('breakFixedHint')}
-              {/* r277 — said next to the boxes it is about, and only while any row is actually offered one. */}
-              {breaks.some((bp) => rowTakesAllowance(bp)) ? ` ${t('breakRowMinutesHint')}` : ''}
-            </span>
-          </span>
-        </div>
+            )}
 
-        {/* ── 6340aecb · THE FLEXIBLE BREAK (request points 11 + 12, migration 0457) ─────────────────
-            NOT a cosmetic switch: with it on, the allowance is what comes off a day's clocking (and what
-            the shift's scheduled hours are struck from), instead of the overlap between the punch and the
-            windows above. The windows stay — the reporter's point 12 is that the allowance applies EVEN
-            WHEN a Break Start / Break End is configured. Off is the default and off is byte-identical to
-            every shift that exists today. */}
-        <fieldset className="rounded-lg border border-border p-3">
-          <legend className="px-1 text-sm font-medium text-foreground">{t('flexibleBreakLegend')}</legend>
-          <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
-            <input
-              type="checkbox"
-              name="flexibleBreakEnabled"
-              checked={flexOn}
-              onChange={(e) => toggleFlex(e.target.checked)}
-              className="h-3.5 w-3.5 accent-primary"
-            />
-            {t('flexibleBreakUse')}
-          </label>
-          {flexOn && (
-            <span className="mt-2 block max-w-xs">
-              <Field label={t('flexibleBreakMinutes')} required requiredAriaLabel={t('requiredField')}>
-                <input
-                  name="flexibleBreakMinutes"
-                  type="number"
-                  min={1}
-                  max={1440}
-                  required
-                  value={flexMin}
-                  onChange={(e) => setFlexMin(e.target.value)}
-                  className={inputCls}
-                />
-              </Field>
-            </span>
-          )}
-          <p className="mt-1.5 text-xs text-muted-foreground">{t('flexibleBreakHint')}</p>
-        </fieldset>
-
-        {/* What the day will actually be worth, stated rather than left to be inferred from four boxes. */}
-        <p className="text-xs text-muted-foreground">
-          {semiFlexi
-            ? t('breakDeductionSemiHint')
-            : t('breakDeductionSummary', { deducted: hm(breakSum), net: hm(net) })}
-        </p>
-      </Card>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {semiFlexi ? t('breakDeductionSemiHint') : t('breakDeductionSummary', { deducted: hm(breakSum), net: hm(net) })}
+            </p>
+            <p className="text-xs text-muted-foreground">{t('breakRowNeedsFixingNote')}</p>
+          </>
+        )}
+      </SectionCard>
     </>
   );
 }

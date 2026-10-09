@@ -98,6 +98,7 @@ export function ClockingLocationForm({
   assignedCount,
   error,
   cancelHref,
+  returnCompany,
 }: {
   /** The page's `getTranslations('admin.locations')`. */
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -122,6 +123,13 @@ export function ClockingLocationForm({
   assignedCount?: number;
   error?: string;
   cancelHref: string;
+  /**
+   * r428 (83c0d3c8 contest) — the company this screen was opened FROM (step 2 of the company-first
+   * redesign), already re-validated by the page against the location's own companies (new) or the
+   * caller's administered companies (edit). Carried as a hidden field so Save lands back on that
+   * company's view rather than the bare list; absent on a New opened from the top-level company list.
+   */
+  returnCompany?: string;
 }) {
   const textareaCls = inputCls.replace('h-9', 'min-h-[4.5rem] py-2');
   // The seam, read ONCE per render on the server. With no map variables set this is the free, keyless
@@ -149,6 +157,7 @@ export function ClockingLocationForm({
       className="space-y-6"
     >
       {mode === 'edit' && <input type="hidden" name="clockingLocationId" value={clockingLocationId} />}
+      {returnCompany && <input type="hidden" name="returnCompany" value={returnCompany} />}
 
       <ErrorBanner message={error} />
 

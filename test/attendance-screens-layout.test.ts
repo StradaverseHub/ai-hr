@@ -79,7 +79,10 @@ const WIDE_LIST_SCREENS = [
   // list), and the card itself is pinned cap-free in WIDE_SCREEN_CARDS.
   'app/admin/holidays/page.tsx',
   'app/admin/attendance-allowance/page.tsx',
-  'app/admin/work-locations/page.tsx',
+  // r428 (83c0d3c8 contest) — 'app/admin/work-locations/page.tsx' STOOD HERE. It is a requireAdmin()
+  // redirect stub now and renders no width at all; the company-first screen it used to render is
+  // app/admin/work-locations/clocking/page.tsx below, both of its steps full-width list screens by shape.
+  'app/admin/work-locations/clocking/page.tsx',
   // 1c5602cc (r263) — the Schedule configuration screen. A list screen by shape (two wide tables of
   // shifts and per-company working weeks, seven and six columns), so it takes the same full-width
   // property its siblings do, pinned in the same place rather than left uncovered.

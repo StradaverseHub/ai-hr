@@ -187,6 +187,9 @@ describe('6340aecb — the flexible break, once it is switched on', () => {
       breakMinutes: 60,
       breakPeriods: [{ start: '13:00:00', end: '14:00:00' }],
       weeklyPattern: [1, 2, 3, 4, 5],
+      // r429 (f6819e19) · D4 — EXPLICIT false. Omitting the key now means PRESERVE (the contract the form's
+      // "Stop using it" tick relies on — see the two describes below), so "switching it off" has to say so.
+      flexibleBreakEnabled: false,
     });
     const row = await shiftRow(sh.id);
     expect(row.flexibleBreakEnabled).toBe(false);
@@ -195,6 +198,97 @@ describe('6340aecb — the flexible break, once it is switched on', () => {
     expect(row.breakMinutes).toBe(60);
     const { out } = await punchDay(sh.id, '09:00:00', '12:00:00');
     expect(out.workedMinutes).toBe(180);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * r429 (f6819e19) · D4 — THE SWITCH IS RETIRED FROM THE FORM: UNDEFINED PRESERVES, AND AN UPDATE CAN
+ * NEVER TURN IT ON.
+ *
+ * The Shift page no longer renders this control at all (components/shift-time-fields.tsx shows a
+ * "Stop using it" tick instead, which can only post an EXPLICIT false). core/roster.ts therefore has to
+ * carry two new rules the pre-r429 form never needed: an UPDATE that simply does not mention the switch
+ * must leave it exactly as it was, and an UPDATE that tries to turn an OFF switch ON must be refused
+ * outright — the only way the plan's "no attendance, overtime or pay figure changes" promise survives a
+ * screen that no longer offers the control at all.
+ */
+describe('r429 (f6819e19) — the whole-shift switch: undefined preserves, and ON is refused on update', () => {
+  it('omitting the key on update preserves a switch that was already ON', async () => {
+    const sh = await dayShift({ flexibleBreakEnabled: true, flexibleBreakMinutes: 45 });
+    await updateShift(adminCtx(b), {
+      shiftId: sh.id,
+      name: (await shiftRow(sh.id)).name,
+      code: (await shiftRow(sh.id)).code!,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      // flexibleBreakEnabled / flexibleBreakMinutes / breakPeriods all OMITTED — exactly what the "Stop
+      // using it" panel posts while it is NOT ticked (hidden passthrough fields carry the scalar and the
+      // break rows unchanged instead; see components/shift-time-fields.tsx).
+    });
+    const row = await shiftRow(sh.id);
+    expect(row.flexibleBreakEnabled, 'still ON — nothing asked for it to change').toBe(true);
+    expect(row.flexibleBreakMinutes).toBe(45);
+  });
+
+  it('omitting the key on update preserves a switch that was already OFF (every ordinary shift)', async () => {
+    const sh = await dayShift();
+    await updateShift(adminCtx(b), {
+      shiftId: sh.id,
+      name: (await shiftRow(sh.id)).name,
+      code: (await shiftRow(sh.id)).code!,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      breakPeriods: [{ start: '13:00:00', end: '14:00:00' }],
+    });
+    const row = await shiftRow(sh.id);
+    expect(row.flexibleBreakEnabled).toBe(false);
+    expect(row.flexibleBreakMinutes).toBeNull();
+  });
+
+  it('REFUSES an update that turns a stored OFF switch ON — the form can no longer do this, and neither can a direct call', async () => {
+    const sh = await dayShift(); // flexibleBreakEnabled defaults false
+    await expect(
+      updateShift(adminCtx(b), {
+        shiftId: sh.id,
+        name: (await shiftRow(sh.id)).name,
+        code: (await shiftRow(sh.id)).code!,
+        startTime: '09:00:00',
+        endTime: '18:00:00',
+        breakMinutes: 60,
+        flexibleBreakEnabled: true,
+        flexibleBreakMinutes: 30,
+      }),
+    ).rejects.toThrow(/retired/i);
+    // Nothing moved: still off, still the stored break.
+    const row = await shiftRow(sh.id);
+    expect(row.flexibleBreakEnabled).toBe(false);
+  });
+
+  it('an update that explicitly re-posts `true` on a shift ALREADY on is accepted (not a re-turn-on)', async () => {
+    const sh = await dayShift({ flexibleBreakEnabled: true, flexibleBreakMinutes: 45 });
+    await updateShift(adminCtx(b), {
+      shiftId: sh.id,
+      name: (await shiftRow(sh.id)).name,
+      code: (await shiftRow(sh.id)).code!,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      flexibleBreakEnabled: true,
+      flexibleBreakMinutes: 50, // changing the FIGURE on an already-on switch is still allowed
+    });
+    const row = await shiftRow(sh.id);
+    expect(row.flexibleBreakEnabled).toBe(true);
+    expect(row.flexibleBreakMinutes).toBe(50);
+  });
+
+  it('CREATE can still set it explicitly — there is nothing stored yet to "turn on"', async () => {
+    const sh = await dayShift({ flexibleBreakEnabled: true, flexibleBreakMinutes: 30 });
+    const row = await shiftRow(sh.id);
+    expect(row.flexibleBreakEnabled).toBe(true);
+    expect(row.flexibleBreakMinutes).toBe(30);
   });
 });
 
@@ -384,8 +478,11 @@ describe('6340aecb — request point 13: the time sequence is validated, not sto
   });
 
   it('refuses a break that ends before it starts', async () => {
+    // r429 (f6819e19) · D6 — reworded: end < start is now a valid WRAP on a shift that crosses midnight
+    // (see test/shift-break-validation-matrix.test.ts), so the refusal on an ordinary day shift now says
+    // so explicitly rather than forbidding every reversed pair unconditionally.
     await expect(dayShift({ breakPeriods: [{ start: '14:00:00', end: '13:00:00' }] })).rejects.toThrow(
-      /must start before it ends/i,
+      /ends before it starts.*does not cross midnight/i,
     );
   });
 
