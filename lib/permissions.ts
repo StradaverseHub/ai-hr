@@ -316,8 +316,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/attendance/my-roster'],
     hasScopeNote: true,
   },
-  // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so
-  // every role reaches the showcase; it fetches no data, so there is no scope note.
+  // Mobile App: group administrators build a tenant design; other viewers see the published live app.
+  // scopedSession and existing data services retain each viewer's authorization.
   {
     screenKey: 'mobilePreview',
     href: '/mobile-preview',

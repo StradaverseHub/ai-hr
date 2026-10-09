@@ -1,3 +1,4 @@
+import { useTenantDesign } from '../../lib/design';
 /**
  * Inbox — the in-app notifications (GET /api/mobile/v1/notifications). This is where a push will deep-link
  * to: the push itself carries no content (ADR-0088 §3).
@@ -9,6 +10,7 @@ import { useSession } from '../../lib/session';
 import { Card, LoadState, Muted, Screen, Title, colors } from '../../lib/ui';
 
 export default function Inbox() {
+  const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const inbox = useApi('notifications', {}, signOut);
   return (
@@ -20,10 +22,10 @@ export default function Inbox() {
       {inbox.data?.items.map((n) => (
         <Card key={n.id}>
           <View style={styles.head}>
-            {n.readAt == null && <View style={styles.dot} accessibilityLabel="unread" />}
-            <Text style={[styles.title, n.readAt == null && styles.unread]}>{n.title}</Text>
+            {n.readAt == null && <View style={[styles.dot, { backgroundColor: palette.accent }]} accessibilityLabel="unread" />}
+            <Text style={[styles.title, { color: palette.text }, n.readAt == null && styles.unread]}>{n.title}</Text>
           </View>
-          <Text style={styles.body}>{n.body}</Text>
+          <Text style={[styles.body, { color: palette.text }]}>{n.body}</Text>
           <Muted>{new Date(n.createdAt).toLocaleString()}</Muted>
         </Card>
       ))}

@@ -15,6 +15,7 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_ledger',
   // 491c499f — the adjustment batch header. leave_ledger.adjustment_batch_id points AT it, so it must

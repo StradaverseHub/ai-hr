@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type {
+  MobileDesignResponse,
   LeaveResponse,
   MeResponse,
   NotificationsResponse,
@@ -21,6 +22,7 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  design: MobileDesignResponse;
   me: MeResponse;
   payslips: PayslipsResponse;
   leave: LeaveResponse;

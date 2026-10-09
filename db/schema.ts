@@ -9829,3 +9829,13 @@ export const itAssetRequest = pgTable('it_asset_request', {
   cancelReason: text('cancel_reason'),
   createdAt: createdAt(),
 });
+
+// Tenant mobile presentation. Releases are append-only at the database privilege boundary.
+export const mobileDesignDraft = pgTable('mobile_design_draft', {
+  tenantId: tenantId().primaryKey(), config: jsonb('config').notNull(), revision: integer('revision').notNull().default(0),
+  updatedBy: uuid('updated_by'), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const mobileDesignRelease = pgTable('mobile_design_release', {
+  tenantId: tenantId(), revision: integer('revision').notNull(), config: jsonb('config').notNull(),
+  publishedBy: uuid('published_by').notNull(), publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.tenantId, t.revision] })]);

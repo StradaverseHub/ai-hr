@@ -14,6 +14,7 @@
  * arithmetic on it. Instants are ISO-8601 strings; calendar dates are `YYYY-MM-DD`.
  */
 import { z } from 'zod';
+import { parseMobileDesign, type MobileDesign } from '../mobile-design';
 
 export const MOBILE_API_VERSION = 'v1' as const;
 
@@ -130,3 +131,10 @@ export const ErrorResponse = z.object({
   error: z.enum(['auth_required', 'unavailable', 'bad_request', 'internal']),
 });
 export type ErrorResponse = z.infer<typeof ErrorResponse>;
+
+// GET /api/mobile/v1/design: append-only presentation contract, no HR data or draft.
+export const MobileDesignResponse = z.object({
+  tenantId: z.string().uuid(), revision: z.number().int().nonnegative(), publishedAt: z.string(),
+  config: z.custom<MobileDesign>(value => { try { parseMobileDesign(value); return true; } catch { return false; } }),
+});
+export type MobileDesignResponse = z.infer<typeof MobileDesignResponse>;

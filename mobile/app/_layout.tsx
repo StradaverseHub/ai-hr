@@ -1,3 +1,4 @@
+import { TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -5,6 +6,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { t } from '../lib/i18n';
 import { SessionProvider, useSession } from '../lib/session';
 import { Button, colors } from '../lib/ui';
+
+function ThemedStack() {
+  const { palette } = useTenantDesign();
+  return <><StatusBar style={palette.text === '#111111' ? 'dark' : 'light'} /><Stack screenOptions={{ headerShown: false }} /></>;
+}
 
 function Gate() {
   const { status, visible, error, unlocking, unlock, signOut } = useSession();
@@ -27,7 +33,7 @@ function Gate() {
       </View>
     );
   }
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return status === 'signedIn' ? <TenantDesignProvider><ThemedStack /></TenantDesignProvider> : <Stack screenOptions={{ headerShown: false }} />;
 }
 
 export default function RootLayout() {

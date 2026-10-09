@@ -1,13 +1,15 @@
+import { useTenantDesign } from '../../lib/design';
 /**
  * My leave — the web dashboard's card fronts, figure for figure (GET /api/mobile/v1/leave).
  */
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { Card, LoadState, Muted, Row, Screen, Title, colors, fmtDays } from '../../lib/ui';
 
 export default function Leave() {
+  const { palette, design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   return (
@@ -15,9 +17,10 @@ export default function Leave() {
       <Title>{t('tabLeave')}</Title>
       <LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />
       {leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}
+      <View style={{ flexDirection: design.leaveLayout === 'ledger' ? 'row' : 'column', flexWrap: 'wrap', gap: 12 }}>
       {leave.data?.cards.map((c) => (
-        <Card key={c.leaveTypeId}>
-          <Text style={{ fontSize: 17, fontWeight: '600', color: c.color ?? colors.text }}>{c.leaveType}</Text>
+        <View key={c.leaveTypeId} style={{ width: design.leaveLayout === 'ledger' ? '48%' : '100%' }}><Card>
+          <Text style={{ fontSize: 17, fontWeight: '600', color: palette.text }}>{c.leaveType}</Text>
           {c.takenOnly ? (
             <Row label={t('taken')} value={fmtDays(c.taken)} strong />
           ) : (
@@ -31,8 +34,8 @@ export default function Leave() {
             </>
           )}
           {c.sharedPool && <Muted>{t('sharedPool')}</Muted>}
-        </Card>
-      ))}
+        </Card></View>
+      ))}</View>
     </Screen>
   );
 }

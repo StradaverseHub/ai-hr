@@ -1,19 +1,20 @@
 'use client';
 
-import { useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowUpRight, BatteryFull, Check, ChevronDown, Clock, Files, Home, Inbox, Moon, RefreshCw, Signal, Sun, UserRound, Users, Wifi } from 'lucide-react';
+import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, type MobileDesign } from '@/lib/mobile-design';
 import { formatDays } from '@/lib/day-format';
 import type { MobilePreviewData, PreviewLeave, PreviewRead } from './types';
 import styles from './mobile-preview.module.css';
 import { ClockCard } from './clock-card';
 import { useMobileClock } from './use-mobile-clock';
 
-type Tab = 'home' | 'clock' | 'requests' | 'inbox' | 'me' | 'leave' | 'team';
+export type Tab = 'home' | 'clock' | 'requests' | 'inbox' | 'me' | 'leave' | 'team';
 
 /** Live Monolith Flow. Clock gestures use Web Clocking; other commands open their guarded workflow. */
-export function MobileApp({ data }: { data: MobilePreviewData }) {
+export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = false, embedded = false, previewAppearance, initialTab = 'home', onNavigate }: { data: MobilePreviewData; design?: MobileDesign; designOnly?: boolean; embedded?: boolean; previewAppearance?: 'light' | 'dark'; initialTab?: Tab; onNavigate?: (tab: Tab) => void }) {
   const t = useTranslations('mobilePreview');
   const lt = useTranslations('me.leaveBalanceTable');
   const nt = useTranslations('notifications');
@@ -21,10 +22,12 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
   const locale = useLocale();
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
-  const [tab, setTab] = useState<Tab>('home');
-  const [appearance, setAppearance] = useState<'light' | 'dark'>('dark');
-  const [control, setControl] = useState<'flow' | 'punch' | 'rail'>('flow');
-  const [motion, setMotion] = useState(true);
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [appearance, setAppearance] = useState<'light' | 'dark'>(design.appearance === 'light' ? 'light' : 'dark');
+  const [control, setControl] = useState<'flow' | 'punch' | 'rail'>(design.clockLayout);
+  const [motion, setMotion] = useState(design.motion === 'standard');
+  useEffect(() => { if (design.appearance !== 'system') return; const q = matchMedia('(prefers-color-scheme: dark)'); const change = () => setAppearance(q.matches ? 'dark' : 'light'); change(); q.addEventListener('change', change); return () => q.removeEventListener('change', change); }, [design.appearance]);
+  const shownAppearance = previewAppearance ?? appearance;
   const [large, setLarge] = useState(false);
   const [day, setDay] = useState(data.today);
   const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
@@ -33,7 +36,7 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
   const captureLocked = capture.active && !['success', 'error'].includes(capture.phase);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const go = (next: Tab) => { if (captureLocked) return; setTab(next); setSelectedId(null); bodyRef.current?.scrollTo(0, 0); };
+  const go = (next: Tab) => { if (captureLocked) return; setTab(next); onNavigate?.(next); setSelectedId(null); bodyRef.current?.scrollTo(0, 0); };
   const date = (iso: string, options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }) =>
     new Intl.DateTimeFormat(locale, { ...options, timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(`${iso}T00:00:00+08:00`));
   const time = (iso: string) => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
@@ -64,7 +67,7 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
 
   function workday() {
     if (!data.employment) return empty(t('live.notLinked'));
-    return state(data.clock, c => <ClockCard clock={c} company={data.employment!.company} layout={control}
+    return state(data.clock, c => <ClockCard clock={c} company={data.employment!.company} layout={embedded ? design.clockLayout : control} designOnly={designOnly}
       capture={capture} onHistory={() => go('clock')} showBothActions={tab === 'clock'} />);
   }
   const taskRows = data.tasks.status === 'ready' ? data.tasks.data.map(task => <a key={task.id} className={styles.taskRow} href={safeHref(task.href) ?? '/approvals'}>
@@ -83,7 +86,7 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
 
   function leaveBank() {
     return <>{back('home')}<div className={styles.bankHeading}>{heading(t('live.leaveBank'), t('live.allTypes'))}{data.leave.status === 'ready' && <span>{data.leave.data.length}</span>}</div>
-      {state(data.leave, cards => cards.length ? <div className={styles.bank}>
+      {state(data.leave, cards => cards.length ? <div className={styles.bank} data-layout={design.leaveLayout}>
         {cards.map(c => <button key={c.id} type="button" className={styles.balance} onClick={() => { setSelectedId(c.id); bodyRef.current?.scrollTo(0, 0); }}>
           <span className={styles.balanceName}>{c.name}<ArrowUpRight size={16} /></span>
           <strong className={styles.balanceValue}>{c.takenOnly ? formatDays(c.taken) : formatDays(c.available)}</strong>
@@ -117,12 +120,11 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
 
   let content: ReactNode;
   switch (tab) {
-    case 'home': content = <>{heading(firstName ? t('live.greeting', { name: firstName }) : t('live.home'))}{workday()}
-      <div inert={captureLocked}><section className={styles.attention}><div className={styles.sectionTitle}><h3>{t('live.needsYou')}</h3>{data.tasks.status === 'ready' && <span>{data.tasks.data.length}</span>}</div>
-        {state(data.tasks, tasks => tasks.length ? <>{taskRows?.slice(0, 4)}{tasks.length > 4 && row(t('live.allTasks'), String(tasks.length), '/approvals')}</> : empty(t('live.allClear')))}
-      </section>
-      {data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.planLeave')}</strong></span><ArrowUpRight size={26} /></button>}
-      {teamPeek()}</div></>; break;
+    case 'home': content = <>{heading(firstName ? t('live.greeting', { name: firstName }) : t('live.home'))}{design.homeOrder.map(id => <div key={id} data-home-section={id} inert={id !== 'clock' && captureLocked}>
+      {id === 'clock' ? workday() : id === 'tasks' ? <section className={styles.attention}><div className={styles.sectionTitle}><h3>{t('live.needsYou')}</h3>{data.tasks.status === 'ready' && <span>{data.tasks.data.length}</span>}</div>
+        {state(data.tasks, tasks => tasks.length ? <>{taskRows?.slice(0, 4)}{tasks.length > 4 && row(t('live.allTasks'), String(tasks.length), '/approvals')}</> : empty(t('live.allClear')))}</section>
+      : id === 'leave' ? data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.planLeave')}</strong></span><ArrowUpRight size={26} /></button>
+      : teamPeek()}</div>)}</>; break;
     case 'clock': content = <>{heading(t('live.workday'))}{workday()}<div inert={captureLocked}>{section(t('live.eventRecord'), state(data.clock, c => c.events.length ? c.events.map((e, i) => <div className={styles.event} key={`${e.direction}:${e.time}:${i}`}><Check size={16} /><span>{t(e.direction === 'in' ? 'live.in' : 'live.out')}</span><strong>{e.time}</strong></div>) : empty(t('live.noEvent'))))}{row(t('feature.attendance'), t('live.openSystem'), '/attendance/my-records')}</div></>; break;
     case 'requests': content = <>{heading(t('live.requests'))}{data.tasks.status === 'ready' && data.tasks.data.length > 0 && <div className={styles.segments} role="group" aria-label={t('live.requests')}><button type="button" aria-pressed={requestView === 'mine'} onClick={() => setRequestView('mine')}>{t('gesture.myRequests')}</button><button type="button" aria-pressed={requestView === 'tasks'} onClick={() => setRequestView('tasks')}>{t('live.needsYou')} · {data.tasks.data.length}</button></div>}{requestView === 'tasks' ? taskRows : <>{data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.requestLeave')}</strong></span><ArrowUpRight size={23} /></button>}
       {section(t('leave.history'), state(data.requests, r => r.items.length ? <>{r.items.map(item => row(item.type, `${date(item.from)} – ${date(item.to)} · ${item.partial && item.status === 'approved' ? t('live.partiallyApproved') : t(`leave.historyStatus.${item.status}`)}`, data.leaveHistoryHref, item.id))}{row(t('live.viewAll'), t('live.records', { count: r.total }), data.leaveHistoryHref)}</> : empty(t('live.noRequests'))))}
@@ -138,8 +140,10 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
       <label className={styles.preference}><span>{t('live.largerText')}</span><input type="checkbox" checked={large} onChange={e => setLarge(e.target.checked)} /></label>
       </>; break;
   }
-  return <div className={styles.preview} data-appearance={appearance} data-motion={motion} data-large={large}>
-    <div className={styles.toolbar}>
+  return <div className={styles.preview} data-appearance={shownAppearance} data-motion={embedded ? design.motion === 'standard' : motion} data-large={large} data-corners={design.corners} data-embedded={embedded}
+    style={{ '--mark': MOBILE_ACCENTS[design.accent][shownAppearance], '--brand-button': MOBILE_ACCENTS[design.accent].button, '--brand-button-ink': MOBILE_ACCENTS[design.accent].onButton } as CSSProperties}
+    onClickCapture={event => { if (designOnly && (event.target as HTMLElement).closest('a')) event.preventDefault(); }}>
+    {!embedded && <><div className={styles.toolbar}>
       <div><strong>Monolith Flow</strong><span>{t('live.liveData')}</span></div>
       <div className={styles.theme} role="group" aria-label={t('live.appearance')}>
         <button type="button" aria-pressed={appearance === 'light'} aria-label={t('live.light')} onClick={() => setAppearance('light')}><Sun size={16} /></button>
@@ -148,12 +152,12 @@ export function MobileApp({ data }: { data: MobilePreviewData }) {
       <button type="button" className={styles.refresh} disabled={refreshing || captureLocked} onClick={() => startRefresh(() => router.refresh())} aria-label={t('live.refresh')}><RefreshCw size={16} className={refreshing ? styles.spinning : undefined} /></button>
     </div>
     <div className={styles.controlPicker}><label htmlFor="mobile-clock-control">{t('live.clockLayout')}</label><select id="mobile-clock-control" disabled={captureLocked} value={control} onChange={e => setControl(e.target.value as 'flow' | 'punch' | 'rail')}><option value="flow">Monolith Flow</option><option value="punch">{t('live.punchCard')}</option><option value="rail">{t('live.timeRail')}</option></select></div>
-    <div className={styles.phone} aria-label={t('title')} aria-busy={refreshing}>
+    </>}<div className={styles.phone} aria-label={t('title')} aria-busy={refreshing}>
       <div className={styles.status} aria-hidden="true"><span>{time(data.loadedAt)}</span><span><Signal size={13} /><Wifi size={13} /><BatteryFull size={17} /></span></div>
-      <div className={styles.context}><span>AIHR<span className={styles.mark}>.</span></span><span>{data.employment?.company ?? t('live.account')}</span></div>
+      <div className={styles.context}><span className={styles.brand}>{design.logo && <img src={design.logo} alt="" />}{design.brandName}<span className={styles.mark}>.</span></span><span>{data.employment?.company ?? t('live.account')}</span></div>
       <div ref={bodyRef} className={styles.body}><div key={`${tab}:${selectedId ?? ''}`} className={styles.scene}>{content}</div></div>
       <nav className={styles.nav} aria-label={t('live.navigation')}>
-        {nav.map(n => <button key={n.id} type="button" disabled={captureLocked} onClick={() => go(n.id as Tab)} aria-current={activeTab === n.id ? 'page' : undefined}><n.icon size={20} /><span>{n.label}</span></button>)}
+        {[nav[0], ...design.navigationOrder.flatMap(id => nav.filter(n => n.id === id)), nav[nav.length - 1]].map(n => <button key={n.id} type="button" disabled={captureLocked} onClick={() => go(n.id as Tab)} aria-current={activeTab === n.id ? 'page' : undefined}><n.icon size={20} /><span>{n.label}</span></button>)}
       </nav><div className={styles.homebar} aria-hidden="true" />
     </div><p className={styles.caption} role="status">{refreshing ? t('live.refreshing') : t('live.updated', { time: time(data.loadedAt) })}</p>
   </div>;

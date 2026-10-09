@@ -3,6 +3,8 @@
  * every data screen needs — a truthful loading / unavailable / error state with a retry that never signs
  * anyone out.
  */
+import { MOBILE_ACCENTS } from '../../lib/mobile-design';
+import { TenantBrand, useTenantDesign } from './design';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,63 +31,71 @@ export function Screen({
   refreshing?: boolean;
   onRefresh?: () => void;
 }) {
+  const { palette, reload } = useTenantDesign();
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.scroll}
-        refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
+        refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={() => { reload(); onRefresh(); }} /> : undefined}
       >
-        {children}
+        <TenantBrand />{children}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 export function Title({ children }: { children: ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
+  const { palette } = useTenantDesign();
+  return <Text style={[styles.title, { color: palette.text }]}>{children}</Text>;
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {
-  return <Text style={styles.section}>{children}</Text>;
+  const { palette } = useTenantDesign();
+  return <Text style={[styles.section, { color: palette.muted }]}>{children}</Text>;
 }
 
 export function Card({ children }: { children: ReactNode }) {
-  return <View style={styles.card}>{children}</View>;
+  const { palette, design } = useTenantDesign();
+  return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border, borderRadius: design.corners === 'soft' ? 18 : 3 }]}>{children}</View>;
 }
 
 export function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  const { palette } = useTenantDesign();
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, strong && styles.strong]}>{value}</Text>
+      <Text style={[styles.rowLabel, { color: palette.muted }]}>{label}</Text>
+      <Text style={[styles.rowValue, strong && styles.strong, { color: palette.text }]}>{value}</Text>
     </View>
   );
 }
 
 export function Muted({ children }: { children: ReactNode }) {
-  return <Text style={styles.muted}>{children}</Text>;
+  const { palette } = useTenantDesign();
+  return <Text style={[styles.muted, { color: palette.muted }]}>{children}</Text>;
 }
 
 export function Button({ title, onPress, kind = 'primary', disabled = false }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean }) {
+  const { palette, design } = useTenantDesign();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, kind === 'quiet' && styles.buttonQuiet, (pressed || disabled) && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.button, { backgroundColor: MOBILE_ACCENTS[design.accent].button, borderRadius: design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
     >
-      <Text style={[styles.buttonText, kind === 'quiet' && styles.buttonTextQuiet]}>{title}</Text>
+      <Text style={[styles.buttonText, { color: MOBILE_ACCENTS[design.accent].onButton }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
     </Pressable>
   );
 }
 
 /** Loading, or a failure told apart: "can't reach us, still signed in" vs a plain error. Null when there is data. */
 export function LoadState({ loading, error, onRetry }: { loading: boolean; error: Error | null; onRetry: () => void }) {
+  const { palette } = useTenantDesign();
   if (error) {
     return (
       <Card>
-        <Text style={styles.body}>{error instanceof UnavailableError ? t('unavailable') : t('genericError')}</Text>
+        <Text style={[styles.body, { color: palette.text }]}>{error instanceof UnavailableError ? t('unavailable') : t('genericError')}</Text>
         <Button title={t('retry')} onPress={onRetry} kind="quiet" />
       </Card>
     );

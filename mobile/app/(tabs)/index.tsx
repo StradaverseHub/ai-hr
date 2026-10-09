@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+import { useTenantDesign } from '../../lib/design';
 /**
  * Home — task-first (the benchmark's best-rated pattern): what needs me, then my leave, then my pay.
  */
@@ -7,6 +9,7 @@ import { useSession } from '../../lib/session';
 import { Card, LoadState, Muted, Row, Screen, SectionLabel, Title, fmtDays, fmtMoney } from '../../lib/ui';
 
 export default function Home() {
+  const { design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const me = useApi('me', {}, signOut);
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
@@ -15,7 +18,6 @@ export default function Home() {
   const reloadAll = () => [me, leave, payslips, inbox].forEach((l) => l.reload());
 
   const name = me.data?.person.name;
-  const annual = leave.data?.cards.find((c) => c.annualLeave && c.isCurrentCycle);
   const latest = payslips.data?.items[0];
 
   return (
@@ -23,30 +25,15 @@ export default function Home() {
       <Title>{name ? t('hello', { name }) : t('helloNoName')}</Title>
       <LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} />
 
-      <SectionLabel>{t('needsYou')}</SectionLabel>
-      <Card>
-        {inbox.data?.enabled && inbox.data.unread > 0 ? (
-          <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong />
-        ) : (
-          <Muted>{t('nothingNeedsYou')}</Muted>
-        )}
-      </Card>
-
-      <SectionLabel>{t('annualLeave')}</SectionLabel>
-      <LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />
-      {leave.data && (
-        <Card>
-          {annual ? (
-            <>
-              {annual.canApplyFor != null && <Row label={t('canApplyFor')} value={fmtDays(annual.canApplyFor)} strong />}
-              <Row label={t('balance')} value={fmtDays(annual.balance)} />
-              {annual.sharedPool && <Muted>{t('sharedPool')}</Muted>}
-            </>
-          ) : (
-            <Muted>{t('noLeaveTypes')}</Muted>
-          )}
-        </Card>
-      )}
+      {design.homeOrder.filter(id => id === 'tasks' || id === 'leave').map(id => <Fragment key={id}>
+        {id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
+          {inbox.data?.enabled && inbox.data.unread > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong /> : <Muted>{t('nothingNeedsYou')}</Muted>}
+        </Card></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
+          <LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />
+          {leave.data?.cards.map(c => <Card key={c.leaveTypeId}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</Card>)}
+          {leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}
+        </>}
+      </Fragment>)}
 
       {me.data?.modules.payroll !== false && (
         <>

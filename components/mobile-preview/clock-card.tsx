@@ -9,12 +9,14 @@ import { SlideConfirm } from './slide-confirm';
 import styles from './mobile-preview.module.css';
 
 type ClockData = Extract<MobilePreviewData['clock'], { status: 'ready' }>['data'];
-export function ClockCard({ clock: c, company, layout, capture, onHistory, showBothActions }: {
+export function ClockCard({ clock: c, company, layout, capture, onHistory, showBothActions, designOnly = false }: {
   clock: ClockData; company: string; layout: 'flow' | 'punch' | 'rail'; capture: ReturnType<typeof useMobileClock>;
-  onHistory: () => void; showBothActions: boolean;
+  onHistory: () => void; showBothActions: boolean; designOnly?: boolean;
 }) {
   const t = useTranslations('mobilePreview'), g = useTranslations('mobilePreview.gesture'), a = useTranslations('attendance.clock');
   const locale = useLocale();
+  const [demo, setDemo] = useState(false);
+  const confirm = (direction: 'in' | 'out') => { if (designOnly) setDemo(true); else void capture.start(direction); };
   const [review, setReview] = useState<'in' | 'out' | null>(null);
   const lastIn = c.events.filter(e => e.direction === 'in').at(-1), lastOut = c.events.filter(e => e.direction === 'out').at(-1);
   const dismiss = () => { capture.dismiss(); setReview(null); };
@@ -27,7 +29,8 @@ export function ClockCard({ clock: c, company, layout, capture, onHistory, showB
   const failure = ['uncertain', 'interrupted', 'authentication'].includes(capture.error) ? g(capture.error)
     : ['outsideGeofence', 'locationRequired', 'photoRequired', 'photoInvalid', 'conflict', 'correctedDay', 'cameraFailed', 'syncFailed'].includes(capture.error) ? a(capture.error) : g('failure');
   let controls;
-  if (capture.phase === 'success' && capture.receipt) {
+  if (designOnly && demo) controls = <div role="status"><p>{t('builder.gestureOnly')}</p><button type="button" className={styles.tapAlternative} onClick={() => { setDemo(false); setReview(null); }}>{t('builder.replay')}</button></div>;
+  else if (capture.phase === 'success' && capture.receipt) {
     const time = new Intl.DateTimeFormat(locale, { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(capture.receipt.recordedAt));
     controls = <div className={styles.clockReceipt} role="status">
       <span className={styles.receiptSeal}><Check size={27} /></span>
@@ -59,12 +62,12 @@ export function ClockCard({ clock: c, company, layout, capture, onHistory, showB
     <button type="button" className={styles.tapAlternative} onClick={dismiss}>{a('cancelPhoto')}</button>
   </div>;
   else if (review) controls = <>
-    <div className={styles.reviewProof}><span>{g('reviewedIn')}<strong>{lastIn?.time ?? '—'}</strong></span><span>{g('recordOnConfirm')}</span></div>
-    <SlideConfirm direction={review} onConfirm={() => void capture.start(review)} />
+    <div className={styles.reviewProof}><span>{g('reviewedIn')}<strong>{lastIn?.time ?? '—'}</strong></span><span>{designOnly ? t('builder.previewOnly') : g('recordOnConfirm')}</span></div>
+    <SlideConfirm direction={review} onConfirm={() => confirm(review)} />
     <button type="button" className={styles.tapAlternative} onClick={() => setReview(null)}>{g('keepWorking')}</button>
   </>;
   else if (c.clockedIn) controls = <>{proof}<button type="button" className={styles.finishAction} onClick={() => setReview('out')}>{g('finishAction')}<ArrowRight size={18} /></button></>;
-  else controls = <>{c.events.length > 0 && proof}<SlideConfirm direction="in" onConfirm={() => void capture.start('in')} /></>;
+  else controls = <>{c.events.length > 0 && proof}<SlideConfirm direction="in" onConfirm={() => confirm('in')} /></>;
   const title = capture.active ? t('live.workday') : review === 'out' ? g('finishDay') : review === 'in' ? t('live.startDay') : t(c.clockedIn ? 'live.clockedIn' : c.events.length ? 'live.dayRecorded' : 'live.startDay');
   return <section className={styles.workday} aria-label={t('live.workday')}>
     <div className={styles.workdayTop}><span>{new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(`${c.date}T12:00:00+08:00`))}</span><span>{c.shiftStart?.slice(0, 5) ?? '—'}–{c.shiftEnd?.slice(0, 5) ?? '—'}</span></div>
@@ -79,6 +82,6 @@ export function ClockCard({ clock: c, company, layout, capture, onHistory, showB
       <button type="button" onClick={() => setReview('in')}>{a('clockIn')}</button><button type="button" onClick={() => setReview('out')}>{a('clockOut')}</button>
     </div>}
     <div className={styles.clockSite}><Building2 size={15} /><span>{company}</span><button type="button" onClick={onHistory} aria-label={t('live.eventRecord')}><History size={18} /></button></div>
-    {!capture.active && <p className={styles.workdayNote}>{g('locationNote')}</p>}
+    {!capture.active && <p className={styles.workdayNote}>{designOnly ? t('builder.previewOnly') : g('locationNote')}</p>}
   </section>;
 }

@@ -1,3 +1,4 @@
+import { useTenantDesign } from '../../lib/design';
 /**
  * Me — who I am, which employment I am acting as (the picker, when there is more than one), my released
  * payslips, and sign out.
@@ -9,6 +10,7 @@ import { useSession } from '../../lib/session';
 import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title, colors, fmtMoney } from '../../lib/ui';
 
 export default function Me() {
+  const { palette } = useTenantDesign();
   const { signOut, employmentId, setEmploymentId } = useSession();
   const me = useApi('me', {}, signOut);
   const payslips = useApi('payslips', {}, signOut);
@@ -31,7 +33,7 @@ export default function Me() {
           accessibilityState={{ selected: e.employmentId === active }}
         >
           <Card>
-            <Text style={{ fontSize: 16, fontWeight: e.employmentId === active ? '700' : '400', color: colors.text }}>
+            <Text style={{ fontSize: 16, fontWeight: e.employmentId === active ? '700' : '400', color: palette.text }}>
               {e.company}
             </Text>
             {(e.position || e.department) && <Muted>{[e.position, e.department].filter(Boolean).join(' · ')}</Muted>}

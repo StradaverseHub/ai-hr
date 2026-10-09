@@ -2997,6 +2997,13 @@
       "when": 1791900000000,
       "tag": "0520_web_clocking_photo_setting",
       "breakpoints": true
+    },
+    {
+      "idx": 521,
+      "version": "7",
+      "when": 1791900000001,
+      "tag": "0521_tenant_mobile_design",
+      "breakpoints": true
     }
   ]
 }
