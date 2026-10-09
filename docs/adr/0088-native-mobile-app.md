@@ -92,7 +92,8 @@ creating a second source of truth for any business rule.
   class, wiped on the first launch after a reinstall. It always replaces a rotated token, per RFC 9700.
   It sends the access token as `Authorization: Bearer`.
 - **Server side.** `lib/session.ts` gains **one** alternative source of the WorkOS subject: a bearer JWT
-  verified against the client's JWKS (signature, `exp`, issuer, audience). After that the path is
+  verified against the client's JWKS (signature, `exp`, exact issuer, and audience only when the
+  verified token contract defines one). After that the path is
   identical: `principal_by_subject` → `resolveWorkosPrincipal` → `SessionContext` → the existing core
   services under the existing RLS. There is no second user table and no mobile-only permission. The demo
   switcher is **never** honoured on the bearer path.
@@ -334,7 +335,9 @@ derived time that is signed and anchored.
 - **UNKNOWN (Phase 3 spikes, before building on them):** whether iOS can generate an App Attest assertion
   offline; whether iOS has a clock that keeps counting through sleep; whether iOS exposes site Wi-Fi
   identity to the app; whether Play Integrity works for this app's distribution.
-- **UNKNOWN:** the access-token lifetime configured in our WorkOS environment. Set it to minutes.
+- **FACT (2026-10-09):** the dedicated AI HR WorkOS Staging application has a 300-second access-token
+  lifetime and registered native redirect/logout callbacks. **UNKNOWN:** real logout/revocation
+  behavior until measured; signature verification does not establish immediate session revocation.
 - **RISK:** the Play Integrity quota (10,000 a day by default, shared across all tenants). Ask Google for an
   increase before scale.
 - **RISK:** a rooted Android phone can pass even Play Integrity's strongest verdict with a leaked keybox
