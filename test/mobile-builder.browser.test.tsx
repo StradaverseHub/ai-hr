@@ -1,10 +1,9 @@
 import { NextIntlClientProvider } from 'next-intl';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MobileBuilder } from '../components/mobile-preview/mobile-builder';
 import { DEFAULT_MOBILE_DESIGN, type MobileBuilderState } from '../lib/mobile-design';
 import type { MobilePreviewData } from '../components/mobile-preview/types';
-import { changeMobileDesignAction } from '../app/mobile-preview/actions';
+import '../app/globals.css';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -14,6 +13,8 @@ import ta from '../messages/ta.json';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('../app/mobile-preview/actions', () => ({ changeMobileDesignAction: vi.fn() }));
+const { MobileBuilder } = await import('../components/mobile-preview/mobile-builder');
+const { changeMobileDesignAction } = await import('../app/mobile-preview/actions');
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.mocked(changeMobileDesignAction).mockReset(); });
 const data: MobilePreviewData = {
   today: '2026-10-10', loadedAt: '2026-10-10T01:00:00Z', leaveHistoryHref: '/leave', person: { name: 'Test Viewer', employeeCode: 'TEST' },
@@ -30,20 +31,22 @@ function mount(initial = state(), locale: keyof typeof catalogues = 'en', width 
 describe('tenant mobile builder in a real browser', () => {
   it('changes presentation immediately and keeps draft/published gestures free of HR writes', () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const location = vi.spyOn(navigator.geolocation, 'getCurrentPosition').mockImplementation(success => success({ coords: { latitude: 3.15, longitude: 101.71, accuracy: 8 } } as GeolocationPosition));
+    const camera = vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockRejectedValue(new Error('Preview must not request a camera'));
     const ui = mount();
     fireEvent.change(ui.getByRole('textbox', { name: 'App brand name' }), { target: { value: 'Tenant Studio' } });
     expect(ui.getByText('Tenant Studio')).toBeTruthy();
-    expect(ui.getByRole('button', { name: 'Publish', exact: true }).hasAttribute('disabled')).toBe(true);
+    expect(ui.getByRole('button', { name: 'Publish' }).hasAttribute('disabled')).toBe(true);
     fireEvent.click(ui.getByRole('button', { name: 'Cobalt' }));
     const phone = ui.container.querySelector('[data-appearance]') as HTMLElement;
     expect(phone.style.getPropertyValue('--brand-button')).toBe('#91b5ff');
-    fireEvent.click(ui.getByRole('button', { name: 'Light', exact: true })); expect(phone.dataset.appearance).toBe('light');
-    fireEvent.click(ui.getByRole('button', { name: 'Confirm clock-in with a tap' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Light' })); expect(phone.dataset.appearance).toBe('light');
+    fireEvent.click(ui.getByRole('button', { name: 'Clock in with a tap' }));
     expect(ui.getByText('Gesture preview complete. No attendance was recorded.')).toBeTruthy();
-    fireEvent.click(ui.getByRole('button', { name: 'Published', exact: true }));
+    fireEvent.click(ui.getByRole('button', { name: 'Published' }));
     expect(ui.queryByText('Tenant Studio')).toBeNull();
-    fireEvent.click(ui.getByRole('button', { name: 'Confirm clock-in with a tap' }));
-    expect(fetch).not.toHaveBeenCalled(); expect(changeMobileDesignAction).not.toHaveBeenCalled();
+    fireEvent.click(ui.getByRole('button', { name: 'Clock in with a tap' }));
+    expect(location).not.toHaveBeenCalled(); expect(camera).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(changeMobileDesignAction).not.toHaveBeenCalled();
   });
   it('keeps unsaved edits when leaving through a client navigation is cancelled', () => {
     const ui = mount();
@@ -60,13 +63,13 @@ describe('tenant mobile builder in a real browser', () => {
     vi.mocked(changeMobileDesignAction).mockResolvedValueOnce({ ok: true, state: saved });
     fireEvent.click(ui.getByRole('button', { name: 'Save draft' }));
     await ui.findByText('Draft saved. Employees still see the published version.');
-    fireEvent.click(ui.getByRole('button', { name: 'Publish', exact: true }));
+    fireEvent.click(ui.getByRole('button', { name: 'Publish' }));
     expect(changeMobileDesignAction).toHaveBeenCalledTimes(1);
     vi.mocked(changeMobileDesignAction).mockResolvedValueOnce({ ok: true, state: { ...saved, draftRevision: 2, releases: [{ revision: 1, config: saved.draft, publishedAt: '2026-10-10T02:00:00Z' }] } });
     fireEvent.click(ui.getByRole('button', { name: 'Publish for this tenant' }));
     await ui.findByText('Published for this tenant.');
     expect(changeMobileDesignAction).toHaveBeenLastCalledWith('publish', 1, undefined);
-    fireEvent.click(ui.getByRole('button', { name: 'Versions', exact: true })); expect(ui.getByText('Version 1')).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Versions' })); expect(ui.getByText('Version 1')).toBeTruthy();
   });
   it('preserves an unsaved draft on conflict and keeps every leave type in either layout', async () => {
     const ui = mount();
@@ -76,7 +79,7 @@ describe('tenant mobile builder in a real browser', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Save draft' }));
     await ui.findByText('This draft changed in another session. Reload before continuing.');
     expect(ui.getByText('Unsaved changes')).toBeTruthy();
-    fireEvent.click(ui.getByRole('button', { name: 'Leave', exact: true }));
+    fireEvent.click(ui.getByRole('button', { name: 'Leave' }));
     expect(ui.getAllByRole('button', { name: /^Leave \d/ })).toHaveLength(6);
     fireEvent.change(ui.getByRole('combobox', { name: 'Leave balances' }), { target: { value: 'list' } });
     expect(ui.getAllByRole('button', { name: /^Leave \d/ })).toHaveLength(6);

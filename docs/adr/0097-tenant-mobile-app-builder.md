@@ -65,3 +65,8 @@ Version 1 clients reject unknown shapes and fall back to Monolith defaults. Add 
 alongside old supported versions, or negotiate capabilities, rather than silently breaking an older
 store-installed client. Raster logos are bounded inline PNG assets within each tenant's configuration;
 no shared public upload namespace or third-party image requests are needed in this first delivery.
+
+Native installation audit also reports the pre-existing upstream `braces` and `node-forge` advisories
+(GHSA-vfj7-8cjw-p6xm / GHSA-86w9-cpqp-85rv; no patched versions listed when checked). Their packages
+are unchanged by adding `expo-system-ui`. This round does not claim the native toolchain is free of
+vulnerabilities; remediation and device/distribution verification remain required before a store release.

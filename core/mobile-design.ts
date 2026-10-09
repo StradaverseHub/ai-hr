@@ -4,7 +4,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { mobileDesignDraft, mobileDesignRelease, tenant } from '../db/schema';
 import { isGroupAdmin } from '../lib/authz';
-import { DEFAULT_MOBILE_DESIGN, parseMobileDesign, resolveMobileDesign, type MobileBuilderState, type MobileDesignRelease } from '../lib/mobile-design';
+import { DEFAULT_MOBILE_DESIGN, parseMobileDesign, resolveMobileDesign, type MobileBuilderState, type MobileDesign, type MobileDesignRelease } from '../lib/mobile-design';
 
 export class MobileDesignError extends Error {
   constructor(public readonly reason: 'forbidden' | 'conflict' | 'invalid_design' | 'missing_release') { super(reason); }
@@ -34,7 +34,7 @@ export async function changeMobileDesign(ctx: SessionContext, command: 'save' | 
   admin(ctx);
   const expectedRevision = revision(expected);
   if (!['save', 'publish', 'rollback'].includes(command)) throw new MobileDesignError('invalid_design');
-  let config;
+  let config: MobileDesign | undefined;
   if (command === 'save') {
     try { config = parseMobileDesign(value); } catch { throw new MobileDesignError('invalid_design'); }
   }
