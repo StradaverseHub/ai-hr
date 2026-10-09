@@ -13,8 +13,8 @@ import type {
   NotificationsResponse,
   PayslipsResponse,
 } from '../../lib/mobile-api/contract';
-import { getAccessToken, refresh } from './auth';
-import { config } from './config';
+import { assertAuthGeneration, authGeneration, getAccessToken, refresh } from './auth';
+import { apiOriginProblem, config } from './config';
 import { SignInRequiredError, UnavailableError } from './errors';
 import { appLocale } from './i18n';
 
@@ -39,21 +39,30 @@ export async function apiGet<P extends keyof Endpoints>(
   path: P,
   params: Record<string, string | undefined> = {},
 ): Promise<Endpoints[P]> {
+  if (!config.apiUrl || apiOriginProblem(config.apiUrl)) throw new UnavailableError('The API origin is not configured securely.');
+  const owner = authGeneration();
   const send = async (token: string) => {
+    assertAuthGeneration(owner);
     try {
-      return await fetch(url(path, params), {
+      const response = await fetch(url(path, params), {
         headers: { authorization: `Bearer ${token}`, 'accept-language': appLocale() },
+        redirect: 'error',
       });
+      return response;
     } catch {
       throw new UnavailableError();
     }
   };
   let res = await send(await getAccessToken());
+  assertAuthGeneration(owner);
   if (res.status === 401) res = await send(await refresh());
+  assertAuthGeneration(owner);
   if (res.status === 401) throw new SignInRequiredError();
   if (res.status >= 500) throw new UnavailableError();
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as Endpoints[P];
+  const data = (await res.json()) as Endpoints[P];
+  assertAuthGeneration(owner);
+  return data;
 }
 
 export type Loadable<T> = {
@@ -69,32 +78,31 @@ export function useApi<P extends keyof Endpoints>(
   params: Record<string, string | undefined>,
   onSignInRequired: () => void,
 ): Loadable<Endpoints[P]> {
-  const [data, setData] = useState<Endpoints[P] | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState<{ key: string; data: Endpoints[P] | null; error: Error | null; loading: boolean } | null>(null);
   const [tick, setTick] = useState(0);
-  const key = JSON.stringify(params);
+  const paramsKey = JSON.stringify(params);
+  const key = JSON.stringify([path, paramsKey, authGeneration()]);
 
   useEffect(() => {
     let live = true;
-    setLoading(true);
-    apiGet(path, JSON.parse(key) as Record<string, string | undefined>)
+    setResult({ key, data: null, error: null, loading: true });
+    apiGet(path, JSON.parse(paramsKey) as Record<string, string | undefined>)
       .then((d) => {
         if (!live) return;
-        setData(d);
-        setError(null);
+        setResult({ key, data: d, error: null, loading: false });
       })
       .catch((e: Error) => {
         if (!live) return;
         if (e instanceof SignInRequiredError) onSignInRequired();
-        setError(e);
+        setResult({ key, data: null, error: e, loading: false });
       })
-      .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
-  }, [path, key, tick, onSignInRequired]);
+  }, [path, key, paramsKey, tick, onSignInRequired]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
-  return { data, error, loading, reload };
+  // Hide the previous employment's result in the render that changes context, before effects run.
+  return result?.key === key ? { data: result.data, error: result.error, loading: result.loading, reload } :
+    { data: null, error: null, loading: true, reload };
 }

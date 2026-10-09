@@ -7,8 +7,8 @@ import { SessionProvider, useSession } from '../lib/session';
 import { Button, colors } from '../lib/ui';
 
 function Gate() {
-  const { status, unlock, signOut } = useSession();
-  if (status === 'loading') {
+  const { status, visible, error, unlocking, unlock, signOut } = useSession();
+  if (status === 'loading' || !visible) {
     return (
       <View style={styles.center}>
         <ActivityIndicator accessibilityLabel={t('loading')} />
@@ -19,8 +19,9 @@ function Gate() {
     return (
       <View style={styles.center}>
         <Text style={styles.lockTitle}>{t('unlockTitle')}</Text>
+        {error && <Text style={styles.problem}>{t('genericError')}</Text>}
         <View style={styles.actions}>
-          <Button title={t('unlockButton')} onPress={() => void unlock()} />
+          <Button title={t('unlockButton')} disabled={unlocking} onPress={() => void unlock()} />
           <Button title={t('signOut')} onPress={() => void signOut()} kind="quiet" />
         </View>
       </View>
@@ -44,4 +45,5 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, padding: 24 },
   lockTitle: { fontSize: 20, fontWeight: '600', color: colors.text, marginBottom: 16 },
   actions: { alignSelf: 'stretch', gap: 8 },
+  problem: { color: colors.danger, marginBottom: 12 },
 });

@@ -15,6 +15,18 @@ export const config = {
 /** A human-readable reason the build cannot sign anyone in, or null when it is configured. */
 export function configProblem(): string | null {
   if (!config.apiUrl) return 'EXPO_PUBLIC_API_URL is not set for this build.';
+  const originProblem = apiOriginProblem(config.apiUrl);
+  if (originProblem) return originProblem;
   if (!config.workosClientId) return 'EXPO_PUBLIC_WORKOS_CLIENT_ID is not set for this build.';
   return null;
+}
+
+/** All builds require an HTTPS origin. Never attach bearer credentials to a cleartext URL. */
+export function apiOriginProblem(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password ||
+      url.search || url.hash || url.pathname !== '/') return 'The API URL must be an HTTPS origin without credentials, path, query or fragment.';
+    return null;
+  } catch { return 'The API URL must be a valid HTTPS origin.'; }
 }

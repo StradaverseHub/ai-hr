@@ -20,7 +20,7 @@ const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 20
 const jwks: JwksSource = async () => [{ ...(publicKey.export({ format: 'jwk' }) as Jwk), kid: 'test-k1', alg: 'RS256' }];
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
 function bearer(sub: string, ttlSeconds = 300): string {
-  const input = `${b64({ alg: 'RS256', kid: 'test-k1', typ: 'JWT' })}.${b64({ sub, exp: Math.floor(Date.now() / 1000) + ttlSeconds })}`;
+  const input = `${b64({ alg: 'RS256', kid: 'test-k1', typ: 'JWT' })}.${b64({ sub, iss: 'https://api.workos.com/', exp: Math.floor(Date.now() / 1000) + ttlSeconds })}`;
   return `Bearer ${input}.${cryptoSign('sha256', Buffer.from(input), privateKey).toString('base64url')}`;
 }
 

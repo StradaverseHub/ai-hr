@@ -16,13 +16,13 @@
  *     (`https://api.workos.com/sso/jwks/<clientId>`, workos.com/docs/user-management/sessions, read
  *     2026-09-30). A token signed for another WorkOS client finds no key and is refused.
  *   • `exp` is REQUIRED and enforced; `nbf` is enforced when present; both with 30 s of skew.
- *   • `sub` is REQUIRED — it is the only claim the caller consumes.
+ *   • `sub` is REQUIRED. `iss` must match this deployment's configured AuthKit issuer.
  *
- * WHAT IS DELIBERATELY NOT CHECKED, AND WHY. `iss` and `aud`. The WorkOS docs read for this change do
- * not state their values for AuthKit access tokens, and @workos-inc/authkit-nextjs — the verifier the WEB
- * path already trusts — checks neither (`jwtVerify(accessToken, JWKS())`, dist/esm/session.js). Guessing
- * a value would lock every user out the day the guess is wrong; the client-scoped JWKS is what binds a
- * token to this deployment. If WorkOS documents them, add them here and pin them in the test.
+ * FACT (2026-10-09): workos.com/docs/authkit/sessions documents `iss` as https://api.workos.com/,
+ * or the custom auth domain when configured. A custom issuer must be configured explicitly; we never
+ * learn it from the untrusted token. These AuthKit tokens have no documented `aud` claim. Client-scoped
+ * keys bind the application; an audience is enforced only if the deployment explicitly configures one
+ * after verifying its token contract. OAuth Connect tokens are a different profile.
  *
  * Everything that fails throws `AuthRequiredError` (a 401 to the app, i.e. "sign in again"), EXCEPT a
  * JWKS fetch failure, which throws `JwksUnavailableError` so the handler can answer 503 ("try again")
@@ -81,7 +81,7 @@ function pickKey(keys: Jwk[], kid: string): Jwk | undefined {
  */
 export async function verifyAccessToken(
   token: string,
-  opts: { jwks: JwksSource; now?: number },
+  opts: { jwks: JwksSource; now?: number; issuer?: string; audience?: string },
 ): Promise<VerifiedAccessToken> {
   const parts = token.split('.');
   if (parts.length !== 3 || parts.some((p) => p.length === 0)) throw new AuthRequiredError('Malformed access token.');
@@ -107,10 +107,15 @@ export async function verifyAccessToken(
   if (!ok) throw new AuthRequiredError('Access token signature is invalid.');
 
   const claims = decodeSegment(p);
+  if (claims.iss !== (opts.issuer ?? 'https://api.workos.com/')) throw new AuthRequiredError('Access token issuer is invalid.');
+  if (opts.audience !== undefined && !(claims.aud === opts.audience ||
+    (Array.isArray(claims.aud) && claims.aud.every((value) => typeof value === 'string') && claims.aud.includes(opts.audience)))) {
+    throw new AuthRequiredError('Access token audience is invalid.');
+  }
   const now = opts.now ?? Math.floor(Date.now() / 1000);
-  if (typeof claims.exp !== 'number') throw new AuthRequiredError('Access token has no expiry.');
+  if (typeof claims.exp !== 'number' || !Number.isFinite(claims.exp)) throw new AuthRequiredError('Access token has no expiry.');
   if (now >= claims.exp + SKEW_SECONDS) throw new AuthRequiredError('Access token has expired.');
-  if (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || now + SKEW_SECONDS < claims.nbf)) {
+  if (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || !Number.isFinite(claims.nbf) || now + SKEW_SECONDS < claims.nbf)) {
     throw new AuthRequiredError('Access token is not valid yet.');
   }
   if (typeof claims.sub !== 'string' || claims.sub.length === 0) throw new AuthRequiredError('Access token has no subject.');
@@ -127,9 +132,12 @@ export async function verifyAccessToken(
 const JWKS_TTL_MS = 10 * 60_000;
 const JWKS_MIN_REFRESH_MS = 60_000;
 const JWKS_TIMEOUT_MS = 5_000;
+const JWKS_MAX_AGE_MS = 30 * 60_000;
 
 type CacheEntry = { keys: Jwk[]; fetchedAt: number };
 const jwksCache = new Map<string, CacheEntry>();
+const jwksFlights = new Map<string, Promise<Jwk[]>>();
+const jwksFailures = new Map<string, { retryAt: number; error: JwksUnavailableError }>();
 
 /**
  * The WorkOS JWKS for one client id, cached for 10 minutes. A forced refresh (unknown `kid`) is honoured
@@ -141,24 +149,38 @@ export function workosJwks(clientId: string, fetchImpl: typeof fetch = fetch): J
     const cached = jwksCache.get(url);
     const age = cached ? Date.now() - cached.fetchedAt : Infinity;
     if (cached && age < JWKS_TTL_MS && (!refresh || age < JWKS_MIN_REFRESH_MS)) return cached.keys;
+    const pending = jwksFlights.get(url);
+    if (pending) return pending;
+    const failure = jwksFailures.get(url);
+    if (failure && Date.now() < failure.retryAt) {
+      if (cached && age < JWKS_MAX_AGE_MS) return cached.keys;
+      throw failure.error;
+    }
+    const flight = (async () => {
     let body: unknown;
     try {
       const res = await fetchImpl(url, { signal: AbortSignal.timeout(JWKS_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       body = await res.json();
     } catch (e) {
-      // A stale key set is still the right key set far more often than no key set: serve it through an
-      // outage rather than refusing every signed-in employee.
-      if (cached) return cached.keys;
-      throw new JwksUnavailableError(e instanceof Error ? e.message : String(e));
+      const error = new JwksUnavailableError(e instanceof Error ? e.message : String(e));
+      jwksFailures.set(url, { retryAt: Date.now() + JWKS_MIN_REFRESH_MS, error });
+      if (cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
+      throw error;
     }
     const keys = (body as { keys?: unknown })?.keys;
-    if (!Array.isArray(keys)) {
-      if (cached) return cached.keys;
-      throw new JwksUnavailableError('response has no keys array');
+    if (!Array.isArray(keys) || keys.some((key) => typeof key !== 'object' || key === null || Array.isArray(key))) {
+      const error = new JwksUnavailableError('response has no valid keys array');
+      jwksFailures.set(url, { retryAt: Date.now() + JWKS_MIN_REFRESH_MS, error });
+      if (cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
+      throw error;
     }
     const entry = { keys: keys as Jwk[], fetchedAt: Date.now() };
     jwksCache.set(url, entry);
+    jwksFailures.delete(url);
     return entry.keys;
+    })().finally(() => { if (jwksFlights.get(url) === flight) jwksFlights.delete(url); });
+    jwksFlights.set(url, flight);
+    return flight;
   };
 }

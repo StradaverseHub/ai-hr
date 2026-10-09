@@ -97,7 +97,11 @@ creating a second source of truth for any business rule.
   services under the existing RLS. There is no second user table and no mobile-only permission. The demo
   switcher is **never** honoured on the bearer path.
 - **App unlock.** The app is unlocked with the OS biometric prompt or the device passcode, with an in-app
-  PIN as fallback, over the long-lived refresh token. Login friction ("stay signed in" failing, biometrics
+  PIN as a deferred fallback, over the long-lived refresh token. **Foundation clarification (2026-10-09):**
+  use the OS device passcode when biometrics are unavailable; if no OS credential is configured, discard
+  the stored session and require hosted sign-in. Never treat unavailable biometrics as successful unlock.
+  Do not create a second PIN credential system before its recovery and lockout model is designed.
+  Login friction ("stay signed in" failing, biometrics
   dropping off, reset loops) is the top complaint for every vendor benchmarked. **OS biometric unlock
   gives the app no biometric data.** LocalAuthentication/BiometricPrompt only returns yes or no, so it is
   not biometric processing under PDPA and is not affected by section 4's exclusion.
@@ -310,6 +314,22 @@ derived time that is signed and anchored.
   evidence employees currently lack.
 
 ## Risks and unknowns
+
+- **FACT (security hardening, 2026-10-09):** credential mutations are serialized and owned by a login
+  generation. Logout invalidates pending browser/refresh operations immediately. A stale response cannot
+  restore credentials, clear a newer refresh flight or sign out a newer account.
+- **FACT:** the native foundation requires HTTPS origins, hides private routes when inactive, locks on
+  background/Android blur, enables native capture/app-switcher protection before reading a stored session,
+  and wipes surviving Keychain refresh credentials before creating its first-install sandbox marker.
+  **UNKNOWN:** actual device behavior until the iOS/Android verification matrix is completed.
+- **FACT:** WorkOS documents the AuthKit issuer as `https://api.workos.com/` or the custom Auth API domain
+  ([Sessions](https://workos.com/docs/authkit/sessions), checked 2026-10-09). The mobile verifier now checks
+  the exact configured issuer. AuthKit has no documented default audience; `WORKOS_JWT_AUDIENCE` enforces
+  one only for an explicitly verified JWT contract. This corrects the earlier implementation's omission
+  of issuer checks without guessing an OAuth Connect audience.
+- **RECOMMENDATION implemented:** signing-key fetches share one flight per client, retry at most once
+  per minute after a failure, and serve outage cache only until thirty minutes after the last successful
+  fetch. Beyond that the API returns unavailable, never a credential refusal.
 
 - **UNKNOWN (Phase 3 spikes, before building on them):** whether iOS can generate an App Attest assertion
   offline; whether iOS has a clock that keeps counting through sleep; whether iOS exposes site Wi-Fi

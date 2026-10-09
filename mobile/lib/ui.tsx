@@ -66,12 +66,14 @@ export function Muted({ children }: { children: ReactNode }) {
   return <Text style={styles.muted}>{children}</Text>;
 }
 
-export function Button({ title, onPress, kind = 'primary' }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet' }) {
+export function Button({ title, onPress, kind = 'primary', disabled = false }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, kind === 'quiet' && styles.buttonQuiet, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.button, kind === 'quiet' && styles.buttonQuiet, (pressed || disabled) && { opacity: 0.7 }]}
     >
       <Text style={[styles.buttonText, kind === 'quiet' && styles.buttonTextQuiet]}>{title}</Text>
     </Pressable>

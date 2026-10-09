@@ -17,3 +17,11 @@ export class UnavailableError extends Error {
     this.name = 'UnavailableError';
   }
 }
+
+/** An obsolete operation, not an authentication refusal for the current account. */
+export class SessionChangedError extends Error {
+  constructor() {
+    super('The session changed while this operation was running.');
+    this.name = 'SessionChangedError';
+  }
+}

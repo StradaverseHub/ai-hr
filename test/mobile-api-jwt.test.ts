@@ -36,7 +36,7 @@ function signToken(
 
 const K1 = keypair('k1');
 const staticJwks = (keys: Jwk[]): JwksSource => async () => keys;
-const good = { sub: 'user_01ABC', sid: 'session_01XYZ', exp: NOW + 300, iat: NOW - 10 };
+const good = { sub: 'user_01ABC', sid: 'session_01XYZ', iss: 'https://api.workos.com/', exp: NOW + 300, iat: NOW - 10 };
 
 async function refusal(p: Promise<unknown>): Promise<unknown> {
   return p.then(
@@ -70,11 +70,13 @@ describe('verifyAccessToken — a valid token', () => {
 describe('verifyAccessToken — every refusal is an AuthRequiredError (401: sign in again)', () => {
   const jwks = staticJwks([K1.jwk]);
   const cases: Array<[string, () => string]> = [
+    ['wrong issuer under a trusted key', () => signToken(K1.privateKey, { ...good, iss: 'https://attacker.example/' })],
+    ['no issuer', () => signToken(K1.privateKey, { sub: good.sub, exp: NOW + 300 })],
     ['expired', () => signToken(K1.privateKey, { ...good, exp: NOW - 60 })],
-    ['no exp claim', () => signToken(K1.privateKey, { sub: good.sub })],
+    ['no exp claim', () => signToken(K1.privateKey, { ...good, exp: undefined })],
     ['exp not a number', () => signToken(K1.privateKey, { ...good, exp: String(NOW + 300) })],
     ['nbf in the future', () => signToken(K1.privateKey, { ...good, nbf: NOW + 120 })],
-    ['no subject', () => signToken(K1.privateKey, { exp: NOW + 300 })],
+    ['no subject', () => signToken(K1.privateKey, { ...good, sub: undefined })],
     ['empty subject', () => signToken(K1.privateKey, { ...good, sub: '' })],
     ['alg none, unsigned', () => `${b64({ alg: 'none', kid: 'k1' })}.${b64(good)}.`],
     ['alg none with a junk signature', () => `${b64({ alg: 'none', kid: 'k1' })}.${b64(good)}.AAAA`],
@@ -117,6 +119,24 @@ describe('verifyAccessToken — every refusal is an AuthRequiredError (401: sign
     const t = signToken(K1.privateKey, good);
     const e = await refusal(verifyAccessToken(t, { jwks: staticJwks([{ ...K1.jwk, use: 'enc' }]), now: NOW }));
     expect(e).toBeInstanceOf(AuthRequiredError);
+  });
+});
+
+describe('verifyAccessToken — deployment claim profile', () => {
+  it('requires exactly the configured custom issuer', async () => {
+    const token = signToken(K1.privateKey, { ...good, iss: 'https://auth.example.com/' });
+    const opts = { jwks: staticJwks([K1.jwk]), now: NOW, issuer: 'https://auth.example.com/' };
+    expect((await verifyAccessToken(token, opts)).subject).toBe(good.sub);
+    await expect(verifyAccessToken(signToken(K1.privateKey, good), opts)).rejects.toBeInstanceOf(AuthRequiredError);
+  });
+  it('enforces an explicitly configured audience, including standard array claims', async () => {
+    const opts = { jwks: staticJwks([K1.jwk]), now: NOW, audience: 'aihr-mobile' };
+    for (const aud of ['aihr-mobile', ['other', 'aihr-mobile']]) {
+      expect((await verifyAccessToken(signToken(K1.privateKey, { ...good, aud }), opts)).subject).toBe(good.sub);
+    }
+    for (const aud of [undefined, 'different-app', ['different-app'], [42, 'aihr-mobile']]) {
+      await expect(verifyAccessToken(signToken(K1.privateKey, { ...good, aud }), opts)).rejects.toBeInstanceOf(AuthRequiredError);
+    }
   });
 });
 
@@ -219,5 +239,37 @@ describe('workosJwks — the production key source', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('never accepts cached signing keys older than thirty minutes during an outage', async () => {
+    vi.useFakeTimers();
+    try {
+      let down = false;
+      const fetchImpl = vi.fn(async () => { if (down) throw new Error('offline'); return okResponse([K1.jwk]); });
+      const src = workosJwks(freshClient(), fetchImpl as unknown as typeof fetch);
+      await src({ refresh: false }); down = true;
+      vi.advanceTimersByTime(29 * 60_000);
+      expect(await src({ refresh: false })).toEqual([K1.jwk]);
+      vi.advanceTimersByTime(60_000);
+      await expect(src({ refresh: false })).rejects.toBeInstanceOf(JwksUnavailableError);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('coalesces concurrent cold requests and throttles failed fetches', async () => {
+    let release!: (value: Response) => void;
+    const fetchImpl = vi.fn(() => new Promise<Response>((resolve) => { release = resolve; }));
+    const src = workosJwks(freshClient(), fetchImpl as unknown as typeof fetch);
+    const first = src({ refresh: false }); const second = src({ refresh: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    release(new Response('', { status: 503 }));
+    await expect(first).rejects.toBeInstanceOf(JwksUnavailableError);
+    await expect(second).rejects.toBeInstanceOf(JwksUnavailableError);
+    await expect(src({ refresh: true })).rejects.toBeInstanceOf(JwksUnavailableError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects malformed key entries as an availability error', async () => {
+    const src = workosJwks(freshClient(), (async () => new Response(JSON.stringify({ keys: [null] }))) as typeof fetch);
+    await expect(src({ refresh: false })).rejects.toBeInstanceOf(JwksUnavailableError);
   });
 });

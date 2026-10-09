@@ -5,9 +5,9 @@
 import * as AuthSession from 'expo-auth-session';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { completeSignIn, discovery, redirectUri } from '../lib/auth';
+import { beginSignIn, completeSignIn, discovery, redirectUri } from '../lib/auth';
 import { config, configProblem } from '../lib/config';
 import { t } from '../lib/i18n';
 import { useSession } from '../lib/session';
@@ -19,6 +19,7 @@ export default function SignIn() {
   const session = useSession();
   const problem = configProblem();
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
   const [failed, setFailed] = useState(false);
   const [request, , promptAsync] = AuthSession.useAuthRequest(
     {
@@ -35,13 +36,16 @@ export default function SignIn() {
   if (session.status === 'signedIn') return <Redirect href="/" />;
 
   const onSignIn = async () => {
+    if (pending.current || !request || problem) return;
+    pending.current = true;
+    const owner = beginSignIn();
     setFailed(false);
     setBusy(true);
     try {
       const r = await promptAsync();
       if (r.type === 'success' && typeof r.params.code === 'string' && request?.codeVerifier) {
-        await completeSignIn(r.params.code, request.codeVerifier);
-        session.markSignedIn();
+        await completeSignIn(r.params.code, request.codeVerifier, owner);
+        await session.markSignedIn(owner);
         router.replace('/');
       } else if (r.type !== 'cancel' && r.type !== 'dismiss') {
         setFailed(true);
@@ -49,6 +53,7 @@ export default function SignIn() {
     } catch {
       setFailed(true);
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
@@ -63,7 +68,7 @@ export default function SignIn() {
           {t('notConfigured')} {problem}
         </Text>
       ) : (
-        <Button title={busy ? t('signingIn') : t('signInButton')} onPress={() => void onSignIn()} />
+        <Button title={busy ? t('signingIn') : t('signInButton')} disabled={busy || !request} onPress={() => void onSignIn()} />
       )}
       {failed && <Text style={styles.problem}>{t('signInFailed')}</Text>}
     </View>

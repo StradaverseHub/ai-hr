@@ -288,7 +288,11 @@ export async function getMobileSession(
     if (!clientId) throw new AuthRequiredError('Mobile sign-in is not configured on this deployment.');
     jwks = workosJwks(clientId);
   }
-  const { subject } = await verifyAccessToken(token, { jwks });
+  const { subject } = await verifyAccessToken(token, {
+    jwks,
+    issuer: process.env.WORKOS_JWT_ISSUER || 'https://api.workos.com/',
+    audience: process.env.WORKOS_JWT_AUDIENCE || undefined,
+  });
   const lookup = (sub: string) =>
     client<SubjectPrincipalRow[]>`
       select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${sub})

@@ -1,81 +1,76 @@
-/**
- * App-wide session state. Four states, and the difference between two of them is the point:
- *   loading   — reading the Keychain on launch;
- *   locked    — a session exists, the OS biometric/passcode prompt has not been passed yet;
- *   signedOut — no session, or the server/WorkOS refused it;
- *   signedIn  — ready.
- * An outage never moves signedIn → signedOut (lib/errors.ts). OS biometric unlock hands the app a yes/no
- * only — no biometric data — so it is not biometric processing under PDPA (ADR-0088 §1).
- */
 import * as LocalAuthentication from 'expo-local-authentication';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { hasStoredSession, signOut as clearTokens } from './auth';
+import * as ScreenCapture from 'expo-screen-capture';
+import * as WebBrowser from 'expo-web-browser';
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { AppState, Platform } from 'react-native';
+import { assertAuthGeneration, hasStoredSession, signOut as clearTokens, workosLogoutUrl } from './auth';
 import { t } from './i18n';
+import { createSessionState, type Visibility } from './session-state';
 
-type Status = 'loading' | 'locked' | 'signedOut' | 'signedIn';
-
-type Session = {
-  status: Status;
-  /** The employment the employee is acting as (the picker); null ⇒ the server's default. */
-  employmentId: string | null;
-  setEmploymentId: (id: string | null) => void;
-  markSignedIn: () => void;
-  unlock: () => Promise<void>;
-  signOut: () => Promise<void>;
+type Controller = ReturnType<typeof createSessionState>;
+type Session = ReturnType<Controller['getSnapshot']> & {
+  setEmploymentId: Controller['setEmploymentId'];
+  markSignedIn: (owner: number) => Promise<void>;
+  unlock: Controller['unlock'];
+  signOut: Controller['signOut'];
 };
-
 const Ctx = createContext<Session | null>(null);
 
-async function deviceCanUnlock(): Promise<boolean> {
-  return (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync());
+/** Native protection is enabled before protected data screens mount. No screenshot permission. */
+let screenProtection: Promise<void> | null = null;
+function protectScreen() {
+  if (!screenProtection) {
+    screenProtection = (async () => {
+      await ScreenCapture.preventScreenCaptureAsync('aihr-session');
+      if (Platform.OS === 'ios') await ScreenCapture.enableAppSwitcherProtectionAsync(1);
+    })().catch((error: unknown) => { screenProtection = null; throw error; });
+  }
+  return screenProtection;
+}
+function visibility(value: string | null): Visibility {
+  return value === 'active' ? 'active' : value === 'inactive' ? 'inactive' : 'background';
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<Status>('loading');
-  const [employmentId, setEmploymentId] = useState<string | null>(null);
-
-  const unlock = useCallback(async () => {
-    if (!(await deviceCanUnlock())) {
-      setStatus('signedIn'); // no biometrics and no passcode enrolled: nothing to unlock with
-      return;
-    }
-    const r = await LocalAuthentication.authenticateAsync({
-      promptMessage: t('unlockPrompt'),
-      fallbackLabel: t('usePasscode'),
-      disableDeviceFallback: false,
-    });
-    if (r.success) setStatus('signedIn');
-  }, []);
+  const [state] = useState(() => createSessionState({
+    async hasStoredSession() { await protectScreen(); return hasStoredSession(); },
+    async canUnlock() {
+      await protectScreen();
+      // SECRET includes a passcode even when no biometric hardware/enrollment exists.
+      return (await LocalAuthentication.getEnrolledLevelAsync()) >= LocalAuthentication.SecurityLevel.SECRET;
+    },
+    async authenticate() {
+      return (await LocalAuthentication.authenticateAsync({
+        promptMessage: t('unlockPrompt'), fallbackLabel: t('usePasscode'),
+        disableDeviceFallback: false, biometricsSecurityLevel: 'strong',
+      })).success;
+    },
+    clearTokens,
+  }, visibility(AppState.currentState)));
+  const snapshot = useSyncExternalStore(state.subscribe, state.getSnapshot, state.getSnapshot);
 
   useEffect(() => {
-    let live = true;
-    hasStoredSession().then((has) => {
-      if (!live) return;
-      setStatus(has ? 'locked' : 'signedOut');
-      if (has) void unlock();
-    });
-    return () => {
-      live = false;
-    };
-  }, [unlock]);
-
-  const signOut = useCallback(async () => {
-    await clearTokens();
-    setEmploymentId(null);
-    setStatus('signedOut');
-  }, []);
-
-  const markSignedIn = useCallback(() => setStatus('signedIn'), []);
-
-  const value = useMemo(
-    () => ({ status, employmentId, setEmploymentId, markSignedIn, unlock, signOut }),
-    [status, employmentId, markSignedIn, unlock, signOut],
-  );
+    const change = AppState.addEventListener('change', (value) => state.setVisibility(visibility(value)));
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', state.blur) : null;
+    void state.initialize();
+    return () => { change.remove(); blur?.remove(); state.dispose(); };
+  }, [state]);
+  const value = useMemo(() => ({
+    ...snapshot, setEmploymentId: state.setEmploymentId, unlock: state.unlock,
+    async signOut() {
+      const logoutUrl = workosLogoutUrl();
+      await state.signOut(); // local removal is independent of provider reachability
+      if (logoutUrl) {
+        try { await WebBrowser.openBrowserAsync(logoutUrl); }
+        catch { /* Local logout succeeded; provider revocation must be verified on staging. */ }
+      }
+    },
+    async markSignedIn(owner: number) { await protectScreen(); assertAuthGeneration(owner); state.markSignedIn(); },
+  }), [snapshot, state]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
-
 export function useSession(): Session {
-  const s = useContext(Ctx);
-  if (!s) throw new Error('useSession outside SessionProvider');
-  return s;
+  const session = useContext(Ctx);
+  if (!session) throw new Error('useSession outside SessionProvider');
+  return session;
 }
