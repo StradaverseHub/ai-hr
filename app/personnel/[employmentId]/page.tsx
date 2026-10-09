@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { isAdmin } from '@/lib/authz';
 import { employeeDetail, assignmentHistory, subordinateLeaveSummary } from '@/core/read';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -14,8 +13,8 @@ import { Avatar, Card, EmployeeName, PageHeader, StatusBadge } from '@/component
  * Read-only staff-directory profile (People→Personnel split). Shows only directory-safe fields —
  * name, role (department / position / grade), work contact, status. No pay, statutory, or personal
  * data, and no edit affordances; all management lives behind /admin/personnel. RLS scopes the read,
- * so a viewer who cannot see this employment gets a 404 rather than a leak. Admins get a shortcut to
- * the full management record.
+ * so a viewer who cannot see this employment gets a 404 rather than a leak. There is no shortcut to the
+ * admin record from here (r431): administrators reach it through Admin → Personnel.
  */
 export default async function PersonnelDetailPage({
   params,
@@ -28,7 +27,6 @@ export default async function PersonnelDetailPage({
   const t = await getTranslations('people.detail');
   const { employmentId } = await params;
   const { from } = await searchParams;
-  const admin = isAdmin(s);
   const back =
     from === 'org'
       ? { href: '/org', label: t('backToOrg') }
@@ -75,16 +73,6 @@ export default async function PersonnelDetailPage({
         title={emp.name}
         description={t('directorySubtitle')}
         back={back}
-        actions={
-          admin ? (
-            <Link
-              href={`/admin/personnel/${employmentId}`}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              {t('viewFullRecord')}
-            </Link>
-          ) : undefined
-        }
       />
 
       <Card className="p-6">

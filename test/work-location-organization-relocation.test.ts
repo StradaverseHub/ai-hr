@@ -148,15 +148,22 @@ describe('r428 (83c0d3c8 contest) (a) — Work Locations is gone from the rail; 
     expect(countQuoted(SIDEBAR, '/admin/organization'), 'Organization keeps its own row').toBe(1);
   });
 
-  it('the Locations row owns the retired address for highlighting, and a bookmark through the stub still lights it', () => {
+  it('the Settings row owns the Locations screens and the retired address for highlighting, and a bookmark through the stub still lights it', () => {
+    // r431 (bdfe4968) — "Locations" is a card on the Attendance Settings page, no longer a row: the row that
+    // stays lit on it (and on the retired address, which r428 handed to it) is the Settings row.
     const node = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
-    const row = node.children.find((c) => c.href === CLOCKING_LIST);
-    expect(row, 'the Locations row is a child of the Attendance settings node').toBeTruthy();
-    expect(row!.ownedSubpaths, 'and it owns the retired address').toEqual([HREF]);
-    for (const sub of [HREF, `${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`]) {
-      expect(isNavRowActive(sub, '', row!), `${sub} keeps "Locations" lit via ownedSubpaths`).toBe(true);
+    expect(
+      node.children.find((c) => c.href === CLOCKING_LIST),
+      'Locations is no longer a nav row — it is a Settings card',
+    ).toBeUndefined();
+    const row = node.children.find((c) => c.href === '/admin/attendance/settings');
+    expect(row, 'the Settings row is a child of the Attendance settings node').toBeTruthy();
+    expect(row!.ownedSubpaths, 'and it owns the retired address').toContain(HREF);
+    expect(row!.ownedSubpaths, 'and the clocking list').toContain(CLOCKING_LIST);
+    for (const sub of [HREF, `${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`, CLOCKING_LIST, `${CLOCKING_LIST}/x`]) {
+      expect(isNavRowActive(sub, '', row!), `${sub} keeps "Settings" lit via ownedSubpaths`).toBe(true);
     }
-    // …and the Organization row does not light for it — ownership is the Locations row's alone.
+    // …and the Organization row does not light for it — ownership is the Settings row's alone.
     expect(isNavRowActive(HREF, '', { href: '/admin/organization' }), 'Organization does not light').toBe(false);
   });
 

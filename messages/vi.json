@@ -286,12 +286,13 @@
     "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
     "myWorkspace": "Hồ sơ của tôi",
-    "people": "Nhân sự",
+    "people": "Danh bạ nhóm",
     "orgChart": "Sơ đồ tổ chức",
     "myAbsence": "Nghỉ phép của tôi",
     "teamLeaveTracker": "Theo dõi nghỉ phép của nhóm",
     "attendance": "Hồ sơ chấm công",
     "attendanceSettings": "Chấm công",
+    "attendanceSettingsPage": "Cài đặt",
     "employeeAttendance": "Chấm công nhân viên",
     "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
@@ -507,7 +508,7 @@
       "withhold": "Tạm giữ"
     },
     "list": {
-      "title": "Nhân sự",
+      "title": "Danh bạ nhóm",
       "adminTitle": "Quản lý Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
       "importCsv": "Nhập nhân viên",
@@ -1128,7 +1129,6 @@
         "attendancePhotoHint": "Kiểm soát việc có cần ảnh khi nhân viên này chấm công vào/ra trên trang Chấm công trên Web hay không. Bắt buộc: phải chụp ảnh. Tùy chọn: nhân viên có thể chụp hoặc bỏ qua. Không bắt buộc: không hiển thị bước chụp ảnh nào. Mặc định cho mọi nhân viên là Không bắt buộc."
       },
       "directorySubtitle": "Hồ sơ danh bạ nhân viên",
-      "viewFullRecord": "Xem hồ sơ đầy đủ",
       "tabs": {
         "profile": "Hồ sơ",
         "family": "Gia đình",
@@ -16141,5 +16141,35 @@
       "recentImports": "Lần nhập gần đây",
       "failedMadeUp": "Bản ghi thất bại gồm"
     }
+  },
+  "attendanceSettingsHub": {
+    "title": "Cài đặt",
+    "subtitle": "Các trang thiết lập chấm công ở một nơi. Mỗi thẻ mở trang bạn vẫn dùng trước đây.",
+    "shift": {
+      "title": "Ca làm việc",
+      "desc": "Giờ làm việc, giờ nghỉ và quy tắc ca.",
+      "cta": "Mở"
+    },
+    "fileMapping": {
+      "title": "Ánh xạ cấu trúc tệp",
+      "desc": "Cách đọc các tệp chấm công.",
+      "cta": "Mở"
+    },
+    "schedule": {
+      "title": "Lịch làm việc",
+      "desc": "Nhóm lịch, ngày làm việc và quy tắc làm thêm giờ.",
+      "cta": "Mở"
+    },
+    "allowance": {
+      "title": "Phụ cấp chuyên cần",
+      "desc": "Phụ cấp chi trả cho việc đi làm đầy đủ.",
+      "cta": "Mở"
+    },
+    "locations": {
+      "title": "Địa điểm",
+      "desc": "Địa điểm chấm công và nơi làm việc theo công ty.",
+      "cta": "Mở"
+    },
+    "footnote": "Mỗi thẻ mở đúng trang bạn đang dùng hiện nay."
   }
 }

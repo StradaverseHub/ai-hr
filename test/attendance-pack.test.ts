@@ -31,6 +31,7 @@ import {
   Hourglass,
   MapPin,
   Plane,
+  Settings2,
   SlidersHorizontal,
   Users,
 } from 'lucide-react';
@@ -106,7 +107,13 @@ const PAIRED_HREFS: readonly string[] = ['/roster'];
  * Declared as an exemption rather than silently skipped, so a FUTURE row cannot drift its key from its
  * label by accident — which is the misdiagnosis this guard was written for.
  */
-const LABEL_KEY_EXEMPT: readonly string[] = ['/attendance/import'];
+const LABEL_KEY_EXEMPT: readonly string[] = [
+  '/attendance/import',
+  // r431 (bdfe4968) — the Settings row's key is `attendanceSettingsPage`, not `settings`: `nav` is one flat
+  // namespace, `nav.attendanceSettings` already means the plain word "Attendance" (see ATTENDANCE_NAV), and
+  // the plan asked for a key of its own rather than sharing Payroll's `payrollSettings`.
+  '/admin/attendance/settings',
+];
 
 /**
  * r317 (1661123d) — rows whose GATE changed since the frozen capture, declared because EXPECTED cannot
@@ -302,6 +309,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // row for a genuinely new screen, admin-only and beside Card Assignment (the other half of device
     // configuration).
     { href: '/admin/attendance/file-mappings', labelKey: 'fileStructureMapping', icon: FileCog, adminOnly: true },
+    // r431 (bdfe4968) — SETTINGS: one row that opens the card page for the five setup screens listed in
+    // SETTINGS_CARDS below. A genuinely new screen (a card grid, no data of its own), admin-only like the
+    // rows it replaced.
+    { href: '/admin/attendance/settings', labelKey: 'attendanceSettingsPage', icon: Settings2, adminOnly: true },
   ] as const;
 
   /**
@@ -434,8 +445,25 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   ] as const;
   const removedHrefs: string[] = REMOVED.map((r) => r.href);
 
+  /**
+   * r431 (bdfe4968) — rows whose NAV ENTRY became a CARD on the Attendance Settings page. A SIXTH list, and
+   * none of the five above: the screen did not leave the pack (not MOVED_OUT), stayed in no menu at all
+   * (not RETIRED, which keeps a route registered for a screen nothing links to), forwards nowhere (not
+   * FOLDED / REMOVED). Its obligation is its own: the row is gone, the page and its registered route are
+   * untouched, and the Settings page still links to it — so "move it to a card" can never strand a screen.
+   * EXPECTED / ADDED_SINCE keep their lines for these hrefs (frozen oracle); only the subtraction is new.
+   */
+  const SETTINGS_CARDS = [
+    { href: '/admin/attendance', card: 'shift' },
+    { href: '/admin/attendance/file-mappings', card: 'fileMapping' },
+    { href: '/admin/attendance/schedule', card: 'schedule' },
+    { href: '/admin/attendance-allowance', card: 'allowance' },
+    { href: '/admin/work-locations/clocking', card: 'locations' },
+  ] as const;
+  const settingsCardHrefs: string[] = SETTINGS_CARDS.map((r) => r.href);
+
   /** Every href that is no longer expected in this pack's nav, whatever the reason. */
-  const goneHrefs = [...movedOutHrefs, ...retiredHrefs, ...foldedHrefs, ...removedHrefs];
+  const goneHrefs = [...movedOutHrefs, ...retiredHrefs, ...foldedHrefs, ...removedHrefs, ...settingsCardHrefs];
 
   /**
    * The My Attendance node's rows, in order — stated ONCE and asserted from two cases below, which used
@@ -541,26 +569,26 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // rule that readings lead. Import after Roster (f60cd403): bulk upload is used less than the roster.
       '/roster',
       '/attendance/import',
-      '/admin/attendance', // Shift
-      '/admin/card-assignment', // Card Assignment (44bc1c33) — device configuration, beside Shift
-      '/admin/attendance/file-mappings', // File Structure Mapping (r424) — the other half of device config
+      // r431 (bdfe4968) — Shift, File Structure Mapping, Schedule, Attendance Allowance and Locations are
+      // NOT rows any more: they are the five cards on the Settings page (SETTINGS_CARDS), which is the last
+      // row. Card Assignment and Schedule Assignment stayed, because the plan left them where they were.
+      '/admin/card-assignment', // Card Assignment (44bc1c33) — device configuration
       // e4471e3c (r287) — THE CUTOVER. '/admin/attendance-policy' (Schedule Group) and
       // '/admin/attendance-policy/schedule' (Work Schedule) STOOD HERE and are gone, because the reporter
       // asked for both to be consolidated into the Schedule row below: "to provide a single centralised
       // Schedule configuration area for all schedule-related settings and avoid duplicated or separated
       // schedule configuration screens". Their ROUTES survive as the owning editors for what did not
       // move — see RETIRED above, and the case that makes that survival an obligation rather than a note.
-      '/admin/attendance/schedule', // Schedule (tabbed configuration — now the only schedule-config row)
       '/admin/attendance/schedule-assignment', // Schedule Assignment
-      '/admin/attendance-allowance',
       // 639bf4a5 rev 2 (r338) — the register is a child of this node again, in the 5cb199b3 order it
       // always held relative to Attendance allowance, at the address r336 gave it and under the label
       // the reporter asked for. r336 had moved it to components/sidebar.tsx and they contested that.
       // r423 (83c0d3c8) — "Locations" is the clocking location list again (/admin/work-locations/clocking).
       // r428 (83c0d3c8 contest) — its sibling, "Work Locations", STOOD HERE directly beneath it and is
       // gone: RETIRED above. The function it opened is now a SECTION of this same row's own screen.
-      '/admin/work-locations/clocking',
+      // r431 — '/admin/work-locations/clocking' (Locations) is a Settings card now: SETTINGS_CARDS above.
       // 3fb1a611 (r299) — '/admin/toil' (Time off in lieu) STOOD HERE and is gone: RETIRED above.
+      '/admin/attendance/settings', // Settings (r431) — the card page for the five setup screens
     ]);
     // Self-service keeps Clock in/out first (5249d43f) with Records beside it, and Attendance Request
     // third (0bb0e303 rev2) — the reporter's order: clock in and out, look at your record, file a request.
@@ -575,7 +603,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // requireAdmin(), and the reporter chose to remove it. Import itself did not leave the pack — its
       // adminOnly row in the node is still declared in ADDED_SINCE, which is why this is a lone -1 and
       // not a RETIRED entry (RETIRED means the FUNCTION left).
-      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length - REMOVED.length - 1,
+      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length - REMOVED.length - SETTINGS_CARDS.length - 1,
     );
     /**
      * r274 — MATCHED ON href + labelKey, not href alone, because `/attendance` was then listed twice on
@@ -686,6 +714,20 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         `${row.href} is no longer registered in lib/permissions.ts. The screenKey is a permission ` +
           `identity — removing the route revokes whatever stored role configuration references it, ` +
           `silently. ${row.why}`,
+      ).toBe(true);
+    }
+  });
+
+  it('r431: a SETTINGS_CARDS row is gone from the nav, its page and route are untouched, and the Settings page links to it', () => {
+    const cardsSrc = fs.readFileSync(path.resolve(__dirname, '../app/admin/attendance/settings/cards.ts'), 'utf8');
+    for (const row of SETTINGS_CARDS) {
+      expect(flattened.filter((c) => c.href === row.href), `${row.href} still has a nav row`).toHaveLength(0);
+      const page = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');
+      expect(fs.existsSync(page), `${row.href} lost its page`).toBe(true);
+      expect(REGISTERED_ROUTES.has(row.href), `${row.href} is no longer a registered route`).toBe(true);
+      expect(
+        cardsSrc.includes(`{ key: '${row.card}', href: '${row.href}' }`),
+        `the Settings page has no '${row.card}' card for ${row.href} — the screen would be unreachable`,
       ).toBe(true);
     }
   });
@@ -836,7 +878,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // row at all, the page guard is the only thing standing between a deep link and the screen.
     // 3fb1a611 (r299) — '/admin/toil' left this list with its row (RETIRED above).
     for (const href of [
-      '/admin/attendance',
+      // r431 — '/admin/attendance' (Shift), file-mappings, attendance-allowance and the clocking list are
+      // Settings cards now; the Settings row itself carries their adminOnly gate (last entry below), and
+      // each destination page keeps its own requireAdmin().
       // 22d67223 — the breakdown names one employee's every recorded figure for a range, so it is the
       // same audience as Employee Attendance above it: administrators, never a manager or the employee.
       '/attendance/breakdown',
@@ -847,14 +891,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // 44bc1c33 — a card maps a device number to a person, so it is admin configuration, never a row a
       // manager or an employee reaches.
       '/admin/card-assignment',
-      // r424 — how a device writes its file is admin configuration, like the card mapping above it.
-      '/admin/attendance/file-mappings',
-      '/admin/attendance-allowance',
       // r423 — the clocking list ("Locations"). r428 (83c0d3c8 contest) — its sibling, '/admin/work-
       // locations', STOOD HERE and is gone: retired from the node (RETIRED above), not merely regated.
       // Its page still calls requireAdmin() in its own body as a redirect stub, pinned by
       // test/work-location-organization-relocation.test.ts, not by this per-row node check.
-      '/admin/work-locations/clocking',
+      '/admin/attendance/settings',
     ]) {
       expect(gate(href), `${href} stays adminOnly`).toEqual({ adminOnly: true, managerUp: undefined });
     }
@@ -972,12 +1013,16 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // has said so since R17; only its key still said "attendancePolicy".
       // ad52212d round 1 — plain "Shift": it is a category under a node already called "Attendance
       // settings", and repeating the word inside it is the sprawl the reporter is complaining about.
-      '/admin/attendance': 'Shift',
+      // r431 (bdfe4968) — '/admin/attendance': 'Shift' STOOD HERE with '/admin/attendance/file-mappings':
+      // 'File Structure Mapping', '/admin/attendance/schedule': 'Schedule', '/admin/attendance-allowance':
+      // 'Attendance allowance' and '/admin/work-locations/clocking': 'Locations'. All five are cards on the
+      // Settings page now, so `adminRows` (derived from the live pack) no longer holds them; the card titles
+      // are pinned in test/r431-attendance-settings.test.ts. nav.shift / nav.fileStructureMapping / nav.schedule /
+      // nav.attendanceAllowance / nav.locations are NOT retired: other screens and the matrix still read them.
       // 44bc1c33 (r306) — the row says what it opens: the mapping between an employee and the Card /
       // Clocking ID their physical terminal records. Not "Card", which would read as a payment card.
       '/admin/card-assignment': 'Card Assignment',
       // r424 (50ed39e1) — the reporter's own name for the setting.
-      '/admin/attendance/file-mappings': 'File Structure Mapping',
       // ad52212d round 1 — "Overtime Pattern", the reporter's own name for what this screen already is:
       // a reusable library of hour-banded overtime rates (attendance_rule + attendance_rule_ot_row).
       //
@@ -1006,11 +1051,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // 1c5602cc (r263) — the KEY is `nav.schedule` and it resolves to "Schedule", the page's own title.
       // a324a4b3's whole lesson: a key that does not equal the string it resolves to is what got this
       // module re-planned off a misreading, so the new row keeps them equal from the first commit.
-      '/admin/attendance/schedule': 'Schedule',
       // 0bade264 (r209) — the reporter's own name for the new screen. Both words matter: it is the
       // SCHEDULE (which shift) ASSIGNED (to whom), not another settings category.
       '/admin/attendance/schedule-assignment': 'Schedule Assignment',
-      '/admin/attendance-allowance': 'Attendance allowance',
       // 639bf4a5 rev 2 (r338) — back, and reading "Locations": the reporter's own word for the function.
       // The KEY is `nav.locations`, which is the camelCase of that string, so this row satisfies THE
       // GUARD below without an exemption — and it is the key ADR-0054 minted, left unrendered when r336
@@ -1023,7 +1066,8 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // merely unrendered) from all six catalogues, the r336/r338 `physicalWorkLocation`/`clockingLocation`
       // precedent: a live-looking nav key nothing renders is how a retired row comes back. See the orphan
       // case at the foot of this file.
-      '/admin/work-locations/clocking': 'Locations',
+      // r431 (bdfe4968) — the one row that replaced the five above, and the reporter's own word for it.
+      '/admin/attendance/settings': 'Settings',
 
       // 3fb1a611 (r299) — '/admin/toil': 'Time off in lieu' STOOD HERE: the row is RETIRED (a redirect stub to
       // Leave Config › Leave Credit). `nav.timeOffInLieu` stays in the catalogues, unrendered.

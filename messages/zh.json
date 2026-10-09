@@ -286,12 +286,13 @@
     "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
     "myWorkspace": "我的资料",
-    "people": "员工",
+    "people": "团队通讯录",
     "orgChart": "组织架构图",
     "myAbsence": "我的休假",
     "teamLeaveTracker": "团队休假追踪",
     "attendance": "考勤记录",
     "attendanceSettings": "考勤",
+    "attendanceSettingsPage": "设置",
     "employeeAttendance": "员工考勤",
     "myAttendance": "我的考勤",
     "manage": "管理",
@@ -507,7 +508,7 @@
       "withhold": "暂扣"
     },
     "list": {
-      "title": "员工",
+      "title": "团队通讯录",
       "adminTitle": "员工管理",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
       "importCsv": "导入员工",
@@ -1128,7 +1129,6 @@
         "attendancePhotoHint": "控制该员工在网页打卡页面上下班打卡时是否需要拍照。必需：必须拍照。可选：员工可以拍照或跳过。不需要：不显示任何拍照步骤。每位员工的默认设置为不需要。"
       },
       "directorySubtitle": "员工通讯录档案",
-      "viewFullRecord": "查看完整记录",
       "tabs": {
         "profile": "个人资料",
         "family": "家庭",
@@ -16141,5 +16141,35 @@
       "recentImports": "最近的导入",
       "failedMadeUp": "失败记录的构成"
     }
+  },
+  "attendanceSettingsHub": {
+    "title": "设置",
+    "subtitle": "出勤的所有设置页面集中在这里。每张卡片打开你之前使用的页面。",
+    "shift": {
+      "title": "班次",
+      "desc": "工作时间、休息和班次规则。",
+      "cta": "打开"
+    },
+    "fileMapping": {
+      "title": "文件结构映射",
+      "desc": "打卡文件的读取方式。",
+      "cta": "打开"
+    },
+    "schedule": {
+      "title": "排班",
+      "desc": "排班组、工作日和加班规则。",
+      "cta": "打开"
+    },
+    "allowance": {
+      "title": "出勤津贴",
+      "desc": "为良好出勤发放的津贴。",
+      "cta": "打开"
+    },
+    "locations": {
+      "title": "地点",
+      "desc": "按公司划分的打卡地点和工作地点。",
+      "cta": "打开"
+    },
+    "footnote": "每张卡片打开的都是你现在使用的同一页面。"
   }
 }

@@ -64,8 +64,15 @@ const PAGE_REL = 'app/admin/attendance/schedule/page.tsx';
 const navHrefs = (attendancePack.navNodes ?? []).flatMap((n) => (n.children ?? []).map((c) => c.href));
 
 describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Work Schedule', () => {
-  it('the new Schedule row is in the Attendance menu', () => {
-    expect(navHrefs, `The Schedule nav row (${NEW_ROUTE}) is missing from the attendance pack.`).toContain(NEW_ROUTE);
+  it('the Schedule screen is reached from the Attendance menu — as a card behind the Settings row, no longer a row', () => {
+    // r431 (bdfe4968) — Schedule is one of the five setup screens that became cards on the Attendance
+    // Settings page. Both halves are asserted: the row is gone, AND the Settings row (which owns the
+    // address for highlighting) and the card (which is the only way in) are there.
+    expect(navHrefs, `${NEW_ROUTE} must not be a nav row any more — it is a Settings card.`).not.toContain(NEW_ROUTE);
+    expect(navHrefs, 'the Settings row is the way into it').toContain('/admin/attendance/settings');
+    const settings = (attendancePack.navNodes ?? []).flatMap((n) => n.children ?? []).find((c) => c.href === '/admin/attendance/settings');
+    expect(settings?.ownedSubpaths, 'and it stays lit on the Schedule screen').toContain(NEW_ROUTE);
+    expect(read('app/admin/attendance/settings/cards.ts'), 'the Settings page links to Schedule').toContain(`href: '${NEW_ROUTE}'`);
   });
 
   /**

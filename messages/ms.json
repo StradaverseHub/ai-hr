@@ -286,12 +286,13 @@
     "dataPrivacy": "Privasi Data",
     "dashboard": "Papan pemuka",
     "myWorkspace": "Profil Saya",
-    "people": "Kakitangan",
+    "people": "Direktori Pasukan",
     "orgChart": "Carta organisasi",
     "myAbsence": "Cuti Saya",
     "teamLeaveTracker": "Penjejak Cuti Pasukan",
     "attendance": "Rekod Kehadiran",
     "attendanceSettings": "Kehadiran",
+    "attendanceSettingsPage": "Tetapan",
     "employeeAttendance": "Kehadiran Pekerja",
     "myAttendance": "Kehadiran Saya",
     "manage": "Urus",
@@ -507,7 +508,7 @@
       "withhold": "Tahan Bayaran"
     },
     "list": {
-      "title": "Kakitangan",
+      "title": "Direktori Pasukan",
       "adminTitle": "Pengurusan Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
       "importCsv": "Import pekerja",
@@ -1128,7 +1129,6 @@
         "attendancePhotoHint": "Mengawal sama ada gambar diperlukan apabila pekerja ini mendaftar masuk atau keluar di halaman Daftar Masuk Web. Diperlukan: gambar mesti diambil. Pilihan: pekerja boleh ambil gambar atau langkau. Tidak Diperlukan: tiada langkah kamera dipaparkan. Lalai bagi setiap pekerja ialah Tidak Diperlukan."
       },
       "directorySubtitle": "Profil direktori kakitangan",
-      "viewFullRecord": "Lihat rekod penuh",
       "tabs": {
         "profile": "Profil",
         "family": "Keluarga",
@@ -16141,5 +16141,35 @@
       "recentImports": "Import terkini",
       "failedMadeUp": "Rekod gagal terdiri daripada"
     }
+  },
+  "attendanceSettingsHub": {
+    "title": "Tetapan",
+    "subtitle": "Halaman persediaan kehadiran di satu tempat. Setiap kad membuka halaman yang anda gunakan sebelum ini.",
+    "shift": {
+      "title": "Syif",
+      "desc": "Waktu bekerja, rehat dan peraturan syif.",
+      "cta": "Buka"
+    },
+    "fileMapping": {
+      "title": "Pemetaan Struktur Fail",
+      "desc": "Cara fail pencapan dibaca.",
+      "cta": "Buka"
+    },
+    "schedule": {
+      "title": "Jadual",
+      "desc": "Kumpulan jadual, hari bekerja dan peraturan kerja lebih masa.",
+      "cta": "Buka"
+    },
+    "allowance": {
+      "title": "Elaun Kehadiran",
+      "desc": "Elaun yang dibayar untuk kehadiran yang baik.",
+      "cta": "Buka"
+    },
+    "locations": {
+      "title": "Lokasi",
+      "desc": "Lokasi pencapan dan lokasi kerja mengikut syarikat.",
+      "cta": "Buka"
+    },
+    "footnote": "Setiap kad membuka halaman yang sama seperti yang anda gunakan hari ini."
   }
 }

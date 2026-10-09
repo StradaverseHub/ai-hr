@@ -82,6 +82,7 @@ import {
   HandCoins,
   Hourglass,
   MapPin,
+  Settings2,
   Table2,
   Users,
 } from 'lucide-react';
@@ -430,7 +431,6 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      */
     { href: '/roster', labelKey: 'roster', icon: CalendarRange, adminOnly: true },
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, adminOnly: true },
-    { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
     // 44bc1c33 — CARD ASSIGNMENT. The employee↔Card/Clocking ID mapping a physical terminal needs when its
     // card numbers are not the employee codes. Admin-only and beside Shift because it is device
     // configuration, not a record anybody reads day to day.
@@ -439,7 +439,6 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // device configuration: Card Assignment says WHO a device's card number is, this says HOW the device
     // writes its file. Admin-only (requireAdmin in every page body). The Import row above now reads
     // "Import Clocking Data" — label only; its key stays `attendanceImport` (the r317 exemption).
-    { href: '/admin/attendance/file-mappings', labelKey: 'fileStructureMapping', icon: FileCog, adminOnly: true },
     /**
      * ⚠️ e4471e3c (r287) — TWO ROWS WERE REMOVED HERE, AND THEIR SCREENS WERE NOT. READ THIS BEFORE
      * ADDING EITHER BACK.
@@ -491,7 +490,6 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // CalendarCog, not a fourth calendar-with-a-tick: the fly-out panel renders every child's glyph and
     // the collapsed rail renders glyphs ALONE, so a row sharing a sibling's picture is unreachable there.
     // It is also the right picture — this is the settings screen for the shapes its neighbours use.
-    { href: '/admin/attendance/schedule', labelKey: 'schedule', icon: CalendarCog, adminOnly: true },
     // 0bade264 (r209) — SCHEDULE ASSIGNMENT: every employee's current shift arrangement in ONE list.
     // View / Edit has moved twice since: r209 linked into the personnel card, r263 (a485afa1) opened a
     // panel on the list, and r265 (a485afa1 rev 2) opens the employee's OWN page under this route
@@ -513,7 +511,6 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // SYSTEM_SETTINGS_NODE in components/sidebar.tsx. Leaving a copy here would both duplicate the row
     // and re-enter it into MODULE_OF_HREF (built by flatMap over these children), which is exactly the
     // entitlement gating the move exists to remove.
-    { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     /**
      * 639bf4a5 rev 2 (r338) — LOCATIONS IS BACK IN THIS NODE, AND IT IS THE REPORTER'S DECISION.
      *
@@ -573,7 +570,21 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * while an operator is standing on a page at that now-redirected address (test/attendance-pack-drift
      * is unaffected: the ratchet is about imports, not menus or highlighting).
      */
-    { href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true, ownedSubpaths: ['/admin/work-locations'] },
+    // r431 (bdfe4968) — THE FIVE SETUP ROWS THAT STOOD IN THIS LIST ARE NOW CARDS ON ONE SETTINGS PAGE (last
+    // row below): Shift, File Structure Mapping, Schedule, Attendance Allowance and Locations. Only the way
+    // in moved. Every address, screenKey and guard is unchanged, so no redirect and no permission change,
+    // and the comments above and below that describe those rows describe the screens the cards open.
+    // Card Assignment and Schedule Assignment stay as rows: the plan left them where they were.
+    // r431 (bdfe4968) — SETTINGS, the payroll pattern (`/payroll/setup` → `payrollSettings`): one row that opens
+    // a card page. It is a child of THIS node on purpose: MODULE_OF_HREF (components/sidebar.tsx) is built by
+    // flatMap over these children, so the landing keeps the attendance-entitlement gating the five rows had.
+    // `ownedSubpaths` lists the five destinations so the row stays lit while standing on any of them (highlight
+    // only, never a gate). `/admin/attendance` is the Shift LIST and also the prefix of every sibling row's
+    // address; the sidebar ranks active children by LONGEST matching href, so Card Assignment / Schedule
+    // Assignment still win on their own pages and only the Shift pages (`/admin/attendance`, `/new`,
+    // `/[shiftId]`) fall to this row. Own label key (`attendanceSettingsPage`), not `payrollSettings`: the
+    // two read the same today and must stay free to diverge.
+    { href: '/admin/attendance/settings', labelKey: 'attendanceSettingsPage', icon: Settings2, adminOnly: true, ownedSubpaths: ['/admin/attendance', '/admin/attendance/file-mappings', '/admin/attendance/schedule', '/admin/attendance-allowance', '/admin/work-locations/clocking', '/admin/work-locations'] },
     //
     // e776d17d reserves the "Overtime Configuration" child slot here (after Attendance allowance, before Roster).
     // 3fb1a611 (r299) — the Time off in lieu row (/admin/toil, label key timeOffInLieu) STOOD HERE and is

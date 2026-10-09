@@ -83,16 +83,16 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       // call requireAdmin. See the exception below.
       '/roster',
       '/attendance/import',
-      '/admin/attendance',
+      // r431 (bdfe4968) — '/admin/attendance' (Shift), '/admin/attendance/file-mappings',
+      // '/admin/attendance/schedule', '/admin/attendance-allowance' and '/admin/work-locations/clocking'
+      // STOOD IN THIS LIST AS ROWS AND ARE NOW CARDS on '/admin/attendance/settings', the one row at the
+      // foot of this list. Their pages did not change and each is STILL in the it.each below, which is
+      // address-based: a screen reached through a card is as dependent on its own guard as one reached
+      // through a row.
       // 44bc1c33 (r306) — Card Assignment. Its page carries its own scopedAdmin guard, which is this file's
       // whole premise: a row in the Admin node is not what protects the screen behind it.
       '/admin/card-assignment',
-      // r424 (50ed39e1) — File Structure Mapping, beside Card Assignment. Every one of its four pages calls
-      // requireAdmin() in its own body (the it.each below covers the list).
-      '/admin/attendance/file-mappings',
-      '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
-      '/admin/attendance-allowance',
       // 639bf4a5 (r336) — '/admin/locations' left this node for the Administration group in
       // components/sidebar.tsx, reading "Physical Work Location" and opening /admin/work-locations.
       // rev 2 (r338) — AND CAME BACK, at that address, reading "Locations": the reporter contested the
@@ -110,9 +110,9 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       // and into the it.each loop below beside the other address-only guards, for the same reason that
       // loop gives for '/admin/locations' — a screen reachable only by URL is precisely the screen whose
       // own guard is the only thing protecting it.
-      '/admin/work-locations/clocking',
       // 3fb1a611 (r299) — '/admin/toil' STOOD HERE: the row left with the page, which is a redirect stub to
       // Leave Config › Leave Credit now (see test/r299-leave-credit-screens.test.ts).
+      '/admin/attendance/settings',
     ]);
   });
 
@@ -150,6 +150,9 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/admin/attendance/schedule',
     '/admin/attendance/schedule-assignment',
     '/admin/attendance-allowance',
+    // r431 (bdfe4968) — the Settings card page: navigation only, but it names every setup screen, so it
+    // refuses a non-administrator in its own body like the screens it links to.
+    '/admin/attendance/settings',
     // 639bf4a5 (r336) — '/admin/locations' left this loop the way 4509d2b8's /admin/holidays did: MOVED,
     // never dropped. rev 2 (r338) — the ROW came back to this node, so the case comes back with it, at
     // the address the row carries. The three redirect stubs at the old '/admin/locations' addresses, and

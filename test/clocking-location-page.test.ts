@@ -157,13 +157,20 @@ describe('r423 — the routes exist, guard themselves, and sit on the locations 
    * across both rail sources, owning its retired sibling's old address for highlighting (`ownedSubpaths`)
    * rather than a second row pointing at a screen the first one already opens.
    */
-  it('the menu: ONE row, "Locations", owning the retired Work Locations address for highlighting', () => {
+  it('the menu: no row for Locations (r431: a Settings card), and the Settings row owns the retired Work Locations address for highlighting', () => {
     const sidebar = read('components/sidebar.tsx');
     const pack = read('packs/attendance/index.ts');
-    expect(pack).toContain(
-      "{ href: '/admin/work-locations/clocking', labelKey: 'locations', icon: MapPin, adminOnly: true, ownedSubpaths: ['/admin/work-locations'] }",
+    // r431 (bdfe4968) — the "Locations" ROW became a card on the Attendance Settings page. The ONE row now
+    // is Settings, which owns the clocking list AND the retired address; Locations itself has no row in
+    // either rail source, and the card is the only way in.
+    const settingsRow = pack.split('\n').find((l) => l.includes("{ href: '/admin/attendance/settings',"));
+    expect(settingsRow, 'the Settings row declaration').toBeDefined();
+    expect(settingsRow).toContain("'/admin/work-locations/clocking'");
+    expect(settingsRow).toContain("'/admin/work-locations'");
+    expect((sidebar + pack).split("{ href: '/admin/work-locations/clocking'").length - 1, 'Locations is not a row').toBe(0);
+    expect(read('app/admin/attendance/settings/cards.ts'), 'the card opens the clocking list').toContain(
+      "{ key: 'locations', href: '/admin/work-locations/clocking' }",
     );
-    expect((sidebar + pack).split("href: '/admin/work-locations/clocking'").length - 1).toBe(1);
     expect(pack, 'no second row for the retired Work Locations screen').not.toContain("labelKey: 'workLocations'");
     expect(pack, 'no row for the forms — they are reached from the list').not.toContain("'/admin/work-locations/clocking/new'");
     expect(pack, 'the label key it carried before r336 is still retired').not.toContain("labelKey: 'clockingLocation',");
