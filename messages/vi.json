@@ -292,6 +292,7 @@
     "teamLeaveTracker": "Theo dõi nghỉ phép của nhóm",
     "attendance": "Hồ sơ chấm công",
     "attendanceSettings": "Chấm công",
+    "attendanceSettingsPage": "Cài đặt",
     "employeeAttendance": "Chấm công nhân viên",
     "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
@@ -16112,5 +16113,35 @@
       "recentImports": "Lần nhập gần đây",
       "failedMadeUp": "Bản ghi thất bại gồm"
     }
+  },
+  "attendanceSettingsHub": {
+    "title": "Cài đặt",
+    "subtitle": "Các trang thiết lập chấm công ở một nơi. Mỗi thẻ mở trang bạn vẫn dùng trước đây.",
+    "shift": {
+      "title": "Ca làm việc",
+      "desc": "Giờ làm việc, giờ nghỉ và quy tắc ca.",
+      "cta": "Mở"
+    },
+    "fileMapping": {
+      "title": "Ánh xạ cấu trúc tệp",
+      "desc": "Cách đọc các tệp chấm công.",
+      "cta": "Mở"
+    },
+    "schedule": {
+      "title": "Lịch làm việc",
+      "desc": "Nhóm lịch, ngày làm việc và quy tắc làm thêm giờ.",
+      "cta": "Mở"
+    },
+    "allowance": {
+      "title": "Phụ cấp chuyên cần",
+      "desc": "Phụ cấp chi trả cho việc đi làm đầy đủ.",
+      "cta": "Mở"
+    },
+    "locations": {
+      "title": "Địa điểm",
+      "desc": "Địa điểm chấm công và nơi làm việc theo công ty.",
+      "cta": "Mở"
+    },
+    "footnote": "Mỗi thẻ mở đúng trang bạn đang dùng hiện nay."
   }
 }

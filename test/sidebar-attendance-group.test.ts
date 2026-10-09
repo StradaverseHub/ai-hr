@@ -175,6 +175,14 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   // The config screens moved WHOLESALE into the merged node — that is the node this guard follows.
   // (Four of them, since 4509d2b8 moved Holidays to System Settings; see TICKET_MOVED_OUT.)
   const node = nodeBlock('ATTENDANCE_NAV');
+  // r431 (bdfe4968) — THE FIVE TICKET SCREENS THAT STOOD IN THIS NODE AS ROWS (Shift, Attendance allowance,
+  // Locations, and the two that never had a ticket row but travelled with them) ARE NOW CARDS on
+  // /admin/attendance/settings, reached through ONE row. `node.indexOf("'<href>'")` would still find them —
+  // inside that row's `ownedSubpaths` — and so keep passing on a menu that had lost a screen, so every case
+  // below that used to ask "is it a child row" now asks the two things that are true: it has NO row of its
+  // own (`rowDecl`), and the Settings row owns it for highlighting.
+  const rowDecl = (href: string) => node.split('\n').find((l) => l.includes(`{ href: '${href}',`));
+  const SETTINGS_ROW = rowDecl('/admin/attendance/settings');
 
   it('keeps the parent labelled with the nav.attendanceSettings key', () => {
     // Was nav.attendance until ad52212d round 1, which minted this key for the reporter's
@@ -189,13 +197,18 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(node).toMatch(/labelKey:\s*'attendanceSettings'/);
   });
 
-  it('contains the ticket screens that live in this node as children, with the tail in the ticket order', () => {
+  it('r431: the ticket screens are reached through the ONE Settings row, which owns them, and the tail keeps its order on the cards', () => {
+    expect(SETTINGS_ROW, 'the Settings row is a child of the Attendance settings node').toBeDefined();
     for (const href of TICKET_HREFS) {
-      expect(node.indexOf(`'${href}'`), `${href} is a child of the Attendance settings node`).toBeGreaterThan(-1);
+      expect(rowDecl(href), `${href} must not be a nav row any more — it is a card on the Settings page`).toBeUndefined();
+      expect(SETTINGS_ROW, `the Settings row stays lit on ${href}`).toContain(`'${href}'`);
     }
-    const positions = TICKET_TAIL_HREFS.map((href) => node.indexOf(`'${href}'`));
+    // The ticket order (Attendance allowance, then Locations) is now the order of the cards.
+    const cards = fs.readFileSync(path.resolve(__dirname, '../app/admin/attendance/settings/cards.ts'), 'utf8');
+    const positions = TICKET_TAIL_HREFS.map((href) => cards.indexOf(`'${href}'`));
+    expect(positions.every((i) => i > -1), 'every tail screen is a card').toBe(true);
     const sorted = [...positions].sort((a, b) => a - b);
-    expect(positions, 'the tail keeps the ticket order among whichever members are still in this node').toEqual(sorted);
+    expect(positions, 'the tail keeps the ticket order among the cards').toEqual(sorted);
   });
 
   it('3fb1a611: Time off in lieu has LEFT the rail — folded into Leave Credit, its address a redirect', () => {
@@ -233,9 +246,13 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
     // The row above OWNS the retired address for highlighting — a bookmark through the stub must still
     // light "Locations", or the operator lands on step 2 with no nav row lit at all.
-    const row = node.split('\n').find((l) => l.includes(`{ href: '/admin/work-locations/clocking',`));
-    expect(row, 'the Locations row declaration').toBeDefined();
-    expect(row, 'and it owns the retired address for highlighting').toContain("ownedSubpaths: ['/admin/work-locations']");
+    // r431 — the Locations ROW is a Settings card now, so the owner of the retired address is the Settings row.
+    // It owns BOTH the clocking list (the card's target) and the old address; the longest-href ranking in the
+    // sidebar means no sibling row can steal the highlight, and no sibling row sits under either path.
+    expect(rowDecl('/admin/work-locations/clocking'), 'Locations is a card, not a row').toBeUndefined();
+    expect(SETTINGS_ROW, 'the Settings row declaration').toBeDefined();
+    expect(SETTINGS_ROW, 'and it owns the retired address for highlighting').toMatch(/ownedSubpaths: \[[^\]]*'\/admin\/work-locations'/);
+    expect(SETTINGS_ROW, 'and the clocking list').toMatch(/ownedSubpaths: \[[^\]]*'\/admin\/work-locations\/clocking'/);
   });
 
   it('639bf4a5 rev 2: the Locations register is a child of THIS node again, at its r336 address', () => {
@@ -244,7 +261,9 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     // is NOT a row in components/sidebar.tsx — a row added here and never removed there would render the
     // register TWICE, which is the likeliest way to get this wrong.
     for (const { was, now } of TICKET_RE_ADDRESSED) {
-      expect(node.indexOf(`'${now}'`), `${now} is a child of the Attendance settings node`).toBeGreaterThan(-1);
+      // r431 — no longer a row of its own: a Settings card the Settings row owns (see the note on `rowDecl`).
+      expect(rowDecl(now), `${now} is a Settings card now, not a row`).toBeUndefined();
+      expect(SETTINGS_ROW, `${now} is owned by the Settings row`).toContain(`'${now}'`);
       expect(countQuoted(SIDEBAR, now), `${now} must have no hand-written row in components/sidebar.tsx`).toBe(0);
       // …and the OLD address keeps no row anywhere, while still resolving as a guarded redirect stub.
       expect(node.indexOf(`'${was}'`), `${was} is NOT a child of the node — the route did not move back`).toBe(-1);
@@ -286,15 +305,16 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
      *     (the deduction switch, the overtime bands and rates, the tenant overtime rates, the registered
      *     devices) is still edited there, reached from the Schedule screen.
      */
-    const shift = node.indexOf(`'/admin/attendance'`);
-    expect(shift, 'Shift is a child').toBeGreaterThan(-1);
-    for (const href of TICKET_TAIL_HREFS) {
-      expect(shift, `Shift still precedes ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
-    }
-    const line = node.split('\n').find((l) => l.includes(`{ href: '/admin/attendance',`));
-    expect(line, 'Shift row exists').toBeDefined();
-    expect(line, 'Shift keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
-    expect(countQuoted(SRC, '/admin/attendance'), 'Shift is listed exactly once across the rail').toBe(1);
+    // r431 (bdfe4968) — Shift is no longer a row: it is the FIRST card on the Settings page, and the
+    // Settings row owns '/admin/attendance' so it lights on the shift library. Stated as three claims
+    // (no row, first card, owned) so none can be satisfied by a quoted string appearing somewhere else.
+    expect(rowDecl('/admin/attendance'), 'Shift is not a nav row any more').toBeUndefined();
+    const cards = fs.readFileSync(path.resolve(__dirname, '../app/admin/attendance/settings/cards.ts'), 'utf8');
+    const firstCard = cards.indexOf('{ key:');
+    expect(firstCard, 'cards.ts lists cards').toBeGreaterThan(-1);
+    expect(cards.slice(firstCard, firstCard + 60), 'Shift is the first card').toContain(`href: '/admin/attendance'`);
+    expect(SETTINGS_ROW, 'the Settings row owns the shift library').toContain(`'/admin/attendance'`);
+    expect(SETTINGS_ROW, 'Settings keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
 
     // e4471e3c — the two retired categories. Asserted as an ABSENCE FROM THE RAIL and a PRESENCE ON DISK,
     // because those are the two halves of "the row went, the screen did not".
@@ -315,10 +335,12 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   });
 
   it('admin-gates each of this node\u2019s ticket children (permissions unchanged by either move)', () => {
+    // r431 — the ticket children are cards now, so the gate that matters at the menu is the Settings row's
+    // (the destinations keep their own requireAdmin, pinned in test/attendance-menu-relocation.test.ts).
+    expect(SETTINGS_ROW, 'the Settings row exists').toBeDefined();
+    expect(SETTINGS_ROW, 'Settings keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
     for (const href of TICKET_HREFS) {
-      const line = node.split('\n').find((l) => l.includes(`'${href}'`));
-      expect(line, `child row for ${href}`).toBeDefined();
-      expect(line, `${href} keeps adminOnly visibility`).toMatch(/adminOnly:\s*true/);
+      expect(rowDecl(href), `${href} has no ungated row of its own`).toBeUndefined();
     }
   });
 
@@ -400,7 +422,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     for (const href of TICKET_HREFS) {
       // The config rows live in the other node entirely, so "the employee's record comes first" is
       // expressed as "it is not among them" rather than as a position comparison across two files.
-      expect(node.indexOf(`'${href}'`), `${href} is a config row`).toBeGreaterThan(-1);
+      expect(SETTINGS_ROW, `${href} is reached through the config node's Settings row`).toContain(`'${href}'`);
       expect(recordsIdx, 'the employee’s record resolved in the self-service node').toBeGreaterThan(-1);
     }
     // …and it carries NO gate. Read from the SELF-SERVICE node, which is where the row lives.

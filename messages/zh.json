@@ -292,6 +292,7 @@
     "teamLeaveTracker": "团队休假追踪",
     "attendance": "考勤记录",
     "attendanceSettings": "考勤",
+    "attendanceSettingsPage": "设置",
     "employeeAttendance": "员工考勤",
     "myAttendance": "我的考勤",
     "manage": "管理",
@@ -16112,5 +16113,35 @@
       "recentImports": "最近的导入",
       "failedMadeUp": "失败记录的构成"
     }
+  },
+  "attendanceSettingsHub": {
+    "title": "设置",
+    "subtitle": "出勤的所有设置页面集中在这里。每张卡片打开你之前使用的页面。",
+    "shift": {
+      "title": "班次",
+      "desc": "工作时间、休息和班次规则。",
+      "cta": "打开"
+    },
+    "fileMapping": {
+      "title": "文件结构映射",
+      "desc": "打卡文件的读取方式。",
+      "cta": "打开"
+    },
+    "schedule": {
+      "title": "排班",
+      "desc": "排班组、工作日和加班规则。",
+      "cta": "打开"
+    },
+    "allowance": {
+      "title": "出勤津贴",
+      "desc": "为良好出勤发放的津贴。",
+      "cta": "打开"
+    },
+    "locations": {
+      "title": "地点",
+      "desc": "按公司划分的打卡地点和工作地点。",
+      "cta": "打开"
+    },
+    "footnote": "每张卡片打开的都是你现在使用的同一页面。"
   }
 }

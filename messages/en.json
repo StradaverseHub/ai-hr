@@ -292,6 +292,7 @@
     "teamLeaveTracker": "Team Leave Tracker",
     "attendance": "Attendance Records",
     "attendanceSettings": "Attendance",
+    "attendanceSettingsPage": "Settings",
     "employeeAttendance": "Employee Attendance",
     "myAttendance": "My Attendance",
     "manage": "Manage",
@@ -16112,5 +16113,35 @@
       "recentImports": "Recent imports",
       "failedMadeUp": "Failed records are made up of"
     }
+  },
+  "attendanceSettingsHub": {
+    "title": "Settings",
+    "subtitle": "The setup pages for attendance, in one place. Each card opens the page you used before.",
+    "shift": {
+      "title": "Shift",
+      "desc": "Working hours, breaks and shift rules.",
+      "cta": "Open"
+    },
+    "fileMapping": {
+      "title": "File Structure Mapping",
+      "desc": "How clocking files are read.",
+      "cta": "Open"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "desc": "Schedule groups, working days and overtime rules.",
+      "cta": "Open"
+    },
+    "allowance": {
+      "title": "Attendance Allowance",
+      "desc": "Allowances paid for good attendance.",
+      "cta": "Open"
+    },
+    "locations": {
+      "title": "Locations",
+      "desc": "Clocking and work locations by company.",
+      "cta": "Open"
+    },
+    "footnote": "Each card opens the same page you use today."
   }
 }

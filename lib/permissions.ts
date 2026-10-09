@@ -866,6 +866,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     // screen key. Registered in the SAME commit as the page.tsx files (test/function-access.test.ts).
     routes: [
       '/admin/attendance',
+      // r431 (bdfe4968): the Attendance Settings card page. requireAdmin, the same guard as the five screens
+      // it links to, so it RIDES this column rather than minting a screen key.
+      '/admin/attendance/settings',
       '/admin/card-assignment',
       '/admin/attendance/file-mappings',
       '/admin/attendance/file-mappings/new',
