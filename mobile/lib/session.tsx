@@ -3,7 +3,7 @@ import * as ScreenCapture from 'expo-screen-capture';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
-import { assertAuthGeneration, hasStoredSession, signOut as clearTokens, workosLogoutUrl } from './auth';
+import { assertAuthGeneration, hasStoredSession, redirectUri, signOut as clearTokens, workosLogoutUrl } from './auth';
 import { t } from './i18n';
 import { createSessionState, type Visibility } from './session-state';
 
@@ -61,7 +61,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const logoutUrl = workosLogoutUrl();
       await state.signOut(); // local removal is independent of provider reachability
       if (logoutUrl) {
-        try { await WebBrowser.openBrowserAsync(logoutUrl); }
+        try { await WebBrowser.openAuthSessionAsync(logoutUrl, redirectUri()); }
         catch { /* Local logout succeeded; provider revocation must be verified on staging. */ }
       }
     },

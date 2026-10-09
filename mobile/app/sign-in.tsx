@@ -71,6 +71,7 @@ export default function SignIn() {
         <Button title={busy ? t('signingIn') : t('signInButton')} disabled={busy || !request} onPress={() => void onSignIn()} />
       )}
       {failed && <Text style={styles.problem}>{t('signInFailed')}</Text>}
+      {session.error && <Text style={styles.problem}>{t('genericError')}</Text>}
     </View>
   );
 }

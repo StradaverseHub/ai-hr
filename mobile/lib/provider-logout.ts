@@ -6,7 +6,7 @@ export function sessionIdFromToken(token: string): string | null {
     return typeof json.sid === 'string' && json.sid.length > 0 ? json.sid : null;
   } catch { return null; }
 }
-export function providerLogoutUrl(sessionId: string | null): string | null {
+export function providerLogoutUrl(sessionId: string | null, returnTo?: string): string | null {
   if (!sessionId) return null;
-  return `https://api.workos.com/user_management/sessions/logout?session_id=${encodeURIComponent(sessionId)}`;
+  return `https://api.workos.com/user_management/sessions/logout?session_id=${encodeURIComponent(sessionId)}${returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : ''}`;
 }

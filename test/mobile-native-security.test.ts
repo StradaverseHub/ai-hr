@@ -102,6 +102,16 @@ describe('native credentials — actual storage and network races', () => {
     expect(f.stored()).toBe('refresh-fresh');
   });
 
+  it('persists local revocation synchronously, before an asynchronous deletion starts', async () => {
+    const f = authFixture(); const marker = vi.fn();
+    const state = createAuthState({ ...f.ports, markLoggedOut: marker });
+    const pending = state.signOut();
+    expect(marker).toHaveBeenCalledTimes(1);
+    expect(f.ports.remove).not.toHaveBeenCalled();
+    await pending;
+    expect(f.stored()).toBeNull();
+  });
+
   it('a credential refusal clears the current session; an outage keeps it', async () => {
     const f = authFixture();
     f.ports.authenticate.mockRejectedValueOnce(new UnavailableError());
@@ -115,7 +125,7 @@ describe('native credentials — actual storage and network races', () => {
 
 function sessionFixture() {
   const ports = { hasStoredSession: vi.fn(async () => true), canUnlock: vi.fn(async () => true),
-    authenticate: vi.fn(async () => true), clearTokens: vi.fn(async () => undefined) };
+    authenticate: vi.fn(async () => true), clearTokens: vi.fn(async (): Promise<void> => {}) };
   return { ports, state: createSessionState(ports) };
 }
 describe('native device gate', () => {
@@ -198,6 +208,7 @@ describe('first install and HTTPS boundaries', () => {
     expect(url).not.toContain(jwt);
     expect(sessionIdFromToken('not-a-token')).toBeNull();
     expect(providerLogoutUrl(null)).toBeNull();
+    expect(providerLogoutUrl('session', 'aihr://auth/callback')).toContain('&return_to=aihr%3A%2F%2Fauth%2Fcallback');
   });
   it('deletes surviving Keychain credentials before creating a sandbox marker', async () => {
     let marker = false; let token: string | null = 'surviving-keychain-token';

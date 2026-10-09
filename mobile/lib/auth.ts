@@ -62,6 +62,7 @@ const storage = createInstallationStore({
 let sessionId: string | null = null;
 const state: ReturnType<typeof createAuthState> = createAuthState({
   authenticate,
+  markLoggedOut: storage.markLoggedOut,
   async read() {
     const owner = state.generation();
     const value = await storage.read();
@@ -73,9 +74,9 @@ const state: ReturnType<typeof createAuthState> = createAuthState({
         if (owner === state.generation()) sessionId = 'sessionId' in record && typeof record.sessionId === 'string' ? record.sessionId : null;
         return record.refreshToken;
       }
-    } catch { /* A corrupt or legacy credential is discarded, never logged. */ }
-    state.assertCurrent(owner);
-    await storage.remove();
+    } catch { /* A corrupt or legacy credential is ignored, never logged. */ }
+    // Reads never mutate Keychain: an asynchronous delete here could erase a concurrent new login.
+    // Explicit logout deletes through the controller's serialized queue; a new login replaces it.
     return null;
   },
   async write(refreshToken, accessToken) {
@@ -90,17 +91,12 @@ const state: ReturnType<typeof createAuthState> = createAuthState({
   async remove() { sessionId = null; await storage.remove(); },
 });
 /** Capture before local logout; the Keychain copy allows explicit logout immediately after cold launch. */
-export function workosLogoutUrl(): string | null { return providerLogoutUrl(sessionId); }
+export function workosLogoutUrl(): string | null { return providerLogoutUrl(sessionId, redirectUri()); }
 export const beginSignIn = state.beginSignIn;
 export const completeSignIn = state.completeSignIn;
 export const hasStoredSession = state.hasStoredSession;
 export const refresh = state.refresh;
 export const getAccessToken = state.getAccessToken;
-export async function signOut(): Promise<void> {
-  const deletion = state.signOut(); // invalidates memory/requests synchronously
-  try { storage.markLoggedOut(); }
-  catch (error) { await deletion; throw error; }
-  await deletion;
-}
+export const signOut = state.signOut;
 export const authGeneration = state.generation;
 export const assertAuthGeneration = state.assertCurrent;

@@ -157,28 +157,24 @@ export function workosJwks(clientId: string, fetchImpl: typeof fetch = fetch): J
       throw failure.error;
     }
     const flight = (async () => {
-    let body: unknown;
-    try {
-      const res = await fetchImpl(url, { signal: AbortSignal.timeout(JWKS_TIMEOUT_MS) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      body = await res.json();
-    } catch (e) {
-      const error = new JwksUnavailableError(e instanceof Error ? e.message : String(e));
-      jwksFailures.set(url, { retryAt: Date.now() + JWKS_MIN_REFRESH_MS, error });
-      if (cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
-      throw error;
-    }
-    const keys = (body as { keys?: unknown })?.keys;
-    if (!Array.isArray(keys) || keys.some((key) => typeof key !== 'object' || key === null || Array.isArray(key))) {
-      const error = new JwksUnavailableError('response has no valid keys array');
-      jwksFailures.set(url, { retryAt: Date.now() + JWKS_MIN_REFRESH_MS, error });
-      if (cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
-      throw error;
-    }
-    const entry = { keys: keys as Jwk[], fetchedAt: Date.now() };
-    jwksCache.set(url, entry);
-    jwksFailures.delete(url);
-    return entry.keys;
+      try {
+        const res = await fetchImpl(url, { signal: AbortSignal.timeout(JWKS_TIMEOUT_MS) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body: unknown = await res.json();
+        const keys = (body as { keys?: unknown })?.keys;
+        if (!Array.isArray(keys) || keys.some((key) => typeof key !== 'object' || key === null || Array.isArray(key))) {
+          throw new Error('response has no valid keys array');
+        }
+        const entry = { keys: keys as Jwk[], fetchedAt: Date.now() };
+        jwksCache.set(url, entry);
+        jwksFailures.delete(url);
+        return entry.keys;
+      } catch (cause) {
+        const error = new JwksUnavailableError(cause instanceof Error ? cause.message : String(cause));
+        jwksFailures.set(url, { retryAt: Date.now() + JWKS_MIN_REFRESH_MS, error });
+        if (cached && Date.now() - cached.fetchedAt < JWKS_MAX_AGE_MS) return cached.keys;
+        throw error;
+      }
     })().finally(() => { if (jwksFlights.get(url) === flight) jwksFlights.delete(url); });
     jwksFlights.set(url, flight);
     return flight;

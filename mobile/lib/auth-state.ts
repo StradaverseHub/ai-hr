@@ -5,6 +5,7 @@ type Ports = {
   read: () => Promise<string | null>;
   write: (token: string, accessToken: string) => Promise<void>;
   remove: () => Promise<void>;
+  markLoggedOut?: () => void;
   authenticate: (body: Record<string, string>) => Promise<TokenPair>;
 };
 
@@ -40,7 +41,10 @@ export function createAuthState(ports: Ports) {
   }
   function signOut() {
     invalidate(); // synchronous, before any storage/network wait
-    return enqueue(ports.remove);
+    const deletion = enqueue(ports.remove);
+    try { ports.markLoggedOut?.(); }
+    catch (error) { return deletion.then(() => { throw error; }); }
+    return deletion;
   }
   async function hasStoredSession() {
     const owner = generation;

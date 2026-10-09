@@ -18,7 +18,7 @@ function clientFixture() {
   const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>) => Promise<unknown>;
     useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { name: string } | null } } };
   const code = transpileModule(readFileSync('mobile/lib/api.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
-  runInNewContext(code, { exports: output.exports, module: output, fetch: response,
+  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'react') return React;
       if (id === './auth') return auth;
@@ -52,10 +52,11 @@ describe('native API transport', () => {
     expect(f.auth.refresh).toHaveBeenCalledTimes(1); expect(f.response).toHaveBeenCalledTimes(2);
     expect(f.response.mock.calls[1]).toEqual(['https://hr.example.com/api/mobile/v1/me?employmentId=two', {
       headers: { authorization: 'Bearer rotated-token', 'accept-language': 'en' }, redirect: 'error',
+      signal: expect.any(AbortSignal),
     }]);
   });
-  it('a 503 is unavailable and never refreshes the credentials', async () => {
-    const f = clientFixture(); f.response.mockResolvedValueOnce(new Response('', { status: 503 }));
+  it.each([429, 503])('HTTP %s is unavailable and never refreshes the credentials', async (status) => {
+    const f = clientFixture(); f.response.mockResolvedValueOnce(new Response('', { status }));
     await expect(f.api.apiGet('me')).rejects.toBeInstanceOf(UnavailableError);
     expect(f.auth.refresh).not.toHaveBeenCalled();
   });

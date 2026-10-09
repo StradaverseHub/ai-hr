@@ -43,22 +43,25 @@ export async function apiGet<P extends keyof Endpoints>(
   const owner = authGeneration();
   const send = async (token: string) => {
     assertAuthGeneration(owner);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const response = await fetch(url(path, params), {
         headers: { authorization: `Bearer ${token}`, 'accept-language': appLocale() },
         redirect: 'error',
+        signal: controller.signal,
       });
       return response;
     } catch {
       throw new UnavailableError();
-    }
+    } finally { clearTimeout(timeout); }
   };
   let res = await send(await getAccessToken());
   assertAuthGeneration(owner);
   if (res.status === 401) res = await send(await refresh());
   assertAuthGeneration(owner);
   if (res.status === 401) throw new SignInRequiredError();
-  if (res.status >= 500) throw new UnavailableError();
+  if (res.status === 429 || res.status >= 500) throw new UnavailableError();
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = (await res.json()) as Endpoints[P];
   assertAuthGeneration(owner);
