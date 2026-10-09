@@ -1,7 +1,7 @@
 /**
  * Mobile App UI/UX preview guard (item ca2f2fef).
  *
- * The module is a purely presentational design-preview surface (no schema, no service, no writes).
+ * The module uses authorized live reads. The owner chose real clocking through the existing Web Clocking API; no new schema or independent attendance policy.
  * These checks pin the structural contract the reporter asked for and the registry coupling the
  * function-access test relies on:
  *   1. The route is registered in lib/permissions.ts SCREENS with the scopedSession guard.

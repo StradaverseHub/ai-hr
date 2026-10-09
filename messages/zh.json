@@ -13798,8 +13798,8 @@
   },
   "mobilePreview": {
     "title": "移动应用 UI/UX 预览",
-    "subtitle": "使用您有权访问的系统数据进行交互式设计预览。操作将打开系统现有流程。",
-    "previewOnly": "仅为设计预览。这些屏幕模拟未来的移动应用；显示的数据仅供参考。",
+    "subtitle": "使用您获授权系统数据的 Monolith 交互预览。打卡手势经服务器验证后记录真实考勤。其他操作打开现有流程。",
+    "previewOnly": "使用您获授权系统数据的 Monolith 交互预览。打卡手势经服务器验证后记录真实考勤。其他操作打开现有流程。",
     "back": "返回",
     "resetToHome": "返回主页",
     "feature": {
@@ -13881,7 +13881,7 @@
       "body": "此功能将在未来版本中提供。"
     },
     "live": {
-      "description": "使用您有权访问的系统数据进行交互式设计预览。操作将打开系统现有流程。",
+      "description": "使用您获授权系统数据的 Monolith 交互预览。打卡手势经服务器验证后记录真实考勤。其他操作打开现有流程。",
       "home": "首页",
       "clock": "打卡",
       "requests": "请求",
@@ -13955,6 +13955,34 @@
       "updated": "数据加载时间：{time}",
       "greeting": "您好，{name}。",
       "partiallyApproved": "部分批准"
+    },
+    "gesture": {
+      "slideIn": "滑动打卡上班",
+      "slideOut": "滑动确认下班",
+      "tapIn": "点击打卡上班",
+      "tapOut": "点击确认下班",
+      "release": "已到终点，松开以确认。",
+      "progress": "已滑动 {percent}%",
+      "keyboardHelp": "使用方向键或 End 键，再按 Enter 确认。Escape 重置。",
+      "finishDay": "结束今天的工作。",
+      "finishAction": "结束我的工作日",
+      "keepWorking": "继续工作",
+      "reviewedIn": "上班时间",
+      "recordOnConfirm": "确认后记录时间",
+      "locationNote": "打卡时会检查位置及所需照片。",
+      "checking": "正在检查打卡要求…",
+      "saving": "正在等待服务器确认…",
+      "serverConfirmed": "服务器已确认",
+      "backToWorkday": "返回我的工作日",
+      "tryAgain": "重试",
+      "uncertain": "服务器响应未知，此次打卡尚未确认。请重试同一请求以安全核实。",
+      "retrySame": "重试同一次打卡",
+      "interrupted": "拍摄已中断。准备好后请重新开始。",
+      "authentication": "请重新登录后再打卡。",
+      "myRequests": "我的申请",
+      "savedIn": "上班打卡已记录于 {time}。",
+      "savedOut": "下班打卡已记录于 {time}。",
+      "failure": "无法确认打卡，请重试。"
     }
   },
   "reports": {

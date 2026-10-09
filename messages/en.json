@@ -13798,8 +13798,8 @@
   },
   "mobilePreview": {
     "title": "Mobile App UI/UX Preview",
-    "subtitle": "Interactive design preview using your authorized system data. Actions open the existing system workflows.",
-    "previewOnly": "Design preview only. These screens simulate the future mobile app; the data shown is illustrative.",
+    "subtitle": "Interactive Monolith preview using your authorized system data. Clock gestures record real attendance after server validation. Other actions open the existing workflows.",
+    "previewOnly": "Interactive Monolith preview using your authorized system data. Clock gestures record real attendance after server validation. Other actions open the existing workflows.",
     "back": "Back",
     "resetToHome": "Back to home",
     "feature": {
@@ -13881,7 +13881,7 @@
       "body": "This feature will be available in a future release."
     },
     "live": {
-      "description": "Interactive design preview using your authorized system data. Actions open the existing system workflows.",
+      "description": "Interactive Monolith preview using your authorized system data. Clock gestures record real attendance after server validation. Other actions open the existing workflows.",
       "home": "Home",
       "clock": "Clock",
       "requests": "Requests",
@@ -13955,6 +13955,34 @@
       "updated": "Data loaded at {time}",
       "greeting": "Hello, {name}.",
       "partiallyApproved": "Partially approved"
+    },
+    "gesture": {
+      "slideIn": "Slide to clock in",
+      "slideOut": "Slide to confirm OUT",
+      "tapIn": "Clock in with a tap",
+      "tapOut": "Confirm clock-out with a tap",
+      "release": "At the end. Release to confirm.",
+      "progress": "{percent}% of the way to confirmation",
+      "keyboardHelp": "Use arrow keys or End, then Enter to confirm. Escape resets.",
+      "finishDay": "Finish your day.",
+      "finishAction": "Finish my workday",
+      "keepWorking": "Keep working",
+      "reviewedIn": "Clocked in",
+      "recordOnConfirm": "Time recorded when confirmed",
+      "locationNote": "Location and any required photo are checked when you clock.",
+      "checking": "Checking your clocking requirements…",
+      "saving": "Waiting for server confirmation…",
+      "serverConfirmed": "Confirmed by the server",
+      "backToWorkday": "Back to my workday",
+      "tryAgain": "Try again",
+      "uncertain": "The server response is unknown. This punch is not confirmed. Retry the same request to check it safely.",
+      "retrySame": "Retry the same punch",
+      "interrupted": "Capture was interrupted. Start again when you are ready.",
+      "authentication": "Sign in again before clocking.",
+      "myRequests": "My requests",
+      "savedIn": "Clock-in recorded at {time}.",
+      "savedOut": "Clock-out recorded at {time}.",
+      "failure": "Clocking could not be confirmed. Try again."
     }
   },
   "reports": {

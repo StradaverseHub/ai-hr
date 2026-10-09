@@ -13798,8 +13798,8 @@
   },
   "mobilePreview": {
     "title": "Pratonton UI/UX Apl Mudah Alih",
-    "subtitle": "Pratonton reka bentuk interaktif menggunakan data sistem yang anda dibenarkan akses. Tindakan membuka aliran kerja sistem sedia ada.",
-    "previewOnly": "Pratonton reka bentuk sahaja. Skrin ini mensimulasikan apl mudah alih masa depan; data yang dipaparkan adalah ilustrasi.",
+    "subtitle": "Pratonton Monolith interaktif menggunakan data sistem yang anda dibenarkan. Gerak isyarat merekod kehadiran sebenar selepas pengesahan pelayan. Tindakan lain membuka aliran kerja sedia ada.",
+    "previewOnly": "Pratonton Monolith interaktif menggunakan data sistem yang anda dibenarkan. Gerak isyarat merekod kehadiran sebenar selepas pengesahan pelayan. Tindakan lain membuka aliran kerja sedia ada.",
     "back": "Kembali",
     "resetToHome": "Kembali ke laman utama",
     "feature": {
@@ -13881,7 +13881,7 @@
       "body": "Ciri ini akan tersedia dalam keluaran masa depan."
     },
     "live": {
-      "description": "Pratonton reka bentuk interaktif menggunakan data sistem yang anda dibenarkan akses. Tindakan membuka aliran kerja sistem sedia ada.",
+      "description": "Pratonton Monolith interaktif menggunakan data sistem yang anda dibenarkan. Gerak isyarat merekod kehadiran sebenar selepas pengesahan pelayan. Tindakan lain membuka aliran kerja sedia ada.",
       "home": "Utama",
       "clock": "Daftar waktu",
       "requests": "Permintaan",
@@ -13955,6 +13955,34 @@
       "updated": "Data dimuatkan pada {time}",
       "greeting": "Helo, {name}.",
       "partiallyApproved": "Diluluskan sebahagian"
+    },
+    "gesture": {
+      "slideIn": "Leret untuk masuk kerja",
+      "slideOut": "Leret untuk sahkan KELUAR",
+      "tapIn": "Masuk kerja dengan ketikan",
+      "tapOut": "Sahkan keluar dengan ketikan",
+      "release": "Di penghujung. Lepaskan untuk mengesahkan.",
+      "progress": "{percent}% menuju pengesahan",
+      "keyboardHelp": "Gunakan kekunci anak panah atau End, kemudian Enter untuk sahkan. Escape menetapkan semula.",
+      "finishDay": "Tamatkan hari anda.",
+      "finishAction": "Tamatkan hari kerja saya",
+      "keepWorking": "Terus bekerja",
+      "reviewedIn": "Masuk kerja pada",
+      "recordOnConfirm": "Masa direkod apabila disahkan",
+      "locationNote": "Lokasi dan foto yang diperlukan diperiksa semasa merekod waktu.",
+      "checking": "Menyemak keperluan rekod waktu…",
+      "saving": "Menunggu pengesahan pelayan…",
+      "serverConfirmed": "Disahkan oleh pelayan",
+      "backToWorkday": "Kembali ke hari kerja saya",
+      "tryAgain": "Cuba lagi",
+      "uncertain": "Respons pelayan tidak diketahui. Rekod ini belum disahkan. Cuba semula permintaan yang sama untuk menyemaknya dengan selamat.",
+      "retrySame": "Cuba semula rekod yang sama",
+      "interrupted": "Rakaman terganggu. Mulakan semula apabila bersedia.",
+      "authentication": "Log masuk semula sebelum merekod waktu.",
+      "myRequests": "Permintaan saya",
+      "savedIn": "Waktu masuk direkod pada {time}.",
+      "savedOut": "Waktu keluar direkod pada {time}.",
+      "failure": "Rekod waktu tidak dapat disahkan. Cuba lagi."
     }
   },
   "reports": {

@@ -15,7 +15,7 @@ vi.mock('next/navigation', () => {
   return { useRouter, default: { useRouter } };
 });
 const { MobileApp } = await import('../components/mobile-preview/mobile-app');
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const ready = <T,>(data: T) => ({ status: 'ready' as const, data });
 const data = (): MobilePreviewData => ({
   today: '2026-10-08', leaveHistoryHref: '/leave/history', loadedAt: '2026-10-08T00:54:00Z',
@@ -47,6 +47,25 @@ function assertFits(container: HTMLElement) {
   }
 }
 describe('Live Monolith in a real browser', () => {
+  it('holds navigation and task links while a real punch is waiting for its server receipt', async () => {
+    let resolve!: (value: Response) => void;
+    const pending = new Promise<Response>(r => { resolve = r; });
+    vi.spyOn(navigator.geolocation, 'getCurrentPosition').mockImplementation(success => success({ coords: { latitude: 3.15, longitude: 101.71, accuracy: 8 } } as GeolocationPosition));
+    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => options?.method === 'POST' ? pending : Promise.resolve(Response.json({ attendancePhotoSetting: 'not_required', locationValid: true }))));
+    const ui = mount();
+    fireEvent.click(ui.getByRole('button', { name: 'Finish my workday' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Confirm clock-out with a tap' }));
+    await ui.findByText('Waiting for server confirmation…');
+    expect(ui.getByRole('button', { name: 'Requests' }).hasAttribute('disabled')).toBe(true);
+    expect(ui.getByRole('button', { name: 'Refresh data' }).hasAttribute('disabled')).toBe(true);
+    expect(ui.getByRole('link', { name: /Synthetic Report Approve/ }).closest('[inert]')).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Requests' }));
+    expect(ui.queryByText('Leave Request Status')).toBeNull();
+    resolve(Response.json({ receipt: { id: 'saved-out', direction: 'out', date: '2026-10-08', recordedAt: '2026-10-08T10:02:00Z' } }));
+    await ui.findByText('Confirmed by the server');
+    expect(ui.getByRole('button', { name: 'Requests' }).hasAttribute('disabled')).toBe(false);
+    expect(ui.getByRole('link', { name: /Synthetic Report Approve/ }).closest('[inert]')).toBeNull();
+  });
   it('keeps both themes, all configured leave types, hidden figures and shared pools readable at 320px', () => {
     const ui = mount();
     fireEvent.click(ui.getByRole('button', { name: /Plan time off/ }));
@@ -61,11 +80,16 @@ describe('Live Monolith in a real browser', () => {
   });
   it('opens existing guarded commands and keeps pending/approved and unread/workflow states distinct', () => {
     const ui = mount();
-    expect(ui.getByRole('link', { name: 'Review clock-out' }).getAttribute('href')).toBe('/attendance/clock');
+    fireEvent.click(ui.getByRole('button', { name: 'Finish my workday' }));
+    expect(ui.getByRole('slider', { name: 'Slide to confirm OUT' })).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Keep working' }));
     fireEvent.click(ui.getByRole('button', { name: /Who’s away/ }));
     expect(ui.getByText('1 on approved leave')).toBeTruthy();
     expect(ui.getByText('0 with pending requests')).toBeTruthy();
-    expect(ui.getByText(/Approved · AM/)).toBeTruthy();
+    const person = ui.getByRole('button', { name: /Synthetic Report/ });
+    expect(person.textContent).toContain('Approved · AM');
+    expect(person.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(person); expect(person.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(ui.getByRole('button', { name: 'Inbox' }));
     expect(ui.queryByRole('link', { name: 'Open record' })).toBeNull(); // external stored href refused
     expect(ui.getByText(/Unread/)).toBeTruthy();
@@ -92,6 +116,10 @@ describe('Live Monolith in a real browser', () => {
     fireEvent.click(ui.getByRole('button', { name: m.live.me }));
     fireEvent.click(ui.getByRole('checkbox', { name: m.live.largerText }));
     fireEvent.click(ui.getByRole('button', { name: m.live.home }));
+    fireEvent.click(ui.getByRole('button', { name: m.gesture.finishAction }));
+    expect(ui.getByRole('slider', { name: m.gesture.slideOut })).toBeTruthy();
+    assertFits(ui.container);
+    fireEvent.click(ui.getByRole('button', { name: m.gesture.keepWorking }));
     fireEvent.click(ui.getByRole('button', { name: new RegExp(m.live.planLeave) }));
     fireEvent.click(ui.getByRole('button', { name: /Configured leave 0/ }));
     assertFits(ui.container);

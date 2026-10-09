@@ -318,9 +318,16 @@ more; inbox reads remain recipient-scoped. Payslip links require closed and rele
 carry no compensation amounts. Disabled, unavailable and empty sections are distinct.
 
 Both themes and clock layout comparisons render the same authorized snapshot. Refresh re-runs the
-server reads. Navigation and appearance are local state only: clocking, leave submissions and
-approval decisions open their existing guarded workflows. Viewing this preview neither writes an
-attendance record nor marks a notification as read. Access tests exercise populated peer and tenant
+server reads. The approved Monolith Flow layout and slide-to-confirm interaction are the default;
+punch-card and time-rail comparisons retain the same confirmation flow. The owner explicitly chose
+real attendance recording on 2026-10-09. A completed gesture invokes the existing same-origin Web
+Clocking endpoints, which resolve the current employment and enforce location and photo policy on
+the server. A server receipt is required before showing a recorded punch. Required/optional photos
+are captured within the phone frame, kept in memory and released on cancellation or interruption.
+Uncertain responses retain the exact request ID, coordinates and photo for an idempotent retry;
+they never display success or accept a second intent. Navigation is held during an active capture.
+Leave submissions and approval decisions still open their existing guarded workflows. Merely viewing
+this preview neither writes an attendance record nor marks a notification as read. Access tests exercise populated peer and tenant
 records, current reporting relationships, company narrowing and compensation stripping; browser
 checks cover all six locales, both themes and every returned leave type.
 

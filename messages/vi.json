@@ -13798,8 +13798,8 @@
   },
   "mobilePreview": {
     "title": "Xem trước UI/UX ứng dụng di động",
-    "subtitle": "Bản xem trước thiết kế tương tác dùng dữ liệu hệ thống bạn được phép truy cập. Các thao tác mở quy trình hiện có.",
-    "previewOnly": "Chỉ là bản xem trước thiết kế. Các màn hình này mô phỏng ứng dụng di động trong tương lai; dữ liệu hiển thị chỉ mang tính minh họa.",
+    "subtitle": "Bản xem trước Monolith tương tác dùng dữ liệu hệ thống bạn được phép xem. Thao tác chấm công ghi nhận dữ liệu thật sau khi máy chủ kiểm tra. Các thao tác khác mở quy trình hiện có.",
+    "previewOnly": "Bản xem trước Monolith tương tác dùng dữ liệu hệ thống bạn được phép xem. Thao tác chấm công ghi nhận dữ liệu thật sau khi máy chủ kiểm tra. Các thao tác khác mở quy trình hiện có.",
     "back": "Quay lại",
     "resetToHome": "Về trang chủ",
     "feature": {
@@ -13881,7 +13881,7 @@
       "body": "Tính năng này sẽ có trong bản phát hành sau."
     },
     "live": {
-      "description": "Bản xem trước thiết kế tương tác dùng dữ liệu hệ thống bạn được phép truy cập. Các thao tác mở quy trình hiện có.",
+      "description": "Bản xem trước Monolith tương tác dùng dữ liệu hệ thống bạn được phép xem. Thao tác chấm công ghi nhận dữ liệu thật sau khi máy chủ kiểm tra. Các thao tác khác mở quy trình hiện có.",
       "home": "Trang chính",
       "clock": "Chấm công",
       "requests": "Yêu cầu",
@@ -13955,6 +13955,34 @@
       "updated": "Dữ liệu tải lúc {time}",
       "greeting": "Xin chào, {name}.",
       "partiallyApproved": "Duyệt một phần"
+    },
+    "gesture": {
+      "slideIn": "Trượt để chấm công vào",
+      "slideOut": "Trượt để xác nhận RA",
+      "tapIn": "Nhấn để chấm công vào",
+      "tapOut": "Nhấn để xác nhận chấm công ra",
+      "release": "Đã đến cuối. Thả để xác nhận.",
+      "progress": "Đã trượt {percent}%",
+      "keyboardHelp": "Dùng phím mũi tên hoặc End, rồi Enter để xác nhận. Escape để đặt lại.",
+      "finishDay": "Kết thúc ngày làm việc.",
+      "finishAction": "Kết thúc ngày làm việc của tôi",
+      "keepWorking": "Tiếp tục làm việc",
+      "reviewedIn": "Đã vào lúc",
+      "recordOnConfirm": "Ghi giờ khi được xác nhận",
+      "locationNote": "Vị trí và ảnh bắt buộc được kiểm tra khi chấm công.",
+      "checking": "Đang kiểm tra yêu cầu chấm công…",
+      "saving": "Đang chờ máy chủ xác nhận…",
+      "serverConfirmed": "Máy chủ đã xác nhận",
+      "backToWorkday": "Về ngày làm việc của tôi",
+      "tryAgain": "Thử lại",
+      "uncertain": "Chưa rõ phản hồi từ máy chủ. Lần chấm công này chưa được xác nhận. Thử lại cùng yêu cầu để kiểm tra an toàn.",
+      "retrySame": "Thử lại cùng lần chấm công",
+      "interrupted": "Quá trình chụp bị gián đoạn. Bắt đầu lại khi sẵn sàng.",
+      "authentication": "Đăng nhập lại trước khi chấm công.",
+      "myRequests": "Yêu cầu của tôi",
+      "savedIn": "Đã ghi nhận giờ vào lúc {time}.",
+      "savedOut": "Đã ghi nhận giờ ra lúc {time}.",
+      "failure": "Không thể xác nhận chấm công. Vui lòng thử lại."
     }
   },
   "reports": {
