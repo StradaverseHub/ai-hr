@@ -86,7 +86,10 @@ project-id generation is checked directly.
 FACT (advisories checked 2026-10-09): the remaining `braces` and `node-forge` advisories list no patched
 version ([braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm),
 [node-forge](https://github.com/advisories/GHSA-86w9-cpqp-85rv)). Installed dependency paths lead through
-Metro file mapping/glob tooling and Expo CLI certificate tooling respectively. This is a dependency
-path assessment, not proof of their absence from a release bundle. Inspect the release bundle and keep
-development/build inputs controlled before deciding their production relevance. No audit ignore or
-forced SDK downgrade conceals these findings.
+Metro file mapping/glob tooling and Expo CLI certificate tooling respectively. FACT: inspection of
+both production Hermes export source maps on 2026-10-09 found neither package in the app module graphs
+(1,298 Android modules, 1,167 iOS modules), and found the patched decoder in both. Expo's generated
+Android manifest also marks both unused photo/storage permissions for removal. These checks cover
+the exported JavaScript and configuration, not a signed APK/IPA or physical-device behavior.
+Development/build inputs still need control while the two tooling advisories remain open. No audit
+ignore or forced SDK downgrade conceals these findings.
