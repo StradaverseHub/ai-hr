@@ -242,6 +242,13 @@ max_wal_senders = 0
 checkpoint_completion_target = 0.5
 
 shared_buffers = 512MB
+
+# 2026-10-09 (r430): the suite's per-test TRUNCATE names every tenant table in ONE statement and takes an
+# ACCESS EXCLUSIVE lock on each, and several workers do it at once. The schema has outgrown the default 64
+# (lock table = max_locks_per_transaction x connections): gate chunk 6 failed with 53200 "out of shared
+# memory" / "You might need to increase max_locks_per_transaction" in three of four runs, zero
+# assertion errors, on files nobody touched. A test cluster only; never copy this to a server.
+max_locks_per_transaction = 256
 CONF
 
 # ── AND THE WAL SIZES DEPEND ON WHICH VOLUME WE JUST BUILT, so they are appended separately ──────────
