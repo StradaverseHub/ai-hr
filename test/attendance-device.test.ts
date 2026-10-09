@@ -15,6 +15,8 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { checkIn, checkOut, listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
+// r430 — Web Clocking's own self-capture path; see the "web clocking self-capture stays exempt" test below.
+import { captureEmployeeClock } from '../core/attendance-clock';
 import { importPunchCsv } from './helpers/punch-import';
 import {
   DeviceNotRegisteredError,
@@ -259,6 +261,30 @@ describe('registered-device gate on checkIn/checkOut (5249d43f)', () => {
     expect(result.imported).toBe(1);
     const row = await dayRow(emp.id);
     expect(row.checkInMethod).toBe('import');
+  });
+
+  it('web clocking self-capture stays exempt from the registered-device policy, even with it ON (deliberate r430 bypass)', async () => {
+    // r430 — captureEmployeeClockTx always passes deviceGateExempt:true to checkInTx/checkOutTx: Web
+    // Clocking's own self-capture path is fully exempt from attendance_policy.require_registered_device
+    // regardless of the setting, the same documented-bypass shape as the terminal-import test above. This
+    // is the test proving that leaving the policy ON for a tenant cannot silently re-impose the device
+    // block on this screen — no DeviceNotRegisteredError, no device row needed at all.
+    const { employmentId, personId } = await hire();
+    const a = adminCtx(b);
+    await setRequireDevice(a, true);
+    const empCtx = await employeeCtxFor(personId);
+    const receipt = await captureEmployeeClock(empCtx, {
+      action: 'in',
+      requestId: randomUUID(),
+      lat: 3.139,
+      lng: 101.6869,
+      accuracy: 10,
+    });
+    expect(receipt.direction).toBe('in');
+    expect(receipt.photoAvailable).toBe(false); // not_required default — no photo sent, none captured
+    const row = await dayRow(employmentId);
+    expect(row.checkInAt).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    expect(row.checkInMethod).toBe('web');
   });
 
   it('enforceDeviceGateTx is a no-op when the company has no saved policy row (engine default OFF)', async () => {

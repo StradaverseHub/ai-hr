@@ -2983,6 +2983,13 @@
       "when": 1791700000000,
       "tag": "0518_clocking_file_import",
       "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1791900000000,
+      "tag": "0520_web_clocking_photo_setting",
+      "breakpoints": true
     }
   ]
 }

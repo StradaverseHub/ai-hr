@@ -75,7 +75,8 @@ async function render(employmentId: string): Promise<string> {
   );
 }
 
-/** An employee who clocks in on the Clock screen (photo + registered device), with the switch as given. */
+/** An employee who clocks in on the Clock screen (photo), with the switch as given. `device` is retained
+ *  in the fixture only for shape compatibility; captureEmployeeClockTx no longer reads it at all (r430). */
 async function clocker(name: string, geofenced: boolean) {
   const admin = adminCtx(b);
   const h = await hireEmployee(admin, {
@@ -103,7 +104,7 @@ describe('r423 — the day detail’s punch trail carries each clocking’s loca
     const x = await clocker('Geo Ina', true);
     clockAt(`${DATE()}T09:00:10+08:00`);
     // ~0.0003° north ≈ 33 m from the site — inside its 100 m.
-    await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), deviceToken: x.device.deviceToken, lat: 3.0451, lng: 101.4455, accuracy: 8, photo: x.photo, mime: 'image/jpeg' });
+    await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), lat: 3.0451, lng: 101.4455, accuracy: 8, photo: x.photo, mime: 'image/jpeg' });
     vi.useRealTimers();
     const html = await render(x.h.employmentId);
     expect(html).toContain('data-clock-evidence="geofenced"');
@@ -114,7 +115,7 @@ describe('r423 — the day detail’s punch trail carries each clocking’s loca
   it('(b) a switch-OFF capture shows "Geofencing not required" and the recorded coordinates as an OpenStreetMap link', async () => {
     const x = await clocker('Free Ali', false);
     clockAt(`${DATE()}T09:00:10+08:00`);
-    await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), deviceToken: x.device.deviceToken, lat: 5.416404, lng: 100.332712, accuracy: 12.4, photo: x.photo, mime: 'image/jpeg' });
+    await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), lat: 5.416404, lng: 100.332712, accuracy: 12.4, photo: x.photo, mime: 'image/jpeg' });
     vi.useRealTimers();
     const html = await render(x.h.employmentId);
     expect(html).toContain('data-clock-evidence="not-enforced"');
@@ -138,7 +139,7 @@ describe('r423 — the day detail’s punch trail carries each clocking’s loca
   it('RLS: a caller who cannot see the employee gets no evidence for their capture', async () => {
     const x = await clocker('Hidden Hui', false);
     clockAt(`${DATE()}T09:00:10+08:00`);
-    const receipt = await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), deviceToken: x.device.deviceToken, lat: 3.1, lng: 101.6, accuracy: 5, photo: x.photo, mime: 'image/jpeg' });
+    const receipt = await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), lat: 3.1, lng: 101.6, accuracy: 5, photo: x.photo, mime: 'image/jpeg' });
     vi.useRealTimers();
     expect((await clockCaptureEvidence(adminCtx(b), [receipt.id])).get(receipt.id)?.geofenced).toBe(false);
     const stranger = await clocker('Stranger Sam', false);
