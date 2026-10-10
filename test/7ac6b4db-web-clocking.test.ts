@@ -106,7 +106,8 @@ describe('r378/r430 · private camera capture, now CONDITIONAL on attendancePhot
     expect(command).toContain('decodeClockPhoto(p.photo, p.mime');
     expect(command).toContain("photoSetting !== 'not_required' && p.photo");
     expect(command).toContain("if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError()");
-    expect(command).toContain('const me = await myEmployment(ctx)');
+    // Web retains its original subject resolver; native selects only an owned active employment.
+    expect(command).toContain('native ? (await myEmployments(ctx)).find(e => e.employmentId === native.employmentId) : await myEmployment(ctx)');
     expect(command).toContain('clockCaptureId: captureId');
     const migration = read('/db/migrations/0500_attendance_clock_evidence.sql');
     expect(migration).toContain('ENABLE ROW LEVEL SECURITY');
