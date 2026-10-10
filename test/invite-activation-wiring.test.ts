@@ -15,7 +15,7 @@
  * could not see that nobody was calling it.
  *
  * Behavioural tests cannot easily catch that (the pages are server components that need a verified
- * WorkOS session), so this asserts the wiring at the source level instead. It is deliberately cheap and
+ * provider session), so this asserts the wiring at the source level instead. It is deliberately cheap and
  * blunt: its whole job is to fail loudly if the chain is ever cut again.
  */
 import { readFileSync } from 'node:fs';
@@ -52,12 +52,15 @@ describe('invitation activation wiring', () => {
     expect(src).toMatch(/acceptInvitation\s*\(/);
   });
 
-  it('the activate route binds the VERIFIED WorkOS subject, never a client-supplied one', () => {
+  it('the activate route binds the verified provider subject and issuer, never client-supplied identity claims', () => {
     const src = readCode(ACTIVATE);
     // The subject must come from the verified session. Accepting it from params/query would let anyone
     // bind an invitation to an arbitrary identity.
-    expect(src).toContain('currentWorkosSession');
+    expect(src).toContain('currentProviderSession');
     expect(src).toMatch(/subject:\s*session\.subject/);
+    expect(src).toMatch(/issuer:\s*session\.issuer/);
+    expect(src).toMatch(/verifiedEmail:\s*session\.emailVerified\s*\?\s*session\.email/);
+    expect(src).not.toMatch(/subject:\s*(?:params|searchParams|request)\./);
   });
 
   it('somewhere in app/ calls acceptInvitation (the gap that shipped)', () => {

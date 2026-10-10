@@ -273,7 +273,9 @@ describe('5c65367d · what actually happened', () => {
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
     await screen.findByText('3 records');
-    await user.click(screen.getByRole('button', { name: 'Import 1 valid record' }));
+    // The preview commits before React finishes the async validation transition. Wait for the
+    // final action label, rather than treating a visible row count as proof the action is ready.
+    await user.click(await screen.findByRole('button', { name: 'Import 1 valid record' }));
 
     expect(await screen.findByText('1 record imported')).toBeInTheDocument();
     expect(screen.getByText('1 record could not be imported')).toBeInTheDocument();
