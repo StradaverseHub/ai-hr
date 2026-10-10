@@ -48,11 +48,13 @@ only; there is no attendance, leave or approval command in the publication servi
 
 The web renderer consumes the same contract as the Expo client. The native foundation consumes
 branding, light/dark tokens, surface shape, available home-section order, leave ledger/list and
-available navigation order. Native attendance, team and request-submission screens remain separate
-ADR-0088 delivery work; sharing a contract does not claim those native screens already exist or are
-pixel-identical. New native component capabilities need a compatible binary release. Supported
-configuration changes need no customer-specific app download. No store upload is performed by this
-round. A physical-device render and store distribution remain required before claiming native parity.
+available navigation order. The subsequent native-monolith-online delivery implements online
+attendance, team availability and leave submission under ADR-0088; its verified API additions are
+deployed at f1ef95d3. The native controls have rendered interaction tests and successful Hermes
+exports; physical-device rendering and pixel parity remain unverified. New native component
+capabilities need a compatible binary release. Supported configuration changes need no
+customer-specific app download. No store upload has been performed. Signed distribution and the
+physical-device matrix remain required before a customer pilot.
 
 ## Alternatives and consequences
 
