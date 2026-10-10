@@ -93,7 +93,10 @@ describe('r434 — an approved correction owns the day', () => {
       CorrectedClockConflictError,
     );
     const row = await dayRow(employmentId);
+    expect(row?.checkInAt?.slice(0, 5), 'the check-in did not revert to the old 08:02 punch').toBe('09:00');
     expect(row?.checkOutAt?.slice(0, 5), 'the correction still stands').toBe('18:00');
+    // Measured before r434: this exact attempt left the day with check-in 08:02, NO check-out and NO worked time.
+    expect(row?.workedMinutes, 'worked time is still the corrected 09:00 to 18:00, not null').toBe(480);
     expect(await punchCount(employmentId)).toBe(punches);
   });
 
