@@ -1,7 +1,7 @@
 import { NextIntlClientProvider } from 'next-intl';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_MOBILE_DESIGN, type MobileBuilderState } from '../lib/mobile-design';
+import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, type MobileBuilderState } from '../lib/mobile-design';
 import type { MobilePreviewData } from '../components/mobile-preview/types';
 import '../app/globals.css';
 import en from '../messages/en.json';
@@ -26,7 +26,7 @@ const data: MobilePreviewData = {
 const state = (): MobileBuilderState => ({ tenantName: 'Test Tenant', draft: structuredClone(DEFAULT_MOBILE_DESIGN), draftRevision: 0, releases: [] });
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
 function mount(initial = state(), locale: keyof typeof catalogues = 'en', width = 1200) {
-  return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur"><div style={{ width, maxWidth: '100%' }}><MobileBuilder data={data} initial={initial} /></div></NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error => { throw error; }}><div style={{ width, maxWidth: '100%' }}><MobileBuilder data={data} initial={initial} /></div></NextIntlClientProvider>);
 }
 describe('tenant mobile builder in a real browser', () => {
   it('changes presentation immediately and keeps draft/published gestures free of HR writes', () => {
@@ -62,10 +62,11 @@ describe('tenant mobile builder in a real browser', () => {
   it('requires saved changes and an explicit tenant publish confirmation, then preserves history', async () => {
     const ui = mount();
     fireEvent.change(ui.getByRole('textbox', { name: 'App brand name' }), { target: { value: 'Saved Brand' } });
-    const saved = { ...state(), draftRevision: 1, draft: { ...DEFAULT_MOBILE_DESIGN, brandName: 'Saved Brand' } };
+    const saved = { ...state(), draftRevision: 1, draft: { ...composeMobileDesign(DEFAULT_MOBILE_DESIGN), brandName: 'Saved Brand' } };
     vi.mocked(changeMobileDesignAction).mockResolvedValueOnce({ ok: true, state: saved });
     fireEvent.click(ui.getByRole('button', { name: 'Save draft' }));
     await ui.findByText('Draft saved. Employees still see the published version.');
+    expect(changeMobileDesignAction).toHaveBeenLastCalledWith('save', 0, saved.draft);
     fireEvent.click(ui.getByRole('button', { name: 'Publish' }));
     expect(changeMobileDesignAction).toHaveBeenCalledTimes(1);
     vi.mocked(changeMobileDesignAction).mockResolvedValueOnce({ ok: true, state: { ...saved, draftRevision: 2, releases: [{ revision: 1, config: saved.draft, publishedAt: '2026-10-10T02:00:00Z' }] } });
@@ -76,7 +77,7 @@ describe('tenant mobile builder in a real browser', () => {
   });
   it('preserves an unsaved draft on conflict and keeps every leave type in either layout', async () => {
     const ui = mount();
-    fireEvent.click(ui.getByRole('button', { name: 'Move Leave up' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Move Leave balances up' }));
     expect([...ui.container.querySelectorAll('[data-home-section]')].map(e => e.getAttribute('data-home-section'))).toEqual(['clock', 'leave', 'tasks', 'team']);
     vi.mocked(changeMobileDesignAction).mockResolvedValueOnce({ ok: false, error: 'conflict' });
     fireEvent.click(ui.getByRole('button', { name: 'Save draft' }));
@@ -86,6 +87,28 @@ describe('tenant mobile builder in a real browser', () => {
     expect(ui.getAllByRole('button', { name: /^Leave \d/ })).toHaveLength(6);
     fireEvent.change(ui.getByRole('combobox', { name: 'Leave balances' }), { target: { value: 'list' } });
     expect(ui.getAllByRole('button', { name: /^Leave \d/ })).toHaveLength(6);
+  });
+  it('composes a new screen, changes its structure and style, and restores edits with undo', () => {
+    const ui = mount();
+    fireEvent.click(ui.getByRole('button', { name: 'Editorial', exact: true }));
+    const phone = ui.container.querySelector('[data-appearance]') as HTMLElement;
+    expect(phone.dataset.navigation).toBe('top');
+    expect(phone.style.getPropertyValue('--app-font')).toBe('Georgia, serif');
+    expect(getComputedStyle(ui.getByRole('heading', { name: 'Hello, Test.' })).fontSize).toBe('38px');
+    fireEvent.click(ui.getByRole('button', { name: 'Undo', exact: true })); expect(phone.dataset.navigation).toBe('bar');
+    fireEvent.click(ui.getByRole('button', { name: 'Redo', exact: true })); expect(phone.dataset.navigation).toBe('top');
+    fireEvent.change(ui.getByRole('textbox', { name: 'New screen name' }), { target: { value: 'Our benefits' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Add screen', exact: true }));
+    fireEvent.click(ui.getByRole('button', { name: 'Add section', exact: true }));
+    fireEvent.change(ui.getByRole('textbox', { name: 'Section title' }), { target: { value: 'Make time for life' } });
+    fireEvent.change(ui.getByRole('textbox', { name: 'Text', exact: true }), { target: { value: 'Your benefits, in one place.' } });
+    expect(ui.getByRole('heading', { name: 'Make time for life' })).toBeTruthy();
+    expect(ui.getByText('Your benefits, in one place.', { selector: 'p' })).toBeTruthy();
+    fireEvent.change(ui.getByRole('combobox', { name: 'Width', exact: true }), { target: { value: 'half' } });
+    expect(ui.container.querySelector('[data-block-kind=text]')?.getAttribute('data-block-width')).toBe('half');
+    fireEvent.click(ui.getByRole('button', { name: 'Undo', exact: true }));
+    expect(ui.container.querySelector('[data-block-kind=text]')?.getAttribute('data-block-width')).toBe('full');
+    expect(changeMobileDesignAction).not.toHaveBeenCalled();
   });
   for (const locale of Object.keys(catalogues) as (keyof typeof catalogues)[]) it(`renders the builder at 390px in ${locale}`, () => {
     const ui = mount(state(), locale, 390);

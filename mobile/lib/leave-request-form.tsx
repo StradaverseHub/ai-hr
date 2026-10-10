@@ -1,5 +1,6 @@
 import { useRef } from 'react';
-import { Pressable,Text,TextInput,View } from 'react-native';
+import { Pressable,TextInput,View } from 'react-native';
+import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
 import { File,Directory,Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';

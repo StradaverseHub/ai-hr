@@ -3,10 +3,9 @@
  * every data screen needs — a truthful loading / unavailable / error state with a retry that never signs
  * anyone out.
  */
-import { MOBILE_ACCENTS } from '../../lib/mobile-design';
-import { TenantBrand, useTenantDesign } from './design';
+import { DesignText as Text, TenantBrand, useTenantDesign } from './design';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UnavailableError } from './errors';
 import { t } from './i18n';
@@ -31,11 +30,11 @@ export function Screen({
   refreshing?: boolean;
   onRefresh?: () => void;
 }) {
-  const { palette, reload } = useTenantDesign();
+  const { palette, reload, design } = useTenantDesign();
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={['top']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={design.schemaVersion === 2 && design.composition.navigation.style === 'top' ? [] : ['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: 32 }]}
         refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={() => { reload(); onRefresh(); }} /> : undefined}
       >
         <TenantBrand />{children}
@@ -56,7 +55,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 
 export function Card({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border, borderRadius: design.corners === 'soft' ? 18 : 3 }]}>{children}</View>;
+  return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 3 }]}>{children}</View>;
 }
 
 export function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
@@ -82,9 +81,9 @@ export function Button({ title, onPress, kind = 'primary', disabled = false }: {
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: MOBILE_ACCENTS[design.accent].button, borderRadius: design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
     >
-      <Text style={[styles.buttonText, { color: MOBILE_ACCENTS[design.accent].onButton }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
+      <Text style={[styles.buttonText, { color: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? palette.text : palette.onButton }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
     </Pressable>
   );
 }

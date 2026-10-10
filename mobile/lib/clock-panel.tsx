@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback,useEffect,useRef } from 'react';
-import { AppState,Image,Platform,Pressable,Text,View } from 'react-native';
+import { AppState,Image,Platform,Pressable,View } from 'react-native';
+import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
 import { apiPost,useApi } from './api';
 import { assertAuthGeneration,authGeneration } from './auth';

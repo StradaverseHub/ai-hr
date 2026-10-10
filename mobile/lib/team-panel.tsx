@@ -1,6 +1,7 @@
 import { useCallback,useEffect,useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Pressable,Text,View } from 'react-native';
+import { Pressable,View } from 'react-native';
+import { DesignText as Text } from './design';
 import { useApi } from './api';
 import { useSession } from './session';
 import { useTenantDesign } from './design';

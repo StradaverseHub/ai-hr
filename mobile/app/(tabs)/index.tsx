@@ -1,3 +1,4 @@
+import { ComposedPage } from '../../lib/composed-page';
 import { ClockPanel } from '../../lib/clock-panel';
 import { TeamPanel } from '../../lib/team-panel';
 import { Fragment,useState } from 'react';
@@ -11,6 +12,10 @@ import { useSession } from '../../lib/session';
 import { Card, LoadState, Muted, Row, Screen, SectionLabel, Title, fmtDays, fmtMoney } from '../../lib/ui';
 
 export default function Home() {
+  const { design } = useTenantDesign();
+  return design.schemaVersion === 2 ? <ComposedPage design={design} /> : <LegacyHome />;
+}
+function LegacyHome() {
   const { design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const me = useApi('me', {}, signOut);

@@ -153,3 +153,16 @@ FACT: server integration tests use real handlers, RLS and the kernel; control te
 components with injected native ports. Hermes exports and generated permissions are build evidence.
 UNKNOWN: signed binaries, hardware permission/picker behavior and real OS accessibility until this
 matrix passes. Do not use this development evidence as store/pilot readiness.
+
+### Visual composer and deployment connections
+
+The client opts in to mobile design schema 2. Home and custom screens render the bounded registered
+section tree; published typography, palette, spacing, corners, button style and navigation are
+consumed by native components. Schema 1 still renders the legacy layout. Preview and native share
+the contract, not identical browser/OS primitives; physical-device visual/interaction verification
+is still required before customer distribution.
+
+Runtime cloud/on-premise organization enrollment and internal OIDC are **not implemented** by the
+composer. `EXPO_PUBLIC_API_URL` and the WorkOS client remain build-time configuration. The proposed
+provider-neutral migration is ADR-0098; do not add an arbitrary server picker while retaining the
+current WorkOS token.

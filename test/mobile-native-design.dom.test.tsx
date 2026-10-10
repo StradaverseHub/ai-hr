@@ -18,7 +18,7 @@ function fixture() {
     if (id === 'react/jsx-runtime') return jsx;
     if (id === '../../lib/mobile-design') return contract;
     if (id === './session') return { useSession: () => ({ signOut }) };
-    if (id === './api') return { useApi: (path: string, params: unknown, onAuth: unknown) => { expect(path).toBe('design'); expect(params).toEqual({}); expect(onAuth).toBe(signOut); return { data: response, reload }; } };
+    if (id === './api') return { useApi: (path: string, params: unknown, onAuth: unknown) => { expect(path).toBe('design'); expect(params).toEqual({ schema: '2' }); expect(onAuth).toBe(signOut); return { data: response, reload }; } };
     if (id === 'react-native') return { useColorScheme: () => 'light', AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: (_: string, callback: typeof foreground) => { foreground = callback; return { remove() {} }; } } };
     throw new Error('Unexpected native design dependency: ' + id);
   } });

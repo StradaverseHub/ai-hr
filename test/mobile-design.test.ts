@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { changeMobileDesign, mobileBuilderState, publishedMobileDesign } from '../core/mobile-design';
-import { DEFAULT_MOBILE_DESIGN } from '../lib/mobile-design';
+import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, legacyMobileDesign } from '../lib/mobile-design';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { AuthRequiredError } from '../lib/auth-errors';
 const resolver = vi.hoisted(() => vi.fn());
@@ -73,4 +73,22 @@ describe('tenant mobile builder, published snapshots and RLS', () => {
     resolver.mockRejectedValue(new AuthRequiredError());
     expect((await GET(new Request('https://example.test/api/mobile/v1/design', { headers: { cookie: 'session=not-a-bearer' } }))).status).toBe(401);
   });
+});
+
+it('publishes v2 compositions while serving an explicit v1 projection to older installed clients', async () => {
+  const d = composeMobileDesign(config('Composer tenant'));
+  d.composition.pages.push({ id: 'benefits', title: 'Our benefits', blocks: [] });
+  await changeMobileDesign(admin, 'save', 0, d); await changeMobileDesign(admin, 'publish', 1);
+  resolver.mockResolvedValue(employee(a));
+  const oldClient = await GET(new Request('https://example.test/api/mobile/v1/design'));
+  expect((await oldClient.json()).config).toEqual(legacyMobileDesign(d));
+  const newClient = await GET(new Request('https://example.test/api/mobile/v1/design?schema=2'));
+  expect((await newClient.json()).config).toEqual(d);
+  expect((await GET(new Request('https://example.test/api/mobile/v1/design?schema=3'))).status).toBe(400);
+  await changeMobileDesign(admin, 'save', 2, config('Legacy rollback target')); await changeMobileDesign(admin, 'publish', 3);
+  await changeMobileDesign(admin, 'rollback', 4, 1);
+  const state = await mobileBuilderState(admin);
+  expect(state.releases.map(r => r.revision)).toEqual([3, 2, 1]);
+  expect(state.releases[0].config).toEqual(d); expect(state.releases[2].config).toEqual(d);
+  expect((await publishedMobileDesign(employee(b))).config).toEqual(DEFAULT_MOBILE_DESIGN);
 });

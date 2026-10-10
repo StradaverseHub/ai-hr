@@ -1,7 +1,8 @@
 /** Requests keep every eligible leave balance visible, including masked values and shared pools. */
 import { useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Pressable,Text,View } from 'react-native';
+import { Pressable,View } from 'react-native';
+import { DesignText as Text } from '../../lib/design';
 import { randomUUID } from 'expo-crypto';
 import { useTenantDesign } from '../../lib/design';
 import { useApi } from '../../lib/api';

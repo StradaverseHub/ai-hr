@@ -3004,6 +3004,13 @@
       "when": 1791900000001,
       "tag": "0521_tenant_mobile_design",
       "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1791900000002,
+      "tag": "0522_mobile_visual_composer",
+      "breakpoints": true
     }
   ]
 }

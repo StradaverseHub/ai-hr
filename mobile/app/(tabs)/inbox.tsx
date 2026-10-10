@@ -3,7 +3,8 @@ import { useTenantDesign } from '../../lib/design';
  * Inbox — the in-app notifications (GET /api/mobile/v1/notifications). This is where a push will deep-link
  * to: the push itself carries no content (ADR-0088 §3).
  */
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { DesignText as Text } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';

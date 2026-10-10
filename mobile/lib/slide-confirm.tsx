@@ -1,7 +1,7 @@
 import { useEffect,useRef,useState } from 'react';
-import { Animated,Easing,PanResponder,Pressable,Text,View,type LayoutChangeEvent } from 'react-native';
+import { Animated,Easing,PanResponder,Pressable,View,type LayoutChangeEvent } from 'react-native';
+import { DesignText as Text } from './design';
 import { useTenantDesign } from './design';
-import { MOBILE_ACCENTS } from '../../lib/mobile-design';
 import { t } from './i18n';
 /** Confirm on RELEASE at the end, never on a tap or a cancelled drag. VoiceOver/TalkBack gets an explicit two-step action. */
 export function SlideConfirm({label,disabled,onConfirm}:{label:string;disabled?:boolean;onConfirm:()=>void}){
@@ -20,7 +20,7 @@ export function SlideConfirm({label,disabled,onConfirm}:{label:string;disabled?:
     onPanResponderRelease:()=>{if(live.current.travel>0&&distance.current>=live.current.travel*.92)confirm();else reset();},
     onPanResponderTerminate:reset,onPanResponderTerminationRequest:()=>true,
   })).current;
-  const accent=MOBILE_ACCENTS[design.accent];
+  const accent=palette;
   return <View>
     <View onLayout={(e:LayoutChangeEvent)=>setWidth(e.nativeEvent.layout.width)} style={{minHeight:68,justifyContent:'center',borderWidth:1,borderColor:palette.border,borderRadius:design.clockLayout==='punch'?6:40,backgroundColor:palette.card,opacity:disabled ? .55 : 1}}>
       <Text accessible={false} style={{color:palette.text,textAlign:'center',paddingLeft:52,paddingRight:18,fontSize:15,fontWeight:'600'}}>{label}</Text>

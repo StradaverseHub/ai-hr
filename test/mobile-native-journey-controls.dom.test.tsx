@@ -6,7 +6,7 @@ import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS } from '../lib/mobile-design';
+import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, mobilePalette } from '../lib/mobile-design';
 function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing port '+id);}});return module.exports;}
 afterEach(cleanup);
 function slide(){
@@ -15,7 +15,7 @@ function slide(){
   function Pressable(p:any){return <button disabled={p.disabled} aria-label={p.accessibilityLabel} onClick={p.onPress}>{p.children}</button>;}
   const port={View,Text:({children}:any)=><span>{children}</span>,Pressable,Animated:{View,Value:class {setValue(){}},timing},Easing:{out:(v:unknown)=>v,quad:1},PanResponder:{create:(v:any)=>{handlers=v;return {panHandlers:{}};}}};
   let reduced=false;
-  const {SlideConfirm}=load('mobile/lib/slide-confirm.tsx',{'react-native':port,'./design':{useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:{},reduceMotion:reduced})},'../../lib/mobile-design':{MOBILE_ACCENTS},'./i18n':{t:(s:string)=>s}});
+  const {SlideConfirm}=load('mobile/lib/slide-confirm.tsx',{'react-native':port,'./design':{DesignText:port.Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark'),reduceMotion:reduced})},'../../lib/mobile-design':{MOBILE_ACCENTS},'./i18n':{t:(s:string)=>s}});
   return {SlideConfirm,timing,handlers:()=>handlers,reduce:()=>{reduced=true;}};
 }
 describe('attendance confirmation control',()=>{

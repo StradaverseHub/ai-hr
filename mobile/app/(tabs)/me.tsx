@@ -3,7 +3,8 @@ import { useTenantDesign } from '../../lib/design';
  * Me — who I am, which employment I am acting as (the picker, when there is more than one), my released
  * payslips, and sign out.
  */
-import { Pressable, Text } from 'react-native';
+import { Pressable } from 'react-native';
+import { DesignText as Text } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
