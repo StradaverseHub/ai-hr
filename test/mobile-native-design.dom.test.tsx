@@ -24,10 +24,13 @@ function fixture() {
   } });
   function Probe() { const { design, palette } = output.exports.useTenantDesign(); return <p>{design.brandName} {palette.accent}</p>; }
   function View() { return <output.exports.TenantDesignProvider><Probe /></output.exports.TenantDesignProvider>; }
-  return { View, reload, foreground: (state: string) => foreground(state), set(value: typeof response) { response = value; } };
+  return { View, Probe, reload, foreground: (state: string) => foreground(state), set(value: typeof response) { response = value; } };
 }
 afterEach(cleanup);
 describe('store-app tenant design consumption', () => {
+  it('uses a readable accent outside the authenticated design provider on the light sign-in and lock screens', () => {
+    const f = fixture(); render(<f.Probe />); expect(screen.getByText('AIHR #bd3800')).toBeTruthy();
+  });
   it('uses the published contract, requests a new release on return and replaces branding', () => {
     const f = fixture(), ui = render(<f.View />);
     expect(screen.getByText('Tenant A #75d9b0')).toBeTruthy();

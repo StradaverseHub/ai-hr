@@ -19,12 +19,12 @@ export function TenantDesignProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={{ design, palette, reload: response.reload, reduceMotion: deviceReduced || design.motion === 'reduced' }}>{children}</Ctx.Provider>;
 }
 export function useTenantDesign() {
-  return useContext(Ctx) ?? { design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark'), reload: () => {}, reduceMotion: true };
+  return useContext(Ctx) ?? { design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'light'), reload: () => {}, reduceMotion: true };
 }
 export function TenantBrand() {
   const { design, palette } = useTenantDesign();
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 }}>
     {design.logo && <Image source={{ uri: design.logo }} style={{ width: 28, height: 28 }} resizeMode="contain" />}
-    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{design.brandName}<Text style={{ color: palette.accent }}>.</Text></Text>
+    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600', flexShrink: 1 }}>{design.brandName}<Text style={{ color: palette.accent }}>.</Text></Text>
   </View>;
 }
