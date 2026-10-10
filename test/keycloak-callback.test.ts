@@ -1,3 +1,4 @@
+import { readSessionHandle, sealSessionHandle } from '../lib/identity/cookie';
 import { NextRequest } from 'next/server';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,7 +49,8 @@ async function attempt(returnTo='/people') {
   const start=await startKeycloakLogin(new NextRequest(`https://forged.test/login/start?returnTo=${encodeURIComponent(returnTo)}`));
   const url=new URL(start.headers.get('location')!);expectedNonce=url.searchParams.get('nonce')!;expectedChallenge=url.searchParams.get('code_challenge')!;
   const transaction=start.cookies.get(LOGIN_COOKIE)!;
-  const callback=(state=url.searchParams.get('state')!,iss=issuer)=>new NextRequest(`https://forged.test/callback?${new URLSearchParams({code:'one-time-code',state,iss})}`,{headers:{cookie:`${LOGIN_COOKIE}=${transaction.value}; ${WEB_SESSION_COOKIE}=old-cookie`}});
+  const previous = await sealSessionHandle('o'.repeat(43));
+  const callback=(state=url.searchParams.get('state')!,iss=issuer)=>new NextRequest(`https://forged.test/callback?${new URLSearchParams({code:'one-time-code',state,iss})}`,{headers:{cookie:`${LOGIN_COOKIE}=${transaction.value}; ${WEB_SESSION_COOKIE}=${previous}`}});
   return {start,url,callback};
 }
 describe('web OIDC round trip — maintained code/state/nonce/PKCE implementation',()=>{
@@ -58,9 +60,10 @@ describe('web OIDC round trip — maintained code/state/nonce/PKCE implementatio
     expect(f.start.cookies.get(LOGIN_COOKIE)).toMatchObject({httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:600});
     const result=await completeKeycloakLogin(f.callback());
     expect(result.status).toBe(307);expect(result.headers.get('location')).toBe('https://hr.test/people?tab=team');
-    expect(result.cookies.get(WEB_SESSION_COOKIE)).toMatchObject({value:'r'.repeat(43),httpOnly:true,secure:true,sameSite:'lax'});
+    expect(result.cookies.get(WEB_SESSION_COOKIE)).toMatchObject({httpOnly:true,secure:true,sameSite:'lax'});
     expect(result.cookies.get(LOGIN_COOKIE)?.maxAge).toBe(0);expect(result.headers.get('cache-control')).toBe('no-store');
-    expect(ports.remove).toHaveBeenCalledWith('old-cookie');expect(ports.create).toHaveBeenCalledWith(expect.objectContaining({issuer,subject:'subject',emailVerified:true}));
+    expect(await readSessionHandle(result.cookies.get(WEB_SESSION_COOKIE)?.value)).toBe('r'.repeat(43));
+    expect(ports.remove).toHaveBeenCalledWith('o'.repeat(43));expect(ports.create).toHaveBeenCalledWith(expect.objectContaining({issuer,subject:'subject',emailVerified:true}));
     expect(ports.succeeded).toHaveBeenCalledWith({userId:'internal-user',tenantId:'tenant'});
     const replay=await completeKeycloakLogin(f.callback());expect(replay.status).toBe(400);expect(ports.create).toHaveBeenCalledTimes(1);
   });

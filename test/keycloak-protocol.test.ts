@@ -1,3 +1,4 @@
+import { sealSessionHandle } from '../lib/identity/cookie';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +22,7 @@ async function jwt(claims: Record<string, unknown> = {}, key = keys.privateKey) 
     .setSubject('external-user').setIssuer(issuer).setAudience('hr-api').setIssuedAt().setExpirationTime('5m').sign(key);
 }
 beforeEach(() => { for (const [k,v] of Object.entries(settings)) vi.stubEnv(k,v); vi.stubEnv('KEYCLOAK_BACKCHANNEL_ORIGIN',''); });
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('Keycloak trust boundaries', () => {
   it.each(['http://identity.test/realms/hr', 'https://user:pass@identity.test/realms/hr', 'https://identity.test/realms/hr?override=1', 'https://identity.test/realms/hr/'])('refuses an unsafe issuer: %s', value => {
@@ -79,6 +80,31 @@ describe('Keycloak API access tokens', () => {
     const other = await generateKeyPair('RS256');
     await expect(verifyKeycloakAccessToken(await jwt({},other.privateKey))).rejects.toBeInstanceOf(AuthRequiredError);
   });
+  it('rejects unsigned and algorithm-confused tokens', async () => {
+    const encoded = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    for (const alg of ['none','HS256']) {
+      await expect(verifyKeycloakAccessToken(`${encoded({alg,kid:'k1'})}.${encoded({sub:'external-user',iss:issuer,aud:'hr-api',exp:Math.floor(Date.now()/1000)+300})}.signature`)).rejects.toBeInstanceOf(AuthRequiredError);
+    }
+  });
+  it('accepts a newly rotated signing key after the bounded unknown-key cooldown', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('KEYCLOAK_BACKCHANNEL_ORIGIN','http://127.0.0.1:18080');
+    const remote = vi.fn(async()=>Response.json({keys:[jwk]}));
+    vi.stubGlobal('fetch',remote);
+    await verifyKeycloakAccessToken(await jwt());
+    const rotated = await generateKeyPair('RS256',{extractable:true});
+    const rotatedJwk = {...await exportJWK(rotated.publicKey),kid:'k2',alg:'RS256',use:'sig'};
+    remote.mockImplementation(async()=>Response.json({keys:[jwk,rotatedJwk]}));
+    await vi.advanceTimersByTimeAsync(31_000);
+    const token = await new SignJWT({typ:'Bearer',azp:'mobile'}).setProtectedHeader({alg:'RS256',kid:'k2'}).setIssuer(issuer).setSubject('external-user').setAudience('hr-api').setIssuedAt().setExpirationTime('5m').sign(rotated.privateKey);
+    expect((await verifyKeycloakAccessToken(token)).subject).toBe('external-user');
+    expect(remote).toHaveBeenCalledTimes(2);
+  });
+  it('malformed provider key material is an availability fault, not a revoked credential', async () => {
+    vi.stubEnv('KEYCLOAK_ISSUER','https://identity.test/identity/realms/bad-jwks');
+    vi.stubGlobal('fetch',vi.fn(async()=>Response.json({keys:'not-a-key-set'})));
+    await expect(verifyKeycloakAccessToken(await jwt())).rejects.toBeInstanceOf(JwksUnavailableError);
+  });
   it('distinguishes provider outage from bad credentials', async () => {
     vi.stubEnv('KEYCLOAK_ISSUER', 'https://identity.test/identity/realms/outage');
     vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new TypeError('network unavailable')));
@@ -98,7 +124,8 @@ describe('Keycloak middleware and realm policy', () => {
   });
   it('never redirects actions or API callers, and does not trust forged provider headers', async () => {
     expect((await middleware(new NextRequest('https://hr.test/people',{headers:{'next-action':'fake'}}))).status).toBe(401);
-    const req = new NextRequest('https://hr.test/people',{ headers:{ cookie:`${WEB_SESSION_COOKIE}=opaque`, 'x-workos-session':'forged' } });
+    expect((await middleware(new NextRequest('https://hr.test/api/time',{headers:{cookie:`${WEB_SESSION_COOKIE}=forged`}}))).status).toBe(401);
+    const req = new NextRequest('https://hr.test/people',{ headers:{ cookie:`${WEB_SESSION_COOKIE}=${await sealSessionHandle('x'.repeat(43))}`, 'x-workos-session':'forged' } });
     const result = await middleware(req);
     expect(result.headers.get('x-middleware-next')).toBe('1');
     expect(result.headers.get('x-middleware-request-x-workos-session')).toBeNull();

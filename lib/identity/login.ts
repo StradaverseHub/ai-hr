@@ -1,3 +1,4 @@
+import { readSessionHandle, sealSessionHandle } from './cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { getTranslations } from 'next-intl/server';
 import { client } from '../../db/client';
@@ -42,14 +43,14 @@ export async function completeKeycloakLogin(request: NextRequest) {
     const raw = await createIdentitySession({ ...verified, accessToken: tokens.access_token, refreshToken: tokens.refresh_token,
       idToken: tokens.id_token, accessExpiry: verified.expiresAt,
       email: typeof claims.email === 'string' ? claims.email : null, emailVerified: claims.email_verified === true });
-    await deleteIdentitySession(request.cookies.get(WEB_SESSION_COOKIE)?.value);
+    await deleteIdentitySession((await readSessionHandle(request.cookies.get(WEB_SESSION_COOKIE)?.value)) ?? undefined);
     const [principal] = await client<{ app_user_id: string; tenant_id: string }[]>`select * from app.principal_by_identity(${verified.issuer},${verified.subject})`;
     try {
       if (principal) await recordLoginSucceeded({ userId: principal.app_user_id, tenantId: principal.tenant_id });
       else await recordLoginBlocked({ subject: `${verified.issuer}#${verified.subject}` });
     } catch { /* Audit transport failure does not change the identity authorization result. */ }
     response = NextResponse.redirect(new URL(safeReturnTo(transaction.returnTo as string), config.origin));
-    response.cookies.set(WEB_SESSION_COOKIE, raw, { ...cookieOptions, maxAge: 8 * 3600 });
+    response.cookies.set(WEB_SESSION_COOKIE, await sealSessionHandle(raw), { ...cookieOptions, maxAge: 8 * 3600 });
   } catch {
     const t = await getTranslations('auth');
     const escape = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);

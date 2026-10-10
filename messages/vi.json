@@ -13689,7 +13689,9 @@
       "accessNote": "Bạn sẽ thấy đúng những gì người này thấy. Để thử mức truy cập khác, hãy đăng xuất và chọn lại.",
       "notLinkedTitle": "Không có tài khoản AI HR cho lần đăng nhập này",
       "notLinkedBody": "Bạn đã đăng nhập với {email}, nhưng chưa có tài khoản AI HR nào được liên kết với thông tin đăng nhập đó. Hãy nhờ quản trị viên mời bạn, hoặc đăng xuất và dùng tài khoản khác.",
-      "notLinkedSignOut": "Đăng xuất"
+      "notLinkedSignOut": "Đăng xuất",
+      "signedOutTitle": "Bạn đã đăng xuất",
+      "signedOutBody": "Đăng nhập khi bạn sẵn sàng quay lại."
     },
     "invite": {
       "title": "Bạn đã được mời",

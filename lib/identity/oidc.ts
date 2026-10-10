@@ -61,7 +61,7 @@ export async function verifyKeycloakAccessToken(token: string, expectedClient?: 
     return { issuer: config.issuer, subject: payload.sub, expiresAt: payload.exp! };
   } catch (error) {
     if (error instanceof AuthRequiredError || error instanceof JwksUnavailableError) throw error;
-    if (error instanceof TypeError || (error instanceof Error && ['JWKSTimeout', 'JOSEError'].includes(error.name))) throw new JwksUnavailableError('identity provider unavailable');
+    if (error instanceof TypeError || (error instanceof Error && ['JWKSTimeout', 'JOSEError', 'JWKSInvalid', 'JWKInvalid', 'JWKSMultipleMatchingKeys'].includes(error.name))) throw new JwksUnavailableError('identity provider unavailable');
     throw new AuthRequiredError('Invalid API access token.');
   }
 }

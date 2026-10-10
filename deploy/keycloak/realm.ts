@@ -20,7 +20,7 @@ export function realmDefinition(origin: string, realm = 'ai-hr') {
       { clientId: 'aihr-web', protocol: 'openid-connect', enabled: true, publicClient: false,
         standardFlowEnabled: true, implicitFlowEnabled: false, directAccessGrantsEnabled: false, serviceAccountsEnabled: false,
         fullScopeAllowed: false, redirectUris: [`${origin}/callback`, `${origin}/invite/*`], webOrigins: [origin],
-        attributes: { 'pkce.code.challenge.method': 'S256', 'post.logout.redirect.uris': `${origin}/login` }, protocolMappers: [audience] },
+        attributes: { 'pkce.code.challenge.method': 'S256', 'post.logout.redirect.uris': `${origin}/login?signedOut=1` }, protocolMappers: [audience] },
       { clientId: 'aihr-mobile', protocol: 'openid-connect', enabled: true, publicClient: true,
         standardFlowEnabled: true, implicitFlowEnabled: false, directAccessGrantsEnabled: false, serviceAccountsEnabled: false,
         fullScopeAllowed: false, redirectUris: ['aihr://auth/callback'], webOrigins: [],

@@ -1,3 +1,4 @@
+import { readSessionHandle } from '@/lib/identity/cookie';
 import { authProviderInvalid, keycloakSelected, keycloakReady, keycloakConfig, WEB_SESSION_COOKIE } from '@/lib/identity/config';
 import { NextRequest, NextResponse } from 'next/server';
 import { applyResponseHeaders, authkit, handleAuthkitHeaders, partitionAuthkitHeaders } from '@workos-inc/authkit-nextjs';
@@ -180,11 +181,8 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (keycloakSelected()) {
     if (!keycloakReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || req.cookies.has(WEB_SESSION_COOKIE)) return withPathname(req);
-    if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
-    const destination = new URL('/login/start', keycloakConfig().origin);
-    destination.searchParams.set('returnTo', path + req.nextUrl.search);
-    return NextResponse.redirect(destination);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path)) return withPathname(req);
+    return withKeycloakSession(req);
   }
   const password = process.env.SHARE_PASSWORD;
   const realAuth = realAuthEnabled();
@@ -221,6 +219,14 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   }
 
   return realAuth ? withWorkosSession(req) : withPathname(req);
+}
+
+async function withKeycloakSession(req: NextRequest): Promise<NextResponse> {
+  if (await readSessionHandle(req.cookies.get(WEB_SESSION_COOKIE)?.value)) return withPathname(req);
+  if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
+  const destination = new URL('/login/start', keycloakConfig().origin);
+  destination.searchParams.set('returnTo', req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.redirect(destination);
 }
 
 function basicPasses(req: NextRequest, password: string): boolean {

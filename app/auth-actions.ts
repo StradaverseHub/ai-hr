@@ -1,9 +1,11 @@
 'use server';
 
+import { keycloakSelected } from '@/lib/identity/config';
+
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
-import { logout as logoutService, requestPasswordReset } from '@/core/auth';
+import { logout as logoutService, recordLogout, requestPasswordReset } from '@/core/auth';
 import { demoSwitcherEnabled } from '@/lib/demo-mode';
 import { signOutDemo } from '@/app/identity-actions';
 import { appOrigin } from '@/lib/real-auth';
@@ -14,6 +16,13 @@ import { appOrigin } from '@/lib/real-auth';
  * revoke — just send the user to /login so the action is safe to render everywhere.
  */
 export async function logoutAction() {
+  if (keycloakSelected()) {
+    try {
+      const current = await getSession();
+      await recordLogout({ tenantId: current.tenantId, userId: current.userId! });
+    } catch { /* Authentication/storage outages must not trap this browser in a local session. */ }
+    return (await import('@/lib/identity/session')).endIdentitySession();
+  }
   let session;
   try {
     session = await getSession();

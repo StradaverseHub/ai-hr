@@ -1,6 +1,9 @@
 # Cloudflare/tunnel upstream becomes 127.0.0.1:3001 after this configuration passes nginx -t.
 # The identity service itself and its management endpoints are never exposed directly.
+# Omit request URLs/query strings: callbacks and activation paths carry single-use credentials.
+log_format aihr_identity_safe '$remote_addr $request_method $status $body_bytes_sent';
 server {
+    access_log /var/log/nginx/aihr-edge.log aihr_identity_safe;
     listen 127.0.0.1:3001;
     server_name _;
     client_max_body_size 20m;

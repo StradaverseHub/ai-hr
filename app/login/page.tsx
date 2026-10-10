@@ -29,7 +29,7 @@ import { signOutUnlinkedAction } from '@/app/auth-actions';
  * true for local dev too, where the fallback still applies and this page is a courtesy rather than a
  * gate — so local dev keeps the short note and no identity list.
  */
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ signedOut?: string }> } = {}) {
   const t = await getTranslations('auth');
   const tCommon = await getTranslations('common');
 
@@ -48,7 +48,16 @@ export default async function LoginPage() {
       if (keycloakSelected()) {
         const { currentIdentitySession } = await import('@/lib/identity/session');
         const identity = await currentIdentitySession();
-        if (!identity) redirect('/login/start');
+        if (!identity) {
+          if ((await searchParams)?.signedOut === '1') return (
+            <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+              <h1 className="text-2xl font-semibold">{t('login.signedOutTitle')}</h1>
+              <p className="text-sm text-muted-foreground">{t('login.signedOutBody')}</p>
+              <a href="/login/start" className="rounded-lg bg-primary px-5 py-3 text-primary-foreground">{t('login.title')}</a>
+            </main>
+          );
+          redirect('/login/start');
+        }
         email = identity.email ?? '';
       } else {
         const { currentWorkosSession } = await import('@/lib/workos');

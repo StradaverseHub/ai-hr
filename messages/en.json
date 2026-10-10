@@ -13689,7 +13689,9 @@
       "accessNote": "You will see exactly what this person sees. To try a different level of access, log out and choose again.",
       "notLinkedTitle": "No AI HR account for this sign-in",
       "notLinkedBody": "You signed in as {email}, but no AI HR account is linked to that login yet. Ask your administrator to invite you, or sign out and use a different account.",
-      "notLinkedSignOut": "Sign out"
+      "notLinkedSignOut": "Sign out",
+      "signedOutTitle": "You’re signed out",
+      "signedOutBody": "Sign in when you’re ready to return."
     },
     "invite": {
       "title": "You've been invited",

@@ -13689,7 +13689,9 @@
       "accessNote": "Anda akan melihat tepat apa yang orang ini lihat. Untuk mencuba tahap akses yang berbeza, log keluar dan pilih semula.",
       "notLinkedTitle": "Tiada akaun AI HR untuk log masuk ini",
       "notLinkedBody": "Anda log masuk sebagai {email}, tetapi belum ada akaun AI HR yang dipautkan kepada log masuk itu. Minta pentadbir anda menjemput anda, atau log keluar dan gunakan akaun lain.",
-      "notLinkedSignOut": "Log keluar"
+      "notLinkedSignOut": "Log keluar",
+      "signedOutTitle": "Anda telah log keluar",
+      "signedOutBody": "Log masuk apabila anda bersedia untuk kembali."
     },
     "invite": {
       "title": "Anda telah dijemput",

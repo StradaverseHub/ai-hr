@@ -412,6 +412,11 @@ export async function logout(
   provider: AuthProvider = defaultProvider,
   returnTo?: string,
 ): Promise<void> {
+  await recordLogout(input);
+  await provider.endSession(returnTo);
+}
+
+export async function recordLogout(input: { tenantId: string; userId: string }): Promise<void> {
   await appendAuthEvent({
     tenantId: input.tenantId,
     aggregateType: 'app-user',
@@ -421,5 +426,4 @@ export async function logout(
     actorId: input.userId,
     payload: null,
   });
-  await provider.endSession(returnTo);
 }

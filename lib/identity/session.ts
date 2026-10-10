@@ -1,3 +1,4 @@
+import { readSessionHandle } from './cookie';
 import { randomBytes, createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -69,7 +70,7 @@ export async function readIdentitySession(raw: string | undefined, refresh = tru
   return result as IdentitySession | null;
 }
 export async function currentIdentitySession() {
-  return readIdentitySession((await cookies()).get(WEB_SESSION_COOKIE)?.value);
+  return readIdentitySession((await readSessionHandle((await cookies()).get(WEB_SESSION_COOKIE)?.value)) ?? undefined);
 }
 export async function deleteIdentitySession(raw: string | undefined) {
   const hash = raw && sessionHash(raw);
@@ -77,20 +78,23 @@ export async function deleteIdentitySession(raw: string | undefined) {
 }
 export async function endIdentitySession(): Promise<never> {
   const store = await cookies();
-  const raw = store.get(WEB_SESSION_COOKIE)?.value;
+  const cookie = store.get(WEB_SESSION_COOKIE)?.value;
   store.set(WEB_SESSION_COOKIE, '', { ...cookieOptions, maxAge: 0 });
+  const raw = (await readSessionHandle(cookie)) ?? undefined;
   let session: IdentitySession | null = null;
   try { session = await readIdentitySession(raw, false); }
-  finally { await deleteIdentitySession(raw); }
-  let destination = `${keycloakConfig().origin}/login`;
+  catch { /* A storage outage must not prevent clearing this browser's cookie. */ }
+  try { await deleteIdentitySession(raw); }
+  catch { console.error('Identity logout could not revoke server storage; the browser cookie was cleared.'); }
+  let destination = `${keycloakConfig().origin}/login?signedOut=1`;
   if (session) {
     const config = keycloakConfig();
     // Local revocation is already committed. Provider downtime must not prevent local logout.
     try {
       const provider = await oidcClient();
-      await oidc.tokenRevocation(provider, session.refreshToken, { token_type_hint: 'refresh_token' });
       destination = oidc.buildEndSessionUrl(provider, { id_token_hint: session.idToken,
-        post_logout_redirect_uri: `${config.origin}/login`, client_id: config.webClientId }).href;
+        post_logout_redirect_uri: `${config.origin}/login?signedOut=1`, client_id: config.webClientId }).href;
+      await oidc.tokenRevocation(provider, session.refreshToken, { token_type_hint: 'refresh_token' });
     } catch { /* Login credentials have already been removed from this browser and server. */ }
   }
   redirect(destination);
