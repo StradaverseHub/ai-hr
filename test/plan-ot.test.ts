@@ -71,6 +71,7 @@ import {
   setAttendancePolicy,
   type OtApprovalMethod,
 } from '../core/attendance';
+import { CorrectedClockConflictError } from '../core/attendance-clock';
 import { setRestDay } from '../core/roster';
 import { setToilPolicy, type ToilPolicyInput } from '../core/toil';
 import type { SessionContext } from '../db/client';
@@ -593,7 +594,7 @@ describe('4 · one approved plan per date', () => {
       ).rejects.toBeInstanceOf(AttendanceCorrectionFutureDateError);
     });
 
-    it("(c) an approved correction's overtime survives a later clock-out — it is not reverted to the plan's", async () => {
+    it("(c) an approved correction's overtime survives a later clock-out attempt — the day is refused, not re-derived", async () => {
       // THE SECOND DEFECT, and the one that made (b) unsafe. applyApprovedOtPlanTx re-asserts a day's
       // approved overtime after any re-derivation (a second clock-out, a terminal re-import). Its selection
       // used to exclude rows with a proposed clock-in and order by created_at, so a CORRECTION that revised
@@ -617,8 +618,19 @@ describe('4 · one approved plan per date', () => {
         "the correction's figure must be on the day before anything can revert it",
       ).toBe(300);
 
-      // The re-derivation: one more clock-out of the same day.
-      await checkOut(a, { employmentId, date: PAST, time: '22:00' });
+      // r434 — WHAT THE "ONE MORE CLOCK-OUT" NOW DOES. This test was written (r364) when a second clock-out
+      // on a corrected day was ACCEPTED and re-derived the day from its stored punches, so the thing it had to
+      // prove was that the re-derivation did not put the older plan's overtime back. Measured on main before
+      // r434, that re-derivation did far worse than revert the overtime: a corrected day (09:00 to 18:00) came
+      // back as the OLD punch's check-in, no check-out and no worked time at all, because the correction
+      // writes only the day's aggregate and never the punches. An approved correction now owns its day for
+      // every writer (assertDayNotOwnedByCorrectionTx), as Web Clocking and the import already did, so the
+      // clock-out is REFUSED and nothing is re-derived. The intent of the pin is unchanged and still asserted
+      // below: the correction's figure is the one on the day afterwards, and the plan is not re-landed.
+      await expect(
+        checkOut(a, { employmentId, date: PAST, time: '22:00' }),
+        'a later clock-out on a corrected day is refused, not re-derived',
+      ).rejects.toBeInstanceOf(CorrectedClockConflictError);
 
       expect(
         (await attendanceRow(employmentId, PAST)).otMinutes,
