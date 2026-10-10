@@ -1909,7 +1909,8 @@ export async function checkInTx(
     // written (policy OFF ⇒ no-op). Terminal imports bypass by construction (they never call checkIn).
     // r430 — Web Clocking's own self-capture path is a documented, deliberate exemption from this gate
     // regardless of the policy (ADR-0070 amendment): deviceGateExempt:true skips the call entirely. The
-    // admin Daily page's checkInAction/checkOutAction never set it, so that path stays fully policy-gated.
+    // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
+    // sets it, so that path stays fully policy-gated.
     if (!p.deviceGateExempt) await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
     // r434 — an approved correction owns its day: refuse BEFORE anything is read or written.
     await assertDayNotOwnedByCorrectionTx(tx, p.employmentId, p.date);

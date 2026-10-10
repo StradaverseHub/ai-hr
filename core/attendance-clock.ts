@@ -115,7 +115,8 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
     const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
     // r430 — deviceGateExempt:true: Web Clocking's own self-capture path is fully exempt from the
     // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
-    // admin Daily page's checkInAction/checkOutAction never set this and stay fully policy-gated.
+    // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
+    // sets this and stays fully policy-gated.
     await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceGateExempt: true, clockCaptureId: captureId, preciseOrder }, tx);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
