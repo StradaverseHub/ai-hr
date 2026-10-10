@@ -75,7 +75,7 @@ JAVA_OPTS_KC_HEAP=-Xms128m -Xmx640m
 ENV
 chmod 0600 /etc/aihr-keycloak/service.env
 # EnvironmentFile is read by systemd as root; the service itself cannot read bootstrap/database secrets from disk.
-JAVA_HOME="$IDENTITY_JAVA_HOME" /opt/aihr-keycloak/current/bin/kc.sh build --db=postgres --health-enabled=true --metrics-enabled=true
+JAVA_HOME="$IDENTITY_JAVA_HOME" /opt/aihr-keycloak/current/bin/kc.sh build --db=postgres --http-relative-path=/identity --health-enabled=true --metrics-enabled=true
 install -d -o aihr-keycloak -g aihr-keycloak -m 0700 /opt/aihr-keycloak/current/data
 install -m 0644 "$SCRIPT_DIR/aihr-keycloak.service" /etc/systemd/system/aihr-keycloak.service
 systemctl daemon-reload

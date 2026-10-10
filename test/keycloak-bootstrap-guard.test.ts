@@ -8,6 +8,8 @@ describe('deployment-owned identity bootstrap boundaries',()=>{
     expect(install).toContain('VERSION=26.8.0');expect(install).toContain('sha256sum --check --status');
     expect(install).toContain('KC_HTTP_HOST=127.0.0.1');expect(install).toContain('KC_HTTP_MANAGEMENT_HOST=127.0.0.1');
     expect(install).toContain('KC_PROXY_TRUSTED_ADDRESSES=127.0.0.1/32,::1/128');
+    // Keycloak persists this at build time; setting it only for optimized startup refuses to boot.
+    expect(install).toMatch(/kc\.sh build[^\n]*--http-relative-path=\/identity/);
     const service=readFileSync('deploy/keycloak/aihr-keycloak.service','utf8');
     expect(service).toContain('User=aihr-keycloak');expect(service).toContain('start --optimized');expect(service).toContain('NoNewPrivileges=true');
     expect(service).not.toContain('start-dev');expect(install).not.toContain('systemctl restart aihr\n');

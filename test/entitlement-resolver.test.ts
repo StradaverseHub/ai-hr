@@ -811,7 +811,7 @@ describe('slice 2 — isModuleEnabled', () => {
     expect(ENTITLEMENTS_EXEMPT_REASONS.platform.owners, 'slice 7 wires the platform plane').toEqual([]);
   });
 
-  it('BOTH getSession paths go through withEntitlements — the "one seam" claim, ratcheted', () => {
+  it('all web and mobile identity paths go through withEntitlements — the "one seam" claim, ratcheted', () => {
     // ROUND 3: every snapshot assertion in this file goes through the exported `withEntitlements`, which
     // the test calls directly. `resolveSession` — the function that actually wires it into the dev/demo
     // switcher branch AND the WorkOS branch — had no coverage at all, and neither did `cache()`. Delete
@@ -835,11 +835,11 @@ describe('slice 2 — isModuleEnabled', () => {
     // Every call to a principal resolver inside resolveSession must be an argument to withEntitlements.
     const wrapped = [...body.matchAll(/(\w+)\(\s*await\s+(resolve(?:Dev|Workos)Principal)\(/g)];
     const all = [...body.matchAll(/resolve(?:Dev|Workos)Principal\(/g)];
-    // THREE since ADR-0088: the dev/demo switcher, the WorkOS cookie (web) and the WorkOS bearer token
-    // (`getMobileSession`, which sits after resolveSession in the file and so inside this slice). The
-    // mobile path is held to the same rule — an unwrapped bearer session would carry no snapshot.
-    expect(all.length, 'all three paths must still be here — dev/demo switcher, WorkOS cookie, WorkOS bearer').toBe(3);
-    expect(wrapped.length, 'a principal is resolved somewhere that is not wrapped at all').toBe(3);
+    // FIVE since deployment-owned identity: dev/demo, WorkOS web/mobile, and Keycloak web/mobile.
+    // The provider-neutral principal shaping helper retains its historical WorkOS name; all four
+    // verified provider paths must still attach the same authoritative tenant entitlement snapshot.
+    expect(all.length, 'dev/demo and both web/mobile paths for each provider must be covered').toBe(5);
+    expect(wrapped.length, 'a principal is resolved somewhere that is not wrapped at all').toBe(5);
     for (const [, wrapper, resolver] of wrapped) {
       expect(wrapper, `${resolver} must be wrapped in withEntitlements, not ${wrapper}`).toBe('withEntitlements');
     }
