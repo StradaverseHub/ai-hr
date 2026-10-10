@@ -4,6 +4,9 @@
  * API URL is just an address. See .env.example.
  */
 export const config = {
+  authProvider: process.env.EXPO_PUBLIC_AUTH_PROVIDER ?? 'workos',
+  issuer: (process.env.EXPO_PUBLIC_KEYCLOAK_ISSUER ?? '').replace(/\/+$/, ''),
+  keycloakClientId: process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? '',
   /** The AI HR server, e.g. https://hr.example.com. No trailing slash. */
   apiUrl: (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, ''),
   /** The WorkOS client id of the environment this build signs in against (Staging or Production). */
@@ -17,6 +20,14 @@ export function configProblem(): string | null {
   if (!config.apiUrl) return 'EXPO_PUBLIC_API_URL is not set for this build.';
   const originProblem = apiOriginProblem(config.apiUrl);
   if (originProblem) return originProblem;
+  if (config.authProvider === 'keycloak') {
+    try {
+      const url = new URL(config.issuer);
+      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !/\/realms\/[a-zA-Z0-9_-]+$/.test(url.pathname)) return 'The identity issuer must be an HTTPS realm URL.';
+    } catch { return 'EXPO_PUBLIC_KEYCLOAK_ISSUER is not configured.'; }
+    return config.keycloakClientId ? null : 'EXPO_PUBLIC_KEYCLOAK_CLIENT_ID is not configured.';
+  }
+  if (config.authProvider !== 'workos') return 'Unsupported identity provider.';
   if (!config.workosClientId) return 'EXPO_PUBLIC_WORKOS_CLIENT_ID is not set for this build.';
   return null;
 }
@@ -30,3 +41,6 @@ export function apiOriginProblem(value: string): string | null {
     return null;
   } catch { return 'The API URL must be a valid HTTPS origin.'; }
 }
+
+export function identityClientId(): string { return config.authProvider === 'keycloak' ? config.keycloakClientId : config.workosClientId; }
+export function identityNamespace(): string { return JSON.stringify([config.authProvider, config.apiUrl, config.issuer, identityClientId()]); }

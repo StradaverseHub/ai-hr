@@ -1,3 +1,4 @@
+import { keycloakSelected } from './identity/config';
 /**
  * Demo-mode gate (ADR-0072 follow-up).
  *
@@ -11,7 +12,7 @@
  * and uses demo data only. When the demo cuts over to real logins, unset the flag; no code change.
  */
 export function demoSwitcherEnabled(): boolean {
-  return process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_SESSION === 'true';
+  return !keycloakSelected() && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_SESSION === 'true');
 }
 
 /**
@@ -26,11 +27,11 @@ export function demoSwitcherEnabled(): boolean {
  * check. Belt-and-braces: db/seed.ts additionally withholds the operator grant when the flag is set.
  */
 export function isDemoDeployment(): boolean {
-  return process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION === 'true';
+  return !keycloakSelected() && process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION === 'true';
 }
 
 // Loud, once-per-process warning when the switcher is live in a production build.
-if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION === 'true') {
+if (isDemoDeployment()) {
   // eslint-disable-next-line no-console
   console.warn(
     '⚠️  DEMO MODE: the dev identity switcher is active in production (ALLOW_DEMO_SESSION=true). ' +

@@ -9,7 +9,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { beginSignIn, completeSignIn, discovery, redirectUri } from '../lib/auth';
-import { config, configProblem } from '../lib/config';
+import { config, configProblem, identityClientId } from '../lib/config';
 import { t } from '../lib/i18n';
 import { useSession } from '../lib/session';
 import { Button, colors } from '../lib/ui';
@@ -34,13 +34,13 @@ export default function SignIn() {
       // A hook-held request reuses its state/verifier after cancellation. Each browser attempt
       // must own fresh values so a delayed callback cannot complete a subsequent attempt.
       const request = new AuthSession.AuthRequest({
-        clientId: config.workosClientId,
+        clientId: identityClientId(),
         redirectUri: redirectUri(),
         responseType: AuthSession.ResponseType.Code,
         state: Crypto.randomUUID(),
         usePKCE: true,
-        scopes: [],
-        extraParams: { provider: 'authkit' },
+        scopes: config.authProvider === 'keycloak' ? ['openid', 'profile', 'email'] : [],
+        extraParams: config.authProvider === 'keycloak' ? { nonce: Crypto.randomUUID() } : { provider: 'authkit' },
       });
       const r = await request.promptAsync(discovery);
       if (r.type === 'success' && typeof r.params.code === 'string' && request.codeVerifier) {

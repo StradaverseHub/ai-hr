@@ -1,3 +1,4 @@
+import { keycloakSelected } from './identity/config';
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
@@ -214,6 +215,13 @@ export async function withEntitlements(session: SessionContext): Promise<Session
 export const getSession = cache(resolveSession);
 
 async function resolveSession(): Promise<SessionContext> {
+  if (keycloakSelected()) {
+    const { currentIdentitySession } = await import('./identity/session');
+    const identity = await currentIdentitySession();
+    if (!identity) throw new AuthRequiredError('No active session.');
+    const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
+    return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));
+  }
   // Dev switcher path: real dev, plus the gated demo (ALLOW_DEMO_SESSION — see lib/demo-mode).
   if (demoSwitcherEnabled()) {
     const cookieStore = await cookies();
@@ -282,6 +290,12 @@ export async function getMobileSession(
   const header = opts.authorization !== undefined ? opts.authorization : (await headers()).get('authorization');
   const token = parseBearer(header);
   if (!token) throw new AuthRequiredError('A bearer access token is required.');
+  if (keycloakSelected()) {
+    const { verifyKeycloakAccessToken } = await import('./identity/oidc');
+    const identity = await verifyKeycloakAccessToken(token);
+    const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
+    return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));
+  }
   const clientId = process.env.WORKOS_CLIENT_ID;
   if (!clientId) throw new AuthRequiredError('Mobile sign-in is not configured on this deployment.');
   let jwks = opts.jwks;

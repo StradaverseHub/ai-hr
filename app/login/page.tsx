@@ -1,3 +1,4 @@
+import { keycloakSelected } from '@/lib/identity/config';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
@@ -43,8 +44,16 @@ export default async function LoginPage() {
       await getSession();
     } catch (e) {
       if (!(e instanceof AuthRequiredError)) throw e;
-      const { currentWorkosSession } = await import('@/lib/workos');
-      const email = (await currentWorkosSession())?.email ?? '';
+      let email = '';
+      if (keycloakSelected()) {
+        const { currentIdentitySession } = await import('@/lib/identity/session');
+        const identity = await currentIdentitySession();
+        if (!identity) redirect('/login/start');
+        email = identity.email ?? '';
+      } else {
+        const { currentWorkosSession } = await import('@/lib/workos');
+        email = (await currentWorkosSession())?.email ?? '';
+      }
       return (
         <main className="flex min-h-dvh flex-col items-center justify-center bg-muted/30 px-6 py-10">
           <div className="w-full max-w-md rounded-2xl border border-border bg-background p-8 shadow-sm">

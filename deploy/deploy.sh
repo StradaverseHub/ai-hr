@@ -170,7 +170,14 @@ fi
 # gate (SHARE_PASSWORD), or real sign-in fully configured (ALLOW_DEMO_SESSION not `true` AND all four
 # AuthKit settings non-empty — the same rule as lib/real-auth.ts and the middleware). Half a WorkOS
 # configuration still refuses, before anything is installed, built, migrated or restarted.
-if [ -z "${SHARE_PASSWORD:-}" ]; then
+if [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
+  for setting in KEYCLOAK_ISSUER KEYCLOAK_WEB_CLIENT_ID KEYCLOAK_WEB_CLIENT_SECRET KEYCLOAK_MOBILE_CLIENT_ID KEYCLOAK_API_AUDIENCE AUTH_PUBLIC_ORIGIN AUTH_SESSION_KEY; do
+    if [ -z "${!setting:-}" ]; then echo "Missing identity setting: $setting" >&2; exit 1; fi
+  done
+  echo "▸ Deployment-owned Keycloak sign-in selected; demo identity switching is disabled."
+elif [ -n "${AUTH_PROVIDER:-}" ] && [ "$AUTH_PROVIDER" != "workos" ]; then
+  echo "Unsupported AUTH_PROVIDER" >&2; exit 1
+elif [ -z "${SHARE_PASSWORD:-}" ]; then
   if [ "${ALLOW_DEMO_SESSION:-}" = "true" ] || [ -z "${WORKOS_API_KEY:-}" ] || [ -z "${WORKOS_CLIENT_ID:-}" ] \
      || [ -z "${WORKOS_COOKIE_PASSWORD:-}" ] || [ -z "${NEXT_PUBLIC_WORKOS_REDIRECT_URI:-}" ]; then
     echo "✗ SHARE_PASSWORD is missing or empty in .env.production and real WorkOS sign-in is not fully configured — nothing would guard this deployment, so it refuses rather than publish an open app. Set SHARE_PASSWORD (deploy/.env.production.example), or set WORKOS_API_KEY, WORKOS_CLIENT_ID, WORKOS_COOKIE_PASSWORD and NEXT_PUBLIC_WORKOS_REDIRECT_URI with ALLOW_DEMO_SESSION unset, and re-run." >&2

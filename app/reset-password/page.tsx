@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+import { keycloakSelected } from '@/lib/identity/config';
 import { getTranslations } from 'next-intl/server';
 import { requestPasswordResetAction } from '../auth-actions';
 
@@ -12,6 +14,8 @@ export default async function ResetPasswordPage({
 }: {
   searchParams: Promise<{ sent?: string }>;
 }) {
+  // Keycloak owns recovery, including its anti-enumeration and brute-force controls.
+  if (keycloakSelected()) redirect('/login/start');
   const t = await getTranslations('auth');
   const { sent } = await searchParams;
 

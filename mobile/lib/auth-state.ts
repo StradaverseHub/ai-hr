@@ -1,9 +1,9 @@
 import { SessionChangedError, SignInRequiredError } from './errors';
 
-export type TokenPair = { access_token: string; refresh_token: string };
+export type TokenPair = { access_token: string; refresh_token: string; id_token?: string };
 type Ports = {
   read: () => Promise<string | null>;
-  write: (token: string, accessToken: string) => Promise<void>;
+  write: (token: string, accessToken: string, idToken?: string) => Promise<void>;
   remove: () => Promise<void>;
   markLoggedOut?: () => void;
   authenticate: (body: Record<string, string>) => Promise<TokenPair>;
@@ -33,7 +33,7 @@ export function createAuthState(ports: Ports) {
   async function commit(pair: TokenPair, owner: number) {
     return enqueue(async () => {
       assertCurrent(owner);
-      await ports.write(pair.refresh_token, pair.access_token);
+      await ports.write(pair.refresh_token, pair.access_token, pair.id_token);
       assertCurrent(owner);
       accessToken = pair.access_token;
       return accessToken;

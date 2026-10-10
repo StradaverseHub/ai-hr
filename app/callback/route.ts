@@ -1,3 +1,6 @@
+import { NextRequest } from 'next/server';
+import { keycloakSelected } from '@/lib/identity/config';
+import { completeKeycloakLogin } from '@/lib/identity/login';
 import { handleAuth } from '@workos-inc/authkit-nextjs';
 import { recordLoginBlocked, recordLoginSucceeded } from '@/core/auth';
 import { appOrigin } from '@/lib/real-auth';
@@ -16,7 +19,7 @@ import { getTranslations } from 'next-intl/server';
  *
  * This route is a handler (no layout), so it is not affected by the app-shell session gate.
  */
-export const GET = handleAuth({
+const workosCallback = handleAuth({
   returnPathname: '/',
   // r390 — behind the Cloudflare tunnel this route sees http://127.0.0.1:3000, so the post-sign-in redirect
   // must be built on the PUBLIC origin (from NEXT_PUBLIC_WORKOS_REDIRECT_URI), or the browser is sent to a
@@ -55,4 +58,8 @@ export const GET = handleAuth({
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+export async function GET(request: NextRequest) {
+  return keycloakSelected() ? completeKeycloakLogin(request) : workosCallback(request);
 }

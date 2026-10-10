@@ -55,14 +55,14 @@ export default async function InviteActivatePage({
     );
   }
 
-  const { currentWorkosSession, signInUrl } = await import('@/lib/workos');
-  const session = await currentWorkosSession();
+  const { currentProviderSession, providerSignInUrl } = await import('@/lib/identity/provider');
+  const session = await currentProviderSession();
 
   // Not signed in yet → authenticate first, then come straight back here with the token intact.
-  if (!session) redirect(await signInUrl(`/invite/${encodeURIComponent(token)}/activate`));
+  if (!session) redirect(await providerSignInUrl(`/invite/${encodeURIComponent(token)}/activate`));
 
   try {
-    await acceptInvitation({ token, subject: session.subject });
+    await acceptInvitation({ token, subject: session.subject, issuer: session.issuer, verifiedEmail: session.emailVerified ? session.email ?? undefined : undefined });
   } catch (e) {
     if (e instanceof InvalidInvitationError) {
       return (

@@ -1,3 +1,4 @@
+import { keycloakSelected, keycloakReady, keycloakConfig, WEB_SESSION_COOKIE } from '@/lib/identity/config';
 import { NextRequest, NextResponse } from 'next/server';
 import { applyResponseHeaders, authkit, handleAuthkitHeaders, partitionAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
@@ -88,6 +89,9 @@ function safeEqual(a: string, b: string): boolean {
 function withPathname(req: NextRequest): NextResponse {
   // Propagate the pathname to Server Components (the root layout reads it to detect auth routes).
   const requestHeaders = new Headers(req.headers);
+  if (keycloakSelected()) {
+    for (const key of [...requestHeaders.keys()]) if (key.startsWith('x-workos-') || key.startsWith('x-authkit-')) requestHeaders.delete(key);
+  }
   requestHeaders.set('x-pathname', req.nextUrl.pathname);
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
@@ -172,6 +176,15 @@ async function withWorkosSession(original: NextRequest): Promise<NextResponse> {
 export function middleware(req: NextRequest): NextResponse | Promise<NextResponse> {
   // FIRST, above every bypass below, because this is not a question about THIS request — it is a
   // question about whether this deployment is configured to serve anything at all.
+  if (keycloakSelected()) {
+    if (!keycloakReady()) return refuseUnconfigured();
+    const path = req.nextUrl.pathname;
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || req.cookies.has(WEB_SESSION_COOKIE)) return withPathname(req);
+    if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
+    const destination = new URL('/login/start', keycloakConfig().origin);
+    destination.searchParams.set('returnTo', path + req.nextUrl.search);
+    return NextResponse.redirect(destination);
+  }
   const password = process.env.SHARE_PASSWORD;
   const realAuth = realAuthEnabled();
   if (!password && !realAuth) {

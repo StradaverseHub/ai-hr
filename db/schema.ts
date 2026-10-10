@@ -586,6 +586,17 @@ export const appUser = pgTable(
   (t) => [index('app_user_tenant_idx').on(t.tenantId)],
 );
 
+// Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
+export const appExternalIdentity = pgTable('app_external_identity', {
+  issuer: text('issuer').notNull(), subject: text('subject').notNull(),
+  appUserId: uuid('app_user_id').notNull().references(() => appUser.id),
+  createdAt: createdAt(), revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, t => [primaryKey({ columns: [t.issuer, t.subject] }), index('app_external_identity_user_idx').on(t.appUserId)]);
+export const appIdentitySession = pgTable('app_identity_session', {
+  tokenHash: text('token_hash').primaryKey(), sealed: text('sealed').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), createdAt: createdAt(),
+});
+
 // role_assignment = RBAC grant; company_id null = tenant-wide (whole group), set = one company.
 export const roleAssignment = pgTable(
   'role_assignment',

@@ -48,8 +48,8 @@ function signedOutReturn(): string {
  */
 export async function signOutUnlinkedAction() {
   if (demoSwitcherEnabled()) redirect('/login');
-  const { endWorkosSession } = await import('@/lib/workos');
-  await endWorkosSession(signedOutReturn());
+  const { endProviderSession } = await import('@/lib/identity/provider');
+  await endProviderSession(signedOutReturn());
   redirect('/login');
 }
 

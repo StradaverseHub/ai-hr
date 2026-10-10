@@ -1,3 +1,4 @@
+import { keycloakSelected } from '../lib/identity/config';
 /**
  * Auth services (ADR-0072). Invitation-only account creation + password-reset + logout, all delegating
  * the security-sensitive parts (email, hashing, reset tokens, rate-limiting) to WorkOS via lib/workos.
@@ -23,7 +24,7 @@ import { InvalidInvitationError } from '../lib/auth-errors';
 
 /** The WorkOS surface auth services need — injectable so tests never hit the real SDK. */
 export type AuthProvider = {
-  sendInvitation: (email: string) => Promise<{ invitationId: string }>;
+  sendInvitation: (email: string, activationPath?: string) => Promise<{ invitationId: string }>;
   revokeInvitation: (invitationId: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   endSession: (returnTo?: string) => Promise<void>;
@@ -35,10 +36,15 @@ export type AuthProvider = {
  * server component). Tests always inject a fake AuthProvider, so lib/workos is never loaded there.
  */
 const defaultProvider: AuthProvider = {
-  sendInvitation: async (email) => (await import('../lib/workos')).sendProviderInvitation(email),
+  sendInvitation: async (email, activationPath) => keycloakSelected()
+    ? (await import('../lib/identity/provider')).sendIdentityInvitation(email, activationPath ?? '')
+    : (await import('../lib/workos')).sendProviderInvitation(email),
   revokeInvitation: async (id) => (await import('../lib/workos')).revokeProviderInvitation(id),
-  sendPasswordReset: async (email) => (await import('../lib/workos')).sendProviderPasswordReset(email),
-  endSession: async (returnTo) => (await import('../lib/workos')).endWorkosSession(returnTo),
+  sendPasswordReset: async (email) => {
+    if (keycloakSelected()) throw new Error('Use the Keycloak hosted recovery flow.');
+    await (await import('../lib/workos')).sendProviderPasswordReset(email);
+  },
+  endSession: async (returnTo) => (await import('../lib/identity/provider')).endProviderSession(returnTo),
 };
 
 /**
@@ -167,7 +173,7 @@ export async function inviteUser(
 
   // WorkOS owns the email + one-time link + password set (delegated; failures here don't roll back the
   // row — the admin can re-send). Best-effort, outside the tenant tx.
-  await provider.sendInvitation(email);
+  await provider.sendInvitation(email, `/invite/${raw}/activate`);
   return { invitationId, token: raw };
 }
 
@@ -305,8 +311,12 @@ export async function revokeInvitation(
 export async function acceptInvitation(input: {
   token: string;
   subject: string;
+  issuer?: string;
+  verifiedEmail?: string;
 }): Promise<{ userId: string; tenantId: string }> {
-  const rows = await client<{ app_user_id: string; tenant_id: string }[]>`
+  const rows = input.issuer ? await client<{ app_user_id: string; tenant_id: string }[]>`
+    select app_user_id, tenant_id from app.consume_identity_invitation(${input.token},${input.issuer},${input.subject},${input.verifiedEmail ?? null})
+  ` : await client<{ app_user_id: string; tenant_id: string }[]>`
     select app_user_id, tenant_id from app.consume_invitation(${input.token}, ${input.subject})
   `;
   const resolved = rows[0];
