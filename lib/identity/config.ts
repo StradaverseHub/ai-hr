@@ -2,6 +2,7 @@
 type Env = Record<string, string | undefined>;
 export const WEB_SESSION_COOKIE = '__Host-aihr_session';
 export const LOGIN_COOKIE = '__Host-aihr_login';
+export function authProviderInvalid(env: Env = process.env): boolean { return Boolean(env.AUTH_PROVIDER && !['keycloak', 'workos'].includes(env.AUTH_PROVIDER)); }
 export function keycloakSelected(env: Env = process.env): boolean { return env.AUTH_PROVIDER === 'keycloak'; }
 export function keycloakConfig(env: Env = process.env) {
   const required = ['KEYCLOAK_ISSUER', 'KEYCLOAK_WEB_CLIENT_ID', 'KEYCLOAK_WEB_CLIENT_SECRET', 'KEYCLOAK_MOBILE_CLIENT_ID', 'KEYCLOAK_API_AUDIENCE', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY'] as const;

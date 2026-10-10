@@ -27,7 +27,7 @@ export async function createIdentitySession(value: IdentitySession) {
   const raw = randomBytes(32).toString('base64url');
   const hash = sessionHash(raw)!;
   const expiry = Math.floor(Date.now() / 1000) + 8 * 3600;
-  await client`select app.identity_session_write(${hash},${await seal(value, `session:${hash}`, expiry)},${new Date(expiry * 1000)}::timestamptz)`;
+  await client`select app.identity_session_write(${hash},${await seal(value, `session:${hash}`, expiry)},${new Date(expiry * 1000).toISOString()}::timestamptz)`;
   return raw;
 }
 /** The row lock serializes refresh-token rotation across requests and processes. Absolute lifetime never slides. */
@@ -44,12 +44,12 @@ export async function readIdentitySession(raw: string | undefined, refresh = tru
     if (value.accessExpiry <= Date.now() / 1000 + 60) {
       try {
         const tokens = await oidc.refreshTokenGrant(await oidcClient(), value.refreshToken);
-        const verified = await verifyKeycloakAccessToken(tokens.access_token);
+        const verified = await verifyKeycloakAccessToken(tokens.access_token, keycloakConfig().webClientId);
         if (verified.subject !== value.subject || verified.issuer !== value.issuer) throw new AuthRequiredError('Session identity changed.');
         value = { ...value, accessToken: tokens.access_token, refreshToken: tokens.refresh_token ?? value.refreshToken,
           idToken: tokens.id_token ?? value.idToken, accessExpiry: verified.expiresAt };
         const expiry = Math.floor(new Date(row.expires_at).getTime() / 1000);
-        await tx`select app.identity_session_write(${hash},${await seal(value, `session:${hash}`, expiry)},${row.expires_at})`;
+        await tx`select app.identity_session_write(${hash},${await seal(value, `session:${hash}`, expiry)},${new Date(row.expires_at).toISOString()}::timestamptz)`;
       } catch (error) {
         if (error instanceof AuthRequiredError || (error instanceof oidc.ResponseBodyError && error.error === 'invalid_grant')) {
           await tx`select app.identity_session_delete(${hash})`; return null;
@@ -57,8 +57,13 @@ export async function readIdentitySession(raw: string | undefined, refresh = tru
         throw new JwksUnavailableError('Identity provider unavailable.');
       }
     }
-    const verified = await verifyKeycloakAccessToken(value.accessToken);
-    if (verified.subject !== value.subject || verified.issuer !== value.issuer) return null;
+    try {
+      const verified = await verifyKeycloakAccessToken(value.accessToken, keycloakConfig().webClientId);
+      if (verified.subject !== value.subject || verified.issuer !== value.issuer) throw new AuthRequiredError('Session identity changed.');
+    } catch (error) {
+      if (!(error instanceof AuthRequiredError)) throw error;
+      await tx`select app.identity_session_delete(${hash})`; return null;
+    }
     return value;
   });
   return result as IdentitySession | null;
@@ -73,9 +78,10 @@ export async function deleteIdentitySession(raw: string | undefined) {
 export async function endIdentitySession(): Promise<never> {
   const store = await cookies();
   const raw = store.get(WEB_SESSION_COOKIE)?.value;
-  const session = await readIdentitySession(raw, false);
-  await deleteIdentitySession(raw);
   store.set(WEB_SESSION_COOKIE, '', { ...cookieOptions, maxAge: 0 });
+  let session: IdentitySession | null = null;
+  try { session = await readIdentitySession(raw, false); }
+  finally { await deleteIdentitySession(raw); }
   let destination = `${keycloakConfig().origin}/login`;
   if (session) {
     const config = keycloakConfig();

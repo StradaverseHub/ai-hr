@@ -10,8 +10,9 @@ import { SessionChangedError, SignInRequiredError, UnavailableError } from '../m
 function token(sid: string) {
   return `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 300, sid })).toString('base64url')}.signature`;
 }
-function fixture() {
-  let stored: string | null = JSON.stringify({ refreshToken: 'stored-refresh', sessionId: 'stored-session' });
+function fixture(keycloak = false) {
+  const namespace = keycloak ? 'keycloak-profile' : 'workos-profile';
+  let stored: string | null = JSON.stringify({ refreshToken: 'stored-refresh', sessionId: 'stored-session', namespace });
   const files = new Map([['aihr-installation-v1', '1']]);
   class File {
     constructor(_directory: unknown, private name: string) {}
@@ -33,7 +34,7 @@ function fixture() {
   runInNewContext(transpileModule(readFileSync('mobile/lib/device-registration.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
     { exports: deviceModule.exports, module: deviceModule, require: (id: string) => { if (id === 'expo-secure-store') return secure; throw new Error(id); } });
   const code = transpileModule(readFileSync('mobile/lib/auth.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
-  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, atob, setTimeout, clearTimeout,
+  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, URLSearchParams, atob, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'expo-auth-session') return { makeRedirectUri: () => 'aihr://auth/callback' };
       if (id === 'expo-secure-store') return secure;
@@ -42,7 +43,7 @@ function fixture() {
       if (id === './auth-state') return { createAuthState };
       if (id === './installation-store') return { createInstallationStore };
       if (id === './provider-logout') return { providerLogoutUrl, sessionIdFromToken };
-      if (id === './config') return { config: { workosClientId: 'public-client-id', scheme: 'aihr' } };
+      if (id === './config') return { config: { authProvider: keycloak ? 'keycloak' : 'workos', issuer: 'https://identity.test/realms/test', workosClientId: 'public-client-id', scheme: 'aihr' }, configProblem: () => null, identityClientId: () => 'public-client-id', identityNamespace: () => namespace };
       if (id === './errors') return { SignInRequiredError, UnavailableError };
       throw new Error(`Unexpected auth adapter dependency: ${id}`);
     } });
@@ -65,7 +66,7 @@ describe('native WorkOS exchange — shipped adapter', () => {
   });
   it('rotation stores both refresh credential and provider session id, never the access token', async () => {
     const f = fixture(); const access = await f.auth.refresh();
-    expect(JSON.parse(f.stored()!)).toEqual({ refreshToken: 'rotated-refresh', sessionId: 'new-session' });
+    expect(JSON.parse(f.stored()!)).toEqual({ refreshToken: 'rotated-refresh', sessionId: 'new-session', namespace: 'workos-profile', idToken: null });
     expect(f.stored()).not.toContain(access);
     expect(f.auth.workosLogoutUrl()).toContain('session_id=new-session');
     expect(f.secure.setItemAsync).toHaveBeenCalledWith('aihr.refreshToken', expect.any(String), { keychainAccessible: 5 });
@@ -110,5 +111,26 @@ describe('native WorkOS exchange — shipped adapter', () => {
     await vi.advanceTimersByTimeAsync(15_001);
     expect(await pending).toBeInstanceOf(UnavailableError);
     expect(f.stored()).toBe(original);
+  });
+});
+
+describe('native Keycloak exchange — shipped adapter', () => {
+  it('uses form encoding, PKCE redirect and a public client with no secret', async () => {
+    const f = fixture(true);
+    await f.auth.completeSignIn('code', 'verifier', f.auth.beginSignIn());
+    const [url, init] = f.response.mock.calls[0];
+    expect(url).toBe('https://identity.test/realms/test/protocol/openid-connect/token');
+    expect(init?.redirect).toBe('error');
+    expect(init?.headers).toEqual({ 'content-type': 'application/x-www-form-urlencoded' });
+    const body = new URLSearchParams(String(init?.body));
+    expect(Object.fromEntries(body)).toEqual({ client_id: 'public-client-id', grant_type: 'authorization_code', code: 'code', code_verifier: 'verifier', redirect_uri: 'aihr://auth/callback' });
+    expect(JSON.parse(f.stored()!).namespace).toBe('keycloak-profile');
+    expect(body.has('client_secret')).toBe(false);
+  });
+  it('rejects a cold-launch credential from another deployment before any token exchange', async () => {
+    const f = fixture(true);
+    f.secure.getItemAsync.mockResolvedValueOnce(JSON.stringify({ refreshToken: 'foreign', namespace: 'other-profile' }));
+    expect(await f.auth.hasStoredSession()).toBe(false);
+    expect(f.response).not.toHaveBeenCalled();
   });
 });

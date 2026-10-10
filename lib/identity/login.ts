@@ -37,7 +37,7 @@ export async function completeKeycloakLogin(request: NextRequest) {
     });
     const claims = tokens.claims();
     if (!claims || !tokens.refresh_token || !tokens.id_token) throw new Error('Incomplete identity response.');
-    const verified = await verifyKeycloakAccessToken(tokens.access_token);
+    const verified = await verifyKeycloakAccessToken(tokens.access_token, config.webClientId);
     if (verified.subject !== claims.sub) throw new Error('Identity response mismatch.');
     const raw = await createIdentitySession({ ...verified, accessToken: tokens.access_token, refreshToken: tokens.refresh_token,
       idToken: tokens.id_token, accessExpiry: verified.expiresAt,

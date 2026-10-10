@@ -27,7 +27,7 @@ const ALL_TABLES = [
   // r301 (83511d3b) — a cancellation's copied approval chain (migration 0471). Listed explicitly per the
   // convention above: a leaked pending step would put a phantom level in front of a later file's decision.
   'leave_cancellation_step',
-  'app_user', 'role_assignment', 'domain_event',
+  'app_user', 'role_assignment', 'domain_event', 'app_external_identity', 'app_identity_session',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   // 6d671f44 — Create New Employee drafts (migration 0337). Listed explicitly rather than left to the
   // TRUNCATE ... CASCADE from `tenant`: the ADR-0071 note below is what happens when a table is only

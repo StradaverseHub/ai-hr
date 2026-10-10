@@ -1,4 +1,4 @@
-import { keycloakSelected } from './identity/config';
+import { keycloakSelected, authProviderInvalid } from './identity/config';
 /**
  * Demo-mode gate (ADR-0072 follow-up).
  *
@@ -12,7 +12,7 @@ import { keycloakSelected } from './identity/config';
  * and uses demo data only. When the demo cuts over to real logins, unset the flag; no code change.
  */
 export function demoSwitcherEnabled(): boolean {
-  return !keycloakSelected() && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_SESSION === 'true');
+  return !authProviderInvalid() && !keycloakSelected() && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_SESSION === 'true');
 }
 
 /**
@@ -27,7 +27,7 @@ export function demoSwitcherEnabled(): boolean {
  * check. Belt-and-braces: db/seed.ts additionally withholds the operator grant when the flag is set.
  */
 export function isDemoDeployment(): boolean {
-  return !keycloakSelected() && process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION === 'true';
+  return !authProviderInvalid() && !keycloakSelected() && process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION === 'true';
 }
 
 // Loud, once-per-process warning when the switcher is live in a production build.

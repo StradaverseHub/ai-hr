@@ -100,6 +100,9 @@ BEGIN
     SELECT 1 FROM public.app_user u JOIN public.app_external_identity i ON i.app_user_id=u.id
     WHERE u.tenant_id=v_inv.tenant_id AND u.person_id=v_inv.person_id AND u.id IS DISTINCT FROM v_existing
   ) THEN RAISE EXCEPTION 'invitation cannot replace an enrolled identity' USING ERRCODE='insufficient_privilege'; END IF;
+  IF v_existing IS NOT NULL AND (v_inv.person_id IS NULL OR app.login_blocked(v_existing)) THEN
+    RAISE EXCEPTION 'existing identity requires its active person-targeted invitation' USING ERRCODE='insufficient_privilege';
+  END IF;
   v_legacy:=COALESCE(v_legacy,'oidc:'||encode(sha256(convert_to(p_issuer||chr(10)||p_subject,'UTF8')),'hex'));
   SELECT * INTO v_result FROM app.consume_invitation(p_raw_token,v_legacy);
   IF v_result.app_user_id IS NULL THEN RETURN; END IF;
@@ -118,3 +121,12 @@ $$;
 REVOKE ALL ON FUNCTION app.consume_identity_invitation(text,text,text,text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.consume_identity_invitation(text,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Operator maintenance only: plaintext tokens are never retained and expired ciphertext is pruned daily.
+CREATE FUNCTION app.identity_session_prune() RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp AS $$
+  DELETE FROM public.app_identity_session WHERE expires_at <= now();
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.identity_session_prune() FROM PUBLIC, ai_hr_app;

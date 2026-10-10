@@ -1,4 +1,4 @@
-import { keycloakSelected, keycloakReady, keycloakConfig } from './identity/config';
+import { authProviderInvalid, keycloakSelected, keycloakReady, keycloakConfig } from './identity/config';
 /**
  * r390 — IS THIS DEPLOYMENT ON REAL WORKOS SIGN-IN?
  *
@@ -29,6 +29,7 @@ export function missingWorkosSettings(env: Env = process.env): string[] {
 
 /** True when the demo switcher is off and AuthKit is fully configured. Mirrors demoSwitcherEnabled(). */
 export function realAuthEnabled(env: Env = process.env): boolean {
+  if (authProviderInvalid(env)) return false;
   if (keycloakSelected(env)) return keycloakReady(env);
   const switcherOn = env.NODE_ENV !== 'production' || env.ALLOW_DEMO_SESSION === 'true';
   return !switcherOn && missingWorkosSettings(env).length === 0;

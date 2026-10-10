@@ -1,4 +1,4 @@
-import { keycloakSelected, keycloakReady, keycloakConfig, WEB_SESSION_COOKIE } from '@/lib/identity/config';
+import { authProviderInvalid, keycloakSelected, keycloakReady, keycloakConfig, WEB_SESSION_COOKIE } from '@/lib/identity/config';
 import { NextRequest, NextResponse } from 'next/server';
 import { applyResponseHeaders, authkit, handleAuthkitHeaders, partitionAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
@@ -176,6 +176,7 @@ async function withWorkosSession(original: NextRequest): Promise<NextResponse> {
 export function middleware(req: NextRequest): NextResponse | Promise<NextResponse> {
   // FIRST, above every bypass below, because this is not a question about THIS request — it is a
   // question about whether this deployment is configured to serve anything at all.
+  if (authProviderInvalid()) return refuseUnconfigured();
   if (keycloakSelected()) {
     if (!keycloakReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;

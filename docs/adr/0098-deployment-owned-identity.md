@@ -1,6 +1,6 @@
 # ADR-0098: Deployment-owned identity for cloud and on-premise
 
-Status: Proposed migration architecture, 2026-10-10. The owner requires on-premise login/SSO without WorkOS and is considering the same direction for cloud. Keycloak is the recommended implementation, not a deployed service or an approved provider purchase. Existing production authentication remains unchanged.
+Status: Accepted implementation direction, 2026-10-11. The owner approved Keycloak for the current system and cloud/on-premise installations. The initial system administrator for each installation is yanli.lam@stradaverse.ai. Implementation and cutover require separately verified deployment evidence; approval is not evidence of a running service.
 
 ## Requirement and recommendation
 
@@ -58,7 +58,7 @@ Required adversarial cases include forged/expired connection profiles, wrong iss
 
 Self-hosting gives deployment control and removes a mandatory hosted identity dependency. It transfers identity-service uptime, security updates, key management, recovery delivery and incident response to us or the customer's operator. It is not inherently safer than managed identity. App-store identity stays shared; supported tenant presentation changes do not require separate customer binaries, while a new authentication capability requires shipping that capability in a shared binary first.
 
-This ADR is a reviewable migration design. No Keycloak instance, runtime connection enrollment, provider-neutral mapping migration, internal OIDC adapter or WorkOS removal has been deployed by writing it. The visual composer remains a separate implementation workstream and must not control authentication endpoints or credentials.
+This ADR records the approved migration direction. The Keycloak adapter, additive identity mapping, native exchange and installation package are being implemented under the approved work. Their existence in source is not evidence of a completed production cutover. Trusted runtime connection enrollment, private-network/device acceptance and WorkOS retirement remain explicit delivery stages. The visual composer remains a separate implementation workstream and must not control authentication endpoints or credentials.
 
 ## Standards and provider references (checked 2026-10-10)
 

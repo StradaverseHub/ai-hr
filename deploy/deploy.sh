@@ -202,6 +202,10 @@ else
   echo "$LOCK_HASH" > "$LOCK_MARKER"
 fi
 
+if [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
+  node --import tsx --input-type=module -e 'import { keycloakConfig } from "./lib/identity/config.ts"; keycloakConfig();'
+fi
+
 # ADR-0030 / ADR-0077 slice 3 — BLOCKING, and deliberately BEFORE the build. Slice 3 changed
 # AUDIT_HASH_CHAIN_ENABLED from a truthiness test to `=== 'true'`, which is correct and which DISARMS
 # the chain on every box that copied .env.example's active `=false` line (the string 'false' is truthy).
