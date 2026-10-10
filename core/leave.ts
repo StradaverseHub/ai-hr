@@ -3304,6 +3304,12 @@ export async function requestLeave(
     // becomes, rather than a second submission path re-implementing them. Nothing else reassigns either.
     let lt = lt0;
     let overrideAudit: LeaveOverrideAudit | null = null;
+    if (p.document && lt) validateLeaveDocument(lt, { mimeType: p.document.mimeType, sizeBytes: p.document.content.byteLength });
+    // Match the existing action's first-child attachment ownership, inside this transaction.
+    const attachEmergency = async (result: RequestLeaveResult) => {
+      if (p.document) await addLeaveAttachmentTx(tx, ctx, { leaveRequestId: result.leaveRequestId, ...p.document });
+      return result;
+    };
 
     // Emergency Leave (0106): an application type only — decompose into ANNUAL + UNPAID children over the
     // same dates before the normal single-request path. No EMERGENCY row is ever persisted.
@@ -3316,8 +3322,7 @@ export async function requestLeave(
     // advance-notice fields for EL). So: no source configured ⇒ the decomposition, byte-identical to today and
     // still the default; a source configured ⇒ EL takes the ordinary single-request path like any other type.
     if (leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null) {
-      if (p.document) throw new LeaveDocumentTypeError([]);
-      return requestEmergencyLeave(tx, ctx, p);
+      return attachEmergency(await requestEmergencyLeave(tx, ctx, p));
     }
 
     // Doc-config: the mandatory-document gate moved BELOW day-counting (it now depends on `days` vs
@@ -3525,7 +3530,7 @@ export async function requestLeave(
         // behaviour, and re-entering it here rather than around it is what keeps the converted application
         // on one deduction path.
         if (lt.balanceSourceTypeId == null) {
-          return requestEmergencyLeave(tx, ctx, { ...p, leaveTypeId: target.id }, overrideAudit);
+          return attachEmergency(await requestEmergencyLeave(tx, ctx, { ...p, leaveTypeId: target.id }, overrideAudit));
         }
       } else {
         // Custom validation messages (0147): pass the admin-authored override for THIS rule (keyed by its

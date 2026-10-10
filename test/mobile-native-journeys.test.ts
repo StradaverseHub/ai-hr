@@ -92,6 +92,18 @@ describe('native leave submission and receipts',()=>{
     expect((await call(leave.POST,'leave-requests',{...command,reason:'Changed'},file)).body.outcome).toBe('refused');
     const history=await call(leave.GET,'leave-requests');expect(history.body.items).toHaveLength(1);expect(history.body.items[0].id).toBe(first.body.id);
   });
+  it('conversion previews name the configured target; split children retain the uploaded document atomically',async()=>{
+    const a=await hire('Converted Native');caller=a.ctx;await fund(a.employmentId);
+    const [emergency]=await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'EL',role:'emergency',name:'Emergency absence',paid:true,counting:'working_days'}).returning();
+    await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'UNPAID',name:'Unpaid',paid:false,counting:'calendar_days'});
+    await owner.db.update(schema.leaveType).set({minAdvanceDays:30,overrideRules:[{trigger:'advance_notice_not_met',action:'convert_to_emergency',enabled:true,targetLeaveTypeId:emergency.id}]}).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
+    const command={...application(),overrideConsent:['advance_notice_not_met:convert_to_emergency']};
+    const response=await preview.POST(new Request('https://hr.example.com/api/mobile/v1/leave-preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(command)}));
+    expect((await response.json()).overrides).toEqual([expect.objectContaining({toTypeName:'Emergency absence'})]);
+    const first=await call(leave.POST,'leave-requests',command,new Blob(['%PDF-1.7 evidence'],{type:'application/pdf'}));expect(first.body.outcome).toBe('accepted');
+    const attachments=await owner.db.select().from(schema.leaveRequestAttachment);expect(attachments).toHaveLength(1);expect(attachments[0].leaveRequestId).toBe(first.body.id);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.leave.submitted'))).toHaveLength(1);
+  });
   it('bad or missing mandatory documents leave no request, attachment or command receipt',async()=>{
     const a=await hire('Atomic Doc');caller=a.ctx;await fund(a.employmentId);
     await owner.db.update(schema.leaveType).set({requiresDocument:true,allowedMimeTypes:['application/pdf'],maxDocBytes:10}).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
@@ -113,6 +125,7 @@ describe('native leave submission and receipts',()=>{
     expect((await call(leave.POST,`leave-requests?employmentId=${peer.employmentId}`,application())).status).toBe(400);
     const [hidden]=await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'PRIVATE_NATIVE',name:'Hidden secret type',paid:true,counting:'calendar_days',visibleToEmployee:false}).returning({id:schema.leaveType.id});
     expect(JSON.stringify((await call(options.GET,'leave-options')).body)).not.toContain(hidden.id);
+    expect((await call(leave.POST,'leave-requests',{...application(),leaveTypeId:hidden.id})).status).toBe(400);
     const response=await preview.POST(new Request('https://hr.example.com/api/mobile/v1/leave-preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...application(),leaveTypeId:hidden.id})}));expect(response.status).toBe(400);
   });
 });

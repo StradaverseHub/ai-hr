@@ -1,4 +1,4 @@
-import { listLeaveRequestsPage } from '@/core/read';
+import { listLeaveRequestsPage,listEligibleLeaveTypesFor } from '@/core/read';
 import { submitMobileLeave,MobileLeaveReplayConflict } from '@/core/mobile-leave-command';
 import * as leave from '@/packs/leave/service';
 import { LeaveRequestsResponse,LeaveCommand,LeaveResult } from '@/lib/mobile-api/contract';
@@ -16,6 +16,7 @@ export const POST = mobileRoute(LeaveResult,async(s,req)=>{
   const form=await mobileForm(req,['command','document'],11*1024*1024);
   let command:ReturnType<typeof LeaveCommand.parse>;
   try{command=LeaveCommand.parse(JSON.parse(String(form.get('command'))));}catch{throw new MobileBadRequest('Invalid command');}
+  if(!(await listEligibleLeaveTypesFor(s,employmentId)).some(t=>t.id===command.leaveTypeId))throw new MobileBadRequest('Type not available');
   const file=form.get('document');
   if(file!=null&&(!(file instanceof File)||!file.size||file.name.length>200))throw new MobileBadRequest('Invalid document');
   try{
