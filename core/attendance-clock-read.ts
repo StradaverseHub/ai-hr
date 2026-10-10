@@ -3,13 +3,13 @@ import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, clockingLocation, employment } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { myEmployment } from './read';
+import { myEmployment, myEmployments } from './read';
 import { clockScheduleForTx, resolveGeofence } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device).
-export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; lng: number; accuracy: number }) {
-  const me = await myEmployment(ctx);
+export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; lng: number; accuracy: number }, selectedEmploymentId?: string) {
+  const me = selectedEmploymentId ? (await myEmployments(ctx)).find(e => e.employmentId === selectedEmploymentId) : await myEmployment(ctx);
   if (!me) throw new Error('No active employee profile');
   return withTenant(ctx, async tx => {
     const now = new Date();

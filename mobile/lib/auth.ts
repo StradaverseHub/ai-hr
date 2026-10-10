@@ -1,4 +1,5 @@
 /** Hosted AuthKit + PKCE. Only the public client id ships in the app (ADR-0088). */
+import { clearClockDevice } from './device-registration';
 import * as AuthSession from 'expo-auth-session';
 import { File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
@@ -57,7 +58,7 @@ const storage = createInstallationStore({
   markLogoutPending: () => new File(Paths.document, 'aihr-installation-v1').write('signed-out'),
   read: () => SecureStore.getItemAsync(REFRESH_KEY, STORE),
   write: (value) => SecureStore.setItemAsync(REFRESH_KEY, value, STORE),
-  remove: () => SecureStore.deleteItemAsync(REFRESH_KEY, STORE),
+  remove: async () => { await Promise.all([clearClockDevice(), SecureStore.deleteItemAsync(REFRESH_KEY, STORE)]); },
 });
 let sessionId: string | null = null;
 const state: ReturnType<typeof createAuthState> = createAuthState({

@@ -1,3 +1,5 @@
+import { ClockPanel } from '../../lib/clock-panel';
+import { TeamPanel } from '../../lib/team-panel';
 import { Fragment } from 'react';
 import { useTenantDesign } from '../../lib/design';
 /**
@@ -25,8 +27,8 @@ export default function Home() {
       <Title>{name ? t('hello', { name }) : t('helloNoName')}</Title>
       <LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} />
 
-      {design.homeOrder.filter(id => id === 'tasks' || id === 'leave').map(id => <Fragment key={id}>
-        {id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
+      {design.homeOrder.map(id => <Fragment key={id}>
+        {id === 'clock' ? <ClockPanel/> : id === 'team' ? <TeamPanel/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
           {inbox.data?.enabled && inbox.data.unread > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong /> : <Muted>{t('nothingNeedsYou')}</Muted>}
         </Card></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
           <LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />

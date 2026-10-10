@@ -25,3 +25,8 @@ export class SessionChangedError extends Error {
     this.name = 'SessionChangedError';
   }
 }
+
+/** A definitive validation/permission refusal, before the handler commits a command. */
+export class RequestRejectedError extends Error {
+  constructor(public readonly status: number) { super(`HTTP ${status}`); this.name='RequestRejectedError'; }
+}

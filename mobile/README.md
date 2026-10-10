@@ -101,3 +101,55 @@ Android manifest also marks both unused photo/storage permissions for removal. T
 the exported JavaScript and configuration, not a signed APK/IPA or physical-device behavior.
 Development/build inputs still need control while the two tooling advisories remain open. No audit
 ignore or forced SDK downgrade conceals these findings.
+
+## Online Monolith journeys
+
+The Clock tab and Home share one private draft. A preparation slide collects one foreground location
+and a camera photo when policy requires it. A separate review slide sends the command. Cancellation
+never writes attendance. VoiceOver/TalkBack users have a labelled two-step tap confirmation. Reduced
+motion disables the rail's return animation. Both clock directions remain available; the attendance
+kernel decides the result, including corrected-day refusals, photo rules and geofences.
+
+Native commands enforce registered-device policy. The registration token is stored in device-only
+unlocked SecureStore, is scoped to employment, and is deleted on logout/reinstall. This registration
+is **not device attestation**. One registration is retained locally; switching employment may require
+registration again. Current legacy punch storage still uses `web`; the capture audit explicitly records
+`native_online`. Offline/signed evidence, App Attest and Play Integrity remain separate ADR-0088 work.
+
+Requests shows every canonical leave card, including masked values and shared-pool notices. Eligible
+leave options, full/half/hour durations, attachment rules, emergency consent and maternity facts come
+from the existing engine. Review displays deduction and conversion/split consent before submission.
+Request, attachment and actor-scoped replay receipt commit in one transaction. Repeating an identical
+submission returns its original receipt; a changed payload with the same reference is refused. The
+request history currently displays up to 50 records and explicitly shows the total count.
+
+Team availability uses the existing My Team membership and per-date leave projection. It exposes
+names, dates, approval state and sessions, without reasons or payroll information. Pending leave is
+never counted as approved absence. No caller-provided team or employment selector widens that scope.
+
+Only user-entered drafts remain in memory across the OS camera/document activity and subsequent
+privacy lock. Private routes, API caches and tenant design still unmount behind the privacy gate.
+Changing employment, changing account or signing out discards drafts. Selected documents/photos use
+app-private temporary cache; cancellation/completion/scope change deletes owned files and cold launch
+purges remaining journey/picker caches. Drafts are not persisted or submitted in the background.
+An uncertain network result preserves the exact command reference and evidence for an explicit retry;
+it never reports success without a server receipt. English/Malay copy ships in this foundation;
+four other native locales remain deferred.
+
+Add these physical-device checks to the release matrix above:
+
+| Check | iOS | Android |
+| --- | --- | --- |
+| Slide completion/cancellation, VoiceOver/TalkBack, reduced motion | Required | Required |
+| Denied/revoked foreground location, stale fix, mocked Android location | Required | Required |
+| Camera cancel/deny, required/optional photo, picker return through OS unlock | Required | Required |
+| Registered/revoked phone, tenant device policy changes during review | Required | Required |
+| Clock/leave timeout after commit, exact retry, double confirmation | Required | Required |
+| Document cancel/deny, size/MIME limits, cleanup after logout/crash | Required | Required |
+| Full/half/hour leave, split/conversion consent, hidden balances, multiple employments | Required | Required |
+| Light/dark tenant designs, narrow screens, large text, keyboard, denied team scope | Required | Required |
+
+FACT: server integration tests use real handlers, RLS and the kernel; control tests render shipped React
+components with injected native ports. Hermes exports and generated permissions are build evidence.
+UNKNOWN: signed binaries, hardware permission/picker behavior and real OS accessibility until this
+matrix passes. Do not use this development evidence as store/pilot readiness.

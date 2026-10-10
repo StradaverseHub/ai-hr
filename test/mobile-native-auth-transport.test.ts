@@ -19,21 +19,26 @@ function fixture() {
     textSync() { return files.get(this.name); }
     write(value: string) { files.set(this.name, value); }
   }
-  const secure = { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 5, getItemAsync: vi.fn(async () => stored),
-    setItemAsync: vi.fn(async (_key: string, value: string) => { stored = value; }),
-    deleteItemAsync: vi.fn(async () => { stored = null; }) };
+  const deviceValues = new Map<string, string>();
+  const secure = { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 5, getItemAsync: vi.fn(async (key: string) => key === 'aihr.refreshToken' ? stored : deviceValues.get(key) ?? null),
+    setItemAsync: vi.fn(async (key: string, value: string) => { if (key === 'aihr.refreshToken') stored = value; else deviceValues.set(key, value); }),
+    deleteItemAsync: vi.fn(async (key: string) => { if (key === 'aihr.refreshToken') stored = null; else deviceValues.delete(key); }) };
   const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({
     access_token: token('new-session'), refresh_token: 'rotated-refresh',
   })));
   const output = { exports: {} as { refresh: () => Promise<string>; hasStoredSession: () => Promise<boolean>;
     beginSignIn: () => number; completeSignIn: (code: string, verifier: string, owner: number) => Promise<void>;
     signOut: () => Promise<void>; workosLogoutUrl: () => string | null } };
+  const deviceModule = { exports: {} };
+  runInNewContext(transpileModule(readFileSync('mobile/lib/device-registration.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
+    { exports: deviceModule.exports, module: deviceModule, require: (id: string) => { if (id === 'expo-secure-store') return secure; throw new Error(id); } });
   const code = transpileModule(readFileSync('mobile/lib/auth.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, atob, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'expo-auth-session') return { makeRedirectUri: () => 'aihr://auth/callback' };
       if (id === 'expo-secure-store') return secure;
       if (id === 'expo-file-system') return { File, Paths: { document: 'sandbox' } };
+      if (id === './device-registration') return deviceModule.exports;
       if (id === './auth-state') return { createAuthState };
       if (id === './installation-store') return { createInstallationStore };
       if (id === './provider-logout') return { providerLogoutUrl, sessionIdFromToken };

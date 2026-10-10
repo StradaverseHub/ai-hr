@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type {
-  MobileDesignResponse,
+  MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
   LeaveResponse,
   MeResponse,
   NotificationsResponse,
@@ -16,12 +16,13 @@ import type {
 } from '../../lib/mobile-api/contract';
 import { assertAuthGeneration, authGeneration, getAccessToken, refresh } from './auth';
 import { apiOriginProblem, config } from './config';
-import { SignInRequiredError, UnavailableError } from './errors';
+import { SignInRequiredError, UnavailableError, RequestRejectedError } from './errors';
 import { appLocale } from './i18n';
 
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  clock:ClockResponse; team:TeamResponse; 'leave-options':LeaveOptionsResponse; 'leave-requests':LeaveRequestsResponse;
   design: MobileDesignResponse;
   me: MeResponse;
   payslips: PayslipsResponse;
@@ -37,10 +38,7 @@ function url(path: string, params: Record<string, string | undefined>): string {
   return `${config.apiUrl}/api/mobile/v1/${path}${q ? `?${q}` : ''}`;
 }
 
-export async function apiGet<P extends keyof Endpoints>(
-  path: P,
-  params: Record<string, string | undefined> = {},
-): Promise<Endpoints[P]> {
+async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean}):Promise<T> {
   if (!config.apiUrl || apiOriginProblem(config.apiUrl)) throw new UnavailableError('The API origin is not configured securely.');
   const owner = authGeneration();
   const send = async (token: string) => {
@@ -49,7 +47,8 @@ export async function apiGet<P extends keyof Endpoints>(
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const response = await fetch(url(path, params), {
-        headers: { authorization: `Bearer ${token}`, 'accept-language': appLocale() },
+        headers: { authorization: `Bearer ${token}`, 'accept-language': appLocale(), ...(request?.json ? {'content-type':'application/json'} : {}) },
+        ...(request ? {method:'POST',body:request.body} : {}),
         redirect: 'error',
         signal: controller.signal,
       });
@@ -64,11 +63,19 @@ export async function apiGet<P extends keyof Endpoints>(
   assertAuthGeneration(owner);
   if (res.status === 401) throw new SignInRequiredError();
   if (res.status === 429 || res.status >= 500) throw new UnavailableError();
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = (await res.json()) as Endpoints[P];
+  if (!res.ok) throw new RequestRejectedError(res.status);
+  const data = (await res.json()) as T;
   assertAuthGeneration(owner);
   return data;
 }
+
+export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<string,string|undefined>={}):Promise<Endpoints[P]>{return apiRequest(path,params);}
+type Commands = {clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
+export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|{label:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
+  const form=body instanceof FormData;
+  return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form});
+}
+export type {ClockResponse,ClockResult,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand};
 
 export type Loadable<T> = {
   data: T | null;

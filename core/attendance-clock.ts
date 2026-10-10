@@ -2,11 +2,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
-import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent } from '../db/schema';
+import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent, employeeDevice } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { myEmployment } from './read';
+import { myEmployment, myEmployments } from './read';
 import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
+import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 
@@ -49,14 +50,17 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
   }
 }
 
-async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
-  const me = await myEmployment(ctx);
+async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number }) {
+  const me = native ? (await myEmployments(ctx)).find(e => e.employmentId === native.employmentId) : await myEmployment(ctx);
   if (!me) throw new Error('No active employee profile');
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
   if (![p.lat, p.lng, p.accuracy].every(Number.isFinite) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180 || p.accuracy < 0) throw new ClockLocationError('Valid location and accuracy are required');
   return withTenant(ctx, async tx => {
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
+    if (native) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native.deviceToken });
+    const [nativeDevice] = native?.deviceToken ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,native.deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
+    if (native?.deviceToken && !nativeDevice) throw new DeviceNotRegisteredError();
     // r430 — the employee's OWN attendance_photo_setting decides, read fresh from the row every time
     // (never trusted from the client). required: refuse outright with no photo, before any write.
     // optional: validate a photo if one was sent, otherwise proceed without one. not_required: a photo is
@@ -72,6 +76,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
       return publicReceipt(accepted);
     }
     const now = new Date();
+    if (native && (!Number.isFinite(native.sampledAt) || Math.abs(now.getTime()-native.sampledAt)>120000)) throw new ClockLocationError('Capture a fresh location before clocking');
     let date = todayInKualaLumpur(now);
     const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
     const [unclosed] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
@@ -112,15 +117,21 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
     // r430 — the six photo columns are spread ONLY when a photo exists (nullable since 0520; CHECK enforces
     // they land null together). deviceId is never set any more for a Web Clocking capture (nullable since
     // 0520 too) — there is no registered device to attribute it to.
-    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
+    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(nativeDevice ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
     // r430 — deviceGateExempt:true: Web Clocking's own self-capture path is fully exempt from the
     // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
     // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
     // sets this and stays fully policy-gated.
-    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceGateExempt: true, clockCaptureId: captureId, preciseOrder }, tx);
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
+    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceGateExempt: !native, deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
   });
+}
+
+/** Native online carrier: own active employment, same transaction and rules, device policy enforced. */
+export async function captureNativeClock(ctx: SessionContext, p: ClockIntent & { employmentId: string; deviceToken?: string; sampledAt: number }) {
+  try { return await captureEmployeeClockTx(ctx, p, { employmentId: p.employmentId, deviceToken: p.deviceToken, sampledAt: p.sampledAt }); }
+  catch (e) { if (e instanceof OutsideGeofenceError) await appendGeofenceBlockedEvent(ctx, e); throw e; }
 }
 
 /** Photo bytes are selected only here, under existing subject visibility. */

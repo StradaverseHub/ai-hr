@@ -10,7 +10,7 @@ const icon = (name: SymbolViewProps['name']) => ({ color, size }: { color: Color
   <SymbolView name={name} tintColor={color} size={size} />
 );
 
-/** Home · Leave · Inbox · Me. Clock joins when the clock endpoint does (ADR-0088 phase 1, next slice). */
+/** One shared app. Published tenant order arranges Clock, Requests and Inbox between Home and Me. */
 export default function TabsLayout() {
   const { status } = useSession();
   const { palette, design, reduceMotion } = useTenantDesign();
@@ -18,8 +18,8 @@ export default function TabsLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: palette.accent, tabBarInactiveTintColor: palette.muted, tabBarStyle: { backgroundColor: palette.bg, borderTopColor: palette.border }, animation: reduceMotion ? 'none' : 'fade' }}>
       <Tabs.Screen name="index" options={{ title: t('tabHome'), tabBarIcon: icon({ ios: 'house', android: 'home' }) }} />
-      {design.navigationOrder.filter(id => id !== 'clock').map(id => id === 'requests'
-        ? <Tabs.Screen key={id} name="leave" options={{ title: t('tabLeave'), tabBarIcon: icon({ ios: 'calendar', android: 'calendar_month' }) }} />
+      {design.navigationOrder.map(id => id === 'clock' ? <Tabs.Screen key={id} name="clock" options={{title:t('tabClock'),tabBarIcon:icon({ios:'clock',android:'schedule'})}} /> : id === 'requests'
+        ? <Tabs.Screen key={id} name="leave" options={{ title: t('tabRequests'), tabBarIcon: icon({ ios: 'calendar', android: 'calendar_month' }) }} />
         : <Tabs.Screen key={id} name="inbox" options={{ title: t('tabInbox'), tabBarIcon: icon({ ios: 'bell', android: 'notifications' }) }} />)}
       <Tabs.Screen name="me" options={{ title: t('tabMe'), tabBarIcon: icon({ ios: 'person.crop.circle', android: 'person' }) }} />
     </Tabs>

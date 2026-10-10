@@ -3221,6 +3221,7 @@ export async function requestLeave(
     startDate: string;
     endDate: string;
     reason?: string;
+    document?: { fileName: string; mimeType: string; content: Buffer }; // atomic native attachment
     hasDocument?: boolean; // 2A-2: asserts a supporting document accompanies this request
     employeeRemark?: string; // doc-config: required when the type sets employeeRemarkRequired
     durationType?: LeaveDurationType; // ADR-0048: defaults to 'full_day'
@@ -3250,8 +3251,10 @@ export async function requestLeave(
     // agreeing to the other.
     overrideConsent?: string | readonly string[];
   },
+  existingTx?: Tx,
 ): Promise<RequestLeaveResult> {
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
+    if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
     // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
     //
@@ -3313,6 +3316,7 @@ export async function requestLeave(
     // advance-notice fields for EL). So: no source configured ⇒ the decomposition, byte-identical to today and
     // still the default; a source configured ⇒ EL takes the ordinary single-request path like any other type.
     if (leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null) {
+      if (p.document) throw new LeaveDocumentTypeError([]);
       return requestEmergencyLeave(tx, ctx, p);
     }
 
@@ -4006,6 +4010,8 @@ export async function requestLeave(
       }
     }
 
+    if (p.document) await addLeaveAttachmentTx(tx, ctx, { leaveRequestId: id, ...p.document });
+
     // Phase-B #15 — holiday-completeness guard. A working_days request's day count depends on the gazetted
     // holidays loaded for the employee's (state, year). If fewer than the s.60D minimum of 11 are loaded,
     // warn LOUDLY (domain event + returned warning) but do NOT block — the count may be wrong until HR loads
@@ -4022,7 +4028,8 @@ export async function requestLeave(
       ...(maternityAllowanceWarning ? { maternityAllowanceWarning: true } : {}),
       ...(holidayWarnings.length ? { holidayWarnings } : {}),
     };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** Feedback 31474452 (Step 5): pre-submission preview — "this will deduct X day(s), balance before/after" —
@@ -4188,7 +4195,16 @@ export async function previewLeaveDeduction(
         }
         const noticeGiven = noticeDaysGiven(today, p.startDate, noticeDayType, noticeRoster, noticeHolidays);
         if (noticeGiven < noticeMin) {
+          let toTypeName: string | null = null;
+          if (advance.action === 'convert_to_emergency') {
+            const findTarget = (where: SQL) => tx.select({name:leaveType.name}).from(leaveType).where(and(where,isNull(leaveType.archivedAt))).orderBy(leaveType.id).limit(1);
+            let target;
+            if (advance.targetLeaveTypeId) [target] = await findTarget(eq(leaveType.id,advance.targetLeaveTypeId));
+            else { [target] = await findTarget(eq(leaveType.role,'emergency')); if(!target) [target] = await findTarget(eq(leaveType.code,EMERGENCY_LEAVE_CODE)); }
+            toTypeName = target?.name ?? null;
+          }
           overrides.push({
+            toTypeName,
             trigger: 'advance_notice_not_met',
             action: advance.action,
             consentToken: leaveOverrideConsentToken('advance_notice_not_met', advance.action),
@@ -4243,6 +4259,7 @@ export type LeaveOverridePreview = {
   /** false for `block` — there is nothing to agree to, only a refusal to explain. */
   needsConsent: boolean;
   fromTypeName: string | null;
+  toTypeName?: string | null;
   daysInAdvance?: number;
   minAdvanceDays?: number | null;
   /** 7daac043 — the unit BOTH figures above are measured in, carried so the form is never left describing a
@@ -4952,8 +4969,11 @@ export async function addLeaveAttachment(
   ctx: SessionContext,
   p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
-  if (p.content.byteLength === 0) throw new Error('Empty file');
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => addLeaveAttachmentTx(tx, ctx, p));
+}
+
+async function addLeaveAttachmentTx(tx: Tx, ctx: SessionContext, p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer }): Promise<{ id: string }> {
+    if (p.content.byteLength === 0) throw new Error('Empty file');
     // Doc-config: join the type to read its mime/size rule. The /me flow already validated upstream (so
     // a bad file never created an orphan request); this is defence-in-depth for any other caller and
     // replaces the previously hard-coded 10 MB ceiling with the type's configured limit.
@@ -4997,7 +5017,6 @@ export async function addLeaveAttachment(
       payload: { fileName: p.fileName, sizeBytes: p.content.byteLength },
     });
     return { id: row.id };
-  });
 }
 
 /** Stream a leave request's supporting document. Runs under RLS (subject + manager + admin). */

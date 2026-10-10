@@ -138,3 +138,54 @@ export const MobileDesignResponse = z.object({
   config: z.custom<MobileDesign>(value => { try { parseMobileDesign(value); return true; } catch { return false; } }),
 });
 export type MobileDesignResponse = z.infer<typeof MobileDesignResponse>;
+
+
+// Native journeys. Every request is strict: identities/policy flags are never body fields.
+export const ClockReceipt = z.object({ id: z.string().uuid(), direction: z.enum(['in', 'out']), recordedAt: z.string(), date: isoDate, photoAvailable: z.boolean() });
+export const ClockResponse = z.object({
+  enabled: z.boolean(), employmentId: z.string().uuid().nullable(),
+  state: z.object({
+    serverNow: z.string(), date: isoDate, clockedIn: z.boolean(), openSince: z.string().nullable(), workedSeconds: z.number().nonnegative(),
+    geofencingRequired: z.boolean(), attendancePhotoSetting: z.enum(['required','optional','not_required']), deviceRequired: z.boolean(),
+    shift: z.object({code:z.string().nullable(),start:z.string().nullable(),end:z.string().nullable()}),
+    captures: z.array(ClockReceipt.extend({requestId:z.string().uuid(), locationName:z.string().nullable()})),
+    legacy:z.array(z.object({direction:z.string(),time:z.string()})),
+  }).nullable(),
+});
+export type ClockResponse = z.infer<typeof ClockResponse>;
+export const ClockCommand = z.object({action:z.enum(['in','out']),requestId:z.string().uuid(),lat:z.number().finite().min(-90).max(90),lng:z.number().finite().min(-180).max(180),accuracy:z.number().finite().nonnegative(),sampledAt:z.number().finite().int().positive(),deviceToken:z.string().uuid().optional()}).strict();
+export const ClockResult = z.discriminatedUnion('outcome', [
+  z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}),
+  z.object({outcome:z.literal('refused'),code:z.enum(['corrected_day','clock_conflict','location_required','outside_geofence','photo_required','photo_invalid','device_required','mock_location'])}),
+]);
+export type ClockResult = z.infer<typeof ClockResult>;
+export const DeviceCommand=z.object({label:z.string().trim().min(1).max(80)}).strict();
+export const DeviceResponse=z.object({deviceId:z.string().uuid(),deviceToken:z.string().uuid()});
+export type DeviceResponse=z.infer<typeof DeviceResponse>;
+export const TeamResponse=z.object({enabled:z.boolean(),today:isoDate,through:isoDate,items:z.array(z.object({employmentId:z.string().uuid(),name:z.string(),dates:z.array(z.object({date:isoDate,status:z.enum(['approved','pending']),session:z.string()}))}))});
+export type TeamResponse=z.infer<typeof TeamResponse>;
+const duration=z.enum(['full_day','half_day_am','half_day_pm','hourly']);
+const calendarDate=isoDate.refine(v=>{const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v;});
+export const LeaveCommand=z.object({
+  requestId:z.string().uuid(),leaveTypeId:z.string().uuid(),startDate:calendarDate,endDate:calendarDate,durationType:duration,
+  fromTime:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),toTime:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  reason:z.string().trim().max(2000).optional(),employeeRemark:z.string().trim().max(2000).optional(),
+  reasonCategory:z.enum(['illness','personal','other']).optional(),unpaidConsent:z.boolean().optional(),
+  survivingChildren:z.number().int().min(0).max(100).optional(),confinementDate:calendarDate.optional(),
+  overrideConsent:z.array(z.string().max(100)).max(8).optional(),
+}).strict().refine(v=>v.endDate>=v.startDate && Date.parse(v.endDate)-Date.parse(v.startDate)<=400*86400000,'Invalid date range');
+export type LeaveCommand=z.infer<typeof LeaveCommand>;
+export const LeaveOptionsResponse=z.object({employmentId:z.string().uuid().nullable(),items:z.array(z.object({
+  id:z.string().uuid(),name:z.string(),code:z.string(),durations:z.array(duration),requiresDocument:z.boolean(),mandatoryAfterDays:z.number().nullable(),
+  allowedMimeTypes:z.array(z.string()),maxDocBytes:z.number(),employeeRemarkRequired:z.boolean(),emergencySplit:z.boolean(),maternity:z.boolean(),notice:z.string().nullable(),
+}))});
+export type LeaveOptionsResponse=z.infer<typeof LeaveOptionsResponse>;
+export const LeaveRequestsResponse=z.object({employmentId:z.string().uuid().nullable(),total:z.number().int().nonnegative(),items:z.array(z.object({id:z.string().uuid(),type:z.string(),from:isoDate,to:isoDate,status:z.string(),partial:z.boolean()}))});
+export type LeaveRequestsResponse=z.infer<typeof LeaveRequestsResponse>;
+export const LeavePreviewResponse=z.object({days:z.number().nullable(),unpaidDays:z.number().nullable(),emergencySplit:z.boolean(),overrides:z.array(z.object({consentToken:z.string(),needsConsent:z.boolean(),action:z.string(),fromTypeName:z.string().nullable(),toTypeName:z.string().nullable().optional(),daysInAdvance:z.number().optional(),minAdvanceDays:z.number().nullable().optional(),minAdvanceDayType:z.string().optional(),paidDays:z.number().optional(),unpaidDays:z.number().optional()}))});
+export type LeavePreviewResponse=z.infer<typeof LeavePreviewResponse>;
+export const LeaveResult=z.discriminatedUnion('outcome',[
+ z.object({outcome:z.literal('accepted'),id:z.string().uuid(),days:z.number(),maternityAllowanceWarning:z.boolean(),holidayWarning:z.boolean()}),
+ z.object({outcome:z.literal('refused'),code:z.literal('leave_refused'),message:z.string().max(4000)}),
+]);
+export type LeaveResult=z.infer<typeof LeaveResult>;

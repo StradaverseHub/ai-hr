@@ -1,3 +1,4 @@
+import { JourneyDraftProvider } from '../lib/journey-drafts';
 import { TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -41,7 +42,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <SessionProvider>
         <StatusBar style="dark" />
-        <Gate />
+        <JourneyDraftProvider><Gate /></JourneyDraftProvider>
       </SessionProvider>
     </SafeAreaProvider>
   );

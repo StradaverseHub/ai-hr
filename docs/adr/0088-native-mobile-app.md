@@ -413,3 +413,33 @@ checks cover all six locales, both themes and every returned leave type.
   lateness-penalty complaints that dominate Malaysian reviews, and it still does not stop a USB spoofer on
   an iPhone. The evidence ledger keeps every signal and lets a human decide the grey cases before payroll
   reads them.
+
+## Online journey implementation (2026-10-10)
+
+DECISION: the first native write flows use the existing online attendance and leave kernel, with
+additive strict `/api/mobile/v1` contracts. Every self-service subject is selected from the bearer's
+own active employments, including administrators. Team availability consumes My Team scope and its
+per-date leave projection. Tenant design is presentation only and cannot alter policy or authority.
+
+Attendance uses server time, bounded uploads, fresh foreground coordinates, camera-only evidence and
+the existing atomic capture/receipt. Native calls enforce registered-device policy; the web exemption
+is never carried into this adapter. Device attribution and `native_online` audit metadata identify the
+source; the legacy punch method remains `web`. Registration does not establish genuine hardware or
+location. Phase 3 signed/offline evidence and attestation remain unimplemented.
+
+Leave requests accept document bytes inside the existing request transaction. A native command owns
+an actor/tenant UUID and payload digest; an advisory lock serializes replay. The immutable event ledger
+stores the minimal accepted response atomically with the request and attachment. A receipt failure
+rolls everything back. Accepted replays cannot create another request, even after a lost response.
+The leave request remains authoritative; the event is command replay evidence, not another balance or
+approval model. No migration or new leave status is introduced.
+
+DECISION: memory-only user drafts survive OS picker/unlock activity above the private-route gate.
+This is necessary because both camera and document selection can background the app. API/design
+caches still unmount and the privacy curtain remains closed. Draft scope includes authentication
+generation and employment; scope changes/logout discard drafts and reject late callbacks. Temporary
+attachments are deleted on cancellation/completion/scope change and purged at cold launch. There is
+no persistent command queue, background submission or automatic retry after an uncertain write.
+An explicit retry preserves the original reference and exact evidence. Definitive validation refusals
+return to editing. Native English/Malay copy follows the existing foundation; remaining locales and
+physical-device verification are still release requirements in `mobile/README.md`.
