@@ -41,7 +41,9 @@ export async function sendIdentityInvitation(email: string, activationPath: stri
   if (!Array.isArray(users)) throw new Error('Invalid invitation account response.');
   const created = users.length === 0;
   if (created) {
-    await admin('/users', { method: 'POST', body: JSON.stringify({ username: email, email, enabled: true, emailVerified: false }) });
+    // Persist enrollment before attempting mail: a delivery failure/retry must not leave a local
+    // account without a password-enrollment action when it is later found as an existing user.
+    await admin('/users', { method: 'POST', body: JSON.stringify({ username: email, email, enabled: true, emailVerified: false, requiredActions: ['UPDATE_PASSWORD'] }) });
     users = await search();
   }
   if (users.length !== 1 || users[0].email?.toLowerCase() !== email.toLowerCase() || !/^[a-zA-Z0-9_-]+$/.test(users[0].id)) throw new Error('Invitation account could not be resolved uniquely.');

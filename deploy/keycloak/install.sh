@@ -26,6 +26,10 @@ fi
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 apt-get update
 apt-get install -y --no-install-recommends openjdk-25-jre-headless ca-certificates curl
+# Select the installed package explicitly; an operator's existing Java alternatives stay untouched.
+IDENTITY_JAVA_BIN="$(dpkg-query -L openjdk-25-jre-headless | awk '/\/bin\/java$/ { print; exit }')"
+[ -x "$IDENTITY_JAVA_BIN" ] || { echo 'The required Java runtime was not installed.' >&2; exit 1; }
+IDENTITY_JAVA_HOME="$(dirname "$(dirname "$IDENTITY_JAVA_BIN")")"
 VERSION=26.8.0
 SHA256=9e41da899f838a58cd510fc98ed4f7cadc715aed5683e42aca20a0c9a2a3980a
 INSTALL_TMP="$(mktemp -d)"
@@ -49,6 +53,7 @@ CREATE DATABASE aihr_identity OWNER aihr_identity ENCODING 'UTF8';
 REVOKE ALL ON DATABASE aihr_identity FROM PUBLIC;
 SQL
 cat > /etc/aihr-keycloak/service.env <<ENV
+JAVA_HOME=$IDENTITY_JAVA_HOME
 KC_DB=postgres
 KC_DB_URL=jdbc:postgresql://127.0.0.1:5432/aihr_identity
 KC_DB_USERNAME=aihr_identity
@@ -70,7 +75,7 @@ JAVA_OPTS_KC_HEAP=-Xms128m -Xmx640m
 ENV
 chmod 0600 /etc/aihr-keycloak/service.env
 # EnvironmentFile is read by systemd as root; the service itself cannot read bootstrap/database secrets from disk.
-/opt/aihr-keycloak/current/bin/kc.sh build --db=postgres --health-enabled=true --metrics-enabled=true
+JAVA_HOME="$IDENTITY_JAVA_HOME" /opt/aihr-keycloak/current/bin/kc.sh build --db=postgres --health-enabled=true --metrics-enabled=true
 install -d -o aihr-keycloak -g aihr-keycloak -m 0700 /opt/aihr-keycloak/current/data
 install -m 0644 "$SCRIPT_DIR/aihr-keycloak.service" /etc/systemd/system/aihr-keycloak.service
 systemctl daemon-reload
