@@ -41,6 +41,9 @@ describe('tenant mobile builder in a real browser', () => {
     const phone = ui.container.querySelector('[data-appearance]') as HTMLElement;
     expect(phone.style.getPropertyValue('--brand-button')).toBe('#91b5ff');
     fireEvent.click(ui.getByRole('button', { name: 'Light' })); expect(phone.dataset.appearance).toBe('light');
+    const thumb = getComputedStyle(ui.getByRole('slider', { name: 'Slide to clock in' }));
+    expect(thumb.borderRadius).toBe('50%'); expect(thumb.width).toBe('52px'); expect(thumb.backgroundColor).toBe('rgb(145, 181, 255)');
+    expect(getComputedStyle(ui.getByRole('heading', { name: 'Hello, Test.' })).fontSize).toBe('29px');
     fireEvent.click(ui.getByRole('button', { name: 'Clock in with a tap' }));
     expect(ui.getByText('Gesture preview complete. No attendance was recorded.')).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: 'Published' }));
