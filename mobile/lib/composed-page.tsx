@@ -34,7 +34,11 @@ function Balances({ block }: { block: MobileBlock }) {
 function Messages({ block }: { block: MobileBlock }) {
   const { signOut } = useSession(), { palette } = useTenantDesign(), inbox = useApi('notifications', {}, signOut);
   if (inbox.data && !inbox.data.enabled) return null;
-  return <><LoadState loading={inbox.loading && !inbox.data} error={inbox.error} onRetry={inbox.reload} />{block.kind === 'tasks' ? <><Muted>{inbox.data?.unread ? t('unreadCount', { n: inbox.data.unread }) : t('nothingNeedsYou')}</Muted><Button title={t('tabInbox')} kind="quiet" onPress={() => router.push('/inbox')} /></> : <>{inbox.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(n => <View key={n.id} style={{ gap: 6, marginBottom: 12 }}><Text style={{ color: palette.text, fontWeight: n.readAt ? '400' : '700' }}>{n.title}</Text><Muted>{n.body}</Muted></View>)}{inbox.data?.items.length === 0 && <Muted>{t('inboxEmpty')}</Muted>}</>}</>;
+  return <><LoadState loading={inbox.loading && !inbox.data} error={inbox.error} onRetry={inbox.reload} /><>{inbox.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(n => <View key={n.id} style={{ gap: 6, marginBottom: 12 }}><Text style={{ color: palette.text, fontWeight: n.readAt ? '400' : '700' }}>{n.title}</Text><Muted>{n.body}</Muted></View>)}{inbox.data?.items.length === 0 && <Muted>{t('inboxEmpty')}</Muted>}</></>;
+}
+function Tasks({ block }: { block: MobileBlock }) {
+  const { signOut } = useSession(), tasks = useApi('tasks', {}, signOut);
+  return <><LoadState loading={tasks.loading && !tasks.data} error={tasks.error} onRetry={tasks.reload} />{tasks.data?.items.slice(0, block.detail === 'compact' ? 4 : 20).map(item => <View key={item.id} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject || '—'} /></View>)}{tasks.data?.total === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{tasks.data && tasks.data.total > 0 && <Muted>{t('tasksOnWeb')}</Muted>}</>;
 }
 function Requests({ block }: { block: MobileBlock }) {
   const { signOut, employmentId } = useSession(), requests = useApi('leave-requests', { employmentId: employmentId ?? undefined }, signOut);
@@ -56,7 +60,8 @@ function Widget({ block, refreshToken, design }: { block: MobileBlock; refreshTo
     case 'clock': return <ClockPanel refreshToken={refreshToken} />;
     case 'leave': return <Balances key={refreshToken} block={block} />;
     case 'team': return <TeamPanel refreshToken={refreshToken} />;
-    case 'tasks': case 'inbox': return <Messages key={refreshToken} block={block} />;
+    case 'tasks': return <Tasks key={refreshToken} block={block} />;
+    case 'inbox': return <Messages key={refreshToken} block={block} />;
     case 'requests': return <Requests key={refreshToken} block={block} />;
     case 'pay': return <Pay key={refreshToken} block={block} />;
     case 'profile': return <Profile key={refreshToken} />;

@@ -16,7 +16,7 @@ export type MobileComposition = {
 const keys = (v: unknown, expected: string[]): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).sort().join() === [...expected].sort().join();
 const choice = (v: unknown, values: readonly string[]) => typeof v === 'string' && values.includes(v);
 const bounded = (v: unknown, min: number, max: number) => Number.isInteger(v) && Number(v) >= min && Number(v) <= max;
-const text = (v: unknown, max: number) => typeof v === 'string' && v.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v);
+const text = (v: unknown, max: number, multiline = false) => typeof v === 'string' && v.length <= max && !(multiline ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/ : /[\u0000-\u001f\u007f]/).test(v);
 const id = (v: unknown) => typeof v === 'string' && /^[a-z][a-z0-9-]{0,47}$/.test(v);
 export function colorContrast(a: string, b: string): number {
   const luminance = (hex: string) => {
@@ -50,7 +50,7 @@ export function parseMobileComposition(value: unknown): MobileComposition {
   for (const page of pages as MobilePage[]) {
     const ids = new Set<string>(), bound = new Set<string>();
     for (const block of page.blocks) {
-      if (!keys(block, ['id', 'kind', 'title', 'body', 'target', 'surface', 'align', 'width', 'detail', 'size']) || !id(block.id) || ids.has(block.id) || !choice(block.kind, MOBILE_BLOCK_KINDS) || !text(block.title, 64) || !text(block.body, 600) || !destinations.has(block.target) || !choice(block.surface, ['inherit', 'plain', 'card', 'band']) || !choice(block.align, ['start', 'center']) || !choice(block.width, ['full', 'half']) || !choice(block.detail, ['compact', 'expanded']) || !bounded(block.size, 8, 64)) return fail();
+      if (!keys(block, ['id', 'kind', 'title', 'body', 'target', 'surface', 'align', 'width', 'detail', 'size']) || !id(block.id) || ids.has(block.id) || !choice(block.kind, MOBILE_BLOCK_KINDS) || !text(block.title, 64) || !text(block.body, 600, true) || !destinations.has(block.target) || !choice(block.surface, ['inherit', 'plain', 'card', 'band']) || !choice(block.align, ['start', 'center']) || !choice(block.width, ['full', 'half']) || !choice(block.detail, ['compact', 'expanded']) || !bounded(block.size, 8, 64)) return fail();
       if (!['text', 'action', 'divider', 'space'].includes(block.kind) && bound.has(block.kind)) return fail();
       ids.add(block.id); bound.add(block.kind);
     }

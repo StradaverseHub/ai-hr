@@ -15,7 +15,7 @@ function fixture() {
   const ports: Record<string, unknown> = {
     'react': React, 'react/jsx-runtime': jsx, 'react-native': { View }, 'expo-router': { router: { push, replace: push } },
     '../../lib/mobile-composition': { MOBILE_DESTINATIONS },
-    './api': { useApi: (path: string) => { calls.push(path); return { loading: false, error: null, reload() {}, data: { cards: Array.from({ length: 6 }, (_, i) => ({ leaveTypeId: i, leaveType: `Leave ${i}`, isCurrentCycle: true, canApplyFor: i })) } }; } },
+    './api': { useApi: (path: string) => { calls.push(path); return { loading: false, error: null, reload() {}, data: path === 'tasks' ? { total: 1, items: [{ id: 'one', kind: 'leave', subject: 'Scoped colleague' }] } : { cards: Array.from({ length: 6 }, (_, i) => ({ leaveTypeId: i, leaveType: `Leave ${i}`, isCurrentCycle: true, canApplyFor: i })) } }; } },
     './clock-panel': { ClockPanel: () => <p>Attendance</p> }, './team-panel': { TeamPanel: () => <p>Team</p> },
     './design': { DesignText: Text, TenantSurface: View, useTenantDesign: () => ({ design, palette: design.composition.themes.light }) },
     './session': { useSession: () => ({ employmentId: 'current', signOut() {} }) }, './i18n': { t: (key: string) => key },
@@ -35,4 +35,10 @@ it('renders custom composition and internal navigation without loading unrelated
 it('binds a custom screen to the existing leave endpoint and keeps every leave type visible', () => {
   const f = fixture(); render(<f.ComposedPage design={f.design} id="benefits" />);
   expect(f.calls).toEqual(['leave']); expect(screen.getAllByText(/^Leave \d:/)).toHaveLength(6);
+});
+
+it('reads the actual task inbox rather than treating unread notifications as tasks', () => {
+  const f = fixture(); f.design.composition.pages[0].blocks = [newMobileBlock('tasks', 'pending')];
+  render(<f.ComposedPage design={f.design} />);
+  expect(f.calls).toEqual(['tasks']); expect(screen.getByText('task_leave: Scoped colleague')).toBeTruthy();
 });

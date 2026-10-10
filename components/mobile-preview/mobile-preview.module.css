@@ -77,7 +77,7 @@
 .compositionBlock[data-block-width=half]{grid-column:span 1}.compositionBlock[data-block-align=center]{text-align:center}
 .compositionBlock[data-block-surface=card],.preview[data-surface=outline] .compositionBlock[data-block-surface=inherit],.preview[data-surface=raised] .compositionBlock[data-block-surface=inherit]{background:var(--pressed);padding:16px;border:1px solid var(--line)}
 .preview[data-surface=raised] .compositionBlock[data-block-surface=inherit]{box-shadow:0 5px 16px #00000012;border-color:transparent}
-.compositionBlock[data-block-surface=band]{background:var(--brand-button);padding:18px;--ink:var(--brand-button-ink);--muted:var(--brand-button-ink);--mark:var(--brand-button-ink);--line:currentColor;color:var(--ink)}
+.compositionBlock[data-block-surface=band]{background:var(--brand-button);padding:18px;--ink:var(--brand-button-ink);--muted:var(--brand-button-ink);--mark:var(--brand-button-ink);--line:currentColor;--pressed:var(--brand-button);--band:var(--brand-button);--band-ink:var(--brand-button-ink);color:var(--ink)}
 .compositionBlock .workday{margin:0;padding:16px;border-radius:var(--app-radius)}
 .compositionBlock[data-block-surface=plain] .workday{padding:0;background:transparent;color:var(--ink)}
 .compositionBlock .heading{margin-bottom:0}.compositionBlock .section,.compositionBlock .leaveDoor{margin-top:0}
@@ -94,3 +94,6 @@
 .compositionBlock[data-editing=true]{outline:1px dashed transparent;outline-offset:4px}.compositionBlock[data-selected=true]{outline:2px solid #4169d8}.compositionBlock[data-editing=true]:hover{outline-color:#4169d8}
 .selectBlock{position:absolute;z-index:2;right:-5px;top:-5px;min-height:26px;min-width:26px;border:1px solid #4169d8;border-radius:5px;background:#fff;color:#2348ad;opacity:0;cursor:pointer}
 .compositionBlock:hover>.selectBlock,.compositionBlock[data-selected=true]>.selectBlock,.selectBlock:focus-visible{opacity:1}
+
+.preview[data-button=outline] .finishAction{background:transparent;border:1px solid var(--ink);color:var(--ink)}
+.preview[data-button=soft] .finishAction{background:var(--pressed);color:var(--ink);border:1px solid var(--line)}

@@ -11,6 +11,8 @@
 import { getLocales } from 'expo-localization';
 
 const en = {
+  tasksOnWeb: 'Review and decide these tasks in the web app.',
+  task_leave: 'Leave request', task_leaveCancellation: 'Leave cancellation', task_attendance: 'Attendance correction', task_profile: 'Profile change', task_claim: 'Claim', task_resignation: 'Resignation', task_managerReview: 'Manager review', task_hrReview: 'HR review',
   tabClock: "Clock",
   tabRequests: "Requests",
   clockIn: "Clock in",
@@ -158,6 +160,8 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  tasksOnWeb: 'Semak dan putuskan tugas ini dalam aplikasi web.',
+  task_leave: 'Permohonan cuti', task_leaveCancellation: 'Pembatalan cuti', task_attendance: 'Pembetulan kehadiran', task_profile: 'Perubahan profil', task_claim: 'Tuntutan', task_resignation: 'Peletakan jawatan', task_managerReview: 'Semakan pengurus', task_hrReview: 'Semakan HR',
   tabClock: "Kehadiran",
   tabRequests: "Permohonan",
   clockIn: "Daftar masuk",

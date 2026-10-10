@@ -1,6 +1,7 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { newMobileBlock, colorContrast } from '../lib/mobile-composition';
 import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, type MobileBuilderState } from '../lib/mobile-design';
 import type { MobilePreviewData } from '../components/mobile-preview/types';
 import '../app/globals.css';
@@ -109,6 +110,17 @@ describe('tenant mobile builder in a real browser', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Undo' }));
     expect(ui.container.querySelector('[data-block-kind=text]')?.getAttribute('data-block-width')).toBe('full');
     expect(changeMobileDesignAction).not.toHaveBeenCalled();
+  });
+  it('keeps a soft action readable inside an accent band in either theme', () => {
+    const d = composeMobileDesign(DEFAULT_MOBILE_DESIGN); d.composition.layout.button = 'soft';
+    d.composition.pages[0].blocks = [{ ...newMobileBlock('action', 'band-action'), surface: 'band', title: 'View my requests', target: 'requests' }];
+    const ui = mount({ ...state(), draft: d });
+    const hex = (rgb: string) => '#' + rgb.match(/\d+/g)!.slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('');
+    for (const theme of ['Light', 'Dark']) {
+      fireEvent.click(ui.getByRole('button', { name: theme }));
+      const style = getComputedStyle(within(ui.container.querySelector('[data-block-kind=action]') as HTMLElement).getByRole('button', { name: 'View my requests' }));
+      expect(colorContrast(hex(style.color), hex(style.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+    }
   });
   for (const locale of Object.keys(catalogues) as (keyof typeof catalogues)[]) it(`renders the builder at 390px in ${locale}`, () => {
     const ui = mount(state(), locale, 390);

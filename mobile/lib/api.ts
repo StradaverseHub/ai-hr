@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type {
-  MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
+  TasksResponse, MobileDesignResponse, ClockResponse,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
   LeaveResponse,
   MeResponse,
   NotificationsResponse,
@@ -22,6 +22,7 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  tasks: TasksResponse;
   clock:ClockResponse; team:TeamResponse; 'leave-options':LeaveOptionsResponse; 'leave-requests':LeaveRequestsResponse;
   design: MobileDesignResponse;
   me: MeResponse;

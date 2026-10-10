@@ -189,3 +189,7 @@ export const LeaveResult=z.discriminatedUnion('outcome',[
  z.object({outcome:z.literal('refused'),code:z.literal('leave_refused'),message:z.string().max(4000)}),
 ]);
 export type LeaveResult=z.infer<typeof LeaveResult>;
+
+/** Read-only approval inbox; decisions retain their existing web workflow. */
+export const TasksResponse = z.object({ total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().uuid(), kind: z.enum(['leave', 'leaveCancellation', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview']), subject: z.string().nullable() })) });
+export type TasksResponse = z.infer<typeof TasksResponse>;
