@@ -55,6 +55,7 @@ import {
   cancelPlannedOvertime,
   checkIn,
   checkOut,
+  CorrectedClockConflictError,
   dayTypeFor,
   decideAttendanceCorrection,
   myOvertimePlans,
@@ -617,8 +618,9 @@ describe('4 · one approved plan per date', () => {
         "the correction's figure must be on the day before anything can revert it",
       ).toBe(300);
 
-      // The re-derivation: one more clock-out of the same day.
-      await checkOut(a, { employmentId, date: PAST, time: '22:00' });
+      // An approved clock correction now owns the day (r434), so another punch is refused.
+      // Keep the original money invariant: neither the old plan nor a new punch may replace 300.
+      await expect(checkOut(a, { employmentId, date: PAST, time: '22:00' })).rejects.toBeInstanceOf(CorrectedClockConflictError);
 
       expect(
         (await attendanceRow(employmentId, PAST)).otMinutes,
