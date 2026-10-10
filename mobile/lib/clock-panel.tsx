@@ -50,12 +50,12 @@ export function ClockPanel(){
   }
   async function takePhoto(){
     let captured:ClockDraft['photo'];
-    if(flight.current||!draft)return;flight.current=true;const owner=authGeneration();
-    try{const photo=await capturePhoto();captured=photo??undefined;assertAuthGeneration(owner);if(photo){removeLocalFile(draft.photo);if(!putClock({...draft,photo},draft.requestId))removeLocalFile(photo);}}
+    if(flight.current||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
+    try{const photo=await capturePhoto();captured=photo??undefined;assertAuthGeneration(owner);if(photo){if(putClock({...draft,photo},draft.requestId))removeLocalFile(draft.photo);else removeLocalFile(photo);}else putClock(draft,draft.requestId);}
     catch(e){removeLocalFile(captured);putClock({...draft,message:errorMessage(e)},draft.requestId);}finally{flight.current=false;}
   }
   async function register(){
-    if(flight.current||!identity||!draft)return;flight.current=true;const owner=authGeneration();
+    if(flight.current||!identity||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
     try{const registered=await apiPost('clock-device',{label:`AI HR · ${Platform.OS}`},{employmentId:identity});assertAuthGeneration(owner);
       if(!putClock({...draft,deviceToken:registered.deviceToken,message:undefined},draft.requestId))return;
       await writeClockDevice(identity,registered.deviceToken,()=>assertAuthGeneration(owner));
