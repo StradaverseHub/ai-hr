@@ -84,8 +84,8 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
     </section>;
   }
 
-  function leaveBank() {
-    return <>{back('home')}<div className={styles.bankHeading}>{heading(t('live.leaveBank'), t('live.allTypes'))}{data.leave.status === 'ready' && <span>{data.leave.data.length}</span>}</div>
+  function leaveBank(navigateBack = true) {
+    return <>{navigateBack && back('home')}<div className={styles.bankHeading}>{heading(t('live.leaveBank'), t('live.allTypes'))}{data.leave.status === 'ready' && <span>{data.leave.data.length}</span>}</div>
       {state(data.leave, cards => cards.length ? <div className={styles.bank} data-layout={design.leaveLayout}>
         {cards.map(c => <button key={c.id} type="button" className={styles.balance} onClick={() => { setSelectedId(c.id); bodyRef.current?.scrollTo(0, 0); }}>
           <span className={styles.balanceName}>{c.name}<ArrowUpRight size={16} /></span>
@@ -125,7 +125,7 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
     switch (block.kind) {
       case 'welcome': return heading(block.title || (firstName ? t('live.greeting', { name: firstName }) : t('live.home')), block.body || undefined);
       case 'clock': return workday();
-      case 'leave': return block.detail === 'compact' ? data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.planLeave')}</strong></span><ArrowUpRight size={26} /></button> : leaveBank();
+      case 'leave': return block.detail === 'compact' ? data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.planLeave')}</strong></span><ArrowUpRight size={26} /></button> : leaveBank(false);
       case 'team': return teamPeek();
       case 'tasks': return state(data.tasks, tasks => tasks.length ? <>{taskRows?.slice(0, block.detail === 'compact' ? 4 : 20)}</> : empty(t('live.allClear')));
       case 'requests': return state(data.requests, r => r.items.length ? r.items.slice(0, block.detail === 'compact' ? 3 : 20).map(item => row(item.type, `${date(item.from)} – ${date(item.to)} · ${t(`leave.historyStatus.${item.status}`)}`, data.leaveHistoryHref, item.id)) : empty(t('live.noRequests')));
@@ -173,7 +173,7 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
     style={{ '--page': palette.bg, '--pressed': palette.card, '--ink': palette.text, '--muted': palette.muted, '--line': palette.border, '--mark': palette.accent, '--brand-button': palette.button, '--brand-button-ink': palette.onButton, ...(composition ? { '--app-font': composition.typography.family === 'serif' ? 'Georgia, serif' : composition.typography.family === 'mono' ? 'ui-monospace, monospace' : 'var(--font-schibsted), system-ui, sans-serif', '--body-size': `${composition.typography.bodySize}px`, '--heading-size': `${composition.typography.headingSize}px`, '--app-padding': `${composition.layout.padding}px`, '--app-gap': `${composition.layout.gap}px`, '--app-radius': `${composition.layout.radius}px`, '--band': palette.card, '--band-ink': palette.text } : {}) } as CSSProperties}
     onClickCapture={event => { if (designOnly && (event.target as HTMLElement).closest('a')) event.preventDefault(); }}>
     {!embedded && <><div className={styles.toolbar}>
-      <div><strong>Monolith Flow</strong><span>{t('live.liveData')}</span></div>
+      <div><strong>{design.brandName}</strong><span>{t('live.liveData')}</span></div>
       <div className={styles.theme} role="group" aria-label={t('live.appearance')}>
         <button type="button" aria-pressed={appearance === 'light'} aria-label={t('live.light')} onClick={() => setAppearance('light')}><Sun size={16} /></button>
         <button type="button" aria-pressed={appearance === 'dark'} aria-label={t('live.dark')} onClick={() => setAppearance('dark')}><Moon size={16} /></button>

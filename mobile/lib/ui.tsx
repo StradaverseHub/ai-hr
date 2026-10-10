@@ -44,8 +44,8 @@ export function Screen({
 }
 
 export function Title({ children }: { children: ReactNode }) {
-  const { palette } = useTenantDesign();
-  return <Text style={[styles.title, { color: palette.text }]}>{children}</Text>;
+  const { palette, design } = useTenantDesign();
+  return <Text style={[styles.title, { color: palette.text, ...(design.schemaVersion === 2 ? { fontSize: 29 } : {}) }]}>{children}</Text>;
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {

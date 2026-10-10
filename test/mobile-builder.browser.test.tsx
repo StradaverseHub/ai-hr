@@ -112,14 +112,17 @@ describe('tenant mobile builder in a real browser', () => {
     expect(changeMobileDesignAction).not.toHaveBeenCalled();
   });
   it('keeps a soft action readable inside an accent band in either theme', () => {
-    const d = composeMobileDesign(DEFAULT_MOBILE_DESIGN); d.composition.layout.button = 'soft';
-    d.composition.pages[0].blocks = [{ ...newMobileBlock('action', 'band-action'), surface: 'band', title: 'View my requests', target: 'requests' }];
+    const d = composeMobileDesign(DEFAULT_MOBILE_DESIGN); d.composition.layout.button = 'soft'; d.composition.layout.radius = 25;
+    d.composition.pages[0].blocks = [{ ...newMobileBlock('action', 'band-action'), surface: 'band', title: 'View my requests', target: 'requests' }, { ...newMobileBlock('leave', 'leave-band'), surface: 'band', detail: 'compact' }];
     const ui = mount({ ...state(), draft: d });
     const hex = (rgb: string) => '#' + rgb.match(/\d+/g)!.slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('');
     for (const theme of ['Light', 'Dark']) {
       fireEvent.click(ui.getByRole('button', { name: theme }));
       const style = getComputedStyle(within(ui.container.querySelector('[data-block-kind=action]') as HTMLElement).getByRole('button', { name: 'View my requests' }));
       expect(colorContrast(hex(style.color), hex(style.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+      const leaveStyle = getComputedStyle(within(ui.container.querySelector('[data-block-kind=leave]') as HTMLElement).getByRole('button', { name: new RegExp(en.mobilePreview.live.planLeave) }));
+      expect(leaveStyle.borderRadius).toBe('25px');
+      expect(colorContrast(hex(leaveStyle.color), hex(leaveStyle.backgroundColor))).toBeGreaterThanOrEqual(4.5);
     }
   });
   for (const locale of Object.keys(catalogues) as (keyof typeof catalogues)[]) it(`renders the builder at 390px in ${locale}`, () => {
