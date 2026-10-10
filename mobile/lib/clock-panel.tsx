@@ -11,13 +11,14 @@ import { SignInRequiredError,RequestRejectedError } from './errors';
 import { useJourneyDrafts,removeLocalFile,type ClockDraft } from './journey-drafts';
 import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
-import { t } from './i18n';
+import { t,appLocale } from './i18n';
 import { Button,Card,LoadState,Muted,Row } from './ui';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation'} as const;
-export function ClockPanel(){
+export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const {employmentId,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   useFocusEffect(useCallback(()=>{clock.reload();},[clock.reload]));
+  useEffect(()=>{if(refreshToken)clock.reload();},[refreshToken,clock.reload]);
   const {clock:draft,putClock}=useJourneyDrafts();
   const {palette,design}=useTenantDesign();
   const flight=useRef(false);
@@ -90,7 +91,7 @@ export function ClockPanel(){
           <Text style={{color:palette.accent,fontVariant:['tabular-nums']}}>{t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}</Text>
         </View>
       </View>
-      {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
+      {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
         {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:48,justifyContent:'center',borderBottomWidth:2,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.accent:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
         {draft?.geo&&(draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting')&&<Card>

@@ -127,7 +127,7 @@ Team availability uses the existing My Team membership and per-date leave projec
 names, dates, approval state and sessions, without reasons or payroll information. Pending leave is
 never counted as approved absence. No caller-provided team or employment selector widens that scope.
 
-Only user-entered drafts remain in memory across the OS camera/document activity and subsequent
+In-progress journey state (entered fields, review previews and receipt metadata) remains in memory across the OS camera/document activity and subsequent
 privacy lock. Private routes, API caches and tenant design still unmount behind the privacy gate.
 Changing employment, changing account or signing out discards drafts. Selected documents/photos use
 app-private temporary cache; cancellation/completion/scope change deletes owned files and cold launch

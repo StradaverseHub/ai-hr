@@ -414,7 +414,9 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
   it('the gate lives in requestLeave itself, ahead of every other read and write', () => {
     const at = core.indexOf('export async function requestLeave(');
     expect(at).toBeGreaterThan(-1);
-    const body = core.slice(at, core.indexOf('\nexport ', at + 10));
+    const end = core.indexOf('\nexport ', at + 10);
+    expect(end).toBeGreaterThan(at + 1000);
+    const body = core.slice(at, end);
     expect(body).toContain('throw new LeaveOnBehalfNotAllowedError();');
     // Resolved through the same function the page calls (canApplyLeaveOnBehalf wraps it), not a second
     // spelling of the rule.
@@ -422,9 +424,11 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     // ABOVE the Emergency-Leave short-circuit, which returns into a whole separate submission path — a gate
     // below it would leave EL unfenced.
     const gateAt = body.indexOf('throw new LeaveOnBehalfNotAllowedError();');
-    const elAt = body.indexOf('return requestEmergencyLeave(');
+    const elAt = body.indexOf('await requestEmergencyLeave(tx, ctx,');
     expect(elAt).toBeGreaterThan(-1);
+    expect(gateAt).toBeGreaterThan(-1);
     expect(gateAt).toBeLessThan(elAt);
+    expect(body.match(/await requestEmergencyLeave\(tx, ctx,/g)).toHaveLength(2);
   });
 
   it('the refusal reaches the employee TRANSLATED, not as a raw service string', () => {

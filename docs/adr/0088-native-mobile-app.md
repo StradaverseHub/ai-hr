@@ -434,7 +434,7 @@ rolls everything back. Accepted replays cannot create another request, even afte
 The leave request remains authoritative; the event is command replay evidence, not another balance or
 approval model. No migration or new leave status is introduced.
 
-DECISION: memory-only user drafts survive OS picker/unlock activity above the private-route gate.
+DECISION: memory-only journey drafts (entered fields, review previews and receipt metadata) survive OS picker/unlock activity above the private-route gate.
 This is necessary because both camera and document selection can background the app. API/design
 caches still unmount and the privacy curtain remains closed. Draft scope includes authentication
 generation and employment; scope changes/logout discard drafts and reject late callbacks. Temporary

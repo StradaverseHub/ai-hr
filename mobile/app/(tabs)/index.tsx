@@ -1,6 +1,6 @@
 import { ClockPanel } from '../../lib/clock-panel';
 import { TeamPanel } from '../../lib/team-panel';
-import { Fragment } from 'react';
+import { Fragment,useState } from 'react';
 import { useTenantDesign } from '../../lib/design';
 /**
  * Home — task-first (the benchmark's best-rated pattern): what needs me, then my leave, then my pay.
@@ -17,7 +17,8 @@ export default function Home() {
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   const payslips = useApi('payslips', {}, signOut);
   const inbox = useApi('notifications', {}, signOut);
-  const reloadAll = () => [me, leave, payslips, inbox].forEach((l) => l.reload());
+  const [refreshToken,setRefreshToken]=useState(0);
+  const reloadAll = () => { [me, leave, payslips, inbox].forEach((l) => l.reload()); setRefreshToken(n=>n+1); };
 
   const name = me.data?.person.name;
   const latest = payslips.data?.items[0];
@@ -28,7 +29,7 @@ export default function Home() {
       <LoadState loading={me.loading && !me.data} error={me.error} onRetry={me.reload} />
 
       {design.homeOrder.map(id => <Fragment key={id}>
-        {id === 'clock' ? <ClockPanel/> : id === 'team' ? <TeamPanel/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
+        {id === 'clock' ? <ClockPanel refreshToken={refreshToken}/> : id === 'team' ? <TeamPanel refreshToken={refreshToken}/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
           {inbox.data?.enabled && inbox.data.unread > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong /> : <Muted>{t('nothingNeedsYou')}</Muted>}
         </Card></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
           <LoadState loading={leave.loading && !leave.data} error={leave.error} onRetry={leave.reload} />
