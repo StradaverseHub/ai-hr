@@ -108,6 +108,55 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 const dayCheckInSite = alias(clockingLocation, 'day_check_in_site');
 const dayCheckOutSite = alias(clockingLocation, 'day_check_out_site');
 
+/** A clocking could not be accepted because of the state the day is in (replay, ordering, or an approved
+ *  correction). Lives here, not in attendance-clock.ts, because the shared writers below throw it too;
+ *  attendance-clock.ts re-exports both so every existing import keeps the same class identity. */
+export class ClockConflictError extends Error {}
+export class CorrectedClockConflictError extends ClockConflictError {}
+
+/**
+ * r434 — AN APPROVED CORRECTION OWNS THE DAY, FOR EVERY WRITER.
+ *
+ * decideAttendanceCorrection upserts the day's aggregate (check-in, check-out, worked, overtime) and never
+ * writes attendance_punch; checkInTx/checkOutTx rebuild the aggregate FROM the punches. So any clocking
+ * written on a corrected day recomputes it from the old punches and silently undoes the approved
+ * correction — and corrected hours are paid. Web Clocking (captureEmployeeClockTx) and the file import
+ * already refused such a day; the shared writers here did not, so the administrator's manual check-in /
+ * check-out could. The rule is now stated once and called by all of them.
+ *
+ * The condition is the one Web Clocking has always used and is deliberately NOT widened: the day must
+ * have stored punches (retained punches are evidence that must not recompute the corrected figures) AND an
+ * approved correction that proposed a check-in. A day with no punches is an aggregate-only day, which the
+ * writers already handle by anchoring on its own check-in.
+ */
+export async function assertDayNotOwnedByCorrectionTx(tx: Tx, employmentId: string, date: string): Promise<void> {
+  const [day] = await tx
+    .select({ id: attendance.id })
+    .from(attendance)
+    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
+    .limit(1);
+  if (!day) return;
+  const [punch] = await tx.select({ id: attendancePunch.id }).from(attendancePunch).where(eq(attendancePunch.attendanceId, day.id)).limit(1);
+  if (!punch) return;
+  const [correction] = await tx
+    .select({ id: attendanceCorrection.id })
+    .from(attendanceCorrection)
+    .where(
+      and(
+        eq(attendanceCorrection.employmentId, employmentId),
+        eq(attendanceCorrection.attendanceDate, date),
+        eq(attendanceCorrection.status, 'approved'),
+        isNotNull(attendanceCorrection.proposedCheckIn),
+      ),
+    )
+    .limit(1);
+  if (correction) {
+    throw new CorrectedClockConflictError(
+      'An approved clock correction owns this day; ask HR to review any further clock changes.',
+    );
+  }
+}
+
 export class AlreadyCheckedInError extends Error {
   constructor() {
     super('Already checked in today');
@@ -1862,6 +1911,8 @@ export async function checkInTx(
     // regardless of the policy (ADR-0070 amendment): deviceGateExempt:true skips the call entirely. The
     // admin Daily page's checkInAction/checkOutAction never set it, so that path stays fully policy-gated.
     if (!p.deviceGateExempt) await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
+    // r434 — an approved correction owns its day: refuse BEFORE anything is read or written.
+    await assertDayNotOwnedByCorrectionTx(tx, p.employmentId, p.date);
 
     const [existing] = await tx
       .select({ id: attendance.id, dayType: attendance.dayType })
@@ -1993,6 +2044,8 @@ export async function checkOutTx(
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
     // deviceGateExempt escape hatch).
     if (!p.deviceGateExempt) await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
+    // r434 — an approved correction owns its day: refuse BEFORE anything is read or written.
+    await assertDayNotOwnedByCorrectionTx(tx, p.employmentId, p.date);
 
     const [existingRec] = await tx
       .select()
