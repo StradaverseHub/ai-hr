@@ -193,7 +193,7 @@ describe('r256 · one confirmation, two answers', () => {
     // The question, naming the person and the run — the reporter's complaint was a message that named
     // nothing followed by a control they had to find.
     expect(await screen.findByText('Add Kim Chi to the 2026-01 payroll run?')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Continue' })).toBeEnabled();
     // Two answers, and only two.
     expect(screen.getAllByRole('button', { name: 'Cancel' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /Add Kim Chi to this run/ })).not.toBeInTheDocument();
@@ -382,8 +382,9 @@ describe.each([
     // The facts crossed as DATA and were interpolated by this locale's own sentence.
     expect(txt, `${loc}: the question does not name the employee`).toContain('Kim Chi');
     expect(txt, `${loc}: the question does not name the run`).toContain('2026-01');
-    // Two answers, both labelled in this locale.
-    expect(within(dialog).getByRole('button', { name: ind.scopeConfirmContinue })).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: ind.cancel })).toBeInTheDocument();
+    // The dialog can render before the save transition settles. Wait for its ready answer,
+    // rather than mistaking the transient Saving… label for a missing translation.
+    expect(await within(dialog).findByRole('button', { name: ind.scopeConfirmContinue })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: ind.cancel })).toBeEnabled();
   });
 });
