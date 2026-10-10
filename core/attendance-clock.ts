@@ -6,13 +6,14 @@ import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrecti
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment } from './read';
-import { appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
+import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { decodeClockPhoto } from '../lib/attendance-photo';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export class ClockConflictError extends Error {}
-export class CorrectedClockConflictError extends ClockConflictError {}
+// r434 — both classes now live in core/attendance.ts (the shared writers throw them too); re-exported so
+// every existing import and `instanceof` keeps the same identity.
+export { ClockConflictError, CorrectedClockConflictError };
 export class ClockLocationError extends Error {}
 // r430 — thrown server-side when the employee's attendance_photo_setting is 'required' and the request
 // carried no photo. Never trust the client's own idea of the setting (components/attendance-clock-button.tsx
@@ -89,13 +90,11 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent) {
     // exists yet (an out-first day), and the aggregate stores and flags it rather than refusing it.
     if (lastCapture && now.getTime() <= lastCapture.time.getTime()) throw new ClockConflictError('Clocking must follow the previous accepted event');
     const priorPunches = day ? await tx.select({time:attendancePunch.punchAt,captureId:attendancePunch.clockCaptureId}).from(attendancePunch).where(eq(attendancePunch.attendanceId,day.id)) : [];
-    // Approved clock corrections own the aggregate. Retained punches remain evidence and must
-    // not recompute that corrected day. Locking the day sequences concurrent correction writers.
-    if (priorPunches.length) {
-      const [correction] = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection)
-        .where(and(eq(attendanceCorrection.employmentId, me.employmentId), eq(attendanceCorrection.attendanceDate, date), eq(attendanceCorrection.status, 'approved'), isNotNull(attendanceCorrection.proposedCheckIn))).limit(1);
-      if (correction) throw new CorrectedClockConflictError('An approved clock correction owns this day; ask HR to review any further clock changes.');
-    }
+    // Approved clock corrections own the aggregate. Retained punches remain evidence and must not recompute
+    // that corrected day. The rule is shared with checkInTx/checkOutTx (r434); it stays HERE too so a corrected
+    // day is refused before the ordering checks below, with the same typed error. Locking the day above
+    // sequences concurrent correction writers.
+    await assertDayNotOwnedByCorrectionTx(tx, me.employmentId, date);
     const minute = (clock:string) => Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
     const schedule = await clockScheduleForTx(tx,me.employmentId,date);
     if (!schedule.crossesMidnight && priorPunches.some(punch=>minute(punch.time)>minute(time))) throw new ClockConflictError('Clocking must follow the previous attendance punch');
