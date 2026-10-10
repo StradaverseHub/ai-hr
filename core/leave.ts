@@ -3096,6 +3096,8 @@ const leaveTypeRequestColumns = {
   // counting below so the deducted `days` honours which day types this type counts.
   dayTypeInclusion: leaveType.dayTypeInclusion,
   requiresDocument: leaveType.requiresDocument,
+  allowedMimeTypes: leaveType.allowedMimeTypes,
+  maxDocBytes: leaveType.maxDocBytes,
   mandatoryAfterDays: leaveType.mandatoryAfterDays,
   employeeRemarkRequired: leaveType.employeeRemarkRequired,
   durations: leaveType.durations,
