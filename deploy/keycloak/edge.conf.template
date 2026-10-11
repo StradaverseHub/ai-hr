@@ -12,6 +12,8 @@ server {
     location = /identity/realms/master { return 404; }
     location /identity/admin/ { return 404; }
     location /identity/realms/master/ { return 404; }
+    location = /identity/realms/ai-hr-email-test { return 404; }
+    location /identity/realms/ai-hr-email-test/ { return 404; }
     location /identity/health { return 404; }
     location /identity/metrics { return 404; }
     location /identity/ {

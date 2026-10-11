@@ -2,6 +2,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { INITIAL_SYSTEM_ADMIN_EMAIL } from './realm';
+import { IDENTITY_EMAIL_TEST_REALM } from '../../lib/identity/bootstrap';
 import { provisionIdentityRealm } from './provision';
 
 async function main() {
@@ -36,6 +37,14 @@ async function main() {
     headers: { authorization: `Bearer ${serviceToken}` }, redirect: 'error', signal: AbortSignal.timeout(10000),
   });
   if (!serviceProbe.ok) throw new Error('Invitation service permissions failed verification.');
+  for(const name of [realm.realm,IDENTITY_EMAIL_TEST_REALM]){
+    const response=await fetch(`${base}/realms/${name}/protocol/openid-connect/token`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
+      body:new URLSearchParams({grant_type:'client_credentials',client_id:'aihr-email-settings',client_secret:emailSettingsSecret})});
+    if(!response.ok)throw new Error('Email service authentication failed.');
+    const credential=(await response.json()).access_token;
+    const probe=await fetch(`${base}/admin/realms/${name}`,{headers:{authorization:`Bearer ${credential}`},redirect:'error',signal:AbortSignal.timeout(10000)});
+    if(!probe.ok)throw new Error('Email service permissions failed verification.');
+  }
   writeFileSync('/etc/aihr-keycloak/app.env',[
     'AUTH_PROVIDER=keycloak',`AUTH_PUBLIC_ORIGIN=${origin}`,`KEYCLOAK_ISSUER=${origin}/identity/realms/${realm.realm}`,
     'KEYCLOAK_WEB_CLIENT_ID=aihr-web',`KEYCLOAK_WEB_CLIENT_SECRET=${webSecret}`,'KEYCLOAK_MOBILE_CLIENT_ID=aihr-mobile',

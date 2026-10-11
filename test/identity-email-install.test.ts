@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { IDENTITY_EMAIL_TEST_REALM } from '../lib/identity/bootstrap';
 
 describe('installed identity service execution boundary',()=>{
  it('pairs the service with a root-owned private runtime copy rather than the web-owned runtime',()=>{
@@ -18,5 +19,13 @@ describe('installed identity service execution boundary',()=>{
   const prune=executableLines.filter(line=>line.includes('scripts/keycloak-session-prune.ts'));
   expect(prune).toHaveLength(1);
   expect(prune[0]).toBe('runuser -u ubuntu -- /opt/node20/bin/node --env-file=/opt/ai-hr/.env.production --import tsx scripts/keycloak-session-prune.ts');
+ });
+ it('denies all public access to the SMTP test realm and resolves both aliases to one secret file',()=>{
+  const edge=readFileSync('deploy/keycloak/edge.conf.template','utf8');
+  expect(edge).toContain(`location = /identity/realms/${IDENTITY_EMAIL_TEST_REALM} { return 404; }`);
+  expect(edge).toContain(`location /identity/realms/${IDENTITY_EMAIL_TEST_REALM}/ { return 404; }`);
+  const agent=readFileSync('deploy/identity-email/agent.ts','utf8');
+  expect(agent).toContain("admin('/testSMTPConnection','POST',smtp,true)");
+  expect(agent).toContain("link(path,'/var/lib/aihr-identity-email/vault/'+IDENTITY_EMAIL_TEST_REALM+'_'+key)");
  });
 });

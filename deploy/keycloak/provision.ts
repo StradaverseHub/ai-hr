@@ -1,4 +1,5 @@
 import { INITIAL_SYSTEM_ADMIN_EMAIL, realmDefinition } from './realm';
+import { IDENTITY_EMAIL_TEST_REALM } from '../../lib/identity/bootstrap';
 
 export type IdentityAdmin = (path: string, method?: string, body?: unknown) => Promise<unknown>;
 
@@ -36,8 +37,6 @@ export async function provisionIdentityRealm(admin: IdentityAdmin, origin: strin
   if (!emailUser?.id) throw new Error('Email settings service account is missing.');
   await admin(`${prefix}/clients/${emailClient.id}/scope-mappings/clients/${management.id}`, 'POST', [emailRole]);
   await admin(`${prefix}/users/${emailUser.id}/role-mappings/clients/${management.id}`, 'POST', [emailRole]);
-  // Keycloak's SMTP test sends to the authenticated service user's fixed operator-controlled address.
-  await admin(`${prefix}/users/${emailUser.id}`, 'PUT', {email:INITIAL_SYSTEM_ADMIN_EMAIL,emailVerified:true});
   const ownerRole = managedRoles.find(r => r.name === 'realm-admin');
   if (!ownerRole) throw new Error('Required owner permissions are missing.');
   await admin(`${prefix}/users`, 'POST', {
@@ -48,5 +47,22 @@ export async function provisionIdentityRealm(admin: IdentityAdmin, origin: strin
   const owners = await admin(`${prefix}/users?${new URLSearchParams({ username: INITIAL_SYSTEM_ADMIN_EMAIL, exact: 'true' })}`);
   if (!Array.isArray(owners) || owners.length !== 1 || typeof owners[0].id !== 'string') throw new Error('Bootstrap owner is ambiguous.');
   await admin(`${prefix}/users/${owners[0].id}/role-mappings/clients/${management.id}`, 'POST', [ownerRole]);
+  // Service accounts participate in realm email uniqueness. Test in a private realm so the
+  // fixed recipient can equal the real owner's address without creating a duplicate identity.
+  const testRealm = realmDefinition(origin, IDENTITY_EMAIL_TEST_REALM);
+  await admin('/realms', 'POST', {...testRealm,displayName:'AI HR SMTP checks',loginWithEmailAllowed:false,
+    clients:[clients.find(c=>c.clientId==='aihr-email-settings')!]});
+  const testPrefix=`/realms/${IDENTITY_EMAIL_TEST_REALM}`;
+  const testClients=await admin(`${testPrefix}/clients`) as Array<{id:string;clientId:string}>;
+  const testManagement=testClients.find(c=>c.clientId==='realm-management');
+  const testClient=testClients.find(c=>c.clientId==='aihr-email-settings');
+  if(!testManagement||!testClient)throw new Error('SMTP test clients are missing.');
+  const testUser=await admin(`${testPrefix}/clients/${testClient.id}/service-account-user`) as {id:string};
+  const testRoles=await admin(`${testPrefix}/clients/${testManagement.id}/roles`) as Array<{id:string;name:string}>;
+  const testRole=testRoles.find(r=>r.name==='manage-realm');
+  if(!testUser?.id||!testRole)throw new Error('SMTP test permissions are missing.');
+  await admin(`${testPrefix}/clients/${testClient.id}/scope-mappings/clients/${testManagement.id}`,'POST',[testRole]);
+  await admin(`${testPrefix}/users/${testUser.id}/role-mappings/clients/${testManagement.id}`,'POST',[testRole]);
+  await admin(`${testPrefix}/users/${testUser.id}`,'PUT',{email:INITIAL_SYSTEM_ADMIN_EMAIL,emailVerified:true});
   return { realm: realm.realm, ownerSubject: owners[0].id as string };
 }
