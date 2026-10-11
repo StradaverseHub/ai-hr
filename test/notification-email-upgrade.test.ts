@@ -14,6 +14,6 @@ describe('root workflow-email upgrade boundaries',()=>{
   expect(body).toContain('identity_email.delivery_target');expect(body).not.toMatch(/GRANT.*(?:SELECT|INSERT|UPDATE|DELETE)|SCHEMA app/);
  });
  it('uses TLS with certificate validation and disables arbitrary message attachments or URL loading',()=>{
-  const src=readFileSync('deploy/identity-email/agent.ts','utf8');expect(src).toContain('secure:true');expect(src).toContain('rejectUnauthorized:true');expect(src).toContain("minVersion:'TLSv1.2'");expect(src).toContain('disableFileAccess:true,disableUrlAccess:true');
+  const src=readFileSync('deploy/identity-email/smtp.ts','utf8');expect(src).toContain('secure:true');expect(src).toContain('rejectUnauthorized:true');expect(src).toContain("minVersion:'TLSv1.2'");expect(src).toContain('disableFileAccess:true,disableUrlAccess:true');
  });
 });

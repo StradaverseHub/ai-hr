@@ -9,7 +9,7 @@ describe('r292 — transport and product copy describe the same conditional deli
  it('keeps SMTP imports in the isolated identity service, never a web action or kernel dispatcher',()=>{
   expect(Object.keys(JSON.parse(read('package.json')).dependencies)).toContain('nodemailer');
   const importers=sources.filter(f=>/from\s+['"]nodemailer(?:['"]|\/)/.test(read(f)));
-  expect(importers).toEqual(['deploy/identity-email/agent.ts']);
+  expect(importers).toEqual(['deploy/identity-email/smtp.ts']);
   expect(read('core/notifications.ts')).toContain('app.notification_email_enqueue(');
   expect(read('core/notifications.ts')).not.toMatch(/sendMail\(/);
  });

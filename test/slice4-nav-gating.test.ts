@@ -70,6 +70,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
       'attendance',
       'claims',
       'lifecycle',
+      'notifications',
       'payroll',
       'performance',
       'rewards',

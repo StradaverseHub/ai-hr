@@ -9437,7 +9437,7 @@
         "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này.",
         "myTeam": "Quản lý xem nhân viên hiện đang báo cáo trực tiếp hoặc gián tiếp. Quản trị HR chọn phòng ban trong các công ty được cấp quyền.",
         "identityEmail": "Cần đăng ký riêng làm quản trị viên danh tính hệ thống; vai trò nhân sự không tự cấp quyền.",
-        "workflowEmail": "Danh mục tổ chức cho phép"
+        "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -16803,6 +16803,7 @@
       "review": "Đánh giá việc làm",
       "rewards": "Khen thưởng",
       "toil": "Nghỉ bù"
-    }
+    },
+    "groupAdminHelp": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức."
   }
 }

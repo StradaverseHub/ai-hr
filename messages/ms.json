@@ -9437,7 +9437,7 @@
         "childReliefReview": "Menyenaraikan hanya pekerja semasa dalam syarikat yang anda uruskan, jadi jumlah ringgit ialah jumlah bagi apa yang boleh anda lihat. Baca sahaja — tiada tetapan cukai boleh diubah dari skrin ini.",
         "myTeam": "Pengurus melihat pekerja seliaan langsung atau tidak langsung semasa. Pentadbir HR boleh memilih jabatan dalam syarikat yang dibenarkan.",
         "identityEmail": "Memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan; peranan HR sahaja tidak memberi akses.",
-        "workflowEmail": "Kategori yang dibenarkan organisasi"
+        "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi."
       },
       "status": {
         "active": "Aktif",
@@ -16803,6 +16803,7 @@
       "review": "Semakan pekerjaan",
       "rewards": "Ganjaran",
       "toil": "Cuti gantian"
-    }
+    },
+    "groupAdminHelp": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi."
   }
 }

@@ -2,9 +2,8 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename, link } from 'node:fs/promises';
 import postgres from 'postgres';
-import nodemailer from 'nodemailer';
+import { sendWorkflowSmtp } from './smtp';
 import { activeWorkflowRelay, createNotificationEmailService, type WorkflowMailTarget } from './notifications';
-import { workflowEmailMessage } from './notification-message';
 import { createEmailService, type EmailState } from './service';
 import { EmailSettingsError } from '../../lib/identity/email-model';
 import { IDENTITY_EMAIL_TEST_REALM } from '../../lib/identity/bootstrap';
@@ -73,14 +72,7 @@ const notifications=createNotificationEmailService({
   const c=relay.config;
   if(c.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable');
   const password=c.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;
-  const transport=nodemailer.createTransport({host:c.host,port:c.port,secure:true,
-   auth:c.auth?{user:c.user,pass:password!}:undefined,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},
-   connectionTimeout:10_000,greetingTimeout:8_000,socketTimeout:15_000,disableFileAccess:true,disableUrlAccess:true});
-  try{
-   const result=await transport.sendMail({from:{name:c.fromName,address:c.from},to:target.email,replyTo:c.replyTo||undefined,
-    envelope:{from:c.from,to:[target.email]},messageId:mail.messageId,...workflowEmailMessage(mail),disableFileAccess:true,disableUrlAccess:true});
-   if(result.accepted.length!==1)throw new Error('Relay acceptance not confirmed');
-  }finally{transport.close();}
+  await sendWorkflowSmtp(c,password,target,mail);
  },
 });
 let privateQueue:Promise<unknown>=Promise.resolve();

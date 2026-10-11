@@ -9437,7 +9437,7 @@
         "childReliefReview": "Lists only current employees in companies you administer, so the ringgit totals are the totals of what you can see. Read-only — no tax setting can be changed from this screen.",
         "myTeam": "Managers see their current direct or indirect reports. HR administrators can choose departments within their authorized companies.",
         "identityEmail": "Requires separate installation identity-administrator enrollment; HR roles alone do not grant access.",
-        "workflowEmail": "Tenant-wide categories require a group administrator."
+        "workflowEmail": "A group administrator is required to change categories for the whole organisation."
       },
       "status": {
         "active": "Active",
@@ -16803,6 +16803,7 @@
       "review": "Employment reviews",
       "rewards": "Rewards",
       "toil": "Time off in lieu"
-    }
+    },
+    "groupAdminHelp": "A group administrator is required to change categories for the whole organisation."
   }
 }

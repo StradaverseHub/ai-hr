@@ -21,7 +21,7 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
         <fieldset disabled={!mayWrite} className="grid gap-3 sm:grid-cols-2">
           {notificationEmailCategories.map(category=><label key={category} className="flex items-center gap-2 text-sm"><input type="checkbox" name="category" value={category} defaultChecked={enabled.has(category)}/>{t(`categories.${category}`)}</label>)}
         </fieldset>
-        {mayWrite&&<button type="submit" className={btnPrimary}>{t('savePolicy')}</button>}
+        {mayWrite?<button type="submit" className={btnPrimary}>{t('savePolicy')}</button>:<p className="text-sm text-muted-foreground">{t('groupAdminHelp')}</p>}
       </form>
     </Card>
     <Card className="p-5"><SectionHeader title={t('deliveries')}/><p className="mb-4 text-sm text-muted-foreground">{t('deliveriesHelp')}</p>
