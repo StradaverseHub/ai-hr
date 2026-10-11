@@ -15,7 +15,9 @@ export const emailConfigSchema = z.object({
   if (c.auth && !c.user) ctx.addIssue({code:'custom',path:['user'],message:'Username required.'});
 });
 export type EmailConfig = z.infer<typeof emailConfigSchema>;
-export const identityEmailActorSchema = z.object({userId:z.uuid(),tenantId:z.uuid(),issuer:z.string().url().max(500),subject:z.string().min(1).max(500)}).strict();
+// PostgreSQL accepts canonical UUIDs without an RFC version/variant restriction (including existing seed IDs).
+const internalId = z.string().regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
+export const identityEmailActorSchema = z.object({userId:internalId,tenantId:internalId,issuer:z.string().url().max(500),subject:z.string().min(1).max(500)}).strict();
 export type IdentityEmailActor = z.infer<typeof identityEmailActorSchema>;
 export const emailFailureCodes = ['unavailable','forbidden','invalid','conflict','needsTest','needsReceipt','authenticationFailed','connectionFailed','tlsFailed','rejected','uncertain','appliedAuditFailed'] as const;
 export type EmailFailureCode = typeof emailFailureCodes[number];

@@ -1,7 +1,7 @@
 import { describe,expect,it,vi } from 'vitest';
 import { createEmailService, type EmailState, type EmailDependencies } from '../deploy/identity-email/service';
 import { emailConfigSchema, type IdentityEmailActor, type EmailConfig } from '../lib/identity/email-model';
-const actor:IdentityEmailActor={issuer:'https://hr.test/identity/realms/ai-hr',subject:'owner',userId:'22222222-2222-4222-8222-222222222222',tenantId:'11111111-1111-4111-8111-111111111111'};
+const actor:IdentityEmailActor={issuer:'https://hr.test/identity/realms/ai-hr',subject:'owner',userId:'22222222-2222-2222-2222-222222222222',tenantId:'11111111-1111-1111-1111-111111111111'};
 const config:EmailConfig={host:'smtp.example.test',port:465,security:'tls',from:'login@example.test',fromName:'HR',replyTo:'',auth:true,user:'smtp-user'};
 function fixture(){
  let state:EmailState={drafts:{},active:null};let realm:{smtpServer?:Record<string,string>;resetPasswordAllowed?:boolean}={resetPasswordAllowed:false};
