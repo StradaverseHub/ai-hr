@@ -16632,6 +16632,13 @@
     "comparisonCounts": "{added} added · {removed} removed · {unchanged} unchanged statements. Review and edit the excerpts below.",
     "saving": "Đang lưu…",
     "budgetOverview": "Budget overview",
-    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown."
+    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown.",
+    "adminTitle": "Cấu hình đãi ngộ",
+    "adminDescription": "Thiết lập chu kỳ đánh giá, chính sách và quyền truy cập của người đánh giá cho công ty.",
+    "openReviews": "Mở đánh giá",
+    "configure": "Cấu hình",
+    "adminEmpty": "Chưa có chu kỳ đánh giá nào được cấu hình trong phạm vi công ty của bạn.",
+    "configurationPermission": "Chỉ người đánh giá Đãi ngộ Tập đoàn được chỉ định mới có thể sửa chính sách năm khi đánh giá ở trạng thái nháp.",
+    "inheritedPolicy": "Đánh giá ngoài chu kỳ kế thừa chính sách từ đánh giá năm."
   }
 }

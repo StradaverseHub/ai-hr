@@ -1,15 +1,16 @@
 import { RewardSubmit } from '../submit-button';
 import { getTranslations } from 'next-intl/server';
-import { Button, Field, inputCls } from '@/components/ui';
+import { Field, inputCls } from '@/components/ui';
 import { talents, type RewardPolicy } from '@/packs/rewards/model';
 import { policyAction } from '../actions';
 
 const rows = (m: Record<string, number[]>, scale: number) => Object.entries(m).map(([key, values]) => [key, ...values.map(v => v / scale)].join(', ')).join('\n');
-export async function PolicyForm({ unitId, revision, policy: p }: { unitId: string; revision: number; policy: RewardPolicy }) {
+export async function PolicyForm({ unitId, revision, policy: p, readOnly = false }: { unitId: string; revision: number; policy: RewardPolicy; readOnly?: boolean }) {
   const t = await getTranslations('rewards');
   const amount = (name: string, label: string, value: number | null, scale = 100) => <Field label={label}><input name={name} type="number" min="0" step="0.01" defaultValue={value == null ? '' : value / scale} className={inputCls} /></Field>;
   return <form action={policyAction} className="space-y-6">
     <input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={revision} />
+    <fieldset disabled={readOnly} className="space-y-6">
     <p className="max-w-3xl text-sm text-muted-foreground">{t('configurationHelp')}</p>
     <fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('eligibility')}</legend><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {(['effectiveFrom', 'joinedBefore', 'confirmedBy', 'blockedFrom', 'blockedTo'] as const).map(key => <Field key={key} label={t(key)}><input type="date" name={key} defaultValue={p[key]} required className={inputCls} /></Field>)}
@@ -30,6 +31,7 @@ export async function PolicyForm({ unitId, revision, policy: p }: { unitId: stri
     </fieldset>
     <fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('lumpSum')}</legend><div className="grid gap-4 sm:grid-cols-3">{amount('lumpStep', t('rounding'), p.lumpStepCents)}{amount('lumpShare', t('balanceShare'), p.lumpShareBp)}{amount('lumpCap', t('optionalCap'), p.lumpCapCents)}</div><p className="text-sm text-muted-foreground">{t('lumpPolicyHelp')}</p></fieldset>
     <Field label={t('exemptionReason')}><textarea name="exemptReason" rows={3} maxLength={2000} defaultValue={p.exemptReason} className={`${inputCls} h-auto py-2`} /></Field>
-    <RewardSubmit type="submit">{t('savePolicy')}</RewardSubmit>
+    {!readOnly && <RewardSubmit type="submit">{t('savePolicy')}</RewardSubmit>}
+    </fieldset>
   </form>;
 }

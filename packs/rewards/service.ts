@@ -110,6 +110,25 @@ export async function rewardSetupChoices(ctx: SessionContext, companyIds: string
   });
 }
 
+/** Configuration carries policy and participants, never the employee salary roster. */
+export async function getRewardConfiguration(ctx: SessionContext, unitId: string) {
+  idSchema.parse(unitId);
+  return withRewardsTenant(ctx, async tx => {
+    const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
+    if (!unit) throw new RewardError('Reward unit not found or access has been removed.');
+    const roles = await rolesFor(tx, unitId);
+    const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
+    if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
+    const [cycle] = await tx.select({ name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
+    const [bu] = await tx.select({ name: businessUnit.name }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    const members = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
+    return { unit, cycle, name: bu?.name ?? 'Business unit', members,
+      canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
+      canManageMembers: !!admin?.ok && unit.status === 'draft',
+    };
+  });
+}
+
 async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
   await requireAdmin(tx, unit.companyId);
   const at = unit.snapshotDate;

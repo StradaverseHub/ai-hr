@@ -16632,6 +16632,13 @@
     "comparisonCounts": "{added} added · {removed} removed · {unchanged} unchanged statements. Review and edit the excerpts below.",
     "saving": "Menyimpan…",
     "budgetOverview": "Budget overview",
-    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown."
+    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown.",
+    "adminTitle": "Konfigurasi Ganjaran",
+    "adminDescription": "Sediakan kitaran semakan, dasar dan akses penyemak untuk syarikat anda.",
+    "openReviews": "Buka semakan",
+    "configure": "Konfigurasi",
+    "adminEmpty": "Tiada kitaran semakan dikonfigurasi untuk skop syarikat anda.",
+    "configurationPermission": "Hanya penyemak Ganjaran Kumpulan yang ditugaskan boleh mengedit dasar tahunan semasa semakan dalam draf.",
+    "inheritedPolicy": "Semakan luar kitaran mewarisi dasar daripada semakan tahunan."
   }
 }

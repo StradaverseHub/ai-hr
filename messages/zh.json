@@ -16632,6 +16632,13 @@
     "comparisonCounts": "{added} added · {removed} removed · {unchanged} unchanged statements. Review and edit the excerpts below.",
     "saving": "正在保存…",
     "budgetOverview": "Budget overview",
-    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown."
+    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown.",
+    "adminTitle": "奖励配置",
+    "adminDescription": "为您的公司设置评审周期、政策和评审人员权限。",
+    "openReviews": "打开评审",
+    "configure": "配置",
+    "adminEmpty": "您的公司范围内尚未配置评审周期。",
+    "configurationPermission": "只有获指派的集团奖励评审人员可在年度评审处于草稿状态时编辑政策。",
+    "inheritedPolicy": "非周期评审沿用年度评审的政策。"
   }
 }

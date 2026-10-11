@@ -18,6 +18,14 @@ mapping between a numeric rating and SSTAR/STAR/SCORE or UA/BE/ME/AE/OU. Group R
 DECISION: expose an optional tenant module through the existing catalogue, navigation and module gate.
 Tenant activation is separate from releasing its code. Do not enable every customer's module implicitly.
 
+DECISION (administration follow-up): Administration → Rewards owns cycle/unit setup, review policy
+and participant assignment. Manage → Rewards owns employee review, budgets and approvals. Policy
+remains per review; relocating its screen does not introduce global defaults or change an approved
+review. Company administrators may manage draft participants without a review role. Assigned Group
+Rewards users retain their existing draft-policy editing access through the configuration detail
+route, including when they are not company administrators. Configuration reads expose policy and
+participants only, never the employee salary roster. Locked policies are visible read-only.
+
 ## Calculation and policy
 
 Money is integer cents, rates integer basis points, with BigInt multiplication/division intermediates.

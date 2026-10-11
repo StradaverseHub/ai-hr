@@ -5,7 +5,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { getRewardConfiguration, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotifications } from '../core/notifications';
@@ -50,6 +50,39 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const v = await view(); expect(v.rows[0].source.employmentId).toBe(employmentId); expect(v.rows[0].newBasicCents).toBe(522500);
     await saveRewardEntry(admin, unitId, v.unit.revision, v.rows[0].id, v.rows[0].recommendation);
     await expect(saveRewardEntry(admin, unitId, v.unit.revision, v.rows[0].id, v.rows[0].recommendation)).rejects.toThrow(/another session/);
+  });
+  it('lets a fresh company administrator configure participants without disclosing a salary roster or granting policy ownership', async () => {
+    const [adminPerson] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Configuration administrator', primaryEmail: 'admin@rewards.test' }).returning();
+    const userId = await createAppUser(b.tenantId, adminPerson.id, 'hr_admin');
+    const otherAdmin = { ...admin, userId, personId: adminPerson.id, roles: ['hr_admin'] as SessionContext['roles'], grants: undefined };
+    await expect(getRewardUnit(otherAdmin, unitId)).rejects.toThrow(/assign your/);
+    const config = await getRewardConfiguration(otherAdmin, unitId);
+    expect(config.canManageMembers).toBe(true);
+    expect(config.canConfigure).toBe(false);
+    expect(config).not.toHaveProperty('rows');
+    expect(JSON.stringify(config)).not.toContain('Reward Employee');
+    expect(JSON.stringify(config)).not.toContain(employmentId);
+    await expect(saveRewardPolicy(otherAdmin, unitId, config.unit.revision, config.unit.policy)).rejects.toThrow();
+    await setRewardMember(otherAdmin, unitId, config.unit.revision, actors.bu!.userId!, 'pbp');
+    const fresh = await getRewardConfiguration(otherAdmin, unitId);
+    expect(fresh.members.some(m => m.userId === actors.bu!.userId && m.role === 'pbp')).toBe(true);
+    await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, userId));
+    await expect(getRewardConfiguration(otherAdmin, unitId)).rejects.toThrow();
+  });
+  it('preserves delegated Group Rewards policy access and refuses other reviewers or a disabled module', async () => {
+    await expect(getRewardConfiguration(actors.pbp!, unitId)).rejects.toThrow(/configuration requires/);
+    await setRewardMember(admin, unitId, (await view()).unit.revision, actors.pbp!.userId!, 'gr');
+    const config = await getRewardConfiguration(actors.pbp!, unitId);
+    expect(config.canConfigure).toBe(true); expect(config.canManageMembers).toBe(false);
+    await saveRewardPolicy(actors.pbp!, unitId, config.unit.revision, { ...config.unit.policy, lumpShareBp: 5000 });
+    expect((await getRewardConfiguration(actors.pbp!, unitId)).unit.policy.lumpShareBp).toBe(5000);
+    await approve();
+    const locked = await getRewardConfiguration(actors.pbp!, unitId);
+    expect(locked.canConfigure).toBe(false); expect(locked.canManageMembers).toBe(false);
+    await expect(saveRewardPolicy(actors.pbp!, unitId, locked.unit.revision, config.unit.policy)).rejects.toThrow(/Return/);
+    await setModule(b.tenantId, 'rewards', 'disabled');
+    const disabled = await entitledCtx(b);
+    await expect(getRewardConfiguration(disabled, unitId)).rejects.toThrow();
   });
   it('enforces tenant, live membership, module and read-only boundaries', async () => {
     const v = await view();

@@ -391,7 +391,7 @@ const GROUPS: Group[] = [
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
-      ...modulePackById('rewards')!.navLinks!,
+      ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'manage'),
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
       // moved into admin-gated Administration, because the group gate would hide them from every
@@ -475,6 +475,7 @@ const GROUPS: Group[] = [
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
       PAYROLL_NODE,
+      ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'admin'),
       // 6e122302 — Notice Board. A flat row rather than a node: it is one screen (its detail/new pages are
       // routes on the same screen), and requireAdmin on every page is the enforcement — this row and the
       // group's adminOnly flag are the courtesy. Deliberately NOT in MODULE_OF_HREF: the notice board is

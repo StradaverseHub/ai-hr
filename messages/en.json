@@ -16430,7 +16430,7 @@
     "sections": "Reward review sections",
     "review": "Team review",
     "budget": "Budget",
-    "approvals": "Approvals and access",
+    "approvals": "Approvals",
     "configuration": "Configuration",
     "data": "Data centre",
     "rules": "Rules",
@@ -16632,6 +16632,13 @@
     "comparisonCounts": "{added} added · {removed} removed · {unchanged} unchanged statements. Review and edit the excerpts below.",
     "saving": "Saving…",
     "budgetOverview": "Budget overview",
-    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown."
+    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown.",
+    "adminTitle": "Rewards configuration",
+    "adminDescription": "Set up review cycles, policies and reviewer access for your companies.",
+    "openReviews": "Open reviews",
+    "configure": "Configure",
+    "adminEmpty": "No review cycles have been configured for your company scope.",
+    "configurationPermission": "Only the assigned Group Rewards reviewers may edit an annual policy while the review is in draft.",
+    "inheritedPolicy": "Off-cycle reviews inherit their policy from the annual review."
   }
 }

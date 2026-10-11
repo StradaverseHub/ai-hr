@@ -100,6 +100,8 @@ export interface ScreenEntry {
  */
 export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
+  { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards'] },
+  { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },
   {

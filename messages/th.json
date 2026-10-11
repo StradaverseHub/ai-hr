@@ -16632,6 +16632,13 @@
     "comparisonCounts": "{added} added · {removed} removed · {unchanged} unchanged statements. Review and edit the excerpts below.",
     "saving": "กำลังบันทึก…",
     "budgetOverview": "Budget overview",
-    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown."
+    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown.",
+    "adminTitle": "การตั้งค่ารางวัล",
+    "adminDescription": "ตั้งค่ารอบการทบทวน นโยบาย และสิทธิ์ผู้ทบทวนสำหรับบริษัทของคุณ",
+    "openReviews": "เปิดการทบทวน",
+    "configure": "ตั้งค่า",
+    "adminEmpty": "ยังไม่มีการตั้งค่ารอบการทบทวนสำหรับขอบเขตบริษัทของคุณ",
+    "configurationPermission": "เฉพาะผู้ทบทวนรางวัลระดับกลุ่มที่ได้รับมอบหมายเท่านั้นที่แก้ไขนโยบายประจำปีได้ขณะการทบทวนเป็นฉบับร่าง",
+    "inheritedPolicy": "การทบทวนนอกรอบใช้นโยบายจากการทบทวนประจำปี"
   }
 }

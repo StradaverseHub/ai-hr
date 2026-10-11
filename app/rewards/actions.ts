@@ -13,21 +13,21 @@ const number = (f: FormData, key: string) => Number(str(f, key));
 const scaled = (f: FormData, key: string, scale = 100) => str(f, key) === '' ? null : Math.round(number(f, key) * scale);
 const errorText = (e: unknown) => e instanceof ZodError ? e.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : publicErrorMessage(e);
 
-async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSession>>, unitId: string, revision: number) => Promise<unknown>) {
+async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSession>>, unitId: string, revision: number) => Promise<unknown>, configuration = false) {
   const s = await getSession(); const unitId = str(f, 'unitId');
-  const url = `/rewards/${encodeURIComponent(unitId)}`;
+  const url = `${configuration ? '/admin/rewards' : '/rewards'}/${encodeURIComponent(unitId)}`;
   try { await work(s, unitId, number(f, 'revision')); }
   catch (e) { redirect(`${url}?error=${encodeURIComponent(errorText(e))}`); }
-  revalidatePath('/rewards', 'layout'); redirect(url);
+  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(url);
 }
 
 export async function createRewardAction(f: FormData) {
   const s = await getSession(); let unitId: string;
   try { unitId = await createRewardUnit(s, { name: str(f, 'name'), year: number(f, 'year'), companyId: str(f, 'companyId'), businessUnitId: str(f, 'businessUnitId'), cycleId: str(f, 'cycleId') || undefined, snapshotDate: str(f, 'snapshotDate') }); }
-  catch (e) { redirect(`/rewards?error=${encodeURIComponent(errorText(e))}`); }
-  revalidatePath('/rewards'); redirect(`/rewards/${unitId}`);
+  catch (e) { redirect(`/admin/rewards?error=${encodeURIComponent(errorText(e))}`); }
+  revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
 }
-export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true')); }
+export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true); }
 export async function lumpAction(f: FormData) { return change(f, (s, id, rev) => setRewardUnitLump(s, id, rev, scaled(f, 'lump'))); }
 export async function refreshAction(f: FormData) { return change(f, (s, id, rev) => refreshRewardSources(s, id, rev)); }
 export async function decideAction(f: FormData) { return change(f, (s, id, rev) => decideRewardUnit(s, id, rev, str(f, 'action') as 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', str(f, 'reason'), f.has('acknowledged'))); }
@@ -86,7 +86,7 @@ export async function policyAction(f: FormData) {
       lumpStepCents: scaled(f, 'lumpStep'), lumpShareBp: scaled(f, 'lumpShare'), lumpCapCents: scaled(f, 'lumpCap'), exemptReason: str(f, 'exemptReason'),
     };
     await saveRewardPolicy(s, id, rev, policy as RewardPolicy);
-  });
+  }, true);
 }
 
 export async function importFactsAction(f: FormData) {

@@ -16632,6 +16632,13 @@
     "comparisonCounts": "{added} added · {removed} removed · {unchanged} unchanged statements. Review and edit the excerpts below.",
     "saving": "சேமிக்கிறது…",
     "budgetOverview": "Budget overview",
-    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown."
+    "budgetOverviewHelp": "Merit, promotion and special adjustment retain separate caps. Open Budget for the breakdown.",
+    "adminTitle": "வெகுமதி உள்ளமைவு",
+    "adminDescription": "உங்கள் நிறுவனங்களுக்கான மதிப்பாய்வு சுழற்சிகள், கொள்கைகள் மற்றும் மதிப்பாய்வாளர் அணுகலை அமைக்கவும்.",
+    "openReviews": "மதிப்பாய்வுகளைத் திற",
+    "configure": "உள்ளமை",
+    "adminEmpty": "உங்கள் நிறுவன வரம்பில் மதிப்பாய்வு சுழற்சிகள் இன்னும் அமைக்கப்படவில்லை.",
+    "configurationPermission": "வருடாந்திர மதிப்பாய்வு வரைவில் இருக்கும்போது நியமிக்கப்பட்ட குழு வெகுமதி மதிப்பாய்வாளர்கள் மட்டுமே கொள்கையைத் திருத்தலாம்.",
+    "inheritedPolicy": "வழக்கத்திற்கு வெளியான மதிப்பாய்வுகள் வருடாந்திர மதிப்பாய்வின் கொள்கையைப் பெறுகின்றன."
   }
 }
