@@ -9379,7 +9379,7 @@
     "users": {
       "title": "Người dùng & vai trò",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
-      "provisioningNote": "Quản trị tập đoàn quản lý tài khoản cho <strong>nhân viên hiện có</strong> bằng lời mời email hoặc tên đăng nhập và mật khẩu tạm thời khi dùng xác thực nội bộ. Không có đăng ký công khai. Lưu trữ chặn truy cập nhưng giữ hồ sơ. Đăng nhập bị chặn khi <em>mọi</em> việc làm kết thúc. Vai trò HR và phạm vi công ty tách biệt với xác thực.",
+      "provisioningNote": "Nhân viên tự động xuất hiện tại đây sau khi tạo hồ sơ. Trạng thái chờ kích hoạt không cấp quyền truy cập. Quản trị viên tập đoàn kích hoạt qua lời mời email hoặc, khi bật xác thực nội bộ, tên đăng nhập và mật khẩu tạm thời. Quyền nhân viên được chọn mặc định; quyền cao hơn phải được chọn rõ ràng. Lưu trữ chặn truy cập mà không xóa hồ sơ. Đăng nhập bị chặn khi tất cả quan hệ lao động đã kết thúc.",
       "sectionUsers": "Người dùng",
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "revokeRole": "Thu hồi vai trò",
@@ -9443,7 +9443,8 @@
         "active": "Đang hoạt động",
         "invited": "Đã mời",
         "archived": "Đã lưu trữ",
-        "preparing": "Chờ thiết lập"
+        "preparing": "Chờ thiết lập",
+        "pending": "Chờ kích hoạt"
       },
       "statusColumn": "Trạng thái",
       "archive": "Lưu trữ",
@@ -9496,8 +9497,13 @@
         "success": {
           "created": "Thiết lập tài khoản hoàn tất. Nếu đây là lần thử lại, mật khẩu hiện có không thay đổi.",
           "cancelled": "Đã hủy thiết lập chưa hoàn tất. Danh tính có kết quả tạo chưa rõ vẫn cần quản trị viên cài đặt kiểm tra."
-        }
-      }
+        },
+        "chooseAnotherEmployee": "Chọn nhân viên khác"
+      },
+      "activateManually": "Đặt tên đăng nhập và mật khẩu",
+      "activateByInvitation": "Gửi lời mời",
+      "resumeActivation": "Tiếp tục thiết lập",
+      "chooseAnotherEmployee": "Chọn nhân viên khác"
     },
     "audit": {
       "title": "Nhật ký kiểm toán",

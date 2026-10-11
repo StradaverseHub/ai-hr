@@ -5,20 +5,20 @@ import type { ManualIdentityEnrollment } from '@/lib/identity/manual-model';
 import { createManualAccountAction,resumeManualAccountAction,cancelManualAccountAction } from './manual-actions';
 import { ManualSubmit } from './manual-submit';
 
-export async function ManualAccountSetup({available,people,companies,roles,pending}:{
+export async function ManualAccountSetup({available,people,companies,roles,pending,selectedPerson}:{
  available:boolean;people:{id:string;name:string|null;code:string|null}[];
- companies:{id:string;name:string}[];roles:{value:string;label:string}[];pending:ManualIdentityEnrollment[];
+ companies:{id:string;name:string}[];roles:{value:string;label:string}[];pending:ManualIdentityEnrollment[];selectedPerson?:{id:string;name:string|null;email:string|null};
 }) {
  const t=await getTranslations('admin.users.manual');
- return <Card data-testid="manual-account-setup"><SectionHeader title={t('title')}/><div className="space-y-5 p-4">
+ return <Card id="manual-account-setup" data-testid="manual-account-setup"><SectionHeader title={t('title')}/><div className="space-y-5 p-4">
   <p className="text-sm text-muted-foreground">{available?t('description'):t('notEnabled')}</p>
   {available&&<>
    <form action={createManualAccountAction} className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="id" value={randomUUID()}/>
-    <Field label={t('person')}><select name="personId" required defaultValue="" className={inputCls}>
+    <Field label={t('person')}>{selectedPerson?<><input type="hidden" name="personId" value={selectedPerson.id}/><span className="py-2 text-sm">{selectedPerson.name}</span><a href="/admin/users#manual-account-setup" className="text-xs underline">{t('chooseAnotherEmployee')}</a></>:<select name="personId" required defaultValue="" className={inputCls}>
      <option value="" disabled>{t('choosePerson')}</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}{p.code?` · ${p.code}`:''}</option>)}
-    </select></Field>
-    <Field label={t('email')}><input type="email" name="email" required maxLength={255} autoComplete="off" className={inputCls}/></Field>
+    </select>}</Field>
+    <Field label={t('email')}><input type="email" name="email" defaultValue={selectedPerson?.email??''} required maxLength={255} autoComplete="off" className={inputCls}/></Field>
     <Field label={t('username')}><input name="username" required minLength={3} maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9._@+\-]{2,63}" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby="manual-username-help" className={inputCls}/></Field>
     <Field label={t('password')}><input type="password" name="password" required minLength={14} maxLength={128} autoComplete="new-password" aria-describedby="manual-password-help" className={inputCls}/></Field>
     <p id="manual-username-help" className="text-xs text-muted-foreground">{t('usernameHelp')}</p>
