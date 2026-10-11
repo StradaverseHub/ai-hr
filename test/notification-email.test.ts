@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import postgres from 'postgres';
 import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
 import { and,eq,sql } from 'drizzle-orm';
 import { adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base } from './harness';
@@ -11,8 +12,9 @@ import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,readNotifi
 import { erasePersonPii } from '../core/pdpa';
 import { workflowEmailDatabaseGrants } from '../deploy/identity-email/database';
 import * as schema from '../db/schema';
+const raw=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:2});
 let b:Base;const issuer='https://hr.test/identity/realms/ai-hr';
-beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');});afterAll(closeAll);
+beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');});afterAll(async()=>{await raw.end();await closeAll();});
 async function employee(email='employee@example.test'){
  const e=await hireEmployee(adminCtx(b),{person:{fullName:'Email employee',primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,e.personId,'employee'),subject=randomUUID();
@@ -28,7 +30,7 @@ async function consent(e:Awaited<ReturnType<typeof employee>>,category='leave'){
 }
 const deliveries=()=>owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.tenantId,b.tenantId)).orderBy(schema.notificationDelivery.id);
 async function lease(id:string){const token=randomUUID();await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+30_000)}).where(eq(schema.notificationDelivery.id,id));return token;}
-const target=(id:string,token:string)=>owner.client`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${issuer})`;
+const target=(id:string,token:string)=>raw`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${issuer})`;
 describe('workflow email configuration and outbox in the actual database',()=>{
  it('requires both controls and explicit recorded consent; historical enabled preferences do not opt anyone in',async()=>{
   const e=await employee();await event(e.employmentId);await dispatchNotifications(adminCtx(b));expect(await deliveries()).toEqual([]);
@@ -96,22 +98,22 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   const e=await employee();await consent(e);await event(e.employmentId);await dispatchNotifications(adminCtx(b));const [job]=await deliveries(),token=await lease(job.id),[expected]=await target(job.id,token);
   await owner.db.update(schema.person).set({primaryEmail:'changed@example.test'}).where(eq(schema.person.id,e.personId));
   expect(await target(job.id,token)).toHaveLength(1);
-  expect((await owner.client`select identity_email.start_delivery(${job.id}::uuid,${token}::uuid,${issuer},${owner.client.json(expected)}::jsonb) as started`)[0].started).toBe(false);
+  expect((await raw`select identity_email.start_delivery(${job.id}::uuid,${token}::uuid,${issuer},${raw.json(expected)}::jsonb) as started`)[0].started).toBe(false);
   expect((await deliveries())[0]).toMatchObject({attempts:0,startedAt:null});
  });
  it('prevents two private requests from starting one SMTP attempt, and a duplicate skip cannot overwrite a started attempt',async()=>{
   const e=await employee();await consent(e);await event(e.employmentId);await dispatchNotifications(adminCtx(b));const [job]=await deliveries(),token=await lease(job.id);
   const [expected]=await target(job.id,token);
-  const start=()=>owner.client`select identity_email.start_delivery(${job.id}::uuid,${token}::uuid,${issuer},${owner.client.json(expected)}::jsonb) as started`;
+  const start=()=>raw`select identity_email.start_delivery(${job.id}::uuid,${token}::uuid,${issuer},${raw.json(expected)}::jsonb) as started`;
   const starts=await Promise.all([start(),start()]);expect(starts.filter(r=>r[0].started)).toHaveLength(1);
   expect(await target(job.id,token)).toEqual([]);
-  expect((await owner.client`select identity_email.finish_delivery(${job.id}::uuid,${token}::uuid,'skipped','notEligible') as finished`)[0].finished).toBe(false);
+  expect((await raw`select identity_email.finish_delivery(${job.id}::uuid,${token}::uuid,'skipped','notEligible') as finished`)[0].finished).toBe(false);
   expect((await deliveries())[0]).toMatchObject({status:'pending',attempts:1});
-  await owner.client`select identity_email.finish_delivery(${job.id}::uuid,${token}::uuid,'sent',null)`;expect((await deliveries())[0].status).toBe('sent');
+  await raw`select identity_email.finish_delivery(${job.id}::uuid,${token}::uuid,'sent',null)`;expect((await deliveries())[0].status).toBe('sent');
  });
  it('holds abandoned started sends as uncertain; only an acknowledged administrative retry can reopen them',async()=>{
   const e=await employee();await consent(e);await event(e.employmentId);await dispatchNotifications(adminCtx(b));const [job]=await deliveries(),token=await lease(job.id);
-  const [expected]=await target(job.id,token);await owner.client`select identity_email.start_delivery(${job.id}::uuid,${token}::uuid,${issuer},${owner.client.json(expected)}::jsonb)`;
+  const [expected]=await target(job.id,token);await raw`select identity_email.start_delivery(${job.id}::uuid,${token}::uuid,${issuer},${raw.json(expected)}::jsonb)`;
   await owner.db.update(schema.notificationDelivery).set({leaseUntil:new Date(Date.now()-1000)}).where(eq(schema.notificationDelivery.id,job.id));
   await withTenant(adminCtx(b),tx=>tx.execute(sql`select * from app.notification_email_due(50)`));expect((await deliveries())[0]).toMatchObject({status:'failed',lastError:'uncertain'});
   await expect(retryNotificationEmail(adminCtx(b),job.id,false)).rejects.toThrow('invalid');await retryNotificationEmail(adminCtx(b),job.id,true);
@@ -130,12 +132,12 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   expect(result.erased).toContain('workflowEmailConsent');expect((await readNotificationEmailPreferences(e.ctx)).preferences.every(p=>!p.enabled&&p.emailConsentUserId===null)).toBe(true);
  });
  it('grants the service only the private delivery operations and no HR table or shared app helper access',async()=>{
-  const role='workflow_email_'+randomUUID().replaceAll('-','');await owner.client.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
+  const role='workflow_email_'+randomUUID().replaceAll('-','');await raw.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
   try{
-   await owner.client.unsafe(`GRANT USAGE ON SCHEMA identity_email TO "${role}"`);for(const grant of workflowEmailDatabaseGrants(role))await owner.client.unsafe(grant);
-   await owner.client.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE "${role}"`);expect((await tx`select has_schema_privilege(current_user,'app','USAGE') allowed`)[0].allowed).toBe(false);expect(await tx`select * from identity_email.delivery_target(${randomUUID()}::uuid,${randomUUID()}::uuid,${issuer})`).toEqual([]);});
-   for(const query of ['select * from public.person','select * from public.notification_pref','select * from public.notification_delivery','select app.notification_email_due(50)'])await expect(owner.client.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE "${role}"`);return tx.unsafe(query);})).rejects.toThrow(/permission denied/);
-   expect((await owner.client`select has_function_privilege('ai_hr_app','identity_email.delivery_target(uuid,uuid,text)','EXECUTE') allowed`)[0].allowed).toBe(false);
-  }finally{await owner.client.unsafe(`DROP OWNED BY "${role}"`);await owner.client.unsafe(`DROP ROLE "${role}"`);}
+   await raw.unsafe(`GRANT USAGE ON SCHEMA identity_email TO "${role}"`);for(const grant of workflowEmailDatabaseGrants(role))await raw.unsafe(grant);
+   await raw.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE "${role}"`);expect((await tx`select has_schema_privilege(current_user,'app','USAGE') allowed`)[0].allowed).toBe(false);expect(await tx`select * from identity_email.delivery_target(${randomUUID()}::uuid,${randomUUID()}::uuid,${issuer})`).toEqual([]);});
+   for(const query of ['select * from public.person','select * from public.notification_pref','select * from public.notification_delivery','select app.notification_email_due(50)'])await expect(raw.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE "${role}"`);return tx.unsafe(query);})).rejects.toThrow(/permission denied/);
+   expect((await raw`select has_function_privilege('ai_hr_app','identity_email.delivery_target(uuid,uuid,text)','EXECUTE') allowed`)[0].allowed).toBe(false);
+  }finally{await raw.unsafe(`DROP OWNED BY "${role}"`);await raw.unsafe(`DROP ROLE "${role}"`);}
  });
 });

@@ -132,6 +132,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
 describe('slice 4 — the page-entry courtesy redirect', () => {
   const ROOTS: Record<string, string> = {
     attendance: 'app/attendance/page.tsx',
+    notifications: 'app/admin/settings/notifications/page.tsx',
     claims: 'app/claims/page.tsx',
     lifecycle: 'app/lifecycle/page.tsx',
     payroll: 'app/payroll/page.tsx',

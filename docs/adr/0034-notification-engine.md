@@ -98,6 +98,8 @@ SMTP configuration or copies HR detail into a message. USER, PERSON and EMPLOYME
 - Before delivery the worker resolves the registry's recipients again. The private service also
   rechecks the current identity binding, employment, policy and consent. It reads the current person's
   primary email and confirms that the exact enabled Keycloak account still has that verified address.
+  The atomic start compares the entire verified target snapshot, so an address, identity or link changed
+  while the provider is being checked cannot be sent using stale recipient data.
   A changed, missing, disabled or revoked account is skipped, never found or linked by matching email.
 
 ### Transport and failure model
