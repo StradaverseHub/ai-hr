@@ -404,7 +404,8 @@
     "myTeam": "Nhóm của tôi",
     "lifecycle": "Tiếp nhận & IT",
     "lifecycleConfig": "Cấu hình Tiếp nhận & IT",
-    "rewards": "Đãi ngộ"
+    "rewards": "Đãi ngộ",
+    "identityEmail": "Gửi email"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -9433,7 +9434,8 @@
         "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận.",
         "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này.",
         "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này.",
-        "myTeam": "Quản lý xem nhân viên hiện đang báo cáo trực tiếp hoặc gián tiếp. Quản trị HR chọn phòng ban trong các công ty được cấp quyền."
+        "myTeam": "Quản lý xem nhân viên hiện đang báo cáo trực tiếp hoặc gián tiếp. Quản trị HR chọn phòng ban trong các công ty được cấp quyền.",
+        "identityEmail": "Cần đăng ký riêng làm quản trị viên danh tính hệ thống; vai trò nhân sự không tự cấp quyền."
       },
       "status": {
         "active": "Đang hoạt động",
@@ -16640,5 +16642,54 @@
     "adminEmpty": "Chưa có chu kỳ đánh giá nào được cấu hình trong phạm vi công ty của bạn.",
     "configurationPermission": "Chỉ người đánh giá Đãi ngộ Tập đoàn được chỉ định mới có thể sửa chính sách năm khi đánh giá ở trạng thái nháp.",
     "inheritedPolicy": "Đánh giá ngoài chu kỳ kế thừa chính sách từ đánh giá năm."
+  },
+  "identityEmail": {
+    "title": "Gửi email",
+    "description": "Cấu hình máy chủ chuyển tiếp cho lời mời tài khoản và khôi phục mật khẩu.",
+    "scope": "Cấu hình áp dụng cho toàn bộ hệ thống. Chỉ quản trị viên danh tính đã đăng ký được thay đổi.",
+    "activeTitle": "Máy chủ đang dùng",
+    "activeSummary": "{host}:{port} · {from}",
+    "notConfigured": "Chưa có máy chủ được hỗ trợ đang hoạt động. Chưa thể gửi lời mời hoặc khôi phục mật khẩu.",
+    "tlsHelp": "Dùng TLS ngầm định (thường là cổng 465) với chứng chỉ tin cậy. Màn hình này không hỗ trợ STARTTLS trên cổng 587.",
+    "draftTitle": "Bản nháp cấu hình",
+    "host": "Máy chủ SMTP",
+    "port": "Cổng",
+    "from": "Email người gửi",
+    "fromName": "Tên người gửi",
+    "replyTo": "Email trả lời (tùy chọn)",
+    "authentication": "Xác thực",
+    "passwordAuthentication": "Tên đăng nhập và mật khẩu",
+    "noAuthentication": "Không xác thực",
+    "username": "Tên đăng nhập",
+    "password": "Mật khẩu",
+    "passwordKept": "Để trống để giữ mật khẩu đã lưu. Mật khẩu không bao giờ được hiển thị.",
+    "passwordNeeded": "Nhập mật khẩu máy chủ khi bật xác thực.",
+    "saveDraft": "Lưu bản nháp",
+    "verifyTitle": "Kiểm tra và kích hoạt",
+    "testHelp": "Email thử sẽ gửi đến {email}. Kiểm tra hộp thư và thư rác trước khi kích hoạt. Gửi thành công không chứng minh đã nhận.",
+    "sendTest": "Gửi email thử",
+    "received": "Tôi đã nhận email thử từ bản nháp này.",
+    "activateHelp": "Kết quả thử hết hạn sau 30 phút. Kích hoạt thay máy chủ gửi email đăng nhập và bật khôi phục mật khẩu. Lưu thay đổi yêu cầu thử lại.",
+    "activate": "Kích hoạt máy chủ",
+    "saving": "Đang xử lý…",
+    "errors": {
+      "unavailable": "Dịch vụ cấu hình email không khả dụng. Thử lại hoặc liên hệ quản trị viên hệ thống.",
+      "forbidden": "Cần quản trị viên danh tính đã đăng ký.",
+      "invalid": "Kiểm tra các trường và mật khẩu máy chủ.",
+      "conflict": "Cấu hình hoặc bản nháp đã thay đổi. Tải lại và lưu bản nháp mới.",
+      "needsTest": "Gửi email thử mới trước khi kích hoạt.",
+      "needsReceipt": "Xác nhận đã nhận email thử.",
+      "authenticationFailed": "Máy chủ từ chối xác thực.",
+      "connectionFailed": "Không thể kết nối máy chủ.",
+      "tlsFailed": "Không thể xác minh kết nối TLS.",
+      "rejected": "Thử nghiệm thất bại. Kiểm tra máy chủ, cổng, thông tin đăng nhập, quyền gửi và chứng chỉ TLS.",
+      "uncertain": "Chưa xác nhận được kết quả kích hoạt. Tải lại và kiểm tra cấu hình đang dùng trước khi thử lại.",
+      "appliedAuditFailed": "Đã cập nhật cấu hình nhưng xác nhận nhật ký thất bại. Liên hệ quản trị viên trước khi thử lại."
+    },
+    "success": {
+      "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
+      "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
+      "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này."
+    }
   }
 }

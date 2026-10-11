@@ -83,6 +83,7 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
  * /admin/leave → packs/leave) — are asserted separately by position.
  */
 const ADMIN_GROUP_FLAT_HREFS = [
+  '/admin/settings/email',
   '/admin/organization',
   // 639bf4a5 (r336) — '/admin/work-locations' (Physical Work Location) STOOD HERE, immediately after
   // Organization, having come from the attendance pack's settings node. rev 2 (r338) — IT IS GONE FROM

@@ -21,8 +21,8 @@ async function main() {
     return response.status === 204 || response.status === 201 ? undefined : response.json();
   }
   const secret = () => randomBytes(32).toString('hex');
-  const webSecret = secret(), invitationsSecret = secret(), initialPassword = secret();
-  const provisioned = await provisionIdentityRealm(admin, origin, { webSecret, invitationsSecret, initialPassword });
+  const webSecret = secret(), invitationsSecret = secret(), emailSettingsSecret = secret(), initialPassword = secret();
+  const provisioned = await provisionIdentityRealm(admin, origin, { webSecret, invitationsSecret, emailSettingsSecret, initialPassword });
   const realm = { realm: provisioned.realm };
   // Prove effective client scope/role intersection before removing bootstrap access.
   const serviceTokenResponse = await fetch(`${base}/realms/${realm.realm}/protocol/openid-connect/token`, {
@@ -40,8 +40,9 @@ async function main() {
     'AUTH_PROVIDER=keycloak',`AUTH_PUBLIC_ORIGIN=${origin}`,`KEYCLOAK_ISSUER=${origin}/identity/realms/${realm.realm}`,
     'KEYCLOAK_WEB_CLIENT_ID=aihr-web',`KEYCLOAK_WEB_CLIENT_SECRET=${webSecret}`,'KEYCLOAK_MOBILE_CLIENT_ID=aihr-mobile',
     'KEYCLOAK_API_AUDIENCE=aihr-api',`AUTH_SESSION_KEY=${secret()}`,'KEYCLOAK_BACKCHANNEL_ORIGIN=http://127.0.0.1:8080',
-    'KEYCLOAK_ADMIN_CLIENT_ID=aihr-invitations',`KEYCLOAK_ADMIN_CLIENT_SECRET=${invitationsSecret}`,'KEYCLOAK_EMAIL_ENABLED=false',
+    'KEYCLOAK_ADMIN_CLIENT_ID=aihr-invitations',`KEYCLOAK_ADMIN_CLIENT_SECRET=${invitationsSecret}`,'KEYCLOAK_EMAIL_ENABLED=true',
   ].join('\n')+'\n',{mode:0o600});
+  writeFileSync('/etc/aihr-keycloak/email-agent.env',[`IDENTITY_EMAIL_CLIENT_SECRET=${emailSettingsSecret}`,`IDENTITY_EMAIL_REVISION_KEY=${secret()}`,`IDENTITY_EMAIL_TEST_RECIPIENT=${INITIAL_SYSTEM_ADMIN_EMAIL}`].join('\n')+'\n',{mode:0o600});
   writeFileSync('/etc/aihr-keycloak/initial-owner.json',JSON.stringify({email:INITIAL_SYSTEM_ADMIN_EMAIL,subject:provisioned.ownerSubject,issuer:`${origin}/identity/realms/${realm.realm}`,temporaryPassword:initialPassword})+'\n',{mode:0o600});
   // The real owner is realm administrator. Remove the temporary master bootstrap administrator.
   const bootstrapUsers = await admin(`/realms/master/users?${new URLSearchParams({username:env.KC_BOOTSTRAP_ADMIN_USERNAME,exact:'true'})}`);

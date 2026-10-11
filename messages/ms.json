@@ -404,7 +404,8 @@
     "myTeam": "Pasukan Saya",
     "lifecycle": "Orientasi & IT",
     "lifecycleConfig": "Konfigurasi Orientasi & IT",
-    "rewards": "Ganjaran"
+    "rewards": "Ganjaran",
+    "identityEmail": "Penghantaran e-mel"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -9433,7 +9434,8 @@
         "delegations": "HR dan pentadbir melihat semua perwakilan; anda hanya melihat yang anda wakilkan atau gantikan.",
         "duplicatePersonRecords": "Menyenaraikan hanya pekerja dalam syarikat yang anda uruskan, jadi separuh daripada pasangan yang merentas dua syarikat mungkin tidak kelihatan kepada anda. Baca sahaja — tiada rekod boleh diubah dari skrin ini.",
         "childReliefReview": "Menyenaraikan hanya pekerja semasa dalam syarikat yang anda uruskan, jadi jumlah ringgit ialah jumlah bagi apa yang boleh anda lihat. Baca sahaja — tiada tetapan cukai boleh diubah dari skrin ini.",
-        "myTeam": "Pengurus melihat pekerja seliaan langsung atau tidak langsung semasa. Pentadbir HR boleh memilih jabatan dalam syarikat yang dibenarkan."
+        "myTeam": "Pengurus melihat pekerja seliaan langsung atau tidak langsung semasa. Pentadbir HR boleh memilih jabatan dalam syarikat yang dibenarkan.",
+        "identityEmail": "Memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan; peranan HR sahaja tidak memberi akses."
       },
       "status": {
         "active": "Aktif",
@@ -16640,5 +16642,54 @@
     "adminEmpty": "Tiada kitaran semakan dikonfigurasi untuk skop syarikat anda.",
     "configurationPermission": "Hanya penyemak Ganjaran Kumpulan yang ditugaskan boleh mengedit dasar tahunan semasa semakan dalam draf.",
     "inheritedPolicy": "Semakan luar kitaran mewarisi dasar daripada semakan tahunan."
+  },
+  "identityEmail": {
+    "title": "Penghantaran e-mel",
+    "description": "Konfigurasi geganti untuk jemputan akaun dan pemulihan kata laluan.",
+    "scope": "Konfigurasi ini meliputi seluruh pemasangan. Hanya pentadbir identiti yang didaftarkan boleh mengubahnya.",
+    "activeTitle": "Geganti aktif",
+    "activeSummary": "{host}:{port} · {from}",
+    "notConfigured": "Tiada geganti yang disokong aktif. Jemputan dan pemulihan kata laluan belum tersedia.",
+    "tlsHelp": "Gunakan TLS tersirat (biasanya port 465) dengan sijil dipercayai. STARTTLS pada port 587 tidak disokong di sini.",
+    "draftTitle": "Draf geganti",
+    "host": "Hos SMTP",
+    "port": "Port",
+    "from": "E-mel pengirim",
+    "fromName": "Nama pengirim",
+    "replyTo": "E-mel balasan (pilihan)",
+    "authentication": "Pengesahan",
+    "passwordAuthentication": "Nama pengguna dan kata laluan",
+    "noAuthentication": "Tanpa pengesahan",
+    "username": "Nama pengguna",
+    "password": "Kata laluan",
+    "passwordKept": "Biarkan kata laluan kosong untuk mengekalkan kata laluan tersimpan. Kata laluan tidak dipaparkan.",
+    "passwordNeeded": "Masukkan kata laluan geganti apabila pengesahan diaktifkan.",
+    "saveDraft": "Simpan draf",
+    "verifyTitle": "Uji dan aktifkan",
+    "testHelp": "Mesej ujian akan dihantar kepada {email}. Semak peti masuk dan spam sebelum pengaktifan. Penghantaran berjaya tidak membuktikan penerimaan.",
+    "sendTest": "Hantar e-mel ujian",
+    "received": "Saya menerima e-mel ujian daripada draf ini.",
+    "activateHelp": "Ujian tamat selepas 30 minit. Pengaktifan menggantikan geganti e-mel log masuk dan mengaktifkan pemulihan kata laluan. Perubahan tersimpan memerlukan ujian baharu.",
+    "activate": "Aktifkan geganti",
+    "saving": "Sedang diproses…",
+    "errors": {
+      "unavailable": "Perkhidmatan tetapan e-mel tidak tersedia. Cuba lagi atau hubungi pentadbir pemasangan.",
+      "forbidden": "Pentadbir identiti yang didaftarkan diperlukan.",
+      "invalid": "Semak medan geganti dan kata laluan.",
+      "conflict": "Geganti atau draf telah berubah. Muat semula dan simpan draf baharu.",
+      "needsTest": "Hantar e-mel ujian baharu sebelum pengaktifan.",
+      "needsReceipt": "Sahkan penerimaan e-mel ujian.",
+      "authenticationFailed": "Geganti menolak pengesahan.",
+      "connectionFailed": "Tidak dapat menyambung ke geganti.",
+      "tlsFailed": "Sambungan TLS tidak dapat disahkan.",
+      "rejected": "Ujian gagal. Semak hos, port, kelayakan, kebenaran pengirim dan sijil TLS.",
+      "uncertain": "Keputusan pengaktifan tidak dapat disahkan. Muat semula dan semak geganti aktif sebelum mencuba lagi.",
+      "appliedAuditFailed": "Geganti dikemas kini tetapi pengesahan audit gagal. Hubungi pentadbir pemasangan sebelum mencuba lagi."
+    },
+    "success": {
+      "save": "Draf disimpan. Geganti aktif tidak berubah.",
+      "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
+      "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya."
+    }
   }
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
 import { Plus_Jakarta_Sans, Geist_Mono, Schibsted_Grotesk, DM_Mono } from 'next/font/google';
 import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
@@ -186,6 +187,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
+              canConfigureIdentityEmail={await canConfigureIdentityEmail(session)}
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               canAccessTeam={hasTeamAccess(session)}

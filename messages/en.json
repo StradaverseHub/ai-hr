@@ -404,7 +404,8 @@
     "myTeam": "My Team",
     "lifecycle": "Onboarding & IT",
     "lifecycleConfig": "Onboarding & IT config",
-    "rewards": "Rewards"
+    "rewards": "Rewards",
+    "identityEmail": "Email delivery"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -9433,7 +9434,8 @@
         "delegations": "HR and admins see every delegation; you see only ones you delegated or cover.",
         "duplicatePersonRecords": "Lists only employees in companies you administer, so half of a pair spanning two companies may not be visible to you. Read-only — no record can be changed from this screen.",
         "childReliefReview": "Lists only current employees in companies you administer, so the ringgit totals are the totals of what you can see. Read-only — no tax setting can be changed from this screen.",
-        "myTeam": "Managers see their current direct or indirect reports. HR administrators can choose departments within their authorized companies."
+        "myTeam": "Managers see their current direct or indirect reports. HR administrators can choose departments within their authorized companies.",
+        "identityEmail": "Requires separate installation identity-administrator enrollment; HR roles alone do not grant access."
       },
       "status": {
         "active": "Active",
@@ -16640,5 +16642,54 @@
     "adminEmpty": "No review cycles have been configured for your company scope.",
     "configurationPermission": "Only the assigned Group Rewards reviewers may edit an annual policy while the review is in draft.",
     "inheritedPolicy": "Off-cycle reviews inherit their policy from the annual review."
+  },
+  "identityEmail": {
+    "title": "Email delivery",
+    "description": "Configure the relay used for account invitations and password recovery.",
+    "scope": "This configuration applies to the whole installation. Only enrolled identity administrators may change it.",
+    "activeTitle": "Active relay",
+    "activeSummary": "{host}:{port} · From {from}",
+    "notConfigured": "No supported relay is active. Invitations and password recovery remain unavailable.",
+    "tlsHelp": "Use implicit TLS (usually port 465) with a trusted certificate. STARTTLS on port 587 is not supported by this screen.",
+    "draftTitle": "Relay draft",
+    "host": "SMTP host",
+    "port": "Port",
+    "from": "Sender email",
+    "fromName": "Sender name",
+    "replyTo": "Reply-to email (optional)",
+    "authentication": "Authentication",
+    "passwordAuthentication": "Username and password",
+    "noAuthentication": "No authentication",
+    "username": "Username",
+    "password": "Password",
+    "passwordKept": "Leave the password blank to keep the saved password. Passwords are never displayed.",
+    "passwordNeeded": "Enter the relay password when authentication is enabled.",
+    "saveDraft": "Save draft",
+    "verifyTitle": "Test and activate",
+    "testHelp": "A test message will be sent to {email}. Check the inbox and spam folder before activation. A successful send does not prove delivery.",
+    "sendTest": "Send test email",
+    "received": "I received the test email from this draft.",
+    "activateHelp": "Tests expire after 30 minutes. Activation replaces the relay for login emails and enables password recovery. Saving changes requires another test.",
+    "activate": "Activate relay",
+    "saving": "Working…",
+    "errors": {
+      "unavailable": "The email settings service is unavailable. Try again or contact the installation administrator.",
+      "forbidden": "An enrolled identity administrator is required.",
+      "invalid": "Check the relay fields and password.",
+      "conflict": "The relay or draft changed. Reload this page and save a new draft.",
+      "needsTest": "Send another test email before activation.",
+      "needsReceipt": "Confirm that you received the test email.",
+      "authenticationFailed": "The relay refused authentication.",
+      "connectionFailed": "Could not connect to the relay.",
+      "tlsFailed": "The TLS connection could not be verified.",
+      "rejected": "The test failed. Check the host, port, credentials, sender permission and TLS certificate.",
+      "uncertain": "The activation result could not be confirmed. Reload and inspect the active relay before retrying.",
+      "appliedAuditFailed": "The relay was updated, but its audit confirmation failed. Contact the installation administrator before retrying."
+    },
+    "success": {
+      "save": "Draft saved. The active relay is unchanged.",
+      "test": "The relay accepted the test message. Check the inbox before activation.",
+      "apply": "Relay activated. Invitations and password recovery can now use it."
+    }
   }
 }

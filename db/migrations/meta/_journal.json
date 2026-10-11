@@ -3025,6 +3025,13 @@
       "when": 1791900000004,
       "tag": "0524_rewards",
       "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1791900000005,
+      "tag": "0525_identity_email_administration",
+      "breakpoints": true
     }
   ]
 }

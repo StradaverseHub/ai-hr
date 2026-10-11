@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { provisionIdentityRealm, type IdentityAdmin } from '../deploy/keycloak/provision';
 
-const roles = ['manage-users', 'query-users', 'realm-admin', 'manage-clients'].map(name => ({ id: name, name }));
-const credentials = { webSecret: 'test-web-secret', invitationsSecret: 'test-invitation-secret', initialPassword: 'test-owner-password' };
+const roles = ['manage-users', 'query-users', 'realm-admin', 'manage-clients', 'manage-realm'].map(name => ({ id: name, name }));
+const credentials = { webSecret: 'test-web-secret', invitationsSecret: 'test-invitation-secret', emailSettingsSecret:'test-email-secret', initialPassword: 'test-owner-password' };
 function fixture(missingRole?: string) {
   return vi.fn<IdentityAdmin>(async (path, method = 'GET') => {
     if (method !== 'GET') return;
-    if (path.endsWith('/clients')) return [{ id: 'management', clientId: 'realm-management' }, { id: 'invitations', clientId: 'aihr-invitations' }];
-    if (path.endsWith('/service-account-user')) return { id: 'service-user' };
+    if (path.endsWith('/clients')) return [{ id: 'management', clientId: 'realm-management' }, { id: 'invitations', clientId: 'aihr-invitations' }, {id:'email',clientId:'aihr-email-settings'}];
+    if (path.endsWith('/service-account-user')) return { id: path.includes('/email/')?'email-user':'service-user' };
     if (path.endsWith('/roles')) return roles.filter(r => r.name !== missingRole);
     if (path.includes('/users?')) return [{ id: 'owner' }];
     throw new Error('Unexpected identity request');
@@ -29,7 +29,7 @@ describe('private Keycloak realm enrollment', () => {
     expect(owner.email).toBe('yanli.lam@stradaverse.ai');
     expect(owner.requiredActions).toEqual(['UPDATE_PASSWORD', 'CONFIGURE_TOTP']);
   });
-  it.each(['manage-users', 'query-users', 'realm-admin'])('fails bootstrap if the required role %s is absent', async missing => {
+  it.each(['manage-users', 'query-users', 'realm-admin', 'manage-realm'])('fails bootstrap if the required role %s is absent', async missing => {
     const admin = fixture(missing);
     await expect(provisionIdentityRealm(admin, 'https://hr.test', credentials)).rejects.toThrow('permissions are missing');
     expect(admin.mock.calls.some(c => c[0].includes('/users/owner/'))).toBe(false);

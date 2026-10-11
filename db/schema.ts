@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import type { AttendanceTraceV1 } from '../core/attendance-trace';
 import {
   pgTable,
+  foreignKey,
   pgEnum,
   uuid,
   text,
@@ -596,6 +597,12 @@ export const appIdentitySession = pgTable('app_identity_session', {
   tokenHash: text('token_hash').primaryKey(), sealed: text('sealed').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), createdAt: createdAt(),
 });
+
+// Root-enrolled identity administration grants no HR role. The exact external binding remains authoritative.
+export const deploymentIdentityOperator = pgTable('deployment_identity_operator', {
+  issuer: text('issuer').notNull(), subject: text('subject').notNull(), testEmail: text('test_email').notNull(),
+  createdAt: createdAt(), revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, t => [primaryKey({ columns: [t.issuer, t.subject] }), foreignKey({ columns: [t.issuer,t.subject], foreignColumns: [appExternalIdentity.issuer,appExternalIdentity.subject] })]);
 
 // role_assignment = RBAC grant; company_id null = tenant-wide (whole group), set = one company.
 export const roleAssignment = pgTable(

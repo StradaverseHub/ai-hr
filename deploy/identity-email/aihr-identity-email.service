@@ -1,0 +1,18 @@
+[Unit]
+Description=AI HR identity email settings service
+Requires=aihr-keycloak.service
+After=aihr-keycloak.service postgresql.service
+[Service]
+User=aihr-identity-email
+Group=aihr-keycloak
+EnvironmentFile=/etc/aihr-keycloak/email-agent.env
+ExecStart=/opt/node20/bin/node /usr/local/lib/aihr-identity-email/agent.cjs
+Restart=on-failure
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aihr-identity-email
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=192M

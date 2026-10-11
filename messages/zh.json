@@ -404,7 +404,8 @@
     "myTeam": "我的团队",
     "lifecycle": "入职与IT",
     "lifecycleConfig": "入职与IT配置",
-    "rewards": "薪酬奖励"
+    "rewards": "薪酬奖励",
+    "identityEmail": "邮件发送"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -9433,7 +9434,8 @@
         "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。",
         "duplicatePersonRecords": "仅列出您所管理的公司中的员工，因此跨两家公司的一对记录中可能有一半对您不可见。只读——无法从此页面更改任何记录。",
         "childReliefReview": "仅列出您所管理公司的在职员工，因此令吉总额是您可查看范围的总额。只读——无法从此页面更改任何税务设定。",
-        "myTeam": "经理查看当前直接或间接下属。人力资源管理员可在获授权公司内选择部门。"
+        "myTeam": "经理查看当前直接或间接下属。人力资源管理员可在获授权公司内选择部门。",
+        "identityEmail": "需要单独登记为部署身份管理员；HR 角色本身不授予访问权限。"
       },
       "status": {
         "active": "启用",
@@ -16640,5 +16642,54 @@
     "adminEmpty": "您的公司范围内尚未配置评审周期。",
     "configurationPermission": "只有获指派的集团奖励评审人员可在年度评审处于草稿状态时编辑政策。",
     "inheritedPolicy": "非周期评审沿用年度评审的政策。"
+  },
+  "identityEmail": {
+    "title": "邮件发送",
+    "description": "配置用于账户邀请和密码恢复的邮件中继。",
+    "scope": "此配置适用于整个部署。只有已登记的身份管理员可以修改。",
+    "activeTitle": "当前中继",
+    "activeSummary": "{host}:{port} · {from}",
+    "notConfigured": "尚无受支持的中继生效。账户邀请和密码恢复暂不可用。",
+    "tlsHelp": "请使用受信任证书的隐式 TLS（通常为端口 465）。此页面不支持端口 587 的 STARTTLS。",
+    "draftTitle": "中继草稿",
+    "host": "SMTP 主机",
+    "port": "端口",
+    "from": "发件邮箱",
+    "fromName": "发件人名称",
+    "replyTo": "回复邮箱（选填）",
+    "authentication": "身份验证",
+    "passwordAuthentication": "用户名和密码",
+    "noAuthentication": "无需验证",
+    "username": "用户名",
+    "password": "密码",
+    "passwordKept": "留空可保留已保存的密码。系统不会显示密码。",
+    "passwordNeeded": "启用验证时请输入中继密码。",
+    "saveDraft": "保存草稿",
+    "verifyTitle": "测试并启用",
+    "testHelp": "测试邮件将发送至 {email}。启用前请检查收件箱和垃圾邮件。发送成功不代表已送达。",
+    "sendTest": "发送测试邮件",
+    "received": "我已收到此草稿发送的测试邮件。",
+    "activateHelp": "测试在 30 分钟后失效。启用将替换登录邮件中继并开启密码恢复。保存修改后必须重新测试。",
+    "activate": "启用中继",
+    "saving": "处理中…",
+    "errors": {
+      "unavailable": "邮件设置服务暂不可用。请重试或联系部署管理员。",
+      "forbidden": "需要已登记的身份管理员权限。",
+      "invalid": "请检查中继字段和密码。",
+      "conflict": "中继或草稿已更改。请重新加载并保存新草稿。",
+      "needsTest": "启用前请重新发送测试邮件。",
+      "needsReceipt": "请确认已收到测试邮件。",
+      "authenticationFailed": "中继拒绝了身份验证。",
+      "connectionFailed": "无法连接邮件中继。",
+      "tlsFailed": "无法验证 TLS 连接。",
+      "rejected": "测试失败。请检查主机、端口、凭据、发件权限及 TLS 证书。",
+      "uncertain": "无法确认启用结果。请重新加载并检查当前中继后再重试。",
+      "appliedAuditFailed": "中继已更新，但审计确认失败。重试前请联系部署管理员。"
+    },
+    "success": {
+      "save": "草稿已保存。当前中继保持不变。",
+      "test": "中继已接受测试邮件。启用前请检查收件箱。",
+      "apply": "中继已启用，可用于邀请和密码恢复。"
+    }
   }
 }

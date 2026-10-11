@@ -53,3 +53,5 @@ decision, add a new ADR that supersedes the old one.
 | [0095](0095-lifecycle-module-onboarding-offboarding-it-assets.md) | The Lifecycle module: employee onboarding and offboarding checklists, IT requisitions, the asset register and asset requests (CHGB handover). Module staff are their own table, not line managers; new-hire acknowledgement is login-gated instead of a public link; reminder emails are a live worklist because the repository has no email transport | Built on a branch, not deployed |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
+
+| [0100](0100-installation-email-administration.md) | Installation identity email relay administration | Accepted |

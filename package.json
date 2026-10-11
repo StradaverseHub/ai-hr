@@ -104,6 +104,7 @@
     "@types/react-dom": "^19",
     "@vitest/browser-playwright": "4.1.8",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "jsdom": "^30.0.1",

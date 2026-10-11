@@ -72,6 +72,7 @@ type Item = { navigationHref?: string; href: string; labelKey: string; icon: Luc
 // carries its own visibility flag so filtering is per-child (vs. whole-group gating).
 type ChildItem = Item & {
   adminOnly?: boolean;
+  identityEmailOnly?: boolean;
   managerUp?: boolean;
   // 388e53c2 — highlighting only, never a gate. See NavChildDescriptor in packs/registry.ts.
   exactHref?: boolean;
@@ -426,6 +427,7 @@ const GROUPS: Group[] = [
     labelKey: 'admin',
     adminOnly: true,
     items: [
+      { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Settings2, identityEmailOnly: true },
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       /**
        * 639bf4a5 rev 2 (r338) — THE PHYSICAL WORK LOCATION ROW STOOD HERE and is DELIBERATELY GONE.
@@ -503,6 +505,7 @@ const GROUPS: Group[] = [
  *  rail keeps a constant height however many sub-items exist. */
 export function Sidebar({
   isAdmin,
+  canConfigureIdentityEmail = false,
   canApprove = false,
   canAccessTeam = false,
   approvalCount = 0,
@@ -512,6 +515,7 @@ export function Sidebar({
   viewerCode = null,
 }: {
   isAdmin: boolean;
+  canConfigureIdentityEmail?: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
@@ -599,15 +603,15 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+    moduleAllows(c.href) && (c.identityEmailOnly ? canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
-    .filter((g) => (g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true))
+    .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail : g.managerUp ? isAdmin || canApprove : true))
     // 1b35f17b: filter per-row too, so a group (e.g. Manage) can mix all-employee rows
     // (Personnel) with manager-up rows (Approvals/Performance).
     .map((g) => ({
       ...g,
-      items: g.items.filter((r) => (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
+      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (!isCollapsible(r) && r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
     }))
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);

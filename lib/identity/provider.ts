@@ -1,3 +1,4 @@
+import { identityEmailRequest } from './email-ipc';
 import { keycloakConfig, keycloakSelected, safeReturnTo } from './config';
 
 export async function currentProviderSession() {
@@ -15,7 +16,7 @@ export async function endProviderSession(returnTo?: string): Promise<void> {
 }
 /** The service credential is server-only and holds realm user-management permissions, never HR grants. */
 export async function sendIdentityInvitation(email: string, activationPath: string) {
-  if (process.env.KEYCLOAK_EMAIL_ENABLED !== 'true') throw new Error('Keycloak email delivery is not configured. Ask your administrator to configure the SMTP relay.');
+  if ((process.env.KEYCLOAK_EMAIL_ENABLED !== 'true' || !await identityEmailRequest<{ready:boolean}>({op:'readiness'}).then(r=>r.ready===true,()=>false))) throw new Error('Keycloak email delivery is not configured. Ask your administrator to configure the SMTP relay.');
   const config = keycloakConfig();
   const clientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID;
   const secret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET;

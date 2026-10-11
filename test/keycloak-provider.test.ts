@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { identityEmailRequest } from '../lib/identity/email-ipc';
+vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:vi.fn()}));
 import { sendIdentityInvitation } from '../lib/identity/provider';
 
 const email = 'invited@example.invalid';
 const destination = `/invite/${'a'.repeat(43)}/activate`;
 beforeEach(() => {
+  vi.mocked(identityEmailRequest).mockResolvedValue({ready:true});
   for (const [key, value] of Object.entries({ AUTH_PROVIDER: 'keycloak', AUTH_PUBLIC_ORIGIN: 'https://hr.test',
     KEYCLOAK_ISSUER: 'https://hr.test/identity/realms/ai-hr', KEYCLOAK_WEB_CLIENT_ID: 'web',
     KEYCLOAK_WEB_CLIENT_SECRET: 'test-web-secret', KEYCLOAK_MOBILE_CLIENT_ID: 'mobile', KEYCLOAK_API_AUDIENCE: 'api',
@@ -59,6 +62,10 @@ describe('Keycloak invitation enrollment', () => {
     const remote = vi.fn(); vi.stubGlobal('fetch', remote);
     await expect(sendIdentityInvitation(email, destination)).rejects.toThrow('SMTP relay');
     expect(remote).not.toHaveBeenCalled();
+  });
+  it('refuses invitations when no tested relay is active even if the capability is enabled',async()=>{
+    vi.mocked(identityEmailRequest).mockResolvedValue({ready:false});const remote=vi.fn();vi.stubGlobal('fetch',remote);
+    await expect(sendIdentityInvitation(email,destination)).rejects.toThrow('SMTP relay');expect(remote).not.toHaveBeenCalled();
   });
   it('refuses an arbitrary activation destination before sending credentials', async () => {
     const remote = vi.fn(); vi.stubGlobal('fetch', remote);

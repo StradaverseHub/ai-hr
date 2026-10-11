@@ -44,6 +44,8 @@ tar --no-same-owner -xzf "$INSTALL_TMP/keycloak.tar.gz" -C /opt/aihr-keycloak
 chown -R root:root "/opt/aihr-keycloak/keycloak-$VERSION"
 chmod -R go-w "/opt/aihr-keycloak/keycloak-$VERSION"
 ln -s "keycloak-$VERSION" /opt/aihr-keycloak/current
+id aihr-identity-email >/dev/null 2>&1 || useradd --system --gid aihr-keycloak --home-dir /var/lib/aihr-identity-email --shell /usr/sbin/nologin aihr-identity-email
+install -d -o aihr-identity-email -g aihr-keycloak -m 0750 /var/lib/aihr-identity-email /var/lib/aihr-identity-email/vault
 install -d -m 0700 /etc/aihr-keycloak
 IDENTITY_DB_PASSWORD="$(openssl rand -hex 32)"
 BOOTSTRAP_PASSWORD="$(openssl rand -hex 32)"
@@ -60,6 +62,10 @@ KC_DB_USERNAME=aihr_identity
 KC_DB_PASSWORD=$IDENTITY_DB_PASSWORD
 KC_HOSTNAME=$AUTH_PUBLIC_ORIGIN/identity
 KC_HOSTNAME_STRICT=true
+KC_HOSTNAME_ADMIN=http://localhost:8081/identity
+KC_VAULT=file
+KC_VAULT_DIR=/var/lib/aihr-identity-email/vault
+KC_SPI_TRUSTSTORE__FILE__HOSTNAME_VERIFICATION_POLICY=STRICT
 KC_HTTP_ENABLED=true
 KC_HTTP_HOST=127.0.0.1
 KC_HTTP_PORT=8080
@@ -75,7 +81,7 @@ JAVA_OPTS_KC_HEAP=-Xms128m -Xmx640m
 ENV
 chmod 0600 /etc/aihr-keycloak/service.env
 # EnvironmentFile is read by systemd as root; the service itself cannot read bootstrap/database secrets from disk.
-JAVA_HOME="$IDENTITY_JAVA_HOME" /opt/aihr-keycloak/current/bin/kc.sh build --db=postgres --http-relative-path=/identity --health-enabled=true --metrics-enabled=true
+JAVA_HOME="$IDENTITY_JAVA_HOME" /opt/aihr-keycloak/current/bin/kc.sh build --vault=file --db=postgres --http-relative-path=/identity --health-enabled=true --metrics-enabled=true
 install -d -o aihr-keycloak -g aihr-keycloak -m 0700 /opt/aihr-keycloak/current/data
 install -m 0644 "$SCRIPT_DIR/aihr-keycloak.service" /etc/systemd/system/aihr-keycloak.service
 systemctl daemon-reload

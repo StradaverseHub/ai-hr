@@ -1,0 +1,10 @@
+[Unit]
+Description=AI HR private identity email settings socket
+[Socket]
+ListenStream=/run/aihr-identity-email.sock
+SocketUser=root
+SocketGroup=ubuntu
+SocketMode=0660
+RemoveOnStop=true
+[Install]
+WantedBy=sockets.target
