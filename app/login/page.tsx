@@ -29,7 +29,7 @@ import { signOutUnlinkedAction } from '@/app/auth-actions';
  * true for local dev too, where the fallback still applies and this page is a courtesy rather than a
  * gate — so local dev keeps the short note and no identity list.
  */
-export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ signedOut?: string }> } = {}) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ signedOut?: string }> }) {
   const t = await getTranslations('auth');
   const tCommon = await getTranslations('common');
 

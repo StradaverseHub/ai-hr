@@ -67,7 +67,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('/login with real sign-in on', () => {
-  const render = async () => renderToStaticMarkup((await (await import('../app/login/page')).default()) as never);
+  const render = async () => renderToStaticMarkup((await (await import('../app/login/page')).default({searchParams:Promise.resolve({})})) as never);
 
   it('a WorkOS login with NO AI HR account is told so, by email, with a sign-out — not bounced', async () => {
     m.getSession.mockRejectedValue(new AuthRequiredError('No account is linked to this login.'));
