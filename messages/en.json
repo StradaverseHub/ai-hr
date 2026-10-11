@@ -9378,7 +9378,7 @@
     "users": {
       "title": "Users & roles",
       "userCount": "{count, plural, one {# user} other {# users}}",
-      "provisioningNote": "Group administrators manage logins for <strong>existing employees</strong> through email invitations or, with internal authentication, manual username and temporary password setup. There is no open sign-up. Archiving blocks access without deleting records. A login is blocked automatically once <em>every</em> employment has ended. HR roles and company scope remain separate from authentication.",
+      "provisioningNote": "Employees appear here automatically after their profile is created. Pending activation does not grant access. Group administrators activate an existing employee through an email invitation or, with internal authentication, a username and temporary password. Employee access is selected by default; elevated roles require an explicit choice. Archiving blocks access without deleting records. A login is blocked once every employment has ended.",
       "sectionUsers": "Users",
       "scopedTo": "Scoped to {company} and its sub-companies",
       "revokeRole": "Revoke role",
@@ -9441,7 +9441,8 @@
         "active": "Active",
         "invited": "Invited",
         "archived": "Archived",
-        "preparing": "Setup pending"
+        "preparing": "Setup pending",
+        "pending": "Pending activation"
       },
       "statusColumn": "Status",
       "archive": "Archive",
@@ -9494,8 +9495,13 @@
         "success": {
           "created": "Account setup is complete. If this was a retry, the existing password is unchanged.",
           "cancelled": "Unfinished setup cancelled. Any identity with an uncertain creation still needs installation-administrator inspection."
-        }
-      }
+        },
+        "chooseAnotherEmployee": "Choose another employee"
+      },
+      "activateManually": "Set username and password",
+      "activateByInvitation": "Send invitation",
+      "resumeActivation": "Resume setup",
+      "chooseAnotherEmployee": "Choose another employee"
     },
     "audit": {
       "title": "Audit trail",

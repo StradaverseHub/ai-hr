@@ -1,3 +1,4 @@
+import { listEmployeeActivationCandidates } from '@/core/employee-user-activation';
 import { keycloakSelected } from '@/lib/identity/config';
 import { listManualIdentityEnrollments } from '@/core/manual-identity';
 import { manualIdentityErrorCodes } from '@/lib/identity/manual-model';
@@ -26,18 +27,14 @@ const ROLES = [
 // render the company-scope chip on a grant and may be scoped via the company <select>.
 const SCOPABLE_ROLES = new Set<string>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
 
-/**
- * One merged lifecycle row per human (0279). An app_user row and a still-pending invitation for the
- * SAME address are the same person, so they de-duplicate on the lowercased email with the app_user
- * winning — without that key, archive-then-reinvite renders the same human twice with contradictory
- * statuses.
- */
+/** Login rows and activation candidates use stable IDs. An email never establishes identity. */
 type Row = {
   key: string;
-  status: 'active' | 'invited' | 'archived' | 'preparing';
+  status: 'active' | 'invited' | 'archived' | 'preparing' | 'pending';
+  personId: string | null;
   name: string | null;
   email: string | null;
-  /** app_user id — null on an invitation-only row (no login exists yet). */
+  /** app_user id — null while activation has not created a login. */
   appUserId: string | null;
   /** Short form of the WorkOS id, shown when no person is linked. */
   workosUserId: string | null;
@@ -58,13 +55,13 @@ type Row = {
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; archived?: string; manualError?:string; manualSuccess?:string }>;
+  searchParams: Promise<{ error?: string; archived?: string; manualError?:string; manualSuccess?:string; activate?:string }>;
 }) {
   const t = await getTranslations('admin.users');
   // Registry column labels use complete keys across nav, admin and installed modules.
   const tAll = await getTranslations();
   const s = await requireAdmin();
-  const { error, archived, manualError, manualSuccess } = await searchParams;
+  const { error, archived, manualError, manualSuccess, activate } = await searchParams;
   const setupError=manualIdentityErrorCodes.find(code=>code===manualError);
   const includeArchived = archived === '1';
   const groupAdmin = isGroupAdmin(s);
@@ -75,16 +72,19 @@ export default async function UsersPage({
   // company-scoped admin sees the users list with no invitation rows. Archive is group-admin-only
   // anyway (the 0016 app_user WITH CHECK), so a delegated admin's view of this screen is read-only.
   // Widening invitation visibility is a new authz surface and out of scope here.
-  const [userList, assistantGrants, companies, invitations, employees, manualEnrollments] = await Promise.all([
-    listUsers(s, { includeArchived }),
+  const [userList, assistantGrants, companies, invitations, employees, manualEnrollments, activationCandidates] = await Promise.all([
+    listUsers(s, { includeArchived: true }),
     // ADR-0082 §2.8 — who currently holds an assistant grant. One read for the page, not one per row.
     listAssistantGrants(s),
     groupAdmin ? listCompanies(s) : adminCompanies(s),
     groupAdmin ? listPendingInvitations(s) : Promise.resolve([]),
     groupAdmin ? listEmployees(s) : Promise.resolve([]),
     groupAdmin && keycloakSelected() ? listManualIdentityEnrollments(s) : Promise.resolve([]),
+    groupAdmin ? listEmployeeActivationCandidates(s) : Promise.resolve([]),
   ]);
-  const { users, hiddenCount } = userList;
+  const { users: allUsers } = userList;
+  const users = includeArchived ? allUsers : allUsers.filter(u => !u.archivedAt && !u.blockedByTermination);
+  const hiddenCount = allUsers.length - users.length;
   // LIVE grants only. listAssistantGrants deliberately returns every grant EVER, revoked rows included
   // ("who could ask the assistant last March" is the reason revocation is a stamp rather than a delete),
   // so filtering on revokedAt is load-bearing: without it a revoked user reads as still granted and the
@@ -104,7 +104,8 @@ export default async function UsersPage({
   ].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
   const rows: Row[] = users.map((u) => ({
-    key: (u.email ?? `id:${u.id}`).toLowerCase(),
+    key: `user:${u.id}`,
+    personId: u.personId,
     // Archived covers BOTH causes; the cause line below distinguishes them.
     status: u.archivedAt || u.blockedByTermination ? 'archived' : manualEnrollments.some(e=>e.app_user_id===u.id) ? 'preparing' : 'active',
     name: u.name,
@@ -117,15 +118,20 @@ export default async function UsersPage({
     invitedCompanyId: null,
     manuallyArchived: Boolean(u.archivedAt),
   }));
-  const seen = new Set(rows.map((r) => r.key));
+  const peopleWithLogin = new Set(allUsers.map(u => u.personId).filter(Boolean));
+  const invitationPeople = new Set(invitations.map(inv => inv.personId).filter(Boolean));
+  const setupPeople = new Set(manualEnrollments.map(e => e.person_id));
+  const pendingEmployees = activationCandidates.filter(p => !peopleWithLogin.has(p.id) && !invitationPeople.has(p.id) && !setupPeople.has(p.id));
+  const selectedPerson = pendingEmployees.find(p => p.id === activate);
   for (const inv of invitations) {
-    const key = inv.email.toLowerCase();
-    if (seen.has(key)) continue; // the real login wins over a pending invitation for the same address
-    seen.add(key);
+    // Retained/archived logins suppress a fresh activation entry even when hidden by the toggle.
+    if (inv.personId && peopleWithLogin.has(inv.personId)) continue;
+    const key = `invitation:${inv.id}`;
     rows.push({
       key,
+      personId: inv.personId,
       status: 'invited',
-      name: null,
+      name: activationCandidates.find(p => p.id === inv.personId)?.name ?? null,
       email: inv.email,
       appUserId: null,
       workosUserId: null,
@@ -135,6 +141,13 @@ export default async function UsersPage({
       invitedCompanyId: inv.companyId,
       manuallyArchived: false,
     });
+  }
+
+  for (const p of activationCandidates) {
+    if (peopleWithLogin.has(p.id) || invitationPeople.has(p.id)) continue;
+    rows.push({ key: `person:${p.id}`, personId: p.id, status: setupPeople.has(p.id) ? 'preparing' : 'pending',
+      name: p.name, email: p.email, appUserId: null, workosUserId: null, roles: [],
+      invitationId: null, invitedRole: null, invitedCompanyId: null, manuallyArchived: false });
   }
 
   // Registry labels include nav, admin.users and module namespaces. Resolve their complete keys.
@@ -183,19 +196,20 @@ export default async function UsersPage({
       </Card>
 
       {groupAdmin&&<ManualAccountSetup available={keycloakSelected()} people={peopleOptions} companies={companies}
-        roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments}/>}
+        roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments} selectedPerson={selectedPerson}/>}
 
       {/* Email invitations remain alongside administrator-attested manual setup. Group admins invite an EXISTING employee by
           email + role; there is no open self sign-up. Company-scoped delegated admins manage roles
           but not the login itself. */}
       {groupAdmin && (
         <Card>
-          <SectionHeader title={t('inviteTitle')} />
+          <div id="invite-user"><SectionHeader title={t('inviteTitle')} /></div>
           <div className="px-4 py-3">
             <p className="mb-3 text-xs text-muted-foreground">{t('inviteHint')}</p>
             <form action={inviteUserAction} className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{t('invitePerson')}</span>
+                {selectedPerson ? <><input type="hidden" name="personId" value={selectedPerson.id} /><span className="py-2 text-sm">{selectedPerson.name}</span><a href="/admin/users#invite-user" className="text-xs underline">{t('chooseAnotherEmployee')}</a></> : (
                 <select name="personId" required defaultValue="" className={`${inputCls} w-56`}>
                   <option value="" disabled>
                     {t('invitePersonPlaceholder')}
@@ -206,10 +220,11 @@ export default async function UsersPage({
                     </option>
                   ))}
                 </select>
+                )}
               </label>
               <label className="flex min-w-56 flex-1 flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{t('inviteEmail')}</span>
-                <input type="email" name="email" required placeholder="name@company.com" className={inputCls} />
+                <input type="email" name="email" required defaultValue={selectedPerson?.email ?? ''} placeholder="name@company.com" className={inputCls} />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">{t('inviteRole')}</span>
@@ -286,6 +301,11 @@ export default async function UsersPage({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {u.status === 'pending' && groupAdmin && u.personId && <>
+                  <a href={`/admin/users?activate=${u.personId}#manual-account-setup`} className={btnGhost}>{t('activateManually')}</a>
+                  <a href={`/admin/users?activate=${u.personId}#invite-user`} className={btnGhost}>{t('activateByInvitation')}</a>
+                </>}
+                {u.status === 'preparing' && !u.appUserId && <a href="#manual-account-setup" className={btnGhost}>{t('resumeActivation')}</a>}
                 {u.status === 'invited' && u.invitedRole && (
                   <span className="text-xs text-muted-foreground">
                     {t(`role.${u.invitedRole}`)}

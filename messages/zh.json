@@ -9378,7 +9378,7 @@
     "users": {
       "title": "用户与角色",
       "userCount": "{count, plural, one {# 名用户} other {# 名用户}}",
-      "provisioningNote": "集团管理员可通过电子邮件邀请，或在内部身份验证启用后手动设置用户名和临时密码，为<strong>现有员工</strong>管理登录账号。不开放自行注册。归档会阻止访问并保留记录。此人<em>所有</em>任职均结束后，登录会自动被阻止。HR 角色和公司范围与身份验证分别管理。",
+      "provisioningNote": "员工档案创建后将自动显示在此处。待激活状态不会授予访问权限。集团管理员可通过邮件邀请，或在启用内部身份验证后设置用户名和临时密码来激活员工账号。默认选择员工权限；更高权限需明确指定。归档会阻止访问但不会删除记录。所有雇佣关系结束后，登录将被阻止。",
       "sectionUsers": "用户",
       "scopedTo": "范围限定为 {company} 及其子公司",
       "revokeRole": "撤销角色",
@@ -9441,7 +9441,8 @@
         "active": "启用",
         "invited": "已邀请",
         "archived": "已归档",
-        "preparing": "设置待完成"
+        "preparing": "设置待完成",
+        "pending": "待激活"
       },
       "statusColumn": "状态",
       "archive": "归档",
@@ -9494,8 +9495,13 @@
         "success": {
           "created": "账号设置已完成。如为重试，现有密码保持不变。",
           "cancelled": "已取消未完成的设置。创建结果不明确的身份账号仍须由安装管理员检查。"
-        }
-      }
+        },
+        "chooseAnotherEmployee": "选择其他员工"
+      },
+      "activateManually": "设置用户名和密码",
+      "activateByInvitation": "发送邀请",
+      "resumeActivation": "继续设置",
+      "chooseAnotherEmployee": "选择其他员工"
     },
     "audit": {
       "title": "审计日志",

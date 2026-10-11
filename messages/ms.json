@@ -9378,7 +9378,7 @@
     "users": {
       "title": "Pengguna & peranan",
       "userCount": "{count, plural, one {# pengguna} other {# pengguna}}",
-      "provisioningNote": "Pentadbir kumpulan mengurus log masuk <strong>pekerja sedia ada</strong> melalui jemputan e-mel atau tetapan nama pengguna dan kata laluan sementara dengan pengesahan dalaman. Tiada pendaftaran terbuka. Pengarkiban menyekat akses tanpa memadam rekod. Log masuk disekat selepas <em>semua</em> pekerjaan berakhir. Peranan HR dan skop syarikat berasingan daripada pengesahan.",
+      "provisioningNote": "Pekerja dipaparkan di sini secara automatik selepas profil dicipta. Status menunggu pengaktifan tidak memberikan akses. Pentadbir kumpulan mengaktifkan pekerja melalui jemputan e-mel atau, dengan pengesahan dalaman, nama pengguna dan kata laluan sementara. Akses pekerja dipilih secara lalai; peranan lebih tinggi memerlukan pilihan jelas. Pengarkiban menyekat akses tanpa memadam rekod. Log masuk disekat apabila semua pekerjaan telah tamat.",
       "sectionUsers": "Pengguna",
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "revokeRole": "Tarik balik peranan",
@@ -9441,7 +9441,8 @@
         "active": "Aktif",
         "invited": "Dijemput",
         "archived": "Diarkibkan",
-        "preparing": "Persediaan belum selesai"
+        "preparing": "Persediaan belum selesai",
+        "pending": "Menunggu pengaktifan"
       },
       "statusColumn": "Status",
       "archive": "Arkibkan",
@@ -9494,8 +9495,13 @@
         "success": {
           "created": "Persediaan akaun selesai. Jika ini percubaan semula, kata laluan sedia ada tidak berubah.",
           "cancelled": "Persediaan belum selesai dibatalkan. Identiti yang penciptaannya tidak pasti masih memerlukan pemeriksaan pentadbir pemasangan."
-        }
-      }
+        },
+        "chooseAnotherEmployee": "Pilih pekerja lain"
+      },
+      "activateManually": "Tetapkan nama pengguna dan kata laluan",
+      "activateByInvitation": "Hantar jemputan",
+      "resumeActivation": "Sambung persediaan",
+      "chooseAnotherEmployee": "Pilih pekerja lain"
     },
     "audit": {
       "title": "Jejak audit",

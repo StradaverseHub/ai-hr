@@ -183,6 +183,7 @@ export function listPendingInvitations(ctx: SessionContext) {
     tx
       .select({
         id: appInvitation.id,
+        personId: appInvitation.personId,
         email: appInvitation.email,
         role: appInvitation.role,
         companyId: appInvitation.companyId,

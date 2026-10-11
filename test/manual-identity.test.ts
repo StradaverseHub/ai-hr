@@ -8,6 +8,7 @@ import {hireEmployee} from '../core/org';
 import {createManualAccount,resumeManualAccount,cancelManualAccount,listManualIdentityEnrollments,type CreateManualAccountInput} from '../core/manual-identity';
 import {inviteUser,acceptInvitation,type AuthProvider} from '../core/auth';
 import type {ManualAccountProvider} from '../lib/identity/manual-provider';
+import {listEmployeeActivationCandidates} from '../core/employee-user-activation';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const issuer='https://hr.test/identity/realms/ai-hr',password='Private-temporary-password-827';
@@ -35,7 +36,9 @@ async function call(ctxOverride:SessionContext,expression:ReturnType<typeof sql>
 
 describe('manual account enrollment — actual app role and tenant guards',()=>{
  it('commits one exact subject/person/grants binding, no email, and never persists or resets a completed password',async()=>{
+  expect((await listEmployeeActivationCandidates(ctx)).map(p=>p.id)).toContain(input.personId);
   const p=fake();const user=await createManualAccount(ctx,input,p);
+  expect((await listEmployeeActivationCandidates(ctx)).map(p=>p.id)).not.toContain(input.personId);
   expect((await intent()).status).toBe('active');expect((await intent()).username).toBe('manual.login');
   expect(p.setPassword).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({status:'prepared',subject}),password);
   expect(await resumeManualAccount(ctx,input.id,'Different-password-after-success',p)).toBe(user);
