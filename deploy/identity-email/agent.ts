@@ -5,6 +5,7 @@ import postgres from 'postgres';
 import { createEmailService, type EmailState } from './service';
 import { EmailSettingsError } from '../../lib/identity/email-model';
 import { IDENTITY_EMAIL_TEST_REALM } from '../../lib/identity/bootstrap';
+import { recordEmailAudit } from './database';
 const required=(name:string)=>{const value=process.env[name];if(!value) throw new Error('Missing private identity service configuration');return value;};
 const database=postgres(required('IDENTITY_EMAIL_DATABASE_URL'),{max:1,connect_timeout:5,idle_timeout:20});
 const clientSecret=required('IDENTITY_EMAIL_CLIENT_SECRET'),revisionKey=required('IDENTITY_EMAIL_REVISION_KEY'),testRecipient=required('IDENTITY_EMAIL_TEST_RECIPIENT');
@@ -21,7 +22,7 @@ async function admin(path:string,method='GET',body?:unknown,testRealm=false) {
 const statePath='/var/lib/aihr-identity-email/state.json';
 const service=createEmailService({revisionKey,testRecipient,now:()=>new Date(),
  authorize:async a=>{const rows=await database`select * from identity_email.operator_info(${a.issuer},${a.subject},${a.userId}::uuid,${a.tenantId}::uuid)`;return rows[0]?.test_email??null;},
- audit:async(a,action,meta)=>{await database`select identity_email.record_event(${a.issuer},${a.subject},${a.userId}::uuid,${a.tenantId}::uuid,${action},${JSON.stringify(meta)}::jsonb)`;},
+ audit:(a,action,meta)=>recordEmailAudit(database,a,action,meta as Record<string,postgres.JSONValue>),
  realm:(method,body)=>admin('',method,body),test:async smtp=>{await admin('/testSMTPConnection','POST',smtp,true);},
  load:async()=>{try{return JSON.parse(await readFile(statePath,'utf8')) as EmailState;}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT') return {drafts:{},active:null};throw e;}},
  store:async state=>{await writeFile(statePath+'.tmp',JSON.stringify(state)+'\n',{mode:0o600});await rename(statePath+'.tmp',statePath);},

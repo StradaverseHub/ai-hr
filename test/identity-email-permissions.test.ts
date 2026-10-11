@@ -1,7 +1,8 @@
 import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
 import { eq,sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { emailServiceDatabaseGrants } from '../deploy/identity-email/database';
+import postgres from 'postgres';
+import { emailServiceDatabaseGrants,recordEmailAudit } from '../deploy/identity-email/database';
 import { client,withTenant } from '../db/client';
 import { adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base } from './harness';
 import * as schema from '../db/schema';
@@ -55,5 +56,23 @@ describe('private identity email authority in the actual database',()=>{
   await enroll();const event=(subject:string,meta:object)=>owner.client`select identity_email.record_event(${issuer},${subject},${base.adminUserId}::uuid,${base.tenantId}::uuid,'draft-saved',${JSON.stringify(meta)}::jsonb)`;
   await event('owner',{draftId:'test',passwordChanged:true});const rows=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'identity-email.draft-saved'));expect(rows).toHaveLength(1);expect(rows[0].actorType).toBe('user');
   await expect(event('other',{})).rejects.toThrow(/administrator required/);await expect(event('owner',{password:'secret'})).rejects.toThrow(/invalid identity email audit/);
+ });
+ it('stores object metadata through the actual raw-driver login used by the agent',async()=>{
+  await enroll();const role='test_email_login_'+randomUUID().replaceAll('-',''),password=randomUUID();
+  const url=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);const [{name}]=await owner.client`select current_database() as name`;
+  await owner.client.unsafe(`CREATE ROLE "${role}" LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
+  url.username=role;url.password=password;url.pathname='/'+name;
+  // Deliberately do not wrap this client in drizzle: drizzle replaces JSON serializers.
+  const service=postgres(url.toString(),{max:1});
+  try{
+   for(const grant of emailServiceDatabaseGrants(name,role))await owner.client.unsafe(grant);
+   expect((await service`select session_user as name`)[0].name).toBe(role);
+   const metadata={draftId:randomUUID(),passwordChanged:true};
+   await recordEmailAudit(service,{issuer,subject:'owner',userId:base.adminUserId,tenantId:base.tenantId},'draft-saved',metadata);
+   const rows=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'identity-email.draft-saved'));
+   expect(rows).toHaveLength(1);expect(rows[0].payload).toEqual(metadata);
+  }finally{
+   await service.end();await owner.client.unsafe(`DROP OWNED BY "${role}"`);await owner.client.unsafe(`DROP ROLE "${role}"`);
+  }
  });
 });

@@ -21,16 +21,16 @@ async function main() {
       if (existing.length) {
         if (existing.length===1 && existing[0].issuer===identity.issuer && existing[0].subject===identity.subject && existing[0].app_user_id===target && existing[0].revoked_at===null) {
           const enrolled=await tx`insert into deployment_identity_operator(issuer,subject,test_email) values(${identity.issuer},${identity.subject},${identity.email}) on conflict do nothing returning issuer`;
-          if(enrolled.length) await tx`select app.append_auth_event(${user.tenant_id}::uuid,'app-user',${target}::uuid,'app-user.identity-email-enrolled','system',null,${JSON.stringify({via:'operator-controlled-installation'})}::jsonb)`;
+          if(enrolled.length) await tx`select app.append_auth_event(${user.tenant_id}::uuid,'app-user',${target}::uuid,'app-user.identity-email-enrolled','system',null,${tx.json({via:'operator-controlled-installation'})}::jsonb)`;
           return;
         }
         throw new Error('An identity is already enrolled. Inspect it before linking; this script never replaces a binding.');
       }
       await tx`insert into app_external_identity(issuer,subject,app_user_id) values(${identity.issuer},${identity.subject},${target}::uuid)`;
       await tx`select app.append_auth_event(${user.tenant_id}::uuid,'app-user',${target}::uuid,'app-user.identity-linked','system',null,
-        ${JSON.stringify({issuer:identity.issuer,subject:identity.subject,bootstrapEmail:identity.email,via:'operator-controlled-installation'})}::jsonb)`;
+        ${tx.json({issuer:identity.issuer,subject:identity.subject,bootstrapEmail:identity.email,via:'operator-controlled-installation'})}::jsonb)`;
       await tx`insert into deployment_identity_operator(issuer,subject,test_email) values(${identity.issuer},${identity.subject},${identity.email})`;
-      await tx`select app.append_auth_event(${user.tenant_id}::uuid,'app-user',${target}::uuid,'app-user.identity-email-enrolled','system',null,${JSON.stringify({via:'operator-controlled-installation'})}::jsonb)`;
+      await tx`select app.append_auth_event(${user.tenant_id}::uuid,'app-user',${target}::uuid,'app-user.identity-email-enrolled','system',null,${tx.json({via:'operator-controlled-installation'})}::jsonb)`;
       const [resolved] = await tx`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
       if (resolved?.app_user_id !== target) throw new Error('The enrolled identity does not resolve to the reviewed account.');
     });

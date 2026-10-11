@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { realmDefinition } from '../deploy/keycloak/realm';
 
@@ -23,6 +24,20 @@ describe('deployment-owned identity bootstrap boundaries',()=>{
     }
     const log=edge.match(/^log_format aihr_identity_safe (.+);$/m);
     expect(log).not.toBeNull();expect(log![1]).not.toMatch(/\$request_uri|\$uri|\$args|\$request[^_m]/);
+  });
+  it('consumes the complete Java package listing under pipefail',()=>{
+    const install=readFileSync('deploy/keycloak/install.sh','utf8');
+    const line=install.match(/^IDENTITY_JAVA_BIN=.*$/m)?.[0];expect(line).toBeTruthy();
+    const producer=`dpkg-query() { printf '%s\\n' '/fixture/bin/java'; i=0; while [ "$i" -lt 12000 ]; do printf '%s\\n' '/fixture/lib/resource'; i=$((i+1)); done; }`;
+    expect(execFileSync('bash',['-e','-o','pipefail','-c',producer+'\n'+line+'\nprintf \'%s\' "$IDENTITY_JAVA_BIN"'],{encoding:'utf8'})).toBe('/fixture/bin/java');
+  });
+  it('checks offline archives and makes the built public distribution readable before protecting data',()=>{
+    const install=readFileSync('deploy/keycloak/install.sh','utf8');
+    const offline=install.indexOf('KEYCLOAK_ARCHIVE_FILE'),checksum=install.indexOf('sha256sum --check --status'),extract=install.indexOf('tar --no-same-owner');
+    expect(offline).toBeGreaterThan(0);expect(checksum).toBeGreaterThan(offline);expect(extract).toBeGreaterThan(checksum);
+    const build=install.indexOf('kc.sh build'),permissions=install.indexOf('chmod -R a+rX,go-w'),data=install.indexOf('install -d -o aihr-keycloak');
+    expect(build).toBeGreaterThan(0);expect(permissions).toBeGreaterThan(build);expect(data).toBeGreaterThan(permissions);
+    const source=readFileSync('scripts/keycloak-link-owner.ts','utf8');expect(source).toContain('tx.json(');expect(source).not.toContain('JSON.stringify(');
   });
   it('requires an explicit existing account for audited owner enrollment and never writes HR grants',()=>{
     const source=readFileSync('scripts/keycloak-link-owner.ts','utf8');

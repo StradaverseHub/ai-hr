@@ -27,15 +27,19 @@ export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 apt-get update
 apt-get install -y --no-install-recommends openjdk-25-jre-headless ca-certificates curl
 # Select the installed package explicitly; an operator's existing Java alternatives stay untouched.
-IDENTITY_JAVA_BIN="$(dpkg-query -L openjdk-25-jre-headless | awk '/\/bin\/java$/ { print; exit }')"
+IDENTITY_JAVA_BIN="$(dpkg-query -L openjdk-25-jre-headless | awk '/\/bin\/java$/ && !found { print; found=1 }')"
 [ -x "$IDENTITY_JAVA_BIN" ] || { echo 'The required Java runtime was not installed.' >&2; exit 1; }
 IDENTITY_JAVA_HOME="$(dirname "$(dirname "$IDENTITY_JAVA_BIN")")"
 VERSION=26.8.0
 SHA256=9e41da899f838a58cd510fc98ed4f7cadc715aed5683e42aca20a0c9a2a3980a
 INSTALL_TMP="$(mktemp -d)"
 trap 'rm -rf -- "$INSTALL_TMP"' EXIT
-curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-  "https://github.com/keycloak/keycloak/releases/download/$VERSION/keycloak-$VERSION.tar.gz" -o "$INSTALL_TMP/keycloak.tar.gz"
+if [ -n "${KEYCLOAK_ARCHIVE_FILE:-}" ]; then
+  cp -- "$KEYCLOAK_ARCHIVE_FILE" "$INSTALL_TMP/keycloak.tar.gz"
+else
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    "https://github.com/keycloak/keycloak/releases/download/$VERSION/keycloak-$VERSION.tar.gz" -o "$INSTALL_TMP/keycloak.tar.gz"
+fi
 echo "$SHA256  $INSTALL_TMP/keycloak.tar.gz" | sha256sum --check --status
 id aihr-keycloak >/dev/null 2>&1 || useradd --system --home-dir /opt/aihr-keycloak --shell /usr/sbin/nologin aihr-keycloak
 install -d -m 0755 /opt/aihr-keycloak
@@ -82,6 +86,9 @@ ENV
 chmod 0600 /etc/aihr-keycloak/service.env
 # EnvironmentFile is read by systemd as root; the service itself cannot read bootstrap/database secrets from disk.
 JAVA_HOME="$IDENTITY_JAVA_HOME" /opt/aihr-keycloak/current/bin/kc.sh build --vault=file --db=postgres --http-relative-path=/identity --health-enabled=true --metrics-enabled=true
+# Extraction/build under umask 077 leaves public distribution files unreadable to the service.
+# Credentials live outside this tree; restore public read/execute before protecting writable data.
+chmod -R a+rX,go-w "/opt/aihr-keycloak/keycloak-$VERSION"
 install -d -o aihr-keycloak -g aihr-keycloak -m 0700 /opt/aihr-keycloak/current/data
 install -m 0644 "$SCRIPT_DIR/aihr-keycloak.service" /etc/systemd/system/aihr-keycloak.service
 systemctl daemon-reload
