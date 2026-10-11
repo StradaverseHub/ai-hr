@@ -5,7 +5,7 @@
 // notifications IN THE SAME SCRIPT — otherwise the "notify manager + HR ~1 month prior" headline is dead
 // in a no-admin-traffic window (dispatchNotifications is otherwise only invoked opportunistically when an
 // admin renders a page). Notifications are gated behind the per-tenant `notifications` MODULE (off ⇒
-// dispatch no-ops) and are delivered IN-APP ONLY — nothing here is emailed (core/notifications.ts header).
+// dispatch no-ops). Conditional email is queued here and delivered by the separate minute email sweep.
 // r83b 941c9dac: the same pass also APPLIES FUTURE-DATED MOVEMENTS (sweepDueMovements) — a promotion or
 // transfer keyed with a future effective date is held Pending and takes effect on the morning of that
 // date. Same job for the same reason: a second cron line is a second thing to forget to install.
@@ -162,9 +162,8 @@ async function main() {
       (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a
-  // 'success' here does NOT prove a single person was notified. NOTHING IS EMAILED — there is no email
-  // transport in this repo (core/notifications.ts file header); a notification is an in-app bell row and
-  // nothing more, and it reaches only the minority of employments that have a login at all.
+  // 'success' here does not prove delivery. In-app rows and conditional email jobs are projections;
+  // the separate email sweep records relay acceptance, rejection or uncertainty, never human receipt.
   // `dispatchNotifications` is gated on the per-tenant `notifications` MODULE (not, as this note used to
   // say, on NOTIFICATIONS_ENABLED, which no application code reads) and no-ops for a tenant without it,
   // while the run still records success.

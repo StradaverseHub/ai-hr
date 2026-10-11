@@ -59,7 +59,7 @@ const ALL_TABLES = [
   // 5249d43f — registered clocking devices: truncate between test files (the global unique token index
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).
   'employee_device', 'attendance_clock_capture', 'attendance_attention_review',
-  'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
+  'notification', 'notification_pref', 'notification_delivery', 'notification_cursor', 'notification_email_policy',
   // 6e122302 — the Notice Board. `notice_recipient` cascades from `notice`, but BOTH are listed for the
   // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
   // stops being cleared the day the cascade path changes. A surviving notice would also make a later

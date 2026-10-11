@@ -405,7 +405,8 @@
     "lifecycle": "Tiếp nhận & IT",
     "lifecycleConfig": "Cấu hình Tiếp nhận & IT",
     "rewards": "Đãi ngộ",
-    "identityEmail": "Gửi email"
+    "identityEmail": "Gửi email",
+    "workflowEmail": "Thông báo quy trình"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -9282,7 +9283,7 @@
       "cancelApprovedApprovalHelp": "Phê duyệt lại đi qua cùng các cấp duyệt, theo cùng thứ tự, như đơn xin nghỉ ban đầu. Tự động phê duyệt sẽ hủy nghỉ phép và hoàn lại ngày nghỉ ngay lập tức.",
       "cancelApprovedReplacementNote": "Việc hủy Nghỉ bù luôn cần người duyệt phê duyệt lại, vì trả lại ngày nghỉ cũng trả lại tín chỉ của nó.",
       "cancelApprovedNotifyLabel": "Thông báo cho người duyệt và HR khi có yêu cầu hủy",
-      "cancelApprovedNotifyHelp": "Thông báo hiển thị ở chuông thông báo. Hệ thống không gửi email.",
+      "cancelApprovedNotifyHelp": "Người nhận thấy thông báo trong chuông của ứng dụng. Email còn cần danh mục được cho phép, sự đồng ý của người nhận và SMTP đang hoạt động.",
       "generateOutcome_not_eligible": "Không đủ điều kiện — điều kiện của loại nghỉ phép này loại trừ nhân viên"
     },
     "holidays": {
@@ -9435,7 +9436,8 @@
         "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này.",
         "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này.",
         "myTeam": "Quản lý xem nhân viên hiện đang báo cáo trực tiếp hoặc gián tiếp. Quản trị HR chọn phòng ban trong các công ty được cấp quyền.",
-        "identityEmail": "Cần đăng ký riêng làm quản trị viên danh tính hệ thống; vai trò nhân sự không tự cấp quyền."
+        "identityEmail": "Cần đăng ký riêng làm quản trị viên danh tính hệ thống; vai trò nhân sự không tự cấp quyền.",
+        "workflowEmail": "Danh mục tổ chức cho phép"
       },
       "status": {
         "active": "Đang hoạt động",
@@ -12313,7 +12315,8 @@
       "managerReview": "Hoàn thành đánh giá nhân viên",
       "hrReview": "Ghi nhận quyết định đánh giá của HR"
     },
-    "countWord": "{count, plural, other {thông báo}}"
+    "countWord": "{count, plural, other {thông báo}}",
+    "emailPreferences": "Tùy chọn email"
   },
   "approvalHistory": {
     "title": "Lịch sử phê duyệt",
@@ -15046,7 +15049,7 @@
     "everyoneWarning": "Chưa đặt tiêu chí nào, nên thông báo này sẽ đến mọi nhân viên đang làm việc. Hãy kiểm tra số lượng ở trên trước khi đăng.",
     "targetingFrozen": "Thông báo này đã được đăng nên danh sách người nhận là cố định. Để gửi tới người khác, hãy lưu trữ nó và đăng một thông báo mới.",
     "fNotify": "Thông báo cho người nhận khi đăng",
-    "fNotifyHelp": "Người nhận sẽ thấy trong chuông thông báo trong ứng dụng. Không có email nào được gửi.",
+    "fNotifyHelp": "Người nhận thấy thông báo trong chuông của ứng dụng. Email còn cần danh mục được cho phép, sự đồng ý của người nhận và SMTP đang hoạt động.",
     "fPopup": "Hiển thị dạng cửa sổ bật lên sau khi đăng nhập",
     "fPopupFrequency": "Tần suất bật lên",
     "popupOnce": "Một lần cho mỗi nhân viên",
@@ -16731,6 +16734,75 @@
       "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
       "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
       "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này."
+    }
+  },
+  "workflowEmail": {
+    "title": "Email thông báo quy trình",
+    "description": "Chọn cập nhật quy trình có thể gửi qua email. Mỗi nhân viên cũng chọn tùy chọn email riêng.",
+    "preferencesTitle": "Email thông báo của tôi",
+    "preferencesDescription": "Nhận thông báo ngắn kèm liên kết đến ứng dụng. Chi tiết nhân sự nằm trong ứng dụng.",
+    "policyHelp": "Email cần danh mục được bật, sự đồng ý của bạn, tài khoản nội bộ đã xác minh và máy chủ chuyển tiếp SMTP đang hoạt động. Bật danh mục chỉ áp dụng cho sự kiện mới.",
+    "consentHelp": "Chọn cập nhật gửi đến email đã xác minh trong hồ sơ nhân viên. Tùy chọn được lưu riêng theo từng quan hệ việc làm và chỉ áp dụng cho sự kiện mới.",
+    "identityRequired": "Đăng nhập bằng tài khoản nội bộ đã xác minh có email khớp hồ sơ nhân viên để bật email. Bạn vẫn có thể tắt mọi email mà không cần đồng ý nhận.",
+    "relayReady": "Máy chủ chuyển tiếp SMTP đang hoạt động. Thông báo đủ điều kiện có thể được gửi.",
+    "relayOff": "Máy chủ chuyển tiếp SMTP chưa hoạt động. Chưa thể gửi email quy trình.",
+    "upgradeRequired": "Dịch vụ email riêng cần bản nâng cấp thông báo quy trình trước khi có thể gửi email.",
+    "policyTitle": "Danh mục tổ chức cho phép",
+    "preferencesCategories": "Gửi email cho tôi về các danh mục này",
+    "notAllowed": "Tổ chức hiện đang tắt",
+    "employment": "Quan hệ việc làm",
+    "language": "Ngôn ngữ email",
+    "save": "Lưu tùy chọn",
+    "savePolicy": "Lưu cài đặt danh mục",
+    "saved": "Đã lưu cài đặt.",
+    "noEmployment": "Tài khoản này chưa liên kết hồ sơ nhân viên.",
+    "deliveries": "Email gửi gần đây",
+    "deliveriesHelp": "Đã gửi nghĩa là máy chủ chuyển tiếp đã chấp nhận, không chứng minh người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Lần gửi chưa rõ kết quả được giữ lại để tránh tự động gửi trùng.",
+    "noDeliveries": "Chưa có email quy trình trong hàng đợi.",
+    "category": "Danh mục",
+    "status": "Trạng thái",
+    "attempts": "Số lần thử",
+    "created": "Ngày tạo",
+    "retry": "Thử gửi lại",
+    "retryAck": "Tôi hiểu việc thử lại có thể gửi email trùng.",
+    "preferencesLink": "Tùy chọn email",
+    "settingsLink": "Thông báo quy trình",
+    "subject": "Cập nhật {category}",
+    "alert": "Có cập nhật mới. Mở ứng dụng để xem chi tiết.",
+    "actionAlert": "Có mục cần bạn xử lý. Mở ứng dụng để xem chi tiết.",
+    "openApp": "Xem trong ứng dụng",
+    "error": "Không lưu được cài đặt. Kiểm tra quyền truy cập và email đã xác minh rồi thử lại.",
+    "statuses": {
+      "pending": "Đang chờ",
+      "sent": "Máy chủ đã chấp nhận",
+      "failed": "Thất bại hoặc chưa rõ",
+      "skipped": "Đã bỏ qua"
+    },
+    "errors": {
+      "relayUnavailable": "Máy chủ chuyển tiếp không khả dụng",
+      "recipientUnavailable": "Nhà cung cấp danh tính không khả dụng",
+      "recipientChanged": "Email xác minh hoặc tài khoản đã thay đổi",
+      "notEligible": "Người nhận hoặc tùy chọn không còn đủ điều kiện",
+      "smtpTemporary": "Máy chủ tạm từ chối",
+      "smtpRejected": "Máy chủ từ chối email",
+      "smtpAuthentication": "Xác thực máy chủ thất bại",
+      "smtpTls": "Kiểm tra TLS thất bại",
+      "uncertain": "Chưa rõ kết quả gửi; kiểm tra trước khi thử lại"
+    },
+    "categories": {
+      "attendance": "Chấm công",
+      "claims": "Yêu cầu chi phí",
+      "delegation": "Ủy quyền",
+      "leave": "Nghỉ phép",
+      "notice": "Thông báo",
+      "offboarding": "Nghỉ việc",
+      "payroll": "Bảng lương",
+      "performance": "Hiệu suất",
+      "profile": "Thay đổi hồ sơ",
+      "readiness": "Mức độ hoàn thiện",
+      "review": "Đánh giá việc làm",
+      "rewards": "Khen thưởng",
+      "toil": "Nghỉ bù"
     }
   }
 }

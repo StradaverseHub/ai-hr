@@ -405,7 +405,8 @@
     "lifecycle": "Onboarding & IT",
     "lifecycleConfig": "Onboarding & IT config",
     "rewards": "Rewards",
-    "identityEmail": "Email delivery"
+    "identityEmail": "Email delivery",
+    "workflowEmail": "Workflow notifications"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -9282,7 +9283,7 @@
       "cancelApprovedApprovalHelp": "Re-approval goes through the same approval levels, in the same order, as the original leave request. Approved automatically cancels the leave and returns the days straight away.",
       "cancelApprovedReplacementNote": "Replacement Leave cancellations always need the approver's re-approval, because giving the leave back returns its credit.",
       "cancelApprovedNotifyLabel": "Notify the approver and HR when a cancellation is requested",
-      "cancelApprovedNotifyHelp": "Notifications appear in the notification bell. The system does not send email.",
+      "cancelApprovedNotifyHelp": "Recipients see an alert in the in-app notification bell. Email also requires category permission, recipient consent and an active SMTP relay.",
       "generateOutcome_not_eligible": "Not eligible — the leave type’s conditions exclude this employee"
     },
     "holidays": {
@@ -9435,7 +9436,8 @@
         "duplicatePersonRecords": "Lists only employees in companies you administer, so half of a pair spanning two companies may not be visible to you. Read-only — no record can be changed from this screen.",
         "childReliefReview": "Lists only current employees in companies you administer, so the ringgit totals are the totals of what you can see. Read-only — no tax setting can be changed from this screen.",
         "myTeam": "Managers see their current direct or indirect reports. HR administrators can choose departments within their authorized companies.",
-        "identityEmail": "Requires separate installation identity-administrator enrollment; HR roles alone do not grant access."
+        "identityEmail": "Requires separate installation identity-administrator enrollment; HR roles alone do not grant access.",
+        "workflowEmail": "Tenant-wide categories require a group administrator."
       },
       "status": {
         "active": "Active",
@@ -12313,7 +12315,8 @@
       "managerReview": "Complete employment review",
       "hrReview": "Record HR review decision"
     },
-    "countWord": "{count, plural, one {notification} other {notifications}}"
+    "countWord": "{count, plural, one {notification} other {notifications}}",
+    "emailPreferences": "Email preferences"
   },
   "approvalHistory": {
     "title": "Approval History",
@@ -15046,7 +15049,7 @@
     "everyoneWarning": "No criteria are set, so this notice will reach every active employee. Check the number above before publishing.",
     "targetingFrozen": "This notice is published, so its audience is fixed. To reach different people, archive it and publish a new one.",
     "fNotify": "Notify recipients when it is published",
-    "fNotifyHelp": "Recipients see it in their in-app notification bell. No email is sent.",
+    "fNotifyHelp": "Recipients see an alert in the in-app notification bell. Email also requires category permission, recipient consent and an active SMTP relay.",
     "fPopup": "Show as a popup after login",
     "fPopupFrequency": "Popup frequency",
     "popupOnce": "Once per employee",
@@ -16731,6 +16734,75 @@
       "save": "Draft saved. The active relay is unchanged.",
       "test": "The relay accepted the test message. Check the inbox before activation.",
       "apply": "Relay activated. Invitations and password recovery can now use it."
+    }
+  },
+  "workflowEmail": {
+    "title": "Workflow email notifications",
+    "description": "Choose which workflow updates may be emailed. Each employee also chooses their own email preferences.",
+    "preferencesTitle": "My email notifications",
+    "preferencesDescription": "Receive a brief alert and a link to the app. HR details remain in the app.",
+    "policyHelp": "Email requires an enabled category, your consent, a verified internal login and an active SMTP relay. Enabling a category applies to future events only.",
+    "consentHelp": "Choose the updates you want emailed to the verified address on your employee profile. Preferences apply separately to each employment and to future events only.",
+    "identityRequired": "Sign in with a verified internal account whose email matches your employee profile to enable email notifications. You can turn all email notifications off without opting in.",
+    "relayReady": "The managed SMTP relay is active. Eligible notifications can be delivered.",
+    "relayOff": "The managed SMTP relay is not active. No workflow email can be delivered yet.",
+    "upgradeRequired": "The private email service needs the workflow notification upgrade before email can be delivered.",
+    "policyTitle": "Categories allowed by your organisation",
+    "preferencesCategories": "Email me about these categories",
+    "notAllowed": "Currently disabled by your organisation",
+    "employment": "Employment",
+    "language": "Email language",
+    "save": "Save preferences",
+    "savePolicy": "Save category settings",
+    "saved": "Settings saved.",
+    "noEmployment": "No employee profile is linked to this login.",
+    "deliveries": "Recent email deliveries",
+    "deliveriesHelp": "Sent means accepted by the relay; it does not prove receipt. This list shows the latest 50 deliveries. Uncertain sends are held to avoid automatic duplicates.",
+    "noDeliveries": "No workflow email has been queued.",
+    "category": "Category",
+    "status": "Status",
+    "attempts": "Attempts",
+    "created": "Created",
+    "retry": "Retry delivery",
+    "retryAck": "I understand that retrying may send a duplicate email.",
+    "preferencesLink": "Email preferences",
+    "settingsLink": "Workflow notifications",
+    "subject": "{category} update",
+    "alert": "An update is available. Open the app to view details.",
+    "actionAlert": "An item needs your attention. Open the app to view details.",
+    "openApp": "View in the app",
+    "error": "The settings could not be saved. Check your access and verified email, then try again.",
+    "statuses": {
+      "pending": "Pending",
+      "sent": "Accepted by relay",
+      "failed": "Failed or uncertain",
+      "skipped": "Skipped"
+    },
+    "errors": {
+      "relayUnavailable": "Relay unavailable",
+      "recipientUnavailable": "Identity provider unavailable",
+      "recipientChanged": "Verified email or account changed",
+      "notEligible": "Recipient or preferences no longer eligible",
+      "smtpTemporary": "Temporary relay rejection",
+      "smtpRejected": "Relay rejected the message",
+      "smtpAuthentication": "Relay authentication failed",
+      "smtpTls": "Relay TLS check failed",
+      "uncertain": "Delivery uncertain; check before retrying"
+    },
+    "categories": {
+      "attendance": "Attendance",
+      "claims": "Claims",
+      "delegation": "Delegation",
+      "leave": "Leave",
+      "notice": "Notices",
+      "offboarding": "Offboarding",
+      "payroll": "Payroll",
+      "performance": "Performance",
+      "profile": "Profile changes",
+      "readiness": "Readiness",
+      "review": "Employment reviews",
+      "rewards": "Rewards",
+      "toil": "Time off in lieu"
     }
   }
 }

@@ -9,29 +9,15 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
  * reporting-graph resolver and are deferred. A notification is a derived projection with its own table acting
  * as its audit, so dispatch does NOT append a DomainEvent (per CLAUDE.md — an event storm + a derivation loop).
  *
- * ── DELIVERY IS IN-APP ONLY. NOTHING IN THIS FILE SENDS EMAIL. ───────────────────────────────────────────
- *
- * `dispatchNotifications` inserts one `notification` row per recipient and stops. The only consumers of those
- * rows are the topbar bell (app/layout.tsx → components/notification-center.tsx) and the mark-read server
- * actions (app/notification-actions.ts). Nothing else reads them.
- *
- * THERE IS NO EMAIL TRANSPORT IN THIS REPOSITORY — no nodemailer, SMTP, SendGrid, Postmark, Mailgun, SES or
- * Resend, in package.json or anywhere else. The one mail the product really sends is WorkOS's invitation,
- * from the auth path, and it is not this engine's.
- *
- * The schema LOOKS like more than that and is not: `notification_channel` has an 'email' member, and
- * `notification_pref` (per recipient/category/channel) and `notification_delivery` (out-of-app attempts)
- * are real tables. NO CODE READS OR WRITES EITHER ONE — zero references outside db/schema.ts. So no
- * preference is consulted, no channel is chosen, and no delivery row is ever written. They are a design
- * that was migrated and never built. Do not describe them as behaviour.
- *
- * This matters beyond tidiness: a comment claiming a delivery channel is how somebody ends up telling a
- * customer that leave approvals are emailed. Only 9 of 83 production employments even have a login, so an
- * in-app notification to the other 74 reaches nobody at all. `test/r292-notification-channel-truth.test.ts`
- * is a SOURCE-SHAPE guard pinning the absence of a transport and the absence of the claim TOGETHER, so the
- * two can never drift apart again. Adding a transport is a vendor and cost decision for the owner; if that
- * day comes, that test is the checklist of what has to change with it.
+ * Delivery: the in-app bell always receives mapped notifications. Workflow email is conditional on the
+ * tenant's category policy, explicit recipient consent and the active managed SMTP relay. The dispatcher
+ * queues routing metadata only; the private service receives no frozen HR title/body. The delivery worker
+ * resolves the SAME registry again before leasing a job. SMTP acceptance is not human receipt.
+ * See ADR-0034 §7 and test/r292-notification-channel-truth.test.ts for the copy/transport agreement.
+
  */
+import { randomUUID } from 'node:crypto';
+import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
 import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -57,8 +43,7 @@ import { isModuleEnabled } from './entitlements';
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
  *  super_admin grants are group-wide; an hr_admin grant may be group-wide (company_id null) or scoped.
  *
- *  Switched-off logins are excluded (0279). THE REASON IS NOT EMAIL — nothing here sends any; see the file
- *  header, which used to be contradicted from this very line. The reason is that a notification row
+ *  Switched-off logins are excluded (0279). A notification row
  *  OUTLIVES the block and is not re-authorized when it is read:
  *    • `notification_recipient_rls` (0078) is PERSON-scoped and ROLE-BLIND — it matches on
  *      app.is_self_person(employment.person_id) and asks nothing about hr_admin;
@@ -223,7 +208,7 @@ type Rendered = { severity: NotificationSeverity; title: string; body: string; l
 type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
 type Spec = {
   kind: string;
-  category: string;
+  category: NotificationEmailCategory;
   /** `ev` is optional context (6522d26a) — most renders are payload-only; a spec may use the event ref
    *  for a recipient-specific deep-link (e.g. the HR issue-letter task links to the subject's profile). */
   render: (payload: Record<string, unknown> | null, ev: EventRef) => Rendered;
@@ -338,7 +323,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   // subject — the default recipient). The REQUEST goes to the approver and HR only when the leave type's
   // "Notify the approver and HR" box was ticked, a choice SNAPSHOTTED into the event payload at request time
   // (re-reading the leave type at dispatch would let a later untick retroactively un-notify). In-app only:
-  // see the file header — nothing here sends email. English-only strings, the registry convention.
+  // Email uses a separate brief template; the in-app strings follow the registry convention.
   'leave-cancellation.requested': {
     kind: 'leave.cancellation-requested',
     category: 'leave',
@@ -788,9 +773,8 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why core/notice.ts
   // carries no delivery code of its own. Publishing appends notice.published; this entry fans it out to the
   // audience SNAPSHOT (notice_recipient) as ordinary in-app notifications, shown by the same bell as
-  // everything else. There is NO preference or channel step to describe — see the file header: dispatch
-  // inserts a row and stops, and `notification_pref` is dead schema nothing reads. Routing notices through
-  // this engine is still right, because the day a second channel exists it gets built ONCE, here.
+  // everything else. Conditional email also uses this snapshot, tenant category permission and recipient
+  // consent; the brief external alert carries a link instead of the notice's title/body.
   'notice.published': {
     kind: 'notice.published',
     category: 'notice',
@@ -805,7 +789,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     recipients: async (tx, ev, payload) => {
       // The publisher's `notifyOnPublish` choice, snapshotted into the event. That checkbox reads "Notify
       // recipients when it is published" (`notices.fNotify`, components/notice/notice-form.tsx) — it is NOT
-      // an email switch, and there is no email switch, because there is no email. Read from the PAYLOAD
+      // an unconditional email switch. Category permission and recipient consent still apply. Read from the PAYLOAD
       // rather than re-queried: switching the flag off after publication must not retroactively un-notify,
       // and re-reading the row would make it look as though it had.
       if (payload?.notify !== true) return [];
@@ -839,6 +823,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
   if (!enabled(ctx)) return { processed: 0, created: 0 };
   const limit = Math.min(Math.max(opts.limit ?? 1000, 1), 5000);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
     const after = cur?.lastSequence != null ? gt(domainEvent.sequence, cur.lastSequence) : undefined;
     const rows = await tx
@@ -871,7 +856,9 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         if (recipients.length === 0) continue;
         const r = spec.render((ev.payload as Record<string, unknown> | null) ?? null, evRef);
         for (const recipient of recipients) {
+          const notificationId = randomUUID();
           await tx.insert(notification).values({
+            id: notificationId,
             tenantId: ctx.tenantId,
             recipientEmploymentId: recipient,
             kind: spec.kind,
@@ -881,6 +868,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
             severity: r.severity,
             sourceEventId: ev.id,
           });
+          await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
           created += 1;
         }
       }
@@ -897,6 +885,23 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
     }
     return { processed: rows.length, created };
   });
+}
+
+/** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
+export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string): Promise<boolean> {
+  if (!notificationEmailCategory.safeParse(category).success) return false;
+  const [ev] = await tx.select().from(domainEvent).where(eq(domainEvent.id,eventId)).limit(1);
+  if (!ev) return false;
+  const entry = REGISTRY[ev.eventType];
+  if (!entry) return false;
+  const ref: EventRef = {aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};
+  for (const spec of Array.isArray(entry) ? entry : [entry]) {
+    if (spec.kind !== kind || spec.category !== category) continue;
+    const recipients = spec.recipients ? await spec.recipients(tx,ref,(ev.payload as Record<string,unknown>|null)??null)
+      : ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [];
+    if (recipients.includes(recipient)) return true;
+  }
+  return false;
 }
 
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's

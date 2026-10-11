@@ -5315,6 +5315,10 @@ export const notificationPref = pgTable(
     category: text('category').notNull(),
     channel: notificationChannelEnum('channel').notNull(),
     enabled: boolean('enabled').notNull().default(true),
+    // Explicit external-mail consent; historical rows with NULL consent never enable email.
+    emailConsentUserId: uuid('email_consent_user_id').references(() => appUser.id),
+    emailAfterSequence: bigint('email_after_sequence', { mode: 'number' }),
+    emailLocale: text('email_locale').notNull().default('en'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -5333,13 +5337,33 @@ export const notificationDelivery = pgTable(
     channel: notificationChannelEnum('channel').notNull(),
     status: notificationDeliveryStatusEnum('status').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
+    recipientUserId: uuid('recipient_user_id').references(() => appUser.id),
+    sourceEventId: uuid('source_event_id'),
+    kind: text('kind'),
+    category: text('category'),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
     lastError: text('last_error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index('notification_delivery_pending_idx').on(t.tenantId, t.status)],
+  (t) => [
+    index('notification_delivery_pending_idx').on(t.tenantId, t.status),
+    uniqueIndex('notification_email_event_user_uq').on(t.tenantId, t.sourceEventId, t.recipientUserId, t.kind)
+      .where(sql`channel='email' AND source_event_id IS NOT NULL AND recipient_user_id IS NOT NULL`),
+  ],
 );
+
+// Tenant-wide category permission is independent of a recipient's explicit preference.
+export const notificationEmailPolicy = pgTable('notification_email_policy', {
+  id: id(), tenantId: tenantId(), category: text('category').notNull(),
+  enabled: boolean('enabled').notNull().default(false),
+  afterSequence: bigint('after_sequence', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('notification_email_policy_tenant_id_category_key').on(t.tenantId, t.category)]);
 
 // Dispatcher state: the last domain_event.sequence (a monotonic bigserial — exact, unlike a timestamp which
 // loses sub-millisecond precision on the JS Date round-trip and would re-process events) processed per

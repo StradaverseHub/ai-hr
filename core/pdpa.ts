@@ -9,7 +9,7 @@
  *   5. append pii.erased (no PII payload) and return a report of erased vs withheld.
  * Admin/DPO-gated via RLS. Atomic — everything runs in one transaction.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto, profileChangeRequest } from '../db/schema';
@@ -218,6 +218,8 @@ export async function erasePersonPii(
         .where(eq(personEmergencyContact.personId, emp.personId))
         .returning({ id: personEmergencyContact.id });
       if (removed.length > 0) erased.push('emergencyContacts');
+      const [consent] = await tx.execute(sql`select app.notification_email_revoke_contact(${p.subjectEmploymentId}::uuid) as revoked`) as unknown as {revoked:number}[];
+      if (consent?.revoked) erased.push('workflowEmailConsent');
     }
 
     // (5) audit record — no PII payload

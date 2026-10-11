@@ -2,6 +2,9 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename, link } from 'node:fs/promises';
 import postgres from 'postgres';
+import nodemailer from 'nodemailer';
+import { activeWorkflowRelay, createNotificationEmailService, type WorkflowMailTarget } from './notifications';
+import { workflowEmailMessage } from './notification-message';
 import { createEmailService, type EmailState } from './service';
 import { EmailSettingsError } from '../../lib/identity/email-model';
 import { IDENTITY_EMAIL_TEST_REALM } from '../../lib/identity/bootstrap';
@@ -33,13 +36,65 @@ const service=createEmailService({revisionKey,testRecipient,now:()=>new Date(),
   await link(path,'/var/lib/aihr-identity-email/vault/'+IDENTITY_EMAIL_TEST_REALM+'_'+key);
  },
 });
+// Lookup uses the existing realm-scoped identity administration client, copied only by the root upgrade.
+// It is not a read-only credential: the trusted identity service already administers this realm's SMTP.
+async function verifyWorkflowRecipient(target:WorkflowMailTarget):Promise<'verified'|'changed'|'unavailable'> {
+ const clientId=process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_ID,secret=process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET;
+ if(!clientId||!secret||!/^[a-zA-Z0-9_-]{1,128}$/.test(target.subject))return 'unavailable';
+ try{
+  const response=await fetch(base+'/realms/ai-hr/protocol/openid-connect/token',{method:'POST',body:new URLSearchParams({grant_type:'client_credentials',client_id:clientId,client_secret:secret}),redirect:'error',signal:AbortSignal.timeout(5000)});
+  if(!response.ok)return 'unavailable';
+  const credential=await response.json() as {access_token?:string};if(!credential.access_token)return 'unavailable';
+  const account=await fetch(base+'/admin/realms/ai-hr/users/'+target.subject,{headers:{authorization:'Bearer '+credential.access_token},redirect:'error',signal:AbortSignal.timeout(5000)});
+  if(account.status===404)return 'changed';if(!account.ok)return 'unavailable';
+  const a=await account.json() as {id?:string;email?:string;enabled?:boolean;emailVerified?:boolean;federationLink?:string;serviceAccountClientId?:string;requiredActions?:string[]};
+  return a.id===target.subject&&a.enabled===true&&a.emailVerified===true&&a.email?.toLowerCase()===target.email.toLowerCase()&&!a.federationLink&&!a.serviceAccountClientId&&(!a.requiredActions||a.requiredActions.length===0)?'verified':'changed';
+ }catch{return 'unavailable';}
+}
+async function workflowRelay(){
+ const state=JSON.parse(await readFile(statePath,'utf8')) as EmailState;
+ return activeWorkflowRelay(state,await admin('') as {smtpServer?:Record<string,string>});
+}
+const notifications=createNotificationEmailService({
+ origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
+ ready:async()=>{
+  if(!process.env.WORKFLOW_EMAIL_ISSUER||!process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET||!process.env.WORKFLOW_EMAIL_ORIGIN)return false;
+  try{const relay=await workflowRelay();if(!relay)return false;if(relay.config.auth){if(!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))return false;await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey);}return true;}catch{return false;}
+ },
+ target:async(id,token)=>{
+  const rows=await database<WorkflowMailTarget[]>`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''})`;
+  return rows.length===1?rows[0]:null;
+ },
+ verifyRecipient:verifyWorkflowRecipient,
+ start:async(id,token)=>(await database`select identity_email.start_delivery(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as started`)[0]?.started===true,
+ finish:async(id,token,outcome,error)=>(await database`select identity_email.finish_delivery(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0]?.finished===true,
+ send:async(target,mail)=>{
+  const relay=await workflowRelay();if(!relay)throw new Error('Managed relay changed');
+  const c=relay.config;
+  if(c.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable');
+  const password=c.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;
+  const transport=nodemailer.createTransport({host:c.host,port:c.port,secure:true,
+   auth:c.auth?{user:c.user,pass:password!}:undefined,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},
+   connectionTimeout:10_000,greetingTimeout:8_000,socketTimeout:15_000,disableFileAccess:true,disableUrlAccess:true});
+  try{
+   const result=await transport.sendMail({from:{name:c.fromName,address:c.from},to:target.email,replyTo:c.replyTo||undefined,
+    envelope:{from:c.from,to:[target.email]},messageId:mail.messageId,...workflowEmailMessage(mail),disableFileAccess:true,disableUrlAccess:true});
+   if(result.accepted.length!==1)throw new Error('Relay acceptance not confirmed');
+  }finally{transport.close();}
+ },
+});
+let privateQueue:Promise<unknown>=Promise.resolve();
+const handlePrivateRequest=(path:string,input:unknown)=>{
+ const result=privateQueue.then(()=>path==='/v1/notifications'?notifications(input):service(input));
+ privateQueue=result.catch(()=>{});return result;
+};
 const server=createServer(async(req,res)=>{
  res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');
- if(req.method!=='POST'||req.url!=='/v1/settings'){res.writeHead(404).end('{}');return;}
+ if(req.method!=='POST'||!['/v1/settings','/v1/notifications'].includes(req.url||'')){res.writeHead(404).end('{}');return;}
  let size=0;const chunks:Buffer[]=[];
  try{
   for await(const chunk of req){size+=chunk.length;if(size>16_384)throw new EmailSettingsError('invalid');chunks.push(chunk);}
-  const result=await service(JSON.parse(Buffer.concat(chunks).toString()));res.writeHead(200).end(JSON.stringify(result));
+  const result=await handlePrivateRequest(req.url!,JSON.parse(Buffer.concat(chunks).toString()));res.writeHead(200).end(JSON.stringify(result));
  }catch(e){const code=e instanceof EmailSettingsError?e.code:'unavailable';res.writeHead(code==='forbidden'?403:400).end(JSON.stringify({error:code}));}
 });
 server.requestTimeout=40_000;server.headersTimeout=5_000;

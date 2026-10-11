@@ -9,6 +9,7 @@ import { KingdeeMark } from './kingdee-mark';
 import {
   ArrowLeftRight,
   BarChart3,
+  Bell,
   BookOpen,
   Building2,
   CalendarDays,
@@ -198,6 +199,7 @@ const PAYROLL_NODE: CollapsibleGroupItem = {
  * a tenant cannot not-have them, so their rows are never candidates for hiding and are absent here.
  */
 const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
+  ['/admin/settings/notifications','notifications'] as const,
   ...(modulePackById('rewards')!.navLinks ?? []).map((l) => [l.href, 'rewards'] as const),
   ...ATTENDANCE_NODES.flatMap((n) => n.children.map((c) => [c.href, 'attendance'] as const)),
   // a324a4b3 rev3 — /roster and /attendance/import LEFT the nav nodes, so the flatMap above no longer
@@ -427,6 +429,7 @@ const GROUPS: Group[] = [
     labelKey: 'admin',
     adminOnly: true,
     items: [
+      { href: '/admin/settings/notifications', labelKey: 'workflowEmail', icon: Bell, adminOnly: true },
       { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Settings2, identityEmailOnly: true },
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       /**

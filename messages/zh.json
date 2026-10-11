@@ -405,7 +405,8 @@
     "lifecycle": "入职与IT",
     "lifecycleConfig": "入职与IT配置",
     "rewards": "薪酬奖励",
-    "identityEmail": "邮件发送"
+    "identityEmail": "邮件发送",
+    "workflowEmail": "工作流程通知"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -9282,7 +9283,7 @@
       "cancelApprovedApprovalHelp": "重新审批将按与原休假申请相同的审批级别和顺序进行。自动批准会立即取消休假并退回天数。",
       "cancelApprovedReplacementNote": "取消补休始终需要审批人重新审批，因为退回休假也会退回其抵扣额度。",
       "cancelApprovedNotifyLabel": "有取消申请时通知审批人和人力资源部",
-      "cancelApprovedNotifyHelp": "通知显示在通知铃中。系统不会发送电子邮件。",
+      "cancelApprovedNotifyHelp": "收件人可在应用通知铃中查看提醒。邮件还需要启用类别、收件人同意和已激活的 SMTP 中继。",
       "generateOutcome_not_eligible": "不符合条件 — 该休假类型的条件不包含此员工"
     },
     "holidays": {
@@ -9435,7 +9436,8 @@
         "duplicatePersonRecords": "仅列出您所管理的公司中的员工，因此跨两家公司的一对记录中可能有一半对您不可见。只读——无法从此页面更改任何记录。",
         "childReliefReview": "仅列出您所管理公司的在职员工，因此令吉总额是您可查看范围的总额。只读——无法从此页面更改任何税务设定。",
         "myTeam": "经理查看当前直接或间接下属。人力资源管理员可在获授权公司内选择部门。",
-        "identityEmail": "需要单独登记为部署身份管理员；HR 角色本身不授予访问权限。"
+        "identityEmail": "需要单独登记为部署身份管理员；HR 角色本身不授予访问权限。",
+        "workflowEmail": "组织允许的类别"
       },
       "status": {
         "active": "启用",
@@ -12313,7 +12315,8 @@
       "managerReview": "完成雇佣评估",
       "hrReview": "记录 HR 评估决定"
     },
-    "countWord": "{count, plural, other {条通知}}"
+    "countWord": "{count, plural, other {条通知}}",
+    "emailPreferences": "邮件偏好"
   },
   "approvalHistory": {
     "title": "审批历史",
@@ -15046,7 +15049,7 @@
     "everyoneWarning": "未设置任何条件，因此该公告将发送给所有在职员工。发布前请先核对上方的人数。",
     "targetingFrozen": "该公告已发布，接收对象已固定。若要发给其他人，请先归档并发布新公告。",
     "fNotify": "发布时通知接收人",
-    "fNotifyHelp": "接收人会在应用内的通知铃中看到。不会发送电子邮件。",
+    "fNotifyHelp": "收件人可在应用通知铃中查看提醒。邮件还需要启用类别、收件人同意和已激活的 SMTP 中继。",
     "fPopup": "登录后以弹窗显示",
     "fPopupFrequency": "弹窗频率",
     "popupOnce": "每位员工一次",
@@ -16731,6 +16734,75 @@
       "save": "草稿已保存。当前中继保持不变。",
       "test": "中继已接受测试邮件。启用前请检查收件箱。",
       "apply": "中继已启用，可用于邀请和密码恢复。"
+    }
+  },
+  "workflowEmail": {
+    "title": "工作流程邮件通知",
+    "description": "选择允许通过邮件发送的工作流程更新。员工也可选择自己的邮件偏好。",
+    "preferencesTitle": "我的邮件通知",
+    "preferencesDescription": "接收简短提醒和应用链接。人事详情保留在应用内。",
+    "policyHelp": "邮件需要启用相应类别、您的同意、已验证的内部登录和已激活的 SMTP 中继。启用类别仅适用于未来事件。",
+    "consentHelp": "选择发送至员工资料中已验证邮箱的更新。偏好按每份雇佣关系分别保存，仅适用于未来事件。",
+    "identityRequired": "启用邮件前，请使用已验证的内部账号登录，且邮箱须与员工资料一致。您仍可关闭所有邮件而不提供同意。",
+    "relayReady": "托管 SMTP 中继已激活，可发送符合条件的通知。",
+    "relayOff": "托管 SMTP 中继尚未激活，目前无法发送工作流程邮件。",
+    "upgradeRequired": "私人邮件服务须安装工作流程通知升级后才能发送邮件。",
+    "policyTitle": "组织允许的类别",
+    "preferencesCategories": "通过邮件通知我以下类别",
+    "notAllowed": "您的组织目前已禁用",
+    "employment": "雇佣关系",
+    "language": "邮件语言",
+    "save": "保存偏好",
+    "savePolicy": "保存类别设置",
+    "saved": "设置已保存。",
+    "noEmployment": "此登录账号未关联员工资料。",
+    "deliveries": "最近邮件发送记录",
+    "deliveriesHelp": "已发送表示中继已接受，并不证明收件人已收到。此处显示最近 50 条记录。发送结果不确定时将暂停，避免自动重复发送。",
+    "noDeliveries": "暂无工作流程邮件进入队列。",
+    "category": "类别",
+    "status": "状态",
+    "attempts": "尝试次数",
+    "created": "创建时间",
+    "retry": "重试发送",
+    "retryAck": "我理解重试可能导致重复邮件。",
+    "preferencesLink": "邮件偏好",
+    "settingsLink": "工作流程通知",
+    "subject": "{category}更新",
+    "alert": "有新更新。请打开应用查看详情。",
+    "actionAlert": "有事项需要您处理。请打开应用查看详情。",
+    "openApp": "在应用中查看",
+    "error": "无法保存设置。请检查访问权限和已验证邮箱后重试。",
+    "statuses": {
+      "pending": "等待发送",
+      "sent": "中继已接受",
+      "failed": "失败或结果不确定",
+      "skipped": "已跳过"
+    },
+    "errors": {
+      "relayUnavailable": "中继不可用",
+      "recipientUnavailable": "身份提供方不可用",
+      "recipientChanged": "已验证邮箱或账号已变更",
+      "notEligible": "收件人或偏好不再符合条件",
+      "smtpTemporary": "中继暂时拒绝",
+      "smtpRejected": "中继拒绝了邮件",
+      "smtpAuthentication": "中继身份验证失败",
+      "smtpTls": "中继 TLS 验证失败",
+      "uncertain": "发送结果不确定，请检查后再重试"
+    },
+    "categories": {
+      "attendance": "考勤",
+      "claims": "报销",
+      "delegation": "委托",
+      "leave": "请假",
+      "notice": "公告",
+      "offboarding": "离职",
+      "payroll": "薪资",
+      "performance": "绩效",
+      "profile": "资料变更",
+      "readiness": "资料完整性",
+      "review": "雇佣评审",
+      "rewards": "奖励",
+      "toil": "补休"
     }
   }
 }

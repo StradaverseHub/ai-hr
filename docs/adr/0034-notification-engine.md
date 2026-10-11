@@ -1,11 +1,11 @@
 # ADR-0034 — Notification engine (multi-channel, event-derived)
 
-- **Status:** Accepted — **34-1** (schema + RLS + migration 0078) and **34-2** (registry + `dispatchNotifications` sweep + `NotificationCenter` bell) shipped; **34-2b** (the remaining decision producers + the payslip-ready fan-out) added 2026-06-24. All gated `NOTIFICATIONS_ENABLED` (off by default → byte-identical fallback to the computed approvals count). **34-3** (prefs UI) and **34-4–34-6** (scheduled scans, email, WhatsApp) pending; email/WhatsApp remain provider-blocked (no SMTP; no client WABA + approved templates).
+- **Status:** Accepted. The event-derived in-app engine is live. Workflow email and per-employment consent use the managed SMTP service as specified in §7; activation still requires the private-service upgrade, active relay and verified internal authentication. Additional time-based producers, WhatsApp and push remain deferred. The runtime master gate is the tenant's `notifications` module entitlement.
 - **Date:** 2026-06-22 (34-2b: 2026-06-24)
 - **Builds on:** ADR-0006 (domain-event substrate — the spine notifications derive from), ADR-0033 (TOIL — the first concrete consumer), the existing topbar bell (`core/approvals-inbox.ts` + `components/notification-bell.tsx`)
 - **Pull-through from:** ADR-0033 §33-7 ("TOIL → notifications"). Also the broadest of the deferred *platform engines* — it pays off across every module, not just TOIL.
 
-## 1. Context
+## 1. Original context (2026-06-22)
 
 The only "notification" today is the topbar **bell**: `pendingApprovalsCount()` computes, on demand, how many items await the current user's action (pending leave / corrections / profile-changes / claims) and renders a badge linking to `/approvals`. There is **no persistence** (no "mark read", no history), **no delivery** (nothing leaves the browser), and **no per-user control**.
 
@@ -47,9 +47,12 @@ ai-hr is Next + Postgres (no BullMQ/Redis), so dispatch is a **sweep**, like `ru
 ### 2.5 Privacy boundary (PDPA — ADR-0030)
 Notifications carry PII (names, leave/pay facts). In-app is recipient-RLS-scoped. **Out-of-app channels send PII to external services** (email/WhatsApp providers), so: content **minimisation** (the WhatsApp/email body says "Your leave request was approved — open the app", not the medical/pay detail; the app is the source of truth behind the gate), explicit **consent** via `notification_pref` (opt-in for external channels), and the provider is a data processor (DPA needed before WhatsApp goes live). Crypto-shred (ADR-0030) already covers the `domain_event` source; `notification` rows are redacted/removed when a subject is erased.
 
-## 3. Gating
-- `NOTIFICATIONS_ENABLED` (master) — off ⇒ no tables read, bell = today's computed approvals count (byte-identical).
-- `NOTIFY_EMAIL_ENABLED`, `NOTIFY_WHATSAPP_ENABLED` (per-channel) — off by default; require provider config/credentials.
+## 3. Current gating
+
+The per-tenant `notifications` module entitlement gates projection and the email sweep. Workflow email
+additionally requires a group-enabled category, explicit per-employment recipient consent, an exact
+verified internal identity and the active managed SMTP relay (§7). The earlier environment flags below
+are historical design, not current runtime controls. WhatsApp and push have no live adapter.
 
 ## 4. Slice plan
 - **34-1** — schema (`notification` + `notification_pref` + `notification_delivery` + `notification_cursor`) + RLS (recipient-only) + migration. Gated, additive.
@@ -69,3 +72,61 @@ Notifications carry PII (names, leave/pay facts). In-app is recipient-RLS-scoped
 - **Email provider:** Resend (simple API) vs SMTP relay (no vendor) — decide at 34-5.
 - **WhatsApp provider:** Meta WhatsApp Cloud API (direct, cheaper) vs Twilio (easier, dearer) — decide when the customer provides the WABA; both need the same template-approval step.
 - **Recipient identity with concurrent employment:** notifications target `employmentId`; the bell shows the session person's employments' notifications. Confirm the grouping when a person holds multiple active employments.
+
+
+## 7. Workflow email through the managed SMTP relay (2026-10-12)
+
+The owner selected a **brief alert with a link to the app**. Workflow email consumes the existing
+notification registry and the installation-managed SMTP relay (ADR-0100); it never stores a second
+SMTP configuration or copies HR detail into a message. USER, PERSON and EMPLOYMENT remain separate.
+
+### Ownership and authorization
+
+- The event registry owns category, recipient employment, severity and relative deep link. A minute
+  sweep and opportunistic rendering share a tenant advisory lock when advancing the projection cursor.
+- A group administrator controls email categories for the tenant. Categories are off by default.
+  `notification_email_policy` records that decision and its event-sequence watermark. It is distinct
+  from the recipient's existing `notification_pref`, which owns explicit consent per employment and
+  category. An absent or historical preference without recorded consent is off. Saving an already-on
+  switch preserves its watermark; re-enabling starts with future events only.
+- The person opts in while signed in through the exact, verified internal identity. The kernel checks
+  the identity binding and employment ownership, rather than adopting an account by email. Demo and
+  legacy sessions cannot grant consent for external mail. Turning a preference off remains possible.
+- Both controls must permit the new event. A pending delivery records the exact app-user target and
+  source event, with a uniqueness rule that coalesces the same event/kind for concurrent employments
+  belonging to one account. It contains no copied email address, HR body or SMTP credential.
+- Before delivery the worker resolves the registry's recipients again. The private service also
+  rechecks the current identity binding, employment, policy and consent. It reads the current person's
+  primary email and confirms that the exact enabled Keycloak account still has that verified address.
+  A changed, missing, disabled or revoked account is skipped, never found or linked by matching email.
+
+### Transport and failure model
+
+The existing root-installed Unix-socket service owns SMTP credentials. The web process submits only a
+persisted delivery ID and a short-lived random lease token; it cannot provide an arbitrary recipient,
+message, sender, SMTP endpoint or application origin. The service receives EXECUTE on narrow private
+SQL functions, without HR table access or USAGE on the shared `app` schema. A root-reviewed upgrade is
+required to install the new service bundle. Application deployment alone does not upgrade it.
+
+The service uses the active, tested managed relay with implicit TLS and certificate verification.
+Messages contain a category alert, an authenticated application link built from the deployment-owned
+HTTPS origin, and no frozen notification title/body, employee name, amount or decision reason.
+Translations follow the recipient's saved email language, independently of the event's English text.
+
+A durable lease separates authorization from transport. The service marks the attempt started before
+SMTP. Explicit temporary SMTP rejection may retry with bounded backoff (five attempts maximum).
+Unknown acknowledgements and abandoned started attempts become **uncertain** and are not automatically
+retried: SMTP does not offer exactly-once delivery. A group administrator can explicitly retry after
+acknowledging possible duplicate mail; eligibility is checked again. `sent` means accepted by the relay,
+not received or read by a human. Pre-send unavailability leaves the pending job for a later sweep.
+
+### Scope and activation
+
+The existing registry covers attendance, claims, delegation, leave, notices, offboarding, payroll,
+performance, profile changes, readiness, employment reviews, rewards and TOIL. It is the authority for
+which events notify; a category switch does not invent notifications for every operation in a module.
+WhatsApp and push remain deferred. The notification module entitlement and tenant standing continue to
+apply. A configured category, a user's consent and an active relay are all required; no backlog is
+emailed merely because a switch was turned on. The delivery log reports sanitized outcome codes.
+Internal-auth cutover, owner MFA, relay activation and a real human receipt remain separate operator
+steps; this feature must not claim those were completed by shipping code.

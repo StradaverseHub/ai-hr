@@ -319,6 +319,7 @@ export function NotificationCenter({
                 )}
               </>
             )}
+            <div className="border-t border-border px-4 py-2.5 text-center"><Link href="/me/notifications" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">{t('emailPreferences')}</Link></div>
           </div>
         </>
       )}

@@ -405,7 +405,8 @@
     "lifecycle": "Orientasi & IT",
     "lifecycleConfig": "Konfigurasi Orientasi & IT",
     "rewards": "Ganjaran",
-    "identityEmail": "Penghantaran e-mel"
+    "identityEmail": "Penghantaran e-mel",
+    "workflowEmail": "Pemberitahuan aliran kerja"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -9282,7 +9283,7 @@
       "cancelApprovedApprovalHelp": "Kelulusan semula melalui peringkat kelulusan yang sama, mengikut susunan yang sama, seperti permohonan cuti asal. Diluluskan secara automatik membatalkan cuti dan memulangkan hari dengan serta-merta.",
       "cancelApprovedReplacementNote": "Pembatalan Cuti Gantian sentiasa memerlukan kelulusan semula pelulus, kerana memulangkan cuti turut memulangkan kreditnya.",
       "cancelApprovedNotifyLabel": "Maklumkan pelulus dan HR apabila pembatalan diminta",
-      "cancelApprovedNotifyHelp": "Pemberitahuan dipaparkan dalam loceng pemberitahuan. Sistem tidak menghantar e-mel.",
+      "cancelApprovedNotifyHelp": "Penerima melihat makluman dalam loceng aplikasi. E-mel juga memerlukan kategori dibenarkan, persetujuan penerima dan geganti SMTP aktif.",
       "generateOutcome_not_eligible": "Tidak layak — syarat jenis cuti ini tidak merangkumi pekerja tersebut"
     },
     "holidays": {
@@ -9435,7 +9436,8 @@
         "duplicatePersonRecords": "Menyenaraikan hanya pekerja dalam syarikat yang anda uruskan, jadi separuh daripada pasangan yang merentas dua syarikat mungkin tidak kelihatan kepada anda. Baca sahaja — tiada rekod boleh diubah dari skrin ini.",
         "childReliefReview": "Menyenaraikan hanya pekerja semasa dalam syarikat yang anda uruskan, jadi jumlah ringgit ialah jumlah bagi apa yang boleh anda lihat. Baca sahaja — tiada tetapan cukai boleh diubah dari skrin ini.",
         "myTeam": "Pengurus melihat pekerja seliaan langsung atau tidak langsung semasa. Pentadbir HR boleh memilih jabatan dalam syarikat yang dibenarkan.",
-        "identityEmail": "Memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan; peranan HR sahaja tidak memberi akses."
+        "identityEmail": "Memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan; peranan HR sahaja tidak memberi akses.",
+        "workflowEmail": "Kategori yang dibenarkan organisasi"
       },
       "status": {
         "active": "Aktif",
@@ -12313,7 +12315,8 @@
       "managerReview": "Lengkapkan penilaian pekerjaan",
       "hrReview": "Rekod keputusan semakan HR"
     },
-    "countWord": "{count, plural, other {pemberitahuan}}"
+    "countWord": "{count, plural, other {pemberitahuan}}",
+    "emailPreferences": "Keutamaan e-mel"
   },
   "approvalHistory": {
     "title": "Sejarah Kelulusan",
@@ -15046,7 +15049,7 @@
     "everyoneWarning": "Tiada kriteria ditetapkan, jadi notis ini akan sampai kepada setiap pekerja aktif. Semak jumlah di atas sebelum menerbitkan.",
     "targetingFrozen": "Notis ini telah diterbitkan, jadi penerimanya tetap. Untuk sampai kepada orang lain, arkibkannya dan terbitkan notis baharu.",
     "fNotify": "Maklumkan penerima apabila ia diterbitkan",
-    "fNotifyHelp": "Penerima melihatnya dalam loceng pemberitahuan di dalam aplikasi. Tiada e-mel dihantar.",
+    "fNotifyHelp": "Penerima melihat makluman dalam loceng aplikasi. E-mel juga memerlukan kategori dibenarkan, persetujuan penerima dan geganti SMTP aktif.",
     "fPopup": "Papar sebagai tetingkap timbul selepas log masuk",
     "fPopupFrequency": "Kekerapan tetingkap timbul",
     "popupOnce": "Sekali bagi setiap pekerja",
@@ -16731,6 +16734,75 @@
       "save": "Draf disimpan. Geganti aktif tidak berubah.",
       "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
       "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya."
+    }
+  },
+  "workflowEmail": {
+    "title": "Pemberitahuan e-mel aliran kerja",
+    "description": "Pilih kemas kini aliran kerja yang boleh dihantar melalui e-mel. Setiap pekerja juga memilih keutamaan e-mel sendiri.",
+    "preferencesTitle": "Pemberitahuan e-mel saya",
+    "preferencesDescription": "Terima makluman ringkas dan pautan ke aplikasi. Butiran HR kekal dalam aplikasi.",
+    "policyHelp": "E-mel memerlukan kategori diaktifkan, persetujuan anda, log masuk dalaman yang disahkan dan geganti SMTP aktif. Pengaktifan hanya meliputi peristiwa baharu.",
+    "consentHelp": "Pilih kemas kini untuk alamat e-mel yang disahkan dalam profil pekerja anda. Keutamaan berasingan bagi setiap pekerjaan dan hanya untuk peristiwa baharu.",
+    "identityRequired": "Log masuk dengan akaun dalaman yang disahkan dan e-melnya sepadan dengan profil pekerja untuk mengaktifkan e-mel. Anda masih boleh mematikan semua e-mel tanpa memberikan persetujuan.",
+    "relayReady": "Geganti SMTP terurus aktif. Pemberitahuan yang layak boleh dihantar.",
+    "relayOff": "Geganti SMTP terurus belum aktif. E-mel aliran kerja belum boleh dihantar.",
+    "upgradeRequired": "Perkhidmatan e-mel persendirian memerlukan naik taraf pemberitahuan aliran kerja sebelum penghantaran e-mel.",
+    "policyTitle": "Kategori yang dibenarkan organisasi",
+    "preferencesCategories": "E-mel kepada saya tentang kategori ini",
+    "notAllowed": "Kini dimatikan oleh organisasi anda",
+    "employment": "Pekerjaan",
+    "language": "Bahasa e-mel",
+    "save": "Simpan keutamaan",
+    "savePolicy": "Simpan tetapan kategori",
+    "saved": "Tetapan disimpan.",
+    "noEmployment": "Tiada profil pekerja dipautkan kepada log masuk ini.",
+    "deliveries": "Penghantaran e-mel terkini",
+    "deliveriesHelp": "Dihantar bermaksud diterima oleh geganti, bukan bukti penerimaan. Senarai ini menunjukkan 50 penghantaran terkini. Penghantaran tidak pasti ditahan untuk mengelakkan pendua automatik.",
+    "noDeliveries": "Tiada e-mel aliran kerja dalam baris gilir.",
+    "category": "Kategori",
+    "status": "Status",
+    "attempts": "Percubaan",
+    "created": "Dicipta",
+    "retry": "Cuba hantar semula",
+    "retryAck": "Saya faham bahawa percubaan semula mungkin menghantar e-mel pendua.",
+    "preferencesLink": "Keutamaan e-mel",
+    "settingsLink": "Pemberitahuan aliran kerja",
+    "subject": "Kemas kini {category}",
+    "alert": "Kemas kini tersedia. Buka aplikasi untuk melihat butiran.",
+    "actionAlert": "Ada perkara yang memerlukan perhatian anda. Buka aplikasi untuk melihat butiran.",
+    "openApp": "Lihat dalam aplikasi",
+    "error": "Tetapan tidak dapat disimpan. Semak akses dan e-mel yang disahkan, kemudian cuba lagi.",
+    "statuses": {
+      "pending": "Menunggu",
+      "sent": "Diterima oleh geganti",
+      "failed": "Gagal atau tidak pasti",
+      "skipped": "Dilangkau"
+    },
+    "errors": {
+      "relayUnavailable": "Geganti tidak tersedia",
+      "recipientUnavailable": "Penyedia identiti tidak tersedia",
+      "recipientChanged": "E-mel yang disahkan atau akaun berubah",
+      "notEligible": "Penerima atau keutamaan tidak lagi layak",
+      "smtpTemporary": "Penolakan sementara oleh geganti",
+      "smtpRejected": "Geganti menolak mesej",
+      "smtpAuthentication": "Pengesahan geganti gagal",
+      "smtpTls": "Semakan TLS geganti gagal",
+      "uncertain": "Penghantaran tidak pasti; semak sebelum mencuba semula"
+    },
+    "categories": {
+      "attendance": "Kehadiran",
+      "claims": "Tuntutan",
+      "delegation": "Delegasi",
+      "leave": "Cuti",
+      "notice": "Notis",
+      "offboarding": "Penamatan perkhidmatan",
+      "payroll": "Gaji",
+      "performance": "Prestasi",
+      "profile": "Perubahan profil",
+      "readiness": "Kelengkapan rekod",
+      "review": "Semakan pekerjaan",
+      "rewards": "Ganjaran",
+      "toil": "Cuti gantian"
     }
   }
 }
