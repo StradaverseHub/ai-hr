@@ -1,6 +1,7 @@
 /** Privileged service installation, after realm configuration and application migration 0525. */
 import { build } from 'esbuild';
-import { readFile, writeFile, mkdir, copyFile, chmod, chown } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, chmod, chown, lstat } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
@@ -22,6 +23,13 @@ async function main(){
  url.username='aihr_identity_email';url.password=password;
  env+='IDENTITY_EMAIL_DATABASE_URL='+url.toString()+'\n';await writeFile(envPath,env,{mode:0o600});
  const dest='/usr/local/lib/aihr-identity-email';await mkdir(dest,{recursive:true,mode:0o755});
+ for(const path of ['/usr','/usr/local','/usr/local/lib',dest]){
+  const stat=await lstat(path);if(!stat.isDirectory()||stat.uid!==0||(stat.mode&0o022)!==0)throw new Error('Untrusted runtime directory');
+ }
+ await chmod(dest,0o755);
+ // /opt/node20 belongs to the web OS account on this installation. Never execute it in this service.
+ await copyFile(process.execPath,dest+'/node',constants.COPYFILE_EXCL);
+ await chmod(dest+'/node',0o755);await chown(dest+'/node',0,0);
  await build({entryPoints:['deploy/identity-email/agent.ts'],bundle:true,platform:'node',target:'node20',format:'cjs',outfile:dest+'/agent.cjs',logLevel:'silent'});
  await chmod(dest+'/agent.cjs',0o644);await chown(dest+'/agent.cjs',0,0);
  for(const file of ['aihr-identity-email.socket','aihr-identity-email.service']){

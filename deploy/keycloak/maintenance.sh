@@ -10,4 +10,5 @@ mv "$BACKUP_FILE.partial" "$BACKUP_FILE"
 # Never sweep app data, configuration, credentials or the identity database itself.
 find /var/backups/aihr-keycloak -maxdepth 1 -type f -name 'identity-*.dump' -mtime +14 -delete
 cd /opt/ai-hr
-/opt/node20/bin/node --env-file=/opt/ai-hr/.env.production --import tsx scripts/keycloak-session-prune.ts
+# Application source/runtime belong to ubuntu; maintenance must never execute that code as root.
+runuser -u ubuntu -- /opt/node20/bin/node --env-file=/opt/ai-hr/.env.production --import tsx scripts/keycloak-session-prune.ts
