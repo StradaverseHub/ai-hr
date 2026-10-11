@@ -59,6 +59,7 @@ Annual route: BU → BG → GR → CTRO → EC. Submitted inputs are frozen with
 return to draft and a new revision. Stale forms fail. Consecutive stages require different users.
 Returns require a reason; exceptions/warnings require an acceptance note. An unposted final approval
 can be returned to refresh stale employee data. Posted reviews are immutable through the service.
+Company deletion refuses while a reward review exists, including drafts; company setup never cascades financial review history.
 Assigned queues appear in the approvals inbox; the notification dispatcher sends generic in-app links.
 
 ## Off-cycle funding and promotions

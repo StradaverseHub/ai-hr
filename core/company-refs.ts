@@ -95,6 +95,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'statutory_report', column: 'company_id', disposition: 'payroll', note: 'A generated or filed statutory report (EPF, SOCSO, EIS, PCB, EA). A filing is evidence.' },
   { table: 'back_pay_run', column: 'company_id', disposition: 'payroll', note: 'A back-pay run against a past period.' },
 
+  { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
+
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
   { table: 'role_assignment', column: 'company_id', disposition: 'other', note: 'A user given a role scoped to this company. Access is removed deliberately, never as a side effect.' },
@@ -171,6 +173,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'reward_unit', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reward review retains its business unit and financial approval history; it must never disappear with company setup.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },
   { table: 'holiday_group_holiday', column: 'holiday_id', references: 'holiday', effect: 'blocks', note: 'ON DELETE CASCADE, but a holiday group may serve another company: removing our holiday from it would change their calendar. Refuses.' },

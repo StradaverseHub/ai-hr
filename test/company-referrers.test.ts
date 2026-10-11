@@ -67,6 +67,8 @@ vi.mock('next-intl/server', async () => {
 });
 
 import * as schema from '../db/schema';
+import { defaultPolicy } from '../packs/rewards/service';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant } from '../db/client';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
@@ -300,6 +302,14 @@ describe('§1 the declared referrer set is the live schema', () => {
 // ── §2 ─────────────────────────────────────────────────────────────────────────────────────────────
 type Case = { name: string; expected: CompanyDeleteBlock | null; setup: (id: string) => Promise<void> };
 const CASES: Case[] = [
+  {
+    name: 'an unposted reward review', expected: 'payroll', setup: async (id) => {
+      const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
+      const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: id, code: 'REWARD', name: 'Rewards unit' }).returning();
+      const [cycle] = await owner.db.insert(schema.rewardCycle).values({ tenantId: b.tenantId, name: 'Annual rewards', year, createdBy: b.adminUserId }).returning();
+      await owner.db.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today });
+    },
+  },
   { name: 'never used: only its automatic setup', expected: null, setup: async () => {} },
   {
     name: 'a terminated employment',
@@ -568,9 +578,9 @@ async function redirectOf(run: () => Promise<unknown>): Promise<URL> {
 
 describe('§5 the action answers every refusal in words, never with the driver message', () => {
   const refusalSetups: Record<CompanyDeleteBlock, (id: string) => Promise<void>> = {
-    employees: CASES[1].setup,
-    payroll: CASES[3].setup,
-    other: CASES[8].setup,
+    employees: CASES.find(c => c.name === 'a terminated employment')!.setup,
+    payroll: CASES.find(c => c.name === 'a payroll period')!.setup,
+    other: CASES.find(c => c.name === 'a sub-company')!.setup,
   };
   for (const reason of COMPANY_DELETE_BLOCKS) {
     it(`${reason}: returns to the company with the ${reason} sentence`, async () => {
