@@ -170,6 +170,17 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+-- Company lifecycle reads only whether retained enrollment history references its own visible company.
+CREATE FUNCTION app.manual_identity_company_in_use(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.is_admin_for(p_company) AND EXISTS(SELECT 1 FROM public.app_manual_identity_enrollment e
+ WHERE e.tenant_id=app.current_tenant_id() AND e.company_id=p_company);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.manual_identity_company_in_use(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.manual_identity_company_in_use(uuid) TO ai_hr_app;
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION app.manual_identity_authorized(text),app.manual_identity_target(uuid,text,uuid),app.manual_identity_reserve(uuid,text,uuid,text,text,text,uuid),app.manual_identity_read(uuid,boolean),app.manual_identity_list(text),app.manual_identity_prepare(uuid,text),app.manual_identity_link(uuid,text),app.manual_identity_finish(uuid,boolean) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.manual_identity_authorized(text),app.manual_identity_reserve(uuid,text,uuid,text,text,text,uuid),app.manual_identity_read(uuid,boolean),app.manual_identity_list(text),app.manual_identity_prepare(uuid,text),app.manual_identity_link(uuid,text),app.manual_identity_finish(uuid,boolean) TO ai_hr_app;

@@ -71,6 +71,8 @@ export type CompanyRef = {
    * function (one argument, the company id; returns the row count) instead of a plain DELETE.
    */
   deleteFunction?: string;
+  /** Private tables expose only a tenant-scoped boolean through this fixed helper. */
+  existsFunction?: string;
   /** Why it carries the disposition it does — read by whoever adds the forty-sixth. */
   note: string;
 };
@@ -101,6 +103,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
   { table: 'role_assignment', column: 'company_id', disposition: 'other', note: 'A user given a role scoped to this company. Access is removed deliberately, never as a side effect.' },
   { table: 'app_invitation', column: 'company_id', disposition: 'other', note: 'An invitation to join with a role at this company — an access grant waiting to happen.' },
+  { table: 'app_manual_identity_enrollment', column: 'company_id', disposition: 'other', existsFunction: 'app.manual_identity_company_in_use', note: 'Manual account enrollment is retained access history, including cancelled attempts. Never delete its company scope implicitly.' },
   { table: 'reporting_line', column: 'scope_company_id', disposition: 'other', note: 'A reporting line scoped to this company. It belongs to employments, possibly of another company.' },
   { table: 'review_cycle', column: 'company_id', disposition: 'other', note: 'A performance review cycle run for this company.' },
   { table: 'tenant_module', column: 'company_id', disposition: 'other', note: 'A module grant scoped to this company. Composite key with tenant_id. Entitlement is the platform\'s to remove.' },
@@ -230,7 +233,7 @@ export function companyDeleteBlockSqlText(idExpr: string): string {
     const a = `cr${i}`;
     const from = `from ${q(r.table)} ${a} where ${a}.${q(r.column)} = ${idExpr}`;
     if (r.disposition === 'employees' || r.disposition === 'payroll' || r.disposition === 'other') {
-      groups[r.disposition].push(`exists (select 1 ${from})`);
+      groups[r.disposition].push(r.existsFunction ? `${r.existsFunction}(${idExpr})` : `exists (select 1 ${from})`);
     }
     for (const w of r.refuseWhere ?? []) {
       groups[w.reason].push(`exists (select 1 ${from} and (${w.where.split('{r}').join(a)}))`);

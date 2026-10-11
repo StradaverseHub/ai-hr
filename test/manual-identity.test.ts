@@ -122,11 +122,14 @@ describe('manual account enrollment — actual app role and tenant guards',()=>{
   expect(await owner.db.select().from(schema.appUser).where(eq(schema.appUser.personId,input.personId))).toHaveLength(1);
  });
  it('private state cannot be read, updated or forged by the application role and another tenant cannot resume it',async()=>{
-  const p=fake();p.create.mockRejectedValue(new Error('offline'));await expect(createManualAccount(ctx,input,p)).rejects.toBeDefined();
+  const p=fake();p.create.mockRejectedValue(new Error('offline'));await expect(createManualAccount(ctx,{...input,companyId:base.companyId},p)).rejects.toBeDefined();
+  expect((await call(ctx,sql`select app.manual_identity_company_in_use(${base.companyId}::uuid) used`))[0].used).toBe(true);
+  expect((await call({...ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]},sql`select app.manual_identity_company_in_use(${base.companyId}::uuid) used`))[0].used).toBe(false);
   await expect(client`select * from app_manual_identity_enrollment`).rejects.toThrow(/permission denied/);
   await expect(call(ctx,sql`update app_manual_identity_enrollment set status='active'`)).rejects.toThrow();
   const other=await seedBase();await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:'other-admin',appUserId:other.adminUserId});
   await expect(resumeManualAccount(adminCtx(other),input.id,password,p)).rejects.toMatchObject({code:'forbidden'});
+  expect((await call(adminCtx(other),sql`select app.manual_identity_company_in_use(${base.companyId}::uuid) used`))[0].used).toBe(false);
   const [grants]=await owner.client`select has_function_privilege('ai_hr_app','app.manual_identity_target(uuid,text,uuid)','EXECUTE') allowed`;
   expect(grants.allowed).toBe(false);
  });

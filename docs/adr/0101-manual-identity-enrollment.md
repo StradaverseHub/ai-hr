@@ -16,7 +16,7 @@ SMTP is not a prerequisite. The administrator must explicitly attest that they h
 
 ## State and failure handling
 
-The private enrollment intent stores only the requested person, username, email, role/scope, actor, issuer, exact returned subject and progress. It is workflow history, not the authoritative login directory. It contains no password, mail token, invitation token or provider access token.
+The private enrollment intent stores only the requested person, username, email, role/scope, actor, issuer, exact returned subject and progress. It is workflow history, not the authoritative login directory. It contains no password, mail token, invitation token or provider access token. Company deletion treats this as retained access history and refuses to remove its company scope. A narrow tenant/admin-scoped boolean helper lets the existing company lifecycle inspect usage without granting access to private enrollment rows.
 
 1. Reserve the immutable request and commit its ownership attestation before provider mutation. A request-ID advisory lock and enrollment row locks serialize repeated/concurrent submissions. Other administrators in the same group can resume an unfinished request.
 2. Create a disabled provider identity **without credentials**, refusing any existing username/email. Persist the exact ID from the successful creation response before a password mutation. A lost creation response or database commit can leave an unlinked, disabled provider account. The application deliberately refuses to adopt it by username; an installation administrator must inspect and reconcile that exceptional case.

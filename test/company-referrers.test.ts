@@ -288,7 +288,8 @@ describe('§1 the declared referrer set is the live schema', () => {
     const ownTest = (r: { table: string; column: string }) =>
       new RegExp(`from "${r.table}" cr\\d+ where cr\\d+\\."${r.column}" = company\\.id\\)`);
     for (const r of COMPANY_REFERRERS.filter((x) => x.disposition === 'employees' || x.disposition === 'payroll' || x.disposition === 'other')) {
-      expect(text, r.table).toMatch(ownTest(r));
+      if (r.existsFunction) expect(text, r.table).toContain(`${r.existsFunction}(company.id)`);
+      else expect(text, r.table).toMatch(ownTest(r));
     }
     for (const r of cascadedReferrers().filter((x) => !x.refuseWhere)) {
       expect(text, `${r.table} is setup and its rows must NOT refuse`).not.toMatch(ownTest(r));
@@ -308,6 +309,13 @@ const CASES: Case[] = [
       const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: id, code: 'REWARD', name: 'Rewards unit' }).returning();
       const [cycle] = await owner.db.insert(schema.rewardCycle).values({ tenantId: b.tenantId, name: 'Annual rewards', year, createdBy: b.adminUserId }).returning();
       await owner.db.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today });
+    },
+  },
+  {
+    name: 'retained manual account enrollment', expected: 'other', setup: async (id) => {
+      const personId=await newPerson();
+      await owner.client`insert into app_manual_identity_enrollment(id,tenant_id,person_id,created_by,issuer,username,email,role,company_id)
+        values(${randomUUID()}::uuid,${b.tenantId}::uuid,${personId}::uuid,${b.adminUserId}::uuid,'https://identity.test/realms/hr','company-test','company-test@example.test','employee',${id}::uuid)`;
     },
   },
   { name: 'never used: only its automatic setup', expected: null, setup: async () => {} },
