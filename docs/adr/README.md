@@ -55,3 +55,4 @@ decision, add a new ADR that supersedes the old one.
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
 
 | [0100](0100-installation-email-administration.md) | Installation identity email relay administration | Accepted |
+| [0101](0101-manual-identity-enrollment.md) | Administrator-created usernames and temporary passwords | Accepted |

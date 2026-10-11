@@ -9378,7 +9378,7 @@
     "users": {
       "title": "用户与角色",
       "userCount": "{count, plural, one {# 名用户} other {# 名用户}}",
-      "provisioningNote": "新登录账号仅通过邀请创建 — 不支持公开注册。管理员通过电子邮件邀请<strong>已有员工</strong>，随后由 <strong>WorkOS</strong> 发送一次性链接，受邀者自行设置密码。只有<strong>集团管理员</strong>可以邀请、归档或恢复登录账号。归档会阻止访问但不删除任何数据；当该员工的<em>所有</em>雇佣记录都已结束时，登录账号将被自动阻止。公司范围适用于 <strong>HR Admin</strong> 授权 — 该公司<em>及其子公司</em>；其他角色为集团范围。",
+      "provisioningNote": "集团管理员可通过电子邮件邀请，或在内部身份验证启用后手动设置用户名和临时密码，为<strong>现有员工</strong>管理登录账号。不开放自行注册。归档会阻止访问并保留记录。此人<em>所有</em>任职均结束后，登录会自动被阻止。HR 角色和公司范围与身份验证分别管理。",
       "sectionUsers": "用户",
       "scopedTo": "范围限定为 {company} 及其子公司",
       "revokeRole": "撤销角色",
@@ -9397,7 +9397,7 @@
         "operator": "运营方"
       },
       "inviteTitle": "邀请用户",
-      "inviteHint": "新账户仅通过邀请创建——不设公开注册。受邀者会收到一次性电子邮件链接以设置密码。",
+      "inviteHint": "通过电子邮件邀请现有员工。收件人通过一次性链接验证邮箱并设置密码。",
       "inviteEmail": "电子邮件",
       "inviteRole": "角色",
       "inviteScope": "公司范围",
@@ -9440,7 +9440,8 @@
       "status": {
         "active": "启用",
         "invited": "已邀请",
-        "archived": "已归档"
+        "archived": "已归档",
+        "preparing": "设置待完成"
       },
       "statusColumn": "状态",
       "archive": "归档",
@@ -9454,7 +9455,47 @@
       "invitePersonPlaceholder": "选择员工",
       "unlinkedLogin": "未关联的登录账号 {id}",
       "assistantGrant": "允许使用助理",
-      "assistantRevoke": "取消助理权限"
+      "assistantRevoke": "取消助理权限",
+      "manual": {
+        "title": "手动创建登录账号",
+        "description": "为现有员工设置用户名和临时密码，无需发送电子邮件。用户首次登录时必须更改密码。请私下交付密码，此处无法再次查看。",
+        "notEnabled": "启用内部身份验证后，即可手动设置用户名和密码。电子邮件邀请仍为独立选项。",
+        "person": "员工",
+        "choosePerson": "选择员工",
+        "email": "已确认归属的电子邮箱",
+        "username": "用户名",
+        "password": "临时密码",
+        "role": "HR 角色",
+        "scope": "公司范围",
+        "groupWide": "整个集团",
+        "usernameHelp": "3–64 个字母、数字或 . _ @ + -。用户名保存为小写，不能替换现有账号。",
+        "passwordHelp": "14–128 个字符。用户首次登录时必须设置新密码，系统还可能应用其他密码规则。",
+        "attestation": "我已核实此人的身份及此邮箱的归属，并将通过私密渠道交付临时密码。",
+        "create": "创建登录账号",
+        "working": "处理中…",
+        "pendingTitle": "未完成的账号设置",
+        "pendingHelp": "请继续同一次设置以免创建重复账号。此处的密码仅在启用登录前使用，完成已关联账号的设置不会重置密码。",
+        "retry": "继续设置",
+        "finish": "完成登录启用",
+        "cancel": "取消未完成的设置",
+        "state": {
+          "reserved": "尚未确认身份账号的创建结果。结果不明确时，须由安装管理员检查。",
+          "prepared": "已存在禁用的身份账号，请输入临时密码以完成关联。",
+          "linked": "已关联 HR 权限。请完成登录启用，密码保持不变。"
+        },
+        "errors": {
+          "forbidden": "需要使用已验证的内部账号登录，并具有当前有效的集团管理员权限。",
+          "invalid": "请检查用户名、邮箱、临时密码、角色及公司范围，并确认身份及邮箱归属。",
+          "target": "请选择本集团中仍在职的员工。",
+          "conflict": "此设置与现有账号冲突或已发生变化。请检查未完成的设置，不能接管现有账号。",
+          "unavailable": "账号设置已中断，尚未确认完成。请检查下方未完成的设置。",
+          "uncertain": "无法确认身份账号的创建或启用结果。重试或创建其他账号前，请让安装管理员检查。"
+        },
+        "success": {
+          "created": "账号设置已完成。如为重试，现有密码保持不变。",
+          "cancelled": "已取消未完成的设置。创建结果不明确的身份账号仍须由安装管理员检查。"
+        }
+      }
     },
     "audit": {
       "title": "审计日志",

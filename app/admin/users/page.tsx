@@ -1,3 +1,7 @@
+import { keycloakSelected } from '@/lib/identity/config';
+import { listManualIdentityEnrollments } from '@/core/manual-identity';
+import { manualIdentityErrorCodes } from '@/lib/identity/manual-model';
+import { ManualAccountSetup } from './manual-setup';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
@@ -30,7 +34,7 @@ const SCOPABLE_ROLES = new Set<string>(['hr_admin', 'payroll_partner', 'performa
  */
 type Row = {
   key: string;
-  status: 'active' | 'invited' | 'archived';
+  status: 'active' | 'invited' | 'archived' | 'preparing';
   name: string | null;
   email: string | null;
   /** app_user id — null on an invitation-only row (no login exists yet). */
@@ -54,16 +58,14 @@ type Row = {
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; archived?: string }>;
+  searchParams: Promise<{ error?: string; archived?: string; manualError?:string; manualSuccess?:string }>;
 }) {
   const t = await getTranslations('admin.users');
-  // Second namespace for the access-grid column labels that map 1:1 to a top-level nav entry. Having two
-  // getTranslations scopes makes this a multi-namespace file, which the i18n static-key coverage check
-  // (test C) skips ENTIRELY — static keys included. So every key this page renders, new ones included,
-  // is pinned by function-access.test.ts instead; a typo here would otherwise ship fully green.
-  const tNav = await getTranslations('nav');
+  // Registry column labels use complete keys across nav, admin and installed modules.
+  const tAll = await getTranslations();
   const s = await requireAdmin();
-  const { error, archived } = await searchParams;
+  const { error, archived, manualError, manualSuccess } = await searchParams;
+  const setupError=manualIdentityErrorCodes.find(code=>code===manualError);
   const includeArchived = archived === '1';
   const groupAdmin = isGroupAdmin(s);
   // Group admins grant any role for any company (or group-wide); delegated admins may only appoint
@@ -73,13 +75,14 @@ export default async function UsersPage({
   // company-scoped admin sees the users list with no invitation rows. Archive is group-admin-only
   // anyway (the 0016 app_user WITH CHECK), so a delegated admin's view of this screen is read-only.
   // Widening invitation visibility is a new authz surface and out of scope here.
-  const [userList, assistantGrants, companies, invitations, employees] = await Promise.all([
+  const [userList, assistantGrants, companies, invitations, employees, manualEnrollments] = await Promise.all([
     listUsers(s, { includeArchived }),
     // ADR-0082 §2.8 — who currently holds an assistant grant. One read for the page, not one per row.
     listAssistantGrants(s),
     groupAdmin ? listCompanies(s) : adminCompanies(s),
     groupAdmin ? listPendingInvitations(s) : Promise.resolve([]),
     groupAdmin ? listEmployees(s) : Promise.resolve([]),
+    groupAdmin && keycloakSelected() ? listManualIdentityEnrollments(s) : Promise.resolve([]),
   ]);
   const { users, hiddenCount } = userList;
   // LIVE grants only. listAssistantGrants deliberately returns every grant EVER, revoked rows included
@@ -103,7 +106,7 @@ export default async function UsersPage({
   const rows: Row[] = users.map((u) => ({
     key: (u.email ?? `id:${u.id}`).toLowerCase(),
     // Archived covers BOTH causes; the cause line below distinguishes them.
-    status: u.archivedAt || u.blockedByTermination ? 'archived' : 'active',
+    status: u.archivedAt || u.blockedByTermination ? 'archived' : manualEnrollments.some(e=>e.app_user_id===u.id) ? 'preparing' : 'active',
     name: u.name,
     email: u.email,
     appUserId: u.id,
@@ -134,12 +137,8 @@ export default async function UsersPage({
     });
   }
 
-  // Column label: a `nav.*` labelKey resolves against the nav namespace; an `admin.users.screen.*`
-  // labelKey against this page's own namespace. Both are static keys pinned by function-access.test.ts.
-  const screenLabel = (screen: ScreenEntry): string =>
-    screen.labelKey.startsWith('nav.')
-      ? tNav(screen.labelKey.slice('nav.'.length))
-      : t(screen.labelKey.slice('admin.users.'.length));
+  // Registry labels include nav, admin.users and module namespaces. Resolve their complete keys.
+  const screenLabel = (screen: ScreenEntry): string => tAll(screen.labelKey);
   const scopeNoteFor = (screen: ScreenEntry): string | null =>
     screen.hasScopeNote ? t(`scope.${screen.screenKey}`) : null;
   const roleLabelFor = (role: Role): string => t(`role.${role}`);
@@ -153,6 +152,8 @@ export default async function UsersPage({
         />
       </div>
       <ErrorBanner message={error} />
+      <ErrorBanner message={setupError?t(`manual.errors.${setupError}`):undefined}/>
+      {['created','cancelled'].includes(manualSuccess??'')&&<p role="status" className="rounded-lg border border-border p-4 text-sm">{t(`manual.success.${manualSuccess as 'created'|'cancelled'}`)}</p>}
 
       <div
         data-tour="admin-provisioning"
@@ -181,7 +182,10 @@ export default async function UsersPage({
         </div>
       </Card>
 
-      {/* ADR-0072 — invitation-only account creation. Group admins invite an EXISTING employee by
+      {groupAdmin&&<ManualAccountSetup available={keycloakSelected()} people={peopleOptions} companies={companies}
+        roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments}/>}
+
+      {/* Email invitations remain alongside administrator-attested manual setup. Group admins invite an EXISTING employee by
           email + role; there is no open self sign-up. Company-scoped delegated admins manage roles
           but not the login itself. */}
       {groupAdmin && (
@@ -301,7 +305,7 @@ export default async function UsersPage({
                         · {r.company}
                       </span>
                     )}
-                    {u.status !== 'archived' && (groupAdmin || (r.role === 'hr_admin' && r.companyId)) && (
+                    {u.status === 'active' && (groupAdmin || (r.role === 'hr_admin' && r.companyId)) && (
                       <form action={revokeRoleAction} className="inline">
                         <input type="hidden" name="roleAssignmentId" value={r.id} />
                         <button
@@ -367,7 +371,7 @@ export default async function UsersPage({
                 {/* ADR-0082 §2.8 — the assistant is a per-user grant ON TOP of the billable module, and
                     both gates fail closed. Offered only to group admins and only for a row that has a
                     real login: an invitation with no app_user cannot hold a grant. */}
-                {groupAdmin && u.appUserId && (
+                {groupAdmin && u.appUserId && u.status!=='preparing' && (
                   <form action={setAssistantGrantAction} className="inline">
                     <input type="hidden" name="appUserId" value={u.appUserId} />
                     <input type="hidden" name="granted" value={assistantGranted.has(u.appUserId) ? 'false' : 'true'} />
@@ -380,7 +384,7 @@ export default async function UsersPage({
                 {/* Archive / Restore — group admins only (RLS is the backstop). Restore is offered ONLY
                     for a manual archive: a row blocked by termination is unwound by clearing the end
                     dates on the employment record, which restores access by itself. */}
-                {groupAdmin && u.appUserId && (u.status === 'active' || u.manuallyArchived) && (
+                {groupAdmin && u.appUserId && u.status!=='preparing' && (u.status === 'active' || u.manuallyArchived) && (
                   <form action={archiveUserAction} className="inline">
                     <input type="hidden" name="appUserId" value={u.appUserId} />
                     <input type="hidden" name="archived" value={u.manuallyArchived ? 'false' : 'true'} />

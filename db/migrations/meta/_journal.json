@@ -3032,6 +3032,13 @@
       "when": 1791900000005,
       "tag": "0525_identity_email_administration",
       "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1791900000006,
+      "tag": "0526_manual_identity_enrollment",
+      "breakpoints": true
     }
   ]
 }

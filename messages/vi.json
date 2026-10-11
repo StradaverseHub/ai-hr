@@ -9378,7 +9378,7 @@
     "users": {
       "title": "Người dùng & vai trò",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
-      "provisioningNote": "Các đăng nhập mới chỉ được tạo bằng lời mời — không có đăng ký mở. Quản trị viên mời <strong>nhân viên hiện có</strong> qua email, sau đó <strong>WorkOS</strong> gửi liên kết dùng một lần và người được mời tự đặt mật khẩu. Chỉ <strong>quản trị viên nhóm</strong> mới có thể mời, lưu trữ hoặc khôi phục một đăng nhập. Lưu trữ sẽ chặn quyền truy cập mà không xóa bất kỳ dữ liệu nào, và đăng nhập bị chặn tự động khi <em>mọi</em> hợp đồng lao động của người đó đã kết thúc. Phạm vi công ty áp dụng cho quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con</em>; các vai trò khác áp dụng toàn nhóm.",
+      "provisioningNote": "Quản trị tập đoàn quản lý tài khoản cho <strong>nhân viên hiện có</strong> bằng lời mời email hoặc tên đăng nhập và mật khẩu tạm thời khi dùng xác thực nội bộ. Không có đăng ký công khai. Lưu trữ chặn truy cập nhưng giữ hồ sơ. Đăng nhập bị chặn khi <em>mọi</em> việc làm kết thúc. Vai trò HR và phạm vi công ty tách biệt với xác thực.",
       "sectionUsers": "Người dùng",
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "revokeRole": "Thu hồi vai trò",
@@ -9397,7 +9397,7 @@
         "operator": "Người vận hành"
       },
       "inviteTitle": "Mời người dùng",
-      "inviteHint": "Tài khoản mới chỉ được tạo bằng lời mời — không có đăng ký mở. Người đó sẽ nhận được liên kết email dùng một lần để đặt mật khẩu.",
+      "inviteHint": "Mời nhân viên hiện có qua email. Người nhận dùng liên kết một lần để xác minh địa chỉ và đặt mật khẩu.",
       "inviteEmail": "Email",
       "inviteRole": "Vai trò",
       "inviteScope": "Phạm vi công ty",
@@ -9440,7 +9440,8 @@
       "status": {
         "active": "Đang hoạt động",
         "invited": "Đã mời",
-        "archived": "Đã lưu trữ"
+        "archived": "Đã lưu trữ",
+        "preparing": "Chờ thiết lập"
       },
       "statusColumn": "Trạng thái",
       "archive": "Lưu trữ",
@@ -9454,7 +9455,47 @@
       "invitePersonPlaceholder": "Chọn nhân viên",
       "unlinkedLogin": "Đăng nhập chưa liên kết {id}",
       "assistantGrant": "Cho phép trợ lý",
-      "assistantRevoke": "Thu hồi trợ lý"
+      "assistantRevoke": "Thu hồi trợ lý",
+      "manual": {
+        "title": "Tạo tài khoản đăng nhập thủ công",
+        "description": "Đặt tên đăng nhập và mật khẩu tạm thời cho nhân viên hiện có, không cần gửi email. Người dùng phải đổi mật khẩu khi đăng nhập lần đầu. Chuyển mật khẩu riêng tư; không thể xem lại tại đây.",
+        "notEnabled": "Thiết lập tên đăng nhập và mật khẩu thủ công khả dụng khi bật xác thực nội bộ. Lời mời qua email vẫn là lựa chọn riêng.",
+        "person": "Nhân viên",
+        "choosePerson": "Chọn nhân viên",
+        "email": "Địa chỉ email đã xác minh quyền sở hữu",
+        "username": "Tên đăng nhập",
+        "password": "Mật khẩu tạm thời",
+        "role": "Vai trò HR",
+        "scope": "Phạm vi công ty",
+        "groupWide": "Toàn tập đoàn",
+        "usernameHelp": "3–64 chữ cái, chữ số hoặc . _ @ + -. Tên đăng nhập được lưu bằng chữ thường. Không thể thay thế tài khoản hiện có.",
+        "passwordHelp": "14–128 ký tự. Người dùng phải chọn mật khẩu mới khi đăng nhập lần đầu. Các quy tắc mật khẩu khác có thể áp dụng.",
+        "attestation": "Tôi đã xác minh danh tính và quyền sở hữu địa chỉ email này. Tôi sẽ chuyển mật khẩu tạm thời qua kênh riêng tư.",
+        "create": "Tạo tài khoản",
+        "working": "Đang xử lý…",
+        "pendingTitle": "Thiết lập tài khoản chưa hoàn tất",
+        "pendingHelp": "Tiếp tục cùng một thiết lập để tránh tài khoản trùng lặp. Mật khẩu chỉ được dùng trước khi bật đăng nhập; hoàn tất tài khoản đã liên kết không đặt lại mật khẩu.",
+        "retry": "Tiếp tục thiết lập",
+        "finish": "Hoàn tất bật đăng nhập",
+        "cancel": "Hủy thiết lập chưa hoàn tất",
+        "state": {
+          "reserved": "Chưa xác nhận việc tạo danh tính. Trường hợp chưa rõ cần quản trị viên cài đặt kiểm tra.",
+          "prepared": "Danh tính đang bị vô hiệu hóa đã tồn tại. Nhập mật khẩu tạm thời để hoàn tất liên kết.",
+          "linked": "Quyền HR đã được liên kết. Hoàn tất bật đăng nhập; mật khẩu không thay đổi."
+        },
+        "errors": {
+          "forbidden": "Cần đăng nhập nội bộ đã xác minh với quyền quản trị tập đoàn hiện hành.",
+          "invalid": "Kiểm tra tên đăng nhập, email, mật khẩu tạm thời, vai trò và phạm vi công ty. Xác nhận danh tính và quyền sở hữu email.",
+          "target": "Chọn nhân viên đang làm việc trong tập đoàn này.",
+          "conflict": "Thiết lập xung đột với tài khoản hiện có hoặc đã thay đổi. Kiểm tra thiết lập chưa hoàn tất; không thể chiếm tài khoản hiện có.",
+          "unavailable": "Thiết lập bị gián đoạn và chưa được xác nhận hoàn tất. Kiểm tra thiết lập chưa hoàn tất bên dưới.",
+          "uncertain": "Không thể xác nhận tạo hoặc bật danh tính. Nhờ quản trị viên cài đặt kiểm tra trước khi thử lại hoặc tạo tài khoản khác."
+        },
+        "success": {
+          "created": "Thiết lập tài khoản hoàn tất. Nếu đây là lần thử lại, mật khẩu hiện có không thay đổi.",
+          "cancelled": "Đã hủy thiết lập chưa hoàn tất. Danh tính có kết quả tạo chưa rõ vẫn cần quản trị viên cài đặt kiểm tra."
+        }
+      }
     },
     "audit": {
       "title": "Nhật ký kiểm toán",

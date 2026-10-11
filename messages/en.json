@@ -9378,7 +9378,7 @@
     "users": {
       "title": "Users & roles",
       "userCount": "{count, plural, one {# user} other {# users}}",
-      "provisioningNote": "New logins are created by invitation only — there is no open sign-up. An admin invites an <strong>existing employee</strong> by email, then <strong>WorkOS</strong> sends the one-time link and the invitee sets their own password. Only <strong>group admins</strong> can invite, archive or restore a login. Archiving blocks access without deleting anything, and a login is blocked automatically once <em>every</em> employment of that person has ended. Company scope applies to <strong>HR Admin</strong> grants — that company <em>and its sub-companies</em>; other roles are group-wide.",
+      "provisioningNote": "Group administrators manage logins for <strong>existing employees</strong> through email invitations or, with internal authentication, manual username and temporary password setup. There is no open sign-up. Archiving blocks access without deleting records. A login is blocked automatically once <em>every</em> employment has ended. HR roles and company scope remain separate from authentication.",
       "sectionUsers": "Users",
       "scopedTo": "Scoped to {company} and its sub-companies",
       "revokeRole": "Revoke role",
@@ -9397,7 +9397,7 @@
         "operator": "Operator"
       },
       "inviteTitle": "Invite a user",
-      "inviteHint": "New accounts are created by invitation only — there is no open sign-up. The person receives a one-time email link to set their password.",
+      "inviteHint": "Invite an existing employee by email. The person receives a one-time link to verify their address and set their password.",
       "inviteEmail": "Email",
       "inviteRole": "Role",
       "inviteScope": "Company scope",
@@ -9440,7 +9440,8 @@
       "status": {
         "active": "Active",
         "invited": "Invited",
-        "archived": "Archived"
+        "archived": "Archived",
+        "preparing": "Setup pending"
       },
       "statusColumn": "Status",
       "archive": "Archive",
@@ -9454,7 +9455,47 @@
       "invitePersonPlaceholder": "Select an employee",
       "unlinkedLogin": "Unlinked login {id}",
       "assistantGrant": "Allow assistant",
-      "assistantRevoke": "Remove assistant"
+      "assistantRevoke": "Remove assistant",
+      "manual": {
+        "title": "Create a login manually",
+        "description": "Set a username and temporary password for an existing employee. Email delivery is not required. The user must change the password at first sign-in. Share it privately; it cannot be viewed here later.",
+        "notEnabled": "Manual username and password setup becomes available when internal authentication is enabled. Email invitations remain a separate option.",
+        "person": "Employee",
+        "choosePerson": "Select an employee",
+        "email": "Verified email address",
+        "username": "Username",
+        "password": "Temporary password",
+        "role": "HR role",
+        "scope": "Company scope",
+        "groupWide": "Group-wide",
+        "usernameHelp": "3–64 letters, numbers or . _ @ + -. Usernames are saved in lowercase. Existing accounts cannot be replaced.",
+        "passwordHelp": "14–128 characters. The user must choose a new password at first sign-in. Further installation password rules may apply.",
+        "attestation": "I have verified this person and their ownership of this email address. I will give the temporary password to them through a private channel.",
+        "create": "Create login",
+        "working": "Working…",
+        "pendingTitle": "Unfinished account setup",
+        "pendingHelp": "Resume the same setup to avoid duplicate accounts. A password entered here is used only before the login is enabled; finishing a linked account does not reset its password.",
+        "retry": "Resume setup",
+        "finish": "Finish enabling login",
+        "cancel": "Cancel unfinished setup",
+        "state": {
+          "reserved": "Identity creation has not been confirmed. An uncertain creation needs installation-administrator inspection.",
+          "prepared": "A disabled identity exists. Enter a temporary password to finish linking it.",
+          "linked": "HR access is linked. Finish enabling sign-in; the password is unchanged."
+        },
+        "errors": {
+          "forbidden": "A verified internal login with current group-administrator access is required.",
+          "invalid": "Check the username, email, temporary password, role and company scope. Confirm identity and email ownership.",
+          "target": "Select an employee in this group with an active employment.",
+          "conflict": "This setup conflicts with an existing account or has changed. Review unfinished setup; existing accounts cannot be taken over.",
+          "unavailable": "Account setup was interrupted and is not confirmed complete. Review unfinished setup below.",
+          "uncertain": "Identity creation or activation could not be confirmed. Ask the installation administrator to inspect it before retrying or creating another account."
+        },
+        "success": {
+          "created": "Account setup is complete. If this was a retry, the existing password is unchanged.",
+          "cancelled": "Unfinished setup cancelled. Any identity with an uncertain creation still needs installation-administrator inspection."
+        }
+      }
     },
     "audit": {
       "title": "Audit trail",

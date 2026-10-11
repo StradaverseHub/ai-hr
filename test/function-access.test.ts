@@ -159,7 +159,7 @@ describe('function-access registry (lib/permissions)', () => {
       }
     }
     // Section-level strings the page renders. This is the ONE pinning site for /admin/users strings:
-    // the page calls getTranslations twice ('admin.users' + 'nav'), which makes it a multi-namespace
+    // the page uses both page-scoped and global translations, which makes it a multi-namespace
     // file that i18n-coverage check C skips ENTIRELY — static keys included. So a typo in any key
     // below would render a raw key with a fully green suite unless it is listed here.
     for (const k of [
@@ -172,6 +172,7 @@ describe('function-access registry (lib/permissions)', () => {
       'status.active',
       'status.invited',
       'status.archived',
+      'status.preparing',
       'statusColumn',
       'archive',
       'restore',

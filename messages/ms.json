@@ -9378,7 +9378,7 @@
     "users": {
       "title": "Pengguna & peranan",
       "userCount": "{count, plural, one {# pengguna} other {# pengguna}}",
-      "provisioningNote": "Log masuk baharu dicipta melalui jemputan sahaja — tiada pendaftaran terbuka. Pentadbir menjemput <strong>pekerja sedia ada</strong> melalui e-mel, kemudian <strong>WorkOS</strong> menghantar pautan sekali guna dan penerima menetapkan kata laluan sendiri. Hanya <strong>pentadbir kumpulan</strong> boleh menjemput, mengarkibkan atau memulihkan log masuk. Pengarkiban menyekat akses tanpa memadam apa-apa, dan log masuk disekat secara automatik apabila <em>setiap</em> pekerjaan orang itu telah berakhir. Skop syarikat terpakai kepada geran <strong>HR Admin</strong> — syarikat itu <em>dan sub-syarikatnya</em>; peranan lain adalah seluruh kumpulan.",
+      "provisioningNote": "Pentadbir kumpulan mengurus log masuk <strong>pekerja sedia ada</strong> melalui jemputan e-mel atau tetapan nama pengguna dan kata laluan sementara dengan pengesahan dalaman. Tiada pendaftaran terbuka. Pengarkiban menyekat akses tanpa memadam rekod. Log masuk disekat selepas <em>semua</em> pekerjaan berakhir. Peranan HR dan skop syarikat berasingan daripada pengesahan.",
       "sectionUsers": "Pengguna",
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "revokeRole": "Tarik balik peranan",
@@ -9397,7 +9397,7 @@
         "operator": "Operator"
       },
       "inviteTitle": "Jemput pengguna",
-      "inviteHint": "Akaun baharu dicipta melalui jemputan sahaja — tiada pendaftaran terbuka. Orang itu menerima pautan e-mel sekali guna untuk menetapkan kata laluan mereka.",
+      "inviteHint": "Jemput pekerja sedia ada melalui e-mel. Penerima mendapat pautan sekali guna untuk mengesahkan alamat dan menetapkan kata laluan.",
       "inviteEmail": "E-mel",
       "inviteRole": "Peranan",
       "inviteScope": "Skop syarikat",
@@ -9440,7 +9440,8 @@
       "status": {
         "active": "Aktif",
         "invited": "Dijemput",
-        "archived": "Diarkibkan"
+        "archived": "Diarkibkan",
+        "preparing": "Persediaan belum selesai"
       },
       "statusColumn": "Status",
       "archive": "Arkibkan",
@@ -9454,7 +9455,47 @@
       "invitePersonPlaceholder": "Pilih pekerja",
       "unlinkedLogin": "Log masuk tidak berpaut {id}",
       "assistantGrant": "Benarkan pembantu",
-      "assistantRevoke": "Tarik balik pembantu"
+      "assistantRevoke": "Tarik balik pembantu",
+      "manual": {
+        "title": "Cipta log masuk secara manual",
+        "description": "Tetapkan nama pengguna dan kata laluan sementara untuk pekerja sedia ada. Penghantaran e-mel tidak diperlukan. Pengguna mesti menukar kata laluan semasa log masuk pertama. Kongsi secara peribadi; kata laluan tidak boleh dilihat semula di sini.",
+        "notEnabled": "Tetapan nama pengguna dan kata laluan manual tersedia selepas pengesahan dalaman diaktifkan. Jemputan e-mel kekal sebagai pilihan berasingan.",
+        "person": "Pekerja",
+        "choosePerson": "Pilih pekerja",
+        "email": "Alamat e-mel yang disahkan",
+        "username": "Nama pengguna",
+        "password": "Kata laluan sementara",
+        "role": "Peranan HR",
+        "scope": "Skop syarikat",
+        "groupWide": "Seluruh kumpulan",
+        "usernameHelp": "3–64 huruf, nombor atau . _ @ + -. Nama pengguna disimpan dalam huruf kecil. Akaun sedia ada tidak boleh diganti.",
+        "passwordHelp": "14–128 aksara. Pengguna mesti memilih kata laluan baharu semasa log masuk pertama. Peraturan kata laluan pemasangan lain mungkin terpakai.",
+        "attestation": "Saya telah mengesahkan identiti orang ini dan pemilikan alamat e-mel ini. Saya akan menyerahkan kata laluan sementara melalui saluran peribadi.",
+        "create": "Cipta log masuk",
+        "working": "Sedang diproses…",
+        "pendingTitle": "Persediaan akaun belum selesai",
+        "pendingHelp": "Sambung persediaan yang sama untuk mengelakkan akaun pendua. Kata laluan di sini hanya digunakan sebelum log masuk diaktifkan; melengkapkan akaun yang dipautkan tidak menetapkan semula kata laluannya.",
+        "retry": "Sambung persediaan",
+        "finish": "Selesaikan pengaktifan log masuk",
+        "cancel": "Batalkan persediaan belum selesai",
+        "state": {
+          "reserved": "Penciptaan identiti belum disahkan. Penciptaan yang tidak pasti memerlukan pemeriksaan pentadbir pemasangan.",
+          "prepared": "Identiti yang dinyahaktifkan wujud. Masukkan kata laluan sementara untuk melengkapkan pautan.",
+          "linked": "Akses HR telah dipautkan. Selesaikan pengaktifan log masuk; kata laluan tidak berubah."
+        },
+        "errors": {
+          "forbidden": "Log masuk dalaman yang disahkan dengan akses pentadbir kumpulan semasa diperlukan.",
+          "invalid": "Semak nama pengguna, e-mel, kata laluan sementara, peranan dan skop syarikat. Sahkan identiti dan pemilikan e-mel.",
+          "target": "Pilih pekerja dalam kumpulan ini dengan pekerjaan aktif.",
+          "conflict": "Persediaan ini bercanggah dengan akaun sedia ada atau telah berubah. Semak persediaan belum selesai; akaun sedia ada tidak boleh diambil alih.",
+          "unavailable": "Persediaan akaun terganggu dan belum disahkan lengkap. Semak persediaan belum selesai di bawah.",
+          "uncertain": "Penciptaan atau pengaktifan identiti tidak dapat disahkan. Minta pentadbir pemasangan memeriksanya sebelum mencuba semula atau mencipta akaun lain."
+        },
+        "success": {
+          "created": "Persediaan akaun selesai. Jika ini percubaan semula, kata laluan sedia ada tidak berubah.",
+          "cancelled": "Persediaan belum selesai dibatalkan. Identiti yang penciptaannya tidak pasti masih memerlukan pemeriksaan pentadbir pemasangan."
+        }
+      }
     },
     "audit": {
       "title": "Jejak audit",
