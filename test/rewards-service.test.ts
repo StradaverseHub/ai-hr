@@ -5,9 +5,10 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
@@ -68,6 +69,24 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await expect(getRewardUnit(ctx, unitId)).rejects.toThrow();
     expect(await withTenant(ctx, tx => tx.select().from(schema.rewardEntry))).toEqual([]);
     await expect(decideRewardUnit(actors.bu!, unitId, (await view()).unit.revision, 'submit', 'Reviewed recommendations')).rejects.toThrow(/Assign every approval role/);
+  });
+  it('delivers current-stage notifications from the userless overnight dispatcher without pay details', async () => {
+    await setModule(b.tenantId, 'notifications', 'active');
+    const employee = await hireEmployee(admin, { person: { fullName: 'BG Reviewer', primaryEmail: 'bg.employee@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    await owner.db.update(schema.appUser).set({ personId: employee.personId }).where(eq(schema.appUser.id, actors.bg!.userId!));
+    const rev = (await view()).unit.revision;
+    await decideRewardUnit(actors.bu!, unitId, rev, 'submit', 'Reviewed recommendations');
+    const enabled = await entitledCtx(b);
+    const system: SessionContext = { tenantId: b.tenantId, roles: ['hr_admin'], entitlements: enabled.entitlements };
+    await dispatchNotifications(system);
+    const notices = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'rewards.review'));
+    expect(notices).toHaveLength(1);
+    expect(notices[0].recipientEmploymentId).toBe(employee.employmentId);
+    expect(notices[0].linkPath).toBe(`/rewards/${unitId}?view=approvals`);
+    expect(notices[0].body).not.toMatch(/5000|5225|10055/);
+    expect((await dispatchNotifications(system)).created).toBe(0);
+    expect(await withTenant(actors.bu!, tx => rewardNotificationRecipients(tx, unitId, 'bg'))).toEqual([]);
+    expect(await withTenant(system, tx => rewardNotificationRecipients(tx, unitId, 'ctro'))).toEqual([]);
   });
   it('allows BU case decisions but refuses a classification or rating change', async () => {
     const v = await getRewardUnit(actors.bu!, unitId), e = v.rows[0];

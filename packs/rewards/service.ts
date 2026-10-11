@@ -381,10 +381,6 @@ export async function rewardNotificationRecipients(tx: Tx, unitId: string, stage
   if (typeof stage !== 'string') return [];
   const role = stage === 'approved' ? 'payroll' : stage === 'draft' ? 'bu' : stage;
   if (!(rewardRoles as readonly string[]).includes(role)) return [];
-  const rows = await tx.select({ employmentId: employment.id }).from(rewardMember)
-    .innerJoin(appUser, eq(appUser.id, rewardMember.userId))
-    .innerJoin(employment, eq(employment.personId, appUser.personId))
-    .innerJoin(rewardUnit, eq(rewardUnit.id, rewardMember.unitId))
-    .where(and(eq(rewardMember.unitId, unitId), eq(rewardUnit.status, stage as (typeof rewardUnit.$inferSelect)['status']), sql`${rewardMember.role} = case when ${rewardUnit.status}='draft' and ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else ${role} end`, eq(rewardUnit.companyId, employment.companyId), isNull(appUser.archivedAt), isNull(employment.terminatedOn), sql`not app.login_blocked(${appUser.id})`));
-  return [...new Set(rows.map(r => r.employmentId))];
+  const rows = await tx.execute<{ employmentId: string }>(sql`select app.reward_notification_recipients(${unitId}::uuid, ${stage}) as "employmentId"`);
+  return rows.map(r => r.employmentId);
 }

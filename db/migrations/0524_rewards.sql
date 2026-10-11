@@ -151,3 +151,17 @@ CREATE FUNCTION app.reward_current_source(wanted_unit uuid, wanted_employment uu
 $$;
 REVOKE ALL ON FUNCTION app.reward_current_source(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_current_source(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- The overnight dispatcher has an administrator SYSTEM context with no login. Return recipient IDs
+-- through a narrow seam; never grant that context access to reward entries or compensation snapshots.
+CREATE FUNCTION app.reward_notification_recipients(wanted_unit uuid, wanted_stage text) RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT DISTINCT e.id FROM reward_unit r JOIN reward_member m ON m.unit_id=r.id AND m.tenant_id=r.tenant_id
+ JOIN app_user u ON u.id=m.user_id AND u.tenant_id=r.tenant_id
+ JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=r.tenant_id AND e.company_id=r.company_id
+ WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.status=wanted_stage
+ AND app.is_admin() AND (app.current_user_id() IS NULL OR app.reward_admin(r.company_id))
+ AND m.role=CASE WHEN wanted_stage='approved' THEN 'payroll' WHEN wanted_stage='draft' THEN CASE WHEN r.offcycle->>'bgOrigin'='true' THEN 'bg' ELSE 'bu' END ELSE wanted_stage END
+ AND wanted_stage IN ('draft','bg','gr','ctro','ec','approved') AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND e.terminated_on IS NULL
+$$;
+REVOKE ALL ON FUNCTION app.reward_notification_recipients(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_notification_recipients(uuid,text) TO ai_hr_app;
