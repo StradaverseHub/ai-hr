@@ -1,6 +1,6 @@
 # ADR-0099 — Rewards reviews and payroll handoff
 
-Status: accepted and deployed, 2026-10-11. Tenant activation awaits the owner's company-group scope.
+Status: accepted and deployed, 2026-10-11. Subsequently enabled tenant-wide for Demo Group at the owner's request.
 
 ## Evidence and scope
 
@@ -103,8 +103,10 @@ off-cycle reservations. The exact shipping commit `03f55e21e6ea690a11e8a129f01a8
 passed all 1,279 test files (20,169 tests), type checking, local and production builds,
 14 browser suites (228 passes and one existing expected failure), and shadow migration 432/432.
 Production applied migration 0524, reports matching source/build refs and healthy service, and has
-RLS enabled on all five reward tables. No reward cycles, units or entries were created and no tenant
-Rewards entitlement was activated. The release history records the detailed evidence and corrections.
+RLS enabled on all five reward tables. No reward cycles, units or entries were created during release.
+After release, the owner requested activation; the audited module runner enabled Rewards tenant-wide
+for Demo Group (request `461300a2-331f-4849-bed7-58e1b9e302c1`, status `done`).
+The release history records the detailed evidence and corrections.
 
 All six message catalogues carry the new keys. Primary navigation labels are translated; several Rewards
 policy explanations currently use English in the non-English catalogues. An optional generative-AI summary is not implemented; the deterministic comparison and human-authored
