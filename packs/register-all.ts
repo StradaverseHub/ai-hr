@@ -33,4 +33,4 @@ import '@/packs/leave';
 import '@/packs/payroll';
 import '@/packs/lifecycle';
 
-import './rewards';
+import '@/packs/rewards';

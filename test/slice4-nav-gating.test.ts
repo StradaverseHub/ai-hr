@@ -72,6 +72,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
       'lifecycle',
       'payroll',
       'performance',
+      'rewards',
       'system_explorer',
       'system_testing',
       'toil',
@@ -134,6 +135,7 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
     lifecycle: 'app/lifecycle/page.tsx',
     payroll: 'app/payroll/page.tsx',
     performance: 'app/performance/page.tsx',
+    rewards: 'app/rewards/page.tsx',
     // deec1691 — moved here from the operator plane at r79 and sold as a module (default OFF).
     system_explorer: 'app/admin/system-explorer/page.tsx',
     // 3fb1a611 (r299) — the RULES tab, not the Credits tab the row opens, and deliberately so. The Credits tab
