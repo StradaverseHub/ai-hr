@@ -83,6 +83,8 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
  * /admin/leave → packs/leave) — are asserted separately by position.
  */
 const ADMIN_GROUP_FLAT_HREFS = [
+  // Workflow email category policy; separate from installation-wide SMTP settings.
+  '/admin/settings/notifications',
   '/admin/settings/email',
   '/admin/organization',
   // 639bf4a5 (r336) — '/admin/work-locations' (Physical Work Location) STOOD HERE, immediately after
