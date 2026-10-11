@@ -322,7 +322,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   // told what became of their cancellation, so the two DECISIONS go to the employee ALWAYS (the event's
   // subject — the default recipient). The REQUEST goes to the approver and HR only when the leave type's
   // "Notify the approver and HR" box was ticked, a choice SNAPSHOTTED into the event payload at request time
-  // (re-reading the leave type at dispatch would let a later untick retroactively un-notify). In-app only:
+  // (re-reading the leave type at dispatch would let a later untick retroactively un-notify).
   // Email uses a separate brief template; the in-app strings follow the registry convention.
   'leave-cancellation.requested': {
     kind: 'leave.cancellation-requested',

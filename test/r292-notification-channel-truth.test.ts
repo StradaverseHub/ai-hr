@@ -5,6 +5,8 @@ import { describe,expect,it } from 'vitest';
 const root=path.resolve(__dirname,'..'),read=(p:string)=>fs.readFileSync(path.join(root,p),'utf8');
 function walk(dir:string,out:string[]=[]):string[]{for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(e.name.startsWith('.')||e.name==='node_modules'||e.name==='graphify-out')continue;const full=path.join(dir,e.name);if(e.isDirectory())walk(full,out);else if(/\.(ts|tsx)$/.test(e.name))out.push(path.relative(root,full));}return out;}
 const sources=walk(root);
+const importsNotifications=/from\s+['"](?:@\/core\/notifications|\.{1,2}(?:\/[\w-]+)*\/notifications)['"]/;
+const notificationPath=[...new Set(['core/notifications.ts','core/notice.ts','components/notice/notice-form.tsx',...sources.filter(f=>importsNotifications.test(read(f)))])];
 describe('r292 — transport and product copy describe the same conditional delivery',()=>{
  it('keeps SMTP imports in the isolated identity service, never a web action or kernel dispatcher',()=>{
   expect(Object.keys(JSON.parse(read('package.json')).dependencies)).toContain('nodemailer');
@@ -22,10 +24,18 @@ describe('r292 — transport and product copy describe the same conditional deli
   expect(queue).toContain('policy.enabled');expect(queue).toContain('ev.sequence>pref.email_after_sequence');expect(queue).toContain('ev.sequence>policy.after_sequence');
  });
  it('does not restore obsolete absence claims or unconditional delivery promises',()=>{
-  const pathFiles=['core/notifications.ts','scripts/review-sweep.ts','core/notice.ts','test/user-lifecycle.test.ts'];
-  for(const f of pathFiles){const src=read(f);expect(src,f).not.toMatch(/NO EMAIL TRANSPORT IN THIS REPOSITORY|notification_pref.*dead schema|there is no email transport in the repo|this path SENDS EMAIL|there is no email switch, because there is no email/);}
+  for(const f of ['app/layout.tsx','app/notification-actions.ts','scripts/review-sweep.ts'])expect(notificationPath).toContain(f);
+  expect(notificationPath.length).toBeGreaterThan(6);
+  for(const f of notificationPath){const src=read(f);expect(src,f).not.toMatch(/NO EMAIL TRANSPORT IN THIS REPOSITORY|notification_pref.*dead schema|there is no email transport in the repo|this path SENDS EMAIL|there is no email switch, because there is no email/);}
   const header=read('core/notifications.ts').slice(0,2600);
   expect(header).toMatch(/Workflow email is conditional/);expect(header).toMatch(/explicit recipient consent/);expect(header).toMatch(/SMTP acceptance is not human receipt/);
+ });
+ it('does not revive the original unconditional claim or misquote the notice checkbox in any new source file',()=>{
+  expect(sources.length).toBeGreaterThan(1000);
+  for(const forbidden of ['this path SENDS EMAIL','Send Email Notification']){
+   const offenders=sources.filter(f=>f!=='test/r292-notification-channel-truth.test.ts'&&read(f).includes(forbidden));
+   expect(offenders,forbidden).toEqual([]);
+  }
  });
  it('preserves the original login-block exclusion and its in-app lifetime rationale',()=>{
   const src=read('core/notifications.ts'),start=src.indexOf('Switched-off logins are excluded'),end=src.indexOf('export async function hrAdminsForCompany');

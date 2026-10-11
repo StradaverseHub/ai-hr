@@ -116,7 +116,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
    * decided how to sell. Flipping it later is a catalog edit; unpicking a wrong refusal is not.
    */
   { code: 'country-my', name: 'Malaysia', category: 'platform', description: 'Malaysian statutory rules: EPF, SOCSO, EIS, PCB, HRD Corp and the EA form.', dependsOn: [], billable: false, isCore: false, parentModule: null, packBacked: false, sortOrder: 300 },
-  { code: 'notifications', name: 'Notifications', category: 'platform', description: 'In-app notification centre and task alerts.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 230 },
+  { code: 'notifications', name: 'Notifications', category: 'platform', description: 'In-app notifications and configurable email alerts.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 230 },
   /**
    * System Analysis & Dependency Explorer (deec1691) — the admin-facing record-relationship reference.
    *
