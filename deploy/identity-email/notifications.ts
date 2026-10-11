@@ -10,7 +10,7 @@ export interface WorkflowEmailDependencies {
   ready():Promise<boolean>;
   target(id:string,token:string):Promise<WorkflowMailTarget|null>;
   verifyRecipient(target:WorkflowMailTarget):Promise<'verified'|'changed'|'unavailable'>;
-  start(id:string,token:string):Promise<boolean>;
+  start(id:string,token:string,target:WorkflowMailTarget):Promise<boolean>;
   finish(id:string,token:string,outcome:NotificationEmailOutcome,error:NotificationEmailError|null):Promise<boolean>;
   send(target:WorkflowMailTarget,mail:WorkflowMail):Promise<void>;
   origin:string;
@@ -44,7 +44,7 @@ export function createNotificationEmailService(d:WorkflowEmailDependencies) {
     const verified=await d.verifyRecipient(target);
     if(verified==='unavailable')return {outcome:'unavailable'}; // No SMTP started; lease can expire safely.
     if(verified!=='verified'){await d.finish(id,token,'skipped','recipientChanged');return {outcome:'skipped'};}
-    if(!await d.start(id,token))return {outcome:'busy'};
+    if(!await d.start(id,token,target))return {outcome:'busy'};
     const locale=(['en','ms','zh','vi','ta','th'] as const).find(l=>l===target.locale)??'en';
     let outcome:NotificationEmailOutcome='sent',error:NotificationEmailError|null=null;
     try {

@@ -121,11 +121,11 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp S
       OR current_date<=LEAST(e.resignation_date,e.last_working_date,e.terminated_on));
 $$;
 --> statement-breakpoint
-CREATE FUNCTION identity_email.start_delivery(p_id uuid,p_token uuid,p_issuer text)
+CREATE FUNCTION identity_email.start_delivery(p_id uuid,p_token uuid,p_issuer text,p_target jsonb)
 RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  PERFORM 1 FROM notification_delivery d WHERE d.id=p_id FOR UPDATE;
- IF NOT EXISTS(SELECT 1 FROM identity_email.delivery_target(p_id,p_token,p_issuer)) THEN RETURN false; END IF;
+ IF NOT EXISTS(SELECT 1 FROM identity_email.delivery_target(p_id,p_token,p_issuer) t WHERE to_jsonb(t)=p_target) THEN RETURN false; END IF;
  UPDATE notification_delivery SET started_at=now(),attempts=attempts+1,updated_at=now(),lease_until=now()+interval '90 seconds'
  WHERE id=p_id AND lease_token=p_token AND status='pending' AND started_at IS NULL AND attempts<5;
  RETURN FOUND;
@@ -151,7 +151,7 @@ BEGIN
  RETURN true;
 END; $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION identity_email.delivery_target(uuid,uuid,text),identity_email.start_delivery(uuid,uuid,text),identity_email.finish_delivery(uuid,uuid,text,text) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION identity_email.delivery_target(uuid,uuid,text),identity_email.start_delivery(uuid,uuid,text,jsonb),identity_email.finish_delivery(uuid,uuid,text,text) FROM PUBLIC,ai_hr_app;
 
 --> statement-breakpoint
 -- Contact erasure also revokes external-mail consent, without changing retained statutory primary_email.

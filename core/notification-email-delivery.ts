@@ -16,9 +16,9 @@ export async function readNotificationEmailTransport(transport:NotificationEmail
 export async function deliverNotificationEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc) {
   if (!isAdmin(ctx)) throw new Error('Notification dispatcher required');
   if (!isModuleEnabled(ctx,'notifications')) return {attempted:0,skipped:0,unavailable:false};
+  const due=await withTenant(ctx,async tx=>tx.execute(sql`select * from app.notification_email_due(50)`)) as unknown as {id:string;recipient_employment_id:string;source_event_id:string;kind:string;category:string}[];
   const status=await readNotificationEmailTransport(transport);
   if (!status?.ready) return {attempted:0,skipped:0,unavailable:true};
-  const due=await withTenant(ctx,async tx=>tx.execute(sql`select * from app.notification_email_due(50)`)) as unknown as {id:string;recipient_employment_id:string;source_event_id:string;kind:string;category:string}[];
   let attempted=0,skipped=0;
   for (const job of due) {
     const leaseToken=randomUUID();
@@ -27,7 +27,7 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
         await tx.update(notificationDelivery).set({status:'skipped',lastError:'notEligible',updatedAt:sql`now()`}).where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`)));
         return 'skipped';
       }
-      const rows=await tx.update(notificationDelivery).set({leaseToken,leaseUntil:sql`now()+interval '30 seconds'`,updatedAt:sql`now()`})
+      const rows=await tx.update(notificationDelivery).set({leaseToken,leaseUntil:sql`now()+interval '60 seconds'`,updatedAt:sql`now()`})
         .where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`))).returning({id:notificationDelivery.id});
       return rows.length?'claimed':'busy';
     });

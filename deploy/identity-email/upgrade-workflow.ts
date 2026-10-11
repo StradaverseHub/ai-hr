@@ -27,7 +27,10 @@ async function main(){
  const probe=await fetch('http://127.0.0.1:8080/identity/admin/realms/ai-hr/users?max=1',{headers:{authorization:'Bearer '+token.access_token},redirect:'error',signal:AbortSignal.timeout(5000)});
  if(!probe.ok)throw new Error('Lookup permission unavailable');
  const stamp=new Date().toISOString().replace(/[:.]/g,'-'),backup='/var/backups/aihr-identity-email/workflow-'+stamp;
- await mkdir(backup,{recursive:true,mode:0o700});await trusted('/var/backups/aihr-identity-email',true);await trusted(backup,true);await chmod('/var/backups/aihr-identity-email',0o700);await chmod(backup,0o700);
+ for(const path of ['/var','/var/backups'])await trusted(path,true);
+ try{await mkdir('/var/backups/aihr-identity-email',{mode:0o700});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;}
+ await trusted('/var/backups/aihr-identity-email',true);await chmod('/var/backups/aihr-identity-email',0o700);
+ await mkdir(backup,{mode:0o700});await trusted(backup,true);
  await copyFile(envPath,backup+'/email-agent.env');await chmod(backup+'/email-agent.env',0o600);
  await copyFile(runtime+'/agent.cjs',backup+'/agent.cjs');
  const database=decodeURIComponent(db.pathname.slice(1));

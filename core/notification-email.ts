@@ -90,7 +90,7 @@ export async function readNotificationEmailDeliveries(ctx:SessionContext) {
 }
 export async function retryNotificationEmail(ctx:SessionContext,id:string,acknowledged:boolean) {
   requireAdmin(ctx);
-  if (!acknowledged || !/^[0-9a-f-]{36}$/i.test(id)) throw new NotificationEmailSettingsError('invalid');
+  if (!acknowledged || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new NotificationEmailSettingsError('invalid');
   await withTenant(ctx,async tx=>{
     const rows=await tx.update(notificationDelivery).set({status:'pending',lastError:null,attempts:0,startedAt:null,leaseToken:null,leaseUntil:null,nextAttemptAt:sql`now()`,updatedAt:sql`now()`})
       .where(and(eq(notificationDelivery.id,id),eq(notificationDelivery.tenantId,ctx.tenantId),eq(notificationDelivery.channel,'email'),eq(notificationDelivery.status,'failed'))).returning({id:notificationDelivery.id});

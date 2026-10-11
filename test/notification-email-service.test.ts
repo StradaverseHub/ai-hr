@@ -10,7 +10,7 @@ beforeEach(()=>{
 describe('isolated workflow email orchestration',()=>{
  it('does not send or mark started until relay, target, verified account and durable lease all permit it',async()=>{
   expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'sent'});
-  expect(d.start).toHaveBeenCalledWith(job.deliveryId,job.leaseToken);
+  expect(d.start).toHaveBeenCalledWith(job.deliveryId,job.leaseToken,target);
   expect(d.send).toHaveBeenCalledWith(target,expect.objectContaining({category:'leave',locale:'ms',link:'https://hr.test/me',action:false,messageId:`<notification-${job.deliveryId}@hr.test>`}));
   expect(d.finish).toHaveBeenCalledWith(job.deliveryId,job.leaseToken,'sent',null);
  });

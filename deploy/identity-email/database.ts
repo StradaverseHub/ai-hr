@@ -19,5 +19,5 @@ export function emailServiceDatabaseGrants(database: string, role = 'aihr_identi
 /** Added by the workflow-email upgrade; separate from the original installation's grants. */
 export function workflowEmailDatabaseGrants(role='aihr_identity_email'):string[] {
   const quoted='"'+role.replaceAll('"','""')+'"';
-  return [`GRANT EXECUTE ON FUNCTION identity_email.delivery_target(uuid,uuid,text),identity_email.start_delivery(uuid,uuid,text),identity_email.finish_delivery(uuid,uuid,text,text) TO ${quoted}`];
+  return [`GRANT EXECUTE ON FUNCTION identity_email.delivery_target(uuid,uuid,text),identity_email.start_delivery(uuid,uuid,text,jsonb),identity_email.finish_delivery(uuid,uuid,text,text) TO ${quoted}`];
 }
