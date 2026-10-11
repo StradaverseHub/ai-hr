@@ -1,6 +1,6 @@
 # ADR-0099 — Rewards reviews and payroll handoff
 
-Status: implementation under verification, 2026-10-11.
+Status: accepted and deployed, 2026-10-11. Tenant activation awaits the owner's company-group scope.
 
 ## Evidence and scope
 
@@ -99,8 +99,12 @@ model is outside this change. Ordinary salary changes use existing effective-dat
 
 Targeted tests cover formulas, zero pools, independent plans, exemptions, lump sums, proration, branch
 inputs, confidentiality, real RLS, revision checks, routing, double posting, stale salaries and concurrent
-off-cycle reservations. Full gate, build, migration shadow and browser evidence are recorded in the
-release history only after they actually complete.
+off-cycle reservations. The exact shipping commit `03f55e21e6ea690a11e8a129f01a8e78f298a109`
+passed all 1,279 test files (20,169 tests), type checking, local and production builds,
+14 browser suites (228 passes and one existing expected failure), and shadow migration 432/432.
+Production applied migration 0524, reports matching source/build refs and healthy service, and has
+RLS enabled on all five reward tables. No reward cycles, units or entries were created and no tenant
+Rewards entitlement was activated. The release history records the detailed evidence and corrections.
 
 All six message catalogues carry the new keys. Primary navigation labels are translated; several Rewards
 policy explanations currently use English in the non-English catalogues. An optional generative-AI summary is not implemented; the deterministic comparison and human-authored
