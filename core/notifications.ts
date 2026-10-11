@@ -1,3 +1,4 @@
+import { rewardNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -237,6 +238,16 @@ type Spec = {
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  'reward-unit.routed': {
+    kind: 'rewards.review', category: 'rewards',
+    render: (_p, ev) => ({ severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
+    recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
+  },
+  'reward-unit.approved': {
+    kind: 'rewards.approved', category: 'rewards',
+    render: (_p, ev) => ({ severity: 'action', title: 'Rewards ready for payroll', body: 'The review is approved and ready for the payroll handoff.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
+    recipients: (tx, ev) => rewardNotificationRecipients(tx, ev.aggregateId, 'approved'),
+  },
   'leave-request.approved': {
     kind: 'leave.approved',
     category: 'leave',

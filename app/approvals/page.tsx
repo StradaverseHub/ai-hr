@@ -1,3 +1,4 @@
+import { pendingRewardReviews } from '@/packs/rewards/service';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -154,7 +155,8 @@ export default async function ApprovalsPage({
   const { s, scopeIds } = await scopedSession();
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
-  if (!admin && !manager) redirect('/');
+  const rewardReviews = isModuleEnabledOrFalse(s, 'rewards') ? await pendingRewardReviews(s, scopeIds) : [];
+  if (!admin && !manager && !rewardReviews.length) redirect('/');
   /**
    * r261 (board item 9583deac, stage three) — WHO carries the profile-change queue is now the tenant's
    * own setting, and this is the ONE place the page asks.
@@ -336,6 +338,7 @@ export default async function ApprovalsPage({
     resignations: resignations.length,
     managerReviews: managerReviews.length,
     hrReviews: hrReviews.length,
+    rewards: rewardReviews.length,
   };
   // The All badge / unfiltered header total — now INCLUDING the two review queues, so header, All badge
   // and the All Pending card are one number.
@@ -380,7 +383,8 @@ export default async function ApprovalsPage({
     (visible('profileChanges') ? profileChanges.length : 0) +
     (visible('resignations') ? resignations.length : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
-    (visible('hrReviews') ? hrReviews.length : 0);
+    (visible('hrReviews') ? hrReviews.length : 0) +
+    (visible('rewards') ? rewardReviews.length : 0);
 
   // Return params every decide form posts back, so the redirect keeps the selected category + sort.
   const nav: NavParams = { category: category === 'all' ? '' : category, sort: sortParam ?? '' };
@@ -438,6 +442,8 @@ export default async function ApprovalsPage({
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
       <AttentionOnArrival />
+      {visible('rewards') && rewardReviews.length > 0 && <Card><SectionHeader title={t('rewards')} count={rewardReviews.length} /><ul className="divide-y divide-border">{rewardReviews.map(r => <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span>{r.cycle} · {r.name}</span><Link href={`/rewards/${r.id}?view=approvals`} className="font-medium text-primary hover:underline">{t('reviewRewards')}</Link></li>)}</ul></Card>}
+
       <div data-tour="approvals-intro">
         <PageHeader
           title={t('title')}

@@ -38,6 +38,7 @@ export const MODULE_CODES_WITH_NAV = [
   'lifecycle',
   'payroll',
   'performance',
+  'rewards',
   // deec1691 — the System Analysis & Dependency Explorer under Admin. The first entry here that is
   // NOT pack-backed: it owns no tables and contributes no pack, so its single nav row is a literal in
   // components/sidebar.tsx and its MODULE_OF_HREF entry is written by hand there. Listed here for the

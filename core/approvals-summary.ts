@@ -208,6 +208,7 @@ export async function decidedStatusCounts(
         return resignationCounts(tx);
       case 'managerReviews':
       case 'hrReviews':
+      case 'rewards':
         return NONE;
       case 'all': {
         const admin = isAdmin(ctx);

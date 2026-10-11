@@ -94,6 +94,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { code: 'attendance', name: 'Attendance', category: 'hr', description: 'Clock-in, rosters, shifts and attendance records.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 110 },
   { code: 'claims', name: 'Claims', category: 'hr', description: 'Expense claims, approval and payout.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 120 },
   { code: 'performance', name: 'Performance', category: 'hr', description: 'Review cycles, goals and compensation recommendations.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 130 },
+  { code: 'rewards', name: 'Rewards', category: 'hr', description: 'Salary and bonus budgets, confidential reward review, approvals and payroll handoff.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 135 },
   { code: 'lifecycle', name: 'Onboarding, Offboarding & IT Assets', category: 'hr', description: 'New-employee onboarding and leaver offboarding checklists, IT requisitions, the asset register and asset requests.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 140 },
 
   // ── Billable sub-modules: a behaviour inside a parent pack's service, with NO pack of its own ───
@@ -418,6 +419,7 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
    * grant the module to every existing tenant). A missing `tenant_module` row is disabled (C7).
    */
   lifecycle: 'LIFECYCLE_ENABLED',
+  rewards: 'REWARDS_ENABLED',
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */

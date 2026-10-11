@@ -197,6 +197,7 @@ const PAYROLL_NODE: CollapsibleGroupItem = {
  * a tenant cannot not-have them, so their rows are never candidates for hiding and are absent here.
  */
 const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
+  ...(modulePackById('rewards')!.navLinks ?? []).map((l) => [l.href, 'rewards'] as const),
   ...ATTENDANCE_NODES.flatMap((n) => n.children.map((c) => [c.href, 'attendance'] as const)),
   // a324a4b3 rev3 — /roster and /attendance/import LEFT the nav nodes, so the flatMap above no longer
   // reaches them. Without this line both would fall out of MODULE_OF_HREF and stop being gated by the
@@ -390,6 +391,7 @@ const GROUPS: Group[] = [
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
+      ...modulePackById('rewards')!.navLinks!,
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
       // moved into admin-gated Administration, because the group gate would hide them from every

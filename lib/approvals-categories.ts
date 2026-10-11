@@ -25,10 +25,11 @@ export type ApprovalCategory =
   | 'profileChanges'
   | 'resignations'
   | 'managerReviews'
-  | 'hrReviews';
+  | 'hrReviews'
+  | 'rewards';
 
 /** Categories beyond the bulk taxonomy — the people matters, in panel order. */
-const PEOPLE_CATEGORIES = ['profileChanges', 'resignations', 'managerReviews', 'hrReviews'] as const;
+const PEOPLE_CATEGORIES = ['profileChanges', 'resignations', 'managerReviews', 'hrReviews', 'rewards'] as const;
 
 /**
  * Every category in canonical order: all first, then the bulk taxonomy, then replacement leave, then the
@@ -104,7 +105,8 @@ export type ApprovalSection =
   | 'profileChanges'
   | 'resignations'
   | 'managerReviews'
-  | 'hrReviews';
+  | 'hrReviews'
+  | 'rewards';
 
 const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSection> = {
   leave: 'leave',
@@ -117,6 +119,7 @@ const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSec
   resignations: 'resignations',
   managerReviews: 'managerReviews',
   hrReviews: 'hrReviews',
+  rewards: 'rewards',
 };
 
 /** Whether a page section renders under the selected category ('all' shows every section). */

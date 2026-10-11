@@ -9850,3 +9850,45 @@ export const mobileDesignRelease = pgTable('mobile_design_release', {
   tenantId: tenantId(), revision: integer('revision').notNull(), config: jsonb('config').notNull(),
   publishedBy: uuid('published_by').notNull(), publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.tenantId, t.revision] })]);
+
+// Reward Desk owns review snapshots; employment and compensation remain the authoritative masters.
+export const rewardCycle = pgTable('reward_cycle', {
+  id: id(), tenantId: tenantId(), name: text('name').notNull(), year: integer('year').notNull(),
+  createdBy: uuid('created_by').notNull().references(() => appUser.id), createdAt: createdAt(),
+});
+export const rewardUnit = pgTable('reward_unit', {
+  kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
+  parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),
+  offcycle: jsonb('offcycle').$type<import('../packs/rewards/offcycle').OffcycleDetails>(),
+  fundingCents: jsonb('funding_cents').$type<import('../packs/rewards/offcycle').Funding>().notNull().default({standard: 0, h: 0}),
+  reservedCents: jsonb('reserved_cents').$type<import('../packs/rewards/offcycle').Funding>().notNull().default({standard: 0, h: 0}),
+  id: id(), tenantId: tenantId(), cycleId: uuid('cycle_id').notNull().references(() => rewardCycle.id),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  businessUnitId: uuid('business_unit_id').notNull().references(() => businessUnit.id),
+  policy: jsonb('policy').$type<import('../packs/rewards/model').RewardPolicy>().notNull(),
+  status: text('status').$type<import('../packs/rewards/model').RewardStage>().notNull().default('draft'),
+  revision: integer('revision').notNull().default(1), snapshotDate: date('snapshot_date').notNull(),
+  approvedDigest: text('approved_digest'), postedBatchId: uuid('posted_batch_id').references(() => payrollBatch.id),
+  postedAt: timestamp('posted_at', { withTimezone: true }), createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const rewardMember = pgTable('reward_member', {
+  id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
+  userId: uuid('user_id').notNull().references(() => appUser.id),
+  role: text('role').$type<import('../packs/rewards/model').RewardRole>().notNull(), createdAt: createdAt(),
+});
+export const rewardEntry = pgTable('reward_entry', {
+  id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  source: jsonb('source').$type<import('../packs/rewards/model').RewardSource>().notNull(),
+  facts: jsonb('facts').$type<import('../packs/rewards/model').RewardFacts>().notNull(),
+  recommendation: jsonb('recommendation').$type<import('../packs/rewards/model').Recommendation>().notNull(),
+  enactedCompensationId: uuid('enacted_compensation_id').references(() => compensation.id),
+  createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const rewardDecision = pgTable('reward_decision', {
+  id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
+  actorId: uuid('actor_id').notNull().references(() => appUser.id), revision: integer('revision').notNull(),
+  action: text('action').notNull(), fromStage: text('from_stage').notNull(), toStage: text('to_stage').notNull(),
+  reason: text('reason').notNull().default(''), digest: text('digest').notNull(), createdAt: createdAt(),
+});

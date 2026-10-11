@@ -3018,6 +3018,13 @@
       "when": 1791900000003,
       "tag": "0523_deployment_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 524,
+      "version": "7",
+      "when": 1791900000004,
+      "tag": "0524_rewards",
+      "breakpoints": true
     }
   ]
 }
