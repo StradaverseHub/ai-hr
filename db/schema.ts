@@ -5352,6 +5352,7 @@ export const notificationDelivery = pgTable(
   },
   (t) => [
     index('notification_delivery_pending_idx').on(t.tenantId, t.status),
+    index('notification_email_recent_idx').on(t.tenantId,t.createdAt.desc(),t.id.desc()).where(sql`channel='email'`),
     uniqueIndex('notification_email_event_user_uq').on(t.tenantId, t.sourceEventId, t.recipientUserId, t.kind)
       .where(sql`channel='email' AND source_event_id IS NOT NULL AND recipient_user_id IS NOT NULL`),
   ],

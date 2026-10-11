@@ -27,6 +27,23 @@ ALTER TABLE notification_delivery ADD COLUMN recipient_user_id uuid REFERENCES a
 CREATE UNIQUE INDEX notification_email_event_user_uq ON notification_delivery(tenant_id,source_event_id,recipient_user_id,kind)
  WHERE channel='email' AND source_event_id IS NOT NULL AND recipient_user_id IS NOT NULL;
 --> statement-breakpoint
+CREATE INDEX notification_email_recent_idx ON notification_delivery(tenant_id,created_at DESC,id DESC) WHERE channel='email';
+--> statement-breakpoint
+-- One existing company-scope predicate owns delivery metadata and mutations, including legacy channels.
+CREATE FUNCTION app.notification_email_delivery_authorized(p_notification uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM notification n WHERE n.id=p_notification AND n.tenant_id=app.current_tenant_id()
+ AND app.is_admin() AND app.can_admin_employment(n.recipient_employment_id));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.notification_email_delivery_authorized(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.notification_email_delivery_authorized(uuid) TO ai_hr_app;
+--> statement-breakpoint
+ALTER POLICY notification_delivery_rls ON notification_delivery
+ USING (tenant_id=app.current_tenant_id() AND app.notification_email_delivery_authorized(notification_id))
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.notification_email_delivery_authorized(notification_id));
+--> statement-breakpoint
 CREATE FUNCTION app.notification_email_watermark() RETURNS bigint
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT COALESCE(max(sequence),0) FROM domain_event WHERE tenant_id=app.current_tenant_id();
@@ -52,6 +69,7 @@ BEGIN
  JOIN notification_email_policy policy ON policy.tenant_id=n.tenant_id AND policy.category=p_category
    AND policy.enabled AND ev.sequence>policy.after_sequence
  WHERE n.id=p_notification AND n.tenant_id=app.current_tenant_id() AND ev.sequence=p_sequence
+ AND app.can_admin_employment(e.id)
  AND p_category IN ('attendance','claims','delegation','leave','notice','offboarding','payroll','performance','profile','readiness','review','rewards','toil') AND NOT app.login_blocked(u.id)
  AND EXISTS(SELECT 1 FROM app_external_identity i WHERE i.app_user_id=u.id AND i.revoked_at IS NULL)
  ON CONFLICT DO NOTHING;
@@ -84,10 +102,12 @@ BEGIN
  IF NOT app.is_admin() THEN RAISE EXCEPTION 'notification dispatcher required' USING ERRCODE='insufficient_privilege'; END IF;
  UPDATE notification_delivery d SET status='failed',last_error='uncertain',lease_token=NULL,lease_until=NULL,updated_at=now()
  WHERE d.tenant_id=app.current_tenant_id() AND d.channel='email' AND d.status='pending'
+ AND app.notification_email_delivery_authorized(d.notification_id)
  AND d.started_at IS NOT NULL AND d.lease_until<now();
  RETURN QUERY SELECT d.id,n.recipient_employment_id,d.source_event_id,d.kind,d.category
  FROM notification_delivery d JOIN notification n ON n.id=d.notification_id AND n.tenant_id=d.tenant_id
  WHERE d.tenant_id=app.current_tenant_id() AND d.channel='email' AND d.status='pending'
+ AND app.notification_email_delivery_authorized(d.notification_id)
  AND d.recipient_user_id IS NOT NULL AND d.next_attempt_at<=now()
  AND (d.lease_until IS NULL OR d.lease_until<now()) AND d.started_at IS NULL
  ORDER BY d.created_at,d.id LIMIT LEAST(GREATEST(p_limit,1),100);

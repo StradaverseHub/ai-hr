@@ -95,6 +95,9 @@ SMTP configuration or copies HR detail into a message. USER, PERSON and EMPLOYME
 - Both controls must permit the new event. A pending delivery records the exact app-user target and
   source event, with a uniqueness rule that coalesces the same event/kind for concurrent employments
   belonging to one account. It contains no copied email address, HR body or SMTP credential.
+- Delivery metadata, due-job reads, mutations and enqueue targets use the existing live
+  `app.can_admin_employment` company scope, including a strengthened delivery-table RLS policy.
+  A company administrator cannot observe another company's delivery metadata through a private helper.
 - Before delivery the worker resolves the registry's recipients again. The private service also
   rechecks the current identity binding, employment, policy and consent. It reads the current person's
   primary email and confirms that the exact enabled Keycloak account still has that verified address.

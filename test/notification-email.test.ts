@@ -8,15 +8,15 @@ import { hireEmployee,setReportingLine } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dispatchNotifications } from '../core/notifications';
 import { deliverNotificationEmails,type NotificationEmailTransport } from '../core/notification-email-delivery';
-import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,readNotificationEmailPreferences,retryNotificationEmail } from '../core/notification-email';
+import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,readNotificationEmailPreferences,readNotificationEmailDeliveries,retryNotificationEmail } from '../core/notification-email';
 import { erasePersonPii } from '../core/pdpa';
 import { workflowEmailDatabaseGrants } from '../deploy/identity-email/database';
 import * as schema from '../db/schema';
 const raw=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:2});
 let b:Base;const issuer='https://hr.test/identity/realms/ai-hr';
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');});afterAll(async()=>{await raw.end();await closeAll();});
-async function employee(email='employee@example.test'){
- const e=await hireEmployee(adminCtx(b),{person:{fullName:'Email employee',primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+async function employee(email='employee@example.test',companyId=b.companyId,departmentId=b.deptA){
+ const e=await hireEmployee(adminCtx(b),{person:{fullName:'Email employee',primaryEmail:email},companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,e.personId,'employee'),subject=randomUUID();
  await owner.db.insert(schema.appExternalIdentity).values({issuer,subject,appUserId:userId});
  const ctx:SessionContext={tenantId:b.tenantId,userId,personId:e.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)};
@@ -61,6 +61,22 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   expect((await readNotificationEmailPreferences(a.ctx)).preferences).toEqual([]);
   await withTenant(a.ctx,async tx=>expect(await tx.select().from(schema.notificationPref)).toEqual([]));
   const foreign=await seedBase();await expect(withTenant({...a.ctx,tenantId:foreign.tenantId,entitlements:harnessSnapshot(foreign.tenantId)},tx=>tx.execute(sql`select app.notification_email_enqueue(${randomUUID()}::uuid,'leave',0)`))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
+ });
+ it('restricts company administrators to their own delivery metadata, due jobs, writes and enqueue targets',async()=>{
+  const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other company'}).returning();
+  const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Other department'}).returning();
+  const own=await employee(),other=await employee('other-company@example.test',company.id,department.id);
+  await consent(own);await consent(other);await event(own.employmentId);const foreignEvent=await event(other.employmentId);await dispatchNotifications(adminCtx(b));
+  const jobs=await deliveries(),ownJob=jobs.find(d=>d.recipientUserId===own.ctx.userId)!,foreignJob=jobs.find(d=>d.recipientUserId===other.ctx.userId)!;
+  expect(jobs).toHaveLength(2);
+  const scoped={...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:b.companyId}]};
+  expect((await readNotificationEmailDeliveries(scoped)).map(d=>d.id)).toEqual([ownJob.id]);
+  const due=await withTenant(scoped,tx=>tx.execute(sql`select * from app.notification_email_due(50)`)) as unknown as {id:string}[];
+  expect(due.map(d=>d.id)).toEqual([ownJob.id]);
+  const changed=await withTenant(scoped,tx=>tx.update(schema.notificationDelivery).set({status:'failed'}).where(eq(schema.notificationDelivery.id,foreignJob.id)).returning({id:schema.notificationDelivery.id}));expect(changed).toEqual([]);
+  await owner.db.delete(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,foreignJob.id));
+  await withTenant(scoped,tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect((await deliveries()).map(d=>d.id)).toEqual([ownJob.id]);
+  await withTenant(adminCtx(b),tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect(await deliveries()).toHaveLength(2);
  });
  it('serializes concurrent projection and coalesces concurrent employments for one exact account',async()=>{
   const e=await employee();const second=await hireEmployee(adminCtx(b),{person:{id:e.personId},companyId:b.companyId,departmentId:b.deptB,employmentType:'part_time',hiredOn:todayInKualaLumpur()});
