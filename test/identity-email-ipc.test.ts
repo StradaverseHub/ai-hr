@@ -1,4 +1,4 @@
-import {createServer,type Server} from 'node:http';
+import {createServer,type Server,type RequestListener} from 'node:http';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -6,7 +6,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {identityEmailRequest} from '../lib/identity/email-ipc';
 let server:Server|undefined,dir:string|undefined;
 afterEach(async()=>{vi.unstubAllEnvs();if(server)await new Promise<void>(resolve=>server!.close(()=>resolve()));if(dir)await rm(dir,{recursive:true,force:true});});
-async function socket(handler:Parameters<typeof createServer>[0]){
+async function socket(handler:RequestListener){
  dir=await mkdtemp(join(tmpdir(),'aihr-email-ipc-'));const path=join(dir,'settings.sock');server=createServer(handler);await new Promise<void>(resolve=>server!.listen(path,resolve));vi.stubEnv('IDENTITY_EMAIL_SOCKET',path);
 }
 describe('private email Unix socket protocol',()=>{
