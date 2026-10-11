@@ -18,8 +18,8 @@ async function admin(path:string,method='GET',body?:unknown) {
 }
 const statePath='/var/lib/aihr-identity-email/state.json';
 const service=createEmailService({revisionKey,testRecipient,now:()=>new Date(),
- authorize:async a=>{const rows=await database`select * from app.identity_email_operator_info(${a.issuer},${a.subject},${a.userId}::uuid,${a.tenantId}::uuid)`;return rows[0]?.test_email??null;},
- audit:async(a,action,meta)=>{await database`select app.record_identity_email_event(${a.issuer},${a.subject},${a.userId}::uuid,${a.tenantId}::uuid,${action},${JSON.stringify(meta)}::jsonb)`;},
+ authorize:async a=>{const rows=await database`select * from identity_email.operator_info(${a.issuer},${a.subject},${a.userId}::uuid,${a.tenantId}::uuid)`;return rows[0]?.test_email??null;},
+ audit:async(a,action,meta)=>{await database`select identity_email.record_event(${a.issuer},${a.subject},${a.userId}::uuid,${a.tenantId}::uuid,${action},${JSON.stringify(meta)}::jsonb)`;},
  realm:(method,body)=>admin('',method,body),test:async smtp=>{await admin('/testSMTPConnection','POST',smtp);},
  load:async()=>{try{return JSON.parse(await readFile(statePath,'utf8')) as EmailState;}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT') return {drafts:{},active:null};throw e;}},
  store:async state=>{await writeFile(statePath+'.tmp',JSON.stringify(state)+'\n',{mode:0o600});await rename(statePath+'.tmp',statePath);},

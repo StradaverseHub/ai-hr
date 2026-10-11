@@ -24,7 +24,12 @@ REVOKE ALL ON FUNCTION app.is_identity_email_operator() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.is_identity_email_operator() TO ai_hr_app;
 --> statement-breakpoint
 -- Only the isolated settings service receives EXECUTE on these two functions during installation.
-CREATE FUNCTION app.identity_email_operator_info(p_issuer text,p_subject text,p_user uuid,p_tenant uuid)
+-- Never grant it USAGE on app: older helpers there still inherit PUBLIC EXECUTE.
+CREATE SCHEMA identity_email;
+--> statement-breakpoint
+REVOKE ALL ON SCHEMA identity_email FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION identity_email.operator_info(p_issuer text,p_subject text,p_user uuid,p_tenant uuid)
 RETURNS TABLE(test_email text) LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT o.test_email FROM deployment_identity_operator o
@@ -33,10 +38,10 @@ SET search_path=pg_catalog,public,pg_temp AS $$
  AND u.id=p_user AND u.tenant_id=p_tenant AND NOT app.login_blocked(u.id);
 $$;
 --> statement-breakpoint
-CREATE FUNCTION app.record_identity_email_event(p_issuer text,p_subject text,p_user uuid,p_tenant uuid,p_action text,p_meta jsonb)
+CREATE FUNCTION identity_email.record_event(p_issuer text,p_subject text,p_user uuid,p_tenant uuid,p_action text,p_meta jsonb)
 RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF NOT EXISTS(SELECT 1 FROM app.identity_email_operator_info(p_issuer,p_subject,p_user,p_tenant)) THEN
+ IF NOT EXISTS(SELECT 1 FROM identity_email.operator_info(p_issuer,p_subject,p_user,p_tenant)) THEN
   RAISE EXCEPTION 'installation identity administrator required' USING ERRCODE='insufficient_privilege';
  END IF;
  IF p_action NOT IN ('draft-saved','test-requested','test-accepted','test-failed','apply-requested','applied','apply-uncertain')
@@ -48,4 +53,4 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.identity_email_operator_info(text,text,uuid,uuid),app.record_identity_email_event(text,text,uuid,uuid,text,jsonb) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION identity_email.operator_info(text,text,uuid,uuid),identity_email.record_event(text,text,uuid,uuid,text,jsonb) FROM PUBLIC,ai_hr_app;

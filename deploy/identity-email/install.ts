@@ -4,6 +4,7 @@ import { readFile, writeFile, mkdir, copyFile, chmod, chown } from 'node:fs/prom
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
+import { emailServiceDatabaseGrants } from './database';
 async function main(){
  if(process.getuid?.()!==0)throw new Error('Root required');
  const envPath='/etc/aihr-keycloak/email-agent.env';let env=await readFile(envPath,'utf8');
@@ -15,9 +16,7 @@ async function main(){
   await db.begin(async tx=>{
    // The migration role intentionally cannot create cluster roles. Root uses local postgres only here.
    execFileSync('runuser',['-u','postgres','--','psql','-v','ON_ERROR_STOP=1','-q'],{input:`CREATE ROLE aihr_identity_email LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;`,stdio:['pipe','ignore','pipe']});
-   const database=decodeURIComponent(url.pathname.slice(1));await tx.unsafe('GRANT CONNECT ON DATABASE "'+database.replaceAll('"','""')+'" TO aihr_identity_email');
-   await tx`GRANT USAGE ON SCHEMA app TO aihr_identity_email`;
-   await tx`GRANT EXECUTE ON FUNCTION app.identity_email_operator_info(text,text,uuid,uuid),app.record_identity_email_event(text,text,uuid,uuid,text,jsonb) TO aihr_identity_email`;
+   for(const grant of emailServiceDatabaseGrants(decodeURIComponent(url.pathname.slice(1)))) await tx.unsafe(grant);
   });
  }finally{await db.end();}
  url.username='aihr_identity_email';url.password=password;
