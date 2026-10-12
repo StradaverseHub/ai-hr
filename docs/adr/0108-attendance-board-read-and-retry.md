@@ -17,3 +17,5 @@ Attendance configuration forms retain independent save scopes. The shared naviga
 Real browser/DOM camera and uncertain-response flows, own/other receipt access, production-shaped Semi Flexi and fixed-shift controls, closed/processed payroll recompute, real leave approval/cancellation allocation projections, six-locale rendering, and the exact shipping commit's full gate/build/shadow. No green claim is made by this decision record.
 
 Allowance and workflow editors disable the submitted draft while their save is pending. A successful save acknowledgment must never rebase newer edits that were not part of the saved payload.
+
+Same-path legacy Schedule Group saves carry a per-submit nonce, echoed only on successful persistence. The guard consumes the matching receipt once for that form and rebases to its submitted snapshot, preserving other forms and edits typed while the response was pending. Old success URLs, unrelated refreshes and refusal redirects cannot acknowledge an unsaved draft.

@@ -140,6 +140,8 @@ export async function ScheduleGroupSections({
   error,
   section,
   typedWeek,
+  savedSection,
+  savedReceipt,
 }: {
   s: SessionContext;
   rule: AttendanceRuleView;
@@ -150,6 +152,8 @@ export async function ScheduleGroupSections({
   /** Which section a refusal belongs to, already resolved by VALUE against SCHEDULE_SECTION_KEYS. */
   section?: ScheduleSectionKey | null;
   typedWeek?: string;
+  savedSection?: ScheduleSectionKey | null;
+  savedReceipt?: string;
 }) {
   const t = await getTranslations('admin.scheduleConfig');
   const tr = await getTranslations('admin.attendanceRule');
@@ -189,6 +193,8 @@ export async function ScheduleGroupSections({
     <RuleForm
       rule={rule}
       hideAllowedShifts
+      saveScope
+      savedReceipt={savedSection === 'general' ? savedReceipt : undefined}
       shifts={ruleShiftChoices(shifts, rules, rule.id)}
       error={bannerFor('general')}
       /* No Cancel: the page header's Back already is the way out that writes nothing, and a "Cancel"
@@ -447,7 +453,7 @@ export async function ScheduleGroupSections({
     <>
       <ErrorBanner message={bannerFor('attendance')} />
       {editing ? (
-        <form action={saveScheduleGroupAttendanceAction} className="space-y-6">
+        <form action={saveScheduleGroupAttendanceAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'attendance' ? savedReceipt : undefined} className="space-y-6">
           <input type="hidden" name="ruleId" value={rule.id} />
           {attendanceBody}
         </form>
@@ -602,7 +608,7 @@ export async function ScheduleGroupSections({
     <>
       <ErrorBanner message={bannerFor('overtime')} />
       {editing ? (
-        <form action={saveScheduleGroupOvertimeAction} className="space-y-6">
+        <form action={saveScheduleGroupOvertimeAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'overtime' ? savedReceipt : undefined} className="space-y-6">
           <input type="hidden" name="ruleId" value={rule.id} />
           {/* ⚠️ THE MARKER, read as a VALUE by the action and never by presence. A browser omits an
               unchecked checkbox, so without this "turned off" and "this form did not carry the control"

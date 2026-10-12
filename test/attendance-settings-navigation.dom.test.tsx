@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const {push,router}=vi.hoisted(()=>{const push=vi.fn();return {push,router:{push}};});
@@ -37,6 +37,44 @@ describe('settings navigation preserves independent form edits',()=>{
     const dirty=new Event('beforeunload',{cancelable:true});window.dispatchEvent(dirty);expect(dirty.defaultPrevented).toBe(true);
     view.rerender(contents(1));const saved=new Event('beforeunload',{cancelable:true});window.dispatchEvent(saved);expect(saved.defaultPrevented).toBe(false);
   });
+  it('consumes only the current local submission receipt once on a same-page save', async()=>{
+    fixture();const first=screen.getByLabelText('first') as HTMLInputElement,form=first.closest('form')!;
+    form.setAttribute('data-attendance-save-scope','');
+    fireEvent.change(first,{target:{value:'Reviewed'}});
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt','old-success'));
+    expect(hasUnsavedChanges()).toBe(true); // A stale success URL is not a submission receipt.
+    fireEvent.submit(form);
+    const nonce=String(new FormData(form).get('__attendanceSaveNonce'));
+    expect(nonce).toMatch(/^[a-f0-9]{32}$/);
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt','unrelated-refresh'));
+    expect(hasUnsavedChanges()).toBe(true);
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt',nonce));
+    expect(hasUnsavedChanges()).toBe(false);
+    fireEvent.change(first,{target:{value:'New unsaved draft'}});
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt',nonce));
+    expect(hasUnsavedChanges()).toBe(true); // Replaying an accepted receipt cannot acknowledge a new edit.
+    fireEvent.submit(form);
+    const secondNonce=String(new FormData(form).get('__attendanceSaveNonce'));
+    expect(secondNonce).not.toBe(nonce);
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt',nonce));
+    expect(hasUnsavedChanges()).toBe(true);
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt',secondNonce));
+    expect(hasUnsavedChanges()).toBe(false);
+  });
+  it('same-page receipts retain later edits and every other form baseline', async()=>{
+    fixture();vi.mocked(window.confirm).mockReturnValue(true);
+    const first=screen.getByLabelText('first') as HTMLInputElement,second=screen.getByLabelText('second') as HTMLInputElement,form=first.closest('form')!;
+    form.setAttribute('data-attendance-save-scope','');
+    fireEvent.change(first,{target:{value:'Submitted'}});fireEvent.change(second,{target:{value:'Other draft'}});
+    fireEvent.submit(form);const nonce=String(new FormData(form).get('__attendanceSaveNonce'));
+    fireEvent.change(first,{target:{value:'Edited after submit'}});
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt',nonce));
+    expect(first.value).toBe('Edited after submit');expect(second.value).toBe('Other draft');
+    expect(hasUnsavedChanges()).toBe(true);
+    fireEvent.change(second,{target:{value:'Saved'}});expect(hasUnsavedChanges()).toBe(true);
+    fireEvent.change(first,{target:{value:'Submitted'}});expect(hasUnsavedChanges()).toBe(false);
+  });
+
   it('saving another form cannot silently discard an independent dirty form',()=>{fixture();fireEvent.change(screen.getByLabelText('first'),{target:{value:'Edited'}});const form=screen.getByLabelText('second').closest('form')!;const event=new Event('submit',{bubbles:true,cancelable:true});form.dispatchEvent(event);expect(event.defaultPrevented).toBe(true);expect(hasUnsavedChanges()).toBe(true);});
   it('keeps a submitted form dirty until successful persistence is acknowledged',()=>{const view=fixture();fireEvent.change(screen.getByLabelText('first'),{target:{value:'Edited'}});const form=screen.getByLabelText('first').closest('form')!;form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));expect(hasUnsavedChanges()).toBe(true);expect(window.confirm).not.toHaveBeenCalled();view.rerender(contents(1));expect(hasUnsavedChanges()).toBe(false);});
   it('acknowledges one saved form without losing another form’s edits',()=>{const view=fixture();fireEvent.change(screen.getByLabelText('first'),{target:{value:'Edited'}});fireEvent.change(screen.getByLabelText('second'),{target:{value:'Also edited'}});view.rerender(contents(1));expect(hasUnsavedChanges()).toBe(true);expect((screen.getByLabelText('second') as HTMLInputElement).value).toBe('Also edited');});

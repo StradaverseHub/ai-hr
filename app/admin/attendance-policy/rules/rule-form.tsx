@@ -46,8 +46,12 @@ export async function RuleForm({
   error,
   cancel,
   hideAllowedShifts = false,
+  saveScope = false,
+  savedReceipt,
 }: {
   hideAllowedShifts?: boolean;
+  saveScope?: boolean;
+  savedReceipt?: string;
   rule: AttendanceRuleView | null;
   shifts: readonly RuleShiftChoice[];
   error?: string;
@@ -114,7 +118,7 @@ export async function RuleForm({
     <div className="space-y-6">
       <ErrorBanner message={error} />
 
-      <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} className="space-y-6">
+      <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
         {editing && <input type="hidden" name="ruleId" value={rule!.id} />}
 
         <Card className="space-y-4 p-4">
