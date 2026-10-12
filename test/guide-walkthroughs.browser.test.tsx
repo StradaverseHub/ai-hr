@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { GuideTourButton } from '../components/guide-tour-button';
-import { OnboardingTour } from '../components/onboarding-tour';
 import { guideTourId, toursForRoles } from '../lib/onboarding-tour';
 import en from '../messages/en.json';
 import '../app/globals.css';
@@ -10,6 +8,11 @@ import '../app/globals.css';
 const state = vi.hoisted(() => ({ pathname: '/knowledge-base/example', push: vi.fn(), complete: vi.fn(async () => {}) }));
 vi.mock('next/navigation', () => ({ usePathname: () => state.pathname, useRouter: () => ({ push: state.push }) }));
 vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.complete }));
+
+// Resolve the components after the server-action stub, as in the other browser harnesses. A static
+// scan must not prebundle the action's database and installation-identity dependencies for Chromium.
+const { GuideTourButton } = await import('../components/guide-tour-button');
+const { OnboardingTour } = await import('../components/onboarding-tour');
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); });
 
