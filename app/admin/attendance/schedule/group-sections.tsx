@@ -541,7 +541,8 @@ export async function ScheduleGroupSections({
               </thead>
               <tbody className={tbodyCls}>
                 {rule.otRows.map((row) => (
-                  <tr key={row.id}>
+                  // General/Attendance saves replace database ids; retain the independent rounding draft.
+                  <tr key={row.fromMinutes}>
                     <td className="px-3 py-2 whitespace-nowrap">
                       {row.toMinutes <= row.fromMinutes
                         ? t('bandOpenEnded', { from: row.fromMinutes })
