@@ -63,6 +63,7 @@ describe('ADR-0080 rung 2: attendance pack registration', () => {
       'attendance_policy',
       'attendance_rule',
       'attendance_rule_ot_row',
+      'attendance_rotation',
       'attendance_allowance_policy',
       'attendance_allowance_version',
       'attendance_allowance_result',

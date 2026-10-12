@@ -651,6 +651,7 @@ export const attendancePack: ModulePack = {
     { table: 'attendance_policy', note: 'per-company working hours / grace / OT policy' },
     { table: 'attendance_rule', note: 'lateness / early-out / overtime rule library (88e94371)' },
     { table: 'attendance_rule_ot_row', note: 'per-rule OT rate rows' },
+    { table: 'attendance_rotation', note: 'immutable dated Schedule Group cycles and allowed shift pools' },
     { table: 'attendance_allowance_policy', note: 'attendance-triggered allowance policies' },
     { table: 'attendance_allowance_version', note: 'immutable allowance policy snapshots' },
     { table: 'attendance_allowance_result', note: 'period calculation current results' },
