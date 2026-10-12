@@ -81,6 +81,8 @@ export function MappingForm({
   const t = useTranslations('clockingFile');
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const savingRef = useRef(false);
+  const [readingSample, setReadingSample] = useState(false);
 
   const [name, setName] = useState(initial?.name ?? '');
   const [deviceName, setDeviceName] = useState(initial?.deviceName ?? '');
@@ -113,6 +115,7 @@ export function MappingForm({
   // r427 — which fixed-width field is being typed in, so its positions are marked on the ruler. Look only.
   const [focusField, setFocusField] = useState<ClockingField | null>(null);
   const uid = useId();
+  const formId = `${uid}-mapping-editor`;
 
   const delimiter = layout === 'fixed_width' ? null : delimChoice === 'other' ? otherChar.slice(0, 1) : DELIM[delimChoice];
   const fields: Partial<Record<ClockingField, FieldSpec>> = layout === 'delimited' ? colFields : posFields;
@@ -144,6 +147,7 @@ export function MappingForm({
   const fieldLabel = (f: ClockingField) => t(`fields.${f}`);
 
   const loadFile = async (f: File) => {
+    if (savingRef.current) return;
     setFileError(null);
     if (/\.(xlsx|xls)$/i.test(f.name)) {
       setFileError(t('form.excelRefused'));
@@ -153,18 +157,23 @@ export function MappingForm({
       setFileError(t('form.fileTooLarge'));
       return;
     }
+    setReadingSample(true);
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
+      if (savingRef.current) return;
       setSampleBytes(bytes);
       setSampleName(f.name);
       if (/\.txt$/i.test(f.name)) setFileType('txt');
       if (/\.csv$/i.test(f.name)) setFileType('csv');
     } catch {
       setFileError(t('form.fileUnreadable'));
+    } finally {
+      setReadingSample(false);
     }
   };
 
   const assignColumn = (f: ClockingField, column: number | null) => {
+    if (savingRef.current) return;
     setColFields((prev) => {
       const next = { ...prev };
       // One field per column: dropping a field onto a column already held moves the column to it.
@@ -176,6 +185,7 @@ export function MappingForm({
     if (f === 'inOutCode' && column != null && codes.length === 0) prefillCodes({ ...def, fields: { ...colFields, inOutCode: { column } } });
   };
   const setPos = (f: ClockingField, which: 'start' | 'end', raw: string) => {
+    if (savingRef.current) return;
     const next = { ...posFields };
     const cur = next[f] ?? { start: 0, end: 0 };
     // Number('') is 0, which here correctly means "not typed yet".
@@ -229,7 +239,16 @@ export function MappingForm({
     return t(`result.${l.error}`);
   };
 
-  const save = () => {
+  // Stable field order avoids a false dirty state when an assignment is removed and restored.
+  // Include both layout drafts and incomplete code rows: changing away from a layout must not hide
+  // unsaved work from the page's one AttendanceSettingsNavigation guard.
+  const draftSnapshot = JSON.stringify({name, deviceName, description, active, ...def,
+    fields: CLOCKING_FIELDS.map(field => [field, fields[field] ?? null]), sampleLines: sample.lines, sampleFileName: sampleName,
+    drafts: {delimChoice, otherChar, codes, colFields: CLOCKING_FIELDS.map(field => [field, colFields[field] ?? null]),
+      posFields: CLOCKING_FIELDS.map(field => [field, posFields[field] ?? null])}});
+
+  const save = (form: HTMLFormElement) => {
+    if (savingRef.current || readingSample) return;
     setSubmitted(true);
     setServerError(null);
     if (!name.trim()) {
@@ -252,16 +271,30 @@ export function MappingForm({
       sampleLines: sample.lines,
       sampleFileName: sampleName,
     };
+    const nonce = String(new FormData(form).get('__attendanceSaveNonce') ?? '');
+    savingRef.current = true;
+    form.setAttribute('aria-busy', 'true'); // Refuse a second submit before React commits pending.
     startTransition(async () => {
-      const r = await saveClockingMappingAction(mappingId, input);
-      if (r.ok) {
-        router.push(`/admin/attendance/file-mappings/${r.id}`);
-        router.refresh();
-        return;
+      try {
+        const r = await saveClockingMappingAction(mappingId, input, nonce);
+        if (r.ok) {
+          if (/^[a-f0-9]{32}$/.test(nonce) && r.savedReceipt === nonce) {
+            form.setAttribute('data-attendance-saved-receipt', nonce);
+          }
+          // MutationObserver consumes the matching receipt before navigation. The guard still owns
+          // all baselines; client validation, failed writes and unrelated receipts cannot clear them.
+          queueMicrotask(() => { router.push(`/admin/attendance/file-mappings/${r.id}`); router.refresh(); });
+          return;
+        }
+        if (r.code === 'invalid') setServerError(null);
+        else if (r.code === 'nameRequired' || r.code === 'nameTaken' || r.code === 'notFound') setServerError(t(`form.${r.code}`));
+        else setServerError(t('form.fileUnreadable'));
+      } catch {
+        setServerError(t('form.fileUnreadable'));
+      } finally {
+        savingRef.current = false;
+        form.setAttribute('aria-busy', 'false');
       }
-      if (r.code === 'invalid') setServerError(null);
-      else if (r.code === 'nameRequired' || r.code === 'nameTaken' || r.code === 'notFound') setServerError(t(`form.${r.code}`));
-      else setServerError(t('form.fileUnreadable'));
     });
   };
 
@@ -289,6 +322,13 @@ export function MappingForm({
 
   return (
     <div className="space-y-6">
+      {/* Dedicated business form keeps the existing explicit button types/layout intact. Visible
+          controlled fields are represented by one observed hidden value, including pending drafts. */}
+      <form id={formId} method="post" data-attendance-save-scope aria-busy={pending} className="hidden"
+        onSubmit={event => { event.preventDefault(); save(event.currentTarget); }}>
+        <input type="hidden" name="mappingDraft" value={draftSnapshot}/>
+      </form>
+      <fieldset disabled={pending} className="m-0 min-w-0 space-y-6 border-0 p-0">
       {/* 01 · DETAILS */}
       <SectionCard index={1} title={t('form.secDetails')}>
         <FormRow label={t('form.name')} htmlFor={`${uid}-name`} required>
@@ -446,6 +486,7 @@ export function MappingForm({
               onDrop={(e) => {
                 e.preventDefault();
                 setDragging(false);
+                if (savingRef.current) return;
                 const f = e.dataTransfer.files?.[0];
                 if (f) void loadFile(f);
               }}
@@ -479,6 +520,7 @@ export function MappingForm({
                     key={f}
                     draggable
                     onDragStart={(e) => {
+                      if (savingRef.current) { e.preventDefault(); return; }
                       e.dataTransfer.setData('text/plain', f);
                       e.dataTransfer.effectAllowed = 'move';
                       setDragField(f);
@@ -809,10 +851,11 @@ export function MappingForm({
         >
           {t('form.cancel')}
         </Link>
-        <Button type="button" onClick={save} disabled={pending}>
+        <Button type="submit" form={formId} disabled={pending || readingSample}>
           {pending ? t('form.saving') : t('form.save')}
         </Button>
       </div>
+      </fieldset>
     </div>
   );
 }
