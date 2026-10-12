@@ -114,10 +114,12 @@ const nextFromMinutes = (rows: OtEditorRow[]): number => {
 export function AttendanceRuleOtEditor({
   initialRows,
   initialApplyEarlyOt,
+  ladderOnly = false,
   labels,
 }: {
   initialRows: OtEditorRow[];
   initialApplyEarlyOt: boolean;
+  ladderOnly?: boolean;
   labels: OtEditorLabels;
 }) {
   const [rows, setRows] = useState<OtEditorRow[]>(initialRows);
@@ -158,8 +160,7 @@ export function AttendanceRuleOtEditor({
       // hours but do not pay them"). It refuses the first and stores the second.
       rate: r.rate === '' || !Number.isFinite(Number(r.rate)) ? null : Number(r.rate),
       phRate: r.phRate === '' ? null : Number(r.phRate) || 0,
-      roundingMode: r.roundingMode,
-      roundToMinutes: r.roundingMode === 'none' ? null : r.roundToMinutes,
+      ...(!ladderOnly ? {roundingMode:r.roundingMode,roundToMinutes:r.roundingMode==='none'?null:r.roundToMinutes} : {}),
     })),
   );
 
@@ -180,7 +181,7 @@ export function AttendanceRuleOtEditor({
           on, ABSENT when off. The visible control above carries no `name` (it is a controlled React
           checkbox), which is why this hidden field exists at all. rule-actions.ts's reader is hardened in
           the same change, so neither half depends on the other being right. */}
-      {applyEarly && <input type="hidden" name="applyToEarlyOt" value="on" />}
+      {!ladderOnly && applyEarly && <input type="hidden" name="applyToEarlyOt" value="on" />}
       <div className="mb-2 flex items-center justify-between gap-2">
         <legend className="text-sm font-semibold text-foreground">{labels.sectionTitle}</legend>
         <button
@@ -206,8 +207,8 @@ export function AttendanceRuleOtEditor({
                 <th className="py-1.5 pr-2 font-medium">{labels.colPattern}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colRate}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colPhRate}</th>
-                <th className="py-1.5 pr-2 font-medium">{labels.colRounding}</th>
-                <th className="py-1.5 pr-2 font-medium">{labels.colRoundTo}</th>
+                {!ladderOnly && <th className="py-1.5 pr-2 font-medium">{labels.colRounding}</th>}
+                {!ladderOnly && <th className="py-1.5 pr-2 font-medium">{labels.colRoundTo}</th>}
                 <th className="py-1.5 font-medium">{labels.colRemove}</th>
               </tr>
             </thead>
@@ -274,6 +275,7 @@ export function AttendanceRuleOtEditor({
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
+                  {!ladderOnly && <>
                   <td className="py-1.5 pr-2">
                     {/* 7c834696 contested — three answers, not two. The old Yes/No could not say WHICH WAY,
                         and the engine's answer (always floor) was invisible on this screen. */}
@@ -312,6 +314,7 @@ export function AttendanceRuleOtEditor({
                       <span className="text-xs text-muted-foreground">{labels.min}</span>
                     </div>
                   </td>
+                  </>}
                   <td className="py-1.5">
                     <button type="button" onClick={() => removeRow(i)} className="rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10" aria-label={labels.colRemove}>
                       ✕
@@ -320,7 +323,7 @@ export function AttendanceRuleOtEditor({
                 </tr>
                 {problems.has(i) && (
                   <tr className="border-b border-border/60 bg-amber-50/60 dark:bg-amber-500/10">
-                    <td colSpan={8} className="px-1 pb-1.5 text-xs text-amber-800 dark:text-amber-200">
+                    <td colSpan={ladderOnly?6:8} className="px-1 pb-1.5 text-xs text-amber-800 dark:text-amber-200">
                       {problems.get(i)}
                     </td>
                   </tr>
@@ -332,13 +335,13 @@ export function AttendanceRuleOtEditor({
         </div>
       )}
 
-      <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+      {!ladderOnly && <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10">
         <input type="checkbox" checked={applyEarly} onChange={(e) => setApplyEarly(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
         <span>
           <span className="font-medium text-foreground">{labels.applyEarlyOtLabel}</span>
           <span className="mt-0.5 block text-xs text-muted-foreground">{labels.applyEarlyOtHint}</span>
         </span>
-      </label>
+      </label>}
     </fieldset>
   );
 }

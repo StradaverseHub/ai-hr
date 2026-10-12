@@ -17602,5 +17602,9 @@
       "recorded": "Application action recorded"
     },
     "hrApprover": "HR administrators"
+  },
+  "scheduleDrafts": {
+    "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
+    "reload": "Reload current schedule"
   }
 }

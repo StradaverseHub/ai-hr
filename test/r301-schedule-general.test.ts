@@ -644,8 +644,8 @@ describe('F. THE BUG — a refused Save policy shows its error', () => {
 
 // ── G ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('G. the editors are the same forms, posting the same fields', () => {
-  it('Edit Schedule and Add Schedule are byte-for-byte what the retired rules/[ruleId] and rules/new pages rendered', async () => {
+describe('G. General has scoped ownership; standalone and create forms retain full semantics', () => {
+  it('Edit Schedule scopes General fields and Add Schedule retains the existing complete form', async () => {
     await ensureStandardRule(ADMIN);
     const group = await createAttendanceRule(
       ADMIN,
@@ -668,13 +668,14 @@ describe('G. the editors are the same forms, posting the same fields', () => {
       ruleId: group.id,
     });
 
-    // EXACTLY the retired rules/[ruleId] page body (main@1164f8d1): getAttendanceRule + the two parallel reads.
+    // Resolve the real scoped General form with the same rule and choices as the section.
     // The page owns chrome. Dated rotations now own the shift pool; General retains its own
     // fields and opts into correlated same-page save acknowledgments.
     const oldEdit = await toMarkup(
       await RuleForm({
         rule: await getAttendanceRule(ADMIN, group.id),
         hideAllowedShifts: true,
+        generalOnly: true,
         saveScope: true,
         shifts: ruleShiftChoices(await listShiftsForTenant(ADMIN), await listAttendanceRules(ADMIN), group.id),
         error: undefined,
@@ -683,12 +684,20 @@ describe('G. the editors are the same forms, posting the same fields', () => {
     );
     const panel = elementById(await renderEdit(group.id), 'section-general');
     expect(oldEdit.length).toBeGreaterThan(2000);
-    expect(panel, 'the General section renders the old edit page’s form verbatim — same action, same fields, same values').toContain(oldEdit);
-    // Pinned positively too, so "verbatim" cannot be satisfied by two empty renders.
-    for (const name of ['ruleId', 'name', 'status', 'description', 'lateGracePeriodMinutes', 'applyDeductions', 'otRows']) {
+    expect(panel, 'General uses the scoped identity/deduction/ladder form').toContain(oldEdit);
+    // Pin the submitted fields positively; two empty renders cannot satisfy this contract.
+    for (const name of ['ruleId', 'name', 'status', 'description', 'applyDeductions', 'otRows']) {
       expect(panel, `the editor posts ${name}`).toContain(`name="${name}"`);
     }
 
+    for (const name of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt']) {
+      expect(panel, `${name} has one owner outside General`).not.toContain(`name="${name}"`);
+    }
+    expect(panel).not.toContain(`aria-label="${esc(en.admin.attendanceRule.otColRounding)}"`);
+    // Full legacy forms retain all fields; the independent section contract is opt-in.
+    const full = await toMarkup(await RuleForm({rule:await getAttendanceRule(ADMIN,group.id),shifts:[],cancel:null}));
+    expect(full).toContain('name="lateGracePeriodMinutes"');
+    expect(full).toContain('name="applyToEarlyOt"');
     expect(panel, 'allowed shifts now save atomically with the dated cycle, outside General').not.toContain('name="allowedShiftsEditor"');
     const workingDay = elementById(await renderEdit(group.id), 'section-workingDay');
     expect(workingDay).toContain('name="allowedShiftIds"');

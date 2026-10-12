@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ScheduleOvertimeDraftFields } from '@/components/schedule-overtime-draft-fields';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -194,6 +195,7 @@ export async function ScheduleGroupSections({
     <RuleForm
       rule={rule}
       hideAllowedShifts
+      generalOnly
       saveScope
       savedReceipt={savedSection === 'general' ? savedReceipt : undefined}
       shifts={ruleShiftChoices(shifts, rules, rule.id)}
@@ -440,6 +442,12 @@ export async function ScheduleGroupSections({
             </tbody>
           </table>
         </div>
+        <div className="space-y-2 border-t border-border px-4 py-3 text-sm">
+          {(['includeGraceInLateness','includeGraceInEarlyOut'] as const).map(key=><label key={key} className="flex items-center gap-2">
+            {editing?<input type="checkbox" name={key} defaultChecked={rule[key]}/>:<span>{rule[key]?t('settingOn'):t('settingOff')}</span>}
+            {tr(key)}
+          </label>)}
+        </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
         {editing && (
           <div className="flex items-center gap-3 border-t border-border px-4 py-3">
@@ -456,6 +464,7 @@ export async function ScheduleGroupSections({
       {editing ? (
         <AttendanceSettingsActionForm submitAction={saveScheduleGroupAttendanceAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'attendance' ? savedReceipt : undefined} className="space-y-6">
           <input type="hidden" name="ruleId" value={rule.id} />
+          <input type="hidden" name="attendanceFlagsEditor" value="1" />
           {attendanceBody}
         </AttendanceSettingsActionForm>
       ) : (
@@ -503,8 +512,11 @@ export async function ScheduleGroupSections({
    * action rebuilds the band table from the STORED rows and overlays rounding matched by the band's
    * "From" boundary, so nothing here can move a boundary or a rate.
    */
+  const overtimeIdentity=JSON.stringify(rule.otRows.map(row=>({fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,
+    ratePattern:row.ratePattern,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate)})));
   const overtimeBody = (
     <>
+      {editing&&<input type="hidden" name="otBandSnapshot" value={overtimeIdentity}/>}
       <Card>
         <SectionHeader title={t('otEarlyTitle')} subtitle={t('otEarlyHint')} />
         <div className="px-4 py-3">
@@ -616,7 +628,7 @@ export async function ScheduleGroupSections({
               unchecked checkbox, so without this "turned off" and "this form did not carry the control"
               are the same bytes — the trap 7c834696 hit on this exact setting. */}
           <input type="hidden" name="earlyOtEditor" value="1" />
-          {overtimeBody}
+          <ScheduleOvertimeDraftFields identity={overtimeIdentity}>{overtimeBody}</ScheduleOvertimeDraftFields>
         </AttendanceSettingsActionForm>
       ) : (
         <div className="space-y-6">{overtimeBody}</div>

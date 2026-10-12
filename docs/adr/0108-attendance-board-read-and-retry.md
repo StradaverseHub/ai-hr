@@ -44,3 +44,28 @@ instead prevent the submit default and start a client transition with no form ac
 DOM regressions invoke the wrapper's action, emulate its handled redirect and assert
 node/value preservation, while separately asserting the native fallback retains its action.
 They cannot establish real RSC reconciliation behavior or replace a browser run.
+
+
+Retaining the Schedule Group subtree exposed an old duplicate writer: General's full rule editor
+held stale Attendance and Overtime values and could overwrite their successful independent saves.
+The sectioned page now gives General identity, status, description, the deduction switch and ladder
+boundaries/rates; Attendance owns its six timing values and two Include Grace flags; Overtime owns
+early inclusion and rounding. Other full RuleForm callers keep complete-form semantics. These
+section writes lock the rule, read current rows, merge an explicit service allowlist and write in
+one transaction through the existing validator/event writer. General preserves current rounding
+for each unchanged From boundary; new bands start with no rounding. Week, shift pool and dated
+rotation facts are outside these section contracts.
+
+Overtime retains its mounted field body and the displayed structural ladder (From, To, pattern and
+both rates, excluding generated row IDs). A General reshape cannot erase an independent draft.
+A changed structural identity immediately shows translated reload guidance; the reload uses the
+existing unsaved registry and asks before discarding drafts. The service refuses stale Overtime
+identities atomically instead of partially applying settings to a different ladder. An unchanged
+ladder can acknowledge its rounding save without making another form dirty.
+
+The navigation guard's lifetime follows pathname/router identity, while a ref provides the latest
+translation. A same-path catalogue refresh must not reset baselines or pending nonce receipts.
+The action wrapper remains busy until the action settles AND its React transition commits; finally
+alone is too early when the destination render suspends. Ordinary rejected actions still propagate
+to the boundary, whose unmount cleanup restores the imperative busy attribute. Static regressions
+cover these contracts; execution and real Next RSC/browser reconciliation remain unverified.

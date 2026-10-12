@@ -12,18 +12,20 @@ vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) 
 vi.mock('../core/attendance-rule', () => ({ countEmploymentsInRule: async () => 0 }));
 vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
 vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [], revision: 'r1' }) }));
-vi.mock('../app/admin/attendance-policy/rules/rule-form', () => ({ RuleForm: () => null }));
+vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null }));
 vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn() }));
 
+import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
+import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
 import { ScheduleGroupSections } from '../app/admin/attendance/schedule/group-sections';
 import { AttendanceSettingsNavigation } from '../components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '../components/attendance-settings-action-form';
-import { saveScheduleGroupAttendanceAction } from '../app/admin/attendance/schedule/actions';
+import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from '../app/admin/attendance/schedule/actions';
 import { __resetUnsavedGuards, hasUnsavedChanges } from '../lib/unsaved-changes';
-afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); router.push.mockReset(); vi.mocked(saveScheduleGroupAttendanceAction).mockReset(); });
+afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); router.push.mockReset(); vi.mocked(saveScheduleGroupAttendanceAction).mockReset();vi.mocked(saveScheduleGroupOvertimeAction).mockReset();vi.mocked(saveScheduleGroupGeneralAction).mockReset(); });
 
-// Resolve the real server tree and mount its two independent client action forms.
+// Resolve the real server tree and mount its three independent client action forms.
 // The action mock simulates Next’s RSC refresh followed by its handled redirect rejection.
 function findForm(node: ReactNode, section: string): ReactElement | undefined {
   if (Array.isArray(node)) return node.map(child => findForm(child, section)).find(Boolean);
@@ -31,6 +33,13 @@ function findForm(node: ReactNode, section: string): ReactElement | undefined {
   if (node.type === 'section' && node.props.id === `section-${section}`) return findForm(node.props.children, 'form');
   if (section === 'form' && node.type === AttendanceSettingsActionForm) return node;
   return findForm(node.props.children, section);
+}
+// Resolve only the known async General server form, never call client components outside React.
+async function resolveGeneral(node:ReactNode):Promise<ReactNode> {
+  if(Array.isArray(node))return Promise.all(node.map(resolveGeneral));
+  if(!isValidElement<{children?:ReactNode}>(node))return node;
+  if(node.type===RuleForm)return RuleForm(node.props as React.ComponentProps<typeof RuleForm>);
+  return cloneElement(node,{children:await resolveGeneral(node.props.children)});
 }
 const rule: AttendanceRuleView = {
   id: 'group', tenantId: 'tenant', companyId: null, description: null,
@@ -42,10 +51,10 @@ const rule: AttendanceRuleView = {
   applyToEarlyOt: false, applyDeductions: false, deductionsEffectiveFrom: null,
   otRows: [{ id: 'original-band-id', tenantId: 'tenant', ruleId: 'group', sortOrder: 0, createdAt: new Date('2026-01-01T00:00:00Z'), fromMinutes: 0, toMinutes: 120, ratePattern: 'flat', rate: '1.5', phRate: null, roundingMode: 'down', roundToMinutes: 15 }],
 };
-async function page(bandId: string, receipt?: string) {
-  const refreshed = { ...rule, lateGracePeriodMinutes: receipt ? 5 : 0, otRows: [{ ...rule.otRows[0], id: bandId }] };
-  const tree = await ScheduleGroupSections({ s: {} as SessionContext, rule: refreshed, rules: [refreshed], mode: 'edit', savedSection: receipt ? 'attendance' : undefined, savedReceipt: receipt });
-  const forms = ['attendance', 'overtime'].map(section => {
+async function page(bandId: string, receipt?: string, savedSection: 'general'|'attendance'|'overtime'='attendance', updated:Partial<AttendanceRuleView>={}) {
+  const refreshed = { ...rule, lateGracePeriodMinutes: receipt && savedSection === 'attendance' ? 5 : 0, otRows: [{ ...rule.otRows[0], id: bandId }],...updated };
+  const tree = await resolveGeneral(await ScheduleGroupSections({ s: {} as SessionContext, rule: refreshed, rules: [refreshed], mode: 'edit', savedSection: receipt ? savedSection : undefined, savedReceipt: receipt }));
+  const forms = ['general', 'attendance', 'overtime'].map(section => {
     const form = findForm(tree, section);
     expect(form, `real ${section} form`).toBeDefined();
     return cloneElement(form as ReactElement<React.ComponentProps<typeof AttendanceSettingsActionForm>>, { key: section, 'aria-label': section });
@@ -54,6 +63,52 @@ async function page(bandId: string, receipt?: string) {
 }
 
 describe('independent Schedule Group forms after a server refresh', () => {
+  it('General posts only its owned fields after a saved Overtime refresh',async()=>{
+    vi.spyOn(window,'confirm').mockReturnValue(true);
+    const view=render(await page('original-band-id'));
+    const general=screen.getByRole('form',{name:'general'}) as HTMLFormElement;
+    const overtime=screen.getByRole('form',{name:'overtime'}) as HTMLFormElement;
+    fireEvent.change(overtime.querySelector('[name="roundingMode_0"]')!,{target:{value:'up'}});
+    fireEvent.change(overtime.querySelector('[name="roundToMinutes_0"]')!,{target:{value:'30'}});
+    vi.mocked(saveScheduleGroupOvertimeAction).mockImplementationOnce(async data=>{
+      view.rerender(await page('new-band-id',String(data.get('__attendanceSaveNonce')),'overtime',{
+        applyToEarlyOt:true,otRows:[{...rule.otRows[0],roundingMode:'up',roundToMinutes:30}]}));
+      throw Object.assign(new Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT;push;/admin/attendance/schedule/group/edit;303;',handled:true});
+    });
+    fireEvent.submit(overtime);
+    await waitFor(()=>expect((overtime.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.getByRole('form',{name:'general'})).toBe(general);
+    fireEvent.change(general.querySelector('[name="name"]')!,{target:{value:'Renamed group'}});
+    vi.mocked(saveScheduleGroupGeneralAction).mockImplementationOnce(async()=>{throw Object.assign(new Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT;push;/admin/attendance/schedule/group/edit;303;',handled:true});});
+    fireEvent.submit(general);
+    await waitFor(()=>expect(saveScheduleGroupGeneralAction).toHaveBeenCalledTimes(1));
+    const posted=vi.mocked(saveScheduleGroupGeneralAction).mock.calls[0][0];
+    expect(posted.get('name')).toBe('Renamed group');
+    for(const key of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt'])expect(posted.has(key)).toBe(false);
+    const bands=JSON.parse(String(posted.get('otRows'))) as Record<string,unknown>[];
+    expect(bands).toHaveLength(1);expect(bands[0].rate).toBe(1.5);
+    expect(bands[0]).not.toHaveProperty('roundingMode');expect(bands[0]).not.toHaveProperty('roundToMinutes');
+  });
+
+  it('retains Overtime fields and identity with visible guidance after General reshapes the ladder',async()=>{
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+    const view=render(await page('original-band-id'));
+    const overtime=screen.getByRole('form',{name:'overtime'}) as HTMLFormElement;
+    const rounding=overtime.querySelector<HTMLInputElement>('[name="roundingMode_0"]')!;
+    const identity=new FormData(overtime).get('otBandSnapshot');
+    fireEvent.change(rounding,{target:{value:'up'}});
+    await act(async()=>view.rerender(await page('new-band-id',undefined,'general',{
+      otRows:[{...rule.otRows[0],toMinutes:60,rate:'2.0'},
+        {...rule.otRows[0],id:'second-band',fromMinutes:61,toMinutes:0,roundingMode:'none',roundToMinutes:null}]})));
+    expect(screen.getByRole('alert')).toHaveTextContent(messages.scheduleDrafts.staleLadder);
+    expect(overtime.querySelector('[name="roundingMode_0"]')).toBe(rounding);
+    expect(rounding.value).toBe('up');expect(overtime.querySelector('[name="roundingMode_61"]')).toBeNull();
+    expect(new FormData(overtime).get('otBandSnapshot')).toBe(identity);
+    expect(hasUnsavedChanges()).toBe(true);
+    fireEvent.click(screen.getByRole('button',{name:messages.scheduleDrafts.reload}));
+    expect(confirm).toHaveBeenCalledTimes(1);expect(rounding.value).toBe('up');
+  });
+
   it('keeps the refused section dirty when its handled redirect contains no success receipt', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const view = render(await page('original-band-id'));

@@ -17602,5 +17602,9 @@
       "recorded": "Đã ghi nhận thao tác của đơn"
     },
     "hrApprover": "Quản trị viên nhân sự"
+  },
+  "scheduleDrafts": {
+    "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
+    "reload": "Tải lại lịch hiện tại"
   }
 }
