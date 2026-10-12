@@ -47,6 +47,8 @@ describe('integrated allowed-shift and cycle editor',()=>{
     link.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault();},{once:true});
     fireEvent.click(link);
     expect(confirm).not.toHaveBeenCalled();expect(intercepted).toBe(false);expect(router.push).not.toHaveBeenCalled();
+    expect((screen.getByRole('checkbox',{name:/Night/}) as HTMLInputElement).checked).toBe(true);
+    expect((container.querySelector('[name="cycle"]') as HTMLInputElement).value).toContain('\"shiftId\":\"a\"');
   });
   it('posts the fresh optimistic revision on the second save',async()=>{
     const {container}=mount();fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));

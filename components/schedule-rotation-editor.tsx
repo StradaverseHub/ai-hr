@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { normalizeRotation, MAX_ROTATION_DAYS, type RotationCycle, type RotationDay, type WeekDayKind } from '@/core/week-pattern';
 import { saveRotationAction, type RotationActionState } from '@/app/admin/attendance/schedule/rotation-actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
+import { AttendanceSettingsActionForm } from '@/components/attendance-settings-action-form';
 import { btnPrimary, inputCls } from '@/components/ui';
 type ShiftChoice = { id: string; name: string; code: string | null; startTime: string; endTime: string;
   fullMinutes: number; halfMinutes: number; halfEnd: string; archived: boolean; available: boolean; selected: boolean };
@@ -41,7 +42,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
     mark({...cycle,unit,length:n,days});setGenerateError('');
   };
   const changeDay=(index:number,day:RotationDay)=>mark({...cycle,days:cycle.days.map((d,i)=>i===index?day:d)});
-  return <>{editing&&<AttendanceSettingsNavigation formId={formId} savedRevision={savedRevision}/>}<form id={formId} action={action} className="space-y-4 p-4">
+  return <>{editing&&<AttendanceSettingsNavigation formId={formId} savedRevision={savedRevision}/>}<AttendanceSettingsActionForm id={formId} submitAction={async data => { action(data); }} className="space-y-4 p-4">
     <input type="hidden" name="ruleId" value={ruleId}/><input type="hidden" name="revision" value={expectedRevision}/>
     <input type="hidden" name="cycle" value={JSON.stringify(cycle)}/>
     {state.error&&<p role="alert" className="text-sm text-destructive">{state.error}</p>}
@@ -80,5 +81,5 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
       </table></div>
     </fieldset>
     {editing&&<>{validation&&<p role="alert" className="text-sm text-destructive">{validation}</p>}<button className={btnPrimary} disabled={pending||!dirty||!!validation||unit!==cycle.unit||Number(length)!==cycle.length}>{pending?t('saving'):t('save')}</button></>}
-  </form></>;
+  </AttendanceSettingsActionForm></>;
 }
