@@ -26,7 +26,7 @@ export default async function MyNoticesPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader title={t('myTitle')} description={t('myDescription')} />
-      <Card>
+      <Card data-tour="notices-mine">
         <SectionHeader title={t('myListTitle')} count={rows.length} />
         <ul className="divide-y divide-border">
           {rows.length === 0 && (

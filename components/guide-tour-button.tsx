@@ -11,6 +11,7 @@ export function GuideTourButton({ tourId }: { tourId: string }) {
   return (
     <button
       type="button"
+      data-guide-tour={tourId}
       className={btnPrimary}
       onClick={() => window.dispatchEvent(new CustomEvent(START_TOUR_EVENT, { detail: { tourId } }))}
     >

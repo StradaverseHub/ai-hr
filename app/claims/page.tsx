@@ -117,7 +117,7 @@ export default async function ClaimsPage({
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={error} />
 
-      <Card className="p-4">
+      <Card data-tour="claims-compose" className="p-4">
         <h2 className="mb-3 text-sm font-semibold">{editing ? t('editDraft') : t('newClaim')}</h2>
         {types.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noTypes')}</p>
@@ -204,7 +204,7 @@ export default async function ClaimsPage({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
+      <Card data-tour="claims-history" className="overflow-hidden">
         <SectionHeader title={t('myClaims')} count={claims.length} />
         {claims.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>

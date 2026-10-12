@@ -89,7 +89,7 @@ export default async function NoticeBoardPage({
       />
       <ErrorBanner message={error} />
 
-      <Card>
+      <Card data-tour="notices-administration">
         <SectionHeader title={t('listTitle')} count={sorted.length} />
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">

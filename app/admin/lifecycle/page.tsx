@@ -31,7 +31,7 @@ export default async function LifecycleConfigPage({ searchParams }: { searchPara
         actions={<form action={loadDefaultsAction}><ConfirmSubmit size="sm" variant="outline" title={t('config.loadDefaultsTitle')} description={t('config.loadDefaultsDescription')} confirmLabel={t('config.loadDefaults')}>{t('config.loadDefaults')}</ConfirmSubmit></form>} />
       <ErrorBanner message={sp.error} />
       {sp.saved && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">{t('config.saved')}</p>}
-      <nav className="flex flex-wrap gap-1 border-b border-border" aria-label={t('config.title')}>
+      <nav data-tour="lifecycle-configuration" className="flex flex-wrap gap-1 border-b border-border" aria-label={t('config.title')}>
         {TABS.map((x) => <Link key={x} href={`/admin/lifecycle?tab=${x}`} aria-current={tab === x ? 'page' : undefined} className={cn('-mb-px border-b-2 px-3 py-2 text-sm', tab === x ? 'border-primary font-medium' : 'border-transparent text-muted-foreground hover:text-foreground')}>{t(`config.tabs.${x}`)}</Link>)}
       </nav>
 
@@ -52,7 +52,7 @@ async function StaffTab({ s, companies }: { s: Ctx; companies: Co[] }) {
   const t = await getTranslations('lifecycle');
   const [staff, users] = await Promise.all([listStaff(s), listAssignableUsers(s)]);
   return (
-    <div className="space-y-4">
+    <div data-tour="lifecycle-staff" className="space-y-4">
       <Card className="p-4 text-sm text-muted-foreground">{t('config.staffHint')}</Card>
       <Card className="overflow-hidden">
         <SectionHeader title={t('config.tabs.staff')} count={staff.length} />

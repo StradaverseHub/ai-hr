@@ -30,6 +30,7 @@ Only an existing `is_system=true` article can be overwritten on a slug conflict.
 1. Inspect the current page, actions, authorization and authoritative service. Historical ADRs and handoff entries can describe an earlier state; resolve discrepancies against working code.
 2. Write instructions around the reader's task: prerequisites, navigation, steps, expected state, failure handling and permission boundaries. Avoid freezing statutory rates or bank/agency requirements into product guidance.
 3. Update the article and its manifest title/audience/category. Keep the slug stable for existing links. Add new tenant articles to the tenant manifest and operator articles only to the operator manifest.
+   Every bundled guide also needs a `guideTourId()` mapping in `lib/onboarding-tour.ts`, meaningful steps in `lib/module-tours.json`, and stable `data-tour` anchors on the implemented screens. Operator article launchers live inside the guarded console. The coverage test checks both catalogs, routes, anchors and operator role filtering; a written article alone is not complete coverage.
 4. Check every local Markdown link against an implemented page. Do not add secrets, activation URLs, customer data or production credentials.
 5. Review translations against the changed source, then run the catalog and refresh tests and the required repository gate. Verify the rendered operator guidance and tenant article view.
 6. After release, verify the running source/build and refresh output, then inspect the target tenant's article. A source edit or local test is not proof of publication.
@@ -66,3 +67,9 @@ Record the corresponding value under that article's locale only after reviewing 
 | Installation identity and email | `app/admin/settings/email`, `lib/identity/email-settings.ts`, deployment identity service |
 
 The catalog intentionally explains optional modules without claiming they are enabled for every tenant. Features that require separate assignment, module entitlement or installation capability state that prerequisite in the article.
+
+## Walkthrough language and behavior
+
+Existing translated tours keep their `onboarding.tour.*` keys. The refreshed guides' new walkthrough steps carry explicit English `text` with `lang: "en"`; the coachmark marks that copy as English while Next/Back/Skip/Done remain localized. This does not claim that the new explanatory text has been translated. When reviewed translations are available, replace the explicit text with translated keys rather than publishing stale or unreviewed copy.
+
+Walkthroughs navigate and explain controls; they do not submit HR forms, publish designs, send mail or create customers. The destination pages retain their access and module checks. Operator tours are role-filtered out of non-operator bundles and stay on `/operator`; instructions for separate installation capabilities and controlled tools explain those boundaries without sending operators to screens they may not be enrolled to use.

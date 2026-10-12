@@ -161,6 +161,7 @@ export function OnboardingTour({
   if (!mounted || !open || !step) return null;
 
   const spotlight = box && step.target;
+  const copy = 'text' in step ? step.text : { title: t(step.titleKey), body: t(step.bodyKey), lang: undefined };
 
   return (
     <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true" aria-label={t('aria')}>
@@ -189,8 +190,10 @@ export function OnboardingTour({
         <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-primary">
           {t('stepOf', { current: index + 1, total: steps.length })}
         </div>
-        <h3 className="text-sm font-semibold text-foreground">{t(step.titleKey)}</h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{t(step.bodyKey)}</p>
+        <div lang={copy.lang}>
+          <h3 className="text-sm font-semibold text-foreground">{copy.title}</h3>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{copy.body}</p>
+        </div>
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <button type="button" onClick={finish} className="text-xs font-medium text-muted-foreground hover:text-foreground">

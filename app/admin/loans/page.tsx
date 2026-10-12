@@ -115,7 +115,7 @@ export default async function LoansPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      <div data-tour="loans-overview"><PageHeader title={t('title')} description={t('subtitle')} /></div>
       <ErrorBanner message={error} />
 
       <CollapsibleEmployeePanel

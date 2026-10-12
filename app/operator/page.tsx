@@ -1,3 +1,5 @@
+import { GuideTourButton } from '@/components/guide-tour-button';
+import { guideTourId } from '@/lib/onboarding-tour';
 import { Markdown } from '@/components/markdown';
 import { loadOperatorGuides } from '@/lib/guide-catalog';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -74,7 +76,7 @@ export default async function OperatorPage() {
       <PageHeader title={t('title')} description={t('description')} />
       <a href="#operator-knowledge-base" className="text-sm font-medium text-primary underline underline-offset-2">{t('knowledgeBase')}</a>
 
-      <Card className="p-4">
+      <Card data-tour="operator-customer-form" className="p-4">
         <SectionHeader title={t('newCustomer')} />
         <form action={createCustomerAction} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
@@ -148,7 +150,7 @@ export default async function OperatorPage() {
         <p className="mt-2 text-xs text-muted-foreground">{t('formNote')}</p>
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card data-tour="operator-requests" className="overflow-hidden">
         <div className="p-4">
           <SectionHeader title={t('requestsTitle')} count={requests.length} />
         </div>
@@ -244,12 +246,16 @@ export default async function OperatorPage() {
           <h2 id="operator-guides-heading" className="text-lg font-semibold">{t('knowledgeBase')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{t('guidesDescription')}</p>
           <div className="mt-4 divide-y divide-border" lang="en">
-            {guides.map(guide => (
+            {guides.map(guide => {
+              const tourId = guideTourId(guide.slug);
+              return (
               <details key={guide.slug} id={guide.slug} className="py-3">
-                <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-primary">{guide.title}</summary>
+                <summary data-tour={`operator-guide-${guide.slug}`} className="cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-primary">{guide.title}</summary>
+                {tourId && <div className="mt-3"><GuideTourButton tourId={tourId} /></div>}
                 <Markdown className="mt-3">{guide.body}</Markdown>
               </details>
-            ))}
+              );
+            })}
           </div>
         </section>
       </Card>

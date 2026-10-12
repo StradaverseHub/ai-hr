@@ -10,6 +10,7 @@ vi.mock('../app/operator/actions', () => ({ createCustomerAction: vi.fn(), reque
 vi.mock('../localization/registry', () => ({ countryPacks: () => [{ country: 'MY' }] }));
 vi.mock('next/navigation', () => ({ redirect: () => { throw new Error('redirect'); } }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => Object.assign((key: string) => key, { has: () => true }) }));
+vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
 
 import OperatorPage from '../app/operator/page';
 
@@ -24,6 +25,7 @@ describe('operator guide rendering and access', () => {
     expect(html).toContain('operator-maintenance');
     expect(html).toContain('lang="en"');
     expect(html).toContain('<details');
+    expect((html.match(/data-guide-tour=/g) ?? []).length).toBe(4);
     expect(html).not.toContain('MISSING_MESSAGE');
   });
 

@@ -9,18 +9,22 @@
  */
 export type TourPlacement = 'center' | 'top' | 'bottom' | 'left' | 'right';
 
-export type TourStep = {
+type TourStepBase = {
   id: string;
   /** CSS selector for the anchor element, or null for a centered card. */
   target: string | null;
-  titleKey: string;
-  bodyKey: string;
   placement: TourPlacement;
   /** If set, the step shows only when the user holds one of these roles. */
   roles?: string[];
   /** If set, navigate here before showing this step (cross-page walkthroughs). */
   route?: string;
 };
+
+/** Older tours use translated keys; the refreshed English guides carry explicitly English copy. */
+export type TourStep = TourStepBase & (
+  | { titleKey: string; bodyKey: string }
+  | { text: { title: string; body: string; lang: 'en' } }
+);
 
 export type Tour = { id: string; steps: TourStep[] };
 
@@ -97,6 +101,21 @@ const GUIDE_TOUR: Record<string, string> = {
   'employee-attendance': 'attendance',
   'employee-payslips': 'me',
   'employee-profile-performance': 'me',
+  'admin-attendance-engine': 'attendanceCalculation',
+  'employee-claims': 'claimsEmployee',
+  'admin-claims-loans': 'claimsAdmin',
+  'employee-lifecycle': 'lifecycleEmployee',
+  'admin-lifecycle': 'lifecycleAdmin',
+  'admin-rewards': 'rewardsAdmin',
+  'manager-rewards': 'rewardsReviewer',
+  'admin-ai-reporting': 'intelligence',
+  'admin-mobile-app': 'mobileDesign',
+  'employee-notifications': 'notifications',
+  'admin-communications': 'communications',
+  'operator-provisioning': 'operatorProvisioning',
+  'operator-identity-email': 'operatorIdentity',
+  'operator-tenant-operations': 'operatorTenantOperations',
+  'operator-maintenance': 'operatorMaintenance',
 };
 
 /** The tour id a guide should offer, or null if there isn't one (e.g. a user-uploaded doc). */
