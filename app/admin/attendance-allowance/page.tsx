@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
 import { listAllowancePolicies } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
@@ -7,11 +8,12 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { formatMoney } from '@/lib/money';
 import { archiveAllowancePolicyAction,setAllowanceStatusAction } from './actions';
 const PAGE='/admin/attendance-allowance';
-export default async function AttendanceAllowancePage({searchParams}:{searchParams:Promise<{error?:string;toast?:string}>}){
+export default async function AttendanceAllowancePage({searchParams}:{searchParams:Promise<{error?:string;toast?:string;edit?:string}>}){
   const {s,scopeIds}=await scopedAdmin();
   const t=await getTranslations('allowanceV2');
   const settings=await getTranslations('attendanceSettingsHub');
-  const {error}=await searchParams;
+  const {error,edit}=await searchParams;
+  if(edit&&/^[0-9a-f-]{36}$/i.test(edit))redirect(`${PAGE}/${edit}?edit=1`);
   const policies=scopeIds.length?await listAllowancePolicies(s,{companyIds:scopeIds,includeArchived:false}):[];
   return <div className={pageWideCls}>
     <a href="/admin/attendance/settings" className="text-sm text-muted-foreground hover:underline">← {settings('backToSettings')}</a>
