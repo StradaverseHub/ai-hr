@@ -16927,7 +16927,7 @@
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
     "closeCycle": "Close cycle",
-    "cycleHelp": "Policy and assessment catalogues are fixed when the cycle opens. Close the cycle only after every assessment has been finalized.",
+    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
     "policy": "Assessment policy",
     "policyHelp": "Review these source-derived defaults before opening. No live OneHR database or tenant-specific configuration was included in the package. Native employee, organization and manager records determine the roster.",
     "cycleKind": "Cycle type",
@@ -16944,7 +16944,7 @@
     "bBands": "Achievement mechanism B · minimum percentage per band",
     "bBandsHelp": "Configure every band for companies using mechanism B. Leaving a company empty disables B scoring for that company.",
     "windows": "Submission and review windows",
-    "windowHelp": "All times are in Malaysia time (UTC+08:00). An empty boundary is unrestricted; a closing boundary is exclusive. The same limits apply to every write action.",
+    "windowHelp": "All times are in Malaysia time (UTC+08:00). An empty boundary is unrestricted; a closing boundary is exclusive. Windows govern the corresponding assessment steps. Group and final calibration have no BG cutoff.",
     "reopenCalibration": "Reopen calibration",
     "reopenCalibrationHelp": "Reopen later tiers first. Reopening requires an audit reason and clears nominations for human confirmation again. Finalized assessments cannot reopen.",
     "activeWindowHelp": "Change deadlines for this active cycle. Scoring rules, submitted inputs and finalized results stay protected. Changes require a reason and are audited.",
@@ -17081,7 +17081,7 @@
       "pot_hod": "HOD potential calibration",
       "pm_buceo": "BU performance calibration",
       "pot_buceo": "BU potential calibration",
-      "tb_bgceo": "BG and Group talent calibration"
+      "tb_bgceo": "BG talent calibration"
     },
     "moderator": "KPI moderator",
     "assessmentAxis": "Assessment to update or lock",
