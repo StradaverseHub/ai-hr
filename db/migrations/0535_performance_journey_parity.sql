@@ -1,6 +1,7 @@
 -- Native assessment journey: private working copies, persisted conversations and catalogue.
 -- Apply strictly after 0531–0534. Historical assessment identifiers remain stable.
-ALTER TABLE performance_onehr_review ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
+ALTER TABLE performance_onehr_review ADD COLUMN profile_id uuid, ADD COLUMN profile_match text, ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
+ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(principle_comments)='object');
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
 ALTER TABLE performance_onehr_calibration ADD COLUMN pip_locked_at timestamptz, ADD COLUMN promotion_locked_at timestamptz;
 ALTER TABLE performance_onehr_calibration_entry ADD COLUMN performance_pinned boolean NOT NULL DEFAULT false, ADD COLUMN potential_pinned boolean NOT NULL DEFAULT false, ADD COLUMN pip_reason text NOT NULL DEFAULT '', ADD COLUMN promotion_reason text NOT NULL DEFAULT '', ADD COLUMN special_reward_reason text NOT NULL DEFAULT '';
@@ -15,7 +16,7 @@ CREATE TABLE performance_assessment_draft (
 CREATE TABLE performance_assessment_conversation (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
  review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id), actor_user_id uuid NOT NULL REFERENCES app_user(id),
- stage text NOT NULL CHECK(stage IN ('setting','results','moderation','competency','career','evidence')),
+ stage text NOT NULL CHECK(stage IN ('setting','results','moderation','competency','career','evidence','journey')),
  messages jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(messages)='array' AND octet_length(messages::text)<=1000000),
  revision integer NOT NULL DEFAULT 1, updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(review_id,actor_user_id,stage)
 );
@@ -107,6 +108,11 @@ BEGIN
  IF TG_OP='UPDATE' THEN
   o:=to_jsonb(OLD);
   IF n->>'tenant_id' IS DISTINCT FROM o->>'tenant_id' OR n->>'review_id' IS DISTINCT FROM o->>'review_id' OR n->>'employment_id' IS DISTINCT FROM o->>'employment_id' OR n->>'cycle_id' IS DISTINCT FROM o->>'cycle_id' THEN RAISE EXCEPTION 'assessment record identity is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND (n->'profile_id' IS DISTINCT FROM o->'profile_id' OR n->'profile_match' IS DISTINCT FROM o->'profile_match' OR
+   (SELECT coalesce(jsonb_agg(c-ARRAY['self','selfRemark','manager','managerRemark'] ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(n->'competencies') WITH ORDINALITY q(c,i)) IS DISTINCT FROM
+   (SELECT coalesce(jsonb_agg(c-ARRAY['self','selfRemark','manager','managerRemark'] ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(o->'competencies') WITH ORDINALITY q(c,i))) THEN
+   IF NOT app.onehr_cycle_admin(r.cycle_id) OR app.assessment_competency_started(r.id) THEN RAISE EXCEPTION 'Only HR can replace an unstarted competency assignment'; END IF;
+  END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND n->'kpis' IS DISTINCT FROM o->'kpis' THEN
    IF EXISTS(SELECT 1 FROM jsonb_array_elements(n->'kpis') k WHERE k->>'moderatorEmploymentId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM employment m JOIN employment sub ON sub.id=eid WHERE m.id=(k->>'moderatorEmploymentId')::uuid AND m.tenant_id=tid AND m.person_id<>sub.person_id)) THEN RAISE EXCEPTION 'Invalid KPI moderator'; END IF;
    IF NOT app.onehr_cycle_admin(r.cycle_id) AND EXISTS(
@@ -190,3 +196,34 @@ CREATE OR REPLACE FUNCTION app.onehr_assessment_inputs(wanted_review uuid) RETUR
  FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(p.id) AND (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.review_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id WHERE ce.review_id=r.review_id AND app.onehr_calibration_access(cs.id) AND NOT app.is_self_person(p.id)))
 $$;
+
+--> statement-breakpoint
+-- A narrow career-planning projection: skill evidence only, never peer identities or unreleased bands.
+CREATE FUNCTION app.assessment_skill_history(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce((SELECT jsonb_agg(jsonb_build_object('status',h.competency_status,'competencies',h.competencies) ORDER BY h.cycle_id,h.review_id)
+  FROM performance_onehr_review h WHERE h.tenant_id=r.tenant_id AND h.employment_id=r.employment_id
+   AND (h.competency_status='reviewed' OR app.is_self_person(e.person_id) AND h.competency_status='submitted')),'[]'::jsonb)
+ FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id()
+  AND (app.is_self_person(e.person_id) OR app.onehr_manager(r.review_id) OR app.onehr_cycle_admin(r.cycle_id))
+$$;
+REVOKE ALL ON FUNCTION app.assessment_skill_history(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_skill_history(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onehr_feedback_card(wanted_request uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
+ FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL
+$$;
+
+--> statement-breakpoint
+-- A yes/no predicate lets HR protect private work without reading another person's draft.
+CREATE FUNCTION app.assessment_competency_started(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(r.cycle_id)
+  AND (r.competency_status<>'pending' OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id)
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(r.competencies) c WHERE c->>'self' IS NOT NULL OR c->>'manager' IS NOT NULL)
+   OR EXISTS(SELECT 1 FROM performance_assessment_draft d WHERE d.review_id=r.review_id AND d.kind IN ('competency_self','competency_manager') AND (coalesce(d.payload->>'remark','')<>'' OR EXISTS(SELECT 1 FROM jsonb_each(coalesce(d.payload->'answers','{}'::jsonb)) a WHERE a.value->>'answer' IS NOT NULL OR coalesce(a.value->>'remark','')<>'')))))
+$$;
+REVOKE ALL ON FUNCTION app.assessment_competency_started(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_competency_started(uuid) TO ai_hr_app;

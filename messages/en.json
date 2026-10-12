@@ -17303,6 +17303,33 @@
     "agreementPct": "{value}% agreement",
     "writtenFeedback": "Written feedback",
     "lockBusinessUnits": "Lock business units",
-    "lockBusinessUnit": "Lock this unit"
+    "lockBusinessUnit": "Lock this unit",
+    "careerMap": {
+      "title": "Career routes",
+      "help": "Explore roles and the competencies they require. These are development options for a conversation with your manager.",
+      "groups": {
+        "closest": "Closest to you now",
+        "stretch": "A stretch",
+        "longer": "Longer term",
+        "related": "Related roles"
+      },
+      "grade": "Grade {grade}",
+      "deepen": "Deepen your discipline",
+      "cross": "Explore another discipline",
+      "unassessed": "No demonstrated skill record yet; ordered by role similarity.",
+      "readiness": "{value}% of requirements met · {met} of {total}",
+      "skills": "View competency requirements",
+      "required": "Requires level {level}",
+      "demonstrated": "Demonstrated level {level}",
+      "states": {
+        "met": "Requirement met",
+        "stretch": "Build further proficiency",
+        "missing": "Not yet assessed"
+      }
+    },
+    "principleComment": "Examples or comments for this principle (optional)",
+    "competencyProfile": "Competency profile",
+    "assignProfile": "Assign profile",
+    "competencyProfileHelp": "Assignments follow the role’s required skill levels and the next available proficiency level. A started assessment cannot be replaced."
   }
 }

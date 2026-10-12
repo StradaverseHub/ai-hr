@@ -9942,6 +9942,7 @@ export const onehrReview = pgTable('performance_onehr_review', {
   cycleId: uuid('cycle_id').notNull().references(() => reviewCycle.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),
   companyId: uuid('company_id').notNull().references(() => company.id), grade: text('grade').notNull(),
   kpis: jsonb('kpis').notNull().default([]), competencies: jsonb('competencies').notNull().default([]), statements: jsonb('statements').notNull().default([]),
+  profileId:uuid('profile_id'),profileMatch:text('profile_match'),
   resultsSubmittedAt: timestamp('results_submitted_at', {withTimezone:true}), competencyStatus: text('competency_status').notNull().default('pending'),
   managerPerformance: text('manager_performance'), managerScore: numeric('manager_score',{precision:20,scale:8}),
   managerRemark: text('manager_remark').notNull().default(''), selfRemark:text('self_remark').notNull().default(''),
@@ -9952,6 +9953,7 @@ export const onehrPanel = pgTable('performance_onehr_panel', {
   requestId: uuid('request_id').primaryKey().references(() => peerFeedbackRequest.id), tenantId: tenantId(),
   reviewId: uuid('review_id').notNull().references(() => performanceReview.id), subjectEmploymentId: uuid('subject_employment_id').notNull().references(() => employment.id),
   peerEmploymentId: uuid('peer_employment_id').notNull().references(() => employment.id), relationship: text('relationship').notNull(),
+  principleComments:jsonb('principle_comments').$type<Record<string,string>>().notNull().default({}),
   answers: jsonb('answers'), remark: text('remark').notNull().default(''), submittedAt: timestamp('submitted_at',{withTimezone:true}), archivedAt: timestamp('archived_at',{withTimezone:true}),
 },t=>[index('performance_onehr_panel_review_idx').on(t.reviewId)]);
 export const onehrCalibration = pgTable('performance_onehr_calibration', {

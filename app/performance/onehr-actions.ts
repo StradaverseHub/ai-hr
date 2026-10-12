@@ -27,7 +27,7 @@ export async function onehrCycleAction(f:FormData){
   try{
     const view=await perf.getOnehrCycle(s,id);if(!view)throw Error('Cycle not found.');
     if(str(f,'action')==='policy'){
-      let catalogue={framework:view.policy.framework,profiles:view.policy.profiles};
+      let catalogue={framework:view.policy.framework,profiles:view.policy.profiles,skills:view.policy.skills??[],careerRoutes:view.policy.careerRoutes??[]};
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,variant:str(f,`b.${c.id}.variant`)||'base',minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
@@ -66,6 +66,7 @@ export async function onehrReviewAction(f:FormData){
         if(str(f,'intent')==='draft')await saveDraftForm(s,f);
         else await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'),str(f,'overallRemark'));
         break;
+      case 'profile':await perf.assignAssessmentProfile(s,id,expected,str(f,'profileId'));break;
       case 'panel':await perf.assignOnehrPanel(s,id,expected,ids(f,'peerIds').map(employmentId=>({employmentId,relationship:str(f,`relationship.${employmentId}`)||'peer'})));break;
       case 'reassign':await perf.reassignOnehrReviewer(s,id,expected,str(f,'reviewerEmploymentId'));break;
       case 'freeze':await perf.freezeOnehrReview(s,id,expected);break;
@@ -90,7 +91,7 @@ export async function onehrReviewAction(f:FormData){
 export async function onehrFeedbackAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'requestId'));const url=destination(f,`/performance/assessment/feedback/${id}`);
   const declined=str(f,'action')==='decline';
-  try{if(declined)await perf.declineOnehrFeedback(s,id);else if(str(f,'intent')==='draft')await saveDraftForm(s,f);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'));}catch(e){redirect(withError(url,e));}
+  try{if(declined)await perf.declineOnehrFeedback(s,id);else if(str(f,'intent')==='draft')await saveDraftForm(s,f);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'),Object.fromEntries(f.getAll('principle').map(p=>[String(p),str(f,`comment.${p}`)])));}catch(e){redirect(withError(url,e));}
   revalidatePath('/me/performance');revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(declined?'/me/performance':url);
 }
 export async function onehrCalibrationAction(f:FormData){
@@ -107,7 +108,7 @@ async function saveDraftForm(s:Awaited<ReturnType<typeof getSession>>,f:FormData
   const kind=str(f,'draftKind'),reviewId=z.uuid().parse(str(f,'reviewId'));
   let payload:unknown;
   if(kind==='results'||kind==='moderation')payload={kind,lines:ids(f,'kpiId').map(id=>({id,actual:nullableNumber(f,`${id}.actual`),note:str(f,`${id}.note`)})),remark:str(f,'overallRemark')};
-  else if(kind==='feedback')payload={kind,answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),str(f,`answer.${id}`)]).filter(([,answer])=>!!answer)),remark:str(f,'remark')};
+  else if(kind==='feedback')payload={kind,comments:Object.fromEntries(f.getAll('principle').map(p=>[String(p),str(f,`comment.${p}`)])),answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),str(f,`answer.${id}`)]).filter(([,answer])=>!!answer)),remark:str(f,'remark')};
   else payload={kind,answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),{answer:str(f,`answer.${id}`)||null,remark:str(f,`remark.${id}`)}])),remark:str(f,'overallRemark')};
   return perf.saveAssessmentDraft(s,reviewId,kind==='feedback'?0:num(f,'revision'),str(f,'draftRevision')?num(f,'draftRevision'):null,payload,kind==='feedback'?str(f,'requestId'):reviewId);
 }

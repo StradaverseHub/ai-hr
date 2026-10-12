@@ -8,6 +8,7 @@ import { draftOnehrNarrative } from './ai';
 
 export const conversationStage=z.enum(['setting','results','moderation','competency','career','evidence']);
 export type ConversationStage=z.infer<typeof conversationStage>;
+const storedStage=(stage:ConversationStage)=>stage==='setting'||stage==='evidence'?stage:'journey';
 const messageSchema=z.object({id:z.uuid(),role:z.enum(['user','assistant']),text:z.string().max(6000),at:z.iso.datetime(),kind:z.enum(['guide','draft','message'])});
 export type ReviewMessage=z.infer<typeof messageSchema>;
 export const reviewConversationMessages=z.array(messageSchema).max(300);
@@ -21,7 +22,7 @@ async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationS
 export async function getReviewConversation(ctx:SessionContext,reviewId:string,stage:ConversationStage){
  await authorized(ctx,reviewId,stage);
  return withPerformanceTenant(ctx,async tx=>{
-  const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,stage)));
+  const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage))));
   return {revision:row?.revision??null,messages:row?reviewConversationMessages.parse(row.messages):[]};
  });
 }
@@ -46,15 +47,15 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  const fresh=await authorized(ctx,reviewId,stage);
  if(fresh.revision!==view.revision)throw Error('The assessment changed while preparing this response. Try again with the current record.');
  return withPerformanceTenant(ctx,async tx=>{
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:${stage}`},0))`);
-  const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,stage))).for('update');
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:${storedStage(stage)}`},0))`);
+  const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage)))).for('update');
   const messages=row?reviewConversationMessages.parse(row.messages):[];
   if(messages.some(m=>m.id===requestId))return {revision:row!.revision,messages};
   if((row?.revision??null)!==expected)throw Error('This conversation changed. Reload before sending another message.');
   if(messages.length>296)throw Error('This conversation has reached its limit. Your saved review and full conversation remain available.');
   const now=new Date().toISOString();
   const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:intent}]:[])];
-  const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage,messages:next}).returning();
+  const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage:storedStage(stage),messages:next}).returning();
   return {revision:saved.revision,messages:next};
  });
 }

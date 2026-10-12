@@ -12,7 +12,7 @@ export type WindowCell = typeof windowCells[number];
 const finite = z.number().finite();
 const text = z.string().trim().max(4000);
 const answer = z.enum(['yes','no']);
-export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean() });
+export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean(), skillTitle:z.string().trim().min(1).max(300).optional(),skillLevel:z.number().int().min(0).max(100).optional() });
 export type Statement = z.infer<typeof statementSchema>;
 export const scoringSchema = z.discriminatedUnion('mechanism', [
   z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
@@ -37,7 +37,9 @@ export const policySchema = z.object({
   lowMaxPct:finite.min(0).max(100),midMaxPct:finite.min(0).max(100),minValid:z.number().int().min(1).max(30),
   weights:z.record(z.string().min(1).max(30),z.number().int().min(0).max(10000)), // 360 basis points; rest is competency
   framework:z.array(z.object({gradeMin:z.number().int(),gradeMax:z.number().int(),letters:z.array(z.string().min(1).max(30)),statements:z.array(statementSchema).min(1).max(200)})).min(1).max(30),
-  profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).min(1).max(200)})).max(1000),
+  profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),jobTitle:z.string().max(300).optional(),department:z.string().max(300).optional(),track:z.string().max(300).optional(),sector:z.string().max(300).optional(),active:z.boolean().optional(),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).max(200)})).max(1000),
+  skills:z.array(statementSchema).max(10000).optional(),
+  careerRoutes:z.array(z.object({fromProfileId:z.uuid(),toProfileId:z.uuid(),kind:z.enum(['pinned','hidden'])})).max(10000).optional(),
   idpMinGoals:z.number().int().min(1).max(30), idpRequireAllActions:z.boolean(),
   curveToleranceMode:z.enum(['people','percent']).default('people'),
   curveTolerancePct:finite.min(0).max(100),curveTolerancePeople:z.number().int().min(1).max(100),curveStrict:z.boolean(),
@@ -46,6 +48,8 @@ export const policySchema = z.object({
   for(const minima of [v.aBands,...v.bBands.map(b=>b.minima)])if(minima.some((n,i)=>i>0&&n<=minima[i-1]))c.addIssue({code:'custom',message:'Performance band cutoffs must increase.'});
   if(new Set(v.bBands.map(b=>b.companyId)).size!==v.bBands.length)c.addIssue({code:'custom',message:'Configure one achievement scale per company.'});
   if(new Set(v.profiles.map(p=>p.id)).size!==v.profiles.length)c.addIssue({code:'custom',message:'Profile IDs must be unique.'});
+  if(new Set((v.skills??[]).map(s=>s.id)).size!==(v.skills??[]).length)c.addIssue({code:'custom',message:'Skill IDs must be unique.'});
+  for(const route of v.careerRoutes??[])if(route.fromProfileId===route.toProfileId||!v.profiles.some(p=>p.id===route.fromProfileId)||!v.profiles.some(p=>p.id===route.toProfileId))c.addIssue({code:'custom',message:'Career routes must join distinct catalogue profiles.'});
   for(const p of v.profiles)if(new Set(p.competencies.map(s=>s.id)).size!==p.competencies.length)c.addIssue({code:'custom',message:'A profile contains duplicate competency IDs.'});
   for(const tier of v.framework)if(new Set(tier.statements.map(s=>s.id)).size!==tier.statements.length)c.addIssue({code:'custom',message:'A framework contains duplicate statement IDs.'});
 });
