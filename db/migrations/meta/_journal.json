@@ -3053,6 +3053,13 @@
       "when": 1791900000008,
       "tag": "0528_attendance_punch_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1791900000010,
+      "tag": "0530_attendance_payroll_entity_protection",
+      "breakpoints": true
     }
   ]
 }
