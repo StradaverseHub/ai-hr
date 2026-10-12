@@ -100,6 +100,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
    *  this component. */
   async function confirm(direction:'in'|'out'){
     if(inFlight.current)return;
+    const recovering=command.current!=null;
     inFlight.current=true;setBusy(true);setAction(direction);setError('');stop();
     try {
       let receipt: {recordedAt:string;direction:'in'|'out'} | undefined;
@@ -130,7 +131,9 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
           if(result.error==='accountChanged')throw new Error('accountChanged');
           const definite=['origin','invalid','photoInvalid','photoRequired','outsideGeofence','locationRequired','conflict','correctedDay'];
           if(!definite.includes(result.error))throw new Error('unconfirmed');
-          command.current=null;setPending(false);throw new Error(result.error);
+          // A refusal of this retry cannot prove an earlier uncertain attempt has finished.
+          if(!recovering){command.current=null;setPending(false);}
+          throw new Error(result.error);
         }
         receipt=result.receipt;
       }

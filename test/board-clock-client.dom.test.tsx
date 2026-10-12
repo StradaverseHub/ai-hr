@@ -58,6 +58,17 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await waitFor(()=>expect(post).toHaveBeenCalledTimes(2));
     expect(post.mock.calls[1][1].body).toBe(original);
   });
+  it('retains the original command after a retry refusal while its earlier response is uncertain',async()=>{
+    post.mockRejectedValueOnce(new TypeError('Response lost')).mockResolvedValueOnce(Response.json({error:'origin'},{status:403}));
+    lookup.mockResolvedValueOnce(Response.json({error:'notFound'},{status:404}));
+    mount('not_required');await begin();await screen.findByText(en.attendance.clock.pendingCommand);
+    const original=post.mock.calls[0][1].body;
+    fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await screen.findByText(en.attendance.clock.origin);
+    expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();expect(post.mock.calls[1][1].body).toBe(original);
+    expect((screen.getByRole('button',{name:en.attendance.clock.clockOut}) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));
+    await waitFor(()=>expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull());expect(post).toHaveBeenCalledTimes(2);
+  });
   it('retains an uncertain request across authentication expiry and offers sign-in in another tab',async()=>{
     post.mockResolvedValueOnce(Response.json({error:'authentication'},{status:401}));mount('not_required');await begin();
     const signIn=await screen.findByRole('link',{name:en.attendance.clock.signInAgain});expect(signIn.getAttribute('target')).toBe('_blank');
