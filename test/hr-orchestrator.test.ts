@@ -152,9 +152,10 @@ describe('central HR orchestrator', () => {
     const projected = await drainNotificationProjection(limit => dispatchNotifications(ctx, { limit }));
     expect(projected.processed).toBeGreaterThan(1000);
     expect(projected.cappedOut).toBe(false);
-    const [nudge] = await owner.db.select().from(schema.domainEvent)
-      .where(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'));
-    expect(nudge).toBeDefined();
-    expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.sourceEventId, nudge.id))).toHaveLength(1);
+    const nudges = await owner.db.select().from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'readiness.nudge-raised')).orderBy(schema.domainEvent.sequence);
+    expect(nudges).toHaveLength(1);
+    expect(await owner.db.select().from(schema.notification)
+      .where(eq(schema.notification.sourceEventId, nudges[0].id)).orderBy(schema.notification.id)).toHaveLength(1);
   });
 });
