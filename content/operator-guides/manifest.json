@@ -1,0 +1,21 @@
+{
+  "reviewedOn": "2026-10-12",
+  "guides": [
+    {
+      "slug": "operator-provisioning",
+      "title": "Operator Guide: Customer Provisioning & Activation"
+    },
+    {
+      "slug": "operator-identity-email",
+      "title": "Operator Guide: Identity, Email & Customer Handover"
+    },
+    {
+      "slug": "operator-maintenance",
+      "title": "Operator Guide: Knowledge-Base Refresh & Support Boundaries"
+    },
+    {
+      "slug": "operator-tenant-operations",
+      "title": "Operator Guide: Modules, Usage & Tenant Lifecycle"
+    }
+  ]
+}

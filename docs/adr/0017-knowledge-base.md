@@ -100,6 +100,28 @@ Switching the UI language now also translates the **content** of the seeded guid
 
 Search still matches the English title only (acceptable); localizing search is a later refinement.
 
+## Update (2026-10-12) — release refresh and operator documentation
+
+Bundled tenant guides now refresh during normal deployment, after migrations and initial seeding and
+before restart. `db/seed-guides.ts --all` enumerates customer tenants, skips the reserved audit tenant
+and tenants outside good standing, and refreshes each eligible tenant in a transaction. Stable
+`(tenant_id, slug)` keys preserve document IDs. A conflict updates only an existing system article;
+company-authored articles and uploads are not promoted or replaced. Local edits to a system article
+remain release-managed; company policy belongs in a separate company-authored article.
+
+Translations are now tied to the reviewed English title/body with per-locale source hashes. An old
+translation is withheld after a source change until reviewed and stamped against that exact source.
+Readers receive current English in the meantime. The old translation files remain available for
+revision; their mere presence no longer makes them publishable.
+
+The operator is a separate installation audience, not another rank above HR in the tenant library.
+Operator articles live in `content/operator-guides` and render inside the existing `/operator` page
+after its explicit operator and non-demo checks. They never enter `kb_document`, so neither tenant
+administrators nor employee/manager deep links acquire operator content. Installation email capability
+is documented separately from both provisioning operators and customer administrators.
+
+Maintenance and publication instructions: [Knowledge-base maintenance](../KNOWLEDGE-BASE-MAINTENANCE.md).
+
 ## Update (2026-09-16) — authoring is administrator-only; §3's open INSERT is now app-enforced
 
 §3 above chose **open contribution** ("any member may contribute") and `0039_kb_rls.sql` implements
