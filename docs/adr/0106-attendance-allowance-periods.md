@@ -51,7 +51,10 @@ on the editor. Unrecorded off, rest and holiday dates do not themselves earn an 
 Recorded attendance owns measured worked, normal, overtime, lateness and early-out time. Missing past
 scheduled working days count as absences unless covered by approved leave. Applicability uses the
 Attendance pack's canonical dated schedule resolver, including rotations and actual selected shift
-identity. Recorded holiday/rest day types remain frozen. Full/half and shift applicability are current
+identity. Recorded holiday/rest day types remain frozen. Worked Off days are stored as `workday` for
+ordinary-overtime pricing, so their current canonical Off marker remains eligible for Off policies;
+the shared `default-shift-rest` trace source alone never relabels a recorded Rest day as Off.
+Full/half/off and shift applicability are current
 resolved schedule facts, not a reconstruction of historic traces: old traces contain no shift ID. The
 result snapshots the resolved source days and measurements when the administrator recalculates.
 Source-day evidence includes the raw recorded day type and separately named canonical kind/shift at

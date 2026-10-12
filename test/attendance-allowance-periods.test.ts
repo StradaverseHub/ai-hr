@@ -7,7 +7,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { createMovementEvent } from '../core/movement';
-import { checkIn, checkOut, setAttendancePolicy } from '../packs/attendance/service';
+import { assignDefaultShift, createShift } from '../core/roster';
+import { allowanceScheduleFactsTx, checkIn, checkOut, setAttendancePolicy } from '../packs/attendance/service';
 import { createBatch, deleteDraftBatch, seedPayComponentCatalog, AllowancePayrollConflictError } from '../packs/payroll/service';
 import { allowancePeriods, allowanceTransferHistory, createAllowancePolicy, emptyAllowanceRules, evaluateAllowancesForPeriod, StaleAllowancePreviewError, transferAllowancesToBatch, updateAllowancePolicy, type AllowanceRules } from '../packs/attendance/service';
 import { monthDates } from '../lib/roster-month';
@@ -84,6 +85,57 @@ describe('source-owned allowance periods', () => {
     await Promise.all([1,2].map(()=>transferAllowancesToBatch(f.ctx,{policyId:id,batchId,expectedDigest:preview.inputDigest})));
     expect(await sources(batchId)).toHaveLength(2);
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+  });
+
+  it('pays recorded off-day work as off rather than full and preserves actual full, half, rest and holiday controls', async () => {
+    const f = await fixture();
+    const {employmentId} = await hireEmployee(f.a,{person:{fullName:'Worked day-type recipient',primaryEmail:`${randomUUID()}@allowance.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year}-01-01`});
+    const sh = await createShift(f.a,{name:'Allowance four-way shift',code:'ALW_FOUR',startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,5],halfPattern:[2],offPattern:[3]});
+    await assignDefaultShift(f.a,{employmentId,shiftId:sh.id});
+    const weekday = (iso:number) => monthDates(month).find(date=>(new Date(`${date}T00:00:00Z`).getUTCDay()||7)===iso)!;
+    const dates = {full:weekday(1),half:weekday(2),off:weekday(3),rest:weekday(4),holiday:weekday(5)};
+    const [holiday] = await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:dates.holiday,name:'Allowance worked holiday'}).returning();
+    for(const date of Object.values(dates)){
+      await checkIn(f.a,{employmentId,date,time:'09:00:00'});
+      await checkOut(f.a,{employmentId,date,time:date===dates.half?'13:00:00':'18:00:00'});
+    }
+    const recorded = await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,employmentId));
+    expect(recorded).toHaveLength(5);
+    expect(recorded.find(r=>r.attendanceDate===dates.off)).toMatchObject({dayType:'workday',calcTrace:{schedule:{source:'default-shift-rest'}}});
+    expect(recorded.find(r=>r.attendanceDate===dates.off)!.workedMinutes).toBeGreaterThan(0);
+    expect(recorded.find(r=>r.attendanceDate===dates.rest)).toMatchObject({dayType:'rest_day',calcTrace:{schedule:{source:'default-shift-rest'}}});
+    for(const [kind,date] of Object.entries(dates))expect(await withTenant(f.ctx,tx=>allowanceScheduleFactsTx(tx,employmentId,date))).toMatchObject({kind});
+    // Later calendar/roster edits must not erase the recorded holiday/rest day type. Only full/half/off
+    // and selected-shift facts come from the current dated resolver; no historical shift is invented.
+    await owner.db.delete(schema.holiday).where(eq(schema.holiday.id,holiday.id));
+    await owner.db.insert(schema.rosterAssignment).values({tenantId:b.tenantId,employmentId,shiftDate:dates.rest,shiftId:sh.id,isRestDay:false});
+    expect(await withTenant(f.ctx,tx=>allowanceScheduleFactsTx(tx,employmentId,dates.rest))).toMatchObject({kind:'full'});
+    expect(await withTenant(f.ctx,tx=>allowanceScheduleFactsTx(tx,employmentId,dates.holiday))).toMatchObject({kind:'full'});
+    const amounts = {full:'2.00',half:'3.00',off:'13.25',rest:'4.00',holiday:'5.00'};
+    const policies = new Map<string,string>();
+    for(const kind of Object.keys(dates) as (keyof typeof dates)[]){
+      const rules = emptyAllowanceRules();
+      rules.employee = {mode:'selected',employmentIds:[employmentId],logic:'and',criteria:[]};
+      rules.attendance = {...rules.attendance,dayKinds:[kind],criteria:[{field:'attendanceDays',operator:'gte',value:'1',unit:'days'}]};
+      const p = await f.policy(`WORKED_${kind.toUpperCase()}`,amounts[kind],{rules});
+      policies.set(kind,p.id);
+      const preview = await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+      expect(preview.rows).toHaveLength(1);
+      expect(preview.rows[0].amount).toBe(amounts[kind]);
+      const qualified = preview.rows[0].periods.filter(p=>p.qualified);
+      expect(qualified.map(p=>p.from)).toEqual([dates[kind]]); // reverting the mapping swaps Off/Full or Rest/Off.
+      expect(qualified[0].sourceDays[0]).toMatchObject({kind,factSources:{recordedDayType:kind==='rest'?'rest_day':kind==='holiday'?'holiday':'workday',canonicalKind:kind==='rest'||kind==='holiday'?'full':kind}});
+    }
+    const {batchId} = await createBatch(f.a,{companyId:b.companyId,payPeriod:month,scope:{employmentIds:[employmentId]}});
+    await transferAllowancesToBatch(f.ctx,{policyId:policies.get('off')!,batchId});
+    expect(await componentAmount(batchId,employmentId,f.componentId)).toBe('13.25');
+    expect(await sources(batchId)).toHaveLength(1);
+    await transferAllowancesToBatch(f.ctx,{policyId:policies.get('full')!,batchId});
+    expect(await componentAmount(batchId,employmentId,f.componentId)).toBe('15.25');
+    expect(await sources(batchId)).toHaveLength(2);
+    await transferAllowancesToBatch(f.ctx,{policyId:policies.get('off')!,batchId});
+    expect(await componentAmount(batchId,employmentId,f.componentId)).toBe('15.25');
+    expect(await sources(batchId)).toHaveLength(2);
   });
 
   it('retains owner-company history after an entity transfer and refuses a scoped retry without hiding prior money', async () => {
