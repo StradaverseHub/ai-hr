@@ -93,6 +93,8 @@ The isolated codex/uat-hosting candidate carries selected customer service/prefl
 5. Remote HR database support with app/identity colocated, private IPC and separately operated jobs.
 6. A build-once Linux artifact and controlled release switch. Current deploy.sh builds into `.next` in place, applies migrations and may restart; it does not implement immutable/atomic deployment.
 
+The raw identity writers remain an explicit audit acceptance gap: app.append_auth_event() inserts without arming app.audit_hash_chain, and keycloak-link-owner.ts/private email audit calls bypass withTenant. The customer environment flag does not propagate automatically into a raw PostgreSQL session. The initial bootstrap is tested as chained; later identity events still need transaction-arming changes and coverage before audit sign-off.
+
 Do not mark any of these complete because a file exists in another worktree. Rehearse a blank installation and an upgrade on disposable UAT infrastructure. A remaining gap should identify the responsible engineer and prevent the dependent step from being marked passed.
 
 ### Step 3 — Provision hosts and private network
