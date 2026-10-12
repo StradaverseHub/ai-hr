@@ -27,19 +27,21 @@ const LIST = '/admin/attendance/file-mappings';
 const str = (v: FormDataEntryValue | null) => String(v ?? '').trim();
 
 export type SaveMappingResult =
-  | { ok: true; id: string }
+  | { ok: true; id: string; savedReceipt?: string }
   | { ok: false; code: ClockingMappingError['code'] | 'unknown'; missing: ClockingField[]; problems: MappingProblem[] };
 
 /** Called by the form with its whole state; returns the refusal as data so the form can show it in place. */
 export async function saveClockingMappingAction(
   mappingId: string | null,
   input: ClockingMappingInput,
+  saveNonce?: string,
 ): Promise<SaveMappingResult> {
   const s = await requireAdmin();
   try {
     const id = mappingId ? (await updateClockingMapping(s, mappingId, input), mappingId) : await createClockingMapping(s, input);
     revalidatePath(LIST);
-    return { ok: true, id };
+    // This is an acknowledgement of THIS successful write, never merely of submitting the form.
+    return { ok: true, id, ...(/^[a-f0-9]{32}$/.test(saveNonce ?? '') ? {savedReceipt: saveNonce} : {}) };
   } catch (e) {
     if (e instanceof ClockingMappingError) return { ok: false, code: e.code, missing: e.missing, problems: e.problems };
     return { ok: false, code: 'unknown', missing: [], problems: [] };

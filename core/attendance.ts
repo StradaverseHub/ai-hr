@@ -6207,7 +6207,9 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
                 throw new Error('Clock data has changed since this approval. Submit a new correction instead.');
             if (data.clockChanged)
                 await applyClockChangesTx(tx, ctx, { attendanceId: day.id, employmentId: cor.employmentId, date: cor.attendanceDate, reason: p.reason.trim(), correctionId: cor.id, changes: { version: 1, baseline: clockFingerprint(raw), entries: data.beforePunches } });
-            const restored = data.before ?? Object.fromEntries(Object.keys(AMENDED_FIGURE_COLUMNS).map(k => [k, k === 'status' ? 'absent' : k === 'dayType' ? data!.after.dayType : null])) as Figures;
+            // The projection is serialized as unknown-valued audit data, but these immutable internal
+            // receipts contain exactly this schema projection. Keep the write's type equally narrow.
+            const restored = (data.before ?? Object.fromEntries(Object.keys(AMENDED_FIGURE_COLUMNS).map(k => [k, k === 'status' ? 'absent' : k === 'dayType' ? data!.after.dayType : null]))) as Pick<typeof attendance.$inferSelect, keyof typeof AMENDED_FIGURE_COLUMNS>;
             await tx.update(attendance).set(restored).where(eq(attendance.id, day.id));
             await markAttendancePayrollTx(tx, ctx, batches, cor.employmentId);
             await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance', aggregateId: day.id, eventType: 'attendance.application.reversed', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { correctionId: cor.id, reason: p.reason.trim(), before: current, after: await attendanceFiguresByIdTx(tx, day.id) } });

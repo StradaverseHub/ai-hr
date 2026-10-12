@@ -9,7 +9,9 @@ import { ClockPageClient } from '../app/attendance/clock/clock-client';
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 const initial={clockContext:'a'.repeat(64),date:clockDate,serverNow:clockDate+'T00:00:00Z',workedSeconds:0,clockedIn:false,openSince:null,locationValid:true,geofencingRequired:false,attendancePhotoSetting:'optional',captures:[],legacy:[],shift:{code:'SF',start:'07:00',end:'20:00'}} as unknown as React.ComponentProps<typeof ClockPageClient>['initial'];
 let selectedSetting:'required'|'optional'|'not_required';
-let post:ReturnType<typeof vi.fn>,lookup:ReturnType<typeof vi.fn>,getUserMedia:ReturnType<typeof vi.fn>;
+let post=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
+let lookup=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
+let getUserMedia=vi.fn<()=>Promise<MediaStream>>();
 const receipt={recordedAt:clockDate+'T01:00:00Z',direction:'in',id:'capture',date:clockDate};
 function mount(setting:'required'|'optional'|'not_required'='optional'){
   selectedSetting=setting;
@@ -19,9 +21,9 @@ beforeEach(()=>{
   selectedSetting='optional';
   Object.defineProperty(window,'isSecureContext',{value:true,configurable:true});
   Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition:vi.fn((ok)=>ok({coords:{latitude:3,longitude:101,accuracy:10}}))},configurable:true});
-  getUserMedia=vi.fn().mockRejectedValue(new DOMException('Denied','NotAllowedError'));
+  getUserMedia=vi.fn<()=>Promise<MediaStream>>().mockRejectedValue(new DOMException('Denied','NotAllowedError'));
   Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia},configurable:true});
-  post=vi.fn().mockImplementation(async()=>Response.json({receipt}));lookup=vi.fn().mockImplementation(async()=>Response.json({receipt}));
+  post=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>().mockImplementation(async()=>Response.json({receipt}));lookup=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>().mockImplementation(async()=>Response.json({receipt}));
   vi.stubGlobal('fetch',vi.fn((url:string,options?:RequestInit)=>{
     if(options?.method==='POST')return post(url,options);
     if(url.startsWith('/api/attendance/clock?'))return lookup(url,options);
