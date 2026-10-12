@@ -168,5 +168,9 @@
     --muted-foreground: #444; --border: #bbb;
     --primary: #111; --primary-foreground: #fff;
     --accent: #eee; --accent-foreground: #111;
+    --secondary: #f4f4f4; --secondary-foreground: #111;
+    --popover: #fff; --popover-foreground: #111;
+    --input: #888; --ring: #444;
+    --destructive: #a11f31; --destructive-foreground: #fff;
   }
 }
