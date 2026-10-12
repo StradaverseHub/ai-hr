@@ -87,7 +87,13 @@ run refuses transfer and source/evidence changes. The aggregate input trigger pr
 amount/note overwrite while automatic sources own it. Deleting an editable payroll input releases its
 current sources; draft teardown preserves immutable definitions, revisions and transfer receipts.
 
-New history tables carry tenant/company/employee RLS and cross-reference identity triggers. Immutable
+New history tables carry tenant/company/employee RLS and cross-reference identity triggers. SELECT of
+sources, results and immutable revisions remains authorised to their recorded owner-company HR after an
+employee moves to another entity; INSERT/UPDATE/DELETE retain stricter current employee administration.
+This does not expand current Personnel visibility. A retry sees the old financial sources and explicitly
+refuses when the operator cannot administer their current employee, instead of silently treating them as
+an empty successful transfer. An explicit Payroll input deletion also refuses in that situation rather
+than deleting the aggregate while RLS leaves its sources behind. Immutable
 history has no app-role UPDATE/DELETE grants; current results have no DELETE grant. Company deletion
 retains all five new tables as financial history in `core/company-refs.ts`; their policy FKs are also
 registered in its exact dependent graph. A policy with saved definition history therefore blocks

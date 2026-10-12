@@ -6,6 +6,7 @@ import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee } from '../core/org';
+import { createMovementEvent } from '../core/movement';
 import { checkIn, checkOut, setAttendancePolicy } from '../packs/attendance/service';
 import { createBatch, deleteDraftBatch, seedPayComponentCatalog, AllowancePayrollConflictError } from '../packs/payroll/service';
 import { allowancePeriods, allowanceTransferHistory, createAllowancePolicy, emptyAllowanceRules, evaluateAllowancesForPeriod, StaleAllowancePreviewError, transferAllowancesToBatch, updateAllowancePolicy, type AllowanceRules } from '../packs/attendance/service';
@@ -83,6 +84,53 @@ describe('source-owned allowance periods', () => {
     await Promise.all([1,2].map(()=>transferAllowancesToBatch(f.ctx,{policyId:id,batchId,expectedDigest:preview.inputDigest})));
     expect(await sources(batchId)).toHaveLength(2);
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+  });
+
+  it('retains owner-company history after an entity transfer and refuses a scoped retry without hiding prior money', async () => {
+    const f = await fixture(), rules = emptyAllowanceRules();
+    rules.attendance.criteria = f.rules.attendance.criteria; // ALL employees, not selected IDs that fail validation early.
+    const p = await f.policy('MOVED_OWNER','0.10',{rules});
+    const {batchId} = await createBatch(f.a,{companyId:b.companyId,payPeriod:month,scope:{employmentIds:[f.employees[0]]}});
+    await transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId});
+    const before = await allowanceTransferHistory(f.ctx,p.id), originalSources = await sources(batchId);
+    expect(before.results.filter(r=>r.qualified)).toHaveLength(2);
+    expect(originalSources).toHaveLength(2);
+    expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+    const [destination] = await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Allowance destination company'}).returning();
+    const [destinationDepartment] = await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:destination.id,name:'Destination department'}).returning();
+    await createMovementEvent(f.a,{employmentId:f.employees[0],kind:'entityTransfer',effectiveDate:`${year}-09-01`,companyId:destination.id,departmentId:destinationDepartment.id});
+    const [adminPerson] = await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Original company allowance administrator',primaryEmail:`${randomUUID()}@allowance.test`}).returning();
+    const userId = await createAppUser(b.tenantId,adminPerson.id,'hr_admin');
+    await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+    const scoped:SessionContext = {...f.ctx,userId,personId:adminPerson.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+    const personnel = await withTenant(scoped,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,f.employees[0])));
+    expect(personnel).toHaveLength(0); // Historical financial reads must not expand current Personnel access.
+    const historical = await allowanceTransferHistory(scoped,p.id);
+    expect(historical.results.map(r=>r.id).sort()).toEqual(before.results.map(r=>r.id).sort());
+    expect(historical.revisions.map(r=>({id:r.id,evidence:r.evidence})).sort((a,b)=>a.id.localeCompare(b.id))).toEqual(before.revisions.map(r=>({id:r.id,evidence:r.evidence})).sort((a,b)=>a.id.localeCompare(b.id)));
+    const visibleSources = await withTenant(scoped,tx=>tx.select().from(schema.payrollAttendanceAllowanceSource).where(eq(schema.payrollAttendanceAllowanceSource.batchId,batchId)));
+    expect(visibleSources.map(r=>r.id).sort()).toEqual(originalSources.map(r=>r.id).sort());
+    // Historical SELECT is wider than INSERT/UPDATE/DELETE: the current-employee check still owns writes.
+    expect(await withTenant(scoped,tx=>tx.update(schema.attendanceAllowanceResult).set({status:'superseded'}).where(eq(schema.attendanceAllowanceResult.id,before.results[0].id)).returning({id:schema.attendanceAllowanceResult.id}))).toHaveLength(0);
+    expect(await withTenant(scoped,tx=>tx.delete(schema.payrollAttendanceAllowanceSource).where(eq(schema.payrollAttendanceAllowanceSource.batchId,batchId)).returning({id:schema.payrollAttendanceAllowanceSource.id}))).toHaveLength(0);
+    // A Payroll input DELETE must also refuse rather than orphan sources hidden from its stricter writes.
+    await expect(withTenant(scoped,tx=>tx.delete(schema.payrollBatchComponent).where(eq(schema.payrollBatchComponent.batchId,batchId)))).rejects.toThrow();
+    await updateAllowancePolicy(f.a,{id:p.id,amount:'0.30'});
+    const preview = await evaluateAllowancesForPeriod(scoped,{policyId:p.id,month,batchId});
+    expect(preview.rows).toHaveLength(0);
+    await expect(transferAllowancesToBatch(scoped,{policyId:p.id,batchId,expectedDigest:preview.inputDigest})).rejects.toThrow('outside your administrative scope');
+    const retained = await allowanceTransferHistory(scoped,p.id);
+    expect(retained.attempts.filter(a=>a.status==='transferred')).toHaveLength(1);
+    expect(retained.attempts.some(a=>a.status==='failed'&&a.errorCode==='validationFailed')).toBe(true);
+    expect(retained.revisions.map(r=>r.id).sort()).toEqual(before.revisions.map(r=>r.id).sort());
+    expect((await sources(batchId)).map(r=>r.id).sort()).toEqual(originalSources.map(r=>r.id).sort());
+    expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+    const [otherAdminPerson] = await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Destination company administrator',primaryEmail:`${randomUUID()}@allowance.test`}).returning();
+    const otherUserId = await createAppUser(b.tenantId,otherAdminPerson.id,'hr_admin');
+    await owner.db.update(schema.roleAssignment).set({companyId:destination.id}).where(eq(schema.roleAssignment.appUserId,otherUserId));
+    const destinationAdmin:SessionContext = {...f.ctx,userId:otherUserId,personId:otherAdminPerson.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:destination.id}]};
+    expect(await withTenant(destinationAdmin,tx=>tx.select().from(schema.attendanceAllowanceResultRevision))).toHaveLength(0);
+    expect(await withTenant(destinationAdmin,tx=>tx.select().from(schema.payrollAttendanceAllowanceSource))).toHaveLength(0);
   });
 
   it('preserves evidence snapshots while explicitly identifying current profile and resolved schedule facts', async () => {

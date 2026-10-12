@@ -66,11 +66,19 @@ ALTER TABLE attendance_allowance_result ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE POLICY attendance_allowance_result_rls ON attendance_allowance_result FOR ALL USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app.can_admin_employment(employment_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app.can_admin_employment(employment_id));
 --> statement-breakpoint
+-- Financial history belongs to its recorded company after an employee moves. This SELECT-only
+-- policy does not widen current Personnel access or the stricter INSERT/UPDATE eligibility above.
+CREATE POLICY attendance_allowance_result_owner_read ON attendance_allowance_result FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
+--> statement-breakpoint
 GRANT SELECT,INSERT,UPDATE ON attendance_allowance_result TO ai_hr_app;
 --> statement-breakpoint
 ALTER TABLE payroll_attendance_allowance_source ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE POLICY payroll_attendance_allowance_source_rls ON payroll_attendance_allowance_source FOR ALL USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app.can_admin_employment(employment_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app.can_admin_employment(employment_id));
+--> statement-breakpoint
+-- The bridge must see every previously owned source before checking current employee authority;
+-- hiding a moved employee's source would make an unsafe retry look like a successful empty transfer.
+CREATE POLICY payroll_attendance_allowance_source_owner_read ON payroll_attendance_allowance_source FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
 --> statement-breakpoint
 GRANT SELECT,INSERT,UPDATE,DELETE ON payroll_attendance_allowance_source TO ai_hr_app;
 --> statement-breakpoint
@@ -90,7 +98,7 @@ CREATE TABLE attendance_allowance_result_revision (
 --> statement-breakpoint
 ALTER TABLE attendance_allowance_result_revision ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY attendance_allowance_result_revision_read ON attendance_allowance_result_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app.can_admin_employment(employment_id));
+CREATE POLICY attendance_allowance_result_revision_read ON attendance_allowance_result_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
 --> statement-breakpoint
 CREATE POLICY attendance_allowance_result_revision_insert ON attendance_allowance_result_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app.can_admin_employment(employment_id));
 --> statement-breakpoint
@@ -121,6 +129,9 @@ CREATE TRIGGER attendance_allowance_component_guard BEFORE UPDATE ON payroll_bat
 -- the immutable calculation revisions and transfer attempt references.
 CREATE FUNCTION app.attendance_allowance_component_release() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+ IF EXISTS(SELECT 1 FROM payroll_attendance_allowance_source WHERE batch_id=OLD.batch_id AND employment_id=OLD.employment_id AND component_id=OLD.component_id AND NOT app.can_admin_employment(employment_id)) THEN
+  RAISE EXCEPTION 'Cannot release allowance sources outside your employee administrative scope';
+ END IF;
  UPDATE attendance_allowance_result SET status='superseded' WHERE id IN (
   SELECT result_id FROM payroll_attendance_allowance_source WHERE batch_id=OLD.batch_id AND employment_id=OLD.employment_id AND component_id=OLD.component_id
  );
