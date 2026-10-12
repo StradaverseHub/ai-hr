@@ -3207,7 +3207,7 @@ export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:s
     const creditIds=accruals.map(x=>x.lot.ledgerEntryId).filter((x):x is string=>!!x);
     const ledger=creditIds.length?await tx.select().from(leaveLedger).where(inArray(leaveLedger.id,creditIds)):[];
     const grantActors=await tx.select({event:{aggregateId:domainEvent.aggregateId,occurredAt:domainEvent.occurredAt,subjectEmploymentId:domainEvent.subjectEmploymentId,actorType:domainEvent.actorType},name:person.fullName}).from(domainEvent)
-      .leftJoin(appUser,sql`${appUser.id}::text = ${domainEvent.actorId}`).leftJoin(person,eq(person.id,appUser.personId))
+      .leftJoin(appUser,eq(appUser.id,domainEvent.actorId)).leftJoin(person,eq(person.id,appUser.personId))
       .where(and(inArray(domainEvent.subjectEmploymentId,empIds),eq(domainEvent.tenantId,ctx.tenantId)))
       .orderBy(asc(domainEvent.sequence));
     const claims=await tx.select({accrualId:replacementLeaveRequestDate.accrualId,reason:replacementLeaveRequest.reason})

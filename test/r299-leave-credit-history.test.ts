@@ -166,6 +166,7 @@ describe('Leave Credit history — derived, classified, and the running total is
     await adminCancelLeave(admin, { leaveRequestId: leave.leaveRequestId, reason: 'Plans changed' });
     const afterReturn=await listEarnedLeaveCredits(admin,{companyIds:[b.companyId],employmentId:emp.employmentId,today:TODAY});
     expect(afterReturn.rows).toHaveLength(4);expect(afterReturn.summary).toEqual({earned:4.5,used:0,expired:.5,available:3});
+    expect(afterReturn.rows.find(row=>row.workedDate===worked(2))).toMatchObject({actorName:'Mahmud Manager',actorIsSystem:false});
     expect(afterReturn.rows.find(row=>row.accrualId===usedCredit.accrualId)).toMatchObject({used:0,available:2,status:'available',usage:[]});
     expect(afterReturn.rows.find(row=>row.accrualId===toReverse.accrualId)).toMatchObject({status:'reversed',reversible:false});
     expect(afterReturn.rows.find(row=>row.accrualId===toExpire.accrualId)).toMatchObject({status:'expired',available:0,expired:.5});
