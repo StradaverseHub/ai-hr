@@ -3718,7 +3718,7 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
   return row ?? null;
 }
 
-/** All application writers use subject -> correction -> workflow/payroll -> audit order. Discovering
+/** Decision/cancellation writers use subject -> correction -> workflow/payroll -> audit order. Discovering
  * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
  * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
 async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
@@ -4171,6 +4171,10 @@ export async function decideAttendanceCorrection(
       const [restored] = await tx.execute(sql`select current_setting('app.user_id',true) as "userId",current_setting('app.roles',true) as roles,current_setting('app.grants',true) as grants`) as unknown as {userId:string;roles:string;grants:string}[];
       if (!isDeepStrictEqual(restored,restoreIdentity)) throw new Error('Delegated attendance authority was not restored. The decision was rolled back.');
     }
+
+    // Final approval emits its stage audit only after the effect, payroll/recalc work and delegated
+    // identity restoration. The original actor and database decidedAt were frozen with the decision.
+    if (workflowStage.finalApprovalEvent) await appendEvent(tx, workflowStage.finalApprovalEvent);
 
     await tx
       .update(attendanceCorrection)

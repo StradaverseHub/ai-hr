@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
 import { attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, employment, person, department, businessUnit, jobGrade, profileOption } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -153,6 +153,8 @@ export type AttendanceStageResult = {
     final: boolean;
     currentStage?: number;
     delegatedFinalStageIndex?: number;
+    /** Fixed audit data only. The final caller emits it after effect/payroll locks and identity restoration. */
+    finalApprovalEvent?: AppendEventArgs;
 };
 /** Called by EVERY decide path before touching attendance. Request row is already locked by the caller. */
 export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContext, p: {
@@ -209,10 +211,15 @@ export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContex
     const final = p.decision === 'rejected' || flow.currentStage === flow.stages.length - 1;
     const [actual] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(and(eq(employment.personId, ctx.personId), eq(employment.companyId, subject?.companyId ?? flow.companyId))).orderBy(asc(employment.id)).limit(1) : [];
     const [actualPerson] = ctx.personId ? await tx.select({ name: person.fullName }).from(person).where(eq(person.id, ctx.personId)).limit(1) : [];
-    await tx.insert(decision).values({ tenantId: ctx.tenantId, requestId: flow.id, employmentId: p.employmentId, stageIndex: flow.currentStage, decision: p.decision, assignedKind: assigned.kind, assignedEmploymentId: assigned.employmentId, actualUserId: actorOf(ctx).id ?? 'system', actualActorName: actualPerson?.name ?? actorOf(ctx).id ?? 'System', actualPersonId: ctx.personId ?? null, actualEmploymentId: actual?.id ?? null, actingMode: mode, remarks: p.remarks?.trim() || null, previousStatus: 'pending', resultingStatus: final ? p.decision : 'pending' });
+    const [recorded] = await tx.insert(decision).values({ tenantId: ctx.tenantId, requestId: flow.id, employmentId: p.employmentId, stageIndex: flow.currentStage, decision: p.decision, assignedKind: assigned.kind, assignedEmploymentId: assigned.employmentId, actualUserId: actorOf(ctx).id ?? 'system', actualActorName: actualPerson?.name ?? actorOf(ctx).id ?? 'System', actualPersonId: ctx.personId ?? null, actualEmploymentId: actual?.id ?? null, actingMode: mode, remarks: p.remarks?.trim() || null, previousStatus: 'pending', resultingStatus: final ? p.decision : 'pending' }).returning({ decidedAt: decision.decidedAt });
     await tx.update(request).set({ currentStage: final ? flow.stages.length : flow.currentStage + 1 }).where(eq(request.id, flow.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: p.correctionId, eventType: 'attendance-workflow.stage.decided', actor: actorOf(ctx), subjectEmploymentId: p.employmentId, payload: { workflowRequestId: flow.id, stageIndex: flow.currentStage, stageName: stage.name, decision: p.decision, assignedApprover: assigned, actingMode: mode, actualPersonId: ctx.personId ?? null, actualEmploymentId: actual?.id ?? null, remarks: p.remarks?.trim() || null, previousStatus: 'pending', resultingStatus: final ? p.decision : 'pending' } });
-    return { routed: true, final, currentStage: flow.currentStage, ...(final && p.decision === 'approved' && mode === 'delegate' ? { delegatedFinalStageIndex: flow.currentStage } : {}) };
+    const stageEvent: AppendEventArgs = { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: p.correctionId, eventType: 'attendance-workflow.stage.decided', actor: actorOf(ctx), subjectEmploymentId: p.employmentId, payload: { workflowRequestId: flow.id, stageIndex: flow.currentStage, stageName: stage.name, decision: p.decision, assignedApprover: assigned, actingMode: mode, actualPersonId: ctx.personId ?? null, actualEmploymentId: actual?.id ?? null, remarks: p.remarks?.trim() || null, previousStatus: 'pending', resultingStatus: final ? p.decision : 'pending', decidedAt: recorded.decidedAt.toISOString() } };
+    // Final approval still needs payroll locks. Taking the tenant audit lock here would invert payroll
+    // generation's batch -> audit order; carry immutable data to the fixed final-effect caller instead.
+    if (!final || p.decision !== 'approved') await appendEvent(tx, stageEvent);
+    return { routed: true, final, currentStage: flow.currentStage,
+        ...(final && p.decision === 'approved' ? { finalApprovalEvent: stageEvent } : {}),
+        ...(final && p.decision === 'approved' && mode === 'delegate' ? { delegatedFinalStageIndex: flow.currentStage } : {}) };
 }
 export async function attendanceWorkflowForTx(tx: Tx, correctionId: string) {
     const [flow] = await tx.select().from(request).where(eq(request.correctionId, correctionId));
