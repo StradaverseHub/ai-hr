@@ -57,4 +57,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0100](0100-installation-email-administration.md) | Installation identity email relay administration | Accepted |
 | [0101](0101-manual-identity-enrollment.md) | Administrator-created usernames and temporary passwords | Accepted |
 | [0102](0102-attendance-clock-corrections.md) | Audited clock corrections with retained raw evidence, effective-punch readers and payroll protection | Accepted |
+| [0105](0105-dated-schedule-rotations.md) | Immutable dated Schedule Group cycles, atomic allowed pools, shared calendar consumers and payroll protection | Built on a branch; verification pending |
 | [0108](0108-attendance-board-read-and-retry.md) | Clock retry identity, independent settings save scopes, earned-credit read model and Semi Flexi duration rules | Accepted; verification pending |

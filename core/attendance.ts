@@ -8,6 +8,7 @@
  * domain event (ADR-0006).
  */
 import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, type ClockChanges } from './attendance-punch-change';
+import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -627,7 +628,7 @@ export function workingShiftSchedule(input:{start:string;end:string;crosses:bool
   const shiftEnd=kind==='half'
     ? fmtTime((toMinutes(input.start)+Math.floor(shiftSpan(input.start,input.end,input.crosses)/2))%MINS_PER_DAY)
     : input.end;
-  const crosses=kind==='half'?false:input.crosses;
+  const crosses=kind==='half'?toMinutes(shiftEnd)<toMinutes(input.start):input.crosses;
   const normalMinutesOverride=input.normalMinutesOverride==null?null:
     kind==='half'?Math.floor(input.normalMinutesOverride/2):input.normalMinutesOverride;
   return {scheduledMinutes,normalMinutes:normalMinutesOverride??scheduledMinutes,
@@ -636,6 +637,8 @@ export function workingShiftSchedule(input:{start:string;end:string;crosses:bool
 
 type ResolvedSchedule = {
   /** Display-only identity of the shift selected by this exact date resolver. */
+  displayShiftId?: string | null;
+  scheduleDayKind?: 'full' | 'half' | 'off' | 'rest';
   displayShiftCode?: string | null;
   displayShiftName?: string | null;
   dayType: DayType;
@@ -999,6 +1002,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     earlyGraceMinutes: baseRule?.earlyGracePeriodMinutes ?? 0,
     crossesMidnight: false,
     source: 'policy',
+    // A policy half marker classifies the day but retains the legacy full required minutes.
+    scheduleDayKind: pol.halfWorkingDays.includes(isoWeekday(date)) ? 'half' : 'full',
   });
 
   // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
@@ -1048,6 +1053,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
       earlyGraceMinutes: earlyGrace ?? 0,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
+      scheduleDayKind: 'full',
+      displayShiftId: ra.shiftId,
       displayShiftCode: ra.code,
       displayShiftName: ra.name,
     };
@@ -1102,7 +1109,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     flexMin: shift.flexibleBreakMinutes,
     shiftType: shift.type,
   };
-  const [ds] = arrangement
+  const [legacyDs] = arrangement
     ? await memoized(memo, `shift|${arrangement.shiftId}`, () =>
         tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1),
       )
@@ -1114,6 +1121,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
           .where(eq(employment.id, employmentId))
           .limit(1),
       );
+  const rotations = await memoized(memo, 'rotations', () => rotationLookupTx(tx));
+  const rotation = rotations(groupRule?.id ?? legacyDs?.ruleId ?? defaultRule?.id, date);
+  const ds = rotation ? rotationScheduleRow(rotation, date) : legacyDs;
   if (ds) {
     // 07ebd04d (r331, migration 0483) — THE WORKING WEEK IS THE SCHEDULE GROUP'S WHEN IT HAS ONE.
     //
@@ -1131,7 +1141,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     // b8aa3466 — FOUR-WAY. Full and Half are both WORKING days of the default shift; Rest and Off are not.
     // A shift written before migration 0429 has empty half/off arrays, so this resolves Full-where-ticked
     // and Rest-otherwise — byte-identically to the two-way test it replaces.
-    const kind = shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
+    const kind = rotation?.day.kind ?? shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
     if (isWorkingDayKind(kind)) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
       // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
@@ -1181,6 +1191,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
         earlyGraceMinutes: earlyGrace ?? 0,
         crossesMidnight: crosses,
         source: 'default-shift',
+        scheduleDayKind: kind === 'half' ? 'half' : 'full',
+        displayShiftId: ds.shiftId,
         displayShiftCode: ds.code,
         displayShiftName: ds.name,
       };
@@ -1204,9 +1216,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     // allowlist — a second money-bearing change across core/payroll.ts and localization/, for a value the
     // statute already pays on the leg that exists. The day is REPORTED as a workday; it is PAID correctly.
     if (kind === 'off') {
-      return { ...policyBranch('workday'), scheduledMinutes: 0, normalMinutesOverride: null, source: 'default-shift-rest' };
+      return { ...policyBranch('workday'), scheduledMinutes: 0, normalMinutesOverride: null, scheduleDayKind: 'off', source: 'default-shift-rest' };
     }
-    return { ...policyBranch('rest_day'), source: 'default-shift-rest' };
+    return { ...policyBranch('rest_day'), scheduleDayKind: 'rest', source: 'default-shift-rest' };
   }
 
   if (isHoliday) return policyBranch('holiday');
@@ -1764,8 +1776,17 @@ export async function payableHoursForCycle(
       ...clampWeek(cachedRow.ruleId, cachedRow),
     };
   }
+  const clampRotations = await rotationLookupTx(tx);
   const clampOn = (d: string): ClampShift | null => {
     const p = pickArrangementOn(periods, d);
+    const raw = p ? ladderShifts.find(s => s.id === p.shiftId) : cachedRow;
+    const rotation = clampRotations(clampEmp?.ruleId ?? raw?.ruleId, d);
+    if (rotation) {
+      const row = rotationScheduleRow(rotation, d);
+      const sched = workingShiftSchedule({start:row.start,end:row.end,crosses:row.crosses,breakMinutes:row.brk,
+        roundingMinutes:row.rounding,normalMinutesOverride:row.override},'full');
+      return { ...row, net: sched.normalMinutes };
+    }
     return p ? (clampByShiftId.get(p.shiftId) ?? null) : cachedClamp;
   };
 
@@ -2297,6 +2318,7 @@ export async function weekLookupTx(
 }
 
 type DefaultShiftRow = {
+  rotationKind?: 'full' | 'half' | 'off' | 'rest';
   code: string | null;
   start: string;
   end: string;
@@ -2366,7 +2388,8 @@ function isScheduledOffDay(
   companyWorkingDay: boolean,
   deductAbsence: boolean,
 ): boolean {
-  if (!deductAbsence) return !companyWorkingDay;
+  // Explicit rotation opt-in uses its dated membership even before absence deductions are enabled.
+  if (!deductAbsence && !def?.rotationKind) return !companyWorkingDay;
   const c = classifyScheduleDay(date, roster, def, companyWorkingDay);
   return c === 'roster_rest' || c === 'default_rest' || c === 'policy_rest';
 }
@@ -2708,6 +2731,14 @@ async function attendanceDayRowsTx(
       if (!defaultShiftByEmp.has(dr.employmentId)) defaultShiftByEmp.set(dr.employmentId, { ...dr, ...weekFor(dr.employmentId, dr) });
     }
 
+    const gridRotations = await rotationLookupTx(tx);
+    const rawByEmp = new Map(profileShifts.map(s => [s.employmentId, s]));
+    for (const eid of empIds) {
+      const raw = byShiftId.get(shiftIdForDate.get(eid) ?? '') ?? rawByEmp.get(eid);
+      const rotation = gridRotations(groupByEmp.get(eid) ?? raw?.ruleId, date);
+      if (rotation) defaultShiftByEmp.set(eid, rotationScheduleRow(rotation, date));
+    }
+
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
     // → state → national), the SAME calendar leave + checkIn use — so a group/state holiday explains a
     // missing row exactly as it freezes the day-type. Only no-row employees need this context.
@@ -2886,6 +2917,7 @@ export function attendanceForEmploymentsRange(
       halfPattern:shift.halfPattern,offPattern:shift.offPattern,ruleId:shift.ruleId,rounding:shift.normalHoursRoundingMinutes})
       .from(shift).where(inArray(shift.id,shiftIds)) : [];
     const rangeWeek=await weekLookupTx(tx,null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]);
+    const rangeRotations = await rotationLookupTx(tx);
     const rowsByEmployment=new Map<string,typeof rows>();
     const rosterByEmployment=new Map<string,typeof rosters>();
     for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
@@ -2903,7 +2935,12 @@ export function attendanceForEmploymentsRange(
       const periods=arrangements.get(emp.id)??[];
       const shiftById=new Map<string,DefaultShiftRow>(rangeShifts.map(sr=>[sr.id,{...sr,...rangeWeek(sr.ruleId,sr,emp.ruleId)}]));
       const cachedDefShift=periods.length===0&&emp.defShiftId ? shiftById.get(emp.defShiftId) : undefined;
-      const defShiftOn=(d:string):DefaultShiftRow|undefined=>{const p=pickArrangementOn(periods,d);return p ? shiftById.get(p.shiftId) : cachedDefShift;};
+      const defShiftOn=(d:string):DefaultShiftRow|undefined=>{
+        const p=pickArrangementOn(periods,d);
+        const raw=rangeShifts.find(s=>s.id===(p?.shiftId??emp.defShiftId));
+        const rotation=rangeRotations(emp.ruleId??raw?.ruleId,d);
+        return rotation ? rotationScheduleRow(rotation,d) : p ? shiftById.get(p.shiftId) : cachedDefShift;
+      };
       const deductAbsence=deducted.has(employmentId);
     const out: AttendanceRangeRow[] = [];
     let d = from;
@@ -4292,6 +4329,20 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
   return 'workday';
 }
 
+/** Canonical date facts for attendance allowance previews. No measurement is recomputed here.
+ * Company-policy halfWorkingDays classify as half, while the policy branch retains
+ * its existing full scheduled-minute threshold. This seam never invents a duration. */
+export async function allowanceScheduleFactsTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<{
+  shiftId: string | null; kind: 'full' | 'half' | 'off' | 'rest' | 'holiday'; scheduledMinutes: number;
+}> {
+  const resolved = await scheduleFor(tx, employmentId, date, memo);
+  const kind = resolved.dayType === 'holiday' ? 'holiday'
+    : resolved.dayType === 'rest_day' ? 'rest'
+    : resolved.scheduleDayKind ?? (resolved.source === 'default-shift-rest' ? 'off' : 'full');
+  return { shiftId: resolved.displayShiftId ?? null, kind,
+    scheduledMinutes: kind === 'off' || kind === 'rest' ? 0 : resolved.normalMinutesOverride ?? resolved.scheduledMinutes };
+}
+
 /**
  * ce5ded11 (r362) · THE OT CALENDAR'S MONTH — one batched read, for the calendar-first Apply OT Plan screen.
  *
@@ -4436,9 +4487,12 @@ export function otPlanCalendarMonth(
     const shiftById = new Map<string, MonthShift>();
     for (const sr of periodShifts) shiftById.set(sr.id, { ...sr, ...week(sr.ruleId, sr) });
     const cachedDefault: MonthShift | undefined = cachedRow ? { ...cachedRow, ...week(cachedRow.ruleId, cachedRow) } : undefined;
+    const monthRotations = await rotationLookupTx(tx);
     const defaultOn = (d: string): MonthShift | undefined => {
       const p = pickArrangementOn(periods, d);
-      return p ? shiftById.get(p.shiftId) : cachedDefault;
+      const raw = p ? periodShifts.find(s => s.id === p.shiftId) : cachedRow;
+      const rotation = monthRotations(empRow[0].ruleId ?? raw?.ruleId,d);
+      return rotation ? rotationScheduleRow(rotation,d) : p ? shiftById.get(p.shiftId) : cachedDefault;
     };
 
     const hhmm = (t: string | null | undefined): string | null => (t == null ? null : t.slice(0, 5));
@@ -5943,41 +5997,6 @@ export async function addImportedPunchesBatchTx(
 //
 // Owned by feedback item 1c1b321a. core/attendance-recompute.ts is its only caller.
 
-/** The shift the recompute measured a day against, for the preview's Shift column. Keyed off the SOURCE
- *  scheduleFor itself reported, so it cannot name a shift the engine did not use: only the two shift
- *  branches have a shift at all, and the rest/policy branches honestly have none. */
-async function recomputeShiftCode(
-  tx: Tx,
-  employmentId: string,
-  date: string,
-  source: ResolvedSchedule['source'],
-): Promise<string | null> {
-  if (source === 'roster-shift') {
-    const [row] = await tx
-      .select({ code: shift.code })
-      .from(rosterAssignment)
-      .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
-      .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, date)))
-      .limit(1);
-    return row?.code ?? null;
-  }
-  if (source === 'default-shift') {
-    // Same ladder scheduleFor walked one call earlier: the dated arrangement in force on `date`
-    // (18504ca6), else employment.default_shift_id.
-    const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
-    const [row] = arrangement
-      ? await tx.select({ code: shift.code }).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
-      : await tx
-          .select({ code: shift.code })
-          .from(employment)
-          .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-          .where(eq(employment.id, employmentId))
-          .limit(1);
-    return row?.code ?? null;
-  }
-  return null;
-}
-
 /**
  * Re-derive ONE stored day against the schedule that applies to it TODAY, and hand back both the figures
  * and the exact column bag to write. Writes nothing itself.
@@ -6012,7 +6031,7 @@ export async function recomputeDayFigures(
   return {
     dayType: sched.dayType,
     source: sched.source,
-    shiftCode: await recomputeShiftCode(tx, p.employmentId, p.date, sched.source),
+    shiftCode: sched.displayShiftCode ?? null,
     otPreserved: keepOt,
     /** Exactly the columns a recompute may write: status, day type, the two totals and every stage-1
      *  figure. `check_in_at` / `check_out_at` are absent by construction — see the header above. */
@@ -6029,5 +6048,5 @@ export async function recomputeDayFigures(
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
-  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: await recomputeShiftCode(tx, employmentId, date, schedule.source) };
+  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
 }

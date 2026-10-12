@@ -41,6 +41,7 @@ const BOUNDARIES = [
   'core/attendance-clock-data',
   'core/attendance-punch-change',
   'core/attendance-rule',
+  'core/attendance-rotation',
   'core/clocking-location',
   // r424 (50ed39e1) — the clocking-file import: mapping library, line decisions, import logs. Pack
   // implementation like attendance-clock beside it, so a BOUNDARY (outside callers use the facade).
@@ -61,6 +62,7 @@ const ALWAYS_ALLOWED = [
   'core/attendance-clock-data.ts',
   'core/attendance-punch-change.ts',
   'core/attendance-rule.ts',
+  'core/attendance-rotation.ts',
   'core/clocking-location.ts',
   'core/attendance-clocking-import.ts', // r424 — pack implementation; imports core/attendance directly
   'app/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal

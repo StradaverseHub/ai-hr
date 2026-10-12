@@ -42,7 +42,7 @@ import {
   leaveRequestDate,
   leaveType,
 } from '../db/schema';
-import { resolveWorkingDaysIso, todayInKualaLumpur, workingDays } from './leave';
+import { leaveWorkingDaysCounterTx, todayInKualaLumpur } from './leave';
 import { holidayDatesFor } from './holidays';
 
 /** The ONE place to change when a per-company timezone lands. leave_request.created_at and
@@ -126,27 +126,22 @@ export async function sweepLeaveApprovalEscalations(
       )
       .orderBy(asc(leaveRequest.createdAt));
 
-    // Working-day roster is company-scoped (attendance_policy is one row per company) — resolve once per
-    // company for the pass, not per request. Holidays stay per REQUESTER employment (holidayDatesFor is
-    // employment-scoped and state holidays are real): the requester's calendar is already the one the
-    // leave itself is measured against, so a requester and an approver in different states may see
-    // slightly different holiday calendars — accepted, not a second calendar rule.
-    const rosterByCompany = new Map<string, number[]>();
+    // Dated rotation calendars differ between employees in the same company.
+    // Resolve once per requester; holidays remain scoped to that requester.
+    const rosterByEmployment = new Map<string, Awaited<ReturnType<typeof leaveWorkingDaysCounterTx>>>();
     const emptyRosterCompanies = new Set<string>();
     const firedThisRun = new Set<string>();
     let escalated = 0;
 
     for (const r of candidates) {
       if (r.escalateAfterDays == null) continue;
-      if (emptyRosterCompanies.has(r.companyId)) continue;
-      let roster = rosterByCompany.get(r.companyId);
+      let roster = rosterByEmployment.get(r.employmentId);
       if (!roster) {
-        roster = await resolveWorkingDaysIso(tx, r.employmentId);
-        rosterByCompany.set(r.companyId, roster);
+        roster = await leaveWorkingDaysCounterTx(tx,r.employmentId);
+        rosterByEmployment.set(r.employmentId,roster);
       }
-      if (roster.length === 0) {
-        // An attendance_policy row with NO working days: elapsed working days is permanently zero, so
-        // escalation can never fire — skip the company, count it, log it, never fail the sweep.
+
+      if (!roster.hasWorkingDates) {
         emptyRosterCompanies.add(r.companyId);
         console.warn(`leave-escalation: company ${r.companyId} has an empty working-day roster — skipped`);
         continue;
@@ -183,7 +178,7 @@ export async function sweepLeaveApprovalEscalations(
         startDate: clockDate,
         endDate: today,
       });
-      const elapsed = workingDays(addDaysIso(clockDate, 1), today, holidays, roster);
+      const elapsed = roster(addDaysIso(clockDate, 1), today, holidays);
       if (elapsed < r.escalateAfterDays) continue;
 
       // Once per (group, step) EVER — the domain_event log is the dedup ledger. groupKey coalesces the

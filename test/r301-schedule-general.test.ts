@@ -83,6 +83,8 @@ vi.mock('../lib/session', async (importOriginal) => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/admin/attendance/schedule/group/edit',
   redirect: (p: string) => {
     throw new RedirectError(p);
   },

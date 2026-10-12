@@ -160,12 +160,14 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'business_unit', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Last: departments, assignments and approval rules reference it.' },
 ];
 
-/** A foreign key INTO one of the tables deleted with the company. */
+/** A foreign key or retained UUID array INTO a table deleted with the company. */
 export type CompanyConfigDependent = {
   table: string;
   column: string;
   /** The cascaded table it references (by `id`). */
   references: string;
+  /** Absent = real foreign key. A retained UUID array is guarded by its owning table's trigger. */
+  referenceKind?: 'uuid-array';
   /**
    * `part`   — an ON DELETE CASCADE child that is part of the parent row (a shift's OT windows). Goes with it.
    * `blocks` — a row here pointing at one of the company's rows refuses the delete as `other`, unless the row
@@ -176,6 +178,8 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'attendance_rotation', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable rotation versions retain their Schedule Group. Deleting company-owned legacy setup must not erase saved calendar history.' },
+  { table: 'attendance_rotation', column: 'allowed_shift_ids', references: 'shift', referenceKind: 'uuid-array', effect: 'blocks', note: 'Saved allowed pools retain every source shift, including company-owned legacy templates. The shift retention trigger forbids deletion; refuse it before cascading company setup.' },
   { table: 'reward_unit', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reward review retains its business unit and financial approval history; it must never disappear with company setup.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },
@@ -247,8 +251,9 @@ export function companyDeleteBlockSqlText(idExpr: string): string {
     const outside = isCascadedTable(d.table)
       ? ` and ${dep}.${q(cascadedColumn(d.table))} is distinct from ${idExpr}`
       : '';
+    const link=d.referenceKind==='uuid-array' ? `${own}.id = ANY(${dep}.${q(d.column)})` : `${own}.id = ${dep}.${q(d.column)}`;
     groups.other.push(
-      `exists (select 1 from ${q(d.table)} ${dep} join ${q(d.references)} ${own} on ${own}.id = ${dep}.${q(d.column)} ` +
+      `exists (select 1 from ${q(d.table)} ${dep} join ${q(d.references)} ${own} on ${link} ` +
         `where ${own}.${q(cascadedColumn(d.references))} = ${idExpr}${outside})`,
     );
   });
