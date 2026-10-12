@@ -74,8 +74,16 @@ describe('guide walkthrough launch in Chromium', () => {
     </NextIntlClientProvider>);
     fireEvent.click(await screen.findByRole('button', { name: en.onboarding.next }));
     await waitFor(() => {
+      const spotlight = screen.getByRole('dialog').querySelector('[aria-hidden="true"]') as HTMLElement;
+      expect(spotlight).toBeTruthy();
+      expect(Number.parseFloat(spotlight.style.height)).toBeGreaterThan(2000);
+    });
+    await waitFor(() => {
       const heading = screen.getByRole('heading', { name: 'Prepare the claim' });
-      const bubble = heading.closest('[style]')!.getBoundingClientRect();
+      const element = heading.closest('[style]') as HTMLElement;
+      const bubble = element.getBoundingClientRect();
+      // Wait for the CSS position transition, rather than accepting the preceding centered card.
+      expect(bubble.top).toBeCloseTo(Number.parseFloat(element.style.top), 0);
       expect(bubble.height).toBeGreaterThan(100);
       expect(bubble.top).toBeGreaterThanOrEqual(13);
       expect(bubble.bottom).toBeLessThanOrEqual(window.innerHeight - 13);
