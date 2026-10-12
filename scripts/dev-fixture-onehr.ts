@@ -33,7 +33,10 @@ async function main(){
   else await owner.db.insert(s.tenantModule).values({tenantId,moduleCode,status:'active'});
  }
  const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenantId));
- const a:SessionContext={tenantId,userId:'22222222-2222-2222-2222-222222222222',roles:['hr_admin'],entitlements};
+ const [adminPerson]=await owner.db.insert(s.person).values({tenantId,fullName:'OneHR Administrator',primaryEmail:'onehr-admin@demo.test'}).returning();
+ const [admin]=await owner.db.insert(s.appUser).values({tenantId,personId:adminPerson.id,workosUserId:'onehr-fixture:admin',onboardedAt:new Date()}).returning();
+ await owner.db.insert(s.roleAssignment).values({tenantId,appUserId:admin.id,role:'hr_admin'});
+ const a:SessionContext={tenantId,userId:admin.id,personId:adminPerson.id,roles:['hr_admin'],entitlements};
  const {id:companyId}=await createCompany(a,{legalName:companyName,companyLabel:'ONEHR-DEV'});
  const [bu]=await owner.db.insert(s.businessUnit).values({tenantId,companyId,code:'ONEHR',name:'OneHR fixture team'}).returning();
  const [dept]=await owner.db.insert(s.department).values({tenantId,companyId,businessUnitId:bu.id,name:'OneHR fixture department'}).returning();
