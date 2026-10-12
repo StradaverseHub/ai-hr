@@ -1,0 +1,462 @@
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { and, asc, eq, sql } from 'drizzle-orm';
+import * as schema from '../db/schema';
+import { withTenant, type SessionContext } from '../db/client';
+import { hireEmployee, setReportingLine, changeEmploymentCompany } from '../core/org';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
+import { attendanceClockData } from '../core/attendance-clock-data';
+import { AttendancePayrollClosedError } from '../core/attendance-punch-change';
+import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, listAttendanceWorkflows, previewAttendanceWorkflow } from '../core/attendance-workflow';
+import { listAttendanceApplicationHistory, attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
+import { createBatch, generatePayslips } from '../packs/payroll/service';
+import { setCompensation } from '../core/comp';
+import type { AttendanceWorkflowInput } from '../lib/attendance-workflow';
+import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+let b: Base;
+const date = '2026-07-15';
+beforeAll(migrateTestDb);
+afterAll(closeAll);
+beforeEach(async () => { await resetDb(); b = await seedBase(); });
+async function hire(name: string, departmentId = b.deptA) {
+    return hireEmployee(adminCtx(b), { person: { fullName: name, primaryEmail: `${randomUUID()}@workflow.test` }, companyId: b.companyId, departmentId, employmentType: 'full_time', hiredOn: '2020-01-01' });
+}
+async function login(personId: string, role: 'manager' | 'employee'): Promise<SessionContext> {
+    const userId = await createAppUser(b.tenantId, personId, role);
+    return { ...adminCtx(b), userId, personId, roles: [role], grants: [{ role, companyId: b.companyId }] };
+}
+async function fixture() {
+    const a = adminCtx(b), worker = await hire('Workflow worker'), manager = await hire('Frozen manager', b.deptB);
+    await setReportingLine(a, { subordinateEmploymentId: worker.employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+    const mgr = await login(manager.personId, 'manager'), self = await login(worker.personId, 'employee');
+    await checkIn(a, { employmentId: worker.employmentId, date, time: '08:00', manual: true });
+    await checkOut(a, { employmentId: worker.employmentId, date, time: '17:00', manual: true });
+    return { a, worker, manager, mgr, self };
+}
+function input(stages: ('direct_manager' | 'hr_admin')[] = ['direct_manager', 'hr_admin'], overrides: Partial<AttendanceWorkflowInput> = {}): AttendanceWorkflowInput {
+    return { companyId: b.companyId, code: 'CLOCK', name: 'Clock review', description: 'Verified routing', applicationType: 'irregularity', priority: 100, criteria: { departmentIds: [b.deptA] }, stages: stages.map((kind, i) => ({ name: `Review ${i + 1}`, level: { kind, employmentId: null, alternates: [] } })), active: true, ...overrides };
+}
+async function enable(a: SessionContext, value = input()) {
+    const template = await saveAttendanceWorkflow(a, value);
+    await setAttendanceWorkflowEnabled(a, b.companyId, value.applicationType, true);
+    return template;
+}
+async function submit(a: SessionContext, employmentId: string) {
+    return (await requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Verified clock correction' })).correctionId;
+}
+const day = async (employmentId: string) => (await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId, employmentId), eq(schema.attendance.attendanceDate, date))))[0];
+const correction = async (id: string) => (await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, id)))[0];
+const decisions = async () => owner.db.select().from(schema.attendanceWorkflowDecision).orderBy(asc(schema.attendanceWorkflowDecision.stageIndex));
+const events = async (id: string, type: string) => owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, type))).orderBy(asc(schema.domainEvent.sequence));
+describe('Attendance approval routing and exactly-once effects', () => {
+    it('keeps routing off by default and preserves a pre-enablement pending request', async () => {
+        const { a, worker } = await fixture();
+        const id = await submit(a, worker.employmentId);
+        await enable(a);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        expect((await correction(id)).status).toBe('approved');
+        expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toHaveLength(0);
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+    });
+    it('freezes stages/version, advances without an effect, and applies only the final stage', async () => {
+        const { a, worker, mgr } = await fixture();
+        const template = await enable(a), id = await submit(a, worker.employmentId);
+        expect((await previewAttendanceWorkflow(a, input(), template.lineageId)).rows.map(r => r.employmentId)).toEqual([worker.employmentId]);
+        await saveAttendanceWorkflow(a, input(['hr_admin'], { name: 'Changed after submission' }), template.lineageId);
+        const first = await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0, remarks: 'Manager checked source' });
+        expect(first.status).toBe('pending');
+        expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+        const frozen = await attendanceApplicationDetail(a, [b.companyId], id);
+        expect(frozen?.workflow?.templateVersion).toBe(1);
+        expect(frozen?.workflow?.stages.map(s => s.name)).toEqual(['Review 1', 'Review 2']);
+        expect(frozen?.workflow?.decisions[0]).toMatchObject({ actualPersonId: mgr.personId, actualUserId: mgr.userId, actingMode: 'assigned', resultingStatus: 'pending', remarks: 'Manager checked source' });
+        await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toThrow(/assigned approver/);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 });
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+        expect(await decisions()).toHaveLength(2);
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
+        expect((await listAttendanceWorkflows(a, [b.companyId]))[0].version).toBe(2);
+    });
+    it('fails closed when enabled scope has no match and does not leave an orphan request', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin'], { criteria: { departmentIds: [b.deptB] } }));
+        await expect(submit(a, worker.employmentId)).rejects.toMatchObject({ code: 'noMatch' });
+        expect(await owner.db.select().from(schema.attendanceCorrection)).toHaveLength(0);
+    });
+    it('refuses overlapping same-priority activation and also rejects a database-injected tie at submission', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        await expect(saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'TIE' }))).rejects.toMatchObject({ code: 'overlap' });
+        await owner.db.insert(schema.attendanceWorkflowTemplate).values({ tenantId: b.tenantId, ...input(['hr_admin'], { code: 'INJECTED' }), lineageId: randomUUID(), version: 1 });
+        await expect(submit(a, worker.employmentId)).rejects.toMatchObject({ code: 'tie' });
+        expect(await owner.db.select().from(schema.attendanceCorrection)).toHaveLength(0);
+    });
+    it('refuses missing, inactive and cyclic managers rather than dropping a stage', async () => {
+        const { a, worker, manager } = await fixture();
+        await owner.db.update(schema.employment).set({ terminatedOn: '2021-01-01' }).where(eq(schema.employment.id, manager.employmentId));
+        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        await owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, manager.employmentId));
+        // Inject a graph cycle as owner: the ordinary org writer correctly refuses cycles itself.
+        await owner.db.insert(schema.reportingLine).values({ tenantId: b.tenantId, subordinateEmploymentId: manager.employmentId, managerEmploymentId: worker.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+    });
+    it('permits any one alternative, records HR acting on behalf, and bans self approval', async () => {
+        const { a, worker, self } = await fixture();
+        const value = input(['direct_manager']);
+        value.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }];
+        await enable(a, value);
+        const id = await submit(self, worker.employmentId);
+        await expect(decideAttendanceCorrection(self, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/own/);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect((await decisions())[0]).toMatchObject({ assignedKind: 'hr_admin', actingMode: 'assigned', actualUserId: a.userId });
+    });
+    it('serializes concurrent clicks against the stage shown to the user', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin', 'hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        const result = await Promise.allSettled([0, 1].map(() => decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })));
+        expect(result.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+        expect(await decisions()).toHaveLength(1);
+        expect((await correction(id)).status).toBe('pending');
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 });
+        await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toThrow(/already approved/);
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
+    });
+    it('keeps a frozen manager after an org move and allows scoped HR handoff', async () => {
+        const { a, worker, mgr } = await fixture();
+        await enable(a, input(['direct_manager']));
+        const id = await submit(a, worker.employmentId), next = await hire('New manager', b.deptB), nextCtx = await login(next.personId, 'manager');
+        await setReportingLine(a, { subordinateEmploymentId: worker.employmentId, managerEmploymentId: next.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+        await expect(decideAttendanceCorrection(nextCtx, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/assigned approver/);
+        await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect((await decisions())[0]).toMatchObject({ actingMode: 'administrator' });
+    });
+    it('separates company/type enablement and preserves an immutable rejected trail', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'rejected', rejectReason: 'Clock evidence is incomplete', expectedStageIndex: 0 });
+        expect((await correction(id)).rejectReason).toBe('Clock evidence is incomplete');
+        expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
+        await expect(cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'No longer needed' })).rejects.toThrow(/pending or approved/);
+        const ot = await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date, requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Separate application type' });
+        expect((await attendanceApplicationDetail(a, [b.companyId], ot.correctionId))?.workflow).toBeNull();
+        const [decision] = await decisions();
+        await expect(owner.db.update(schema.attendanceWorkflowDecision).set({ remarks: 'Tampered' }).where(eq(schema.attendanceWorkflowDecision.id, decision.id))).rejects.toThrow();
+        expect((await decisions())[0].remarks).toBe(decision.remarks);
+    });
+});
+async function delegationWorld(scope = 'attendance.correction', expired = false, departmentId?: string) {
+    const f = await fixture(), stand = await hire('Acting delegate', b.deptB), standSub = await hire('Delegate own report', b.deptB);
+    await setReportingLine(f.a, { subordinateEmploymentId: standSub.employmentId, managerEmploymentId: stand.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+    const delegate = await login(stand.personId, 'manager');
+    await setReportingLine(f.a, { subordinateEmploymentId: f.manager.employmentId, managerEmploymentId: stand.employmentId, lineType: 'delegate', validFrom: '2020-01-01', validTo: expired ? '2021-01-01' : null, reason: 'Temporary cover', scopes: [{ module: 'attendance', taskType: scope }], orgScope: departmentId ? { companyId: b.companyId, departmentId } : undefined });
+    return { ...f, delegate };
+}
+describe('request-bound delegated final effects', () => {
+    it('finalizes exactly once without granting the delegate personnel/pay visibility', async () => {
+        const { a, worker, manager, delegate } = await delegationWorld();
+        await enable(a, input(['direct_manager']));
+        const id = await submit(a, worker.employmentId);
+        const read = () => withTenant(delegate, tx => tx.select().from(schema.employment).where(eq(schema.employment.id, worker.employmentId)));
+        expect((await listAttendanceCorrections(delegate, { status: 'pending' })).map(row => row.id)).toContain(id);
+        await expect(withTenant(delegate, tx => tx.update(schema.attendanceCorrection).set({ reason: 'Forged delegate edit' }).where(eq(schema.attendanceCorrection.id, id)))).rejects.toThrow();
+        expect((await correction(id)).reason).toBe('Verified clock correction');
+        expect(await read()).toHaveLength(0); // Non-vacuity: the actor really has delegation-only access.
+        await decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect(await read()).toHaveLength(0);
+        expect(await withTenant(delegate, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(0);
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+        expect((await decisions())[0]).toMatchObject({ assignedEmploymentId: manager.employmentId, actualPersonId: delegate.personId, actualUserId: delegate.userId, actingMode: 'delegate' });
+        expect((await events(id, 'attendance-correction.effect.recorded'))[0].actorId).toBe(delegate.userId);
+        expect((await events(id, 'attendance-correction.approved'))[0].payload).toMatchObject({ effectAuthorityRestored: true, actualUserId: delegate.userId });
+        await expect(decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/already/);
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
+        const identity = await withTenant(delegate, tx => tx.execute(sql `select app.current_user_id() as id`));
+        expect(identity[0].id).toBe(delegate.userId);
+        expect(await withTenant(delegate, tx => tx.execute(sql `select * from app.attendance_workflow_effect_identity(${randomUUID()}::uuid,0)`))).toHaveLength(0);
+    });
+    it.each([['leave.request', false], ['attendance.correction', true]] as const)('refuses wrong task or expired delegation (%s / %s)', async (task, expired) => {
+        const { a, worker, delegate } = await delegationWorld(task, expired);
+        await enable(a, input(['direct_manager']));
+        const id = await submit(a, worker.employmentId);
+        await expect(decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
+        expect(await decisions()).toHaveLength(0);
+        expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
+    });
+    it('rolls back a failed final effect and restores the actor context', async () => {
+        const { a, worker, delegate } = await delegationWorld();
+        await enable(a, input(['direct_manager']));
+        const raw = await attendanceClockData(a, worker.employmentId, date);
+        const { correctionId: id } = await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date, reason: 'Stale after new clocking', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } });
+        await checkIn(a, { employmentId: worker.employmentId, date, time: '18:30', manual: true });
+        await expect(decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/Clock data changed/);
+        expect(await decisions()).toHaveLength(0);
+        expect((await correction(id)).status).toBe('pending');
+        expect(await withTenant(delegate, tx => tx.select().from(schema.employment).where(eq(schema.employment.id, worker.employmentId)))).toHaveLength(0);
+        expect((await withTenant(delegate, tx => tx.execute(sql `select app.current_user_id() as id`)))[0].id).toBe(delegate.userId);
+    });
+});
+describe('scoped application history and reversible cancellation', () => {
+    it('filters the canonical applications, paginates deterministically and refuses cross-tenant/admin access', async () => {
+        const { a, worker, self } = await fixture();
+        const id = await submit(a, worker.employmentId);
+        const history = await listAttendanceApplicationHistory(a, [b.companyId], { departmentId: b.deptA, applicationType: 'irregularity', query: id.slice(0, 8), pageSize: 10 });
+        expect(history.total).toBe(1);
+        expect(history.rows.map(r => r.id)).toEqual([id]);
+        expect((await listAttendanceApplicationHistory(a, [b.companyId], { departmentId: b.deptB })).total).toBe(0);
+        expect((await listAttendanceApplicationHistory(a, [b.companyId], { page: 2, pageSize: 10 })).rows).toEqual([]);
+        await expect(listAttendanceApplicationHistory(self, [b.companyId])).rejects.toThrow(/administrator/);
+        const other = adminCtx(await seedBase());
+        expect(await attendanceApplicationDetail(other, [b.companyId], id)).toBeNull();
+        expect(await withTenant(other, tx => tx.select().from(schema.attendanceWorkflowRequest))).toHaveLength(0);
+        await expect(listAttendanceApplicationHistory(a, [b.companyId], { submittedFrom: '2026-02-31' })).rejects.toThrow(/valid submission date/);
+    });
+    it('restores only the recorded effect, preserves decisions, and distinguishes cancelled from withdrawn', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const before = await day(worker.employmentId), id = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        const trail = await decisions();
+        expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Approved in error' })).toEqual({ status: 'cancelled', reversed: true });
+        const after = await day(worker.employmentId);
+        expect([after.checkInAt, after.checkOutAt, after.workedMinutes, after.otMinutes]).toEqual([before.checkInAt, before.checkOutAt, before.workedMinutes, before.otMinutes]);
+        expect(await decisions()).toEqual(trail);
+        expect((await correction(id))).toMatchObject({ status: 'cancelled', cancellationKind: 'cancelled', cancellationReason: 'Approved in error' });
+        expect((await listAttendanceApplicationHistory(a, [b.companyId], { status: 'cancelled' })).rows.map(r => r.id)).toEqual([id]);
+        expect((await listAttendanceApplicationHistory(a, [b.companyId], { status: 'withdrawn' })).total).toBe(0);
+        expect((await attendanceClockData(a, worker.employmentId, date)).rows.filter(p => !p.voidedAt).map(p => p.punchAt)).toEqual(['08:00:00', '17:00:00']);
+    });
+    it('never reverses later attendance edits or erases historical decisions', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const first = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(a, { correctionId: first, decision: 'approved', expectedStageIndex: 0 });
+        const second = await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date, checkIn: '10:00', checkOut: '19:00', reason: 'Later verified update' });
+        await decideAttendanceCorrection(a, { correctionId: second.correctionId, decision: 'approved', expectedStageIndex: 0 });
+        await expect(cancelAttendanceApplication(a, { correctionId: first, kind: 'withdrawn', reason: 'Would destroy later evidence' })).rejects.toThrow(/later approval|changed since/);
+        expect((await day(worker.employmentId)).checkInAt).toBe('10:00:00');
+        expect(await decisions()).toHaveLength(2);
+    });
+    it('refuses an approved reversal in closed payroll but permits withdrawing a pending request', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        await generatePayslips(a, { batchId });
+        await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
+        await expect(cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Closed payroll reversal' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+        const pending = await submit(a, worker.employmentId);
+        expect(await cancelAttendanceApplication(a, { correctionId: pending, kind: 'withdrawn', reason: 'Pending request not needed' })).toMatchObject({ reversed: false });
+        expect((await correction(id)).status).toBe('approved');
+    });
+});
+describe('live non-self approver validation', () => {
+    it('refuses a manager without a live login or role grant at activation and submission', async () => {
+        const { a, worker, mgr } = await fixture();
+        await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, mgr.userId!));
+        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        await owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, mgr.userId!));
+        await enable(a, input(['direct_manager']));
+        await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, mgr.userId!));
+        await expect(submit(a, worker.employmentId)).rejects.toMatchObject({ code: 'unresolved' });
+        expect(await owner.db.select().from(schema.attendanceCorrection)).toHaveLength(0);
+    });
+    it('refuses same-person routing across employments and a missing manager', async () => {
+        const { a, worker } = await fixture();
+        const rehire = await hireEmployee(a, { person: { id: worker.personId }, companyId: b.companyId, departmentId: b.deptB, employmentType: 'full_time', hiredOn: '2020-01-01' });
+        await owner.db.update(schema.reportingLine).set({ managerEmploymentId: rehire.employmentId }).where(eq(schema.reportingLine.subordinateEmploymentId, worker.employmentId));
+        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        await owner.db.update(schema.reportingLine).set({ supersededAt: new Date() }).where(eq(schema.reportingLine.subordinateEmploymentId, worker.employmentId));
+        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+    });
+    it('blocks sole-HR self dead ends on activation and rechecks on submission', async () => {
+        const { a, worker, mgr } = await fixture();
+        const ownHrUser = await createAppUser(b.tenantId, worker.personId, 'hr_admin');
+        const ownHr: SessionContext = { ...a, userId: ownHrUser, personId: worker.personId, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
+        const template = await enable(a, input(['hr_admin']));
+        await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, b.adminUserId));
+        await expect(submit(ownHr, worker.employmentId)).rejects.toMatchObject({ code: 'unresolved' });
+        await expect(saveAttendanceWorkflow(ownHr, input(['hr_admin']), template.lineageId)).rejects.toMatchObject({ code: 'unresolved' });
+        const alternative = input(['direct_manager']);
+        alternative.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }];
+        await saveAttendanceWorkflow(ownHr, alternative, template.lineageId);
+        const id = await submit(ownHr, worker.employmentId);
+        await expect(decideAttendanceCorrection(ownHr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/own/);
+        await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect((await correction(id)).status).toBe('approved');
+    });
+    it('requires valid active templates before enabling, selects priority and keeps disabled pending routes frozen', async () => {
+        const { a, worker, mgr } = await fixture();
+        await expect(setAttendanceWorkflowEnabled(a, b.companyId, 'irregularity', true)).rejects.toThrow(/activate valid/);
+        await enable(a);
+        await saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'FIRST', priority: 90 }));
+        const id = await submit(a, worker.employmentId);
+        expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.templateCode).toBe('FIRST');
+        await setAttendanceWorkflowEnabled(a, b.companyId, 'irregularity', false);
+        const legacy = await submit(a, worker.employmentId);
+        expect((await attendanceApplicationDetail(a, [b.companyId], legacy))?.workflow).toBeNull();
+        await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/assigned approver/);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+    });
+});
+describe('delegation scope, database guards and failed effects', () => {
+    it('refuses delegation outside the employee organisation and omits it from the inbox', async () => {
+        const { a, worker, delegate } = await delegationWorld('attendance.correction', false, b.deptB);
+        await enable(a, input(['direct_manager']));
+        const id = await submit(a, worker.employmentId);
+        expect((await listAttendanceCorrections(delegate, { status: 'pending' })).map(row => row.id)).not.toContain(id);
+        await expect(decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
+        expect(await decisions()).toHaveLength(0);
+    });
+    it('cannot mutate application payload or advance a stage directly under delegation-only RLS', async () => {
+        const { a, worker, delegate } = await delegationWorld();
+        await enable(a, input(['direct_manager', 'hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        const [flow] = await owner.db.select().from(schema.attendanceWorkflowRequest).where(eq(schema.attendanceWorkflowRequest.correctionId, id));
+        await expect(withTenant(delegate, tx => tx.update(schema.attendanceCorrection).set({ proposedCheckIn: '01:00', status: 'approved' }).where(eq(schema.attendanceCorrection.id, id)))).rejects.toThrow();
+        await expect(withTenant(delegate, tx => tx.update(schema.attendanceWorkflowRequest).set({ currentStage: 1 }).where(eq(schema.attendanceWorkflowRequest.id, flow.id)))).rejects.toThrow();
+        expect((await correction(id))).toMatchObject({ proposedCheckIn: '09:00:00', status: 'pending' });
+        expect(await decisions()).toHaveLength(0);
+        await decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        await expect(withTenant(delegate, tx => tx.update(schema.attendanceCorrection).set({ status: 'approved', decidedAt: new Date() }).where(eq(schema.attendanceCorrection.id, id)))).rejects.toThrow();
+        expect((await correction(id)).status).toBe('pending');
+    });
+    it('restores identity and rolls back the stage when PostgreSQL aborts the delegated effect subtransaction', async () => {
+        const { a, worker, delegate } = await delegationWorld();
+        await enable(a, input(['direct_manager']));
+        const id = await submit(a, worker.employmentId);
+        // Generated fixture UUID is the only interpolated value in this owner-only fault injector.
+        await owner.db.execute(sql.raw(`CREATE FUNCTION public.test_attendance_workflow_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.employment_id='${worker.employmentId}'::uuid THEN RAISE EXCEPTION 'Injected attendance SQL failure'; END IF; RETURN NEW; END $$`));
+        await owner.db.execute(sql `CREATE TRIGGER test_attendance_workflow_failure BEFORE UPDATE ON attendance FOR EACH ROW EXECUTE FUNCTION public.test_attendance_workflow_failure()`);
+        try {
+            await expect(decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
+            expect(await decisions()).toHaveLength(0);
+            expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+            expect((await correction(id)).status).toBe('pending');
+            expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
+            expect((await withTenant(delegate, tx => tx.execute(sql `select app.current_user_id() as id`)))[0].id).toBe(delegate.userId);
+            expect(await withTenant(delegate, tx => tx.select().from(schema.employment).where(eq(schema.employment.id, worker.employmentId)))).toHaveLength(0);
+        }
+        finally {
+            await owner.db.execute(sql `DROP TRIGGER test_attendance_workflow_failure ON attendance`);
+            await owner.db.execute(sql `DROP FUNCTION public.test_attendance_workflow_failure()`);
+        }
+        await decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
+    });
+});
+describe('all history filters and protected cancellation', () => {
+    it('applies company, business unit, grade, division, submission dates and status server-side', async () => {
+        const { a, worker } = await fixture();
+        const [unit] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'FILTER', name: 'History unit' }).returning();
+        const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: 'FILTER', name: 'History grade' }).returning();
+        await owner.db.update(schema.assignment).set({ businessUnitId: unit.id }).where(eq(schema.assignment.employmentId, worker.employmentId));
+        await owner.db.update(schema.employment).set({ gradeId: grade.id, orgDivision: 'History division' }).where(eq(schema.employment.id, worker.employmentId));
+        const id = await submit(a, worker.employmentId);
+        await owner.db.update(schema.attendanceCorrection).set({ createdAt: new Date('2026-07-16T16:15:00Z') }).where(eq(schema.attendanceCorrection.id, id));
+        const filters = { companyId: b.companyId, businessUnitId: unit.id, gradeId: grade.id, division: 'History division', submittedFrom: '2026-07-17', submittedTo: '2026-07-17', status: 'pending' as const };
+        expect((await listAttendanceApplicationHistory(a, [b.companyId], filters)).rows.map(row => row.id)).toEqual([id]);
+        for (const other of [{ businessUnitId: randomUUID() }, { gradeId: randomUUID() }, { division: 'Other division' }, { submittedFrom: '2026-07-18' }, { submittedTo: '2026-07-16' }, { status: 'approved' as const }, { companyId: randomUUID() }]) {
+            expect((await listAttendanceApplicationHistory(a, [b.companyId], other)).total).toBe(0);
+        }
+        const options = await attendanceApplicationFilterOptions(a, [b.companyId]);
+        expect(options.businessUnits.map(row => row.id)).toContain(unit.id);
+        expect(options.grades.map(row => row.id)).toContain(grade.id);
+    });
+    it('does not grant same-tenant sibling-company history from a forged company list', async () => {
+        const { a, worker } = await fixture();
+        const [company] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Private sibling' }).returning();
+        const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: company.id, name: 'Private team' }).returning();
+        const foreign = await hireEmployee(a, { person: { fullName: 'Other company worker', primaryEmail: `${randomUUID()}@workflow.test` }, companyId: company.id, departmentId: department.id, employmentType: 'full_time', hiredOn: '2020-01-01' });
+        const ownId = await submit(a, worker.employmentId);
+        const foreignId = await submit(a, foreign.employmentId);
+        const scoped: SessionContext = { ...a, roles: undefined, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
+        expect((await listAttendanceApplicationHistory(scoped, [b.companyId, company.id])).rows.map(row => row.id)).toEqual([ownId]);
+        expect(await attendanceApplicationDetail(scoped, [b.companyId, company.id], foreignId)).toBeNull();
+        await expect(saveAttendanceWorkflow(scoped, input(['hr_admin'], { companyId: company.id, criteria: { departmentIds: [department.id] } }))).rejects.toMatchObject({ code: 'scope' });
+    });
+    it('preserves a partial approval when the employee withdraws the pending application', async () => {
+        const { a, worker, mgr, self } = await fixture();
+        await enable(a);
+        const id = await submit(self, worker.employmentId);
+        await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        const trail = await decisions();
+        await cancelOwnAttendanceCorrection(self, { correctionId: id });
+        expect(await decisions()).toEqual(trail);
+        expect((await correction(id))).toMatchObject({ status: 'cancelled', cancellationKind: 'withdrawn' });
+        await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toThrow();
+        expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
+    });
+    it('protects dependent Leave Credits without erasing the attendance approval', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        const [credit] = await owner.db.insert(schema.toilAccrual).values({ tenantId: b.tenantId, employmentId: worker.employmentId, workedDate: date, dayType: 'workday', otMinutes: 60, daysCredited: '1.00', accrualBasis: 'hours_worked', expiresOn: '2027-07-15', source: 'hr_manual_grant' }).returning();
+        await expect(cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Would orphan a credit' })).rejects.toThrow(/dependent Leave Credit/);
+        expect((await correction(id)).status).toBe('approved');
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+        expect((await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.id, credit.id)))[0].status).toBe('active');
+        expect(await decisions()).toHaveLength(1);
+    });
+    it('rolls back final workflow approval and effects when payroll is closed', async () => {
+        const { a, worker, mgr } = await fixture();
+        await enable(a);
+        const id = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        await generatePayslips(a, { batchId });
+        await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
+        await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+        expect(await decisions()).toHaveLength(1);
+        expect((await correction(id)).status).toBe('pending');
+        expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+        expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.currentStage).toBe(1);
+    });
+});
+describe('usable any-one alternatives', () => {
+    it('keeps a usable HR alternative when the manager is unavailable, but never drops the stage', async () => {
+        const { a, worker, manager } = await fixture();
+        await owner.db.update(schema.employment).set({ terminatedOn: '2021-01-01' }).where(eq(schema.employment.id, manager.employmentId));
+        const any = input(['direct_manager']);
+        any.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }];
+        await enable(a, any);
+        const id = await submit(a, worker.employmentId);
+        const detail = await attendanceApplicationDetail(a, [b.companyId], id);
+        expect(detail?.workflow?.stages).toHaveLength(1);
+        expect(detail?.workflow?.stages[0].approvers).toEqual([{ kind: 'hr_admin', employmentId: null, name: 'HR administrators' }]);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+        expect(await decisions()).toHaveLength(1);
+    });
+});
+describe('current authority over a frozen company snapshot', () => {
+    it('lets destination-company HR finish after an entity move without rewriting the original workflow company', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['direct_manager']));
+        const id = await submit(a, worker.employmentId);
+        const [destination] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Destination entity' }).returning();
+        const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: destination.id, name: 'Destination team' }).returning();
+        await changeEmploymentCompany(a, { employmentId: worker.employmentId, newCompanyId: destination.id, departmentId: department.id });
+        const hrUser = await createAppUser(b.tenantId, (await hire('Destination HR', b.deptB)).personId, 'hr_admin');
+        await owner.db.update(schema.roleAssignment).set({ companyId: destination.id }).where(eq(schema.roleAssignment.appUserId, hrUser));
+        const destinationHr: SessionContext = { ...a, userId: hrUser, personId: null, roles: undefined, grants: [{ role: 'hr_admin', companyId: destination.id }] };
+        // Resolve the actual HR person rather than trusting a caller-provided decider employment.
+        const [actor] = await owner.db.select().from(schema.appUser).where(eq(schema.appUser.id, hrUser));
+        destinationHr.personId = actor.personId;
+        await decideAttendanceCorrection(destinationHr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        const detail = await attendanceApplicationDetail(destinationHr, [destination.id], id);
+        expect(detail?.companyId).toBe(destination.id);
+        expect(detail?.workflow?.companyId).toBe(b.companyId);
+        expect(detail?.workflow?.decisions[0]).toMatchObject({ actualUserId: hrUser, actingMode: 'administrator' });
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+    });
+});

@@ -17,6 +17,8 @@
  *   `core/attendance-clock.ts` (atomic private photo command and audited purge),
  *   `core/attendance-clock-read.ts` (own live status and effective clockings),
  *   `core/attendance-clock-data.ts` (authorised raw evidence),
+ *   `core/attendance-workflow.ts` (independent workflow versions and frozen decisions),
+ *   `core/attendance-application-history.ts` (scoped application read model),
  *   `core/attendance-punch-change.ts` (audited correction sets and payroll protection),
  *   `core/attendance-allowance.ts` + `core/attendance-allowance-context.ts` (attendance-triggered allowances), and
  *   `core/clocking-location.ts` — clocking sites ARE pack-owned: they exist solely for the clock
@@ -405,6 +407,7 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * admin-gated, so staff do not reach it.
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
+    { href: '/attendance/application-history', labelKey: 'attendanceApplicationHistory', icon: ClipboardList, adminOnly: true },
     // 22d67223 — ATTENDANCE BREAKDOWN DETAIL. The audit surface: every figure the engine recorded, day by
     // day, for one employee over a range. Deliberately the opposite of 570fd56e, which took the calculation
     // columns OFF Individual Attendance — one screen to review a month, one to interrogate it.
@@ -648,6 +651,10 @@ export const attendancePack: ModulePack = {
     { table: 'attendance', note: 'one row per employee-day: check-in/out, worked/OT minutes, status' },
     { table: 'attendance_punch', note: 'multi-punch trail behind each attendance day (R63–R65 clock portal)' },
     { table: 'attendance_correction', note: 'employee-requested corrections + approval decisions' },
+    { table: 'attendance_workflow_template', note: 'immutable Attendance approval template versions' },
+    { table: 'attendance_workflow_setting', note: 'explicit company/application-type routing enablement' },
+    { table: 'attendance_workflow_request', note: 'frozen resolved routing for a submitted correction' },
+    { table: 'attendance_workflow_decision', note: 'immutable stage decisions and actual actor metadata' },
     { table: 'attendance_policy', note: 'per-company working hours / grace / OT policy' },
     { table: 'attendance_rule', note: 'lateness / early-out / overtime rule library (88e94371)' },
     { table: 'attendance_rule_ot_row', note: 'per-rule OT rate rows' },

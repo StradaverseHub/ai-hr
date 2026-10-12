@@ -78,6 +78,9 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  { table: 'attendance_workflow_template', column: 'company_id', disposition: 'other', note: 'Immutable approval template versions are retained configuration history.' },
+  { table: 'attendance_workflow_setting', column: 'company_id', disposition: 'config', note: 'Attendance workflow enablement has no meaning after its company is deleted.' },
+  { table: 'attendance_workflow_request', column: 'company_id', disposition: 'employees', note: 'Submitted routing is employee decision history and must be retained.' },
   // ── employees: any row refuses ───────────────────────────────────────────────────────────────────────
   { table: 'employment', column: 'company_id', disposition: 'employees', note: 'The employment itself, terminated ones included: a former employee is still employment history.' },
   { table: 'assignment', column: 'company_id', disposition: 'employees', note: 'An employee\'s placement (department, position) over time. Exists only alongside an employment.' },

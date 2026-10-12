@@ -60,4 +60,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0103](0103-onehr-native-performance-and-rewards.md) | OneHR workflows in native Performance, immutable assessment provenance and explicit Rewards import | Accepted |
 | [0105](0105-dated-schedule-rotations.md) | Immutable dated Schedule Group cycles, atomic allowed pools, shared calendar consumers and payroll protection | Built on a branch; verification pending |
 | [0106](0106-attendance-allowance-periods.md) | Immutable allowance definitions and calculation evidence, canonical attendance facts and source-owned payroll transfers | Built on a branch; verification pending |
+| [0107](0107-attendance-workflow-and-application-history.md) | Frozen Attendance approval routes, request-bound delegated final effects and scoped application history | Implementation accepted; verification pending |
 | [0108](0108-attendance-board-read-and-retry.md) | Clock retry identity, independent settings save scopes, earned-credit read model and Semi Flexi duration rules | Accepted; verification pending |

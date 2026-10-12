@@ -9,6 +9,10 @@
  */
 import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, type ClockChanges } from './attendance-punch-change';
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
+import { isDeepStrictEqual } from 'node:util';
+import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { snapshotAttendanceWorkflowTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -81,6 +85,8 @@ import {
   attendanceCorrection,
   // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
   attendanceCorrectionAttachment,
+  domainEvent,
+  toilAccrual,
   attendancePolicy,
   // 07ebd04d (migration 0483) — the Schedule Group carries the WORKING WEEK; see weekLookupTx below.
   attendanceRule,
@@ -3374,7 +3380,8 @@ export async function requestAttendanceCorrection(
   // switch belongs to the Attendance Request Settings screen, which is deliberately stage two. An empty
   // string stores as NULL rather than as a blank note nobody wrote.
   const remark = (p.remark ?? '').trim() || null;
-  const requestKind = p.requestKind ?? null;
+  if (p.requestKind && ((p.requestKind === 'self_overtime') !== (!clockChanges && !checkIn && !checkOut && hasOt))) throw new Error('The application type does not match the requested clock or overtime changes.');
+  const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
   return withTenant(ctx, async (tx) => {
     if (clockChanges) {
@@ -3477,6 +3484,7 @@ export async function requestAttendanceCorrection(
         clockChanges,
       })
       .returning({ id: attendanceCorrection.id });
+    await snapshotAttendanceWorkflowTx(tx, ctx, row.id, p.employmentId, attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-correction',
@@ -3551,7 +3559,7 @@ export async function addAttendanceCorrectionAttachment(
       .select({ employmentId: attendanceCorrection.employmentId, status: attendanceCorrection.status })
       .from(attendanceCorrection)
       .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+      .limit(1).for('update');
     if (!req) throw new Error('attendance request not found (or not visible)');
     if (req.status !== 'pending') throw new Error('A file can only be attached while the request is waiting.');
     const [row] = await tx
@@ -3725,8 +3733,9 @@ export class MissingAttendanceRejectReasonError extends Error {
 
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
-  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; deciderEmploymentId?: string; today?: string },
+  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; deciderEmploymentId?: string; today?: string },
 ) {
+  ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
   return withTenant(ctx, async (tx) => {
     const [cor] = await tx
       .select()
@@ -3740,6 +3749,12 @@ export async function decideAttendanceCorrection(
     if (!['approved', 'rejected'].includes(p.decision)) throw new Error('Invalid attendance decision');
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
     if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
+    if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
+    // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
+    const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
+    const actualDeciderEmploymentId = actualDecider?.id ?? null;
+    const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex });
+    if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
 
 
     // 1e9145d4 — true when this approval was HELD ON THE PLAN rather than written to an attendance day.
@@ -3747,6 +3762,26 @@ export async function decideAttendanceCorrection(
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
 
+    // This fixed effect closure may assume only the frozen manager's live database authority.
+    // Audit/event contexts always retain the real delegate. No caller-provided callback executes here.
+    let restoreIdentity: { userId: string; roles: string; grants: string } | undefined;
+    let delegatedIdentity: {user_id:string;roles:string;grants:unknown} | undefined;
+    if (workflowStage.delegatedFinalStageIndex != null) {
+      const identities = await tx.execute(sql`select * from app.attendance_workflow_effect_identity(${cor.id}::uuid,${workflowStage.delegatedFinalStageIndex})`) as unknown as {user_id:string;roles:string;grants:unknown}[];
+      delegatedIdentity = identities[0];
+      if (!delegatedIdentity) throw new Error('The assigned manager no longer has a live login and attendance authority for this request. Ask an authorised HR administrator to complete this stage on their behalf.');
+      const settings = await tx.execute(sql`select current_setting('app.user_id',true) as "userId",current_setting('app.roles',true) as roles,current_setting('app.grants',true) as grants`) as unknown as {userId:string;roles:string;grants:string}[];
+      restoreIdentity = settings[0];
+      await tx.execute(sql`SAVEPOINT attendance_workflow_effect`);
+    }
+    try {
+      if (delegatedIdentity) {
+        await tx.execute(sql`select set_config('app.user_id',${delegatedIdentity.user_id},true),set_config('app.roles',${delegatedIdentity.roles},true),set_config('app.grants',${JSON.stringify(delegatedIdentity.grants)},true)`);
+      }
+      if (restoreIdentity) {
+        const [operationalSubject] = await tx.select({id:employment.id}).from(employment).where(eq(employment.id,cor.employmentId)).limit(1);
+        if (!operationalSubject) throw new Error('The assigned manager no longer has attendance calculation access to this employee. Ask an authorised HR administrator to complete the stage.');
+      }
     if (p.decision === 'approved') {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + cor.employmentId}, 0))`);
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
@@ -3821,6 +3856,7 @@ export async function decideAttendanceCorrection(
       // `attendance.amended` at all: its before/after is taken at the moment the plan LANDS, in
       // applyApprovedOtPlanTx, because that is the moment a figure actually moves.
       const beforeFigures = deferred ? null : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
+      const beforePunches = deferred ? [] : (await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).filter(row => !row.voidedAt).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
 
       let amendedId: string | null = null;
       let eventPayload: Record<string, unknown>;
@@ -4028,6 +4064,8 @@ export async function decideAttendanceCorrection(
         // to the write. `applyApprovedOtPlanTx` above can re-assert ot_minutes and its six split columns
         // after the upsert, so the row is the only thing that knows what the day now says.
         const afterFigures = await attendanceFiguresByIdTx(tx, amendedId);
+        const afterPunchFingerprint = clockFingerprint(await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate));
+        await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-correction',aggregateId:cor.id,eventType:'attendance-correction.effect.recorded',actor:actorOf(ctx),subjectEmploymentId:cor.employmentId,payload:{attendanceId:amendedId,date:cor.attendanceDate,before:beforeFigures,after:afterFigures,beforePunches,afterPunchFingerprint,clockChanged:hasClockCorrection}});
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'attendance',
@@ -4093,12 +4131,26 @@ export async function decideAttendanceCorrection(
       deferredApproval = deferred;
     }
 
+    } catch (effectError) {
+      // A SQL error aborts the subtransaction. Restore its savepoint before resetting identity.
+      if (restoreIdentity) await tx.execute(sql`ROLLBACK TO SAVEPOINT attendance_workflow_effect`);
+      throw effectError;
+    } finally {
+      if (restoreIdentity) await tx.execute(sql`select set_config('app.user_id',${restoreIdentity.userId},true),set_config('app.roles',${restoreIdentity.roles},true),set_config('app.grants',${restoreIdentity.grants},true)`);
+      if (restoreIdentity) await tx.execute(sql`RELEASE SAVEPOINT attendance_workflow_effect`);
+    }
+
+    if (restoreIdentity) {
+      const [restored] = await tx.execute(sql`select current_setting('app.user_id',true) as "userId",current_setting('app.roles',true) as roles,current_setting('app.grants',true) as grants`) as unknown as {userId:string;roles:string;grants:string}[];
+      if (!isDeepStrictEqual(restored,restoreIdentity)) throw new Error('Delegated attendance authority was not restored. The decision was rolled back.');
+    }
+
     await tx
       .update(attendanceCorrection)
       .set({
         status: p.decision,
         rejectReason,
-        decidedByEmploymentId: p.deciderEmploymentId ?? null,
+        decidedByEmploymentId: actualDeciderEmploymentId,
         decidedAt: sql`now()`,
       })
       .where(eq(attendanceCorrection.id, cor.id));
@@ -4112,7 +4164,11 @@ export async function decideAttendanceCorrection(
       payload: {
         decision: p.decision,
         rejectReason,
-        deciderEmploymentId: p.deciderEmploymentId ?? null,
+        deciderEmploymentId: actualDeciderEmploymentId,
+        actualUserId: actorOf(ctx).id,
+        actualPersonId: ctx.personId ?? null,
+        ...(restoreIdentity ? { effectAuthorityRestored: true } : {}),
+        remarks: p.remarks?.trim() || null,
         // 1e9145d4 — `overtime` tells a consumer which KIND of request was decided. The notification
         // registry needs it: this one event type covers both an overtime plan and a clock-time correction,
         // and a notice headed "Overtime plan approved" on somebody's forgotten clock-out would be wrong.
@@ -4140,10 +4196,11 @@ export function listAttendanceCorrections(
     const rows = await tx
       .select({
         id: attendanceCorrection.id,
+        requestKind: attendanceCorrection.requestKind,
         employmentId: attendanceCorrection.employmentId,
-        personId: employment.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode,
+        personId: sql<string>`subject.person_id`,
+        employee: sql<string>`subject.employee`,
+        employeeCode: sql<string | null>`subject.employee_code`,
         attendanceDate: attendanceCorrection.attendanceDate,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
@@ -4164,8 +4221,7 @@ export function listAttendanceCorrections(
         otApprovalCalculation: attendancePolicy.otApprovalCalculation,
       })
       .from(attendanceCorrection)
-      .innerJoin(employment, eq(employment.id, attendanceCorrection.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`, sql`true`)
       .leftJoin(
         attendance,
         and(
@@ -4173,20 +4229,22 @@ export function listAttendanceCorrections(
           eq(attendance.attendanceDate, attendanceCorrection.attendanceDate),
         ),
       )
-      .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
+      .leftJoin(attendancePolicy, sql`${attendancePolicy.companyId}=subject.company_id`)
       .where(
         and(
           opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
           opts.companyIds && opts.companyIds.length
-            ? inArray(employment.companyId, opts.companyIds)
+            ? sql`subject.company_id IN (${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`,`)})`
             : undefined,
         ),
       )
-      .orderBy(desc(attendanceCorrection.createdAt))
+      .orderBy(desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id))
       .limit(100);
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage
     // from the approver-facing list (a no-op for rows the caller sees in their own right).
-    return filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const visible = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
+    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null }));
   });
 }
 
@@ -5229,7 +5287,7 @@ export async function cancelPlannedOvertime(
       .select()
       .from(attendanceCorrection)
       .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+      .limit(1).for('update');
     if (!plan) throw new OvertimePlanWithdrawNotAllowedError('overtime plan not found (or not visible)');
     if (plan.clockChanges) throw new OvertimePlanWithdrawNotAllowedError('A clock correction cannot be withdrawn as an overtime plan.');
 
@@ -5263,7 +5321,7 @@ export async function cancelPlannedOvertime(
 
     await tx
       .update(attendanceCorrection)
-      .set({ status: 'cancelled' })
+      .set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: 'withdrawn' })
       .where(eq(attendanceCorrection.id, plan.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -5304,6 +5362,8 @@ export type MyAttendanceRequestRow = {
   createdAt: Date;
   /** True when a supporting file was attached (the file itself streams from its own route). */
   hasAttachment: boolean;
+  workflow?: Awaited<ReturnType<typeof import('./attendance-workflow').attendanceWorkflowForTx>>;
+  cancellationKind?: 'cancelled' | 'withdrawn' | null;
 };
 
 /**
@@ -5369,6 +5429,7 @@ export function myAttendanceCorrections(
         clockChanges: attendanceCorrection.clockChanges,
         remark: attendanceCorrection.remark,
         requestKind: attendanceCorrection.requestKind,
+        cancellationKind: attendanceCorrection.cancellationKind,
         status: attendanceCorrection.status,
         appliedAt: attendanceCorrection.appliedAt,
         decidedAt: attendanceCorrection.decidedAt,
@@ -5400,7 +5461,8 @@ export function myAttendanceCorrections(
           )
       ).map((r) => r.id),
     );
-    return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id) }));
+    const workflows = await attendanceWorkflowsForTx(tx, rows.map(r => r.id));
+    return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id), workflow: workflows.get(r.id) ?? null }));
   });
 }
 
@@ -5432,10 +5494,10 @@ export async function cancelOwnAttendanceCorrection(
       .select()
       .from(attendanceCorrection)
       .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+      .limit(1).for('update');
     if (!req) throw new Error('attendance request not found (or not visible)');
     await assertOwnCorrectionTx(tx, ctx, req.employmentId);
-    if (req.proposedCheckIn == null && req.requestedOtMinutes != null) {
+    if (attendanceApplicationType(req) === 'self_overtime') {
       throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
     }
     if (req.status !== 'pending') {
@@ -5452,7 +5514,7 @@ export async function cancelOwnAttendanceCorrection(
     }
     await tx
       .update(attendanceCorrection)
-      .set({ status: 'cancelled' })
+      .set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: 'withdrawn' })
       .where(eq(attendanceCorrection.id, p.correctionId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -6049,4 +6111,83 @@ export async function recomputeDayFigures(
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
   return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
+}
+
+
+/** Administrative cancellation/withdrawal. Historical decisions remain immutable. Approved results may
+ * be reversed only if the recorded effect still owns the day and no dependent leave credit exists. */
+export async function cancelAttendanceApplication(ctx: SessionContext, p: {
+    correctionId: string;
+    kind: 'cancelled' | 'withdrawn';
+    reason: string;
+}) {
+    if (!['cancelled', 'withdrawn'].includes(p.kind) || !p.reason?.trim() || p.reason.trim().length > 1000)
+        throw new Error('A cancellation reason of 1–1000 characters is required.');
+    return withTenant(ctx, async (tx) => {
+        const [cor] = await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id, p.correctionId)).limit(1).for('update');
+        if (!cor)
+            throw new Error('Attendance application not found or not visible.');
+        const [subject] = await tx.select({ personId: employment.personId, allowed: sql<boolean> `app.can_admin_employment(${employment.id})` }).from(employment).where(eq(employment.id, cor.employmentId)).limit(1);
+        if (!subject?.allowed || (!hasGrantFor(withEffectiveGrants(ctx), 'hr_admin') && !hasGrantFor(withEffectiveGrants(ctx), 'super_admin')))
+            throw new Error('Only an authorised HR administrator may cancel attendance applications.');
+        if (ctx.personId && ctx.personId === subject.personId)
+            throw new Error('You cannot administratively cancel your own attendance application.');
+        if (cor.status !== 'pending' && cor.status !== 'approved')
+            throw new Error('Only pending or approved applications can be cancelled or withdrawn.');
+        await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + cor.employmentId},0))`);
+        let reversed = false;
+        if (cor.status === 'approved' && (cor.appliedAt || cor.proposedCheckIn || cor.clockChanges)) {
+            const batches = await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
+            const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, sql `${attendanceCorrection.decidedAt}>${cor.decidedAt}`)).limit(1);
+            if (later.length)
+                throw new Error('A later approval affects this day. Use a new correction so its decisions are preserved.');
+            const credits = await tx.select({ id: toilAccrual.id }).from(toilAccrual).where(and(eq(toilAccrual.employmentId, cor.employmentId), eq(toilAccrual.workedDate, cor.attendanceDate), sql `${toilAccrual.status}<>'reversed'`)).limit(1);
+            if (credits.length)
+                throw new Error('This day has a dependent Leave Credit. Review and reverse that credit through Leave Credits before cancelling this application.');
+            const [day] = await tx.select({ id: attendance.id }).from(attendance).where(and(eq(attendance.employmentId, cor.employmentId), eq(attendance.attendanceDate, cor.attendanceDate))).limit(1).for('update');
+            const [effect] = await tx.select({ payload: domainEvent.payload }).from(domainEvent).where(and(eq(domainEvent.aggregateId, cor.id), eq(domainEvent.eventType, 'attendance-correction.effect.recorded'))).orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
+            type Figures = NonNullable<Awaited<ReturnType<typeof attendanceFiguresByIdTx>>>;
+            let data = effect?.payload as {
+                attendanceId: string;
+                before: Figures | null;
+                after: Figures;
+                beforePunches: {
+                    id: string;
+                    punchAt: string;
+                    direction: 'in' | 'out';
+                }[];
+                afterPunchFingerprint: string;
+                clockChanged: boolean;
+            } | undefined;
+            // A deferred overtime plan records its effect when it lands, in attendance.amended. It changes only OT.
+            if (!data && !cor.proposedCheckIn && !cor.clockChanges) {
+                const [landing] = await tx.select({ payload: domainEvent.payload, attendanceId: domainEvent.aggregateId }).from(domainEvent).where(and(eq(domainEvent.eventType, 'attendance.amended'), sql `${domainEvent.payload}->>'correctionId'=${cor.id}`, sql `${domainEvent.payload}->>'otPlanApplied'='true'`)).orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
+                if (landing) {
+                    const v = landing.payload as {
+                        before: Figures;
+                        after: Figures;
+                    };
+                    data = { attendanceId: landing.attendanceId, before: v.before, after: v.after, beforePunches: [], afterPunchFingerprint: '', clockChanged: false };
+                }
+            }
+            if (!day || !data || day.id !== data.attendanceId)
+                throw new Error('This historical application has no reversible effect record. Submit a new attendance correction.');
+            const current = await attendanceFiguresByIdTx(tx, day.id);
+            if (!isDeepStrictEqual(current, data.after))
+                throw new Error('Attendance has changed since this approval. Submit a new correction instead of reversing later changes.');
+            const raw = await punchesForCorrectionTx(tx, cor.employmentId, cor.attendanceDate);
+            if (data.clockChanged && clockFingerprint(raw) !== data.afterPunchFingerprint)
+                throw new Error('Clock data has changed since this approval. Submit a new correction instead.');
+            if (data.clockChanged)
+                await applyClockChangesTx(tx, ctx, { attendanceId: day.id, employmentId: cor.employmentId, date: cor.attendanceDate, reason: p.reason.trim(), correctionId: cor.id, changes: { version: 1, baseline: clockFingerprint(raw), entries: data.beforePunches } });
+            const restored = data.before ?? Object.fromEntries(Object.keys(AMENDED_FIGURE_COLUMNS).map(k => [k, k === 'status' ? 'absent' : k === 'dayType' ? data!.after.dayType : null])) as Figures;
+            await tx.update(attendance).set(restored).where(eq(attendance.id, day.id));
+            await markAttendancePayrollTx(tx, ctx, batches, cor.employmentId);
+            await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance', aggregateId: day.id, eventType: 'attendance.application.reversed', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { correctionId: cor.id, reason: p.reason.trim(), before: current, after: await attendanceFiguresByIdTx(tx, day.id) } });
+            reversed = true;
+        }
+        await tx.update(attendanceCorrection).set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: p.kind, cancellationReason: p.reason.trim() }).where(eq(attendanceCorrection.id, cor.id));
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
+        return { status: 'cancelled' as const, reversed };
+    });
 }

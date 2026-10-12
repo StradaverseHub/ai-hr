@@ -152,12 +152,14 @@ export async function approveCorrectionAction(formData: FormData) {
   const s = await getSession();
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  let outcomeStatus: string = decision;
   try {
-    await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, rejectReason: String(formData.get('rejectReason') ?? '') });
+    const outcome = await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, rejectReason: String(formData.get('rejectReason') ?? ''), expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined });
+    outcomeStatus = outcome.status;
   } catch (e) {
     fail(e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);
   }
-  done(`Correction ${decision}`, nav);
+  done(outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`, nav);
 }
 
 /**
@@ -264,7 +266,7 @@ async function dispatchBulkItem(
       });
       return;
     case 'attendance':
-      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId });
+      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex });
       return;
   }
 }

@@ -1,10 +1,12 @@
 import Link from 'next/link';
+import { attendanceApplicationType } from '@/lib/attendance-workflow';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment, reportingLinesFor } from '@/core/read';
 import { MY_ATTENDANCE_REQUEST_ROW_CEILING, myAttendanceCorrections } from '@/packs/attendance/service';
 import { Button, Card, ErrorBanner, PageHeader, pageWideCls, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
+import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myCancelAttendanceRequest } from '@/app/me/actions';
@@ -82,7 +84,7 @@ export default async function MyRequestStatusPage({
     size?: string;
   }>;
 }) {
-  const t = await getTranslations('me'), locale = await getLocale();
+  const t = await getTranslations('me'), historyT = await getTranslations('attendanceHistory'), locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
   const me = await myEmployment(s);
@@ -189,7 +191,7 @@ export default async function MyRequestStatusPage({
                   on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
               >
-                {f == null ? t('maFilterAll') : statusLabel(f, t, false)}
+                {f == null ? t('maFilterAll') : f === 'cancelled' ? historyT('cancelledFilter') : statusLabel(f, t, false)}
               </Link>
             );
           })}
@@ -259,9 +261,9 @@ export default async function MyRequestStatusPage({
                         )}
                       </td>
                       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{submittedOn(r)}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{approver}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{r.workflow ? <AttendanceWorkflowProgress workflow={r.workflow} status={r.status} /> : r.status === 'pending' ? approver : '—'}</td>
                       <td className="px-3 py-2.5">
-                        <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r))} />
+                        <Pill status={r.status} label={r.status === 'cancelled' && r.cancellationKind === 'cancelled' ? historyT('statuses.cancelled') : statusLabel(r.status, t, isOvertime(r))} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         {canCancel(r) ? (
@@ -284,7 +286,7 @@ export default async function MyRequestStatusPage({
                       <span className="font-semibold tabular-nums">{r.attendanceDate}</span>
                       <span className="ml-2 text-muted-foreground">{t(kindKey(r))}</span>
                     </div>
-                    <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r))} />
+                    <Pill status={r.status} label={r.status === 'cancelled' && r.cancellationKind === 'cancelled' ? historyT('statuses.cancelled') : statusLabel(r.status, t, isOvertime(r))} />
                   </div>
                   <p className="text-sm">
                     <span className="tabular-nums">{askedFor(r, t)}</span>
@@ -306,7 +308,7 @@ export default async function MyRequestStatusPage({
                         decided rows show nothing rather than a claim we cannot stand behind. */}
                     {r.status === 'pending' ? (
                       <span>
-                        {t('otGoesToColumn')} {approver}
+                        {t('otGoesToColumn')} {r.workflow?.stages[r.workflow.currentStage]?.approvers.map(a => a.name).join(' / ') ?? approver}
                       </span>
                     ) : null}
                     {r.hasAttachment && (
@@ -318,6 +320,7 @@ export default async function MyRequestStatusPage({
                       </a>
                     )}
                   </div>
+                  {r.workflow && <AttendanceWorkflowProgress workflow={r.workflow} status={r.status} />}
                   {canCancel(r) ? (
                     <div className="pt-1">
                       <CancelRequest id={r.id} label={t('otWithdraw')} on={r.attendanceDate} />
@@ -345,7 +348,7 @@ type RequestRow = Awaited<ReturnType<typeof myAttendanceCorrections>>[number];
  * proposed clock-in, and it is the distinction the label and the cancel rule both turn on — so it is
  * written once here rather than inline in each of the two faces.
  */
-const isOvertime = (r: RequestRow) => r.proposedCheckIn == null && r.requestedOtMinutes != null;
+const isOvertime = (r: RequestRow) => attendanceApplicationType(r) === 'self_overtime';
 
 /**
  * THE CANCEL RULE. A clock correction may only be cancelled while PENDING, because approving one rewrites

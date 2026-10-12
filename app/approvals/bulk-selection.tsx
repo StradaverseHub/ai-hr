@@ -198,7 +198,7 @@ function BulkActionBar({ sort, category }: { sort?: string; category?: string })
   const breakdown = useMemo(() => computeBulkBreakdown(selectedRows), [selectedRows]);
   // Snapshot the exact items to POST at the moment the dialog opens — read from current selection.
   const items = useMemo(
-    () => selectedRows.map((r) => ({ type: r.type, id: r.id })),
+    () => selectedRows.map((r) => ({ type: r.type, id: r.id, ...(r.expectedStageIndex != null ? {expectedStageIndex:r.expectedStageIndex} : {}) })),
     [selectedRows],
   );
 

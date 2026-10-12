@@ -165,6 +165,7 @@ export default async function AttendancePage({
                           <div className="flex justify-end gap-2">
                             <form action={decideCorrectionAction}>
                               <input type="hidden" name="correctionId" value={c.id} />
+                              <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
                               <input type="hidden" name="decision" value="approved" />
                               <Button type="submit" size="sm">
                                 {t('approve')}
@@ -172,6 +173,7 @@ export default async function AttendancePage({
                             </form>
                             <form action={decideCorrectionAction}>
                               <input type="hidden" name="correctionId" value={c.id} />
+                              <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
                               <input type="hidden" name="decision" value="rejected" />
                               <label className="block text-xs">{t('rejectReasonLabel')}<textarea name="rejectReason" required maxLength={1000} className="block w-full rounded border border-border bg-background p-2" /></label>
                               <Button type="submit" size="sm" variant="outline">

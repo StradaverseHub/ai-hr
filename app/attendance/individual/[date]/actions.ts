@@ -78,7 +78,8 @@ export async function adminCorrectAttendanceDayAction(formData: FormData) {
   }
 
   try {
-    await decideAttendanceCorrection(s, { correctionId: correctionId!, decision: 'approved' });
+    const outcome = await decideAttendanceCorrection(s, { correctionId: correctionId!, decision: 'approved', expectedStageIndex: 0 });
+    if (outcome.status === 'pending') redirect(`${back}&error=${encodeURIComponent('correctionPendingAnotherApprover')}`);
   } catch {
     // The request EXISTS and is pending — say so, rather than reporting a failure that lost the work.
     // The commonest cause by far is an administrator correcting their own day.
@@ -108,7 +109,7 @@ export async function saveAttendanceClockDataAction(formData: FormData) {
   } catch(e) {
     fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'correctionRejected');
   }
-  try {await decideAttendanceCorrection(s,{correctionId:correctionId!,decision:'approved'});}
+  try {const outcome=await decideAttendanceCorrection(s,{correctionId:correctionId!,decision:'approved',expectedStageIndex:0});if(outcome.status==='pending')fail('clockDataPending');}
   catch(e) {fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'clockDataPending');}
   revalidatePath('/attendance');
   revalidatePath('/attendance/individual');
