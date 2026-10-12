@@ -61,6 +61,15 @@ describe('settings navigation preserves independent form edits',()=>{
     await act(async()=>form.setAttribute('data-attendance-saved-receipt',secondNonce));
     expect(hasUnsavedChanges()).toBe(false);
   });
+  it('keeps the accepted submission identity when a busy form is submitted again',()=>{
+    fixture();const form=(screen.getByLabelText('first') as HTMLInputElement).closest('form')!;
+    form.setAttribute('data-attendance-save-scope','');
+    fireEvent.submit(form);const nonce=String(new FormData(form).get('__attendanceSaveNonce'));
+    expect(nonce).toMatch(/^[a-f0-9]{32}$/);form.setAttribute('aria-busy','true');
+    const repeated=new Event('submit',{bubbles:true,cancelable:true});form.dispatchEvent(repeated);
+    expect(repeated.defaultPrevented).toBe(true);expect(new FormData(form).get('__attendanceSaveNonce')).toBe(nonce);
+  });
+
   it('same-page receipts retain later edits and every other form baseline', async()=>{
     fixture();vi.mocked(window.confirm).mockReturnValue(true);
     const first=screen.getByLabelText('first') as HTMLInputElement,second=screen.getByLabelText('second') as HTMLInputElement,form=first.closest('form')!;

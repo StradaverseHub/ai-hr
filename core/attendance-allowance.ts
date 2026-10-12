@@ -535,7 +535,7 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
         }else candidate=true;
       }
       if(!candidate)continue;
-      const amount=allowanceMoney(evaluated.reduce((n,r)=>n+allowanceCents(r.amount),0n));
+      const amount=allowanceMoney(evaluated.reduce((n,r)=>n+allowanceCents(r.amount),BigInt(0)));
       rows.push({employmentId:input.employmentId,name:input.name,qualified:evaluated.some(r=>r.qualified),amount,reasons:[...new Set(evaluated.flatMap(r=>r.reasons))],perCriterion:[],inScope:true,periods:evaluated});
     }
   }

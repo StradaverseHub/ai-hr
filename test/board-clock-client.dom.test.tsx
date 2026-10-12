@@ -9,7 +9,9 @@ import { ClockPageClient } from '../app/attendance/clock/clock-client';
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 const initial={clockContext:'a'.repeat(64),date:clockDate,serverNow:clockDate+'T00:00:00Z',workedSeconds:0,clockedIn:false,openSince:null,locationValid:true,geofencingRequired:false,attendancePhotoSetting:'optional',captures:[],legacy:[],shift:{code:'SF',start:'07:00',end:'20:00'}} as unknown as React.ComponentProps<typeof ClockPageClient>['initial'];
 let selectedSetting:'required'|'optional'|'not_required';
-let post:ReturnType<typeof vi.fn>,lookup:ReturnType<typeof vi.fn>,getUserMedia:ReturnType<typeof vi.fn>;
+let post=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
+let lookup=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
+let getUserMedia=vi.fn<()=>Promise<MediaStream>>();
 const receipt={recordedAt:clockDate+'T01:00:00Z',direction:'in',id:'capture',date:clockDate};
 function mount(setting:'required'|'optional'|'not_required'='optional'){
   selectedSetting=setting;
@@ -19,9 +21,9 @@ beforeEach(()=>{
   selectedSetting='optional';
   Object.defineProperty(window,'isSecureContext',{value:true,configurable:true});
   Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition:vi.fn((ok)=>ok({coords:{latitude:3,longitude:101,accuracy:10}}))},configurable:true});
-  getUserMedia=vi.fn().mockRejectedValue(new DOMException('Denied','NotAllowedError'));
+  getUserMedia=vi.fn<()=>Promise<MediaStream>>().mockRejectedValue(new DOMException('Denied','NotAllowedError'));
   Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia},configurable:true});
-  post=vi.fn().mockImplementation(async()=>Response.json({receipt}));lookup=vi.fn().mockImplementation(async()=>Response.json({receipt}));
+  post=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>().mockImplementation(async()=>Response.json({receipt}));lookup=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>().mockImplementation(async()=>Response.json({receipt}));
   vi.stubGlobal('fetch',vi.fn((url:string,options?:RequestInit)=>{
     if(options?.method==='POST')return post(url,options);
     if(url.startsWith('/api/attendance/clock?'))return lookup(url,options);
@@ -29,15 +31,65 @@ beforeEach(()=>{
     return Promise.resolve(Response.json({...initial,attendancePhotoSetting:selectedSetting}));
   }));
 });
-afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 async function begin(){await waitFor(()=>expect((screen.getByRole('button',{name:en.attendance.clock.clockIn}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.clockIn}));}
+function allowCamera() {
+  const stop = vi.fn(), revoke = vi.fn(), photo = new Blob(['synthetic-camera-frame'], {type: 'image/jpeg'});
+  getUserMedia.mockResolvedValue({getTracks: () => [{stop}]} as unknown as MediaStream);
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({drawImage: vi.fn()} as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => callback(photo));
+  const NativeURL = URL;
+  vi.stubGlobal('URL', class extends NativeURL {
+    static createObjectURL() { return 'blob:synthetic-camera-frame'; }
+    static revokeObjectURL = revoke;
+  });
+  return {stop, revoke, photo};
+}
+async function takeFrame(setting: 'required' | 'optional') {
+  await begin();
+  if (setting === 'optional') fireEvent.click(screen.getByRole('button', {name: en.attendance.clock.takePhoto}));
+  await waitFor(() => expect(document.querySelector('video')).not.toBeNull());
+  Object.defineProperties(document.querySelector('video')!, {videoWidth: {value: 640}, videoHeight: {value: 480}});
+  fireEvent.click(screen.getByRole('button', {name: en.attendance.clock.takePhoto}));
+  await screen.findByAltText(en.attendance.clock.photoReview);
+}
 describe('Web Clocking optional camera and uncertain commands',()=>{
+  it.each(['required', 'optional'] as const)('reviews a granted %s camera frame before submitting its photo and showing the server time', async setting => {
+    const {stop, revoke} = allowCamera(); mount(setting); await takeFrame(setting);
+    expect(stop).toHaveBeenCalledTimes(1); expect(post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', {name: en.attendance.clock.confirmIn}));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const body = post.mock.calls[0][1]!.body as FormData;
+    expect(body.get('action')).toBe('in');
+    expect(body.get('photo')).toMatchObject({type: 'image/jpeg', size: new Blob(['synthetic-camera-frame']).size});
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(en.attendance.clock.savedIn.replace('{time}', '09:00:00')));
+    expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull();
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:synthetic-camera-frame'));
+  });
+  it('retains the exact captured photo body after an uncertain response and a missing receipt', async () => {
+    allowCamera(); post.mockRejectedValueOnce(new TypeError('Photo response lost'));
+    lookup.mockResolvedValueOnce(Response.json({error: 'notFound'}, {status: 404}));
+    mount(); await takeFrame('optional');
+    fireEvent.click(screen.getByRole('button', {name: en.attendance.clock.confirmIn}));
+    await screen.findByText(en.attendance.clock.pendingCommand);
+    const original = post.mock.calls[0][1]!.body as FormData, originalPhoto = original.get('photo');
+    expect(originalPhoto).not.toBeNull();
+    expect(screen.getByRole('button', {name: en.attendance.clock.retakePhoto})).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', {name: en.attendance.clock.checkSubmission}));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls[1][1]!.body).toBe(original);
+    expect((post.mock.calls[1][1]!.body as FormData).get('photo')).toBe(originalPhoto);
+    await waitFor(() => expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull());
+  });
   it('keeps optional Skip Photo after denied camera permission',async()=>{
     mount();await begin();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.takePhoto}));
     await screen.findByText(en.attendance.clock.cameraDenied);
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));
     await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));
     expect((post.mock.calls[0][1].body as FormData).has('photo')).toBe(false);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Clocked in at 09:00:00'));
+    expect(screen.getByRole('status')).not.toHaveTextContent('photo saved');
   });
   it('never opens a camera for Not Required',async()=>{
     mount('not_required');await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));expect(getUserMedia).not.toHaveBeenCalled();

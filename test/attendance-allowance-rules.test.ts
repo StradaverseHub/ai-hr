@@ -9,7 +9,7 @@ describe('Attendance allowance fixed period engine',()=>{
   it('keeps decimal cents exact and rejects implicit rounding, exponents, negative and overflow amounts',()=>{
     expect(allowanceMoney(allowanceCents('0.10')+allowanceCents('0.20'))).toBe('0.30');
     for(const value of ['1.005','1e3','-1','NaN','10000000000'])expect(()=>allowanceCents(value)).toThrow();
-    expect(()=>allowanceMoney(999999999999n+1n)).toThrow();
+    expect(()=>allowanceMoney(BigInt('999999999999')+BigInt(1))).toThrow();
   });
   it('applies one fixed amount monthly, once for each Sunday-owned week, and once per daily period',()=>{
     expect(evaluate('monthly').filter(p=>p.qualified).map(p=>p.amount)).toEqual(['10.05']);

@@ -39,7 +39,7 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   for(const key of touched.values()){
     const sources=await tx.select().from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.batchId,p.batchId),eq(payrollAttendanceAllowanceSource.employmentId,key.employmentId),eq(payrollAttendanceAllowanceSource.componentId,key.componentId)));
     const [current]=await tx.select().from(payrollBatchComponent).where(and(eq(payrollBatchComponent.batchId,p.batchId),eq(payrollBatchComponent.employmentId,key.employmentId),eq(payrollBatchComponent.componentId,key.componentId))).for('update');
-    const expected=allowanceMoney(sources.reduce((n,r)=>n+allowanceCents(r.amount),0n));
+    const expected=allowanceMoney(sources.reduce((n,r)=>n+allowanceCents(r.amount),BigInt(0)));
     if(current ? !sources.length||current.notes!==marker||current.amount!==expected : sources.length>0) throw new AllowancePayrollConflictError();
   }
   if(previous.length){
@@ -53,7 +53,7 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   for(const key of touched.values()){
     const sources=await tx.select().from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.batchId,p.batchId),eq(payrollAttendanceAllowanceSource.employmentId,key.employmentId),eq(payrollAttendanceAllowanceSource.componentId,key.componentId)));
     const where=and(eq(payrollBatchComponent.batchId,p.batchId),eq(payrollBatchComponent.employmentId,key.employmentId),eq(payrollBatchComponent.componentId,key.componentId));
-    const total=allowanceMoney(sources.reduce((n,r)=>n+allowanceCents(r.amount),0n));
+    const total=allowanceMoney(sources.reduce((n,r)=>n+allowanceCents(r.amount),BigInt(0)));
     const changed = !sources.length
       ? await tx.delete(payrollBatchComponent).where(where).returning({id:payrollBatchComponent.id})
       : await tx.insert(payrollBatchComponent).values({tenantId:ctx.tenantId,batchId:p.batchId,employmentId:key.employmentId,componentId:key.componentId,amount:total,notes:marker}).onConflictDoUpdate({target:[payrollBatchComponent.batchId,payrollBatchComponent.employmentId,payrollBatchComponent.componentId],set:{amount:total,notes:marker}}).returning({id:payrollBatchComponent.id});
