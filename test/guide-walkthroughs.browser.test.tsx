@@ -60,4 +60,20 @@ describe('guide walkthrough launch in Chromium', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it('keeps the controls in view when a spotlight section is taller than the viewport', async () => {
+    state.pathname = '/claims';
+    render(<NextIntlClientProvider locale="en" messages={en}>
+      <div data-tour="claims-compose" style={{ width: 400, height: 2000 }}>Long claim form</div>
+      <OnboardingTour tours={toursForRoles(['employee'])} autoStartTourId="claimsEmployee" />
+    </NextIntlClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: en.onboarding.next }));
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { name: 'Prepare the claim' });
+      const bubble = heading.closest('[style]')!.getBoundingClientRect();
+      expect(bubble.height).toBeGreaterThan(100);
+      expect(bubble.top).toBeGreaterThanOrEqual(13);
+      expect(bubble.bottom).toBeLessThanOrEqual(window.innerHeight - 13);
+    });
+  });
 });

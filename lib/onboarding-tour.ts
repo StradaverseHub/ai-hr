@@ -3,7 +3,8 @@
  *
  * The shell "welcome" tour orients a first-time user. Each module also has its own walkthrough that a
  * Knowledge Base guide can launch (ADR-0017) — these navigate to the module (`route`) and spotlight the
- * real controls there. Steps are data: a `data-tour` anchor (or null for a centered card), i18n keys, a
+ * real controls there. Steps are data: a `data-tour` anchor (or null for a centered card), translated keys
+ * or explicitly English guide copy, a
  * placement, an optional role filter, and an optional `route` to navigate to before the step shows.
  * The server resolves each tour for the caller's roles and hands the set to the client tour component.
  */

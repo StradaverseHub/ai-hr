@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
@@ -34,6 +34,8 @@ export function OnboardingTour({
   const [activeTourId, setActiveTourId] = useState<string | null>(autoStartTourId);
   const [index, setIndex] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [bubbleHeight, setBubbleHeight] = useState(240);
   // Client-only overlay — don't render during SSR (its position is measured from the live DOM).
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -42,6 +44,17 @@ export function OnboardingTour({
   const step = steps[index];
   const open = activeTourId !== null && steps.length > 0;
   const isLast = index === steps.length - 1;
+
+  // A long section or a small screen must not place Next/Done below the viewport.
+  useEffect(() => {
+    const el = bubbleRef.current;
+    if (!open || !mounted || !el) return;
+    const measure = () => setBubbleHeight(el.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, mounted, step]);
 
   // External (re)start with a chosen tour id.
   useEffect(() => {
@@ -139,24 +152,27 @@ export function OnboardingTour({
     if (typeof window === 'undefined') return {};
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const clampL = (l: number) => Math.max(GAP, Math.min(l, vw - BUBBLE_W - GAP));
+    const width = Math.min(BUBBLE_W, vw - GAP * 2);
+    const clampL = (l: number) => Math.max(GAP, Math.min(l, vw - width - GAP));
+    const clampT = (top: number) => Math.max(GAP, Math.min(top, vh - bubbleHeight - GAP));
+    const bounds = { maxHeight: vh - GAP * 2, overflowY: 'auto' as const };
     if (!box || !step?.target || step.placement === 'center') {
-      return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: BUBBLE_W };
+      return { ...bounds, top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width };
     }
     let top = box.top;
     let left = box.left;
     if (step.placement === 'right' || step.placement === 'left') {
-      const wantRight = step.placement === 'right' && box.left + box.width + GAP + BUBBLE_W < vw;
-      left = wantRight ? box.left + box.width + GAP : box.left - BUBBLE_W - GAP;
+      const wantRight = step.placement === 'right' && box.left + box.width + GAP + width < vw;
+      left = wantRight ? box.left + box.width + GAP : box.left - width - GAP;
       if (left < GAP) left = box.left + box.width + GAP;
-      top = Math.max(GAP, Math.min(box.top, vh - 240));
+      top = box.top;
     } else {
-      top = step.placement === 'top' ? box.top - 210 - GAP : box.top + box.height + GAP;
+      top = step.placement === 'top' ? box.top - bubbleHeight - GAP : box.top + box.height + GAP;
       if (top < GAP) top = box.top + box.height + GAP;
       left = clampL(box.left);
     }
-    return { top, left: clampL(left), width: BUBBLE_W };
-  }, [box, step]);
+    return { ...bounds, top: clampT(top), left: clampL(left), width };
+  }, [box, step, bubbleHeight]);
 
   if (!mounted || !open || !step) return null;
 
@@ -183,6 +199,7 @@ export function OnboardingTour({
       )}
 
       <div
+        ref={bubbleRef}
         className="absolute rounded-2xl border border-border bg-popover p-4 text-popover-foreground shadow-[var(--shadow-pop)] transition-[top,left] duration-200 ease-out motion-reduce:transition-none"
         style={bubbleStyle}
         onClick={(e) => e.stopPropagation()}
