@@ -27,6 +27,7 @@ import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runHrOrchestrator } from '../core/hr-orchestrator';
+import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
@@ -62,6 +63,8 @@ async function main() {
   let triageTenants = 0;
   let totalQueries = 0;
   let failures = 0;
+  let notificationCappedTenants = 0;
+  let notificationsCreated = 0;
   for (const t of tenants) {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. The group-wide
@@ -111,8 +114,13 @@ async function main() {
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
-      await dispatchNotifications(ctx);
-      if (orchestration.failed) failures++;
+      const projection = await drainNotificationProjection(limit => dispatchNotifications(ctx, { limit }));
+      notificationsCreated += projection.created;
+      if (projection.cappedOut) {
+        notificationCappedTenants++;
+        console.error('  Notification queue reached its batch limit; more work may remain.');
+      }
+      if (orchestration.failed || projection.cappedOut) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -174,6 +182,8 @@ async function main() {
         nudgesSent: totalNudges,
         nudgeOutcomesJudged: totalNudgesSettled,
         nudgeTenants,
+        notificationsCreated,
+        notificationCappedTenants,
       },
     });
   } catch (e) {

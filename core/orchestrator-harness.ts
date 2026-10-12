@@ -23,3 +23,20 @@ export async function runHarnessStep<T>(execute: () => Promise<T>): Promise<Step
   try { return { status: 'succeeded', value: await execute() }; }
   catch { return { status: 'failed' }; }
 }
+
+/** Case-history events share the notification stream. Drain bounded pages so they cannot delay reminders. */
+export async function drainNotificationProjection(
+  dispatch: (limit: number) => Promise<{ processed: number; created: number }>,
+) {
+  const pageSize = 1000;
+  let processed = 0;
+  let created = 0;
+  for (let page = 0; page < 50; page++) {
+    // Each page commits its own cursor. A thrown/uncertain page is not retried here.
+    const batch = await dispatch(pageSize);
+    processed += batch.processed;
+    created += batch.created;
+    if (batch.processed < pageSize) return { processed, created, cappedOut: false };
+  }
+  return { processed, created, cappedOut: true };
+}

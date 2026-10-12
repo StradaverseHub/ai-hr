@@ -55,6 +55,11 @@ readiness-nudge and claims-triage specialists under their existing switches, and
 again. Notification projection remains in the scheduled runner. An independent specialist failure
 does not suppress the other specialist and is reported as a failed run.
 
+The runner drains up to fifty notification pages of one thousand events each, using the existing
+committed cursor. This prevents case-history events from delaying reminders behind a single page.
+Hitting that bound is recorded as incomplete work in the job result. An uncertain page is not retried
+inside the pass; the next invocation resumes from the committed cursor.
+
 Readiness cases have four states:
 
 - `needs_input`: the employee can submit the missing information through an existing self-service path.

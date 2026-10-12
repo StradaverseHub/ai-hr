@@ -5,6 +5,8 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { reconcileReadinessCases, orchestrationQueue, runHrOrchestrator } from '../core/hr-orchestrator';
 import { sweepReadinessNudges } from '../core/readiness-nudge';
+import { drainNotificationProjection } from '../core/orchestrator-harness';
+import { dispatchNotifications } from '../core/notifications';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 describe('central HR orchestrator', () => {
@@ -134,5 +136,25 @@ describe('central HR orchestrator', () => {
       const events = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'));
       expect(events).toHaveLength(1);
     } finally { await owner.db.execute(sql`grant insert on agent_proposal to ai_hr_app`); }
+  });
+
+  it('projects reminders beyond the first page of coordination history', async () => {
+    await hire();
+    await setModule(base.tenantId, 'notifications', 'active');
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', true);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    await owner.db.insert(schema.domainEvent).values(Array.from({ length: 1001 }, () => ({
+      tenantId: base.tenantId, aggregateType: 'hr_orchestrator', aggregateId: base.tenantId,
+      eventType: 'orchestrator.readiness-checked', actorType: 'agent' as const, payload: {},
+    })));
+    const ctx = adminCtx(base);
+    await runHrOrchestrator(ctx);
+    const projected = await drainNotificationProjection(limit => dispatchNotifications(ctx, { limit }));
+    expect(projected.processed).toBeGreaterThan(1000);
+    expect(projected.cappedOut).toBe(false);
+    const [nudge] = await owner.db.select().from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'));
+    expect(nudge).toBeDefined();
+    expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.sourceEventId, nudge.id))).toHaveLength(1);
   });
 });
