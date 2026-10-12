@@ -7040,7 +7040,7 @@ export const attendanceAllowancePolicy = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
-    // v1 accepts only 'monthly' (app-side check). Text, not pgEnum — low-cardinality tag; Daily later.
+    // Monthly legacy rules remain valid; version-2 definitions additionally support weekly/daily.
     method: text('method').notNull().default('monthly'),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     payComponentId: uuid('pay_component_id')

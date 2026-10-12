@@ -53,5 +53,6 @@ describe('Attendance allowance fixed period engine',()=>{
     expect(allowanceEmployeeMatches(rules.employee,'x',facts)).toBe(false);rules.employee.logic='or';expect(allowanceEmployeeMatches(rules.employee,'x',facts)).toBe(true);
     const invalid=emptyAllowanceRules();invalid.attendance.criteria=[{field:'actualMinutes',operator:'gte',value:'8',unit:'days'}];expect(()=>validateAllowanceRules(invalid)).toThrow();
     expect(()=>validateAllowanceRules({...rules,employee:{...rules.employee,mode:'selected',employmentIds:[]}})).toThrow();
+    const inactive=emptyAllowanceRules();inactive.employee.criteria=[{field:'departmentId',operator:'in',values:[]}];expect(validateAllowanceRules(inactive).employee.criteria).toEqual([]);
   });
 });

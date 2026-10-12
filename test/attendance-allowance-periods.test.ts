@@ -76,11 +76,39 @@ describe('source-owned allowance periods', () => {
     expect(await componentAmount(batchId,f.employees[1],f.componentId)).toBeNull();
     expect(await sources(batchId)).toHaveLength(2);
     await expect(withTenant(f.ctx,tx=>tx.update(schema.payrollBatchComponent).set({amount:'99.99'}).where(and(eq(schema.payrollBatchComponent.batchId,batchId),eq(schema.payrollBatchComponent.employmentId,f.employees[0]))))).rejects.toThrow();
+    await expect(withTenant(f.ctx,tx=>tx.update(schema.payrollBatchComponent).set({employmentId:f.employees[1]}).where(and(eq(schema.payrollBatchComponent.batchId,batchId),eq(schema.payrollBatchComponent.employmentId,f.employees[0]))))).rejects.toThrow();
     await transferAllowancesToBatch(f.ctx,{policyId:id,batchId,expectedDigest:preview.inputDigest});
     expect(await sources(batchId)).toHaveLength(2);
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
     await Promise.all([1,2].map(()=>transferAllowancesToBatch(f.ctx,{policyId:id,batchId,expectedDigest:preview.inputDigest})));
     expect(await sources(batchId)).toHaveLength(2);
+    expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+  });
+
+  it('preserves evidence snapshots while explicitly identifying current profile and resolved schedule facts', async () => {
+    const f = await fixture(), p = await f.policy('EVIDENCE_SNAPSHOT');
+    await owner.db.update(schema.employment).set({employmentCategory:'permanent'}).where(eq(schema.employment.id,f.employees[0]));
+    const {batchId} = await createBatch(f.a,{companyId:b.companyId,payPeriod:month});
+    await transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId});
+    const before = await allowanceTransferHistory(f.ctx,p.id);
+    const snapshots = new Map(before.revisions.map(r=>[r.id,JSON.stringify(r.evidence)]));
+    expect(before.results.filter(r=>r.qualified)).toHaveLength(2);
+    const evidence = before.revisions.find(r=>r.amount==='0.10')!.evidence as {period:{employeeSelection:{asOf:string;facts:{employmentCategory:string};factSources:{employmentCategory:string;departmentId:string}};sourceDays:{factSources:{recordedDayType:string;canonicalKind:string}}[]}};
+    expect(evidence.period.employeeSelection.asOf).toBeTruthy();
+    expect(evidence.period.employeeSelection.facts.employmentCategory).toBe('permanent');
+    expect(evidence.period.employeeSelection.factSources).toMatchObject({employmentCategory:'current-personnel-profile-no-historical-version',departmentId:'dated-assignment'});
+    // Mutate the live fixture inputs after persistence: saved revisions must remain byte-for-byte stable.
+    await owner.db.update(schema.employment).set({employmentCategory:'contract'}).where(eq(schema.employment.id,f.employees[0]));
+    await owner.db.update(schema.attendance).set({dayType:'holiday'}).where(and(eq(schema.attendance.employmentId,f.employees[0]),eq(schema.attendance.attendanceDate,workedDates[0])));
+    const preview = await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month,batchId});
+    const changed = preview.rows[0].periods.find(r=>r.from===workedDates[0])!;
+    expect(changed.employeeSelection?.facts?.employmentCategory).toBe('contract');
+    expect(changed.sourceDays[0]).toMatchObject({kind:'holiday',factSources:{recordedDayType:'holiday',canonicalKind:'full',dayAndShift:'canonical-schedule-at-calculation'}});
+    await transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId,expectedDigest:preview.inputDigest});
+    const after = await allowanceTransferHistory(f.ctx,p.id);
+    expect(after.revisions.length).toBeGreaterThan(before.revisions.length);
+    for(const revision of after.revisions)if(snapshots.has(revision.id))expect(JSON.stringify(revision.evidence)).toBe(snapshots.get(revision.id));
+    expect(after.revisions.filter(r=>snapshots.has(r.id))).toHaveLength(snapshots.size);
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
   });
 
@@ -177,6 +205,7 @@ describe('source-owned allowance periods', () => {
     const [source] = await sources(batchId);
     await expect(withTenant(f.ctx,tx=>tx.update(schema.attendanceAllowanceResult).set({amount:'0.00'}).where(eq(schema.attendanceAllowanceResult.id,source.resultId)))).rejects.toThrow();
     await expect(withTenant(f.ctx,tx=>tx.delete(schema.payrollAttendanceAllowanceSource).where(eq(schema.payrollAttendanceAllowanceSource.id,source.id)))).rejects.toThrow();
+    await expect(withTenant(f.ctx,tx=>tx.update(schema.payrollAttendanceAllowanceSource).set({amount:source.amount}).where(eq(schema.payrollAttendanceAllowanceSource.id,source.id)))).rejects.toThrow();
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.50');
   });
 
@@ -195,6 +224,36 @@ describe('source-owned allowance periods', () => {
     await transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId:replacement.batchId});
     expect(await componentAmount(replacement.batchId,f.employees[0],f.componentId)).toBe('0.20');
     expect(await sources(replacement.batchId)).toHaveLength(2);
+  });
+
+  it('uses canonical per-date leave, partial leave, holiday and roster absence exclusions through an actual transfer', async () => {
+    const f = await fixture();
+    const workdays = monthDates(month).filter(date=>{const d=new Date(`${date}T00:00:00Z`).getUTCDay();return d>0&&d<6;});
+    await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId,f.employees[0]));
+    const [request] = await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:f.employees[0],leaveTypeId:b.annualLeaveTypeId,startDate:workdays[0],endDate:workdays[1],days:'1.00',durationType:'full_day',status:'approved'}).returning();
+    // The rejected interior date MUST remain absent even though its parent span is approved.
+    await owner.db.insert(schema.leaveRequestDate).values([
+      {tenantId:b.tenantId,leaveRequestId:request.id,subjectEmploymentId:f.employees[0],leaveDate:workdays[0],days:'1.00',status:'approved'},
+      {tenantId:b.tenantId,leaveRequestId:request.id,subjectEmploymentId:f.employees[0],leaveDate:workdays[1],days:'1.00',status:'rejected',rejectReason:'Fixture rejection'},
+    ]);
+    await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:f.employees[0],leaveTypeId:b.annualLeaveTypeId,startDate:workdays[2],endDate:workdays[2],days:'0.50',durationType:'half_day_am',status:'approved'});
+    await owner.db.insert(schema.rosterAssignment).values({tenantId:b.tenantId,employmentId:f.employees[0],shiftDate:workdays[3],isRestDay:true});
+    await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:workdays[4],name:'Allowance fixture holiday'});
+    const expectedAbsences = workdays.length-4; // one approved date, one partial day, one rest day, one holiday
+    const rules = emptyAllowanceRules();
+    rules.employee = f.rules.employee;
+    rules.attendance.criteria = [{field:'absentDays',operator:'eq',value:String(expectedAbsences),unit:'days'}];
+    const p = await f.policy('ABSENCE_OWNER','77.77',{method:'monthly',rules});
+    const {batchId} = await createBatch(f.a,{companyId:b.companyId,payPeriod:month});
+    const preview = await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month,batchId});
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0].periods[0].metrics.absentDays).toBe(expectedAbsences);
+    expect(preview.rows[0].periods[0].eligibleDates).toContain(workdays[1]);
+    for(const excluded of [workdays[0],workdays[2],workdays[3],workdays[4]])expect(preview.rows[0].periods[0].eligibleDates).not.toContain(excluded);
+    expect(preview.rows[0].amount).toBe('77.77');
+    expect(await transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId,expectedDigest:preview.inputDigest})).toMatchObject({applied:1,gated:false});
+    expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('77.77');
+    expect(await sources(batchId)).toHaveLength(1);
   });
 
   it('keeps Attendance setup and previews available without Payroll while refusing a money transfer', async () => {
@@ -232,6 +291,7 @@ describe('source-owned allowance periods', () => {
     expect(invisible).toHaveLength(0);
     const [source] = await sources(batchId);
     await expect(withTenant(f.ctx,tx=>tx.insert(schema.payrollAttendanceAllowanceSource).values({...source,id:randomUUID(),periodKey:'forged'}))).rejects.toThrow();
+    await expect(withTenant(f.ctx,tx=>tx.update(schema.payrollAttendanceAllowanceSource).set({componentId:f.componentId}).where(eq(schema.payrollAttendanceAllowanceSource.id,source.id)))).rejects.toThrow();
     expect(await sources(batchId)).toHaveLength(2);
   });
 });

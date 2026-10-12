@@ -124,9 +124,8 @@
  * - **Cross-PACK edges (D9 — a pack importing payroll; the strict violations):**
  *   - `core/performance.ts` + `app/performance/[cycleId]/page.tsx` (the PERFORMANCE pack) — the
  *     comp-enactment bonus seam above (`setPayrollInput`) + a payroll read on the cycle detail page.
- *   - `core/attendance-allowance.ts` + `app/admin/attendance-allowance/page.tsx` (the ATTENDANCE
- *     pack) — the allowance-transfer seam reads `BatchNotDraftError` (core/payroll) and
- *     `setPayrollBatchComponent`/`UnsupportedBatchComponentError` (core/pay-components).
+ *   - Attendance allowance configuration and transfer now consume this pack's facade (ADR-0106);
+ *     their two direct-import debt entries were removed. Payroll owns the source projection.
  *   - `core/claims.ts` (the CLAIMS pack) — reads payroll batch-window VOCABULARY the other way
  *     (`resolveBatchScopeFilter`, `resolveBatchCutOffWindow`, `BatchScope` from core/payroll;
  *     `calendarWindowFor` from core/payroll-policy-config) to scope claims to a batch. The

@@ -18,7 +18,7 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).for('update');
   if(!batch||batch.companyId!==p.companyId||batch.payPeriod!==p.payMonth) throw new Error('The payroll run does not belong to this policy company and payment month');
   const allowed=await tx.execute(sql`select app.is_admin_for(${batch.companyId}) as allowed`);
-  if(!(allowed.rows[0] as {allowed?:boolean})?.allowed) throw new Error('Only an authorised payroll administrator may transfer allowances');
+  if(!(allowed[0] as {allowed?:boolean})?.allowed) throw new Error('Only an authorised payroll administrator may transfer allowances');
   if(batch.status==='closed'||(batch.status!=='draft'&&!(batch.status==='processed'&&p.reprocess))) throw new BatchNotDraftError();
   // Serialise across runs too. A retry cannot post a policy/month to two runs concurrently.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:attendance-allowance:${p.policyId}:${p.payMonth}`},0))`);
@@ -54,9 +54,10 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
     const sources=await tx.select().from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.batchId,p.batchId),eq(payrollAttendanceAllowanceSource.employmentId,key.employmentId),eq(payrollAttendanceAllowanceSource.componentId,key.componentId)));
     const where=and(eq(payrollBatchComponent.batchId,p.batchId),eq(payrollBatchComponent.employmentId,key.employmentId),eq(payrollBatchComponent.componentId,key.componentId));
     const total=allowanceMoney(sources.reduce((n,r)=>n+allowanceCents(r.amount),0n));
-    if(!sources.length) await tx.delete(payrollBatchComponent).where(where);
-    else await tx.insert(payrollBatchComponent).values({tenantId:ctx.tenantId,batchId:p.batchId,employmentId:key.employmentId,componentId:key.componentId,amount:total,notes:marker}).onConflictDoUpdate({target:[payrollBatchComponent.batchId,payrollBatchComponent.employmentId,payrollBatchComponent.componentId],set:{amount:total,notes:marker}});
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-batch-component',aggregateId:p.batchId,eventType:sources.length?'payroll-batch-component.set':'payroll-batch-component.removed',actor:actorOf(ctx),subjectEmploymentId:key.employmentId,payload:{batchId:p.batchId,componentId:key.componentId,source:'attendance-allowance',policyId:p.policyId,resultIds:sources.map(r=>r.resultId)}});
+    const changed = !sources.length
+      ? await tx.delete(payrollBatchComponent).where(where).returning({id:payrollBatchComponent.id})
+      : await tx.insert(payrollBatchComponent).values({tenantId:ctx.tenantId,batchId:p.batchId,employmentId:key.employmentId,componentId:key.componentId,amount:total,notes:marker}).onConflictDoUpdate({target:[payrollBatchComponent.batchId,payrollBatchComponent.employmentId,payrollBatchComponent.componentId],set:{amount:total,notes:marker}}).returning({id:payrollBatchComponent.id});
+    for(const input of changed)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-batch-component',aggregateId:input.id,eventType:sources.length?'payroll-batch-component.set':'payroll-batch-component.removed',actor:actorOf(ctx),subjectEmploymentId:key.employmentId,payload:{batchId:p.batchId,componentId:key.componentId,source:'attendance-allowance',policyId:p.policyId,resultIds:sources.map(r=>r.resultId)}});
   }
   if(batch.status==='processed'&&ids.length){
     const recalc=[...new Set([...(batch.recalcEmploymentIds??[]),...ids])];

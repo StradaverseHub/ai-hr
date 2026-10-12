@@ -36,6 +36,11 @@ references must be visible, administrable, active and available to the policy co
 are bounded to a calendar month plus the previous month's part of a Sunday-owned week, with a maximum
 of 2,000 company employments. Excess candidates refuse rather than silently disappear.
 
+Each result snapshots the employee selection date, evaluated facts and per-field source. Grade and
+category explicitly identify the current Personnel profile without a historical version. The dated
+selection date does not imply historical grade/category eligibility. Later profile edits affect new
+calculations and leave stored immutable evidence revisions intact.
+
 Monthly periods are calendar months; daily periods are dates. Weekly periods are Monday–Sunday and
 belong only to the payment month containing Sunday. A fixed amount is paid once per qualifying period;
 there is no proration. A period starting before the policy's effective date is excluded completely.
@@ -49,6 +54,12 @@ Attendance pack's canonical dated schedule resolver, including rotations and act
 identity. Recorded holiday/rest day types remain frozen. Full/half and shift applicability are current
 resolved schedule facts, not a reconstruction of historic traces: old traces contain no shift ID. The
 result snapshots the resolved source days and measurements when the administrator recalculates.
+Source-day evidence includes the raw recorded day type and separately named canonical kind/shift at
+calculation. The canonical `absenceBreakdownByEmployment` owner resolves per-date approvals, partial
+leave, holiday, roster and tenure exclusions; the allowance engine does not infer leave from request
+spans. V2 opts into its scheduled semantics while legacy monthly policies keep their prior helper.
+These canonical reads are currently performed per date within the bounded period window; a shared
+bulk date-map contract would be needed to reduce their query cost without duplicating absence rules.
 
 Money uses integer cents and exact decimal serialization. Unsupported, archived, non-payable or
 formula-driven pay codes refuse; an Earning maps to an allowance code and a Deduction to a deduction
@@ -91,6 +102,5 @@ parent's shared unsaved-navigation component. Full typecheck, targeted DB/pure/g
 shadow migration and six-locale browser rendering remain required before release.
 
 The history screen shows the latest 100 attempts, 500 current results and 500 immutable revisions;
-all policy versions remain available. Older evidence is retained in the database. Labels exist in all
-six locale catalogs; detailed new policy explanations initially use English where a reviewed local
-translation is not yet available.
+all policy versions remain available. Older evidence is retained in the database. The complete new
+namespace is translated in all six locale catalogs; native-language copy review remains useful.

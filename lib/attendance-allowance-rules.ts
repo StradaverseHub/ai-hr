@@ -53,8 +53,8 @@ function threshold(value: unknown, unit: AllowanceAttendanceCriterion['unit']): 
 export function validateAllowanceRules(raw: unknown): AllowanceRules {
   const r = bag(raw), e = bag(r.employee), a = bag(r.attendance);
   if (r.v !== 2 || !['all', 'selected', 'criteria'].includes(String(e.mode))) throw new Error('Unknown allowance rules version or employee selection');
-  const employmentIds = ids(e.employmentIds);
-  const employeeCriteria = list(e.criteria, 30).map(rawCriterion => {
+  const employmentIds = e.mode === 'selected' ? ids(e.employmentIds) : [];
+  const employeeCriteria = e.mode === 'criteria' ? list(e.criteria, 30).map(rawCriterion => {
     const c = bag(rawCriterion);
     if (!ALLOWANCE_EMPLOYEE_FIELDS.includes(c.field as AllowanceEmployeeField) || !['in', 'notIn'].includes(String(c.operator))) throw new Error('Unsupported employee condition');
     const values = [...new Set(list(c.values, 2000).map(x => {
@@ -66,7 +66,7 @@ export function validateAllowanceRules(raw: unknown): AllowanceRules {
     if (c.field === 'status' && values.some(x => !['active', 'terminated'].includes(x))) throw new Error('Unknown employee status');
     if (c.field === 'employmentType' && values.some(x => !['full_time', 'part_time', 'contract', 'intern'].includes(x))) throw new Error('Unknown employment type');
     return { field: c.field as AllowanceEmployeeField, operator: c.operator as 'in' | 'notIn', values };
-  });
+  }) : [];
   if (e.mode === 'selected' && !employmentIds.length) throw new Error('Select at least one employee');
   if (e.mode === 'criteria' && !employeeCriteria.length) throw new Error('Add at least one employee condition');
   const dayKinds = [...new Set(list(a.dayKinds, 5).map(x => {
@@ -116,9 +116,10 @@ export type AllowanceDay = {
   lateMinutes: number | null; earlyOutMinutes: number | null;
   absentDays: number; attendanceDays: number; eligibleWorkingDays: number;
   complete: boolean;
+  factSources?: { measurements: 'recorded-attendance' | 'canonical-scheduled-absence'; recordedDayType: string | null; dayAndShift: 'canonical-schedule-at-calculation'; canonicalKind: AllowanceDayKind };
 };
 export type AllowanceMetricTrace = { field: AllowanceMetric; actual: number | null; pass: boolean; operator: AllowanceOperator; value: string; upper?: string; unit: AllowanceAttendanceCriterion['unit'] };
-export type AllowancePeriodEvaluation = AllowancePeriod & { qualified: boolean; amount: string; eligibleDates: string[]; attendanceIds: string[]; metrics: Record<AllowanceMetric, number | null>; criteria: AllowanceMetricTrace[]; reasons: string[]; sourceDays: AllowanceDay[] };
+export type AllowancePeriodEvaluation = AllowancePeriod & { qualified: boolean; amount: string; eligibleDates: string[]; attendanceIds: string[]; metrics: Record<AllowanceMetric, number | null>; criteria: AllowanceMetricTrace[]; reasons: string[]; sourceDays: AllowanceDay[]; employeeSelection?: { asOf:string|null; facts:AllowanceEmployeeFacts|null; pass:boolean; factSources:Record<AllowanceEmployeeField,string> } };
 export function evaluateAllowancePeriods(p: { method: AllowancePeriodMethod; month: string; amount: string; effectiveFrom: string; today: string; rules: AllowanceRules; days: AllowanceDay[] }): AllowancePeriodEvaluation[] {
   const amount = allowanceCents(p.amount);
   return allowancePeriods(p.method, p.month).map(period => {

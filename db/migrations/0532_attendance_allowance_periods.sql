@@ -108,7 +108,8 @@ DECLARE source_sum numeric; source_count integer;
 BEGIN
  SELECT count(*),coalesce(sum(amount),0) INTO source_count,source_sum
  FROM payroll_attendance_allowance_source WHERE batch_id=OLD.batch_id AND employment_id=OLD.employment_id AND component_id=OLD.component_id;
- IF source_count>0 AND (NEW.amount<>source_sum OR NEW.notes IS DISTINCT FROM 'Attendance allowance sources') THEN
+ IF source_count>0 AND (NEW.amount<>source_sum OR NEW.notes IS DISTINCT FROM 'Attendance allowance sources'
+   OR (NEW.tenant_id,NEW.batch_id,NEW.employment_id,NEW.component_id) IS DISTINCT FROM (OLD.tenant_id,OLD.batch_id,OLD.employment_id,OLD.component_id)) THEN
   RAISE EXCEPTION 'This payroll input is owned by attendance allowance sources; recalculate the policy first';
  END IF;
  RETURN NEW;
@@ -156,14 +157,17 @@ BEGIN
  END IF;
  IF TG_TABLE_NAME='payroll_attendance_allowance_source' THEN
   IF NOT EXISTS(SELECT 1 FROM payroll_batch b WHERE b.id=NEW.batch_id AND b.tenant_id=NEW.tenant_id AND b.company_id=NEW.company_id AND b.pay_period=NEW.pay_month AND b.status<>'closed')
-   OR NOT EXISTS(SELECT 1 FROM attendance_allowance_result r WHERE r.id=NEW.result_id AND r.tenant_id=NEW.tenant_id AND r.company_id=NEW.company_id AND r.policy_id=NEW.policy_id AND r.employment_id=NEW.employment_id AND r.period_key=NEW.period_key AND r.pay_month=NEW.pay_month AND r.amount=NEW.amount AND r.qualified)
+   OR NOT EXISTS(SELECT 1 FROM attendance_allowance_result r JOIN attendance_allowance_policy p ON p.id=r.policy_id WHERE r.id=NEW.result_id AND r.tenant_id=NEW.tenant_id AND r.company_id=NEW.company_id AND r.policy_id=NEW.policy_id AND r.employment_id=NEW.employment_id AND r.period_key=NEW.period_key AND r.pay_month=NEW.pay_month AND r.amount=NEW.amount AND r.qualified AND p.pay_component_id=NEW.component_id AND p.version=r.policy_version)
    OR NOT EXISTS(SELECT 1 FROM pay_component c WHERE c.id=NEW.component_id AND c.tenant_id=NEW.tenant_id) THEN
    RAISE EXCEPTION 'Invalid allowance payroll source identity';
   END IF;
  END IF;
- IF TG_TABLE_NAME='attendance_allowance_transfer' AND NEW.batch_id IS NOT NULL THEN
-  IF NOT EXISTS(SELECT 1 FROM payroll_batch b WHERE b.id=NEW.batch_id AND b.tenant_id=NEW.tenant_id AND b.company_id=NEW.company_id) THEN
-   RAISE EXCEPTION 'Invalid allowance transfer identity';
+ IF TG_TABLE_NAME='attendance_allowance_transfer' THEN
+  -- Keep access to batch_id inside this table branch: the other trigger records have no such field.
+  IF NEW.batch_id IS NOT NULL THEN
+   IF NOT EXISTS(SELECT 1 FROM payroll_batch b WHERE b.id=NEW.batch_id AND b.tenant_id=NEW.tenant_id AND b.company_id=NEW.company_id) THEN
+    RAISE EXCEPTION 'Invalid allowance transfer identity';
+   END IF;
   END IF;
  END IF;
  RETURN NEW;
@@ -184,7 +188,8 @@ BEGIN
  IF EXISTS(SELECT 1 FROM payroll_batch b WHERE b.id=OLD.batch_id AND b.status='closed') THEN
   RAISE EXCEPTION 'Closed payroll allowance sources are immutable';
  END IF;
- RETURN OLD;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER attendance_allowance_closed_source_guard BEFORE DELETE ON payroll_attendance_allowance_source FOR EACH ROW EXECUTE FUNCTION app.attendance_allowance_closed_source_guard();
+CREATE TRIGGER attendance_allowance_closed_source_guard BEFORE UPDATE OR DELETE ON payroll_attendance_allowance_source FOR EACH ROW EXECUTE FUNCTION app.attendance_allowance_closed_source_guard();

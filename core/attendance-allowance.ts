@@ -528,7 +528,9 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
         const employeeDates=input.days.filter(d=>d.date>=period.from&&d.date<=period.to).map(d=>d.date).sort();
         const date=employeeDates[employeeDates.length-1];
         const facts=date?input.factsByDate.get(date):undefined;
-        if(!facts||!allowanceEmployeeMatches(rules.employee,input.employmentId,facts)){
+        const pass=!!facts&&allowanceEmployeeMatches(rules.employee,input.employmentId,facts);
+        period.employeeSelection={asOf:date??null,facts:facts??null,pass,factSources:{companyId:'dated-company-segments',departmentId:'dated-assignment',businessUnitId:'dated-assignment-with-department-fallback',positionId:'dated-assignment',employmentType:'dated-assignment',gradeId:'current-personnel-profile-no-historical-version',employmentCategory:'current-personnel-profile-no-historical-version',status:'employment-tenure'}};
+        if(!pass){
           period.qualified=false;period.amount='0.00';period.reasons.push('employeeCriteriaFailed');
         }else candidate=true;
       }
