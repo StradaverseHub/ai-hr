@@ -95,7 +95,10 @@ describe('r378 private capture command integrity',()=>{
   await expect(captureEmployeeClock(x.ctx,{...x.intent,requestId:randomUUID()})).rejects.toThrow('approved clock correction');
   expect(await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,x.h.employmentId))).toEqual([corrected]);
   expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(2);
-  expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(2);
+  const punches=await owner.db.select().from(schema.attendancePunch).orderBy(schema.attendancePunch.punchAt,schema.attendancePunch.id);
+  expect(punches).toHaveLength(4);
+  expect(punches.filter(p=>p.voidedAt).map(p=>p.punchAt)).toEqual(['09:00:10','10:00:10']);
+  expect(punches.filter(p=>!p.voidedAt).map(p=>[p.punchAt,p.method])).toEqual([['08:00:00','admin'],['11:00:00','admin']]);
  });
  it('photo reads obey subject RLS and purge keeps receipt/digests with an audited unavailable marker',async()=>{
   const x=await subject(), receipt=await captureEmployeeClock(x.ctx,x.intent), stranger=await subject();

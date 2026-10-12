@@ -10,6 +10,8 @@ import { listEmployees } from '@/core/read';
 import {
   requestAttendanceCorrection,
   decideAttendanceCorrection,
+  ClockDataChangedError,
+  AttendancePayrollClosedError,
 } from '@/packs/attendance/service';
 
 /**
@@ -84,5 +86,32 @@ export async function adminCorrectAttendanceDayAction(formData: FormData) {
   }
 
   revalidatePath(back);
+  redirect(`${back}&corrected=1`);
+}
+
+/** A complete staged punch set goes through the existing request/decision workflow. */
+export async function saveAttendanceClockDataAction(formData: FormData) {
+  const {s,scopeIds}=await scopedAdmin();
+  const employmentId=String(formData.get('employmentId') ?? ''), date=String(formData.get('date') ?? '');
+  const back=`/attendance/individual/${encodeURIComponent(date)}?emp=${encodeURIComponent(employmentId)}`;
+  const fail=(key:string):never=>redirect(`${back}&error=${encodeURIComponent(key)}`);
+  const employees=await listEmployees(s,scopeIds);
+  if (!employees.some(e=>e.employmentId===employmentId)) fail('correctionForbidden');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail('correctionBadDate');
+  const reason=String(formData.get('reason') ?? '').trim();
+  if (!reason) fail('correctionReasonRequired');
+  let correctionId:string;
+  try {
+    const raw=String(formData.get('clockChanges') ?? '');
+    if(raw.length>40000) throw new Error('Invalid clock data');
+    ({correctionId}=await requestAttendanceCorrection(s,{employmentId,date,reason,clockChanges:JSON.parse(raw)}));
+  } catch(e) {
+    fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'correctionRejected');
+  }
+  try {await decideAttendanceCorrection(s,{correctionId:correctionId!,decision:'approved'});}
+  catch(e) {fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'clockDataPending');}
+  revalidatePath('/attendance');
+  revalidatePath('/attendance/individual');
+  revalidatePath('/attendance/my-records');
   redirect(`${back}&corrected=1`);
 }

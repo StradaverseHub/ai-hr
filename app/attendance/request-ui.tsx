@@ -131,9 +131,10 @@ export const CATEGORY_KEY = {
 
 /** What the request asked for, in one line. */
 export function askedFor(
-  r: { proposedCheckIn: string | null; proposedCheckOut: string | null; requestedOtMinutes: number | null },
+  r: { proposedCheckIn: string | null; proposedCheckOut: string | null; requestedOtMinutes: number | null; clockChanges?: { entries: {punchAt:string;direction:string}[] } | null },
   t: T,
 ): string {
+  if (r.clockChanges) return t('maAskedClockData', { count: r.clockChanges.entries.length });
   if (r.proposedCheckIn == null && r.requestedOtMinutes != null) {
     return t('maAskedOvertime', { hours: formatMinutesToHM(r.requestedOtMinutes) });
   }

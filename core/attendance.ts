@@ -7,6 +7,7 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
+import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, type ClockChanges } from './attendance-punch-change';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -117,17 +118,10 @@ export class CorrectedClockConflictError extends ClockConflictError {}
 /**
  * r434 — AN APPROVED CORRECTION OWNS THE DAY, FOR EVERY WRITER.
  *
- * decideAttendanceCorrection upserts the day's aggregate (check-in, check-out, worked, overtime) and never
- * writes attendance_punch; checkInTx/checkOutTx rebuild the aggregate FROM the punches. So any clocking
- * written on a corrected day recomputes it from the old punches and silently undoes the approved
- * correction — and corrected hours are paid. Web Clocking (captureEmployeeClockTx) and the file import
- * already refused such a day; the shared writers here did not, so the administrator's manual check-in /
- * check-out could. The rule is now stated once and called by all of them.
- *
- * The condition is the one Web Clocking has always used and is deliberately NOT widened: the day must
- * have stored punches (retained punches are evidence that must not recompute the corrected figures) AND an
- * approved correction that proposed a check-in. A day with no punches is an aggregate-only day, which the
- * writers already handle by anchoring on its own check-in.
+ * Clock corrections now reconcile the effective punch set while retaining superseded raw evidence.
+ * An approved correction still owns the day: subsequent employee, manual or imported clockings must
+ * not silently replace a human decision. That includes an approved removal of every clocking and
+ * aggregate-only legacy corrections. HR can submit a further correction through the same workflow.
  */
 export async function assertDayNotOwnedByCorrectionTx(tx: Tx, employmentId: string, date: string): Promise<void> {
   const [day] = await tx
@@ -136,8 +130,6 @@ export async function assertDayNotOwnedByCorrectionTx(tx: Tx, employmentId: stri
     .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
     .limit(1);
   if (!day) return;
-  const [punch] = await tx.select({ id: attendancePunch.id }).from(attendancePunch).where(eq(attendancePunch.attendanceId, day.id)).limit(1);
-  if (!punch) return;
   const [correction] = await tx
     .select({ id: attendanceCorrection.id })
     .from(attendanceCorrection)
@@ -146,7 +138,7 @@ export async function assertDayNotOwnedByCorrectionTx(tx: Tx, employmentId: stri
         eq(attendanceCorrection.employmentId, employmentId),
         eq(attendanceCorrection.attendanceDate, date),
         eq(attendanceCorrection.status, 'approved'),
-        isNotNull(attendanceCorrection.proposedCheckIn),
+        or(isNotNull(attendanceCorrection.proposedCheckIn), isNotNull(attendanceCorrection.clockChanges)),
       ),
     )
     .limit(1);
@@ -1834,7 +1826,7 @@ async function recomputeDayFromPunches(
   const punches = await tx
     .select({ punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
     .from(attendancePunch)
-    .where(eq(attendancePunch.attendanceId, p.attendanceId));
+    .where(and(eq(attendancePunch.attendanceId, p.attendanceId), isNull(attendancePunch.voidedAt)));
   const { set, result } = deriveDayFromPunchList(p.sched, p.attendanceDate, punches, p.fallbackCheckInAt);
   if (set) await tx.update(attendance).set(set).where(eq(attendance.id, p.attendanceId));
   return result;
@@ -1904,6 +1896,7 @@ export async function checkInTx(
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
     // written (policy OFF ⇒ no-op). Terminal imports bypass by construction (they never call checkIn).
@@ -1932,7 +1925,7 @@ export async function checkInTx(
       const [last] = await tx
         .select({ punchAt: attendancePunch.punchAt })
         .from(attendancePunch)
-        .where(eq(attendancePunch.attendanceId, existing.id))
+        .where(and(eq(attendancePunch.attendanceId, existing.id), isNull(attendancePunch.voidedAt)))
         .orderBy(desc(attendancePunch.punchAt))
         .limit(1);
       if (last && toMinutes(p.time) <= toMinutes(last.punchAt)) {
@@ -2042,6 +2035,7 @@ export async function checkOutTx(
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
     // deviceGateExempt escape hatch).
     if (!p.deviceGateExempt) await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
@@ -2093,7 +2087,7 @@ export async function checkOutTx(
     const existingPunches = await tx
       .select({ punchAt: attendancePunch.punchAt })
       .from(attendancePunch)
-      .where(eq(attendancePunch.attendanceId, rec.id));
+      .where(and(eq(attendancePunch.attendanceId, rec.id), isNull(attendancePunch.voidedAt)));
     const anchor = existingPunches.length
       ? existingPunches.reduce((a, b) => (toMinutes(b.punchAt) > toMinutes(a.punchAt) ? b : a)).punchAt
       : rec.checkInAt;
@@ -2510,7 +2504,7 @@ export function attendancePunchesForDays(ctx: SessionContext, attendanceIds: str
     const punches = await tx
       .select({ attendanceId: attendancePunch.attendanceId, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
       .from(attendancePunch)
-      .where(inArray(attendancePunch.attendanceId, attendanceIds))
+      .where(and(inArray(attendancePunch.attendanceId, attendanceIds), isNull(attendancePunch.voidedAt)))
       .orderBy(asc(attendancePunch.attendanceId), asc(attendancePunch.punchAt), asc(attendancePunch.id));
     punches.sort((a, b) => toMinutes(a.punchAt) - toMinutes(b.punchAt));
     for (const pch of punches) {
@@ -3014,6 +3008,7 @@ export function attendancePunchesForRange(
       .where(
         and(
           eq(attendancePunch.employmentId, employmentId),
+          isNull(attendancePunch.voidedAt),
           gte(attendancePunch.attendanceDate, from),
           lte(attendancePunch.attendanceDate, to),
         ),
@@ -3274,6 +3269,7 @@ export class AttendanceCorrectionPendingError extends Error {
 export async function requestAttendanceCorrection(
   ctx: SessionContext,
   p: {
+    clockChanges?: ClockChanges;
     employmentId: string;
     date: string;
     checkIn?: string | null;
@@ -3293,14 +3289,17 @@ export async function requestAttendanceCorrection(
     requestKind?: AttendanceRequestKind | null;
   },
 ) {
+  if (p.clockChanges && (p.clockChanges.version !== 1 || !/^[0-9a-f]{64}$/.test(p.clockChanges.baseline))) throw new Error('Invalid clock-data correction.');
+  const clockChanges = p.clockChanges ? { version: 1 as const, baseline: p.clockChanges.baseline, entries: validateClockEntries(p.clockChanges.entries) } : null;
+  if (clockChanges && (p.checkIn || p.checkOut || p.requestedOtMinutes != null)) throw new Error('Save clock data separately from overtime requests.');
   const checkIn = p.checkIn ?? null;
   const checkOut = p.checkOut ?? null;
   const hasOt = p.requestedOtMinutes != null;
-  if ((checkIn || checkOut) && p.date > todayInKualaLumpur()) {
+  if ((clockChanges || checkIn || checkOut) && p.date > todayInKualaLumpur()) {
     throw new AttendanceCorrectionFutureDateError();
   }
   // At least one of clock-in / clock-out / OT (mirrors the DB check constraint, with a friendly message).
-  if (!checkIn && !checkOut && !hasOt) {
+  if (!clockChanges && !checkIn && !checkOut && !hasOt) {
     throw new Error('Provide at least one of a clock-in time, a clock-out time, or overtime hours.');
   }
   // A clock-out with no clock-in has no anchor to derive against.
@@ -3315,6 +3314,7 @@ export async function requestAttendanceCorrection(
   if (reason.length === 0) {
     throw new Error('A reason is required.');
   }
+  if (clockChanges && reason.length > 500) throw new Error('The clock-data correction reason must be at most 500 characters.');
   let requestedOtMinutes: number | null = null;
   if (hasOt) {
     const ot = Math.trunc(p.requestedOtMinutes!);
@@ -3340,6 +3340,17 @@ export async function requestAttendanceCorrection(
   const requestKind = p.requestKind ?? null;
 
   return withTenant(ctx, async (tx) => {
+    if (clockChanges) {
+      const [subject] = await tx.select({ allowed: sql<boolean>`app.can_admin_employment(${employment.id})` })
+        .from(employment).where(eq(employment.id, p.employmentId)).limit(1);
+      if (!subject?.allowed) throw new Error('Only an authorised administrator may edit clock data.');
+      const rows = await punchesForCorrectionTx(tx,p.employmentId,p.date);
+      if (clockChanges.baseline !== clockFingerprint(rows)) throw new ClockDataChangedError();
+      const active = rows.filter(row => !row.voidedAt);
+      if (clockChanges.entries.length === active.length && clockChanges.entries.every(e => active.some(row => row.id === e.id && row.punchAt === e.punchAt && row.direction === e.direction))) throw new Error('Change at least one clocking before saving.');
+      for (const e of clockChanges.entries) if (e.id && !rows.some(row=>row.id===e.id)) throw new Error('Clocking does not belong to this attendance day.');
+      await lockAttendancePayrollTx(tx,p.employmentId,p.date);
+    }
     // 1e9145d4 — ONE APPROVED PLAN PER DATE. attendance_correction_one_pending_uq is partial (WHERE status =
     // 'pending'), so it stops two WAITING requests for a date but NOT a second request once the first is
     // approved. That was harmless while approval could only happen after the day was worked. It is not
@@ -3402,10 +3413,10 @@ export async function requestAttendanceCorrection(
         await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
       }
     }
-    const [original] = checkIn || checkOut ? await tx.select({
+    const [original] = clockChanges || checkIn || checkOut ? await tx.select({
       id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
     }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
-    const originalClockSnapshot = checkIn || checkOut ? {
+    const originalClockSnapshot = clockChanges || checkIn || checkOut ? {
       version: 1 as const, attendanceId: original?.id ?? null,
       originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
       capturedAt: new Date().toISOString(),
@@ -3426,6 +3437,7 @@ export async function requestAttendanceCorrection(
         remark,
         requestKind,
         originalClockSnapshot,
+        clockChanges,
       })
       .returning({ id: attendanceCorrection.id });
     await appendEvent(tx, {
@@ -3448,6 +3460,7 @@ export async function requestAttendanceCorrection(
         remark,
         requestKind,
         originalClockSnapshot,
+        clockChanges,
       },
     });
     return { correctionId: row.id };
@@ -3698,9 +3711,10 @@ export async function decideAttendanceCorrection(
     let deferredApproval = false;
 
     if (p.decision === 'approved') {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + cor.employmentId}, 0))`);
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
       const dayType = sched.dayType;
-      const hasClockCorrection = cor.proposedCheckIn != null;
+      const hasClockCorrection = cor.proposedCheckIn != null || cor.clockChanges != null;
       const hasOtRequest = cor.requestedOtMinutes != null;
       // 1e9145d4 — THE DEFERRED CASE, and the whole point of the item. An OT-only plan for a day that has
       // not happened yet cannot be measured against anything and must not create an attendance row (see the
@@ -3710,6 +3724,8 @@ export async function decideAttendanceCorrection(
       // (overtime claimed for a day with no recorded work) and holding that line is the regression contract.
       const deferred = !hasClockCorrection && hasOtRequest && cor.attendanceDate > (p.today ?? todayInKualaLumpur());
 
+      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
+      const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
       // reads attendance.otMinutes AFTER we write it — so the DECISION (tested & documented in ADR-0069) is: TOIL
@@ -3784,6 +3800,16 @@ export async function decideAttendanceCorrection(
           dayType,
           deferredToDate: cor.attendanceDate,
         };
+      } else if (cor.clockChanges) {
+        const [day] = lockedDay ? [lockedDay] : await tx.insert(attendance).values({tenantId:ctx.tenantId,employmentId:cor.employmentId,attendanceDate:cor.attendanceDate,dayType,status:'present'}).returning({id:attendance.id});
+        amendedId = day.id;
+        await applyClockChangesTx(tx,ctx,{attendanceId:day.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? '',correctionId:cor.id,changes:cor.clockChanges});
+        const d = await recomputeDayFromPunches(tx,{attendanceId:day.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
+        // Removing every clocking must clear the former paid figures, not retain a stale aggregate.
+        if (!d.checkInAt) await tx.update(attendance).set({checkInAt:null,checkOutAt:d.checkOutAt,status:d.checkOutAt ? 'present' : 'absent',workedMinutes:null,otMinutes:null,lateMinutes:null,earlyOutMinutes:null,underMinutes:null,lateDeductMinutes:null,earlyOutDeductMinutes:null,calcTrace:null,...otSplitColumns(null)}).where(eq(attendance.id,day.id));
+        await tx.update(attendance).set({dayType,remarks:'Corrected',checkInMethod:null,checkOutMethod:null,checkInLat:null,checkInLng:null,checkInClockingLocationId:null,checkInDistanceM:null,checkInGeofenceStatus:null,checkInRadiusM:null,checkOutLat:null,checkOutLng:null,checkOutClockingLocationId:null,checkOutDistanceM:null,checkOutGeofenceStatus:null,checkOutRadiusM:null}).where(eq(attendance.id,day.id));
+        if (d.checkInAt && d.checkOutAt) await applyApprovedOtPlanTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,attendanceId:day.id,sched,systemOtMinutes:d.otMinutes});
+        eventPayload = {correctionId:cor.id,date:cor.attendanceDate,dayType,clockDataChanged:true};
       } else if (hasClockCorrection) {
         const d = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate);
         // When OT was also requested, the approved (policy-adjusted) OT OVERRIDES the derived figure.
@@ -3861,6 +3887,9 @@ export async function decideAttendanceCorrection(
           })
           .returning({ id: attendance.id });
         amendedId = amended.id;
+        // Legacy pair corrections now reconcile the effective punches too. Original evidence is retained.
+        const originals = await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate);
+        await applyClockChangesTx(tx,ctx,{attendanceId:amended.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? 'Attendance correction',correctionId:cor.id,changes:{version:1,baseline:clockFingerprint(originals),entries:[{punchAt:cor.proposedCheckIn!,direction:'in'},...(cor.proposedCheckOut ? [{punchAt:cor.proposedCheckOut,direction:'out' as const}] : [])]}});
         // 1e9145d4 — an approved clock correction RE-DERIVES the day from the proposed punches, which would
         // quietly wipe the hours of an OT plan that had already landed on it. Re-assert them (and, if the
         // correction is what finally gives the day its punches, LAND a plan that was waiting for exactly
@@ -3927,6 +3956,7 @@ export async function decideAttendanceCorrection(
         };
       }
 
+      if (amendedId && payrollBatches) await markAttendancePayrollTx(tx,ctx,payrollBatches,cor.employmentId);
       // Stamp the OT-approval audit fields onto the correction row (requested + approved + method).
       if (hasOtRequest) {
         await tx
@@ -4086,6 +4116,7 @@ export function listAttendanceCorrections(
         reason: attendanceCorrection.reason,
         rejectReason: attendanceCorrection.rejectReason,
         originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
+        clockChanges: attendanceCorrection.clockChanges,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
         // ADR-0069 / R45 3707cba9 — surface the "Actual vs Approved" OT comparison the decide path already
@@ -4163,6 +4194,7 @@ export type OvertimePlanRow = {
   otReasonCategory: OtReasonCategory | null;
   rejectReason?: string | null;
   originalClockSnapshot?: typeof attendanceCorrection.$inferSelect.originalClockSnapshot;
+  clockChanges?: ClockChanges | null;
   reason: string | null;
   /** Employee's optional note, separate from the approver's stored rejectReason. */
   remark: string | null;
@@ -4716,6 +4748,7 @@ export function myOvertimePlans(
         reason: attendanceCorrection.reason,
         rejectReason: attendanceCorrection.rejectReason,
         originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
+        clockChanges: attendanceCorrection.clockChanges,
         remark: attendanceCorrection.remark,
         status: attendanceCorrection.status,
         appliedAt: attendanceCorrection.appliedAt,
@@ -5144,6 +5177,7 @@ export async function cancelPlannedOvertime(
       .where(eq(attendanceCorrection.id, p.correctionId))
       .limit(1);
     if (!plan) throw new OvertimePlanWithdrawNotAllowedError('overtime plan not found (or not visible)');
+    if (plan.clockChanges) throw new OvertimePlanWithdrawNotAllowedError('A clock correction cannot be withdrawn as an overtime plan.');
 
     const [subject] = await tx
       .select({ personId: employment.personId })
@@ -5206,6 +5240,7 @@ export type MyAttendanceRequestRow = {
   otReasonCategory: OtReasonCategory | null;
   rejectReason?: string | null;
   originalClockSnapshot?: typeof attendanceCorrection.$inferSelect.originalClockSnapshot;
+  clockChanges?: ClockChanges | null;
   reason: string | null;
   remark: string | null;
   requestKind: AttendanceRequestKind | null;
@@ -5277,6 +5312,7 @@ export function myAttendanceCorrections(
         reason: attendanceCorrection.reason,
         rejectReason: attendanceCorrection.rejectReason,
         originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
+        clockChanges: attendanceCorrection.clockChanges,
         remark: attendanceCorrection.remark,
         requestKind: attendanceCorrection.requestKind,
         status: attendanceCorrection.status,
@@ -5711,14 +5747,14 @@ export async function addImportedPunchesBatchTx(
       otKeys.add(keyOf(c.employmentId, c.date));
     }
   }
-  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' };
+  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
   const kidsBy = new Map<string, Kid[]>();
   const wanted = days.map((d) => rowBy.get(keyOf(d.employmentId, d.day))?.id).filter((x): x is string => !!x);
   for (const ids of chunk(wanted, 1000)) {
     for (const k of await tx
       .select({ attendanceId: attendancePunch.attendanceId, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction, method: attendancePunch.method })
       .from(attendancePunch)
-      .where(inArray(attendancePunch.attendanceId, ids))) {
+      .where(and(inArray(attendancePunch.attendanceId, ids), isNull(attendancePunch.voidedAt)))) {
       const arr = kidsBy.get(k.attendanceId) ?? [];
       arr.push(k);
       kidsBy.set(k.attendanceId, arr);
