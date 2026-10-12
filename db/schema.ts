@@ -7049,6 +7049,10 @@ export const attendanceAllowancePolicy = pgTable(
     effectiveFrom: date('effective_from').notNull(),
     // active | inactive (app-side check). Archive (archivedAt) hides from the active catalog.
     status: text('status').notNull().default('active'),
+    policyType: text('policy_type').notNull().default('earning'),
+    version: integer('version').notNull().default(1),
+    // NULL retains the original monthly criteria/scope semantics until explicitly edited.
+    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rules').AllowanceRules>(),
     criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
     scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -7063,6 +7067,54 @@ export const attendanceAllowancePolicy = pgTable(
     check('attendance_allowance_policy_amount_nonneg', sql`${t.amount} >= 0`),
   ],
 );
+
+// Immutable policy definitions and calculation evidence; monetary rows are company-admin only.
+export const attendanceAllowanceVersion = pgTable('attendance_allowance_version', {
+  id: id(), tenantId: tenantId(),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  policyId: uuid('policy_id').notNull().references(() => attendanceAllowancePolicy.id),
+  version: integer('version').notNull(), snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
+  createdAt: createdAt(),
+}, t => [uniqueIndex('attendance_allowance_version_uq').on(t.tenantId,t.policyId,t.version)]);
+export const attendanceAllowanceResult = pgTable('attendance_allowance_result', {
+  id: id(), tenantId: tenantId(),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  policyId: uuid('policy_id').notNull().references(() => attendanceAllowancePolicy.id),
+  policyVersion: integer('policy_version').notNull(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  payMonth: text('pay_month').notNull(), periodKey: text('period_key').notNull(),
+  periodFrom: date('period_from').notNull(), periodTo: date('period_to').notNull(),
+  amount: numeric('amount',{precision:12,scale:2}).notNull(), qualified: boolean('qualified').notNull(),
+  evidence: jsonb('evidence').$type<Record<string, unknown>>().notNull(),
+  inputDigest: text('input_digest').notNull(), status: text('status').notNull().default('calculated'),
+  calculatedAt: timestamp('calculated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('attendance_allowance_result_uq').on(t.tenantId,t.policyId,t.policyVersion,t.employmentId,t.periodKey),
+  index('attendance_allowance_result_month_idx').on(t.tenantId,t.companyId,t.payMonth)]);
+export const attendanceAllowanceResultRevision = pgTable('attendance_allowance_result_revision', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  resultId:uuid('result_id').notNull().references(()=>attendanceAllowanceResult.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),inputDigest:text('input_digest').notNull(),
+  amount:numeric('amount',{precision:12,scale:2}).notNull(),evidence:jsonb('evidence').$type<Record<string,unknown>>().notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_allowance_result_revision_uq').on(t.resultId,t.inputDigest)]);
+// Payroll owns the contribution identity. One result can belong to only one payroll run; totals of
+// multiple policies sharing a pay code are projected into ONE existing batch-component input.
+export const payrollAttendanceAllowanceSource = pgTable('payroll_attendance_allowance_source', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  batchId:uuid('batch_id').notNull().references(()=>payrollBatch.id,{onDelete:'cascade'}),
+  policyId:uuid('policy_id').notNull().references(()=>attendanceAllowancePolicy.id),
+  resultId:uuid('result_id').notNull().references(()=>attendanceAllowanceResult.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  componentId:uuid('component_id').notNull().references(()=>payComponent.id),
+  payMonth:text('pay_month').notNull(),periodKey:text('period_key').notNull(),
+  amount:numeric('amount',{precision:12,scale:2}).notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('payroll_attendance_allowance_source_uq').on(t.tenantId,t.policyId,t.employmentId,t.periodKey),
+  index('payroll_attendance_allowance_batch_idx').on(t.batchId,t.employmentId,t.componentId)]);
+export const attendanceAllowanceTransfer = pgTable('attendance_allowance_transfer', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  policyId:uuid('policy_id').notNull().references(()=>attendanceAllowancePolicy.id),
+  policyVersion:integer('policy_version').notNull(),batchId:uuid('batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),batchRef:uuid('batch_ref').notNull(),
+  status:text('status').notNull(),errorCode:text('error_code'),inputDigest:text('input_digest'),createdAt:createdAt(),
+});
 
 // ───────────────── 1.2.2 Individual Transaction (ADR-0055) ─────────────────
 // A pure dated one-off transaction ledger: per-employee, non-recurring earnings/deductions/overtime/

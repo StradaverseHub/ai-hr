@@ -97,6 +97,13 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'statutory_report', column: 'company_id', disposition: 'payroll', note: 'A generated or filed statutory report (EPF, SOCSO, EIS, PCB, EA). A filing is evidence.' },
   { table: 'back_pay_run', column: 'company_id', disposition: 'payroll', note: 'A back-pay run against a past period.' },
 
+  // ADR-0106: definition and calculation history survives retries and draft payroll teardown.
+  { table: 'attendance_allowance_version', column: 'company_id', disposition: 'payroll', note: 'An immutable allowance definition version. Preserve the basis of a payroll calculation even before the first transfer.' },
+  { table: 'attendance_allowance_result', column: 'company_id', disposition: 'payroll', note: 'An allowance period calculation with employee and source evidence. Financial history is never company setup.' },
+  { table: 'attendance_allowance_result_revision', column: 'company_id', disposition: 'payroll', note: 'An immutable prior allowance calculation, retained after corrections and payroll source replacement.' },
+  { table: 'payroll_attendance_allowance_source', column: 'company_id', disposition: 'payroll', note: 'An allowance contribution currently owned by a payroll run. Deleting company setup must never remove money inputs.' },
+  { table: 'attendance_allowance_transfer', column: 'company_id', disposition: 'payroll', note: 'A successful or failed allowance transfer receipt, including the original run reference after draft teardown.' },
+
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
 
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
@@ -176,6 +183,10 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'attendance_allowance_version', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'Immutable definition history retains its policy, even when a company has never transferred an allowance.' },
+  { table: 'attendance_allowance_result', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A period calculation retains the policy that explains its financial outcome.' },
+  { table: 'payroll_attendance_allowance_source', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A payroll contribution retains the policy that owns it; company deletion cannot detach it.' },
+  { table: 'attendance_allowance_transfer', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A transfer attempt retains the policy identity for later audit and operator resolution.' },
   { table: 'reward_unit', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reward review retains its business unit and financial approval history; it must never disappear with company setup.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },

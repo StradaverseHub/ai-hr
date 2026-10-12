@@ -6391,6 +6391,7 @@ export function listAllowancePolicies(
         id: attendanceAllowancePolicy.id,
         companyId: attendanceAllowancePolicy.companyId,
         companyName: company.legalName,
+        policyType:attendanceAllowancePolicy.policyType,version:attendanceAllowancePolicy.version,rules:attendanceAllowancePolicy.rules,currency:company.currency,
         code: attendanceAllowancePolicy.code,
         name: attendanceAllowancePolicy.name,
         method: attendanceAllowancePolicy.method,

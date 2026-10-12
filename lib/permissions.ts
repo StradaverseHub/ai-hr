@@ -935,7 +935,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/attendance-allowance',
     labelKey: 'nav.attendanceAllowance',
     guard: 'scopedAdmin',
-    routes: ['/admin/attendance-allowance'],
+    routes: ['/admin/attendance-allowance','/admin/attendance-allowance/new','/admin/attendance-allowance/[policyId]'],
   },
   {
     // 639bf4a5 (r336) — the SCREEN moved (Attendance › Clocking Location, /admin/locations) and its

@@ -3053,6 +3053,13 @@
       "when": 1791900000008,
       "tag": "0528_attendance_punch_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1791900000012,
+      "tag": "0532_attendance_allowance_periods",
+      "breakpoints": true
     }
   ]
 }

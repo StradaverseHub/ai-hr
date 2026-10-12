@@ -98,7 +98,8 @@ const ALL_TABLES = [
   // app_user.workos_user_id would otherwise let a leaked subject collide across test files.
   'app_invitation',
   // ADR-0072 — attendance allowance policy (a leaked row would trip the partial-unique code index).
-  'attendance_allowance_policy',
+  'attendance_allowance_policy', 'attendance_allowance_version', 'attendance_allowance_result',
+  'attendance_allowance_result_revision','attendance_allowance_transfer','payroll_attendance_allowance_source',
   // ADR-0073 — shared system labels junction: a leaked (label_id, company_id) row would trip the unique
   // index (or make a resolver test see a phantom shared label) across test files.
   'label_company_assignment',

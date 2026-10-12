@@ -20,6 +20,7 @@
  *   `core/payroll.ts` (THE ENGINE — `generatePayslips`, batch draft/process/reprocess/unlock, the
  *   `payroll_input` write surface, statutory folding, EA/CP39 completeness, the leaver advisory),
  *   `core/payroll-cycle.ts` (pay-cycle calendar + batch-window resolution),
+ *   `core/payroll-attendance-allowance.ts` (source-owned attendance allowance projection),
  *   `core/payroll-config.ts` (per-company payroll config), `core/payroll-policy.ts` +
  *   `core/payroll-policy-config.ts` (payroll policy CRUD + the pay-frequency/pay-mode vocabulary,
  *   `calendarWindowFor`, `payslipReleaseAt`), `core/payroll-individual-txn.ts` (one-off individual
@@ -272,6 +273,7 @@ export const payrollPack: ModulePack = {
     { table: 'payroll_import_code', note: 'the DOE-code catalog the payroll-history importer validates against, and where each code lands on the folded month' },
     { table: 'employment_pay_component', note: 'per-employment recurring pay-component assignments (fixed txns)' },
     { table: 'payroll_batch_component', note: 'per-batch per-employee resolved component amounts' },
+    { table: 'payroll_attendance_allowance_source', note: 'attendance allowance contribution identities' },
     { table: 'payroll_individual_txn', note: 'one-off individual payroll transactions applied to a batch' },
     // 2ef69d1e — the arrears deliberation. Both tables RECORD; neither decides anything the payroll
     // engine reads. The money leaves through payroll_individual_txn above, like any other one-off.
