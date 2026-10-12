@@ -407,7 +407,7 @@
     "rewards": "வெகுமதிகள்",
     "identityEmail": "மின்னஞ்சல் அனுப்புதல்",
     "workflowEmail": "பணிச்செயல்முறை அறிவிப்புகள்",
-    "attendanceApplicationHistory": "விண்ணப்ப வரலாறு",
+    "applicationHistory": "விண்ணப்ப வரலாறு",
     "attendanceApprovalWorkflow": "ஒப்புதல் பணிப்பாய்வு"
   },
   "dashboard": {

@@ -179,8 +179,9 @@ async function prepare(base: Base) {
   if (!policy) await setToilPolicy(a, {companyId: company.id, enabled: true, accrualBasis: 'hours_worked', expiryDays: 180,
     onExpiry: 'lapse', allowFirstScheduleEligible: false, autoAccrueOnApproval: false, carryForwardAtYearEnd: false});
   else if (!policy.enabled) throw new Error('Fixture Leave Credit policy was disabled; preserving it.');
-  const leaveTypeId = await withTenant(a, tx => findReplacementLeaveTypeIdTx(tx, tenantId));
-  if (!leaveTypeId) throw new Error('Replacement Leave type not provisioned by the real policy service.');
+  const canonicalLeaveTypeId = await withTenant(a, tx => findReplacementLeaveTypeIdTx(tx, tenantId));
+  if (!canonicalLeaveTypeId) throw new Error('Replacement Leave type not provisioned by the real policy service.');
+  const leaveTypeId = canonicalLeaveTypeId;
   const ruleName = `${prefix}Replacement Leave manager approval`;
   const [approval] = await owner.db.select().from(s.leaveApprovalPolicy).where(and(eq(s.leaveApprovalPolicy.companyId, company.id), eq(s.leaveApprovalPolicy.ruleName, ruleName)));
   if (!approval) await createLeaveApprovalRule(a, {companyId: company.id, departmentId: department.id, leaveTypeId, ruleName, levels: ['direct_manager']});

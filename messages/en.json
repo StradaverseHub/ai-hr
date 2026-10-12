@@ -407,7 +407,7 @@
     "rewards": "Rewards",
     "identityEmail": "Email delivery",
     "workflowEmail": "Workflow notifications",
-    "attendanceApplicationHistory": "Application History",
+    "applicationHistory": "Application History",
     "attendanceApprovalWorkflow": "Approval Workflow"
   },
   "dashboard": {

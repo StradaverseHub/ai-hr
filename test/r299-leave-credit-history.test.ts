@@ -217,6 +217,25 @@ describe('Leave Credit history — derived, classified, and the running total is
     expect((await listLeaveCreditMovements(admin, { from: addDays(TODAY, 400), today: TODAY })).rows).toHaveLength(0);
     expect((await listLeaveCreditMovements(admin, { employmentId: mgr.employmentId, today: TODAY })).rows).toHaveLength(0);
   });
+  it('keeps submitted usage dates after the holiday calendar changes', async () => {
+    const emp=await hire('Frozen credit dates'),manager=await hire('Frozen date manager');
+    await setReportingLine(adminCtx(b),{subordinateEmploymentId:emp.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
+    const employee:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,emp.personId,'employee'),personId:emp.personId,roles:['employee'],entitlements:admin.entitlements};
+    const approver:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],entitlements:admin.entitlements};
+    const workedDate=`${LAST_MONTH}-08`;
+    await setRestDay(adminCtx(b),{employmentId:emp.employmentId,shiftDate:workedDate});
+    const lot=await grantLeaveCredit(admin,{employmentId:emp.employmentId,workedDate,days:2,reason:'Frozen calendar source',expiresOn:addDays(TODAY,100),today:TODAY});
+    const mon=nextMonday(addDays(TODAY,21)),tue=addDays(mon,1),wed=addDays(mon,2),typeId=await replacementTypeId();
+    const [holiday]=await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:tue,name:'Submitted excluded date'}).returning();
+    const leave=await requestLeave(employee,{employmentId:emp.employmentId,leaveTypeId:typeId,startDate:mon,endDate:wed,today:TODAY});
+    await decideLeave(approver,{leaveRequestId:leave.leaveRequestId,decision:'approved'});
+    const [snapshot]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leave.leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.credit-dates.frozen')));
+    expect(snapshot.payload).toMatchObject({creditDates:{totalDays:2,dates:[{date:mon,days:1},{date:wed,days:1}]}});
+    await owner.db.delete(schema.holiday).where(eq(schema.holiday.id,holiday.id));
+    await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:mon,name:'Later calendar edit'});
+    const register=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(register.rows.find(row=>row.accrualId===lot.accrualId)).toMatchObject({used:2,unattributedUsed:0,usage:[{requestId:leave.leaveRequestId,date:mon,days:1},{requestId:leave.leaveRequestId,date:wed,days:1}]});
+  });
   it('projects real split consumption over approved dates and returns the original lots after partial cancellation', async () => {
     const emp = await hire('Split credit employee');
     const manager = await hire('Split credit manager');

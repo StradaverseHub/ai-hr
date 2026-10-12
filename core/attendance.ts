@@ -14,7 +14,7 @@ import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { snapshotAttendanceWorkflowTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 // f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
 // list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
@@ -6165,7 +6165,7 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
         let reversed = false;
         if (cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
             const batches = await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
-            const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, sql `${attendanceCorrection.decidedAt}>${cor.decidedAt}`)).limit(1);
+            const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, cor.decidedAt ? gt(attendanceCorrection.decidedAt, cor.decidedAt) : sql`false`)).limit(1);
             if (later.length)
                 throw new Error('A later approval affects this day. Use a new correction so its decisions are preserved.');
             const credits = await tx.select({ id: toilAccrual.id }).from(toilAccrual).where(and(eq(toilAccrual.employmentId, cor.employmentId), eq(toilAccrual.workedDate, cor.attendanceDate), sql `${toilAccrual.status}<>'reversed'`)).limit(1);

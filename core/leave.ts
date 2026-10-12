@@ -3673,6 +3673,7 @@ export async function requestLeave(
     // company's leaveHalfDayFullDeduction toggle apply (D2/Feedback 31474452).
     let workingDayCount: number | null = null;
     let workingDayWeight: number | null = null;
+    let creditDateWeights: {date: string; days: number}[] | undefined;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
       // national (state null) ∪ those states, resolved holiday_group → work_state →
@@ -3688,11 +3689,15 @@ export async function requestLeave(
       // day types when a vector is set.
       workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
       workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      if (leaveTypeIs(lt, 'replacement') && durationType === 'full_day' && dayCount(p.startDate, p.endDate) <= 400)
+        creditDateWeights = eachDate(p.startDate, p.endDate).map(date => ({date, days: dayWeight(date, sched, hols, incl)})).filter(row => row.days > 0);
     }
 
     let days: number;
     if (durationType === 'full_day') {
       days = lt?.counting === 'working_days' ? workingDayWeight! : dayCount(p.startDate, p.endDate);
+      if (leaveTypeIs(lt, 'replacement') && lt?.counting !== 'working_days' && dayCount(p.startDate, p.endDate) <= 400)
+        creditDateWeights = eachDate(p.startDate, p.endDate).map(date => ({date, days: 1}));
     } else {
       // Single day already enforced. Working-day guard: reject a half/hourly request that falls on a
       // weekend/holiday for working_days types (workingDayCount === 0) — same error as an empty range.
@@ -4026,6 +4031,15 @@ export async function requestLeave(
       // Override Leave Application (56910869): null on every application no rule changed, which is every
       // application until HR enables a rule — so the ordinary payload is byte-identical to before.
       overrideAudit,
+    });
+
+    // Replacement Leave deliberately has no per-date approval rows. Retain the canonical weights
+    // computed by THIS submission so the earned-credit reader never guesses from a later calendar.
+    // This provenance does not allocate or consume credits; the approval command remains their owner.
+    if (creditDateWeights) await appendEvent(tx, {
+      tenantId: ctx.tenantId, aggregateType: 'leave-request', aggregateId: id,
+      eventType: 'leave-request.credit-dates.frozen', actor: actorOf(ctx), subjectEmploymentId: p.employmentId,
+      payload: {creditDates: {version: 1, totalDays: days, dates: creditDateWeights}},
     });
 
     // Partial Leave Approval — single-request model (ADR-0068 §4B). When the type is opted-in (§4C gate above)

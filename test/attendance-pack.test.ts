@@ -224,7 +224,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // so a genuinely new row is DECLARED here instead. The parity assertions below then hold unchanged for
   // the ten original rows, while an undeclared eleventh still fails: growth has to be deliberate.
   const ADDED_SINCE = [
-    { href: '/attendance/application-history', labelKey: 'attendanceApplicationHistory', icon: ClipboardList, adminOnly: true },
+    { href: '/attendance/application-history', labelKey: 'applicationHistory', icon: ClipboardList, adminOnly: true },
     // r274 (2420718d) — Employee Attendance. The SCREEN is not new and neither is its address: it began as
     // a second, administrator-gated way into `/attendance`, which is `scopedSession` and shows each viewer
     // their own scope, and it was the ONLY href in this pack listed twice.

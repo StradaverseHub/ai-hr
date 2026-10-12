@@ -11,6 +11,8 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
+const { router } = vitest.hoisted(() => ({router: {push: vitest.fn(), refresh: vitest.fn()}}));
+vitest.mock('next/navigation', () => ({useRouter: () => router, usePathname: () => '/admin/attendance-allowance/create'}));
 const catalogs = {en,ms,ta,th,vi,zh};
 const companyId = '11111111-1111-4111-8111-111111111111';
 const employeeId = '22222222-2222-4222-8222-222222222222';

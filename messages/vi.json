@@ -407,7 +407,7 @@
     "rewards": "Đãi ngộ",
     "identityEmail": "Gửi email",
     "workflowEmail": "Thông báo quy trình",
-    "attendanceApplicationHistory": "Lịch sử đơn",
+    "applicationHistory": "Lịch sử đơn",
     "attendanceApprovalWorkflow": "Quy trình phê duyệt"
   },
   "dashboard": {

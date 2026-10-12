@@ -407,7 +407,7 @@
     "rewards": "薪酬奖励",
     "identityEmail": "邮件发送",
     "workflowEmail": "工作流程通知",
-    "attendanceApplicationHistory": "申请历史",
+    "applicationHistory": "申请历史",
     "attendanceApprovalWorkflow": "审批流程"
   },
   "dashboard": {

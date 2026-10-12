@@ -53,7 +53,7 @@ import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isAttendanceTrace, type AttendanceTraceV1 } from './attendance-trace';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
-import { creditRegisterFigures, projectCreditUsage, type CreditRegisterStatus, type CreditUsageDate } from '../lib/leave-credit-register';
+import { creditRegisterFigures, projectCreditUsage, frozenCreditDates, type CreditRegisterStatus, type CreditUsageDate } from '../lib/leave-credit-register';
 // r406 952129bb — HR's row-grant: the roster adjudication (pure) and the approved-overtime read the employee's
 // form already shows. Neither module imports this file, so both are static.
 import { adjudicateDayTypes, isLeaveCreditDayType } from '../lib/leave-credit-day-type';
@@ -3173,14 +3173,16 @@ export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:s
     if(!accruals.length)return empty;
     const lotIds=accruals.map(x=>x.lot.id),empIds=[...new Set(accruals.map(x=>x.lot.employmentId))];
     const events=await tx.select({aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,sequence:domainEvent.sequence,
-      payload:sql<Record<string,unknown>>`jsonb_build_object('requestId', ${domainEvent.payload}->'requestId', 'daysConsumed', ${domainEvent.payload}->'daysConsumed', 'daysRestored', ${domainEvent.payload}->'daysRestored', 'splitFromRequestId', ${domainEvent.payload}->'splitFromRequestId')`})
+      payload:sql<Record<string,unknown>>`jsonb_build_object('requestId', ${domainEvent.payload}->'requestId', 'daysConsumed', ${domainEvent.payload}->'daysConsumed', 'daysRestored', ${domainEvent.payload}->'daysRestored', 'splitFromRequestId', ${domainEvent.payload}->'splitFromRequestId', 'creditDates', ${domainEvent.payload}->'creditDates')`})
       .from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),
-      inArray(domainEvent.subjectEmploymentId,empIds),or(inArray(domainEvent.aggregateId,lotIds),eq(domainEvent.eventType,'leave-request.split'))))
+      inArray(domainEvent.subjectEmploymentId,empIds),or(inArray(domainEvent.aggregateId,lotIds),inArray(domainEvent.eventType,['leave-request.split','leave-request.credit-dates.frozen']))))
       .orderBy(asc(domainEvent.sequence));
     const net=new Map<string,{accrualId:string;requestId:string;days:number;seq:number}>();
     const roots=new Map<string,string>();
+    const frozenDates=new Map<string,{date:string;days:number}[]>();
     for(const event of events){
       const payload=event.payload as Record<string,unknown>;
+      if(event.eventType==='leave-request.credit-dates.frozen'){const rows=frozenCreditDates(payload.creditDates);if(rows&&!frozenDates.has(event.aggregateId))frozenDates.set(event.aggregateId,rows);}
       if(event.eventType==='leave-request.split'&&typeof payload.splitFromRequestId==='string')roots.set(event.aggregateId,payload.splitFromRequestId);
       if((event.eventType==='toil.consumed'||event.eventType==='toil.restored')&&typeof payload.requestId==='string'){
         const key=event.aggregateId+'|'+payload.requestId,old=net.get(key);
@@ -3192,16 +3194,23 @@ export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:s
     const requests=await tx.select().from(leaveRequest).where(inArray(leaveRequest.employmentId,empIds)).orderBy(asc(leaveRequest.startDate),asc(leaveRequest.id));
     const requestIds=requests.map(x=>x.id);
     const dates=requestIds.length?await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,requestIds)).orderBy(asc(leaveRequestDate.leaveDate),asc(leaveRequestDate.id)):[];
+    // Event sequence is per aggregate, so it cannot order different credit lots. Match the consuming writer's FEFO order.
+    const lotRank=new Map([...accruals].sort((a,b)=>a.lot.expiresOn.localeCompare(b.lot.expiresOn)||a.lot.workedDate.localeCompare(b.lot.workedDate)||a.lot.id.localeCompare(b.lot.id)).map((row,index)=>[row.lot.id,index]));
     const usageByLot=new Map<string,CreditUsageDate[]>();
     for(const root of [...new Set([...net.values()].map(x=>x.requestId))]){
       const approved:CreditUsageDate[]=[];
       for(const request of requests.filter(x=>rootOf(x.id)===root)){
         const stored=dates.filter(x=>x.leaveRequestId===request.id);
         if(stored.length)for(const date of stored.filter(x=>x.status==='approved'))approved.push({requestId:request.id,date:date.leaveDate,days:Number(date.days)});
-        else if(request.status==='approved'&&request.startDate===request.endDate)approved.push({requestId:request.id,date:request.startDate,days:Number(request.days)});
+        else if(request.status==='approved') {
+          const frozen=frozenDates.get(rootOf(request.id))?.filter(row=>row.date>=request.startDate&&row.date<=request.endDate);
+          if(frozen && frozen.reduce((sum,row)=>sum+Math.round(row.days*100),0)===Math.round(Number(request.days)*100))
+            approved.push(...frozen.map(row=>({...row,requestId:request.id})));
+          else if(request.startDate===request.endDate)approved.push({requestId:request.id,date:request.startDate,days:Number(request.days)});
+        }
       }
       approved.sort((a,b)=>a.date.localeCompare(b.date)||a.requestId.localeCompare(b.requestId));
-      const split=projectCreditUsage([...net.values()].filter(x=>x.requestId===root&&x.days>0).sort((a,b)=>a.seq-b.seq||a.accrualId.localeCompare(b.accrualId)),approved);
+      const split=projectCreditUsage([...net.values()].filter(x=>x.requestId===root&&x.days>0).sort((a,b)=>(lotRank.get(a.accrualId)??Infinity)-(lotRank.get(b.accrualId)??Infinity)||a.accrualId.localeCompare(b.accrualId)),approved);
       for(const [id,rows]of split)usageByLot.set(id,[...(usageByLot.get(id)??[]),...rows]);
     }
     const creditIds=accruals.map(x=>x.lot.ledgerEntryId).filter((x):x is string=>!!x);

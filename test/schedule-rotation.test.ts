@@ -39,7 +39,7 @@ async function save(f:Awaited<ReturnType<typeof fixture>>,cycle=f.cycle,allowed=
 const facts=(f:Awaited<ReturnType<typeof fixture>>,date:string)=>withTenant(f.a,tx=>allowanceScheduleFactsTx(tx,f.e.employmentId,date));
 describe('approved Schedule Group rotation workflow',()=>{
   it('retains the next-day boundary for a half night shift',()=>{
-    expect(workingShiftSchedule({start:'20:00',end:'05:00',crosses:true,breakMinutes:60},'half')).toMatchObject({shiftEnd:'00:30',crosses:true,normalMinutes:240});
+    expect(workingShiftSchedule({start:'20:00',end:'05:00',crosses:true,breakMinutes:60},'half')).toMatchObject({shiftEnd:'00:30:00',crosses:true,normalMinutes:240});
   });
   it('clock-in/out derives against the rotation half shift rather than the profile shift',async()=>{
     const f=await fixture();await save(f);const date=add(f.date,1);
@@ -109,7 +109,7 @@ describe('approved Schedule Group rotation workflow',()=>{
     expect((await getScheduleRotation(f.a,f.rule.id)).versions).toHaveLength(0);
   });
   it('refuses foreign tenant shifts and employee mutation',async()=>{
-    const f=await fixture(),other=await seedBase();const foreign=await createShift(adminCtx(other),{code:null,name:'Foreign',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+    const f=await fixture(),other=await seedBase();const foreign=await createShift(adminCtx(other),{code:'FOREIGN',name:'Foreign',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
     await expect(save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:foreign.id}:d)},[foreign.id,f.night.id])).rejects.toThrow(/unavailable in this tenant/);
     const userId=await createAppUser(b.tenantId,f.e.personId,'employee');
     await expect(saveScheduleRotation({...f.a,userId,personId:f.e.personId,roles:['employee']},{ruleId:f.rule.id,expectedRevision:(await getScheduleRotation(f.a,f.rule.id)).revision,allowedShiftIds:[f.morning.id,f.night.id],cycle:f.cycle})).rejects.toThrow(/group-wide HR/);
@@ -128,9 +128,9 @@ describe('approved Schedule Group rotation workflow',()=>{
   });
   it('refuses a shift belonging to another group and an ungrouped inherited employee shift',async()=>{
     const f=await fixture();const [other]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Another crew'}).returning();
-    const foreign=await createShift(f.a,{code:null,name:'Other crew',startTime:'09:00',endTime:'17:00',ruleId:other.id});
+    const foreign=await createShift(f.a,{code:'OTHER_CREW',name:'Other crew',startTime:'09:00',endTime:'17:00',ruleId:other.id});
     await expect(save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:foreign.id}:d)},[foreign.id,f.night.id])).rejects.toThrow(/another Schedule Group/);
-    const ungrouped=await createShift(f.a,{code:null,name:'Ungrouped used',startTime:'09:00',endTime:'17:00',weeklyPattern:[1,2,3,4,5]});
+    const ungrouped=await createShift(f.a,{code:'UNGROUPED',name:'Ungrouped used',startTime:'09:00',endTime:'17:00',weeklyPattern:[1,2,3,4,5]});
     await owner.db.update(schema.employment).set({attendanceRuleId:null,defaultShiftId:ungrouped.id}).where(eq(schema.employment.id,f.e.employmentId));
     await expect(save(f,{...f.cycle,days:f.cycle.days.map(d=>d.kind==='full'?{...d,shiftId:ungrouped.id}:d)},[ungrouped.id,f.night.id])).rejects.toThrow(/without an explicit Schedule Group/);
     expect((await owner.db.select().from(schema.shift).where(eq(schema.shift.id,ungrouped.id)))[0].ruleId).toBeNull();
@@ -138,7 +138,7 @@ describe('approved Schedule Group rotation workflow',()=>{
   it('roster rotation inheritance follows the dated arrangement instead of the current cache',async()=>{
     const f=await fixture();await save(f);
     await owner.db.update(schema.employment).set({attendanceRuleId:null}).where(eq(schema.employment.id,f.e.employmentId));
-    const later=await createShift(f.a,{code:null,name:'Later ungrouped',startTime:'09:00',endTime:'17:00',weeklyPattern:[1,2,3,4,5]});
+    const later=await createShift(f.a,{code:'LATER',name:'Later ungrouped',startTime:'09:00',endTime:'17:00',weeklyPattern:[1,2,3,4,5]});
     await assignEmployeeShiftDated(f.a,{employmentId:f.e.employmentId,shiftType:'fixed',shiftId:f.morning.id,effectiveFrom:'2020-01-01'});
     await assignEmployeeShiftDated(f.a,{employmentId:f.e.employmentId,shiftType:'fixed',shiftId:later.id,effectiveFrom:add(f.date,10)});
     const [usual]=await usualShiftsFor(f.a,[f.e.employmentId]);
@@ -148,7 +148,7 @@ describe('approved Schedule Group rotation workflow',()=>{
   it('rejects a company-scoped HR administrator even with a forged broad session role',async()=>{
     const f=await fixture();const userId=await createAppUser(b.tenantId,f.e.personId,'hr_admin');
     await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
-    await expect(saveScheduleRotation({...f.a,userId,personId:f.e.personId,roles:['hr_admin']},{ruleId:f.rule.id,expectedRevision:(await getScheduleRotation(f.a,f.rule.id)).revision,allowedShiftIds:[f.morning.id,f.night.id],cycle:f.cycle})).rejects.toThrow(/group-wide HR/);
+    await expect(saveScheduleRotation({...f.a,userId,personId:f.e.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]},{ruleId:f.rule.id,expectedRevision:(await getScheduleRotation(f.a,f.rule.id)).revision,allowedShiftIds:[f.morning.id,f.night.id],cycle:f.cycle})).rejects.toThrow(/group-wide HR/);
   });
   it('keeps archived version references and prevents legacy writers from changing the new pool',async()=>{
     const f=await fixture();await save(f);await owner.db.update(schema.shift).set({archivedAt:new Date()}).where(eq(schema.shift.id,f.night.id));
@@ -169,6 +169,7 @@ describe('approved Schedule Group rotation workflow',()=>{
   });
   it('leave weights and absence use rotation dates including half, off and rest',async()=>{
     const f=await fixture();await save(f);
+    await owner.db.update(schema.leaveType).set({counting:'working_days'}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
     const leave=await previewLeaveDeduction(f.a,{employmentId:f.e.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:f.date,endDate:add(f.date,3),includeDayRows:true});
     expect(leave.days).toBe(1.5);
     const count=await withTenant(f.a,tx=>leaveWorkingDaysCounterTx(tx,f.e.employmentId));

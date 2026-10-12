@@ -407,7 +407,7 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * admin-gated, so staff do not reach it.
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
-    { href: '/attendance/application-history', labelKey: 'attendanceApplicationHistory', icon: ClipboardList, adminOnly: true },
+    { href: '/attendance/application-history', labelKey: 'applicationHistory', icon: ClipboardList, adminOnly: true },
     // 22d67223 — ATTENDANCE BREAKDOWN DETAIL. The audit surface: every figure the engine recorded, day by
     // day, for one employee over a range. Deliberately the opposite of 570fd56e, which took the calculation
     // columns OFF Individual Attendance — one screen to review a month, one to interrogate it.

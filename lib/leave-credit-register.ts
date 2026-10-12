@@ -26,3 +26,20 @@ export function projectCreditUsage(lots:{accrualId:string;days:number}[],dates:C
   }
   return out;
 }
+
+/** Immutable command provenance only. Invalid or incomplete snapshots remain unattributed. */
+export function frozenCreditDates(value: unknown): {date: string; days: number}[] | null {
+  if (!value || typeof value !== 'object') return null;
+  const snapshot = value as {version?: unknown; totalDays?: unknown; dates?: unknown};
+  if (snapshot.version !== 1 || typeof snapshot.totalDays !== 'number' || !Number.isFinite(snapshot.totalDays)
+    || snapshot.totalDays <= 0 || !Array.isArray(snapshot.dates) || !snapshot.dates.length || snapshot.dates.length > 400) return null;
+  const dates: {date: string; days: number}[] = [], seen = new Set<string>();
+  for (const row of snapshot.dates) {
+    if (!row || typeof row !== 'object' || typeof row.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)
+      || !Number.isFinite(Date.parse(row.date+'T00:00:00Z')) || new Date(row.date+'T00:00:00Z').toISOString().slice(0,10) !== row.date
+      || seen.has(row.date) || typeof row.days !== 'number' || !Number.isFinite(row.days) || row.days <= 0 || row.days > 1) return null;
+    seen.add(row.date); dates.push({date: row.date, days: row.days});
+  }
+  if (dates.reduce((sum,row) => sum+Math.round(row.days*100),0) !== Math.round(snapshot.totalDays*100)) return null;
+  return dates.sort((a,b) => a.date.localeCompare(b.date));
+}

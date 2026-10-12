@@ -363,7 +363,7 @@ describe('source-owned allowance periods', () => {
     const ctx = await entitledCtx(b);
     const preview = await evaluateAllowancesForPeriod(ctx,{policyId:p.id,month,batchId});
     expect(preview.rows).toHaveLength(1);expect(preview.rows[0].amount).toBe('0.20');
-    await expect(transferAllowancesToBatch(ctx,{policyId:p.id,batchId})).rejects.toThrow();
+    expect(await transferAllowancesToBatch(ctx,{policyId:p.id,batchId})).toMatchObject({gated:true,applied:0,reversed:0});
     expect(await sources(batchId)).toHaveLength(0);
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBeNull();
     await setModule(b.tenantId,'attendance',null);

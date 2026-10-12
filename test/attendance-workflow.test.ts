@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { hireEmployee, setReportingLine, changeEmploymentCompany } from '../core/org';
+import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections, allowanceScheduleFactsTx } from '../core/attendance';
+import { createMovementEvent } from '../core/movement';
 import { createShift, assignDefaultShift } from '../core/roster';
 import { getScheduleRotation, saveScheduleRotation } from '../core/attendance-rotation';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -251,8 +252,9 @@ describe('scoped application history and reversible cancellation', () => {
         const id = await submit(a, worker.employmentId);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
-        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07', scope: {employmentIds: [worker.employmentId]} });
         await generatePayslips(a, { batchId });
+        expect(await owner.db.select({id: schema.payslip.id}).from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
         await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
         await expect(cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Closed payroll reversal' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
         const pending = await submit(a, worker.employmentId);
@@ -303,7 +305,7 @@ describe('live non-self approver validation', () => {
         const id = await submit(a, worker.employmentId);
         expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.templateCode).toBe('FIRST');
         await setAttendanceWorkflowEnabled(a, b.companyId, 'irregularity', false);
-        const legacy = await submit(a, worker.employmentId);
+        const legacy = (await requestAttendanceCorrection(a, {employmentId: worker.employmentId, date: '2026-07-14', checkIn: '09:00', checkOut: '18:00', reason: 'Distinct legacy day after routing was disabled'})).correctionId;
         expect((await attendanceApplicationDetail(a, [b.companyId], legacy))?.workflow).toBeNull();
         await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/assigned approver/);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
@@ -415,8 +417,9 @@ describe('all history filters and protected cancellation', () => {
         const id = await submit(a, worker.employmentId);
         await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
-        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07', scope: {employmentIds: [worker.employmentId]} });
         await generatePayslips(a, { batchId });
+        expect(await owner.db.select({id: schema.payslip.id}).from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
         await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
         await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
         expect(await decisions()).toHaveLength(1);
@@ -449,7 +452,8 @@ describe('current authority over a frozen company snapshot', () => {
         const id = await submit(a, worker.employmentId);
         const [destination] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Destination entity' }).returning();
         const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: destination.id, name: 'Destination team' }).returning();
-        await changeEmploymentCompany(a, { employmentId: worker.employmentId, newCompanyId: destination.id, departmentId: department.id });
+        const destinationManager = await hireEmployee(a, {person: {fullName: 'Destination manager', primaryEmail: `${randomUUID()}@workflow.test`}, companyId: destination.id, departmentId: department.id, employmentType: 'full_time', hiredOn: '2020-01-01'});
+        await createMovementEvent(a, {employmentId: worker.employmentId, kind: 'entityTransfer', effectiveDate: todayInKualaLumpur(), companyId: destination.id, departmentId: department.id, managerEmploymentId: destinationManager.employmentId});
         const hrUser = await createAppUser(b.tenantId, (await hire('Destination HR', b.deptB)).personId, 'hr_admin');
         await owner.db.update(schema.roleAssignment).set({ companyId: destination.id }).where(eq(schema.roleAssignment.appUserId, hrUser));
         const destinationHr: SessionContext = { ...a, userId: hrUser, personId: null, roles: undefined, grants: [{ role: 'hr_admin', companyId: destination.id }] };
@@ -518,8 +522,9 @@ describe('attendance command lock order and historical OT evidence', () => {
         await enable(a, input(['hr_admin']));
         const id = await submit(a, worker.employmentId);
         await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
-        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07', scope: {employmentIds: [worker.employmentId]} });
         await generatePayslips(a, { batchId });
+        expect(await owner.db.select({id: schema.payslip.id}).from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
         expect(await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId),
             eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
         await armAttendanceAudit(a, worker.employmentId, id);
@@ -687,8 +692,9 @@ describe('attendance command lock order and historical OT evidence', () => {
         const before = await day(worker.employmentId), id = await submit(a, worker.employmentId);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
-        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07', scope: {employmentIds: [worker.employmentId]} });
         await generatePayslips(a, { batchId });
+        expect(await owner.db.select({id: schema.payslip.id}).from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
         const [initial] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
         expect(initial.status).toBe('processed');
         expect(initial.needsRecalcAt).toBeNull();
@@ -721,6 +727,10 @@ describe('dated half-night rotation through staged approval and cancellation', (
         const version = await saveScheduleRotation(a, { ruleId: rule.id, expectedRevision: revision,
             allowedShiftIds: [morning.id, night.id], cycle: { unit: 'day', length: 2, effectiveFrom: anchor, anchorDate: anchor,
                 days: [{ kind: 'full', shiftId: morning.id }, { kind: 'half', shiftId: night.id }] } });
+        // Save a genuinely future version, then advance only the business clock beyond that night.
+        vi.useFakeTimers({toFake: ['Date']});
+        vi.setSystemTime(new Date(`${addDays(nightDate, 1)}T12:00:00+08:00`));
+        try {
         const readDay = async () => (await owner.db.select().from(schema.attendance).where(and(
             eq(schema.attendance.employmentId, worker.employmentId), eq(schema.attendance.attendanceDate, nightDate))))[0];
         // Non-vacuity: the profile stays morning, while the dated cycle chooses the half-night source.
@@ -736,8 +746,10 @@ describe('dated half-night rotation through staged approval and cancellation', (
             lateMinutes: 0, earlyOutMinutes: 0 });
         expect(before.calcTrace).toMatchObject({ schedule: { scheduledMinutes: 240, endAbs: 1470, crossesMidnight: true } });
         await enable(a);
-        const id = (await requestAttendanceCorrection(self, { employmentId: worker.employmentId, date: nightDate,
-            checkIn: '20:00', checkOut: '01:30', reason: 'One verified hour after the rotated half-night boundary' })).correctionId;
+        const clockData = await attendanceClockData(a, worker.employmentId, nightDate);
+        const id = (await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date: nightDate,
+            clockChanges: {version: 1, baseline: clockData.baseline, entries: clockData.rows.filter(row => !row.voidedAt).map(row => ({id: row.id, direction: row.direction, punchAt: row.direction === 'out' ? '01:30' : row.punchAt}))},
+            reason: 'One verified hour after the rotated half-night boundary' })).correctionId;
         await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         expect(await readDay()).toEqual(before);
         expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
@@ -751,8 +763,9 @@ describe('dated half-night rotation through staged approval and cancellation', (
         expect(trail.map(row => row.actualUserId)).toEqual([mgr.userId, a.userId]);
         expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
         await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
-        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: nightDate.slice(0, 7) });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: nightDate.slice(0, 7), scope: {employmentIds: [worker.employmentId]} });
         await generatePayslips(a, { batchId });
+        expect(await owner.db.select({id: schema.payslip.id}).from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
         const [paid] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
         expect(paid).toMatchObject({ status: 'processed', needsRecalcAt: null });
         expect(await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId),
@@ -775,5 +788,6 @@ describe('dated half-night rotation through staged approval and cancellation', (
         expect(versions[0].effectiveFrom).toBe(anchor);
         expect(await withTenant(a, tx => allowanceScheduleFactsTx(tx, worker.employmentId, nightDate)))
             .toEqual({ shiftId: night.id, kind: 'half', scheduledMinutes: 240 });
+        } finally { vi.useRealTimers(); }
     });
 });

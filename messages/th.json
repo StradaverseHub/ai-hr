@@ -407,7 +407,7 @@
     "rewards": "ค่าตอบแทน",
     "identityEmail": "การส่งอีเมล",
     "workflowEmail": "การแจ้งเตือนขั้นตอนงาน",
-    "attendanceApplicationHistory": "ประวัติคำขอ",
+    "applicationHistory": "ประวัติคำขอ",
     "attendanceApprovalWorkflow": "เวิร์กโฟลว์การอนุมัติ"
   },
   "dashboard": {

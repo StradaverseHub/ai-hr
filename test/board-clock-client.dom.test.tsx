@@ -87,7 +87,7 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
     await screen.findByText(en.attendance.clock.cameraDenied);
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));
     await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));
-    expect((post.mock.calls[0][1].body as FormData).has('photo')).toBe(false);
+    expect((post.mock.calls[0][1]!.body as FormData).has('photo')).toBe(false);
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Clocked in at 09:00:00'));
     expect(screen.getByRole('status')).not.toHaveTextContent('photo saved');
   });
@@ -105,18 +105,18 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
   it('reposts the identical FormData only when the receipt is not yet found',async()=>{
     post.mockRejectedValueOnce(new TypeError('Network lost'));lookup.mockResolvedValueOnce(Response.json({error:'notFound'},{status:404}));
     mount();await begin();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));await screen.findByText(en.attendance.clock.pendingCommand);
-    const original=post.mock.calls[0][1].body;
+    const original=post.mock.calls[0][1]!.body;
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.cancelPhoto}));expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await waitFor(()=>expect(post).toHaveBeenCalledTimes(2));
-    expect(post.mock.calls[1][1].body).toBe(original);
+    expect(post.mock.calls[1][1]!.body).toBe(original);
   });
   it('retains the original command after a retry refusal while its earlier response is uncertain',async()=>{
     post.mockRejectedValueOnce(new TypeError('Response lost')).mockResolvedValueOnce(Response.json({error:'origin'},{status:403}));
     lookup.mockResolvedValueOnce(Response.json({error:'notFound'},{status:404}));
     mount('not_required');await begin();await screen.findByText(en.attendance.clock.pendingCommand);
-    const original=post.mock.calls[0][1].body;
+    const original=post.mock.calls[0][1]!.body;
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await screen.findByText(en.attendance.clock.origin);
-    expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();expect(post.mock.calls[1][1].body).toBe(original);
+    expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();expect(post.mock.calls[1][1]!.body).toBe(original);
     expect((screen.getByRole('button',{name:en.attendance.clock.clockOut}) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));
     await waitFor(()=>expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull());expect(post).toHaveBeenCalledTimes(2);
@@ -126,7 +126,7 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
     const signIn=await screen.findByRole('link',{name:en.attendance.clock.signInAgain});expect(signIn.getAttribute('target')).toBe('_blank');
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await waitFor(()=>expect(lookup).toHaveBeenCalledTimes(1));expect(post).toHaveBeenCalledTimes(1);
   });
-  it('keeps the original uncertain command when a different account tries to retry',async()=>{post.mockRejectedValueOnce(new TypeError('Network lost')).mockResolvedValueOnce(Response.json({error:'accountChanged'},{status:409}));lookup.mockResolvedValueOnce(Response.json({error:'notFound'},{status:404}));mount('not_required');await begin();await screen.findByText(en.attendance.clock.pendingCommand);const original=post.mock.calls[0][1].body;fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await screen.findByText(en.attendance.clock.accountChanged);expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();expect(post.mock.calls[1][1].body).toBe(original);expect((original as FormData).get('clockContext')).toBe(initial.clockContext);});
+  it('keeps the original uncertain command when a different account tries to retry',async()=>{post.mockRejectedValueOnce(new TypeError('Network lost')).mockResolvedValueOnce(Response.json({error:'accountChanged'},{status:409}));lookup.mockResolvedValueOnce(Response.json({error:'notFound'},{status:404}));mount('not_required');await begin();await screen.findByText(en.attendance.clock.pendingCommand);const original=post.mock.calls[0][1]!.body;fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await screen.findByText(en.attendance.clock.accountChanged);expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();expect(post.mock.calls[1][1]!.body).toBe(original);expect((original as FormData).get('clockContext')).toBe(initial.clockContext);});
   it('allows a fresh no-photo attempt after location permission fails before submission',async()=>{mount('not_required');await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));post.mockClear();vi.mocked(navigator.geolocation.getCurrentPosition).mockImplementationOnce((_ok,fail)=>fail?.({code:1} as GeolocationPositionError));await begin();await screen.findByText(en.attendance.clock.locationDenied);expect(post).not.toHaveBeenCalled();expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull();await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));});
   it('required camera failure cannot expose Skip Photo',async()=>{mount('required');await begin();await screen.findByText(en.attendance.clock.cameraDenied);expect(screen.queryByRole('button',{name:en.attendance.clock.skipPhoto})).toBeNull();expect(post).not.toHaveBeenCalled();});
 });

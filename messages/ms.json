@@ -407,7 +407,7 @@
     "rewards": "Ganjaran",
     "identityEmail": "Penghantaran e-mel",
     "workflowEmail": "Pemberitahuan aliran kerja",
-    "attendanceApplicationHistory": "Sejarah Permohonan",
+    "applicationHistory": "Sejarah Permohonan",
     "attendanceApprovalWorkflow": "Aliran Kerja Kelulusan"
   },
   "dashboard": {
