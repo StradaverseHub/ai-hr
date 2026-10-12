@@ -143,6 +143,28 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await perf.updateOnehrGoalProgress(self,plan.id,reviewed.revision,input.goals[0].id,'in_progress');
     expect((await perf.getOnehrReview(self,current.reviewId))!.plans[0].goals).toMatchObject([{status:'in_progress',area:'Coaching'}]);
   });
+  it('records quarterly KPI status without numeric ratings or Rewards facts',async()=>{
+    const {cycleId:quarter}=await perf.createCycle(a,{name:'Quarterly check-in',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-03-31`});
+    const policy=defaultPolicy(framework);policy.kind='quarterly';policy.modules={pm:true,tm:false,idp:false,evidence:false};await perf.configureOnehrCycle(a,quarter,null,policy);await perf.openCycle(a,{cycleId:quarter});
+    const [quarterReview]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,quarter),eq(schema.onehrReview.employmentId,subject.employmentId)));reviewId=quarterReview.reviewId;
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Quarterly delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    await expect(perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Pending agreement')).rejects.toThrow(/Agree the KPI/);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');
+    await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:''}])).rejects.toThrow(/Quarterly/);
+    await expect(perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','')).rejects.toThrow(/does not produce/);
+    await expect(perf.saveOnehrKpiCheckIn(mgr,reviewId,(await view()).revision,id,'on_track','')).rejects.toThrow(/not assigned/);
+    await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/every quarterly/);
+    await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
+    const first=(await view(self)).revision;await perf.saveOnehrKpiCheckIn(self,reviewId,first,id,'on_track','Dependency resolved');
+    await expect(perf.saveOnehrKpiCheckIn(self,reviewId,first,id,'off_track','Stale')).rejects.toThrow(/changed/);
+    expect((await view(mgr)).kpis[0].checkIn).toMatchObject({answer:'on_track',note:'Dependency resolved',userId:self.userId});
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result).toMatchObject({performance:null,potential:null,talent:null});
+    const history=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-checkin-saved'))).orderBy(schema.domainEvent.occurredAt,schema.domainEvent.id);expect(history).toHaveLength(2);expect(history.some(e=>(e.payload as {previous?:{answer:string}}).previous?.answer==='at_risk')).toBe(true);
+    const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'QUARTER',name:'Quarterly test unit'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
+    const unitId=await createRewardUnit(a,{name:'Annual rewards without quarterly ratings',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
+    await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized OneHR/);
+  });
   it('keeps private evidence private, preserves shared evidence and accepts explicit corrections',async()=>{
     const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered a milestone',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
     expect((await view()).evidence).toEqual([]);await perf.changeOnehrEvidenceState(self,id,'shared');expect((await view()).evidence).toHaveLength(1);

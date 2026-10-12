@@ -44,6 +44,7 @@ export async function onehrReviewAction(f:FormData){
       }
       case 'approve':await perf.approveOnehrScorecard(s,id,expected,str(f,'decision')==='approve',str(f,'remark'));break;
       case 'results':await perf.submitOnehrResults(s,id,expected,ids(f,'kpiId').map(k=>({id:k,actual:num(f,`${k}.actual`),note:str(f,`${k}.note`)})));break;
+      case 'check-in':await perf.saveOnehrKpiCheckIn(s,id,expected,str(f,'kpiId'),str(f,'answer') as 'on_track'|'at_risk'|'off_track'|'nothing_yet',str(f,'note'));break;
       case 'moderate':await perf.moderateOnehrKpi(s,id,expected,str(f,'kpiId'),num(f,'actual'),str(f,'remark'));break;
       case 'performance':await perf.confirmOnehrPerformance(s,id,expected,str(f,'band') as PMBand,str(f,'remark'));break;
       case 'competencies':await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'));break;
