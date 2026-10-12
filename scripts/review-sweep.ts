@@ -26,8 +26,7 @@ import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
-import { sweepReadinessNudges } from '../core/readiness-nudge';
-import { triagePendingClaims } from '../core/input-triage';
+import { runHrOrchestrator } from '../core/hr-orchestrator';
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
@@ -100,27 +99,20 @@ async function main() {
       // become notifications in this same pass rather than waiting a day for the next admin page load.
       // Returns `disabled` for a tenant that has not switched it on, which is the default and is not a
       // failure; those tenants are simply not counted below.
-      const nudge = await sweepReadinessNudges(ctx);
-      if (!nudge.disabled) nudgeTenants += 1;
-
-      // ADR-0084 §2.7 — read the claims filed since the last pass and ask the CLAIMANT about anything
-      // that does not fit. Also before dispatch, for the same reason as the nudge above.
-      //
-      // ⚠️ ITS OWN try/catch. A provider outage or a rate limit must not cost this tenant the review
-      // openings, the reminders, the escalations and the movements this pass has already computed — those
-      // are the part somebody depends on tonight, and triage is the part nobody has ever had.
-      let triage = { disabled: true, queried: 0, asked: 0, cleared: 0, rejected: 0, candidates: 0, cappedOut: false, notConfigured: false };
-      try {
-        triage = await triagePendingClaims(ctx);
-        if (!triage.disabled) triageTenants += 1;
-        totalQueries += triage.queried;
-      } catch (e) {
-        console.error(`  ✗ triage ${t.name}: ${(e as Error).message}`);
-      }
+      const orchestration = await runHrOrchestrator(ctx);
+      const nudge = orchestration.nudge.status === 'succeeded' ? orchestration.nudge.value
+        : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false };
+      const triage = orchestration.triage.status === 'succeeded' ? orchestration.triage.value
+        : { disabled: true, queried: 0, candidates: 0, cleared: 0, rejected: 0, notConfigured: false, cappedOut: false };
+      if (!nudge.disabled) nudgeTenants++;
+      if (!triage.disabled) triageTenants++;
+      totalQueries += triage.queried;
+      if (orchestration.failed) console.error('  Orchestrator requires attention: a step failed.');
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
       await dispatchNotifications(ctx);
+      if (orchestration.failed) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;

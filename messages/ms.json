@@ -7899,8 +7899,8 @@
       }
     },
     "controlTower": {
-      "title": "Menara Kawalan Gaji",
-      "description": "Setiap proses terbuka, apa yang memerlukan perhatian, dan sama ada semakan ini berbaloi.",
+      "title": "Menara Kawalan HR",
+      "description": "Selaraskan kerja HR, semak pengecualian dan sahkan hasil.",
       "backToPayroll": "Gaji",
       "ratioTitle": "Berapa ramai orang diperlukan untuk menjalankan gaji ini?",
       "ratioUnavailable": "Kami belum menunjukkan angka kakitangan, kerana ia tidak akan bermakna.",
@@ -15471,7 +15471,41 @@
         "failed": "Itu tidak dapat diselesaikan. Tiada apa-apa ditutup."
       }
     },
-    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence"
+    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence",
+    "orchestrator": {
+      "checking": "Menyemak rekod…",
+      "runFailed": "Pelaksanaan automasi terakhir memerlukan perhatian. Semak sejarah pelaksanaan.",
+      "navigation": "Navigasi Menara Kawalan",
+      "overview": "Gambaran keseluruhan",
+      "readiness": "Data pekerja",
+      "exceptions": "Pengecualian gaji",
+      "actions": "Kelulusan",
+      "agents": "Automasi",
+      "guide": "Cara ia berfungsi",
+      "workTitle": "Kerja untuk diselesaikan",
+      "workDescription": "Jejak maklumat pekerja yang belum lengkap, pihak yang boleh menyelesaikannya dan hasil semakan enjin HR.",
+      "refresh": "Semak rekod semasa",
+      "refreshFailed": "Semakan gagal. Kerja sedia ada dikekalkan. Cuba lagi.",
+      "refreshed": "Rekod disemak. Semakan ini tidak menghantar peringatan.",
+      "openCount": "{count} isu terbuka",
+      "verifiedCount": "{count} penutupan disahkan",
+      "manage": "Urus automasi",
+      "runs": "Sejarah pelaksanaan",
+      "observed": "Semakan terakhir: {date}",
+      "empty": "Tiada isu terbuka ditemui pada semakan terakhir.",
+      "unobserved": "Semak rekod semasa untuk mula menjejak kerja. Semakan berjadual turut mengemas kini senarai ini.",
+      "employee": "Pekerja",
+      "issue": "Maklumat belum lengkap",
+      "next": "Tindakan seterusnya",
+      "owner": "Pihak bertanggungjawab",
+      "hr": "HR",
+      "reopened": "Dibuka semula {count} kali",
+      "collect": "Dapatkan penyerahan pekerja",
+      "review": "HR menyemak dan mengemas kini rekod",
+      "shown": "Memaparkan {shown} daripada {total} isu.",
+      "verificationNote": "Penutupan bermaksud medan wajib tersedia ketika semakan direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
+      "quality": "Kualiti gaji dan AI"
+    }
   },
   "profileRequestSettings": {
     "title": "Permohonan Perubahan Pekerja",

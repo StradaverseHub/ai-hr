@@ -210,11 +210,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ...CLAIMS_LINKS.map((l) => [l.href, 'claims'] as const),
   ...LIFECYCLE_LINKS.map((l) => [l.href, 'lifecycle'] as const),
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
-  // ADR-0083 r233 — the Control Tower left the payroll pack's nav, so the flatMap above no longer reaches
-  // it. Still payroll-gated because payroll is its only LIVE domain: a tenant without it would open a
-  // tower with nothing in it. When a second adapter lands this becomes "any registered domain".
-  ['/control-tower', 'payroll'] as const,
-  ['/control-tower/how-it-works', 'payroll'] as const,
+  // ADR-0104: Overview and the explainer serve core HR readiness, including tenants without payroll.
   // r235 — payroll-gated for a sharper reason than the two above: the ONLY action type closes payroll
   // exceptions, so without payroll this row is a permanently empty screen. It stops being payroll's when
   // an action type lands whose subject is not a payroll finding.

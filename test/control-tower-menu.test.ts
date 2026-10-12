@@ -38,13 +38,13 @@ describe('r233 — the move out of the Payroll menu', () => {
     expect(read('packs/payroll/phases.ts')).not.toContain("'/payroll/control-tower'");
   });
 
-  it('the new section exists, is admin-gated, and is entitlement-gated', () => {
+  it('the section is admin-gated, while only payroll-specific actions need payroll', () => {
     const side = read('components/sidebar.tsx');
     expect(side).toContain("labelKey: 'aiControlTower'");
     expect(side).toContain("href: '/control-tower'");
     expect(side).toContain("href: '/control-tower/how-it-works'");
-    // Without a MODULE_OF_HREF entry the rail advertises a module the tenant may not hold.
-    expect(side).toContain("['/control-tower', 'payroll'] as const");
+    expect(side).not.toContain("['/control-tower', 'payroll'] as const");
+    expect(side).toContain("['/control-tower/actions', 'payroll'] as const");
   });
 
   it('both guarded routes carry a function-access column, and the FORWARD does not', () => {

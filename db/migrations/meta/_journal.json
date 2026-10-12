@@ -3067,6 +3067,13 @@
       "when": 1791900000010,
       "tag": "0530_attendance_payroll_entity_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1791900000011,
+      "tag": "0531_hr_orchestrator",
+      "breakpoints": true
     }
   ]
 }

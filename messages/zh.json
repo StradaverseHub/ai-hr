@@ -7899,8 +7899,8 @@
       }
     },
     "controlTower": {
-      "title": "薪资控制塔",
-      "description": "所有进行中的薪资运行、需要人工处理的项目，以及这些检查是否真正发挥作用。",
+      "title": "人力资源控制中心",
+      "description": "协调人力资源工作、审核异常并验证结果。",
       "backToPayroll": "薪资",
       "ratioTitle": "运行这套薪资需要多少人？",
       "ratioUnavailable": "我们暂不显示人力数字，因为它没有意义。",
@@ -15471,7 +15471,41 @@
         "failed": "无法完成。未关闭任何内容。"
       }
     },
-    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence"
+    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence",
+    "orchestrator": {
+      "checking": "正在检查记录…",
+      "runFailed": "上次自动化执行需要处理。请查看执行历史。",
+      "navigation": "控制中心导航",
+      "overview": "总览",
+      "readiness": "员工资料",
+      "exceptions": "薪资异常",
+      "actions": "审批",
+      "agents": "自动化",
+      "guide": "工作原理",
+      "workTitle": "待完成工作",
+      "workDescription": "跟踪缺失的员工资料、可处理的负责人以及人力资源引擎的核查结果。",
+      "refresh": "检查当前记录",
+      "refreshFailed": "检查失败，现有工作已保留。请重试。",
+      "refreshed": "记录已检查。本次检查未发送提醒。",
+      "openCount": "{count} 个待处理问题",
+      "verifiedCount": "{count} 项已核实关闭",
+      "manage": "管理自动化",
+      "runs": "执行历史",
+      "observed": "最近检查：{date}",
+      "empty": "最近一次检查未发现待处理问题。",
+      "unobserved": "检查当前记录以开始跟踪工作。定期检查也会刷新此队列。",
+      "employee": "员工",
+      "issue": "缺失资料",
+      "next": "下一步操作",
+      "owner": "负责人",
+      "hr": "人力资源",
+      "reopened": "已重新打开 {count} 次",
+      "collect": "收集员工提交的资料",
+      "review": "由人力资源审核并更新记录",
+      "shown": "显示 {total} 个问题中的 {shown} 个。",
+      "verificationNote": "关闭表示检查时必填字段已有内容。人力资源仍需验证其准确性。薪资和访问权限决定继续使用现有审批。",
+      "quality": "薪资与 AI 质量"
+    }
   },
   "profileRequestSettings": {
     "title": "员工变更申请设置",

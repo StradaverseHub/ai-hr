@@ -7899,8 +7899,8 @@
       }
     },
     "controlTower": {
-      "title": "Payroll Control Tower",
-      "description": "Every open run, what needs a person, and whether the checks are earning their keep.",
+      "title": "HR Control Tower",
+      "description": "Coordinate HR work, review exceptions and verify outcomes.",
       "backToPayroll": "Payroll",
       "ratioTitle": "How many people does it take to run this payroll?",
       "ratioUnavailable": "We are not showing a staffing figure yet, because it would not mean anything.",
@@ -15471,7 +15471,41 @@
         "failed": "That could not be completed. Nothing was closed."
       }
     },
-    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence"
+    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence",
+    "orchestrator": {
+      "checking": "Checking records…",
+      "runFailed": "The last automation pass needs attention. Review the execution history.",
+      "navigation": "Control Tower navigation",
+      "overview": "Overview",
+      "readiness": "Employee data",
+      "exceptions": "Payroll exceptions",
+      "actions": "Approvals",
+      "agents": "Automation",
+      "guide": "How it works",
+      "workTitle": "Work to complete",
+      "workDescription": "Track missing employee information, who can resolve it, and what the HR engine has verified.",
+      "refresh": "Check current records",
+      "refreshFailed": "The check failed. Existing work has been preserved. Try again.",
+      "refreshed": "Records checked. No reminders were sent by this check.",
+      "openCount": "{count} open issues",
+      "verifiedCount": "{count} verified closures",
+      "manage": "Manage automation",
+      "runs": "Execution history",
+      "observed": "Last checked: {date}",
+      "empty": "No open issues were found at the last check.",
+      "unobserved": "Check current records to start tracking work. The scheduled review also refreshes this queue.",
+      "employee": "Employee",
+      "issue": "Missing information",
+      "next": "Next action",
+      "owner": "Responsible party",
+      "hr": "HR",
+      "reopened": "Reopened {count} time(s)",
+      "collect": "Collect employee submission",
+      "review": "HR to review and update record",
+      "shown": "Showing {shown} of {total} issues.",
+      "verificationNote": "Closure means the required field is present at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
+      "quality": "Payroll and AI quality"
+    }
   },
   "profileRequestSettings": {
     "title": "Employee Change Requests",

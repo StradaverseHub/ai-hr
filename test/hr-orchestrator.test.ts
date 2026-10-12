@@ -1,0 +1,130 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { eq, sql } from 'drizzle-orm';
+import { withTenant } from '../db/client';
+import * as schema from '../db/schema';
+import { hireEmployee } from '../core/org';
+import { reconcileReadinessCases, orchestrationQueue, runHrOrchestrator } from '../core/hr-orchestrator';
+import { sweepReadinessNudges } from '../core/readiness-nudge';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
+
+describe('central HR orchestrator', () => {
+  let base: Base;
+  beforeAll(migrateTestDb);
+  beforeEach(async () => { await resetDb(); base = await seedBase(); });
+  afterAll(closeAll);
+
+  async function hire() {
+    return hireEmployee(adminCtx(base), {
+      person: { fullName: 'Orchestration fixture', primaryEmail: 'orchestrator@example.test' },
+      companyId: base.companyId, departmentId: base.deptA,
+      employmentType: 'full_time', hiredOn: '2024-01-01', paymentMethod: 'bank_transfer',
+    } as never);
+  }
+  const cases = () => owner.db.select().from(schema.hrOrchestrationCase);
+
+  it('opens, resumes, verifies and reopens a case using source evidence', async () => {
+    const employee = await hire();
+    const ctx = adminCtx(base);
+    const first = await reconcileReadinessCases(ctx);
+    expect(first.opened).toBeGreaterThan(0);
+    const bank = (await cases()).find(c => c.employmentId === employee.employmentId && c.gap === 'no_bank_account')!;
+    expect(bank.state).toBe('needs_input');
+    expect((await reconcileReadinessCases(ctx)).opened).toBe(0);
+    // Cash removes the bank requirement in the engine. The coordinator does not invent a bank value.
+    await owner.db.update(schema.employment).set({ paymentMethod: 'cash' }).where(eq(schema.employment.id, employee.employmentId));
+    expect((await reconcileReadinessCases(ctx)).verified).toBe(1);
+    const closed = (await cases()).find(c => c.id === bank.id)!;
+    expect(closed.state).toBe('verified');
+    expect(closed.verifiedAt).not.toBeNull();
+    await owner.db.update(schema.employment).set({ paymentMethod: 'bank_transfer' }).where(eq(schema.employment.id, employee.employmentId));
+    expect((await reconcileReadinessCases(ctx)).reopened).toBe(1);
+    const reopened = (await cases()).find(c => c.id === bank.id)!;
+    expect(reopened.reopenCount).toBe(1);
+    expect(reopened.verifiedAt).toBeNull();
+    expect((await orchestrationQueue(ctx)).observedAt).not.toBeNull();
+  });
+
+  it('retirement is not counted as a successful correction', async () => {
+    const employee = await hire();
+    const ctx = adminCtx(base);
+    await reconcileReadinessCases(ctx);
+    await owner.db.update(schema.employment).set({ terminatedOn: '2025-01-01' }).where(eq(schema.employment.id, employee.employmentId));
+    const result = await reconcileReadinessCases(ctx);
+    expect(result.inactive).toBeGreaterThan(0);
+    expect(result.verified).toBe(0);
+    expect((await cases()).every(c => c.state === 'inactive')).toBe(true);
+  });
+
+  it('records a successful empty check, and rejects non-admin coordination', async () => {
+    await reconcileReadinessCases(adminCtx(base));
+    expect((await orchestrationQueue(adminCtx(base))).observedAt).not.toBeNull();
+    const employee = { ...adminCtx(base), roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
+    await expect(reconcileReadinessCases(employee)).rejects.toThrow('access denied');
+    expect(await withTenant(employee, tx => tx.select().from(schema.hrOrchestrationCase))).toEqual([]);
+  });
+
+  it('concurrent reconciliation opens each issue once', async () => {
+    await hire();
+    const ctx = adminCtx(base);
+    const results = await Promise.all([reconcileReadinessCases(ctx), reconcileReadinessCases(ctx)]);
+    expect(results.reduce((sum, r) => sum + r.opened, 0)).toBe((await cases()).length);
+  });
+
+  it('a scoped observer cannot read or close cases outside its company', async () => {
+    await hire();
+    await reconcileReadinessCases(adminCtx(base));
+    const before = await cases();
+    const scoped = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: crypto.randomUUID() }] };
+    expect((await orchestrationQueue(scoped)).total).toBe(0);
+    await reconcileReadinessCases(scoped);
+    expect(await cases()).toEqual(before);
+    const otherTenant = await seedBase();
+    expect(await withTenant(adminCtx(otherTenant), tx => tx.select().from(schema.hrOrchestrationCase))).toEqual([]);
+    await expect(withTenant(adminCtx(otherTenant), tx => tx.insert(schema.hrOrchestrationCase).values({
+      tenantId: otherTenant.tenantId, employmentId: before[0].employmentId, gap: 'no_bank_account',
+      state: 'needs_input', audience: 'employee', harnessVersion: 'test',
+    }))).rejects.toThrow();
+  });
+
+  it('respects switches while still observing work', async () => {
+    await hire();
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', false);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    const run = await runHrOrchestrator(adminCtx(base));
+    expect(run.failed).toBe(false);
+    expect(run.nudge).toMatchObject({ status: 'succeeded', value: { disabled: true } });
+    expect(run.triage).toMatchObject({ status: 'succeeded', value: { disabled: true } });
+    expect((await cases()).length).toBeGreaterThan(0);
+  });
+
+  it('a failed specialist does not suppress verification and is recorded as failed', async () => {
+    await hire();
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', true);
+    await setSetting(base.tenantId, 'claims.input_triage_enabled', false);
+    await owner.db.execute(sql`revoke select on agent_proposal from ai_hr_app`);
+    try {
+      const result = await runHrOrchestrator(adminCtx(base));
+      expect(result.nudge.status).toBe('failed');
+      expect(result.after.status).toBe('succeeded');
+      expect(result.failed).toBe(true);
+      expect((await orchestrationQueue(adminCtx(base))).lastRun?.failed).toBe(true);
+    } finally { await owner.db.execute(sql`grant select on agent_proposal to ai_hr_app`); }
+  });
+
+  it('does not duplicate a reminder after the best-effort proposal write fails', async () => {
+    await hire();
+    await setModule(base.tenantId, 'notifications', 'active');
+    await setSetting(base.tenantId, 'notifications.readiness_nudge_enabled', true);
+    await owner.db.execute(sql`revoke insert on agent_proposal from ai_hr_app`);
+    try {
+      const ctx = adminCtx(base);
+      const results = await Promise.all([sweepReadinessNudges(ctx), sweepReadinessNudges(ctx)]);
+      // Only bank details have an employee recipient; this fixture has no HR employee to notify.
+      expect(results.reduce((n, r) => n + r.sent, 0)).toBe(1);
+      expect((await sweepReadinessNudges(ctx)).sent).toBe(0);
+      expect(await owner.db.select().from(schema.agentProposal)).toEqual([]);
+      const events = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'));
+      expect(events).toHaveLength(1);
+    } finally { await owner.db.execute(sql`grant insert on agent_proposal to ai_hr_app`); }
+  });
+});

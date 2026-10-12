@@ -24,7 +24,7 @@
  * tells you what to fix. Naming the gap is the whole deliverable.
  */
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 
 /**
@@ -149,7 +149,11 @@ export async function recordReadiness(
   opts?: { peopleLimit?: number },
 ): Promise<ReadinessView> {
   const peopleLimit = opts?.peopleLimit ?? PEOPLE_PER_GAP;
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, async (tx) => (await readinessSnapshot(tx, peopleLimit)).view);
+}
+
+/** Same engine read, in the orchestrator's transaction so completion has positive source evidence. */
+export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, adminOnly = false) {
     const rows = await tx
       .select({
         employmentId: schema.employment.id,
@@ -178,7 +182,8 @@ export async function recordReadiness(
       )
       // ACTIVE ONLY. A leaver with no SOCSO number is a historical record, not a thing to go and fix, and
       // listing them would bury the people whose next payslip actually depends on it.
-      .where(isNull(schema.employment.terminatedOn));
+      .where(and(isNull(schema.employment.terminatedOn),
+        adminOnly ? sql`app.can_admin_employment(${schema.employment.id})` : undefined));
 
     const buckets = new Map<ReadinessGapId, ReadinessPerson[]>();
     const add = (id: ReadinessGapId, p: ReadinessPerson) => {
@@ -213,6 +218,5 @@ export async function recordReadiness(
       // a SOCSO number", because one stops a cycle and the other stops a filing.
       .sort((a, b) => BLOCK_RANK[a.blocks] - BLOCK_RANK[b.blocks] || b.count - a.count);
 
-    return { employees: rows.length, ready, gaps };
-  });
+    return { view: { employees: rows.length, ready, gaps }, activeEmploymentIds: rows.map(r => r.employmentId) };
 }

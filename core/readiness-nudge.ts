@@ -343,8 +343,16 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
 
       if (body === null) body = await draftBody(ctx, gap.id, audience);
 
-      await withTenant(ctx, (tx) =>
-        appendEvent(tx, {
+      const emitted = await withTenant(ctx, async (tx) => {
+        // The event is the durable effect receipt. A best-effort proposal ledger cannot deduplicate it.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${ctx.tenantId}), hashtext(${person.employmentId + ':' + gap.id}))`);
+        const [alreadySent] = await tx.select({ id: schema.domainEvent.id }).from(schema.domainEvent)
+          .where(and(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'),
+            eq(schema.domainEvent.subjectEmploymentId, person.employmentId),
+            gte(schema.domainEvent.occurredAt, since),
+            sql`${schema.domainEvent.payload} ->> 'gap' = ${gap.id}`)).limit(1);
+        if (alreadySent) return false;
+        await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'employment',
           aggregateId: person.employmentId,
@@ -356,8 +364,10 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
           // The BODY travels on the event because the notification registry renders from the payload and
           // stores the result. `audience` is what the registry's recipient resolver branches on.
           payload: { gap: gap.id, audience, body, recipients },
-        }),
-      );
+        });
+        return true;
+      });
+      if (!emitted) { cooled++; continue; }
 
       await recordProposal(ctx, {
         type: 'readiness_fix',

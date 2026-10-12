@@ -9983,3 +9983,18 @@ export const onehrResult = pgTable('performance_onehr_result', {
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
 },t=>[uniqueIndex('performance_onehr_result_review_uq').on(t.reviewId),index('performance_onehr_result_subject_idx').on(t.employmentId,t.cycleId)]);
+
+/** ADR-0104: durable coordination, with all HR facts retained in their original owners. */
+export const hrOrchestrationCase = pgTable('hr_orchestration_case', {
+  id: id(), tenantId: tenantId(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id, { onDelete: 'cascade' }),
+  gap: text('gap').notNull(),
+  state: text('state').$type<'needs_input' | 'needs_review' | 'verified' | 'inactive'>().notNull(),
+  audience: text('audience').$type<'employee' | 'hr'>().notNull(),
+  harnessVersion: text('harness_version').notNull(),
+  openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow().notNull(),
+  observedAt: timestamp('observed_at', { withTimezone: true }).defaultNow().notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  reopenCount: integer('reopen_count').notNull().default(0),
+}, t => [uniqueIndex('hr_orchestration_case_identity').on(t.tenantId, t.employmentId, t.gap),
+  index('hr_orchestration_case_queue').on(t.tenantId, t.state, t.openedAt)]);
