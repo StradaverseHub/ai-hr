@@ -31,13 +31,20 @@ Production dependency audit on 12 October found pdfjs-dist 5.6.205 affected by [
 
 | Component | vCPU | RAM | Initial encrypted SSD | Notes |
 |---|---:|---:|---|---|
-| Web app + HTTPS proxy + Keycloak/private email + local identity PostgreSQL | 8 | 24 GiB | 80 GiB OS/app + 40 GiB identity data | Separate OS identities; one active app process. Profile before replicas; one Node process cannot use all cores for a CPU-bound task. |
+| Web app + HTTPS proxy + Keycloak/private email + local identity PostgreSQL + scheduled-job processes | 8 | 24 GiB | 80 GiB OS/app + 40 GiB identity data | Two-host UAT baseline: jobs share this host, with separate OS identities, secrets and resource bounds. One active web process; profile before replicas. |
 | PostgreSQL primary | 4 | 16 GiB | 40 GiB OS + 200 GiB data/WAL | HR database only; private TLS connection from app, jobs and identity email service. |
-| Scheduled jobs | 2 | 4 GiB | 40 GiB | One scheduler, same application release; stagger heavy jobs. |
 | Build/release runner, on demand | 4 | 16 GiB | 80 GiB | Linux x86_64 matching target runtime, no HR data or runtime secrets. |
 | Independent backup storage | — | — | Start with 500 GiB reservation | Resize from measured full backups, WAL, retention and growth; encrypted and outside the VM/storage failure boundary. |
 
-Runtime total: **14 vCPU / 44 GiB RAM**. With the on-demand builder: **18 vCPU / 60 GiB**. Backup-service compute, central monitoring, VPN, any external load balancer, hypervisor reserve and the load generator are additional if the provider does not supply them. Obtain a quote covering those, storage IOPS, snapshots, egress, TLS/DNS, support and AI/SMTP consumption; no cost estimate is asserted without the provider.
+Runtime total: **two VMs, 12 vCPU / 40 GiB RAM**. With the on-demand builder: **16 vCPU / 56 GiB**. No dedicated jobs VM is required for the initial UAT proposal. Backup-service compute, central monitoring, VPN, any external load balancer, hypervisor reserve and the load generator are additional if the provider does not supply them. Obtain a quote covering those, storage IOPS, snapshots, egress, TLS/DNS, support and AI/SMTP consumption; no cost estimate is asserted without the provider.
+
+**RECOMMENDATION — scheduler placement, revised after the owner's Odoo comparison:** run scheduled work as supervised processes on the application host, outside the Next.js request process. Odoo's [deployment guide](https://www.odoo.com/documentation/19.0/administration/on_premise/deploy.html) starts cron workers alongside HTTP workers; [max_cron_threads](https://www.odoo.com/documentation/19.0/developer/reference/cli.html#cmdoption-odoo-bin-max-cron-threads) controls their concurrency. This separates execution without requiring separate hardware. Odoo's Python worker/user sizing rules are not capacity evidence for this Node application.
+
+**FACT — local implementation and configured demo schedules inspected:** our sweeps are separate CLI scripts; core/job-run.ts records selected job outcomes for the Scheduled Actions screen. The current demo's application-host crontab lists leave, review, usage, provisioning, anomaly, entitlement and workflow-email scripts. The screen does not itself execute or schedule these scripts. No embedded Odoo-style scheduler or unified retry/claim mechanism is supplied by this placement change.
+
+For UAT, keep one enabled schedule per job on the app host, with the same release SHA as the web service. Prefer reviewed systemd oneshot/timer definitions, using separate non-login job identities and private job-specific environments. Do not put an owner credential into the web account or start jobs from a page request, setInterval or each web replica. Some current scripts require MIGRATION_DATABASE_URL/owner-level access; review their actual grants rather than claiming all jobs already support a restricted DB role. The built-in web service's filesystem/credential isolation must remain intact.
+
+Initially serialize heavy batch work and budget up to **2 vCPU / 4 GiB aggregate** for colocated job processes within the 8-vCPU/24-GiB host. These are proposed limits, not an extra reservation or an implemented job slice. Commission and measure the limits together with Keycloak, local identity PostgreSQL, email, web and OS memory; independent per-service caps do not guarantee aggregate headroom. Retain the 25% steady-load memory-headroom acceptance criterion. Increase host capacity or move the job processes to a separate VM only if the mixed 200-user run shows web latency/resource contention, missed job deadlines or a need for independent availability/security isolation. A shared host means web and jobs share its outage and maintenance window. Keep nightly work staggered, but deliberately overlap representative jobs with peak traffic during acceptance.
 
 The initial UAT topology deliberately colocates identity and web: the existing installer requires a local identity database, shared credential vault and Unix socket. The HR database is separate. The candidate email installer accepts a precreated restricted role on that remote HR database and the actual app OS group. Do not move the agent to another VM or expose its socket over an unauthenticated network port. Back up both PostgreSQL installations.
 
@@ -51,13 +58,21 @@ Current Keycloak packaging pins 26.8.0/Java 25, 640 MiB heap and a 1 GiB service
 
 ```mermaid
 flowchart LR
-  U[UAT browsers / phones] --> E[HTTPS edge / trusted proxy]
-  E --> A[Private Next.js app]
-  E --> K[Approved Keycloak public routes]
+  U[UAT browsers / phones] --> E
+  subgraph H[Application VM: separate service processes]
+    E[HTTPS edge / trusted proxy]
+    A[Private Next.js app]
+    K[Approved Keycloak public routes]
+    I[(Private PostgreSQL: identity DB)]
+    J[Scheduled-job processes: one schedule per job]
+    M[Private identity/email service]
+    E --> A
+    E --> K
+    K --> I
+    A --> M
+  end
   A --> D[(Private PostgreSQL: HR DB)]
-  K --> I[(Private PostgreSQL: identity DB)]
-  J[Single scheduled-job runner] --> D
-  A --> M[Private identity/email service]
+  J --> D
   M --> S[Approved TLS SMTP relay]
   D --> B[Independent encrypted backups]
   I --> B
@@ -90,7 +105,7 @@ The isolated codex/uat-hosting candidate carries selected customer service/prefl
 2. Safe DB bootstrap and backup credential handling; no secret connection URLs/passwords in process arguments, logs or broadly readable staging directories.
 3. Fresh-customer/first-administrator bootstrap with chained initial events, exact identity binding, private one-time activation handling and interrupted-run recovery. Main currently has operator provisioning; its `done` state does not enroll a Keycloak administrator. The candidate now includes `scripts/bootstrap-customer.ts`; completion still requires verified Keycloak enrollment and activation.
 4. Supported Node paths throughout app, jobs, private agent and deployment scripts.
-5. Remote HR database support with app/identity colocated, private IPC and separately operated jobs.
+5. Remote HR database support with app/identity/jobs colocated, private IPC and separately supervised job processes/credentials.
 6. A build-once Linux artifact and controlled release switch. Current deploy.sh builds into `.next` in place, applies migrations and may restart; it does not implement immutable/atomic deployment.
 
 The candidate adds migration 0528 (436 journal entries) to enforce persisted opt-in and the existing no-disarm-after-history rule at the shared domain-event trigger. This covers raw identity/job writes that bypass withTenant without mutating their connection settings. Fresh bootstrap arms the reserved pre-auth system tenant as well as the customer. Verify these paths on the actual release before audit sign-off; earlier unchained events are not backfilled.
@@ -164,9 +179,29 @@ Configure Admin → Email delivery with an approved implicit-TLS relay (STARTTLS
 
 ### Step 8 — Install jobs, monitoring and UAT fixtures
 
-Install each required job once, using the reviewed supported runtime and restricted job environment: provisioning where used, usage capture, earned/carry leave, anomaly/review/entitlement checks, identity backup/session pruning, workflow email. Use current product policies for the schedules; do not copy every old cron/timer blindly or enable both for the same job. Leave destructive billing/dunning actions off unless explicitly in scope.
+Install each required job once on the application host, using the reviewed supported runtime and a private job-specific environment: provisioning where used, usage capture, earned/carry leave, anomaly/review/entitlement checks, identity backup/session pruning, workflow email. Keep execution outside the web process/account; preserve the separate backup and maintenance identities. Use current product policies for the schedules; do not copy every old cron/timer blindly or enable both for the same job. Leave destructive billing/dunning actions off unless explicitly in scope.
 
-Verify one successful execution, retry/overlap behavior, business effects, missing-heartbeat alert and log rotation. Workflow email remains off until the selected categories and actual tester consent are enabled. Send a controlled failure alert and obtain human receipt.
+Commission the proposed aggregate job CPU/memory bounds and initially serialize heavy jobs. Use one non-overlapping service invocation per job; if cron is selected, use a protected flock lock. A local lock does not coordinate multiple hosts: do not enable a second scheduler during a later move without disabling the first or implementing verified database claims/locks. Verify one successful execution, interrupted-run recovery, job-specific retry/overlap behavior, business effects, missing-heartbeat alert and log rotation; retries are not universally safe or implemented. Workflow email remains off until the selected categories and actual tester consent are enabled. Send a controlled failure alert and obtain human receipt. Run representative scheduled work during the 200-user acceptance test and record its effect on web latency, DB contention and job completion.
+
+#### Required job run tracking and failure visibility
+
+**REQUIREMENT — owner confirmed:** operators must be able to track scheduled-job runs and failures from the system. A server log alone is insufficient. Extend the existing System Settings → Scheduled Actions view and its authoritative job-run history; do not introduce a competing run-status store. Keep installation-wide operational summaries separate from tenant-specific HR details and restrict access through the existing authorization/RLS boundaries. Any future tenant detail needs explicit tenant-scoped storage and permissions.
+
+**FACT — current implementation inspected:** core/job-run.ts and app/admin/scheduled-actions/page.tsx expose last outcome (success/partial/failed), run time, duration, aggregate counters, error text and recent history for six registered sweeps: earned leave, review, carry expiry, usage, payroll anomaly and entitlement checks. They write their run records at completion. The current query uses a shared global limit, so high-frequency jobs must not be added without guaranteeing history per job. Provisioning, workflow email, backups and session maintenance are not all covered by this registry. deploy/cron-alert.sh supplies exit-code alerts and successful-run heartbeat files when installed; it does not by itself expose running/interrupted states in the app or provide an independent missed-schedule monitor. These are implementation/commissioning gaps, not completed features.
+
+The UAT monitoring contract is:
+
+| Information | Required behavior |
+|---|---|
+| Every enabled job | One stable job identity, purpose, enabled state, accountable operator and authoritative schedule/timezone. Include product jobs and operator-visible backup/session-maintenance summaries; do not expose backup credentials or private identity details to HR users. Disabled/not applicable must be distinguishable from never run. |
+| Each run | A stable run reference written before work begins, started/finished timestamps, duration, running/success/partial/failed/interrupted state, and available processed/skipped/failed counts. Do not invent percentage progress where the script cannot measure a total. Preserve business outcome separately from monitoring failures. |
+| Failure detail | A safe, useful summary and run reference in the app; restricted server diagnostics for authorized operators. No passwords, tokens, connection URLs, raw payroll/employee data, tenant names or unrestricted stack traces in globally readable summaries or alert payloads. Review existing free-text error writers before expanding access. |
+| History | Durable, bounded/paginated history per job, including interrupted attempts. A frequently running job must not hide the most recent run of a monthly or annual job. Keep failures visible until a later result is recorded; retain prior failed attempts. |
+| Scheduler health | Show an overdue/missed schedule or stale execution distinctly from a completed failure. Derive expected execution from the installed scheduler's configuration/state, not an unrelated hardcoded next-run value. A stale heartbeat is evidence of lost contact, not proof that a process has stopped; confirm/coordinate recovery before starting a duplicate. |
+| Alerts | Notify the named operator on failed/partial runs, interrupted/stale execution and missed schedules, with deduplication and recovery notification. Use an external heartbeat/availability monitor for host, scheduler, database or app outages; the failed host cannot be its own only alert source. Delivery to an actual operator must be tested. |
+| Recovery | Document per-job interruption/retry behavior. Do not automatically rerun work with unverified idempotency. Record separate attempts and the initiating operator/reason for any authorized manual retry; do not add an HR-web owner-credential write path. |
+
+Before checking this requirement off, demonstrate a normal run, a partial result, a caught failure, failure before business work starts, a killed runner, an intentionally missed schedule, an intentionally disabled job and unavailable run-history storage/alert transport. Verify that no old success masks a new failed/missing execution, that simultaneous invocations cannot duplicate effects, and that company-scoped/ordinary users cannot read installation-wide diagnostics or change run history. Confirm per-job history remains visible when a minute job has many newer runs. Preserve redacted evidence and the operator's received alert against the exact shipping release. This guide records the requirement; it does not implement the missing lifecycle/coverage or authorize sending test alerts before a recipient/channel is supplied.
 
 Load 1,000 synthetic employees across representative companies/departments, managers, shifts and permissions, with realistic leave/payroll/attendance histories and attachment sizes. Use normal import/provisioning paths; the destructive demo seeder is not a UAT fixture loader. Create 200 distinct test accounts and a second tenant/company for negative access tests. Verify imports, opening balances and expected totals before the timed run.
 
@@ -214,6 +249,8 @@ Each checked item needs an owner, timestamp, release SHA, target environment and
 - [ ] Off-host HR + identity + key/config backups scheduled; failure/staleness alert received.
 - [ ] Isolated restore reaches usable login and HR workflows within agreed recovery targets.
 - [ ] Required jobs run once; monitored failures and missing heartbeat reach the named operator.
+- [ ] Scheduled Actions monitoring contract passes for every enabled job: lifecycle/history coverage, safe failure detail, per-job retention, interrupted/missed/disabled distinction and received failure/recovery alerts, including independent host-outage monitoring.
+- [ ] Colocated job resource limits, overlap prevention and interruption recovery verified; representative jobs complete during the 200-user run without violating web latency or memory-headroom criteria.
 - [ ] SMTP invitation/recovery and scoped notification tests pass, or excluded functions and recovery alternative explicitly accepted for synthetic-only UAT.
 - [ ] 1,000-employee dataset and 200 individual accounts reconcile; negative-scope fixtures included.
 - [ ] 200-user sustained/burst/heavy-overlap tests meet agreed performance and integrity targets.
@@ -243,4 +280,4 @@ Local implementation references: [deployment spine](deploy.sh), [customer wrappe
 
 Earlier customer architecture material remains on the parked branch. The selected, adapted candidate is described in [CUSTOMER.md](CUSTOMER.md); no candidate document certifies a live installation.
 
-Primary guidance checked 12 October 2026: [Node support](https://nodejs.org/en/about/previous-releases), [Next self-hosting](https://nextjs.org/docs/app/guides/self-hosting), [Keycloak sizing](https://www.keycloak.org/high-availability/concepts-memory-and-cpu-sizing), [PostgreSQL 16 PITR](https://www.postgresql.org/docs/16/continuous-archiving.html). Resource allocations and test thresholds above are our provisional engineering recommendations, not provider guarantees.
+Primary guidance checked 12 October 2026: [Node support](https://nodejs.org/en/about/previous-releases), [Next self-hosting](https://nextjs.org/docs/app/guides/self-hosting), [Keycloak sizing](https://www.keycloak.org/high-availability/concepts-memory-and-cpu-sizing), [PostgreSQL 16 PITR](https://www.postgresql.org/docs/16/continuous-archiving.html), [Odoo deployment](https://www.odoo.com/documentation/19.0/administration/on_premise/deploy.html) and [Odoo cron concurrency](https://www.odoo.com/documentation/19.0/developer/reference/cli.html#cmdoption-odoo-bin-max-cron-threads). Resource allocations and test thresholds above are our provisional engineering recommendations, not provider guarantees.
