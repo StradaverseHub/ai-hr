@@ -129,6 +129,8 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.unlockOnehrCalibration(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'Change a frozen result','performance',reviewId)).rejects.toThrow(/Finalized/);
     expect((await view(a)).result?.digest).toBe(frozen.digest);
     const audit=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,group),eq(schema.domainEvent.eventType,'onehr.calibration-reopened')));expect(audit).toHaveLength(1);expect(audit[0].payload).toMatchObject({reason:'Correct the group decision',axis:'performance'});
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
+    await expect(perf.lockOnehrCalibration(a,bg,1,'')).rejects.toThrow(/read-only/);
   });
   it('rejects stale submissions, self approvals, legacy bypasses, and cross-tenant requests',async()=>{
     const first=await view(self);await perf.saveOnehrKpis(self,reviewId,first.revision,[],false);
