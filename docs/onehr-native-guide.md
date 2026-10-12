@@ -25,7 +25,7 @@ Employees and assigned reviewers use **My Performance** to open their assessment
 
 ## Calibrate, finalize and release
 
-A Performance administrator assigns explicit reviewer cohorts and tiers. Performance and potential can be confirmed and locked separately. Unchanged bands can pass through a tier without an override. Changed bands require reasons. Group reviewers can lock individuals; a reviewer cannot calibrate their own assessment.
+A Performance administrator assigns explicit reviewer cohorts and tiers. Performance and potential can be confirmed and locked separately. Unchanged bands can pass through a tier without an override. Changed bands require reasons. Group reviewers can lock individuals; a reviewer cannot calibrate their own assessment. HR may reopen an unfinalized calibration with a reason, reopening later tiers first. This clears nominations for human confirmation again; finalized assessments cannot reopen. Group and final reviews are outside the BG deadline window.
 
 BG, Group or final reviewers explicitly confirm any PIP, promotion or special-reward nomination. These decisions are separate from the derived talent category.
 

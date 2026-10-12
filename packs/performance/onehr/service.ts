@@ -309,7 +309,7 @@ type Axis='performance'|'potential'|'both';
 function calibrationWindows(policy:Policy,tier:Tier,axis:Axis) {
  if(tier==='hod'){if(axis!=='potential'&&ratedPerformance(policy))assertWindow(policy,'pm_hod');if(axis!=='performance'&&policy.modules.tm)assertWindow(policy,'pot_hod');}
  else if(tier==='bu'){if(axis!=='potential'&&ratedPerformance(policy))assertWindow(policy,'pm_buceo');if(axis!=='performance'&&policy.modules.tm)assertWindow(policy,'pot_buceo');}
- else assertWindow(policy,'tb_bgceo');
+ else if(tier==='bg')assertWindow(policy,'tb_bgceo');
 }
 function needsAxes(policy:Policy,axis:Axis){return {pm:ratedPerformance(policy)&&axis!=='potential',pot:policy.modules.tm&&axis!=='performance'};}
 function assertPrecedingTier(rows:Awaited<ReturnType<typeof decisions>>,tier:Tier,mode:string,pm:boolean,pot:boolean) {
@@ -384,13 +384,43 @@ export async function lockOnehrCalibration(ctx:SessionContext,sessionId:string,e
  });
 }
 
+/** HR can reopen an unfinalized decision; downstream confirmations must be reopened first. */
+export async function unlockOnehrCalibration(ctx:SessionContext,sessionId:string,expected:number,reason:string,axis:Axis='both',reviewId?:string) {
+ z.string().trim().min(1).max(4000).parse(reason);z.enum(['performance','potential','both']).parse(axis);if(reviewId)uuid.parse(reviewId);
+ return withPerformanceTenant(ctx,async tx=>{
+  const {session,cycle}=await loadCalibration(tx,sessionId,expected);await requireAdmin(tx,session.cycleId);
+  if(!['open','calibration'].includes(cycle.native.status))throw Error('Closed calibration periods are read-only.');
+  const {pm,pot}=needsAxes(cycle.policy,axis);if(!pm&&!pot)throw Error('This assessment axis is disabled.');
+  const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);if(!reviewId&&own?.present)throw Error('Ask another administrator to reopen a cohort containing your assessment.');
+  const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId)).orderBy(asc(onehrCalibrationEntry.reviewId));
+  if(reviewId&&!entries.some(e=>e.reviewId===reviewId))throw Error('Assessment not available in this cohort.');
+  const changed=[];
+  for(const e of entries.filter(e=>!reviewId||e.reviewId===reviewId)){
+   if(await isSelf(tx,e.employmentId))throw Error('Ask another administrator to reopen your assessment.');
+   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.reviewId},0))`);
+   const current=await resolved(tx,e.reviewId,cycle.policy);
+   if(current.input.finalized){if(reviewId)throw Error('Finalized assessments cannot reopen.');continue;}
+   if(current.rows.some(d=>tiers.indexOf(d.tier)>tiers.indexOf(session.tier as Tier)&&(pm&&d.performanceLocked||pot&&d.potentialLocked)))throw Error('Reopen later calibration tiers first.');
+   if(!(pm&&(session.performanceLockedAt||e.performanceLockedAt)||pot&&(session.potentialLockedAt||e.potentialLockedAt)))continue;
+   changed.push({reviewId:e.reviewId,previous:e});
+   await tx.update(onehrCalibrationEntry).set({...(pm?{performanceLockedAt:null,...(session.tier==='final'?{performance:null}:{})}:{}),...(pot?{potentialLockedAt:null,...(session.tier==='final'?{potential:null}:{})}:{}),lockedAt:null,pip:false,promotion:false,specialReward:false}).where(eq(onehrCalibrationEntry.id,e.id));
+  }
+  if(!changed.length)throw Error('No unfinalized locked assessments are available to reopen.');
+  const updated=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId));
+  const pl=!own?.present&&updated.length&&updated.every(e=>e.performanceLockedAt)?session.performanceLockedAt:null;
+  const tl=!own?.present&&updated.length&&updated.every(e=>e.potentialLockedAt)?session.potentialLockedAt:null;
+  await tx.update(onehrCalibration).set({performanceLockedAt:pl||null,potentialLockedAt:tl||null,lockedAt:null,revision:session.revision+1}).where(eq(onehrCalibration.id,sessionId));
+  await audit(tx,ctx,sessionId,'calibration-reopened',{axis,reason,changes:changed});
+ });
+}
+
 export async function getOnehrCalibration(ctx:SessionContext,sessionId:string) {
   return withPerformanceTenant(ctx,async tx=>{
     const {session,cycle}=await loadCalibration(tx,sessionId);
     const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId));
     const rows=[];for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;const r=await resolved(tx,entry.reviewId,cycle.policy);rows.push({entry,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,managerPerformance:r.input.performance,managerPotential:r.input.potential.band,currentPerformance:r.performance.band,currentPotential:r.potential.band});}
     const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);
-    return {session,canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},rows,reference:session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement))};
+    return {session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},rows,reference:session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement))};
   });
 }
 export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expected:number) {

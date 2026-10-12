@@ -108,6 +108,28 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.updateOnehrWindows(a,cycleId,4,{},'Reopen closed period')).rejects.toThrow(/read-only/);
   });
+  it('keeps Group outside BG cutoffs and lets only HR reopen unfinalized calibration in reverse tier order',async()=>{
+    await complete();
+    await perf.updateOnehrWindows(a,cycleId,1,{tb_bgceo:{opensAt:null,closesAt:new Date(Date.now()-60_000).toISOString()}},'BG cutoff reached');
+    const make=(name:string,tier:'bu'|'bg'|'group',mode:'after'|'replace'='after')=>perf.createOnehrCalibration(a,cycleId,{name,companyId:b.companyId,tier,reviewerUserIds:[a.userId!,mgr.userId!],reviewIds:[reviewId],pbtAchievement:100,mode});
+    const bu=await make('BU','bu');await perf.lockOnehrCalibration(a,bu,1,'');
+    const bg=await make('BG','bg');await expect(perf.lockOnehrCalibration(a,bg,1,'')).rejects.toThrow(/closed/);
+    const group=await make('Group','group','replace');
+    await perf.saveOnehrCalibration(a,group,1,{reviewId,performance:'ME',potential:'High',performanceNote:'',potentialNote:'',promotion:true,specialReward:true});
+    await perf.lockOnehrCalibration(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'');
+    await expect(perf.unlockOnehrCalibration(mgr,group,(await perf.getOnehrCalibration(mgr,group)).session.revision,'Reconsider')).rejects.toThrow(/administrator/);
+    await expect(perf.unlockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'Reconsider')).rejects.toThrow(/later calibration tiers/);
+    await perf.unlockOnehrCalibration(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'Correct the group decision','performance',reviewId);
+    let reopened=await perf.getOnehrCalibration(a,group);expect(reopened.rows[0].entry).toMatchObject({performanceLockedAt:null,promotion:false,specialReward:false});expect(reopened.rows[0].entry.potentialLockedAt).toBeTruthy();
+    await perf.unlockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'Review the underlying BU performance','performance');
+    await perf.lockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'','performance');
+    await perf.saveOnehrCalibration(a,group,reopened.session.revision,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Reconsidered verified delivery',potentialNote:'',confirmTalentDecisions:true,promotion:true});
+    reopened=await perf.getOnehrCalibration(a,group);await perf.lockOnehrCalibration(a,group,reopened.session.revision,'','performance',reviewId);
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);const frozen=(await view(a)).result!;expect(frozen.performance).toBe('AE');
+    await expect(perf.unlockOnehrCalibration(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'Change a frozen result','performance',reviewId)).rejects.toThrow(/Finalized/);
+    expect((await view(a)).result?.digest).toBe(frozen.digest);
+    const audit=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,group),eq(schema.domainEvent.eventType,'onehr.calibration-reopened')));expect(audit).toHaveLength(1);expect(audit[0].payload).toMatchObject({reason:'Correct the group decision',axis:'performance'});
+  });
   it('rejects stale submissions, self approvals, legacy bypasses, and cross-tenant requests',async()=>{
     const first=await view(self);await perf.saveOnehrKpis(self,reviewId,first.revision,[],false);
     await expect(perf.saveOnehrKpis(self,reviewId,first.revision,[],false)).rejects.toThrow(/changed/);
