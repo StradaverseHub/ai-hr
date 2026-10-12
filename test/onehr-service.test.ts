@@ -183,13 +183,17 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   it('gives matrix moderators only their assigned KPI lines and revokes access with the edge',async()=>{
     const matrix=peers[0];
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
-    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Matrix objective',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId}],true);
-    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'}]);
+    const id=randomUUID(),managerId=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Matrix objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId},{id:managerId,title:'Manager-only objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'},{id:managerId,actual:2,note:'Manager-only evidence'}]);
     const attachment=await perf.addPerformanceAttachment(self,{reviewId,stageKind:null,fileName:'private-evidence.txt',mimeType:'text/plain',content:Buffer.from('Evidence for the assigned assessment manager.')});
     expect(await perf.getPerformanceAttachment(matrix.ctx,attachment.id)).toBeNull();expect(await perf.listAttachmentsForReview(matrix.ctx,reviewId)).toEqual([]);
     expect(await withTenant(matrix.ctx,tx=>tx.select().from(schema.performanceAttachment).where(eq(schema.performanceAttachment.reviewId,reviewId)))).toEqual([]);
     const matrixView=await view(matrix.ctx);expect(matrixView.moderator).toBe(true);expect(matrixView.policy.modules).toEqual({pm:true,tm:false,idp:false,evidence:false});expect(matrixView.competencies).toEqual([]);expect(matrixView.peers).toEqual([]);
+    expect(matrixView.kpis.map(k=>k.id)).toEqual([id]);
     await perf.moderateOnehrKpi(matrix.ctx,reviewId,matrixView.revision,id,2,'');
+    await perf.moderateOnehrKpi(mgr,reviewId,(await view(mgr)).revision,managerId,2,'');
+    await perf.confirmOnehrPerformance(mgr,reviewId,(await view(mgr)).revision,'ME','Private overall assessment');
+    expect(await view(matrix.ctx)).toMatchObject({managerPerformance:null,managerScore:null,managerRemark:''});
     await owner.db.update(schema.reportingLine).set({validTo:`${year}-01-01`}).where(and(eq(schema.reportingLine.managerEmploymentId,matrix.employmentId),eq(schema.reportingLine.lineType,'functional')));
     expect(await perf.getOnehrReview(matrix.ctx,reviewId)).toBeNull();
   });
