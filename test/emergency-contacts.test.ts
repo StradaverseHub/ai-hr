@@ -306,10 +306,31 @@ const retiredColumnCount = async (): Promise<number> => {
 };
 
 describe('23ad620e — migration 0322 leaves exactly one home for an emergency contact', () => {
+  let currentPolicy: { qual: string; with_check: string };
+  beforeAll(async () => {
+    const [policy] = await owner.client`select qual, with_check from pg_policies
+      where schemaname='public' and tablename='person_emergency_contact' and policyname='person_emergency_contact_rls'`;
+    expect(policy, 'capture the current migrated policy before replaying legacy DDL').toBeTruthy();
+    currentPolicy = { qual: String(policy.qual), with_check: String(policy.with_check) };
+  });
+  const restorePolicy = async () => {
+    // Migration 0322 recreates its old policy; restore the exact current definition, including future
+    // changes, so another file on this worker does not inherit a pre-0515 policy.
+    await owner.client.unsafe('ALTER POLICY person_emergency_contact_rls ON public.person_emergency_contact USING (' + currentPolicy.qual + ') WITH CHECK (' + currentPolicy.with_check + ')');
+  };
+  it('restores the current RLS policy after a legacy migration replay', async () => {
+    await run0322();
+    await restorePolicy();
+    const [policy] = await owner.client`select qual, with_check from pg_policies
+      where schemaname='public' and tablename='person_emergency_contact' and policyname='person_emergency_contact_rls'`;
+    expect(policy).toMatchObject(currentPolicy);
+  });
+
   // These specs re-add the retired columns on purpose. A test that throws between the ADD and the
   // migration's DROP would leak them into the next FILE on this worker's database, so the teardown is
   // unconditional rather than trusting the happy path.
   afterEach(async () => {
+    await restorePolicy();
     await owner.db.execute(
       sql.raw(`ALTER TABLE person
         DROP COLUMN IF EXISTS emergency_contact_name,
