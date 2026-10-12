@@ -10032,3 +10032,12 @@ export const assessmentTalentHistory = pgTable('performance_assessment_talent_hi
  reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),
  recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('performance_assessment_talent_history_year_uq').on(t.employmentId,t.year)]);
+
+// Current career aspirations are employment-scoped; yearly plans retain a sharing snapshot.
+export const assessmentCareerProfile = pgTable('performance_assessment_career_profile', {
+ employmentId:uuid('employment_id').primaryKey().references(()=>employment.id),tenantId:tenantId(),
+ reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+ career:jsonb('career').notNull(),managerComment:text('manager_comment').notNull().default(''),
+ managerUserId:uuid('manager_user_id').references(()=>appUser.id),managerCommentAt:timestamp('manager_comment_at',{withTimezone:true}),
+ revision:integer('revision').notNull().default(1),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});

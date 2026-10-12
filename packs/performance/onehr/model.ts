@@ -41,7 +41,7 @@ export const policySchema = z.object({
   promotionRules:z.array(z.object({years:z.number().int().min(1).max(100),minimum:z.enum(['PIP/Improvement','Solid Core','Star','Super Star'])})).max(100).optional(),
   skills:z.array(statementSchema).max(10000).optional(),
   careerRoutes:z.array(z.object({fromProfileId:z.uuid(),toProfileId:z.uuid(),kind:z.enum(['pinned','hidden'])})).max(10000).optional(),
-  idpMinGoals:z.number().int().min(1).max(30), idpRequireAllActions:z.boolean(),
+  idpMinGoals:z.number().int().min(0).max(100), idpMaxGoals:z.number().int().min(0).max(100).default(6), idpRequireAllActions:z.boolean(),
   curveToleranceMode:z.enum(['people','percent']).default('people'),
   curveTolerancePct:finite.min(0).max(100),curveTolerancePeople:z.number().int().min(1).max(100),curveStrict:z.boolean(),
 }).superRefine((v,c)=>{
@@ -56,7 +56,7 @@ export const policySchema = z.object({
 });
 export type Policy = z.infer<typeof policySchema>;
 export function defaultPolicy(framework: Policy['framework']):Policy {
-  return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpRequireAllActions:false,curveToleranceMode:'people',curveTolerancePct:10,curveTolerancePeople:1,curveStrict:true};
+  return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpMaxGoals:6,idpRequireAllActions:false,curveToleranceMode:'people',curveTolerancePct:10,curveTolerancePeople:1,curveStrict:true};
 }
 export function ratedPerformance(policy:Policy):boolean {return policy.modules.pm&&policy.kind!=='quarterly';}
 export function assertWindow(policy:Policy,cell:WindowCell,now=new Date()):void {
@@ -107,7 +107,7 @@ export function resolveBand<T>(raw:T|null,decisions:{tier:Tier;band:T|null;locke
   for(const tier of [...tiers].reverse()){const d=decisions.find(d=>d.tier===tier&&d.band!=null&&(d.locked||tier==='final'));if(d)return {band:d.band,source:tier};}return {band:raw,source:'manager'};
 }
 export function referenceCurve(pbt:number):Record<PMBand,number>{return pbt<70?{UA:10,BE:25,ME:60,AE:5,OU:0}:pbt>130?{UA:0,BE:5,ME:60,AE:25,OU:10}:{UA:5,BE:10,ME:70,AE:10,OU:5};}
-export const goalSchema=z.object({id:z.uuid(),area:z.string().trim().min(1).max(300),dueOn:z.iso.date(),onJob:text,fromOthers:text,formalLearning:text,status:z.enum(['not_started','in_progress','done','dropped']),managerComment:text});
+export const goalSchema=z.object({id:z.uuid(),area:z.string().trim().max(300),dueOn:z.union([z.iso.date(),z.literal('')]),onJob:text,fromOthers:text,formalLearning:text,status:z.enum(['not_started','in_progress','done','dropped']),managerComment:text,progressNote:text.optional(),progressAt:z.iso.datetime().optional(),checkins:z.array(z.object({status:z.enum(['not_started','in_progress','done','dropped']),note:text,at:z.iso.datetime()})).optional(),editedByName:z.string().max(300).optional(),editedAt:z.iso.datetime().optional()});
 export type DevelopmentGoal=z.infer<typeof goalSchema>;
 export const careerSchema=z.object({aspiration:text,aspirationNow:text.optional(),aspirationLong:text.optional(),strengths:text.optional(),preferences:text.optional(),mentor:text.optional(),selfProfileId:z.uuid().nullable().optional(),mobility:z.enum(['stay','role_in_unit','company_in_group','other_group','relocate']).nullable(),mobilityNote:text,targetProfileId:z.uuid().nullable()});
 export type Career=z.infer<typeof careerSchema>;

@@ -170,7 +170,21 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveOnehrPlan(self,reviewId,(await view(self)).plans[0].revision,input)).rejects.toThrow(/read-only/);
     await expect(perf.reviewOnehrPlan(mgr,plan.id,(await view()).plans[0].revision,'Rewrite','Another conversation',true)).rejects.toThrow(/read-only/);
-    await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'done');expect((await view(self)).plans[0].goals).toMatchObject([{status:'done'}]);
+    await expect(perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'done')).rejects.toThrow(/active assessment/);
+  });
+  it('carries the career profile across periods and separates career comments from yearly goals',async()=>{
+    const career={aspiration:'Develop architecture skills',mobility:'stay',mobilityNote:'',targetProfileId:null};
+    await perf.saveAssessmentCareerProfile(self,reviewId,null,career);
+    const saved=(await view(self)).careerProfile!;
+    await perf.commentAssessmentCareerProfile(mgr,reviewId,saved.revision,'Consider facilitating the technical forum.');
+    expect((await view(self)).careerProfile?.managerComment).toContain('technical forum');
+    const {cycleId:mid}=await perf.createCycle(a,{name:'Second period',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-06-30`});
+    const policy=defaultPolicy(framework);policy.kind='mid_year';await perf.configureOnehrCycle(a,mid,null,policy);await perf.openCycle(a,{cycleId:mid});
+    const [current]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,mid),eq(schema.onehrReview.employmentId,subject.employmentId)));
+    expect((await perf.getOnehrReview(self,current.reviewId))?.careerProfile?.career.aspiration).toBe(career.aspiration);
+    await expect(perf.saveAssessmentCareerProfile(self,current.reviewId,saved.revision,{...career,aspiration:'Stale edit'})).rejects.toThrow(/changed/);
+    await perf.saveOnehrPlan(self,reviewId,null,{career,goals:[{id:randomUUID(),area:'Facilitation',dueOn:'',onJob:'Lead a forum',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    await expect(perf.saveAssessmentCareerProfile(self,reviewId,(await view(self)).careerProfile!.revision,{...career,aspiration:'Changed after share'})).rejects.toThrow();
   });
   it('uses the previous year-end plan for mid-year review without reopening authoring',async()=>{
     const {cycleId:previous}=await perf.createCycle(a,{name:'Previous year-end',companyId:b.companyId,periodStart:`${year-1}-01-01`,periodEnd:`${year-1}-12-31`});

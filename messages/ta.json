@@ -17338,6 +17338,13 @@
     "confirmedTitle": "Confirmed job title",
     "talentSelectionCount": "{selected} selected · {percent}% of {total} people",
     "noTalentCandidates": "No eligible candidates in this scope.",
-    "nominationCount": "{count} nomination(s)"
+    "nominationCount": "{count} nomination(s)",
+    "currentProfile": "Current role for career map",
+    "saveCareerProfile": "Save career profile",
+    "careerComment": "Manager career comment",
+    "idpMaxGoals": "Maximum development goals (0 for no configured limit)",
+    "progressNote": "Check-in note",
+    "goalEditedBy": "Edited by {name} on {date}",
+    "checkinHistory": "Check-in history"
   }
 }

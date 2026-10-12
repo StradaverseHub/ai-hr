@@ -7,7 +7,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
-import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, assessmentAttachmentLink, performanceKpiLibrary } from '../../../db/schema';
+import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { resolveActiveAiConfig } from '../../../core/ai-config';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
@@ -81,7 +81,9 @@ export async function initializeOnehrCycleTx(tx: Tx, ctx: SessionContext, cycleI
   for (const r of reviews) {
     const grade=(r.grade??'').replace(/^JG\s*/i,'').trim();
     const [role]=await tx.select({department:department.name,title:position.title}).from(assignment).innerJoin(department,eq(department.id,assignment.departmentId)).leftJoin(position,eq(position.id,assignment.positionId)).where(and(eq(assignment.employmentId,r.employmentId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${todayInKualaLumpur()}::date and (${assignment.validTo} is null or ${assignment.validTo}>${todayInKualaLumpur()}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);
-    const chosen=resolveTechnicalProfile(policy.profiles,{companyId:r.companyId,employmentId:r.employmentId,department:role?.department??'',title:role?.title??'',grade});
+    const [careerProfile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.employmentId));
+    const picked=careerProfile?careerSchema.parse(careerProfile.career).selfProfileId:null;
+    const chosen=resolveTechnicalProfile(policy.profiles,{companyId:r.companyId,employmentId:r.employmentId,department:role?.department??'',title:role?.title??'',grade},picked);
     const statements=policy.modules.tm?frameworkFor(policy,grade):[];
     const competencies:Competency[]=(chosen?technicalProfilePlan(chosen.profile,policy.skills??[]):[]).map(s=>({...s,self:null,selfRemark:'',manager:null,managerRemark:''}));
     await tx.insert(onehrReview).values({tenantId:ctx.tenantId,reviewId:r.id,cycleId,employmentId:r.employmentId,companyId:r.companyId,grade,statements,competencies,profileId:chosen?.profile.id??null,profileMatch:chosen?.source??null});
@@ -227,10 +229,10 @@ export async function confirmOnehrPerformance(ctx:SessionContext,reviewId:string
 export async function submitOnehrCompetencies(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,manager=false,overallRemark='') {
   note.parse(overallRemark);
   const answers=z.record(z.string(),z.object({answer:z.enum(['yes','no']),remark:note.default('')})).parse(raw);
-  assertOverallRemark(overallRemark,!manager);
   return withPerformanceTenant(ctx,async tx=>{
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,manager?'tc_approve':'tc_self',expected,manager?'manager':'self');
     if(!r.cycle.policy.modules.tm||!r.competencies.length)throw Error('No technical competency profile is assigned.');
+    assertOverallRemark(overallRemark,!manager);
     if(manager?r.row.competencyStatus!=='submitted':r.row.competencyStatus!=='pending')throw Error('Competencies are not awaiting this step.');
     if(Object.keys(answers).length!==r.competencies.length||r.competencies.some(c=>!answers[c.id]))throw Error('Answer every competency.');
     const competencies=r.competencies.map(c=>{const a=answers[c.id];if(manager&&a.answer!==c.self&&!a.remark.trim())throw Error('Explain changed competency answers.');return manager?{...c,manager:a.answer,managerRemark:a.remark}:{...c,self:a.answer,selfRemark:a.remark};});
@@ -529,8 +531,38 @@ export async function releaseOnehrResult(ctx:SessionContext,reviewId:string,comp
   });
 }
 
+async function saveCareerTx(tx:Tx,ctx:SessionContext,r:Awaited<ReturnType<typeof loadReview>>,career:ReturnType<typeof careerSchema.parse>,expected?:number|null) {
+ await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`career:${r.row.employmentId}`},0))`);
+ const [current]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId)).for('update');
+ if(expected!==undefined&&(current?.revision??null)!==expected)throw Error('Your career profile changed. Reload before saving.');
+ for(const id of [career.selfProfileId,career.targetProfileId])if(id&&!r.cycle.policy.profiles.some(p=>p.id===id&&p.active!==false))throw Error('Choose an active role from the career catalogue.');
+ if(current)await tx.update(assessmentCareerProfile).set({reviewId:r.row.reviewId,career,revision:current.revision+1,updatedAt:new Date()}).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
+ else await tx.insert(assessmentCareerProfile).values({tenantId:ctx.tenantId,employmentId:r.row.employmentId,reviewId:r.row.reviewId,career});
+}
+export async function saveAssessmentCareerProfile(ctx:SessionContext,reviewId:string,expected:number|null,raw:unknown) {
+ const career=careerSchema.parse(raw);
+ return withPerformanceTenant(ctx,async tx=>{
+  const r=await loadReview(tx,reviewId);
+  if(!await isSelf(tx,r.row.employmentId)||!r.cycle.policy.modules.idp)throw Error('Only the employee may update their career profile.');
+  if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');
+  await saveCareerTx(tx,ctx,r,career,expected);await audit(tx,ctx,reviewId,'career-profile-saved');
+ });
+}
+export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId:string,expected:number,comment:string) {
+ note.parse(comment);
+ return withPerformanceTenant(ctx,async tx=>{
+  const r=await loadReview(tx,reviewId);
+  if(await isSelf(tx,r.row.employmentId)||!r.cycle.policy.modules.idp||!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('Only the assigned manager may comment on the career profile.');
+  if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_review');
+  const [profile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId)).for('update');
+  if(!profile)throw Error('The employee has not saved a career profile.');revision(profile.revision,expected);
+  await tx.update(assessmentCareerProfile).set({reviewId,managerComment:comment,managerUserId:ctx.userId,managerCommentAt:new Date(),revision:profile.revision+1,updatedAt:new Date()}).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
+  await audit(tx,ctx,reviewId,'career-profile-commented');
+ });
+}
+
 export async function saveOnehrPlan(ctx:SessionContext,reviewId:string,expected:number|null,raw:unknown,share=false) {
-  const p=z.object({career:careerSchema,goals:z.array(goalSchema.omit({managerComment:true})).max(30)}).parse(raw);
+  const p=z.object({careerRevision:z.number().int().nullable().optional(),career:careerSchema,goals:z.array(goalSchema.pick({id:true,area:true,dueOn:true,onJob:true,fromOthers:true,formalLearning:true,status:true})).max(100)}).parse(raw);
   return withPerformanceTenant(ctx,async tx=>{
     const r=await loadReview(tx,reviewId);if(!await isSelf(tx,r.row.employmentId))throw Error('Only the employee may write their plan.');if(!r.cycle.policy.modules.idp)throw Error('Development plans are disabled.');if(r.cycle.policy.kind!=='year_end')throw Error('Write development plans at year-end; use this period to review the agreed plan.');if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');
     const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
@@ -540,9 +572,13 @@ export async function saveOnehrPlan(ctx:SessionContext,reviewId:string,expected:
     if(p.career.targetProfileId&&!r.cycle.policy.profiles.some(profile=>profile.id===p.career.targetProfileId))throw Error('Choose an available target profile.');
     if(share&&![p.career.aspiration,p.career.aspirationNow,p.career.aspirationLong].some(v=>v?.trim()))throw Error('Complete your career aspiration before sharing the plan.');
     if(share&&!p.career.mobility)throw Error('Choose your mobility preference before sharing the plan.');
-    if(share&&p.goals.length<r.cycle.policy.idpMinGoals)throw Error('Add the required development goals before sharing.');
-    if(share&&p.goals.some(g=>r.cycle.policy.idpRequireAllActions?!g.onJob||!g.fromOthers||!g.formalLearning:!g.onJob&&!g.fromOthers&&!g.formalLearning))throw Error('Add development actions before sharing.');
-    const data={career:p.career,goals:p.goals.map(g=>({...g,status:'not_started',managerComment:''})),status:share?'shared':'draft'};
+    const filled=p.goals.filter(g=>[g.area,g.onJob,g.fromOthers,g.formalLearning].some(v=>v.trim()));
+    if(share&&filled.some(g=>!g.area.trim()))throw Error('Name the area for every development goal.');
+    if(share&&r.cycle.policy.idpMaxGoals&&filled.length>r.cycle.policy.idpMaxGoals)throw Error('This plan exceeds the configured development goal limit.');
+    if(share&&filled.length<r.cycle.policy.idpMinGoals)throw Error('Add the required development goals before sharing.');
+    if(share&&filled.some(g=>r.cycle.policy.idpRequireAllActions?!g.onJob||!g.fromOthers||!g.formalLearning:!g.onJob&&!g.fromOthers&&!g.formalLearning))throw Error('Add development actions before sharing.');
+    await saveCareerTx(tx,ctx,r,p.career,p.careerRevision);
+    const data={career:p.career,goals:(share?filled:p.goals).map(g=>({...g,status:'not_started',managerComment:''})),status:share?'shared':'draft'};
     if(existing)await tx.update(onehrPlan).set({...data,revision:existing.revision+1}).where(eq(onehrPlan.id,existing.id));else await tx.insert(onehrPlan).values({...data,tenantId:ctx.tenantId,reviewId,employmentId:r.row.employmentId,planYear:year});await audit(tx,ctx,reviewId,share?'plan-shared':'plan-saved');
   });
 }
@@ -555,11 +591,14 @@ export async function reviewOnehrPlan(ctx:SessionContext,planId:string,expected:
     await tx.update(onehrPlan).set({managerComment:comment,conversation,conversationHeldOn:heldOn===undefined?plan.conversationHeldOn:heldOn,acknowledgedAt:conversation!==plan.conversation||heldOn!==undefined&&heldOn!==plan.conversationHeldOn?null:plan.acknowledgedAt,status:close||plan.status==='closed'?'closed':'shared',revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,close?'plan-closed':'plan-reviewed',{reviewId:activeReviewId??plan.reviewId,previous:{comment:plan.managerComment,conversation:plan.conversation,heldOn:plan.conversationHeldOn,status:plan.status},next:{comment,conversation,heldOn:heldOn===undefined?plan.conversationHeldOn:heldOn,status:close||plan.status==='closed'?'closed':'shared'}});
   });
 }
-export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,expected:number,goalId:string,status:'not_started'|'in_progress'|'done'|'dropped') {
-  uuid.parse(planId);uuid.parse(goalId);z.enum(['not_started','in_progress','done','dropped']).parse(status);
+export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,expected:number,goalId:string,status:'not_started'|'in_progress'|'done'|'dropped',progressNote='',activeReviewId?:string) {
+  uuid.parse(planId);uuid.parse(goalId);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);
   return withPerformanceTenant(ctx,async tx=>{const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!plan||!await isSelf(tx,plan.employmentId))throw Error('Plan not found.');revision(plan.revision,expected);if(plan.status==='draft')throw Error('Share the plan before updating progress.');
+    const r=await loadReview(tx,activeReviewId??plan.reviewId);const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
+    if(r.row.employmentId!==plan.employmentId||year!==plan.planYear||!r.cycle.policy.modules.idp||!['open','calibration'].includes(r.cycle.native.status))throw Error('Check in through an active assessment period for this plan year.');
+    const now=new Date().toISOString();
     const goals=z.array(goalSchema).parse(plan.goals);if(!goals.some(g=>g.id===goalId))throw Error('Goal not found.');const previous=goals.find(g=>g.id===goalId)!.status;
-    await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?{...g,status}:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'goal-progress-updated',{goalId,previous,status});});
+    await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?{...g,status,progressNote,progressAt:now,checkins:[...(g.checkins??[]),{status,note:progressNote,at:now}]}:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'goal-progress-updated',{goalId,previous,status,note:progressNote,reviewId:r.row.reviewId});});
 }
 export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expected:number) {
   uuid.parse(planId);return withPerformanceTenant(ctx,async tx=>{const [p]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!p||!await isSelf(tx,p.employmentId))throw Error('Plan not found.');revision(p.revision,expected);if(p.status!=='closed')throw Error('A recorded career conversation is required.');await tx.update(onehrPlan).set({acknowledgedAt:new Date(),revision:p.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'plan-acknowledged');});
@@ -605,6 +644,7 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const leadership=manager||admin?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
     const plans=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)));
+    const [careerProfile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
     const feedbackReport=result&&(!self||frozen!.feedbackReleasedAt)?result.feedback:[];
     const choices=manager||admin?await tx.select({id:employment.id,name:person.fullName,code:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(sql`not exists(select 1 from employment sub where sub.id=${r.row.employmentId}::uuid and sub.person_id=${person.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`)):[];
     const evidence=r.cycle.policy.modules.evidence&&(!moderator||admin)?await tx.select().from(onehrEvidence).where(eq(onehrEvidence.employmentId,r.row.employmentId)).orderBy(desc(onehrEvidence.createdAt)):[];
@@ -620,8 +660,10 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const ownAnswers=ownDraft?assessmentDraftSchema.parse(ownDraft.payload):null;
     const privateSkills=ownAnswers?.kind==='competency_self'?[{status:'pending',competencies:r.competencies.map(c=>({...c,self:ownAnswers.answers[c.id]?.answer??c.self}))}]:[];
     const skills=demonstratedSkills([...(skillHistory?.value??[]),...privateSkills],self);
-    const routes=profile?careerRoutes(profile,r.cycle.policy.profiles,skills,r.cycle.policy.careerRoutes??[]):[];
-    return {careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,drafts:drafts.map(d=>({...d,payload:assessmentDraftSchema.parse(d.payload)})),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
+    const careerChoice=careerProfile?careerSchema.parse(careerProfile.career).selfProfileId:null;
+    const mapProfile=careerChoice&&!['roster','assigned'].includes(r.row.profileMatch??'')?r.cycle.policy.profiles.find(p=>p.id===careerChoice&&p.active!==false)??profile:profile;
+    const routes=mapProfile?careerRoutes(mapProfile,r.cycle.policy.profiles,skills,r.cycle.policy.careerRoutes??[]):[];
+    return {careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,drafts:drafts.map(d=>({...d,payload:assessmentDraftSchema.parse(d.payload)})),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
       kpis:moderator&&!admin?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:moderator&&!admin?null:r.row.managerPerformance,managerScore:moderator&&!admin||r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:moderator&&!admin?'':r.row.managerRemark,
       potential:leadership?.potential.band??null,finalized:!!frozen||!!r.native.closedAt,result:result?{id:frozen!.id,digest:frozen!.digest,performance:!self||frozen!.performanceReleasedAt?result.performance:null,potential:!self||frozen!.potentialReleasedAt?result.potential:null,talent:!self||frozen!.talentReleasedAt?result.talent:null,performanceReleased:!!frozen!.performanceReleasedAt,potentialReleased:!!frozen!.potentialReleasedAt,talentReleased:!!frozen!.talentReleasedAt,feedbackReleased:!!frozen!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&frozen!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,responses:evidenceResponseSchema.array().parse(e.responses)})),attachments,peers,choices};
   });
@@ -738,17 +780,17 @@ export async function performanceWorkspace(ctx:SessionContext) {
    else if(kpis.some(k=>k.setting==='proposed')){pmStage='setting';pmState=self?'waiting':kpis.some(k=>header.ownEmploymentIds.includes(pendingSettingApprover(k)??''))?'open':'waiting';}
    else if(policy.kind==='quarterly'){pmStage='checkin';pmState=kpis.every(k=>k.checkIn)?'done':self?'open':'waiting';}
    else if(row.managerPerformance){pmState='done';}
-   else if(row.resultsSubmittedAt){pmStage='moderation';pmState=self?'waiting':'open';}
+   else if(row.resultsSubmittedAt){pmStage=self?'results':'moderation';pmState=self?'done':'open';}
    else pmState=self?'open':'waiting';
    if(policy.modules.pm)items.push({...base,key:`${row.reviewId}.pm`,module:'pm',stage:pmStage,state:closed?'done':pmState});
    const competencies=competencySchema.array().parse(row.competencies);
-   const tcState=closed||row.competencyStatus==='reviewed'?'done':row.competencyStatus==='submitted'?self?'waiting':'open':self?'open':'waiting';
+   const tcState=closed||row.competencyStatus==='reviewed'?'done':row.competencyStatus==='submitted'?self?'done':'open':self?'open':'waiting';
    if(policy.modules.tm&&competencies.length&&(self||manager))items.push({...base,key:`${row.reviewId}.tm`,module:'tm',stage:'competency',state:tcState});
    if(policy.modules.idp&&policy.kind==='year_end'){
     const year=Number(cycle.periodEnd.slice(0,4))+1;
     const [plan]=await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,row.employmentId),eq(onehrPlan.planYear,year)));
     const locked=self&&(policy.modules.pm&&['open','waiting'].includes(pmState)||policy.modules.tm&&competencies.length>0&&['open','waiting'].includes(tcState));
-    const state=closed||plan?.status==='closed'?'done':locked?'later':plan?.status==='shared'?self?'waiting':'open':self?'open':'waiting';
+    const state=closed||plan?.status==='closed'?'done':locked?'later':plan?.status==='shared'?self?'done':'open':self?'open':'waiting';
     items.push({...base,key:`${row.reviewId}.idp`,module:'idp',stage:'career',state,locked});
    }
   }
@@ -778,7 +820,7 @@ export async function saveAssessmentTalentDecision(ctx:SessionContext,sessionId:
   const current=await resolved(tx,reviewId,cycle.policy);if(current.input.finalized)throw Error('Finalized talent decisions are immutable.');
   calibrationWindows(cycle.policy,session.tier as Tier,'both');
   if(kind==='specialReward'||kind==='nomination'){if(entry.lockedAt)throw Error('This business unit is already locked.');assertPrecedingTier(current.rows,session.tier as Tier,session.mode,true,true);}
-  const category=talentCategory(entry.performance??boxBands(current,session.tier).performance,entry.potential??boxBands(current,session.tier).potential);
+  const category=talentCategory(z.enum(pmBands).nullable().parse(entry.performance??boxBands(current,session.tier).performance),z.enum(potentialBands).nullable().parse(entry.potential??boxBands(current,session.tier).potential));
   const talent=await talentContext(tx,ctx.tenantId,reviewId,entry.employmentId,cycle.policy);
   if(kind==='promotion'&&!talent.promotionEligible)throw Error('This person has no nomination or qualifying promotion history.');
   if(kind==='pip'&&category!=='PIP/Improvement'||(kind==='specialReward'||kind==='nomination')&&(category==null||category==='PIP/Improvement'))throw Error('This decision is not available for the calibrated talent category.');
@@ -861,7 +903,7 @@ export async function assignAssessmentKpiModerator(ctx:SessionContext,reviewId:s
 }
 export async function editAssessmentDevelopmentGoal(ctx:SessionContext,reviewId:string,planId:string,expected:number,goalId:string,raw:unknown) {
  uuid.parse(planId);uuid.parse(goalId);
- const patch=goalSchema.omit({id:true,status:true}).parse(raw);
+ const patch=goalSchema.pick({area:true,dueOn:true,onJob:true,fromOthers:true,formalLearning:true,managerComment:true}).parse(raw);if(!patch.area.trim())throw Error('Name the development goal.');
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId);if(!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId)||await isSelf(tx,r.row.employmentId))throw Error('Only the assigned KPI reviewer may edit a shared development goal.');
   if(!r.cycle.policy.modules.idp||!['open','calibration'].includes(r.cycle.native.status))throw Error('Development review is not open.');assertWindow(r.cycle.policy,'idp_review');
@@ -870,7 +912,8 @@ export async function editAssessmentDevelopmentGoal(ctx:SessionContext,reviewId:
   if(!plan||plan.employmentId!==r.row.employmentId||plan.planYear!==year)throw Error('This plan does not belong to this review.');
   revision(plan.revision,expected);if(plan.status!=='shared')throw Error('Only shared, open development plans can be edited.');
   const goals=goalSchema.array().parse(plan.goals),previous=goals.find(g=>g.id===goalId);if(!previous)throw Error('Goal not found.');
-  const next={...previous,...patch};
+  const [editor]=await tx.select({name:person.fullName}).from(appUser).innerJoin(person,eq(person.id,appUser.personId)).where(eq(appUser.id,ctx.userId!));
+  const next={...previous,...patch,editedByName:editor?.name??'',editedAt:new Date().toISOString()};
   await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?next:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));
   await audit(tx,ctx,planId,'development-goal-reviewed',{reviewId,goalId,previous,next});
  });
