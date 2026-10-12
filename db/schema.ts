@@ -9972,7 +9972,7 @@ export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entr
 export const onehrPlan = pgTable('performance_onehr_plan', {
   id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),
   planYear:integer('plan_year').notNull(),status:text('status').notNull().default('draft'),career:jsonb('career'),goals:jsonb('goals').notNull().default([]),
-  managerComment:text('manager_comment').notNull().default(''),conversation:text('conversation').notNull().default(''),acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}),
+  managerComment:text('manager_comment').notNull().default(''),conversation:text('conversation').notNull().default(''),conversationHeldOn:date('conversation_held_on'),acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}),
   revision:integer('revision').notNull().default(1),createdAt:createdAt(),
 },t=>[uniqueIndex('performance_onehr_plan_year_uq').on(t.employmentId,t.planYear)]);
 export const onehrEvidence = pgTable('performance_onehr_evidence', {

@@ -11,7 +11,7 @@ export async function FeedbackView({v,returnTo}:{v:Awaited<ReturnType<typeof get
   if(v.frozen)return <p className="p-5">{t('finalized')}</p>;
   const draft=v.draft?.payload.kind==='feedback'?v.draft.payload:null;
   const principles=[...new Set(v.statements.map(s=>s.principle))];
-  return <AssessmentDraftForm action={onehrFeedbackAction} revision={v.draft?.revision??null} labels={{saving:t('draftSaving'),saved:t('draftSaved'),privateDraft:t('draftPrivate')}} className="space-y-5 p-5">
+  return <AssessmentDraftForm action={onehrFeedbackAction} revision={v.draft?.revision??null} labels={{saving:t('draftSaving'),saved:t('draftSaved'),privateDraft:t('draftPrivate'),failed:t('draftFailed')}} className="space-y-5 p-5">
     <input type="hidden" name="requestId" value={v.requestId}/><input type="hidden" name="reviewId" value={v.reviewId}/><input type="hidden" name="draftKind" value="feedback"/>
     {returnTo&&<input type="hidden" name="returnTo" value={returnTo}/>}
     <p className="text-sm text-muted-foreground">{t('anonymousHelp')}</p>

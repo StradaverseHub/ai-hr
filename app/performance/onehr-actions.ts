@@ -29,7 +29,7 @@ export async function onehrCycleAction(f:FormData){
     if(str(f,'action')==='policy'){
       let catalogue={framework:view.policy.framework,profiles:view.policy.profiles};
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
-      const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
+      const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,variant:str(f,`b.${c.id}.variant`)||'base',minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
       await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),idpMinGoals:num(f,'idpMinGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
     }else if(str(f,'action')==='windows'){
@@ -38,7 +38,7 @@ export async function onehrCycleAction(f:FormData){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode')});
     }else throw Error('Unknown action.');
   }catch(e){redirect(withError(url,e));}
-  revalidatePath(url);redirect(url);
+  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(url);
 }
 export async function onehrReviewAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'reviewId'));const url=destination(f,`/performance/review/${id}`);
@@ -47,7 +47,7 @@ export async function onehrReviewAction(f:FormData){
     switch(str(f,'action')){
       case 'kpis':{
         const view=await perf.getOnehrReview(s,id);if(!view)throw Error('Assessment not found.');
-        const rows=ids(f,'kpiId').map(k=>({id:k,title:str(f,`${k}.title`),description:str(f,`${k}.description`),weightBp:Math.round(num(f,`${k}.weight`)*100),unit:str(f,`${k}.unit`),moderatorEmploymentId:str(f,`${k}.moderator`)||view.reviewerEmploymentId,approverEmploymentIds:ids(f,`${k}.approverIds`),scoring:str(f,`${k}.mechanism`)==='A'?{mechanism:'A',method:str(f,`${k}.method`),rates:[0,1,2,3,4].map(i=>num(f,`${k}.rate.${i}`))}:{mechanism:'B',method:str(f,`${k}.method`),variant:str(f,`${k}.variant`),threshold:num(f,`${k}.threshold`),target:num(f,`${k}.target`),multiple:num(f,`${k}.multiple`),excellence:nullableNumber(f,`${k}.excellence`)}}));
+        const rows=ids(f,'kpiId').map(k=>({id:k,title:str(f,`${k}.title`),category:str(f,`${k}.category`),libraryId:str(f,`${k}.libraryId`)||null,description:str(f,`${k}.description`),weightBp:Math.round(num(f,`${k}.weight`)*100),unit:str(f,`${k}.unit`),moderatorEmploymentId:str(f,`${k}.moderator`)||view.reviewerEmploymentId,approverEmploymentIds:ids(f,`${k}.approverIds`),scoring:str(f,`${k}.mechanism`)==='A'?{mechanism:'A',method:str(f,`${k}.method`),rates:[0,1,2,3,4].map(i=>num(f,`${k}.rate.${i}`))}:{mechanism:'B',method:str(f,`${k}.method`),variant:str(f,`${k}.variant`),threshold:num(f,`${k}.threshold`),target:num(f,`${k}.target`),multiple:num(f,`${k}.multiple`),excellence:nullableNumber(f,`${k}.excellence`)}}));
         await perf.saveOnehrKpis(s,id,expected,rows,f.has('propose'));break;
       }
       case 'approve':await perf.approveOnehrScorecard(s,id,expected,str(f,'decision')==='approve',str(f,'remark'));break;
@@ -76,7 +76,7 @@ export async function onehrReviewAction(f:FormData){
       }
       case 'plan-goal-edit':await perf.editAssessmentDevelopmentGoal(s,id,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),{area:str(f,'area'),dueOn:str(f,'dueOn'),onJob:str(f,'onJob'),fromOthers:str(f,'fromOthers'),formalLearning:str(f,'formalLearning'),managerComment:str(f,'managerComment')});break;
       case 'kpi-moderator':await perf.assignAssessmentKpiModerator(s,id,expected,str(f,'kpiId'),str(f,'moderatorEmploymentId'));break;
-      case 'plan-review':await perf.reviewOnehrPlan(s,str(f,'planId'),num(f,'planRevision'),str(f,'comment'),str(f,'conversation'),f.has('close'),id);break;
+      case 'plan-review':await perf.reviewOnehrPlan(s,str(f,'planId'),num(f,'planRevision'),str(f,'comment'),str(f,'conversation'),f.has('close'),id,str(f,'heldOn')||null);break;
       case 'plan-ack':await perf.acknowledgeOnehrPlan(s,str(f,'planId'),num(f,'planRevision'));break;
       case 'goal-progress':await perf.updateOnehrGoalProgress(s,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),str(f,'status') as z.infer<typeof goalSchema>['status']);break;
       case 'evidence':await perf.addOnehrEvidence(s,id,{kind:str(f,'kind'),body:str(f,'body'),occurredOn:str(f,'occurredOn'),state:f.has('share')?'shared':'draft',supersedesId:str(f,'supersedesId')||null,links:f.getAll('evidenceLink').map(v=>JSON.parse(String(v)))});break;
@@ -85,18 +85,18 @@ export async function onehrReviewAction(f:FormData){
       default:throw Error('Unknown assessment action.');
     }
   }catch(e){redirect(withError(url,e));}
-  revalidatePath(url);revalidatePath('/me/performance');redirect(url);
+  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');revalidatePath('/me/performance');redirect(url);
 }
 export async function onehrFeedbackAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'requestId'));const url=destination(f,`/performance/assessment/feedback/${id}`);
   const declined=str(f,'action')==='decline';
   try{if(declined)await perf.declineOnehrFeedback(s,id);else if(str(f,'intent')==='draft')await saveDraftForm(s,f);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'));}catch(e){redirect(withError(url,e));}
-  revalidatePath('/me/performance');revalidatePath(url);redirect(declined?'/me/performance':url);
+  revalidatePath('/me/performance');revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(declined?'/me/performance':url);
 }
 export async function onehrCalibrationAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'sessionId'));const url=destination(f,`/performance/assessment/calibration/${id}`);
   try{if(str(f,'action')==='talent-save')await perf.saveAssessmentTalentDecision(s,id,num(f,'revision'),str(f,'reviewId'),str(f,'kind') as 'pip'|'promotion'|'specialReward',f.has('selected'),str(f,'reason'));else if(['talent-lock','talent-reopen'].includes(str(f,'action')))await perf.confirmAssessmentTalentList(s,id,num(f,'revision'),str(f,'kind') as 'pip'|'promotion',str(f,'action')==='talent-reopen',str(f,'reason'));else if(str(f,'action')==='unlock')await perf.unlockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else if(str(f,'action')==='lock')await perf.lockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else await perf.saveOnehrCalibration(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),axis:str(f,'axis')||'both',performance:str(f,'performance') as PMBand||null,potential:str(f,'potential') as PotentialBand||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote'),confirmTalentDecisions:f.has('confirmTalentDecisions'),pip:f.has('pip'),promotion:f.has('promotion'),specialReward:f.has('specialReward')});}catch(e){redirect(withError(url,e));}
-  revalidatePath(url);redirect(url);
+  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(url);
 }
 export async function onehrDraftAction(reviewId:string,words:string) {
   const s=await getSession();
@@ -119,4 +119,22 @@ export async function saveAssessmentDraftAction(f:FormData) {
 export async function reviewConversationAction(reviewId:string,stage:perf.ConversationStage,revision:number|null,requestId:string,text:string,intent:'guide'|'draft') {
  const s=await getSession();
  try{return await perf.sendReviewMessage(s,reviewId,stage,revision,requestId,text,intent);}catch(e){return {error:publicErrorMessage(e)};}
+}
+
+export async function assessmentKpiImportAction(cycleId:string,csv:string,kind:'targets'|'library',previewToken?:string) {
+ const session=await getSession();
+ try {
+  const result=await perf.importAssessmentKpis(session,cycleId,csv,kind,previewToken);
+  if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}
+  return {result};
+ } catch(error){return {error:publicErrorMessage(error)};}
+}
+
+export async function assessmentCompanyKpiAction(cycleId:string,input:{companyId:string|null;title:string;actual:number;note:string},previewToken?:string) {
+ const session=await getSession();
+ try {
+  const result=await perf.fillAssessmentCompanyKpi(session,cycleId,input,previewToken);
+  if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}
+  return {result};
+ } catch(error){return {error:publicErrorMessage(error)};}
 }

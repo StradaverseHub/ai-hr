@@ -63,3 +63,9 @@ export function careerPlanState(ahead:JourneyState|undefined,career:JourneyState
   if(live.some(s=>s==='open'||s==='waiting'))return 'open';
   return live.every(s=>s==='done')?'done':'later';
 }
+
+/** Source _REVIEW_REMARK_MAX_WORDS: about 100 words is guidance, 220 is the hard ceiling. */
+export function assertOverallRemark(value:string,required=false):void {
+ if(required&&!value.trim())throw Error('Add your overall remark before submitting.');
+ if(value.trim().split(/\s+/u).filter(Boolean).length>220)throw Error('Keep the overall remark to about 100 words, with a maximum of 220 words.');
+}

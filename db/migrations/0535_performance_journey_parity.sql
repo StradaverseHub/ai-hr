@@ -1,6 +1,7 @@
 -- Native assessment journey: private working copies, persisted conversations and catalogue.
 -- Apply strictly after 0531–0534. Historical assessment identifiers remain stable.
 ALTER TABLE performance_onehr_review ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
+ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
 ALTER TABLE performance_onehr_calibration ADD COLUMN pip_locked_at timestamptz, ADD COLUMN promotion_locked_at timestamptz;
 ALTER TABLE performance_onehr_calibration_entry ADD COLUMN pip_reason text NOT NULL DEFAULT '', ADD COLUMN promotion_reason text NOT NULL DEFAULT '', ADD COLUMN special_reward_reason text NOT NULL DEFAULT '';
 CREATE TABLE performance_assessment_draft (
@@ -41,7 +42,7 @@ BEGIN
  IF TG_TABLE_NAME='performance_kpi_library' THEN
   IF NEW.group_company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.group_company_id AND tenant_id=tid) THEN RAISE EXCEPTION 'Invalid library group scope'; END IF;
   IF NEW.group_company_id IS NOT NULL AND NEW.company_id IS NOT NULL AND NOT app.is_company_descendant(NEW.company_id,NEW.group_company_id) THEN RAISE EXCEPTION 'Library company is outside its group'; END IF;
-  IF NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=tid) OR EXISTS(SELECT 1 FROM unnest(NEW.department_ids) d WHERE NOT EXISTS(SELECT 1 FROM department WHERE id=d AND tenant_id=tid AND (NEW.company_id IS NULL OR company_id=NEW.company_id))) THEN RAISE EXCEPTION 'Invalid KPI library scope'; END IF;
+  IF NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=tid) OR EXISTS(SELECT 1 FROM unnest(NEW.department_ids) d WHERE NOT EXISTS(SELECT 1 FROM department WHERE id=d AND tenant_id=tid AND (NEW.company_id IS NULL OR company_id=NEW.company_id) AND (NEW.group_company_id IS NULL OR app.is_company_descendant(company_id,NEW.group_company_id)))) THEN RAISE EXCEPTION 'Invalid KPI library scope'; END IF;
  ELSE
   IF NOT EXISTS(SELECT 1 FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=tid) THEN RAISE EXCEPTION 'Invalid assessment reference'; END IF;
   IF TG_TABLE_NAME='performance_assessment_attachment_link' THEN
@@ -106,6 +107,18 @@ BEGIN
  IF TG_OP='UPDATE' THEN
   o:=to_jsonb(OLD);
   IF n->>'tenant_id' IS DISTINCT FROM o->>'tenant_id' OR n->>'review_id' IS DISTINCT FROM o->>'review_id' OR n->>'employment_id' IS DISTINCT FROM o->>'employment_id' OR n->>'cycle_id' IS DISTINCT FROM o->>'cycle_id' THEN RAISE EXCEPTION 'assessment record identity is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND n->'kpis' IS DISTINCT FROM o->'kpis' THEN
+   IF EXISTS(SELECT 1 FROM jsonb_array_elements(n->'kpis') k WHERE k->>'moderatorEmploymentId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM employment m JOIN employment sub ON sub.id=eid WHERE m.id=(k->>'moderatorEmploymentId')::uuid AND m.tenant_id=tid AND m.person_id<>sub.person_id)) THEN RAISE EXCEPTION 'Invalid KPI moderator'; END IF;
+   IF NOT app.onehr_cycle_admin(r.cycle_id) AND EXISTS(
+    SELECT 1 FROM jsonb_array_elements(n->'kpis') k LEFT JOIN LATERAL (SELECT prior FROM jsonb_array_elements(o->'kpis') prior WHERE prior->>'id'=k->>'id') old_k ON true
+    WHERE (k->>'moderatorSource'='matrix' AND (k->>'moderatorSource' IS DISTINCT FROM old_k.prior->>'moderatorSource' OR k->>'moderatorEmploymentId' IS DISTINCT FROM old_k.prior->>'moderatorEmploymentId'))
+     OR coalesce((k->>'hrOwned')::boolean,false) IS DISTINCT FROM coalesce((old_k.prior->>'hrOwned')::boolean,false)
+   ) THEN RAISE EXCEPTION 'HR assigns matrix moderators and company-owned KPI results'; END IF;
+   IF NOT app.onehr_cycle_admin(r.cycle_id) AND EXISTS(
+    SELECT 1 FROM jsonb_array_elements(o->'kpis') old_k WHERE coalesce((old_k->>'hrOwned')::boolean,false)
+     AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(n->'kpis') k WHERE k->>'id'=old_k->>'id' AND k=old_k)
+   ) THEN RAISE EXCEPTION 'Company-owned KPI results are read-only'; END IF;
+  END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND (n->'company_id' IS DISTINCT FROM o->'company_id' OR n->'grade' IS DISTINCT FROM o->'grade' OR n->'statements' IS DISTINCT FROM o->'statements') THEN RAISE EXCEPTION 'assessment opening snapshot is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') AND ((n->'policy')-'windows' IS DISTINCT FROM (o->'policy')-'windows' OR EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status='closed')) THEN RAISE EXCEPTION 'An opened assessment assessment policy is immutable; only active deadlines can change'; END IF;
   IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' THEN
