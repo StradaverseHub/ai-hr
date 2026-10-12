@@ -1,0 +1,64 @@
+# Customer runtime profile. Install AS aihr.service; deploy.sh restarts that name.
+# Requires dedicated aihr account, root-owned /etc/aihr/runtime.env, and an existing writable cache.
+# See deploy/CUSTOMER.md. Do not install over the shared consultant demo without a migration plan.
+[Unit]
+Description=AI HR customer application
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=aihr
+Group=aihr
+WorkingDirectory=/opt/ai-hr
+EnvironmentFile=/etc/aihr/runtime.env
+Environment=PATH=/opt/node24/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+# These credentials/identities never belong in the customer web process, even if misconfigured.
+UnsetEnvironment=MIGRATION_DATABASE_URL TEST_DATABASE_URL TEST_MIGRATION_DATABASE_URL ALLOW_DEMO_SESSION DEV_TENANT_ID DEV_USER_ID NODE_OPTIONS
+# Check the EFFECTIVE runtime values too; the root-owned runtime file can drift from deploy config.
+ExecStartPre=/opt/node24/bin/node /opt/ai-hr/deploy/check-customer-env.mjs
+ExecStart=/opt/node24/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${PORT}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+LimitCORE=0
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Next's image/data cache is the only persistent application write path currently required.
+# Keep private temporary files available; do not make the whole application tree writable.
+ReadWritePaths=/opt/ai-hr/.next/cache
+# PID 1 reads EnvironmentFile before applying this service's filesystem restrictions.
+# Next auto-loads .env files; UnsetEnvironment alone would not stop it reloading the owner password.
+InaccessiblePaths=/etc/aihr -/opt/ai-hr/.env -/opt/ai-hr/.env.local -/opt/ai-hr/.env.production -/opt/ai-hr/.env.production.local
+
+# Starting bounds for the 24 GiB UAT application + identity host; load-test before customer traffic.
+# HR PostgreSQL, builds and batch workers run elsewhere in the 1,000-employee / 200-tester UAT topology.
+MemoryHigh=10G
+MemoryMax=12G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target
