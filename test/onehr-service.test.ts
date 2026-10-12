@@ -59,8 +59,11 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await complete();expect((await view()).potential).toBe('High');
     expect((await view(self)).competencies.map(c=>c.self)).toEqual(['no','no']);
     expect((await view(self)).peers).toEqual([]);expect((await view(self)).potential).toBeNull();
+    expect(await withTenant(self,tx=>tx.select().from(schema.peerFeedbackRequest).where(eq(schema.peerFeedbackRequest.reviewId,reviewId)))).toEqual([]);
     expect(await withTenant(self,tx=>tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'onehr.panel-assigned')))).toEqual([]);
     expect(await withTenant(self,tx=>tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'peer-feedback-request.created')))).toEqual([]);
+    const attachment=await perf.addPerformanceAttachment(self,{reviewId,stageKind:null,fileName:'delivery.txt',mimeType:'text/plain',content:Buffer.from('Verified release evidence.')});
+    expect((await perf.getPerformanceAttachment(mgr,attachment.id))?.content.toString()).toBe('Verified release evidence.');
     const frozenId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     expect((await view(self)).result).toMatchObject({id:frozenId,performance:null,potential:null,talent:null});
     expect(await withTenant(self,tx=>tx.select().from(schema.onehrResult))).toEqual([]);
@@ -121,6 +124,12 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   });
   it('imports frozen results into Rewards with provenance and new verification, without changing compensation',async()=>{
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    // A later development-only record must not hide the annual assessment from Rewards.
+    const {cycleId:developmentCycle}=await perf.createCycle(a,{name:'Development-only record',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
+    const developmentPolicy=defaultPolicy(framework);developmentPolicy.modules={pm:false,tm:false,idp:true,evidence:true};
+    await perf.configureOnehrCycle(a,developmentCycle,null,developmentPolicy);await perf.openCycle(a,{cycleId:developmentCycle});
+    const [developmentReview]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,developmentCycle),eq(schema.onehrReview.employmentId,subject.employmentId)));
+    await perf.freezeOnehrReview(a,developmentReview.reviewId,developmentReview.revision);
     const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'HQ',name:'Headquarters'}).returning();
     await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
@@ -176,6 +185,9 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Matrix objective',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'}]);
+    const attachment=await perf.addPerformanceAttachment(self,{reviewId,stageKind:null,fileName:'private-evidence.txt',mimeType:'text/plain',content:Buffer.from('Evidence for the assigned assessment manager.')});
+    expect(await perf.getPerformanceAttachment(matrix.ctx,attachment.id)).toBeNull();expect(await perf.listAttachmentsForReview(matrix.ctx,reviewId)).toEqual([]);
+    expect(await withTenant(matrix.ctx,tx=>tx.select().from(schema.performanceAttachment).where(eq(schema.performanceAttachment.reviewId,reviewId)))).toEqual([]);
     const matrixView=await view(matrix.ctx);expect(matrixView.moderator).toBe(true);expect(matrixView.policy.modules).toEqual({pm:true,tm:false,idp:false,evidence:false});expect(matrixView.competencies).toEqual([]);expect(matrixView.peers).toEqual([]);
     await perf.moderateOnehrKpi(matrix.ctx,reviewId,matrixView.revision,id,2,'');
     await owner.db.update(schema.reportingLine).set({validTo:`${year}-01-01`}).where(and(eq(schema.reportingLine.managerEmploymentId,matrix.employmentId),eq(schema.reportingLine.lineType,'functional')));

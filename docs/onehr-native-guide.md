@@ -33,7 +33,7 @@ Finalize each completed assessment to freeze its result and provenance. Release 
 ## Use the results in Rewards
 
 1. Open the corresponding annual draft Rewards unit and its **Data** tab.
-2. As Group Rewards, explicitly import finalized OneHR results. The import records the source result and digest and resets fact verification and earlier approvals.
+2. As Group Rewards, explicitly import finalized OneHR results. The import records the source result and digest and resets fact verification and earlier approvals. Development/evidence-only records are excluded; an unassessed axis retains the existing Rewards fact.
 3. Review the imported classifications and nominations, complete case decisions and verify the facts.
 4. Continue the existing Rewards recommendation, approval and posting process.
 

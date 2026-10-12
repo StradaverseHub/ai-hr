@@ -130,6 +130,6 @@ export function transition(stage: RewardStage, roles: readonly RewardRole[], act
 
 /** Assessment classification is evidence for a human review, never a pay or disciplinary decision. */
 export function factsFromOnehr(source: NonNullable<RewardSource['onehr']>, existing: RewardFacts): RewardFacts {
-  const talent: RewardFacts['talent'] = source.pip ? 'PIP' : source.talent === 'Super Star' ? 'SSTAR' : source.talent === 'Star' ? 'STAR' : source.talent === 'Solid Core' ? 'SCORE' : source.talent === 'PIP/Improvement' ? 'IMPRO' : null;
-  return { ...existing, performance: source.performance, talent, pipCase: source.pip || existing.pipCase, reviewed: false };
+  const talent: RewardFacts['talent'] = source.pip ? 'PIP' : source.talent === 'Super Star' ? 'SSTAR' : source.talent === 'Star' ? 'STAR' : source.talent === 'Solid Core' ? 'SCORE' : source.talent === 'PIP/Improvement' ? 'IMPRO' : existing.talent;
+  return { ...existing, performance: source.performance ?? existing.performance, talent, pipCase: source.pip || existing.pipCase, reviewed: false };
 }

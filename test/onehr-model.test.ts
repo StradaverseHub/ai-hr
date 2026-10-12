@@ -44,6 +44,7 @@ describe('OneHR source-derived assessment rules',()=>{
   it('maps improvement to IMPRO, leaves case decisions pending, and never treats a category as confirmation of PIP',()=>{
     const result={id:randomUUID(),reviewId:randomUUID(),cycleId:randomUUID(),digest:'digest',frozenAt:'2026-10-12T00:00:00Z',performance:'UA' as const,potential:'High' as const,talent:'PIP/Improvement' as const,pip:false,promotion:true,specialReward:true,policyDigest:'policy'};
     const facts=factsFromOnehr(result,{...emptyFacts(),reviewed:true});expect(facts).toMatchObject({performance:'UA',talent:'IMPRO',pipCase:false,pipDecision:'pending',reviewed:false});
+    expect(factsFromOnehr({...result,performance:null,talent:null},{...emptyFacts(),performance:'ME',talent:'STAR',reviewed:true})).toMatchObject({performance:'ME',talent:'STAR',reviewed:false});
     expect(factsFromOnehr({...result,pip:true},emptyFacts())).toMatchObject({talent:'PIP',pipCase:true,pipDecision:'pending',reviewed:false});
   });
 });

@@ -150,7 +150,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_decisions(uuid) TO ai_hr_app;
 CREATE FUNCTION app.reward_onehr_source(wanted_unit uuid,wanted_employment uuid,wanted_year integer) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT jsonb_build_object('id',f.id,'reviewId',f.review_id,'cycleId',f.cycle_id,'digest',f.digest,'frozenAt',f.frozen_at,'performance',f.result->'performance','potential',f.result->'potential','talent',f.result->'talent','pip',f.result->'pip','promotion',f.result->'promotion','specialReward',f.result->'specialReward','policyDigest',f.result->'policyDigest')
  FROM performance_onehr_result f JOIN review_cycle c ON c.id=f.cycle_id AND c.tenant_id=f.tenant_id JOIN employment e ON e.id=f.employment_id AND e.tenant_id=f.tenant_id JOIN reward_unit u ON u.id=wanted_unit AND u.tenant_id=e.tenant_id AND u.company_id=e.company_id JOIN app_user a ON a.id=app.current_user_id() AND a.tenant_id=u.tenant_id
- WHERE f.tenant_id=app.current_tenant_id() AND f.employment_id=wanted_employment AND extract(year from c.period_end)::integer=wanted_year AND (u.policy->>'year')::integer=wanted_year AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND NOT app.is_self_person(e.person_id) AND (app.reward_admin(u.company_id) OR 'gr' IN (SELECT app.reward_roles(u.id))) AND (app.reward_admin(u.company_id) OR EXISTS(SELECT 1 FROM reward_entry re WHERE re.unit_id=u.id AND re.employment_id=e.id))
+ WHERE f.tenant_id=app.current_tenant_id() AND f.employment_id=wanted_employment AND (f.result->>'performance' IS NOT NULL OR f.result->>'potential' IS NOT NULL OR f.result->>'pip'='true' OR f.result->>'promotion'='true' OR f.result->>'specialReward'='true') AND extract(year from c.period_end)::integer=wanted_year AND (u.policy->>'year')::integer=wanted_year AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND NOT app.is_self_person(e.person_id) AND (app.reward_admin(u.company_id) OR 'gr' IN (SELECT app.reward_roles(u.id))) AND (app.reward_admin(u.company_id) OR EXISTS(SELECT 1 FROM reward_entry re WHERE re.unit_id=u.id AND re.employment_id=e.id))
  ORDER BY c.period_end DESC,CASE WHEN (SELECT policy->>'kind' FROM performance_onehr_cycle oc WHERE oc.cycle_id=f.cycle_id)='year_end' THEN 0 ELSE 1 END,f.frozen_at DESC,f.id DESC LIMIT 1
 $$;
 REVOKE ALL ON FUNCTION app.reward_onehr_source(uuid,uuid,integer) FROM PUBLIC;
@@ -187,3 +187,14 @@ DROP POLICY onehr_calibration_entry_access ON performance_onehr_calibration_entr
 CREATE POLICY onehr_calibration_entry_read ON performance_onehr_calibration_entry FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND app.is_self_person(e.person_id)));
 CREATE POLICY onehr_calibration_entry_insert ON performance_onehr_calibration_entry FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin((SELECT s.cycle_id FROM performance_onehr_calibration s WHERE s.id=session_id)));
 CREATE POLICY onehr_calibration_entry_update ON performance_onehr_calibration_entry FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND app.is_self_person(e.person_id)));
+
+
+--> statement-breakpoint
+-- Keep the native file store, but intersect its visibility with the OneHR evidence role.
+-- A delegated KPI moderator does not receive the employee's evidence attachments.
+CREATE FUNCTION app.onehr_attachment_access(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT NOT EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id()) OR EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND coalesce((c.policy->'modules'->>'evidence')::boolean,false) AND (app.is_self_person(e.person_id) OR app.onehr_manager(r.review_id) OR app.onehr_cycle_admin(r.cycle_id)))
+$$;
+REVOKE ALL ON FUNCTION app.onehr_attachment_access(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_attachment_access(uuid) TO ai_hr_app;
+CREATE POLICY onehr_attachment_scope ON performance_attachment AS RESTRICTIVE FOR ALL USING(app.onehr_attachment_access(review_id)) WITH CHECK(app.onehr_attachment_access(review_id));
