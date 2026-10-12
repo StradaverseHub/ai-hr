@@ -97,6 +97,15 @@ export const performancePack: ModulePack = {
   // stay OUTSIDE (employment-spine, see the header decision); payroll_input rows written by the
   // comp-enactment seam are KERNEL, not satellites of this pack.
   satelliteTables: [
+    { table: 'performance_onehr_cycle', note: 'native OneHR cycle aggregate; ADR-0102' },
+    { table: 'performance_onehr_review', note: 'native OneHR review aggregate; ADR-0102' },
+    { table: 'performance_onehr_panel', note: 'native OneHR panel aggregate; ADR-0102' },
+    { table: 'performance_onehr_calibration', note: 'native OneHR calibration aggregate; ADR-0102' },
+    { table: 'performance_onehr_calibration_entry', note: 'native OneHR calibration_entry aggregate; ADR-0102' },
+    { table: 'performance_onehr_plan', note: 'native OneHR plan aggregate; ADR-0102' },
+    { table: 'performance_onehr_evidence', note: 'native OneHR evidence aggregate; ADR-0102' },
+    { table: 'performance_onehr_result', note: 'native OneHR result aggregate; ADR-0102' },
+
     { table: 'review_cycle', note: 'appraisal cycle: draft → open → calibration → closed, eligibility rules, stages, rating scale, merit budget' },
     { table: 'performance_review', note: 'one review per snapshotted employee per cycle: self → manager → submitted → acknowledged + comp recommendation' },
     { table: 'performance_goal', note: 'goals/OKRs (ADR-0022): continuous or cycle-bound, status + progress' },

@@ -11,6 +11,8 @@ import { setEmploymentGrade } from '../../core/org';
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { calculateRewards } from './engine';
+import { onehrRewardResultTx } from '../performance/service';
+import { factsFromOnehr } from './model';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
@@ -150,11 +152,12 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
       lastPayChange: comp && comp.validFrom > e.hiredOn ? comp.validFrom : null,
       confirmationPayChange: !!(comp && e.confirmedOn && comp.validFrom === e.confirmedOn && comp.validFrom > e.hiredOn),
       performanceReviewId: review?.id ?? null, performanceRating: review?.rating ?? null,
+      onehr: await onehrRewardResultTx(tx, e.employmentId, unit.policy.year, unit.id),
     };
     const [existing] = await tx.select({ id: rewardEntry.id, source: rewardEntry.source, facts: rewardEntry.facts }).from(rewardEntry).where(and(eq(rewardEntry.unitId, unit.id), eq(rewardEntry.employmentId, e.employmentId)));
     if (existing) {
       // Refresh is explicit and invalidates data verification and all earlier approvals.
-      await tx.update(rewardEntry).set({ source, facts: { ...existing.facts, reviewed: false }, updatedAt: new Date() }).where(eq(rewardEntry.id, existing.id));
+      await tx.update(rewardEntry).set({ source: {...source, ...(existing.source.onehrFactImport?{onehrFactImport:existing.source.onehrFactImport}:{})}, facts: { ...existing.facts, reviewed: false }, updatedAt: new Date() }).where(eq(rewardEntry.id, existing.id));
     } else await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId: unit.id, employmentId: e.employmentId, source, facts: emptyFacts(), recommendation: emptyRecommendation() });
   }
   return seen;
@@ -402,4 +405,24 @@ export async function rewardNotificationRecipients(tx: Tx, unitId: string, stage
   if (!(rewardRoles as readonly string[]).includes(role)) return [];
   const rows = await tx.execute<{ employmentId: string }>(sql`select app.reward_notification_recipients(${unitId}::uuid, ${stage}) as "employmentId"`);
   return rows.map(r => r.employmentId);
+}
+
+/** Explicit Group Rewards import. Re-opens fact verification and invalidates approval digests. */
+export async function importOnehrRewardResults(ctx: SessionContext, unitId: string, expected: number) {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId, true);
+    assertRevision(unit, expected); assertUnlocked(unit);
+    if (!roles.includes('gr') || unit.kind !== 'annual') throw new RewardError('Only Group Rewards may import annual assessment results.');
+    let imported = 0;
+    for (const entry of entries) {
+      if (!visibleEntry(entry, roles, ctx.personId)) continue;
+      const onehr = await onehrRewardResultTx(tx, entry.source.employmentId, unit.policy.year, unit.id);
+      if (!onehr) continue;
+      await tx.update(rewardEntry).set({ source: {...entry.source, onehr, onehrFactImport:{resultId:onehr.id,digest:onehr.digest,importedAt:new Date().toISOString()}, performanceReviewId:onehr.reviewId, performanceRating:null}, facts:factsFromOnehr(onehr,entry.facts), updatedAt:new Date() }).where(eq(rewardEntry.id,entry.id));
+      imported++;
+    }
+    if (!imported) throw new RewardError('No finalized OneHR results are available for this roster and reward year.');
+    await touch(tx,unitId); await stamp(tx,ctx,unitId,'onehr-results-imported',{count:imported});
+    return { imported };
+  });
 }

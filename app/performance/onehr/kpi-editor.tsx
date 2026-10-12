@@ -1,0 +1,21 @@
+'use client';
+import { useState } from 'react';
+import { Button, Field, inputCls } from '@/components/ui';
+import type { KPI, Scoring } from '@/packs/performance/onehr/model';
+import { onehrReviewAction } from '../onehr-actions';
+type Labels=Record<string,string>;
+export function KpiEditor({reviewId,revision,kpis,moderators,reviewerEmploymentId,mechanism,labels:t}:{reviewId:string;revision:number;kpis:KPI[];moderators:{id:string;name:string}[];reviewerEmploymentId:string|null;mechanism:'A'|'B';labels:Labels}){
+  const [rows,setRows]=useState(kpis);
+  const add=()=>setRows(r=>[...r,{id:crypto.randomUUID(),title:'',description:'',weightBp:1000,unit:'',moderatorEmploymentId:null,scoring:mechanism==='A'?{mechanism:'A',method:'more',rates:[0,1,2,3,4]}:{mechanism:'B',method:'more',variant:'base',threshold:0,target:1,multiple:100,excellence:null},setting:'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}]);
+  const scoring=(id:string,value:Scoring)=>setRows(r=>r.map(k=>k.id===id?{...k,scoring:value}:k));
+  return <form action={onehrReviewAction} className="space-y-5"><input type="hidden" name="action" value="kpis"/><input type="hidden" name="reviewId" value={reviewId}/><input type="hidden" name="revision" value={revision}/>
+    {rows.map(k=><fieldset key={k.id} className="space-y-4 rounded-lg border border-border p-4"><input type="hidden" name="kpiId" value={k.id}/><legend className="px-1 font-medium">{t.kpi}</legend>
+      <div className="grid gap-4 sm:grid-cols-2"><Field label={t.title}><input required maxLength={300} name={`${k.id}.title`} defaultValue={k.title} className={inputCls}/></Field><Field label={t.weight}><input required type="number" min="0.01" max="100" step="0.01" name={`${k.id}.weight`} defaultValue={k.weightBp/100} className={inputCls}/></Field></div>
+      <Field label={t.moderator}><select required name={`${k.id}.moderator`} defaultValue={k.moderatorEmploymentId??reviewerEmploymentId??''} className={inputCls}><option value="">{t.choose}</option>{moderators.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></Field><Field label={t.description}><textarea name={`${k.id}.description`} maxLength={4000} defaultValue={k.description} className={inputCls}/></Field>
+      <div className="grid gap-4 sm:grid-cols-3"><Field label={t.unit}><input name={`${k.id}.unit`} maxLength={80} defaultValue={k.unit} className={inputCls}/></Field><Field label={t.mechanism}><input type="hidden" name={`${k.id}.mechanism`} value={mechanism}/><p className="py-2">{mechanism==='A'?t.mechanismA:t.mechanismB}</p></Field><Field label={t.direction}><select name={`${k.id}.method`} defaultValue={k.scoring.method} className={inputCls}><option value="more">{t.more}</option><option value="less">{t.less}</option></select></Field></div>
+      {k.scoring.mechanism==='A'?<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{k.scoring.rates.map((n,i)=><Field key={i} label={`${t.threshold} ${i+1}`}><input required type="number" step="any" name={`${k.id}.rate.${i}`} defaultValue={n} className={inputCls}/></Field>)}</div>:<div className="grid gap-3 sm:grid-cols-3"><Field label={t.variant}><select name={`${k.id}.variant`} value={k.scoring.variant} onChange={e=>scoring(k.id,{...(k.scoring as Extract<Scoring,{mechanism:'B'}>),variant:e.target.value as 'base'|'excellence'})} className={inputCls}><option value="base">{t.base}</option><option value="excellence">{t.excellence}</option></select></Field>{(['threshold','target','multiple','excellence'] as const).map(key=><Field key={key} label={t[key]}><input required={key!=='excellence'||k.scoring.mechanism==='B'&&k.scoring.variant==='excellence'} type="number" step="any" name={`${k.id}.${key}`} defaultValue={k.scoring.mechanism==='B'?k.scoring[key]??'':''} className={inputCls}/></Field>)}</div>}
+      <Button type="button" variant="secondary" onClick={()=>setRows(r=>r.filter(x=>x.id!==k.id))}>{t.remove}</Button>
+    </fieldset>)}
+    <p className="text-sm text-muted-foreground">{t.weightHelp}</p><div className="flex flex-wrap gap-3"><Button type="button" variant="secondary" onClick={add}>{t.addKpi}</Button><Button type="submit" variant="secondary">{t.saveDraft}</Button><Button type="submit" name="propose" value="true" disabled={!rows.length}>{t.propose}</Button></div>
+  </form>;
+}

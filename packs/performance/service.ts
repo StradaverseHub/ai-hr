@@ -12,3 +12,6 @@
  * client-safe declaration is `packs/performance/index.ts`.
  */
 export * from '../../core/performance';
+
+export * from "./onehr/service";
+export { draftOnehrNarrative } from './onehr/ai';

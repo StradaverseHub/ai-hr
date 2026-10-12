@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/packs/performance/service';
+import { onehrAssignments, myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/packs/performance/service';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   myCreateGoal,
@@ -42,13 +42,15 @@ export default async function MyPerformancePage({
   const s = await getSession();
   const { error } = await searchParams;
 
-  const [reviews, goals, checkins, feedbackRequests] = await Promise.all([
+  const [reviews, goals, checkins, feedbackRequests, onehr] = await Promise.all([
     myReviews(s),
     myGoals(s),
     myCheckIns(s),
     myFeedbackRequests(s),
+    onehrAssignments(s),
   ]);
 
+  const onehrText=await getTranslations('onehr');
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
@@ -58,9 +60,10 @@ export default async function MyPerformancePage({
       />
 
       <ErrorBanner message={error} />
+      {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle}</Link></p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/onehr/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/onehr/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}
 
       {/* Performance reviews */}
-      {reviews.length > 0 && (
+      {reviews.filter(r=>!onehr.reviews.some(a=>a.id===r.reviewId)).length > 0 && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('myReviews')} count={reviews.length} />
           <table className="w-full text-sm">
@@ -73,7 +76,7 @@ export default async function MyPerformancePage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {reviews.map((r) => {
+              {reviews.filter(r=>!onehr.reviews.some(a=>a.id===r.reviewId)).map((r) => {
                 // Employee-facing status: their own perspective, not the raw enum.
                 const label =
                   r.status === 'self_review'
@@ -218,7 +221,7 @@ export default async function MyPerformancePage({
           <SectionHeader title={t('feedbackTitle')} count={feedbackRequests.length} />
           <p className="px-4 pt-3 text-xs text-muted-foreground">{t('feedbackIntro')}</p>
           <ul className="divide-y divide-border">
-            {feedbackRequests.map((fr) => (
+            {feedbackRequests.filter(r=>!onehr.feedback.some(a=>a.id===r.requestId)).map((fr) => (
               <li key={fr.requestId} className="px-4 py-4">
                 <div className="text-sm font-medium">
                   {t('feedbackOn', { name: fr.subject })}

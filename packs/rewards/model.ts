@@ -86,6 +86,11 @@ export type RewardSource = {
   hiredOn: string; confirmedOn: string | null; notice: boolean;
   lastPayChange: string | null; confirmationPayChange: boolean;
   performanceReviewId: string | null; performanceRating: number | null;
+  onehrFactImport?: { resultId: string; digest: string; importedAt: string };
+  onehr?: { id: string; reviewId: string; cycleId: string; digest: string; frozenAt: string;
+    performance: typeof performances[number] | null; potential: 'Low'|'Mid'|'High'|null;
+    talent: 'PIP/Improvement'|'Solid Core'|'Star'|'Super Star'|null;
+    pip: boolean; promotion: boolean; specialReward: boolean; policyDigest: string } | null;
 };
 export type RewardEntry = { id: string; source: RewardSource; facts: RewardFacts; recommendation: Recommendation };
 export type Plan = 'standard' | 'h' | 'ec';
@@ -121,4 +126,10 @@ export function transition(stage: RewardStage, roles: readonly RewardRole[], act
   if (action === 'return' && ['bg', 'gr', 'ctro', 'ec'].includes(stage) && roles.includes(stage as RewardRole)) return 'draft';
   if (action === 'approve' && ['bg', 'gr', 'ctro', 'ec'].includes(stage) && roles.includes(stage as RewardRole)) return rewardStages[rewardStages.indexOf(stage) + 1];
   throw new Error('You cannot perform this action at the current approval stage.');
+}
+
+/** Assessment classification is evidence for a human review, never a pay or disciplinary decision. */
+export function factsFromOnehr(source: NonNullable<RewardSource['onehr']>, existing: RewardFacts): RewardFacts {
+  const talent: RewardFacts['talent'] = source.pip ? 'PIP' : source.talent === 'Super Star' ? 'SSTAR' : source.talent === 'Star' ? 'STAR' : source.talent === 'Solid Core' ? 'SCORE' : source.talent === 'PIP/Improvement' ? 'IMPRO' : null;
+  return { ...existing, performance: source.performance, talent, pipCase: source.pip || existing.pipCase, reviewed: false };
 }

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { isAdmin, requireModule } from '@/lib/authz';
+import { canManagePerfComp, isAdmin, requireModule } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -29,7 +29,7 @@ export default async function PerformancePage({
   await requireModule('performance');
   const { s } = await scopedSession();
   const t = await getTranslations('performance.list');
-  const admin = isAdmin(s);
+  const admin = isAdmin(s) || canManagePerfComp(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
   const sp = await searchParams;

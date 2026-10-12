@@ -1,0 +1,705 @@
+[
+  {
+    "gradeMin": 12,
+    "gradeMax": 14,
+    "letters": [
+      "H",
+      "*"
+    ],
+    "statements": [
+      {
+        "id": "21497",
+        "principle": "Customer Centricity",
+        "text": "Responds to internal / external customer requests promptly and follows up without reminders",
+        "future": false
+      },
+      {
+        "id": "21509",
+        "principle": "Customer Centricity",
+        "text": "Goes beyond what was asked to surprise or delight an internal / external customer",
+        "future": false
+      },
+      {
+        "id": "21521",
+        "principle": "Customer Centricity",
+        "text": "Establishes simple team practices that improve the consistency of the internal / external customer experience",
+        "future": true
+      },
+      {
+        "id": "21533",
+        "principle": "Customer Centricity",
+        "text": "Identifies patterns in internal / external customer feedback and brings them to the team's attention",
+        "future": true
+      },
+      {
+        "id": "21545",
+        "principle": "Decisive Execution",
+        "text": "Acts on assigned tasks without requiring repeated prompting",
+        "future": false
+      },
+      {
+        "id": "21557",
+        "principle": "Decisive Execution",
+        "text": "Identifies problems that arise within their scope and resolves them independently",
+        "future": false
+      },
+      {
+        "id": "21569",
+        "principle": "Decisive Execution",
+        "text": "Makes timely decisions within their authority without escalating unnecessarily",
+        "future": true
+      },
+      {
+        "id": "21581",
+        "principle": "Decisive Execution",
+        "text": "Drives the team to move from discussion to action quickly",
+        "future": true
+      },
+      {
+        "id": "21593",
+        "principle": "Drive for Excellence",
+        "text": "Delivers work consistently to a high standard without being asked to redo it",
+        "future": false
+      },
+      {
+        "id": "21605",
+        "principle": "Drive for Excellence",
+        "text": "Self-initiates improvements to their work rather than waiting to be told",
+        "future": false
+      },
+      {
+        "id": "21617",
+        "principle": "Drive for Excellence",
+        "text": "Sets ambitious team targets and benchmarks work outcomes against best-in-class examples in their area",
+        "future": true
+      },
+      {
+        "id": "21629",
+        "principle": "Drive for Excellence",
+        "text": "Able to detect and highlight if team's work falls below standard and provides specific, actionable feedback",
+        "future": true
+      },
+      {
+        "id": "21641",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Approaches obstacles with a problem-solving rather than a problem-dwelling mindset",
+        "future": false
+      },
+      {
+        "id": "21653",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Reflects on failures to extract learnings rather than assigning blame",
+        "future": false
+      },
+      {
+        "id": "21665",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Maintains team morale during difficult periods by being solutions focused",
+        "future": true
+      },
+      {
+        "id": "21677",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Turns challenges into learning opportunities and makes sure the team understands this",
+        "future": true
+      },
+      {
+        "id": "21689",
+        "principle": "Talent Development",
+        "text": "Takes ownership of their own development and seeks development opportunities proactively",
+        "future": false
+      },
+      {
+        "id": "21701",
+        "principle": "Talent Development",
+        "text": "Shares knowledge generously and supports  new colleagues",
+        "future": false
+      },
+      {
+        "id": "21713",
+        "principle": "Talent Development",
+        "text": "Builds individual development plans for direct reports and reviews them regularly",
+        "future": true
+      },
+      {
+        "id": "21725",
+        "principle": "Talent Development",
+        "text": "Creates opportunities for team members to stretch beyond their comfort zone",
+        "future": true
+      },
+      {
+        "id": "21737",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Voices concerns or different perspectives rather than staying silent to avoid discomfort",
+        "future": false
+      },
+      {
+        "id": "21749",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Once a decision is made, supports and executes it fully regardless of personal preference",
+        "future": false
+      },
+      {
+        "id": "21761",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Able to constructively challenge \u2014 pushes back with logic and evidence rather than emotion",
+        "future": true
+      },
+      {
+        "id": "21773",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Holds the team to full commitment after decisions without allowing reopening of settled discussions",
+        "future": true
+      },
+      {
+        "id": "21785",
+        "principle": "Transparent Communication",
+        "text": "Communicates clearly and directly, avoiding vague or evasive language",
+        "future": false
+      },
+      {
+        "id": "21797",
+        "principle": "Transparent Communication",
+        "text": "Speaks up when something feels wrong even when uncomfortable",
+        "future": false
+      },
+      {
+        "id": "21809",
+        "principle": "Transparent Communication",
+        "text": "Explains the rationale behind decisions to the team without being asked",
+        "future": true
+      },
+      {
+        "id": "21821",
+        "principle": "Transparent Communication",
+        "text": "Does not filter bad news when reporting upward \u2014 gives an accurate picture even when unflattering",
+        "future": true
+      }
+    ]
+  },
+  {
+    "gradeMin": 15,
+    "gradeMax": 17,
+    "letters": [],
+    "statements": [
+      {
+        "id": "21500",
+        "principle": "Customer Centricity",
+        "text": "Proactively identifies internal / external customer needs, sometimes even before customers raise them",
+        "future": false
+      },
+      {
+        "id": "21512",
+        "principle": "Customer Centricity",
+        "text": "Coaches team members to go beyond the minimum in serving internal / external customers",
+        "future": false
+      },
+      {
+        "id": "21524",
+        "principle": "Customer Centricity",
+        "text": "Designs department processes while taking into account internal / external customer experience",
+        "future": true
+      },
+      {
+        "id": "21536",
+        "principle": "Customer Centricity",
+        "text": "Brings structured customer insights to management on a regular basis",
+        "future": true
+      },
+      {
+        "id": "21548",
+        "principle": "Decisive Execution",
+        "text": "Makes timely decisions within their authority without unnecessary escalation",
+        "future": false
+      },
+      {
+        "id": "21560",
+        "principle": "Decisive Execution",
+        "text": "Course-corrects quickly when actions don't yield the expected outcome",
+        "future": false
+      },
+      {
+        "id": "21572",
+        "principle": "Decisive Execution",
+        "text": "Creates an execution culture with clear timelines and rigorous progress tracking",
+        "future": true
+      },
+      {
+        "id": "21584",
+        "principle": "Decisive Execution",
+        "text": "Removes roadblocks that slow teams down without waiting to be asked",
+        "future": true
+      },
+      {
+        "id": "21596",
+        "principle": "Drive for Excellence",
+        "text": "Sets ambitious team targets and benchmarks work outcomes against best-in-class examples in their area",
+        "future": false
+      },
+      {
+        "id": "21608",
+        "principle": "Drive for Excellence",
+        "text": "Able to detect and highlight if team's work falls below standard and provides specific, actionable feedback",
+        "future": false
+      },
+      {
+        "id": "21620",
+        "principle": "Drive for Excellence",
+        "text": "Leads benchmarking exercises against world-class organisations and translates learnings into action",
+        "future": true
+      },
+      {
+        "id": "21632",
+        "principle": "Drive for Excellence",
+        "text": "Sets clear checkpoints to make sure low-quality work does not get delivered",
+        "future": true
+      },
+      {
+        "id": "21644",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Turns challenges into learning opportunities and makes sure the team understands this",
+        "future": false
+      },
+      {
+        "id": "21656",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Demonstrates perseverance on tough projects and does not abandon difficult tasks",
+        "future": false
+      },
+      {
+        "id": "21668",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Leads the department through ambiguity without losing direction or momentum",
+        "future": true
+      },
+      {
+        "id": "21680",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Models calm, strategic thinking under pressure as a stabilising force for the team",
+        "future": true
+      },
+      {
+        "id": "21692",
+        "principle": "Talent Development",
+        "text": "Hires for proven ability and cultural fit rather than academic qualifications alone",
+        "future": false
+      },
+      {
+        "id": "21704",
+        "principle": "Talent Development",
+        "text": "Builds individual development plans for each direct report and reviews regularly",
+        "future": false
+      },
+      {
+        "id": "21716",
+        "principle": "Talent Development",
+        "text": "Identifies and develops high-potential talent and succession plans for key positions",
+        "future": true
+      },
+      {
+        "id": "21728",
+        "principle": "Talent Development",
+        "text": "Creates a culture where learning, growth, and development are expected and celebrated",
+        "future": true
+      },
+      {
+        "id": "21740",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Able to constructively challenge \u2014 pushes back with logic and evidence rather than emotion",
+        "future": false
+      },
+      {
+        "id": "21752",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Holds the team to full commitment after decisions and does not tolerate passive non-compliance",
+        "future": false
+      },
+      {
+        "id": "21764",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Demonstrates courage to challenge management when data or situation demands it",
+        "future": true
+      },
+      {
+        "id": "21776",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Supports and executes company decisions, even when it's not always best for the team",
+        "future": true
+      },
+      {
+        "id": "21788",
+        "principle": "Transparent Communication",
+        "text": "Explains the rationale behind decisions to the team without being asked",
+        "future": false
+      },
+      {
+        "id": "21800",
+        "principle": "Transparent Communication",
+        "text": "Reports issues clearly to leaders, without hiding anything, even if things do not look good",
+        "future": false
+      },
+      {
+        "id": "21812",
+        "principle": "Transparent Communication",
+        "text": "Creates ways to share information so everyone who needs it can see what is important",
+        "future": true
+      },
+      {
+        "id": "21824",
+        "principle": "Transparent Communication",
+        "text": "Ensures their team has clear line-of-sight to organisational strategy at all levels",
+        "future": true
+      }
+    ]
+  },
+  {
+    "gradeMin": 18,
+    "gradeMax": 20,
+    "letters": [],
+    "statements": [
+      {
+        "id": "21503",
+        "principle": "Customer Centricity",
+        "text": "Designs department processes while taking into account internal / external customer experience",
+        "future": false
+      },
+      {
+        "id": "21515",
+        "principle": "Customer Centricity",
+        "text": "Challenges decisions that risk compromising the customer experience",
+        "future": false
+      },
+      {
+        "id": "21527",
+        "principle": "Customer Centricity",
+        "text": "Puts in place ways for teams to work together and connect with customers early, not just when needed",
+        "future": true
+      },
+      {
+        "id": "21539",
+        "principle": "Customer Centricity",
+        "text": "Ensures leadership receives unfiltered customer voice and acts on it decisively",
+        "future": true
+      },
+      {
+        "id": "21551",
+        "principle": "Decisive Execution",
+        "text": "Creates an execution culture with clear timelines and rigorous progress tracking",
+        "future": false
+      },
+      {
+        "id": "21563",
+        "principle": "Decisive Execution",
+        "text": "Delivers major initiatives consistently on time and to the required standard",
+        "future": false
+      },
+      {
+        "id": "21575",
+        "principle": "Decisive Execution",
+        "text": "Sets the department / company tempo and models bias for action visibly at the leadership level",
+        "future": true
+      },
+      {
+        "id": "21587",
+        "principle": "Decisive Execution",
+        "text": "Holds the department / company accountable through structured reviews and consequence management",
+        "future": true
+      },
+      {
+        "id": "21599",
+        "principle": "Drive for Excellence",
+        "text": "Leads benchmarking against world-class organisations and translates learnings into action",
+        "future": false
+      },
+      {
+        "id": "21611",
+        "principle": "Drive for Excellence",
+        "text": "Sets clear checkpoints to make sure low-quality work does not get delivered",
+        "future": false
+      },
+      {
+        "id": "21623",
+        "principle": "Drive for Excellence",
+        "text": "Sets the enterprise-wide performance philosophy where best in class is the only standard",
+        "future": true
+      },
+      {
+        "id": "21635",
+        "principle": "Drive for Excellence",
+        "text": "Designs reward systems that agressively reward top-tier performance",
+        "future": true
+      },
+      {
+        "id": "21647",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Leads the department through ambiguity without losing direction or momentum",
+        "future": false
+      },
+      {
+        "id": "21659",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Models calm, strategic thinking under pressure as a stabilising force for the team",
+        "future": false
+      },
+      {
+        "id": "21671",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Sets the tone for how the entire department / company responds to adversity with resilience",
+        "future": true
+      },
+      {
+        "id": "21683",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Shares personal stories of failure and recovery to normalise resilience across the organisation",
+        "future": true
+      },
+      {
+        "id": "21695",
+        "principle": "Talent Development",
+        "text": "Builds a high-performing team with the right mix of skills, experience, and cultural fit",
+        "future": false
+      },
+      {
+        "id": "21707",
+        "principle": "Talent Development",
+        "text": "Identifies and develops high-potential talent and succession plans for key positions",
+        "future": false
+      },
+      {
+        "id": "21719",
+        "principle": "Talent Development",
+        "text": "Champions talent as a strategic competitive advantage at the enterprise level",
+        "future": true
+      },
+      {
+        "id": "21731",
+        "principle": "Talent Development",
+        "text": "Designs hiring and development systems that structurally raise the talent bar organisation-wide",
+        "future": true
+      },
+      {
+        "id": "21743",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Demonstrates courage to challenge management when data or situation demands it",
+        "future": false
+      },
+      {
+        "id": "21755",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Supports and executes company decisions, even when it's not always best for the team",
+        "future": false
+      },
+      {
+        "id": "21767",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Creates space for honest debate and is open to changing their mind when others have better ideas.",
+        "future": true
+      },
+      {
+        "id": "21779",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Creates an environment where speaking up is the norm and silence is never mistaken for agreement",
+        "future": true
+      },
+      {
+        "id": "21791",
+        "principle": "Transparent Communication",
+        "text": "Reports issues clearly to management, without hiding anything, even if things do not look good",
+        "future": false
+      },
+      {
+        "id": "21803",
+        "principle": "Transparent Communication",
+        "text": "Ensures their team has clear line-of-sight to organisational strategy at all levels",
+        "future": false
+      },
+      {
+        "id": "21815",
+        "principle": "Transparent Communication",
+        "text": "Openly explains how decisions are made, including the pros, cons, and any uncertainties",
+        "future": true
+      },
+      {
+        "id": "21827",
+        "principle": "Transparent Communication",
+        "text": "Builds a culture where feedback is trusted and shared by everyone",
+        "future": true
+      }
+    ]
+  },
+  {
+    "gradeMin": 21,
+    "gradeMax": 23,
+    "letters": [],
+    "statements": [
+      {
+        "id": "21506",
+        "principle": "Customer Centricity",
+        "text": "Champions customer delight at the Business Group level and connects it to revenue and brand value",
+        "future": false
+      },
+      {
+        "id": "21518",
+        "principle": "Customer Centricity",
+        "text": "Creates ways to ensure proactive customer engagement across the Business Group",
+        "future": false
+      },
+      {
+        "id": "21530",
+        "principle": "Customer Centricity",
+        "text": "Shapes industry standards for customer engagement beyond the organisation's own practices",
+        "future": true
+      },
+      {
+        "id": "21542",
+        "principle": "Customer Centricity",
+        "text": "Recognized externally as a benchmark leader in customer experience within their industry",
+        "future": true
+      },
+      {
+        "id": "21554",
+        "principle": "Decisive Execution",
+        "text": "Sets the company / Business Group tempo and models Bias for Action visibly at the leadership level",
+        "future": false
+      },
+      {
+        "id": "21566",
+        "principle": "Decisive Execution",
+        "text": "Builds a culture where speed and ownership are celebrated at every level",
+        "future": false
+      },
+      {
+        "id": "21578",
+        "principle": "Decisive Execution",
+        "text": "Builds strong execution systems that help the organisation perform better than others.",
+        "future": true
+      },
+      {
+        "id": "21590",
+        "principle": "Decisive Execution",
+        "text": "Creates an organisation known for delivering results quickly and consistently",
+        "future": true
+      },
+      {
+        "id": "21602",
+        "principle": "Drive for Excellence",
+        "text": "Sets the enterprise-wide performance philosophy where best in class is the only standard",
+        "future": false
+      },
+      {
+        "id": "21614",
+        "principle": "Drive for Excellence",
+        "text": "Designs reward systems that agressively reward top-tier performance",
+        "future": false
+      },
+      {
+        "id": "21626",
+        "principle": "Drive for Excellence",
+        "text": "Redefines what excellence means at the industry level, not just within the organisation",
+        "future": true
+      },
+      {
+        "id": "21638",
+        "principle": "Drive for Excellence",
+        "text": "Creates a legacy that inspires future leaders in the industry to raise their own bar",
+        "future": true
+      },
+      {
+        "id": "21650",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Sets the tone for how the entire department / company responds to adversity with resilience",
+        "future": false
+      },
+      {
+        "id": "21662",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Shares personal stories of failure and recovery to normalise resilience across the organisation",
+        "future": false
+      },
+      {
+        "id": "21674",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Recognised as a leader who has navigated significant challenges with exemplary composure",
+        "future": true
+      },
+      {
+        "id": "21686",
+        "principle": "Resilience & Positive Mindset",
+        "text": "Shapes how resilience and positive leadership are practised in their industry beyond Chin Hin",
+        "future": true
+      },
+      {
+        "id": "21698",
+        "principle": "Talent Development",
+        "text": "Champions talent as a strategic competitive advantage at the enterprise level",
+        "future": false
+      },
+      {
+        "id": "21710",
+        "principle": "Talent Development",
+        "text": "Designs hiring and development systems that raise the talent bar across the organisation",
+        "future": false
+      },
+      {
+        "id": "21722",
+        "principle": "Talent Development",
+        "text": "Shapes talent development practices across the industry beyond Chin Hin's own organisation",
+        "future": true
+      },
+      {
+        "id": "21734",
+        "principle": "Talent Development",
+        "text": "Leaves a talent legacy where leaders they developed transform entire organisations or industries",
+        "future": true
+      },
+      {
+        "id": "21746",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Creates space for honest debate and is open to changing their mind when others have better ideas.",
+        "future": false
+      },
+      {
+        "id": "21758",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Holds the leadership team to full commitment on group decisions and addresses non-compliance",
+        "future": false
+      },
+      {
+        "id": "21770",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Shapes how courageous candour is practised as a leadership standard across the industry",
+        "future": true
+      },
+      {
+        "id": "21782",
+        "principle": "Courageous Candour & Unified Commitment",
+        "text": "Recognised as a leader who has transformed how organisations make decisions together",
+        "future": true
+      },
+      {
+        "id": "21794",
+        "principle": "Transparent Communication",
+        "text": "Openly explains how decisions are made, including the pros, cons, and any uncertainties",
+        "future": false
+      },
+      {
+        "id": "21806",
+        "principle": "Transparent Communication",
+        "text": "Builds a culture where feedback is trusted and shared by everyone",
+        "future": false
+      },
+      {
+        "id": "21818",
+        "principle": "Transparent Communication",
+        "text": "Recognised externally as a benchmark for honest courageous communication in their sector",
+        "future": true
+      },
+      {
+        "id": "21830",
+        "principle": "Transparent Communication",
+        "text": "Transforms how transparency is embedded as a structural organisational value, not a behaviour",
+        "future": true
+      }
+    ]
+  }
+]

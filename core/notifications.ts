@@ -31,6 +31,8 @@ import {
   notificationCursor,
   noticeRecipient,
   payslip,
+  performanceReview,
+  peerFeedbackRequest,
   reportingLine,
   roleAssignment,
   type NotificationSeverity,
@@ -218,6 +220,13 @@ type Spec = {
   recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null) => Promise<string[]>;
 };
 
+/** Generic task notices carry no assessment, peer identity or evidence text. */
+async function performanceManagerRecipient(tx:Tx,ev:EventRef):Promise<string[]> {
+ const [r]=await tx.select({id:performanceReview.reviewerEmploymentId}).from(performanceReview).where(eq(performanceReview.id,ev.aggregateId));
+ if(!r?.id)return [];
+ const live=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(eq(employment.id,r.id),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>(now() at time zone 'Asia/Kuala_Lumpur')::date)`));
+ return [...new Set(live.map(e=>e.id))];
+}
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
 // different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
@@ -581,6 +590,21 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: 'profile',
     render: () => ({ severity: 'warning', title: 'Profile change not approved', body: 'Your requested profile change was not approved.', linkPath: '/me' }),
   },
+  'peer-feedback-request.created': {
+    kind:'performance.feedback-request',category:'performance',
+    render:()=>({severity:'action',title:'Feedback requested',body:'A colleague has requested your feedback. Open your performance tasks.',linkPath:'/me/performance'}),
+    recipients:async(tx,ev)=>{
+      const rows=await tx.select({id:employment.id}).from(peerFeedbackRequest).innerJoin(employment,eq(employment.id,peerFeedbackRequest.peerEmploymentId)).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(eq(peerFeedbackRequest.id,ev.aggregateId),eq(peerFeedbackRequest.status,'pending'),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>(now() at time zone 'Asia/Kuala_Lumpur')::date)`));return [...new Set(rows.map(r=>r.id))];
+    },
+  },
+  ...Object.fromEntries(['scorecard-proposed','results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
+    kind:'performance.review-task',category:'performance' as const,recipients:performanceManagerRecipient,
+    render:()=>({severity:'action' as const,title:'Performance review task',body:'An employee has submitted information for your review. Open your performance tasks.',linkPath:'/me/performance'}),
+  }])),
+  ...Object.fromEntries(['scorecard-approved','scorecard-returned','result-released','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
+    kind:'performance.update',category:'performance' as const,
+    render:()=>({severity:'info' as const,title:'Performance assessment update',body:'There is an update to your assessment or development plan. Open your performance tasks.',linkPath:'/me/performance'}),
+  }])),
   // Performance closure (lifecycle G4). Release-safe: closeReview asserts the cycle is released before
   // closing, and the body says only that the review was finalized — never the score or ABC class (the
   // /me review surface gates the actual figures behind the existing release/showManager rules).

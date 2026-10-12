@@ -52,6 +52,7 @@ import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { onehrAttachmentSubjectTx, assertStandardCycleTx, assertOnehrClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -389,6 +390,7 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
       spawned++;
     }
 
+    await initializeOnehrCycleTx(tx, ctx, cycle.id);
     await tx.update(reviewCycle).set({ status: 'open' }).where(eq(reviewCycle.id, cycle.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -449,6 +451,7 @@ export async function releaseCycle(ctx: SessionContext, p: { cycleId: string }) 
     if (cycle.status !== 'calibration' && cycle.status !== 'open') {
       throw new PerfError(`Cannot release a ${cycle.status} cycle`);
     }
+    await assertStandardCycleTx(tx, cycle.id);
     if (cycle.releasedAt) throw new PerfError('Cycle ratings are already released');
     await tx.update(reviewCycle).set({ releasedAt: sql`now()` }).where(eq(reviewCycle.id, cycle.id));
     await appendEvent(tx, {
@@ -481,6 +484,7 @@ async function transitionCycle(
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }
+    if (to === 'closed') await assertOnehrClosureTx(tx, cycle.id);
     await tx.update(reviewCycle).set({ status: to }).where(eq(reviewCycle.id, cycle.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -994,7 +998,7 @@ export async function addPerformanceAttachment(
   if (p.content.byteLength > 10 * 1024 * 1024) throw new PerfError('File exceeds 10 MB');
   if (p.stageKind != null && !ALL_STAGE_KINDS.includes(p.stageKind)) throw new PerfError('Unknown stage');
   return withTenant(ctx, async (tx) => {
-    const { review } = await loadReview(tx, p.reviewId);
+    const review = await onehrAttachmentSubjectTx(tx,p.reviewId) ?? (await loadReview(tx, p.reviewId)).review;
     const [row] = await tx
       .insert(performanceAttachment)
       .values({
@@ -1271,7 +1275,7 @@ export async function declineCompAction(ctx: SessionContext, p: { reviewId: stri
 // ───────────────────────────── internals ─────────────────────────────
 
 async function loadCycle(tx: Tx, cycleId: string) {
-  const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
+  const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1).for('no key update');
   if (!cycle) throw new PerfError('Review cycle not found (or not visible)');
   return cycle;
 }
@@ -1285,6 +1289,7 @@ async function loadReview(tx: Tx, reviewId: string) {
     .where(eq(performanceReview.id, reviewId))
     .limit(1);
   if (!row) throw new PerfError('Performance review not found (or not visible)');
+  await assertStandardCycleTx(tx, row.cycle.id);
   return row;
 }
 
@@ -1535,6 +1540,8 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
       .where(eq(performanceReview.id, reviewId))
       .limit(1);
     if (!r) return null;
+    const [onehr]=await tx.execute<{configured:boolean}>(sql`select exists(select 1 from performance_onehr_cycle where cycle_id=${r.cycle.id}::uuid) as configured`);
+    if(onehr?.configured)return null;
 
     // Resolve the reviewer's name + person (separate query — avoids a self-join on employment).
     let reviewerName: string | null = null;
@@ -2234,6 +2241,7 @@ export async function submitPeerFeedback(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
+    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the OneHR feedback form for this request.'); }
     if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.insert(peerFeedback).values({
@@ -2260,6 +2268,7 @@ export async function submitPeerFeedback(
 export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
+    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the OneHR feedback form for this request.'); }
     if (!rq) throw new PerfError('Feedback request not found');
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));
@@ -2432,6 +2441,7 @@ export async function openCalibrationSession(ctx: SessionContext, p: { cycleId: 
   return withTenant(ctx, async (tx) => {
     const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, p.cycleId)).limit(1);
     if (!cycle) throw new PerfError('Cycle not found');
+    await assertStandardCycleTx(tx, cycle.id);
     if (cycle.status !== 'calibration') throw new PerfError(`Calibration runs while the cycle is in calibration (it is ${cycle.status})`);
     const [open] = await tx
       .select({ id: calibrationSession.id })
@@ -2464,6 +2474,7 @@ export async function proposeCalibration(
   await withTenant(ctx, async (tx) => {
     const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
     if (!sess) throw new PerfError('Session not found');
+    await assertStandardCycleTx(tx, sess.cycleId);
     if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
     if (p.proposedRating != null) {
       const [cycle] = await tx.select({ scale: reviewCycle.ratingScale }).from(reviewCycle).where(eq(reviewCycle.id, sess.cycleId)).limit(1);
@@ -2489,6 +2500,7 @@ export async function commitCalibration(ctx: SessionContext, p: { sessionId: str
   return withTenant(ctx, async (tx) => {
     const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
     if (!sess) throw new PerfError('Session not found');
+    await assertStandardCycleTx(tx, sess.cycleId);
     if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
     const entries = await tx
       .select({ id: calibrationEntry.id, reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating, note: calibrationEntry.note })

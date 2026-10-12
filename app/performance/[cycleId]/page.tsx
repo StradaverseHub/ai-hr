@@ -1,7 +1,10 @@
+import { getOnehrCycle } from '@/packs/performance/service';
+import { OnehrCycleView } from '../onehr/cycle-view';
+import { enableOnehrAction } from '../onehr-actions';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { requirePerfCompAccess } from '@/lib/authz';
 import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -38,11 +41,14 @@ export default async function CyclePage({
   params: Promise<{ cycleId: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await requireAdmin();
+  const s = await requirePerfCompAccess();
   const t = await getTranslations('performance.cycle');
   const tl = await getTranslations('performance.lifecycle');
   const { cycleId } = await params;
   const { error } = await searchParams;
+  const onehr = await getOnehrCycle(s, cycleId);
+  if (onehr) return <OnehrCycleView v={onehr} error={error}/>;
+  const onehrText = await getTranslations('onehr');
   const data = await cycleDetail(s, cycleId);
   if (!data) notFound();
   const { cycle, roster, distribution, budget } = data;
@@ -62,6 +68,7 @@ export default async function CyclePage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {cycle.status === 'draft' && <Card className="space-y-3 p-5"><p>{onehrText('enableHelp')}</p><form action={enableOnehrAction}><input type="hidden" name="cycleId" value={cycle.id}/><Button type="submit" variant="secondary">{onehrText('enable')}</Button></form></Card>}
       <PageHeader
         back={{ href: '/performance', label: t('back') }}
         title={cycle.name}

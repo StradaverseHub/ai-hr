@@ -119,6 +119,7 @@ const SWEEP_FRESH_DAYS = 2;
  */
 export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]> {
   const payrollOn = isModuleEnabled(ctx, 'payroll');
+  const performanceOn = isModuleEnabled(ctx, 'performance');
   // ADR-0084 §2.6 / §2.5 — the two unattended agents. Both are per-tenant switches that default OFF, so
   // "is it on" is a real question with a real answer rather than a constant.
   const hypothesesOn = payrollOn && settingEnabled(ctx, 'payroll.anomaly_hypotheses_enabled');
@@ -254,6 +255,12 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       kind: 'llm',
       active: aiConfigured,
       reasonKey: aiConfigured ? 'draftOnlyOn' : 'noProvider',
+    },
+    {
+      id: 'onehrEvidenceDrafter',
+      kind: 'llm',
+      active: aiConfigured && performanceOn,
+      reasonKey: !performanceOn ? 'moduleOff' : aiConfigured ? 'draftOnlyOn' : 'noProvider',
     },
     {
       id: 'reviewDrafter',
