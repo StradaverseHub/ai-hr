@@ -11662,6 +11662,7 @@
       "toggle": "Chuyển giao diện"
     },
     "uiTheme": {
+      "current": "Current",
       "label": "Giao diện",
       "monolith": "Monolith",
       "classic": "Cổ điển"

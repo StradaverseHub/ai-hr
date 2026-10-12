@@ -239,7 +239,7 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={className ? cn('border-b border-border px-4 py-3 text-sm font-medium', className) : 'border-b border-border px-4 py-3 text-sm font-medium'}>
+    <div data-ui-section-header className={className ? cn('border-b border-border px-4 py-3 text-sm font-medium', className) : 'border-b border-border px-4 py-3 text-sm font-medium'}>
       {title}
       {count !== undefined && <span className="ml-2 text-muted-foreground">({count})</span>}
       {subtitle && <p className="mt-1 text-xs font-normal text-muted-foreground">{subtitle}</p>}
