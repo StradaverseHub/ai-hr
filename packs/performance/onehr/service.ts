@@ -8,7 +8,7 @@ import { withPerformanceTenant } from '../../../core/module-gate';
 import { resolveActiveAiConfig } from '../../../core/ai-config';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import framework from './framework.json';
-import { assertWindow, kpiApprovers, pendingKpiApprover, bandFor, evidenceResponseSchema, careerSchema, competencySchema, defaultPolicy, frameworkFor, goalSchema, kpiSchema, pmBands, policySchema, potential, potentialBands, referenceCurve, resolveBand, scoreAnswers, scorecard, talentCategory, tiers, validateScorecard, type Competency, type FrozenResult, type KPI, type PMBand, type Policy, type PotentialBand, type Statement, type Tier, type WindowCell } from './model';
+import { assertWindow, kpiApprovers, pendingKpiApprover, pendingSettingApprover, bandFor, evidenceResponseSchema, careerSchema, competencySchema, defaultPolicy, frameworkFor, goalSchema, kpiSchema, pmBands, policySchema, potential, potentialBands, referenceCurve, resolveBand, scoreAnswers, scorecard, talentCategory, tiers, validateScorecard, type Competency, type FrozenResult, type KPI, type PMBand, type Policy, type PotentialBand, type Statement, type Tier, type WindowCell } from './model';
 
 const uuid = z.uuid();
 const note = z.string().trim().max(4000);
@@ -44,6 +44,11 @@ async function loadReview(tx: Tx, reviewId: string, lock = false) {
   return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
 async function moderatorChoices(tx:Tx,id:string){const [r]=await tx.execute<{value:{id:string;name:string;personId:string}[]}>(sql`select app.onehr_moderator_choices(${id}::uuid) as value`);return r?.value??[];}
+async function notifyKpiApprovers(tx:Tx,ctx:SessionContext,id:string,kpis:KPI[],phase:'setting'|'results') {
+ const allowed=await moderatorChoices(tx,id);
+ const employmentIds=[...new Set(kpis.map(k=>phase==='setting'?pendingSettingApprover(k):pendingKpiApprover(k)).filter((id):id is string=>!!id&&allowed.some(m=>m.id===id)))];
+ if(employmentIds.length)await audit(tx,ctx,id,'kpi-approval-needed',{employmentIds,phase});
+}
 async function isModerator(tx:Tx,id:string,kpiId?:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.onehr_moderator(${id}::uuid,${kpiId??null}::uuid) as ok`);return !!r?.ok;}
 
 async function writable(tx: Tx, r: Awaited<ReturnType<typeof loadReview>>, cell: WindowCell, expected: number, actor: 'self'|'manager'|'either'|'moderator') {
@@ -115,20 +120,29 @@ export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:
     const moderators=await moderatorChoices(tx,reviewId);
     if(inputs.some(k=>(k.approverEmploymentIds??[k.moderatorEmploymentId]).some(id=>!moderators.some(m=>m.id===id))))throw Error('Choose the assigned reviewer or a current native matrix manager as KPI moderator.');
     if(inputs.some(k=>{const people=(k.approverEmploymentIds??[k.moderatorEmploymentId]).map(id=>moderators.find(m=>m.id===id)?.personId);return new Set(people).size!==people.length;}))throw Error('Choose each approver once in a KPI chain.');
-    const kpis:KPI[]=inputs.map(k=>({...k,moderatorEmploymentId:k.approverEmploymentIds?.[0]??k.moderatorEmploymentId,approvalChain:(k.approverEmploymentIds??[k.moderatorEmploymentId!]).map(employmentId=>({employmentId,actual:null,remark:'',at:null})),setting:propose?'proposed':'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}));
+    const kpis:KPI[]=inputs.map(k=>({...k,moderatorEmploymentId:k.approverEmploymentIds?.[0]??k.moderatorEmploymentId,approvalChain:(k.approverEmploymentIds??[k.moderatorEmploymentId!]).map(employmentId=>({employmentId,actual:null,remark:'',at:null})),setting:propose?'proposed':'draft',settingApprovals:[],settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}));
     const mechanism=r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B':'A';
     if(kpis.some(k=>k.scoring.mechanism!==mechanism))throw Error('Use the scoring mechanism configured for this company.');
     if(propose)validateScorecard(kpis);
-    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,propose?'scorecard-proposed':'scorecard-saved');
+    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,propose?'scorecard-proposed':'scorecard-saved');if(propose)await notifyKpiApprovers(tx,ctx,reviewId,kpis,'setting');
   });
 }
 export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
   note.parse(remark);
   return withPerformanceTenant(ctx,async tx=>{
-    const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting_approve',expected,'manager');
-    if(!r.kpis.length||r.kpis.some(k=>k.setting!=='proposed'))throw Error('The employee must propose the whole scorecard.');
+    const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting_approve',expected,'moderator');
+    if(!r.kpis.length||!r.kpis.some(k=>k.setting==='proposed'))throw Error('The employee must propose the whole scorecard.');
+    const allowed=await moderatorChoices(tx,reviewId);
+    const actionable=r.kpis.filter(k=>{const id=pendingSettingApprover(k);return id&&r.native.ownEmploymentIds.includes(id)&&allowed.some(m=>m.id===id);});
+    if(!actionable.length)throw Error('No proposed KPI is awaiting your turn in the approval chain.');
     if(!approve&&!remark.trim())throw Error('Explain what needs changing.');validateScorecard(r.kpis);
-    await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>({...k,setting:approve?'approved':'returned',settingRemark:remark}))});await audit(tx,ctx,reviewId,approve?'scorecard-approved':'scorecard-returned',{reason:remark});
+    const kpis=r.kpis.map(k=>{
+      const pending=pendingSettingApprover(k),acts=actionable.some(a=>a.id===k.id);
+      const settingApprovals=acts?[...(k.settingApprovals??[]),{employmentId:pending!,action:approve?'approved' as const:'returned' as const,remark,at:new Date().toISOString()}]:k.settingApprovals;
+      return {...k,setting:!approve?'returned' as const:acts&&settingApprovals!.length===kpiApprovers(k).length?'approved' as const:k.setting,settingApprovals,settingRemark:acts||!approve?remark:k.settingRemark};
+    });
+    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,approve?'scorecard-approved':'scorecard-returned',{reason:remark,kpiIds:actionable.map(k=>k.id)});
+    if(approve)await notifyKpiApprovers(tx,ctx,reviewId,kpis,'setting');
   });
 }
 export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expected:number,raw:unknown) {
@@ -138,7 +152,7 @@ export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expe
     if(r.row.resultsSubmittedAt||!r.kpis.length||r.kpis.some(k=>k.setting!=='approved'))throw Error('An approved scorecard is required and results can be submitted once.');
     if(inputs.length!==r.kpis.length||new Set(inputs.map(k=>k.id)).size!==inputs.length||r.kpis.some(k=>!inputs.some(i=>i.id===k.id)))throw Error('Provide every KPI result.');
     const kpis=r.kpis.map(k=>({...k,...inputs.find(i=>i.id===k.id)!}));scorecard(kpis,r.cycle.policy,r.row.companyId,false);
-    await touchReview(tx,reviewId,{kpis,resultsSubmittedAt:new Date()});await audit(tx,ctx,reviewId,'results-submitted');
+    await touchReview(tx,reviewId,{kpis,resultsSubmittedAt:new Date()});await audit(tx,ctx,reviewId,'results-submitted');await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
   });
 }
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
@@ -152,7 +166,7 @@ export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expect
     const next=chain.findIndex(step=>!step.at);if(next<0)throw Error('This KPI chain is complete.');
     const approvalChain=chain.map((step,i)=>i===next?{...step,actual,remark,at:new Date().toISOString()}:step);
     const kpis=r.kpis.map(k=>k.id===kpiId?{...k,approvalChain,approvedActual:actual,moderationRemark:remark,locked:approvalChain.every(step=>step.at!=null)}:k);
-    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,'kpi-moderated',{kpiId});
+    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,'kpi-moderated',{kpiId});await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
   });
 }
 export async function confirmOnehrPerformance(ctx:SessionContext,reviewId:string,expected:number,band:PMBand,remark:string) {
@@ -451,7 +465,7 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
   return withPerformanceTenant(ctx,async tx=>{
     uuid.parse(reviewId);const [exists]=await tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));if(!exists)return null;
     const r=await loadReview(tx,reviewId);const self=await isSelf(tx,r.row.employmentId),manager=!self&&await isManager(tx,reviewId),admin=!self&&await isAdmin(tx,r.row.cycleId),moderator=!self&&!manager&&await isModerator(tx,reviewId);if(!self&&!manager&&!admin&&!moderator)throw Error('Assessment is not assigned to you.');
-    const name={name:r.native.name};const moderators=self||manager||admin?await moderatorChoices(tx,reviewId):[];
+    const name={name:r.native.name};const moderators=await moderatorChoices(tx,reviewId);
     const [stored]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
     let frozen:typeof stored|undefined=stored;
     if(self){const [card]=await tx.execute<{value:typeof frozen|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`);frozen=card?.value??undefined;}
@@ -465,7 +479,7 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const attachments=r.cycle.policy.modules.evidence&&(!moderator||admin)?await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(eq(performanceAttachment.reviewId,reviewId)):[];
     const peers=manager||admin?await tx.select({requestId:onehrPanel.requestId,employmentId:onehrPanel.peerEmploymentId,relationship:onehrPanel.relationship,submittedAt:onehrPanel.submittedAt}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt))):[];
     let aiEnabled=false;if(self||manager){try{aiEnabled=!!await resolveActiveAiConfig(tx,ctx);}catch{/* Manual assessment remains available when AI configuration is unusable. */}}
-    return {aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:false,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,admin,moderator,moderators:moderators.map(({id,name})=>({id,name})),mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next);}).map(k=>k.id),
+    return {aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:false,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
       kpis:moderator&&!admin?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:moderator&&!admin?null:r.row.managerPerformance,managerScore:moderator&&!admin||r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:moderator&&!admin?'':r.row.managerRemark,
       potential:leadership?.potential.band??null,finalized:!!frozen||!!r.native.closedAt,result:result?{id:frozen!.id,digest:frozen!.digest,performance:!self||frozen!.performanceReleasedAt?result.performance:null,potential:!self||frozen!.potentialReleasedAt?result.potential:null,talent:!self||frozen!.talentReleasedAt?result.talent:null,performanceReleased:!!frozen!.performanceReleasedAt,potentialReleased:!!frozen!.potentialReleasedAt,talentReleased:!!frozen!.talentReleasedAt,feedbackReleased:!!frozen!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,evidence:evidence.map(e=>({...e,responses:evidenceResponseSchema.array().parse(e.responses)})),attachments,peers,choices};
   });

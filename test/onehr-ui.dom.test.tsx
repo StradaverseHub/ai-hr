@@ -4,6 +4,7 @@ import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
+import { todayInKualaLumpur } from '../lib/hr-date';
 const ports=vi.hoisted(()=>({calibration:vi.fn(),session:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
@@ -38,9 +39,16 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.getByLabelText(en.onehr.promotion)).toBeTruthy();expect(screen.queryByLabelText(en.onehr.potential)).toBeNull();
   expect(document.querySelector('input[name="confirmTalentDecisions"]')).toBeTruthy();
  });
+ it('offers setting approval to the matrix reviewer whose chain step is pending',async()=>{
+  const policy=defaultPolicy(framework);policy.modules={pm:true,tm:false,idp:false,evidence:false};
+  const v={reviewId:'review',name:'Employee',cycle:{id:'cycle',name:'Annual',status:'open'},policy,grade:'12',revision:1,self:false,manager:false,admin:false,moderator:true,mechanism:'A',viewerUserId:'matrix',reviewerEmploymentId:'manager',canApproveSettingIds:['kpi'],canModerateIds:[],moderators:[],kpis:[{id:'kpi',title:'Assigned objective',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},setting:'proposed',settingRemark:'',approvalChain:[],actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}],competencies:[],competencyStatus:'pending',resultsSubmitted:false,managerPerformance:null,managerScore:null,managerRemark:'',potential:null,finalized:false,result:null,plans:[],planYear:Number(todayInKualaLumpur().slice(0,4))+1,feedbackReport:[],peers:[],choices:[],attachments:[],aiEnabled:false,evidence:[]};
+  show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
+  expect(screen.getByRole('button',{name:en.onehr.approve})).toBeTruthy();expect(screen.getByRole('button',{name:en.onehr.return})).toBeTruthy();
+  expect(screen.queryByText(en.onehr.developmentPlan)).toBeNull();
+ });
  it('renders evidence and nominations without reviving the generic rating form',async()=>{
   const policy=defaultPolicy(framework);policy.modules={pm:false,tm:false,idp:false,evidence:true};
-  const v={reviewId:'review',name:'Employee',cycle:{id:'cycle',name:'Annual',status:'open'},policy,grade:'12',revision:1,self:true,manager:false,admin:false,moderator:false,mechanism:'A',viewerUserId:'subject',reviewerEmploymentId:'manager',canModerateIds:[],moderators:[],kpis:[],competencies:[],competencyStatus:'pending',resultsSubmitted:false,managerPerformance:null,managerScore:null,managerRemark:'',potential:null,finalized:false,result:null,plans:[],planYear:2027,feedbackReport:[],peers:[],choices:[],attachments:[],aiEnabled:false,evidence:[{id:'evidence',kind:'delivery',body:'Delivered the release.',occurredOn:'2026-10-12',state:'shared',authorUserId:'manager',responses:[{userId:'manager',stance:'endorse',note:'Verified delivery',at:'2026-10-12T00:00:00.000Z'}]}]};
+  const v={reviewId:'review',name:'Employee',cycle:{id:'cycle',name:'Annual',status:'open'},policy,grade:'12',revision:1,self:true,manager:false,admin:false,moderator:false,mechanism:'A',viewerUserId:'subject',reviewerEmploymentId:'manager',canApproveSettingIds:[],canModerateIds:[],moderators:[],kpis:[],competencies:[],competencyStatus:'pending',resultsSubmitted:false,managerPerformance:null,managerScore:null,managerRemark:'',potential:null,finalized:false,result:null,plans:[],planYear:Number(todayInKualaLumpur().slice(0,4))+1,feedbackReport:[],peers:[],choices:[],attachments:[],aiEnabled:false,evidence:[{id:'evidence',kind:'delivery',body:'Delivered the release.',occurredOn:todayInKualaLumpur(),state:'shared',authorUserId:'manager',responses:[{userId:'manager',stance:'endorse',note:'Verified delivery',at:new Date().toISOString()}]}]};
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
   expect(screen.getByText('Delivered the release.')).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceResponse)).toBeTruthy();expect(screen.getByLabelText(en.onehr.correctsEvidence)).toBeTruthy();expect(screen.getByLabelText(en.onehr.attachmentFile)).toBeTruthy();
   expect(document.querySelector('input[name="overallRating"]')).toBeNull();

@@ -207,7 +207,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     const matrix=peers[0];
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
     const id=randomUUID(),managerId=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Matrix objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId},{id:managerId,title:'Manager-only objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
-    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'},{id:managerId,actual:2,note:'Manager-only evidence'}]);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'},{id:managerId,actual:2,note:'Manager-only evidence'}]);
     const attachment=await perf.addPerformanceAttachment(self,{reviewId,stageKind:null,fileName:'private-evidence.txt',mimeType:'text/plain',content:Buffer.from('Evidence for the assigned assessment manager.')});
     expect(await perf.getPerformanceAttachment(matrix.ctx,attachment.id)).toBeNull();expect(await perf.listAttachmentsForReview(matrix.ctx,reviewId)).toEqual([]);
     expect(await withTenant(matrix.ctx,tx=>tx.select().from(schema.performanceAttachment).where(eq(schema.performanceAttachment.reviewId,reviewId)))).toEqual([]);
@@ -275,7 +275,16 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   it('requires every KPI approver to act in order and carries each confirmed value forward',async()=>{
     const matrix=peers[0];await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Ordered approval',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId,approverEmploymentIds:[matrix.employmentId,manager.employmentId]}],true);
-    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}]);
+    await expect(perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'')).rejects.toThrow(/your turn/);
+    await dispatchNotifications(a);let notifications=await owner.db.select().from(schema.notification);expect(notifications.filter(n=>n.kind==='performance.review-task').map(n=>n.recipientEmploymentId)).toEqual([matrix.employmentId]);
+    expect((await view(matrix.ctx)).canApproveSettingIds).toEqual([id]);
+    await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'Targets verified');
+    expect((await view(self)).kpis[0].setting).toBe('proposed');
+    await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}])).rejects.toThrow(/approved scorecard/);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');
+    expect((await view(self)).kpis[0].settingApprovals?.map(s=>s.employmentId)).toEqual([matrix.employmentId,manager.employmentId]);
+    await dispatchNotifications(a);notifications=await owner.db.select().from(schema.notification);expect(notifications.some(n=>n.kind==='performance.review-task'&&n.recipientEmploymentId===manager.employmentId)).toBe(true);
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}]);
     await expect(perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,2,'')).rejects.toThrow(/another moderator/);
     await perf.moderateOnehrKpi(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,id,3,'Verified an additional outcome');expect((await view()).kpis[0].locked).toBe(false);
     await expect(perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'AE','')).rejects.toThrow(/every KPI/);

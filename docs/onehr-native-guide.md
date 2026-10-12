@@ -15,7 +15,7 @@ OneHR assessments use the existing HR login, employee records, company scope and
 
 Employees and assigned reviewers use **My Performance** to open their assessment tasks. Managers also see them in **Performance**.
 
-- Employees draft KPIs whose weights total 100%, select the ordered line/matrix approval chain, and propose the whole scorecard. The manager approves or returns it.
+- Employees draft KPIs whose weights total 100%, select the ordered line/matrix approval chain, and propose the whole scorecard. Each assigned approver approves their KPI lines in order; a return sends the whole scorecard back for correction. Result entry opens after every line completes its chain.
 - Employees submit actual results once. Each approver confirms the preceding result in order; changes require a reason. The final approver locks the KPI. The assigned manager then confirms the overall performance band.
 - Employees answer their technical statements. The manager reviews them separately; changed answers require reasons.
 - The manager assigns a panel using native reporting relationships. Numeric grades require the policy's valid-response minimum; the source default is four, with five recommended. Non-numeric grades use one line-manager assessment. An unsubmitted rater can decline or be replaced; submitted responses remain part of the assessment.

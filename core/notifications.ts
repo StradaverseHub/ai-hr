@@ -597,10 +597,15 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       const rows=await tx.select({id:employment.id}).from(peerFeedbackRequest).innerJoin(employment,eq(employment.id,peerFeedbackRequest.peerEmploymentId)).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(eq(peerFeedbackRequest.id,ev.aggregateId),eq(peerFeedbackRequest.status,'pending'),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>(now() at time zone 'Asia/Kuala_Lumpur')::date)`));return [...new Set(rows.map(r=>r.id))];
     },
   },
-  ...Object.fromEntries(['scorecard-proposed','results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
+  ...Object.fromEntries(['results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
     kind:'performance.review-task',category:'performance' as const,recipients:performanceManagerRecipient,
     render:()=>({severity:'action' as const,title:'Performance review task',body:'An employee has submitted information for your review. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
+  'onehr.kpi-approval-needed': {
+    kind:'performance.review-task',category:'performance',
+    recipients:async (_tx,_ev,payload)=>Array.isArray(payload?.employmentIds)?payload.employmentIds.filter((id):id is string=>typeof id==='string'&&/^[0-9a-f-]{36}$/i.test(id)):[],
+    render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
+  },
   ...Object.fromEntries(['scorecard-approved','scorecard-returned','result-released','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
     kind:'performance.update',category:'performance' as const,
     render:()=>({severity:'info' as const,title:'Performance assessment update',body:'There is an update to your assessment or development plan. Open your performance tasks.',linkPath:'/me/performance'}),
