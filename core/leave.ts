@@ -211,6 +211,7 @@ export {
 import {
   assignment,
   attendancePolicy,
+  attendanceRotation,
   businessUnit,
   company,
   department,
@@ -2785,15 +2786,17 @@ async function resolveSchedule(
       halfWorkingDays: attendancePolicy.halfWorkingDays,
       halfCountsFull: company.leaveHalfDayFullDeduction,
       ruleId: employment.attendanceRuleId, defaultShiftId: employment.defaultShiftId,
+      // Keep the legacy no-rotation path at one round trip; this tenant-scoped probe shares its read.
+      hasRotations: sql<boolean>`exists(select 1 from ${attendanceRotation})`,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  const rotationLookup = await rotationLookupTx(tx);
   let rotationKindOn: LeaveResolvedSchedule['rotationKindOn'];
-  if (row && rotationLookup.versions.length) {
+  if (row?.hasRotations) {
+    const rotationLookup = await rotationLookupTx(tx);
     const periods = await arrangementsForEmploymentTx(tx, employmentId);
     const ids = [...new Set([...periods.map(p=>p.shiftId), ...(row.defaultShiftId?[row.defaultShiftId]:[])])];
     const shifts = ids.length ? await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,ids)) : [];

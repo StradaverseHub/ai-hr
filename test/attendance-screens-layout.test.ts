@@ -53,7 +53,7 @@ import { attendanceCorrectionStatusEnum } from '../db/schema';
 // "Three places on one screen agree" is a relation between three resolved strings; no source check can
 // see it, and a source check that pinned the English word would pass on a screen where they had drifted
 // apart and somebody had edited the catalogue instead.
-import { statusLabel } from '../app/attendance/request-ui';
+import { requestStatusFilterLabel, statusLabel } from '../app/attendance/request-ui';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -538,22 +538,10 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     for (const marker of ['askedFor(r, t)', 'r.reason', 'r.remark', "t('maColSubmitted')", 'maAttachmentOnRequest']) {
       expect(rest.includes(marker), `the block face must carry ${marker} BELOW the first line`).toBe(true);
     }
-    // ⚠️ r363 — THIS IS A SHAPE CHECK NOW, NOT A BEHAVIOUR TEST, AND THE COMMENT SAYS SO RATHER THAN
-    // LEAVING A RETIRED CLAIM STANDING. It used to read:
-    //   "The overtime wording rule now has TWO render sites (ADR-free but load-bearing: a cancelled
-    //    overtime plan reads 'Withdrawn', not 'Cancelled', and request-ui.tsx's comment says that wording
-    //    has already survived two relocations). A verifier mutated the block face's third argument to
-    //    `false` and NOTHING failed. Both sites must pass the real predicate."
-    // The split it described is retired: `cancelled` reads "Withdrawn" for BOTH kinds, because only the
-    // subject can ever write that status (see request-ui.tsx). So mutating the third argument SHOULD now
-    // have no effect, and this count no longer detects the mutation it was written for. It is kept
-    // deliberately — the call shape is what the follow-up round would change, and dropping the parameter
-    // must be a decision somebody takes rather than a silent drift — but the PROPERTY it was reaching for
-    // is pinned by "one word for one state" below, which compares the two kinds' labels to each other.
-    expect(
-      code(PAGE).match(/statusLabel\(r\.status, t, isOvertime\(r\)\)/g) ?? [],
-      'both faces label the status through the same call shape — see "one word for one state" below',
-    ).toHaveLength(2);
+    // Both render faces must pass persisted cancellation provenance through the shared vocabulary.
+    // Legacy withdrawals retain their word; an approved administrative cancellation has its own label.
+    const statusCall = "statusLabel(r.status, t, isOvertime(r), { kind: r.cancellationKind, cancelledLabel: historyT('statuses.cancelled') })";
+    expect(code(PAGE).split(statusCall).length - 1, 'both faces use the same provenance-aware labeller').toBe(2);
   });
 
   it('A3. the approver caption is drawn only where it is still true', () => {
@@ -659,26 +647,9 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     }
   });
 
-  /**
-   * 4c8aae68 (r363) — ONE WORD FOR ONE STATE, and it is pinned as a RELATION, not as a word.
-   *
-   * What the reporter saw: a filter chip reading "Cancelled" a few centimetres above an overtime row
-   * reading "Withdrawn". Three places on this one screen render the stored `cancelled` — the chip, an
-   * overtime plan's pill and a clock correction's pill — and they disagreed. The premise for unifying
-   * rather than splitting harder is that only the SUBJECT can ever write that status: exactly two
-   * functions do (cancelPlannedOvertime and cancelOwnAttendanceCorrection, core/attendance.ts) and both
-   * refuse anybody else in code, so `cancelled` on this screen means one thing.
-   *
-   * ⚠️ WHY THE ASSERTIONS COMPARE THE THREE TO EACH OTHER AND NOT TO "Withdrawn". A case pinning the
-   * literal would pass on a screen where the three had drifted apart again and somebody had simply
-   * retranslated one key — the defect is disagreement, and disagreement is a relation. And ⚠️ WHY IT
-   * BUILDS A REAL ROW OF EACH KIND: an equality between two calls that take the same branch is true for
-   * free, so the kinds are asserted to be genuinely different before their labels are compared.
-   *
-   * This is also the case that inherits what A2 above was reaching for. A2 was written because a
-   * verifier mutated `isOvertime` at one render site and nothing failed; after this round that argument
-   * is read by no branch, so A2 can only pin the call SHAPE. The behaviour lives here.
-   */
+  /** r363's legacy plan/correction withdrawals keep one shared word. The approved workflow adds
+   * administrative cancellation with explicit provenance; its label and the combined filter are tested
+   * separately in all six real catalogues, without reinterpreting a historical NULL-kind withdrawal. */
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
   const catalogue = (locale: string) => (JSON.parse(read(`messages/${locale}.json`)) as { me: Record<string, unknown> }).me;
   /** One `me` message by dotted key, exactly as next-intl would walk it — or undefined. */
@@ -716,25 +687,26 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
       'and the correction row really is not — otherwise both halves of the equality take one branch and it is free',
     ).toBe(false);
 
-    // The chip's OWN third argument, read off the screen rather than assumed, so this case compares what
-    // the screen would actually render if somebody flipped it.
-    const chipCall = code(PAGE).match(/statusLabel\(f, t, (true|false)\)/);
-    expect(chipCall, 'the filter chip must resolve through the shared labeller, not a word of its own').not.toBeNull();
-    const chipIsOvertime = chipCall![1] === 'true';
+    expect(code(PAGE), 'the combined filter uses the same helper as the export').toContain(
+      "requestStatusFilterLabel(f, t, historyT('cancelledFilter'))",
+    );
 
     for (const locale of LOCALES) {
       const t = translator(locale);
       const planWord = statusLabel(plan.status, t, isOvertime(plan));
       const correctionWord = statusLabel(correction.status, t, isOvertime(correction));
-      const chipWord = statusLabel('cancelled', t, chipIsOvertime);
       expect(planWord.trim(), `${locale}: the label resolves to a real word, not a blank`).not.toBe('');
       expect(
         correctionWord,
         `${locale}: a taken-back correction and a taken-back overtime plan must read the SAME word`,
       ).toBe(planWord);
-      expect(chipWord, `${locale}: the shared legacy label remains a withdrawal`).toBe(planWord);
-      expect(PAGE).toContain("f === 'cancelled' ? historyT('cancelledFilter')");
       const all = JSON.parse(read(`messages/${locale}.json`));
+      const cancelledLabel = all.attendanceHistory.statuses.cancelled;
+      expect(statusLabel(plan.status, t, true, { kind: 'cancelled', cancelledLabel })).toBe(cancelledLabel);
+      expect(statusLabel(plan.status, t, true, { kind: 'withdrawn', cancelledLabel })).toBe(planWord);
+      expect(statusLabel(correction.status, t, false, { kind: null, cancelledLabel })).toBe(planWord);
+      expect(statusLabel('approved', t, false, { kind: 'cancelled', cancelledLabel })).toBe(t('leaveStatus.approved'));
+      expect(requestStatusFilterLabel('cancelled', t, all.attendanceHistory.cancelledFilter)).toBe(all.attendanceHistory.cancelledFilter);
       expect(all.attendanceHistory.cancelledFilter).not.toBe(all.attendanceHistory.statuses.cancelled);
       expect(all.attendanceHistory.cancelledFilter).not.toBe(planWord);
     }

@@ -10,7 +10,7 @@ import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-pro
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myCancelAttendanceRequest } from '@/app/me/actions';
-import { KIND_LABEL, Pill, REQUEST_STATUSES, askedFor, statusLabel } from '../request-ui';
+import { KIND_LABEL, Pill, REQUEST_STATUSES, askedFor, requestStatusFilterLabel, statusLabel } from '../request-ui';
 import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from './rows';
 
 /**
@@ -66,12 +66,9 @@ import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from '.
  * overtime plan is withdrawn from Self Overtime under its own condition (see above), so the take-back
  * control appears here only on a NON-overtime request that is still pending.
  *
- * r363 — ONE WORD FOR ONE STATE ON THIS SCREEN, AND ONLY THE WORD CHANGED. The reporter read a filter chip
- * saying "Cancelled" directly above an overtime row saying "Withdrawn". Both kinds of row, the chip and the
- * take-back button now resolve "Withdrawn" / "Withdraw" — Self Overtime's own words, already translated in
- * all six catalogues — because only the employee can ever put one of these requests into `cancelled`
- * (see the comment above `statusLabel` in ../request-ui). The stored value, the URL (`?status=cancelled`),
- * the reads, the two state rules above and every name in this file are untouched.
+ * r363 unified legacy withdrawal labels. The approved workflow now also permits administrative
+ * cancellation, whose persisted cancellationKind distinguishes it from an employee taking a request back.
+ * The shared labeller owns that distinction for both render faces and the export; the filter names both.
  */
 export default async function MyRequestStatusPage({
   searchParams,
@@ -191,7 +188,7 @@ export default async function MyRequestStatusPage({
                   on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
               >
-                {f == null ? t('maFilterAll') : f === 'cancelled' ? historyT('cancelledFilter') : statusLabel(f, t, false)}
+                {requestStatusFilterLabel(f, t, historyT('cancelledFilter'))}
               </Link>
             );
           })}
@@ -263,7 +260,7 @@ export default async function MyRequestStatusPage({
                       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{submittedOn(r)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{r.workflow ? <AttendanceWorkflowProgress workflow={r.workflow} status={r.status} /> : r.status === 'pending' ? approver : '—'}</td>
                       <td className="px-3 py-2.5">
-                        <Pill status={r.status} label={r.status === 'cancelled' && r.cancellationKind === 'cancelled' ? historyT('statuses.cancelled') : statusLabel(r.status, t, isOvertime(r))} />
+                        <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r), { kind: r.cancellationKind, cancelledLabel: historyT('statuses.cancelled') })} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         {canCancel(r) ? (
@@ -286,7 +283,7 @@ export default async function MyRequestStatusPage({
                       <span className="font-semibold tabular-nums">{r.attendanceDate}</span>
                       <span className="ml-2 text-muted-foreground">{t(kindKey(r))}</span>
                     </div>
-                    <Pill status={r.status} label={r.status === 'cancelled' && r.cancellationKind === 'cancelled' ? historyT('statuses.cancelled') : statusLabel(r.status, t, isOvertime(r))} />
+                    <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r), { kind: r.cancellationKind, cancelledLabel: historyT('statuses.cancelled') })} />
                   </div>
                   <p className="text-sm">
                     <span className="tabular-nums">{askedFor(r, t)}</span>

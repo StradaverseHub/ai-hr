@@ -37,7 +37,7 @@ import { myEmployment, reportingLinesFor } from '@/core/read';
 import { MY_ATTENDANCE_REQUEST_ROW_CEILING, myAttendanceCorrections } from '@/packs/attendance/service';
 import { serializeReport, type ReportFormat } from '@/lib/report-export';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { KIND_LABEL, askedFor, statusLabel } from '../../request-ui';
+import { KIND_LABEL, askedFor, requestStatusFilterLabel, statusLabel } from '../../request-ui';
 import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from '../rows';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime (serializeReport dispatches to it)
@@ -103,7 +103,7 @@ export async function GET(req: Request) {
       // The screen prints this only on a PENDING row, because on a decided one it asserts the request is
       // still with somebody (see app/attendance/request-status/page.tsx A3). The file follows the screen.
       r.status === 'pending' ? r.workflow?.stages[r.workflow.currentStage] ? r.workflow.stages[r.workflow.currentStage].name + ' — ' + r.workflow.stages[r.workflow.currentStage].approvers.map(a=>a.kind==='hr_admin'?historyT('hrApprover'):a.name).join(' / ') : approver : '',
-      r.status === 'cancelled' && r.cancellationKind === 'cancelled' ? historyT('statuses.cancelled') : statusLabel(r.status, t, isOvertime(r)),
+      statusLabel(r.status, t, isOvertime(r), { kind: r.cancellationKind, cancelledLabel: historyT('statuses.cancelled') }),
       r.status === 'rejected' ? r.rejectReason ?? t('maRejectNotRecorded') : '',
     ]);
 
@@ -118,7 +118,7 @@ export async function GET(req: Request) {
         layout: {
           // Who this is, which tab produced it, and when — so a file sent on can still answer all three.
           header: [me.name, me.employeeCode, me.position, me.company].filter(Boolean).join(' · '),
-          subtitle: status === 'cancelled' ? historyT('cancelledFilter') : status ? statusLabel(status, t, false) : t('maFilterAll'),
+          subtitle: requestStatusFilterLabel(status, t, historyT('cancelledFilter')),
           // WHEN THE FILE WAS PRODUCED, not a column value. `me.maColSubmitted` ("Submitted") was tried here
           // first and read as a second Submitted figure sitting above a Submitted COLUMN — so this is its own
           // unambiguous sentence, English like every other part of the payload (ADR-0047 §9), and it names the

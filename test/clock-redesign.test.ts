@@ -154,19 +154,20 @@ const ISLAND = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/
 const CAPTURE = fs.readFileSync(path.resolve(__dirname, '../components/attendance-clock-button.tsx'), 'utf8');
 
 describe('clock-client source guards (r430 — Switch removed, always-on buttons, device gate removed, conditional photo)', () => {
-  it('both Clock In and Clock Out are ALWAYS enabled (no clock-state gating) and guard duplicate confirmation', () => {
-    expect(ISLAND).toMatch(/const blocked=busy\|\|camera\|\|!!action\|\|!synced\|\|!today\.locationValid/);
+  it('both Clock In and Clock Out share the safety gate without clock-state gating, with synchronous duplicate protection', () => {
+    expect(ISLAND).toMatch(/const blocked=busy\|\|pending\|\|camera\|\|!!action\|\|!synced\|\|!today\.locationValid/);
     expect(ISLAND).not.toContain('today.deviceValid');
     // r430 — neither button is gated by today.clockedIn any more: clocking out with no clock-in first, or
-    // clocking in again after a clock-out, are both allowed. `blocked` alone (busy/camera/action/sync/geo)
+    // clocking in again after a clock-out, are both allowed. `blocked` (busy/pending/camera/action/sync/geo)
     // is the only reason either button is ever disabled.
     expect(ISLAND).toContain("disabled={blocked} onClick={()=>startClock('in')}");
     expect(ISLAND).toContain("disabled={blocked} onClick={()=>startClock('out')}");
     expect(ISLAND).not.toContain('blocked||today.clockedIn');
     expect(ISLAND).not.toContain('blocked||!today.clockedIn');
-    // confirm() no longer requires a photo (Required/Optional/Not Required all reach it); only busy guards
-    // against a duplicate submit.
-    expect(ISLAND).toContain('if(busy)return;setBusy(true)');
+    // confirm() does not require a photo (the server owns that rule). Its synchronous ref prevents
+    // two handlers entering before React commits busy state; uncertainty also locks new intents.
+    expect(ISLAND).toContain('if(inFlight.current)return;');
+    expect(ISLAND).toContain('inFlight.current=true;setBusy(true)');
     expect(ISLAND).not.toContain('if(!photo||!action||busy)return');
     expect(ISLAND).toContain('body:command.current.body');
   });
