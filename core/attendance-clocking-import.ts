@@ -30,7 +30,7 @@
  *    is never stored. A run that stops writes a Failed row in its own transaction.
  */
 import { createHash } from 'node:crypto';
-import { and, desc, eq, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -560,7 +560,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
   const sortedDays = matched.map((d) => d.day!).sort();
   const from = sortedDays[0];
   const to = sortedDays[sortedDays.length - 1];
-  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' };
+  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
   const existingBy = new Map<string, Existing[]>();
   const correctedDays = new Set<string>();
   for (const ids of chunks(empIds)) {
@@ -573,7 +573,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
         method: attendancePunch.method,
       })
       .from(attendancePunch)
-      .where(and(inArray(attendancePunch.employmentId, ids), gte(attendancePunch.attendanceDate, from), lte(attendancePunch.attendanceDate, to)));
+      .where(and(isNull(attendancePunch.voidedAt), inArray(attendancePunch.employmentId, ids), gte(attendancePunch.attendanceDate, from), lte(attendancePunch.attendanceDate, to)));
     const withKids = new Set<string>();
     for (const p of punches) {
       const k = `${p.employmentId}|${p.date}`;
@@ -612,7 +612,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
           gte(attendanceCorrection.attendanceDate, from),
           lte(attendanceCorrection.attendanceDate, to),
           eq(attendanceCorrection.status, 'approved'),
-          or(isNotNull(attendanceCorrection.proposedCheckIn), isNotNull(attendanceCorrection.proposedCheckOut)),
+          or(isNotNull(attendanceCorrection.proposedCheckIn), isNotNull(attendanceCorrection.proposedCheckOut), isNotNull(attendanceCorrection.clockChanges)),
         ),
       );
     for (const c of corr) correctedDays.add(`${c.employmentId}|${c.date}`);

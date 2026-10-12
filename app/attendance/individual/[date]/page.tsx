@@ -2,13 +2,14 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { adminCorrectAttendanceDayAction } from './actions';
+import { adminCorrectAttendanceDayAction, saveAttendanceClockDataAction } from './actions';
+import { AttendanceClockData } from '@/components/attendance-clock-data';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
 import { employmentScheduleGroupName } from '@/core/roster';
-import { clockCaptureEvidence } from '@/packs/attendance/service';
+import { attendanceClockData, clockCaptureEvidence } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
 import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
@@ -47,6 +48,8 @@ import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attenda
  * screen that was otherwise fine.
  */
 const CORRECTION_MESSAGES: readonly string[] = [
+  'clockDataChanged',
+  'clockDataPayrollClosed',
   'correctionForbidden',
   'correctionBadDate',
   'correctionReasonRequired',
@@ -101,6 +104,7 @@ export default async function IndividualAttendanceDayPage({
   const row = rows[0] ?? null;
   /** dae7a10f — the one-action correction is an ADMIN affordance; everyone else keeps the link. */
   const admin = isAdmin(s);
+  const clockData = admin ? await attendanceClockData(s,selected.employmentId,date) : null;
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
   // r423 (83c0d3c8, plan point 13) — WHERE each self-service clocking was made. Only punches backed by a
@@ -295,6 +299,8 @@ export default async function IndividualAttendanceDayPage({
           </div>
         )}
       </Card>
+
+      {clockData && <AttendanceClockData data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
 
       {/* 4 · OVERTIME + 5 · IRREGULARITY — the eight cells that came off the list, in the SAME island with
           the SAME working, so this screen and the list can never explain one day two ways. */}

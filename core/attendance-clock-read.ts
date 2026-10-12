@@ -18,7 +18,7 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     if (openDay && openDay.date === todayInKualaLumpur(new Date(now.getTime() - 86400000)) && (await clockScheduleForTx(tx, me.employmentId, openDay.date)).crossesMidnight) date = openDay.date;
     const schedule = await clockScheduleForTx(tx, me.employmentId, date);
     const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), eq(attendance.attendanceDate, date))).limit(1);
-    const punches = day ? await tx.select({ direction: attendancePunch.direction, time: attendancePunch.punchAt, captureId: attendancePunch.clockCaptureId, recordedAt: attendanceClockCapture.serverRecordedAt }).from(attendancePunch).leftJoin(attendanceClockCapture, eq(attendanceClockCapture.id, attendancePunch.clockCaptureId)).where(eq(attendancePunch.attendanceId, day.id)).orderBy(asc(attendancePunch.createdAt), asc(attendancePunch.id)) : [];
+    const punches = day ? await tx.select({ direction: attendancePunch.direction, time: attendancePunch.punchAt, captureId: attendancePunch.clockCaptureId, recordedAt: attendanceClockCapture.serverRecordedAt }).from(attendancePunch).leftJoin(attendanceClockCapture, eq(attendanceClockCapture.id, attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.attendanceId, day.id), isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.createdAt), asc(attendancePunch.id)) : [];
     const toInstant = (time: string) => {
       const clock = time.slice(0,8).padEnd(8, ':00');
       let ms = new Date(`${date}T${clock}+08:00`).getTime();

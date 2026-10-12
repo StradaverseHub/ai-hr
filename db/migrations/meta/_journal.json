@@ -3046,6 +3046,13 @@
       "when": 1791900000007,
       "tag": "0527_workflow_email",
       "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1791900000008,
+      "tag": "0528_attendance_punch_corrections",
+      "breakpoints": true
     }
   ]
 }

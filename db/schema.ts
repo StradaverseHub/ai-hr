@@ -3819,7 +3819,7 @@ export const geofenceStatusEnum = pgEnum('geofence_status', ['pass', 'not_enforc
 // the `attendance.amended` event's top-level `before` block (core/attendance.ts AMENDED_FIGURE_COLUMNS),
 // so the Audit Trail shows the loss as "old → new" rather than leaving it invisible. Still no column and
 // still no snapshot table: see the ADR-0069 note on attendance_correction below.
-export const clockMethodEnum = pgEnum('clock_method', ['web', 'import']);
+export const clockMethodEnum = pgEnum('clock_method', ['web', 'import', 'admin']);
 
 // Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
 // absenteeism analytics can categorise unplanned absence (planned absence is already typed via leave).
@@ -3982,6 +3982,9 @@ export const attendancePunch = pgTable(
     geofenceStatus: geofenceStatusEnum('geofence_status'),
     radiusM: integer('radius_m'),
     clockCaptureId: uuid('clock_capture_id').unique().references(() => attendanceClockCapture.id),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedBy: text('voided_by'),
+    voidReason: text('void_reason'),
     createdAt: createdAt(),
   },
   (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
@@ -4418,6 +4421,7 @@ export const attendanceCorrection = pgTable(
     remark: text('remark'),
     requestKind: text('request_kind').$type<AttendanceRequestKind>(),
     rejectReason: text('reject_reason'),
+    clockChanges: jsonb('clock_changes').$type<{ version: 1; baseline: string; entries: { id?: string; punchAt: string; direction: 'in' | 'out' }[] }>(),
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
       version: 1; attendanceId: string | null; originalCheckIn: string | null;
       originalCheckOut: string | null; capturedAt: string;

@@ -31,3 +31,6 @@ export * from '../../core/attendance-clock-read';
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
 export * from '../../core/attendance-clocking-import';
+
+export * from '../../core/attendance-clock-data';
+export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/attendance-punch-change';
