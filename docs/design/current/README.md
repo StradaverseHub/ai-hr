@@ -1,23 +1,27 @@
-# Current: Plum and Ledger
+# Current: Plum workspace and Ledger
 
-Approved direction: Current, Plum palette, compact Ledger records. The design exploration lives in `scratchpad/future-ui-options` (local, ignored); production styles live in `app/current.css`.
+Current is an optional UI theme, selected from the account menu. It retains the approved Plum palette and now has its own navigation and record structure. The first rollout only changed shared paint; that did not implement the prototype's workspace or Ledger interaction.
 
-## Theme integration
+## Workspace navigation
 
-Select **Current** from the account menu's Theme control. The existing `ui_theme` cookie and server layout apply it on every route and on the first server paint. Classic and Monolith remain selectable; their tokens and the missing-cookie default are unchanged. All six locales expose the Current name.
+Every authenticated route uses a horizontal workspace bar instead of a sidebar. Workspace tabs expose their destinations in a second row. Modules expand an inline third row; Escape closes the module and returns focus to its trigger. The active workspace remains marked while browsing another workspace. On narrow screens the rows scroll within their own boundary.
 
-Current uses the Plum surface family, lavender section bands, chartreuse primary actions and a pink error colour. The appearance toggle adjusts surface depth while retaining Plum. Portals consume the same root tokens. Printed documents use paper tokens.
+The navigation consumes the existing Sidebar's filtered groups, pack destinations, active-route predicates, approval count, role authority and module entitlements. It is not a second navigation catalog. The company control separates its context caption from the active scope and keeps the existing multi-company behavior.
 
-## Shared page coverage
+## Dashboard
 
-The root tokens apply across authenticated and public routes: shell, forms, buttons, dialogs, filters and navigation. Shared CardHeader and SectionHeader components supply the lavender band. The company switcher keeps the existing multi-company selection and submission behavior.
+The normal dashboard presents the user's configured cards as expandable colored work ribbons. The first section starts open. Existing card contents, destinations, mandatory cards and saved order remain authoritative. Customize still opens the existing reorder/add/remove interface; no preferences are discarded.
 
-All native tables inside the main screen use compact Ledger paint: aligned tabular numbers, restrained headings, alternating Plum surfaces and lavender focus indicators. Shared StackedTable keeps its mobile labels and native table roles. Existing table interactions, sticky columns, selection, forms, detail links and exports remain owned by their pages. Read-only tables do not acquire a misleading click action.
+These ribbons summarize existing dashboard sections. They do not invent individual requests or inline approval actions from the prototype's demo data.
 
-## Scope limits
+## Record workspaces
 
-This is the shared theme rollout, not a rewrite of every route's information architecture. It does not add a generic inspector to every legacy table; pages keep their existing detail views. The prototype's fictional records, gross salaries and demo workflow never enter the application. No schema, authorization, calculation, or data-query changes are part of this theme.
+Personnel directory, Personnel administration and Payroll Process list use the compact Ledger with a persistent selected-record inspector. Selecting a record updates its facts and actions without navigating away. Open full record uses the existing destination. Table returns to the original full-column view. Pagination and filters remain outside the selected presentation.
 
-## Validation required before deployment
+The inspector resolves selection against the currently authorized page's records on every render. A scope, filter or page change cannot retain a removed record. The directory exposes only its existing work-contact projection. Administration follows the user's selected columns and includes draft records. Payroll reuses the actual table's rendered cells and actions, including publication/recalculation warnings and the original action gates; it does not recalculate or duplicate payroll logic.
 
-Theme cookie/action tests; all-locale picker and immediate switching tests; contrast checks; TypeScript; full repository gate (the theme registry is in `lib/`); production build; rendered checks for representative dashboard, personnel, attendance, leave, payroll and administration routes including narrow viewports, menus, dialogs, and print. DOM tests alone are not visual evidence.
+Other screens receive the Current shell, page-heading hierarchy and shared Plum components. Their specialized tables and workflows remain owned by their pages; they do not all receive a generic inspector. Classic and Monolith retain their existing structure. Monolith remains the missing-cookie default.
+
+## Validation
+
+Exercise navigation for employee and administrator roles, module expansion/Escape, theme switching, record selection, replacement of a page's projection, original-table access, existing payroll actions, desktop and narrow layouts, company/account menus and print. Render real routes in addition to component tests. No schema, query, authorization or payroll-calculation changes belong to this presentation work.

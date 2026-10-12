@@ -153,7 +153,7 @@ export function PageHeader({
   back?: { href: string; label: string };
 }) {
   return (
-    <div className="space-y-2">
+    <div data-page-header className="space-y-2">
       {back && (
         <Link
           href={back.href}

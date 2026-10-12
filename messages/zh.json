@@ -11670,6 +11670,13 @@
     },
     "drawer": {
       "close": "关闭"
+    },
+    "current": {
+      "selectedRecord": "所选记录",
+      "openRecord": "打开完整记录",
+      "view": "记录视图",
+      "ledger": "分类账",
+      "table": "表格"
     }
   },
   "kb": {
