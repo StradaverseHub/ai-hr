@@ -1,5 +1,7 @@
 # Deploying AI HR to a Linux server (gated consultant demo)
 
+New customer/UAT installations must follow [CUSTOMER.md](CUSTOMER.md) and [UAT-HOSTING.md](UAT-HOSTING.md). This legacy guide contains demo-specific Node paths, service accounts and schedules. Do not use them as the customer runtime profile.
+
 A native (no-Docker) deployment for **demo/testing on a public-IP server**. The app sits behind the
 `SHARE_PASSWORD` HTTP-Basic gate; testers use the top-bar "act as" switcher for roles.
 
@@ -10,9 +12,7 @@ A native (no-Docker) deployment for **demo/testing on a public-IP server**. The 
 
 ## Which deployment is this? — read before step 3 (r290 / readiness 1.1)
 
-This document is the **gated consultant demo** runbook. Steps 0–2, 5, 5b and 6 are shared with a
-customer deployment; **steps 3 and 4 are not**, and following them on a customer's box is how a
-fictional `Demo Group` tenant ends up in their production database.
+This document is the **gated consultant demo** runbook. Use CUSTOMER.md for customer prerequisites, service identity and jobs. Following demo steps 3 and 4 on a customer box can install a fictional Demo Group tenant.
 
 | | gated consultant demo | customer |
 |---|---|---|
@@ -88,38 +88,16 @@ rsync -az --delete \
 
 ## 2. One-time database bootstrap
 
-Generate **three** DB passwords and create the database + the three roles (owner, app, platform):
+Create/store three distinct passwords through the approved secret manager, then run the secure wrapper with PostgreSQL 16+ clients:
 
 ```bash
 cd /opt/ai-hr
-# hex (not base64) so the passwords are URL-safe inside the postgresql:// connection strings:
-OWNER_PW=$(openssl rand -hex 24); APP_PW=$(openssl rand -hex 24); PLATFORM_PW=$(openssl rand -hex 24)
-sudo -u postgres psql -v owner_pw="$OWNER_PW" -v app_pw="$APP_PW" -v platform_pw="$PLATFORM_PW" \
-  -f deploy/bootstrap-db.sql
+sudo -u postgres deploy/bootstrap-db.sh
 ```
 
-> **ALL THREE `-v` FLAGS ARE REQUIRED — omitting one creates NO ROLES AT ALL, not two of three.**
-> An undefined `:'var'` is a psql **syntax error**, not an empty string, so that `set_config` line
-> never runs; the `DO` block then calls `current_setting()` on the unset GUC and throws; and a `DO`
-> block is a single statement, so the failure rolls back the *whole* block including the `CREATE ROLE`
-> statements that had already succeeded inside it. Verified on PostgreSQL 16.14, 2026-08-09. This
-> section previously documented only two, which is why an install can end up with no `ai_hr_platform`
-> (see "Provisioning the platform plane" below).
+The wrapper reads owner, application and platform passwords through hidden prompts. For automated secret-manager input use --stdin with exactly three newline-terminated records. Never pass passwords via psql -v arguments, print them or enable shell tracing. Missing/empty input refuses before roles are created. Existing roles are not rotated or certified safe by this bootstrap.
 
-Read the passwords back from your shell when you fill in `.env.production` — `echo` them only if you
-must. They are about to be written to a `0600` file; printing them also puts them in your shell
-history and your terminal scrollback.
-
-This creates `ai_hr` owned by `ai_hr_owner`, the non-privileged `ai_hr_app`, the BYPASSRLS
-`ai_hr_platform` control-plane role (ADR-0077 D5), and the default privileges that auto-grant later
-migrations' tables to the app role (see the comments in the SQL — do not blanket-grant after
-migrating).
-
-> Secret hygiene, known and not yet fixed: these passwords are passed to `psql` in **argv**, so sudo
-> records them in `/var/log/auth.log` and `/proc/<pid>/cmdline` is world-readable while psql runs.
-> `deploy/provision-platform-role.sh` shows the fix (pipe the statement in on **stdin** — a `printf`
-> builtin never enters the process table). Converting `bootstrap-db.sql` to psql 16's `\getenv` is the
-> clean follow-up; it is not done here because that file is pinned by `test/platform-plane.test.ts`.
+This creates ai_hr owned by ai_hr_owner, the restricted ai_hr_app, the BYPASSRLS ai_hr_platform control-plane role and migration default grants. Do not blanket-grant tables after migrations.
 
 ## 3. Configure the environment (gated demo)
 
@@ -154,40 +132,9 @@ This installs deps, builds, runs migrations (as the owner), and seeds the demo d
 
 ## Deploying for a customer (replaces steps 3 and 4)
 
-Steps 0, 1 and 2 above are unchanged — same prerequisites, same code sync, same database bootstrap.
-Then, instead of steps 3 and 4:
+Follow [CUSTOMER.md](CUSTOMER.md) in order. Use deploy/.env.customer.example with explicit Keycloak authentication, audit chaining, private verified-TLS database connections and the dedicated customer service. The first customer is created with scripts/bootstrap-customer.ts after migrations; identity enrollment and activation are separate acceptance steps.
 
-```bash
-cp deploy/.env.customer.example .env.production
-nano .env.production
-```
-
-Fill in:
-- `DATABASE_URL` → `postgresql://ai_hr_app:<APP_PW>@localhost:5432/ai_hr`
-- `MIGRATION_DATABASE_URL` → `postgresql://ai_hr_owner:<OWNER_PW>@localhost:5432/ai_hr`
-- `AI_CONFIG_SECRET` → `openssl rand -base64 32` (keep it stable — changing it breaks stored AI keys)
-- `SHARE_PASSWORD` → a strong password, until the WorkOS cutover replaces it
-- `AUDIT_HASH_CHAIN_ENABLED=true` → **leave it on, and do not deploy without it.** There is no
-  backfill; every event written before it is armed is permanently unchained (readiness 1.2).
-- `NODE_ENV=production`, `PORT` → leave as-is
-- `WORKOS_*` → uncomment and fill during the cutover (`docs/WORKOS-CUTOVER.md`, readiness 1.3)
-
-There is **no** `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` or `DEV_USER_ID` in this file. Do not add them,
-and do not build this file by copying `deploy/.env.production.example` and editing it — their absence
-is load-bearing, not cosmetic.
-
-```bash
-./deploy/deploy-customer.sh
-```
-
-Same spine as `deploy.sh` — install, audit-chain preflight, build, migrate as the owner, seed the
-module/setting catalogs, restart — with the demo seeder unreachable and `DEV_TENANT_ID` not required.
-`--migrate-only` works the same way; `--reseed` is refused.
-
-Then continue with step 5 (systemd) and step 5b (the scheduled sweeps, which are **required**).
-
-The first tenant is created through the operator console / provisioning runner (step 5b), **not** by a
-seed script. A customer deployment starts with an empty `tenant` table and that is correct.
+Use ./deploy/deploy-customer.sh --migrate-only during initial commissioning. This still installs/builds/migrates/catalog-seeds and stops before restart; it never runs the demo seeder. --reseed is refused. Configure supported Node paths, isolated runtime credentials and customer job definitions from that guide; do not continue into the demo service/cron setup below.
 
 ### If you get a refusal from the seeder
 
