@@ -141,8 +141,10 @@ describe('fresh customer bootstrap — one audited customer without a privileged
     const [audit] = await owner.db.execute(sql`select count(*)::int as total, count(chain_seq)::int as chained from domain_event`);
     expect(Number(audit.total)).toBeGreaterThan(0);
     expect(audit.chained).toBe(audit.total);
-    const [setting] = await owner.db.execute(sql`select value, source from tenant_setting where key='audit.hash_chain_enabled'`);
+    const [setting] = await owner.db.execute(sql`select value, source from tenant_setting where key='audit.hash_chain_enabled' and tenant_id <> ${SYSTEM_TENANT}::uuid`);
     expect(setting).toMatchObject({ value: true, source: 'platform' });
+    const [systemSetting] = await owner.db.execute(sql`select value from tenant_setting where key='audit.hash_chain_enabled' and tenant_id = ${SYSTEM_TENANT}::uuid`);
+    expect(systemSetting.value).toBe(true);
     const issuer = environment().KEYCLOAK_ISSUER!;
     const denied = await owner.db.execute(sql`select app_user_id from app.consume_identity_invitation(${token}, ${issuer}, 'fresh-keycloak-subject', 'wrong@fresh-customer.test')`);
     expect(denied).toHaveLength(0);

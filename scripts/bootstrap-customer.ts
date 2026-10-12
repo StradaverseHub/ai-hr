@@ -124,9 +124,11 @@ export async function bootstrapCustomer(options: BootstrapOptions, env: NodeJS.P
       outputIdentity = await output.stat();
       await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
       const result = await provisionTenant(tx, input);
-      await tx.insert(schema.tenantSetting).values({
-        tenantId: result.tenantId, key: 'audit.hash_chain_enabled', value: true, source: 'platform',
-      }).onConflictDoUpdate({ target: [schema.tenantSetting.tenantId, schema.tenantSetting.key], set: { value: true, source: 'platform' } });
+      await tx.insert(schema.tenantSetting).values([
+        { tenantId: result.tenantId, key: 'audit.hash_chain_enabled', value: true, source: 'platform' },
+        // Pre-authentication events use the reserved installation tenant. Arm it explicitly too.
+        { tenantId: SYSTEM_TENANT, key: 'audit.hash_chain_enabled', value: true, source: 'platform' },
+      ]).onConflictDoUpdate({ target: [schema.tenantSetting.tenantId, schema.tenantSetting.key], set: { value: true, source: 'platform' } });
       await output.writeFile(result.activationUrl + '\n', 'utf8');
       await output.sync();
       await output.close();

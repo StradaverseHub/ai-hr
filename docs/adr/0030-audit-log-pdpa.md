@@ -118,3 +118,18 @@ undeletable cleartext, the exact conflict this gate closes.
 pdp.gov.my — PDPA (Amendment) Act 2024; Guidelines on Data Breach Notification; Commissioner Circular
 1/2025 (DBN); DPO Appointment Guidelines; PDPA 2010 consolidated text (DataGuidance); DLA Piper MY data
 protection; Tay & Partners "Data Breach — the first 72 hours".
+
+## 6. UAT customer installation: audit policy at the database boundary
+
+Migration 0528 applies the persisted tenant opt-in and ADR-0077 no-disarm-after-history rule in the
+shared domain-event trigger. Raw authentication, private email and job connections bypass the
+TypeScript tenant wrapper, so its session flag alone cannot protect those writes. The trigger uses
+the existing per-tenant advisory lock before reading policy and history, preserves caller session
+settings, and chains every new event once opted in or once chained history exists. Fresh customer
+bootstrap explicitly enables the customer and reserved pre-authentication system tenant. Legacy
+tenants with no opt-in, session fallback or chain retain the previous unchained behavior.
+
+This adds policy enforcement to all insert paths, not historical redaction or backfill. The database
+owner remains trusted and can alter functions or history; externally anchored evidence is still
+required for tamper evidence against that owner. Raw app-role, restricted private-email-role, job,
+pre-authentication and concurrent append regressions exercise the same database boundary.
