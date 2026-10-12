@@ -20,7 +20,7 @@ describe('central HR orchestrator', () => {
       employmentType: 'full_time', hiredOn: '2024-01-01', paymentMethod: 'bank_transfer',
     } as never);
   }
-  const cases = () => owner.db.select().from(schema.hrOrchestrationCase);
+  const cases = () => owner.db.select().from(schema.hrOrchestrationCase).orderBy(schema.hrOrchestrationCase.id);
 
   it('opens, resumes, verifies and reopens a case using source evidence', async () => {
     const employee = await hire();
@@ -58,6 +58,9 @@ describe('central HR orchestrator', () => {
   it('records a successful empty check, and rejects non-admin coordination', async () => {
     await reconcileReadinessCases(adminCtx(base));
     expect((await orchestrationQueue(adminCtx(base))).observedAt).not.toBeNull();
+    await hire();
+    await reconcileReadinessCases(adminCtx(base));
+    expect((await cases()).length).toBeGreaterThan(0);
     const employee = { ...adminCtx(base), roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
     await expect(reconcileReadinessCases(employee)).rejects.toThrow('access denied');
     expect(await withTenant(employee, tx => tx.select().from(schema.hrOrchestrationCase))).toEqual([]);

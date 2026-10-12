@@ -130,12 +130,12 @@ export async function orchestrationQueue(ctx: SessionContext) {
       .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
       .innerJoin(schema.company, eq(schema.company.id, schema.employment.companyId))
       .orderBy(asc(schema.hrOrchestrationCase.openedAt), asc(schema.hrOrchestrationCase.id));
-    const [lastCheck] = await tx.select({ at: schema.domainEvent.occurredAt }).from(schema.domainEvent)
+    const checks = await tx.select({ at: schema.domainEvent.occurredAt }).from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.eventType, 'orchestrator.readiness-checked'),
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
       .orderBy(desc(schema.domainEvent.occurredAt)).limit(1);
     const open = rows.filter(r => r.state === 'needs_input' || r.state === 'needs_review');
-    const [lastRun] = await tx.select({ at: schema.domainEvent.occurredAt,
+    const runs = await tx.select({ at: schema.domainEvent.occurredAt,
       failed: sql<boolean>`coalesce((${schema.domainEvent.payload} ->> 'failed')::boolean, false)` })
       .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'orchestrator.pass-finished'),
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
@@ -143,8 +143,8 @@ export async function orchestrationQueue(ctx: SessionContext) {
     return { rows: open.slice(0, 50), total: open.length,
       verified: rows.filter(r => r.state === 'verified').length,
       inactive: rows.filter(r => r.state === 'inactive').length,
-      observedAt: lastCheck?.at ?? null,
-      lastRun: lastRun ?? null,
+      observedAt: checks.length ? checks[0].at : null,
+      lastRun: runs.length ? runs[0] : null,
     };
   });
 }

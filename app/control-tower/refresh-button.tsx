@@ -1,12 +1,12 @@
 'use client';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
-import { btnSecondary } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 
 export function RefreshWorkButton() {
   const { pending } = useFormStatus();
   const t = useTranslations('controlTower.orchestrator');
-  return <button type="submit" disabled={pending} aria-disabled={pending} className={btnSecondary}>
+  return <Button type="submit" variant="outline" disabled={pending} aria-disabled={pending}>
     {t(pending ? 'checking' : 'refresh')}
-  </button>;
+  </Button>;
 }

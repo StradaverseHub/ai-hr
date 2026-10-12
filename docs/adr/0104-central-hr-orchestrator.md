@@ -98,6 +98,23 @@ missed deadlines and model/operating cost. Unknown savings remain unknown.
 
 ## Next increments and explicit limits
 
+Prioritize by measured manual handling time and repeat volume, then by whether the engine can verify
+the outcome. The initial opportunity review is:
+
+| Area | AI-assisted work to reduce handling | Evidence that closes the loop | Position in this implementation |
+| --- | --- | --- | --- |
+| Employee data | Explain missing information and request corrections | Source gap removed or requirement no longer applies | Durable cases plus existing reminder specialist |
+| Claims | Identify missing evidence and ask a targeted question | Employee submission and the existing claim decision | Existing triage specialist coordinated; claim lifecycle stays in its engine |
+| Payroll | Explain anomalies and propose supported corrections | Governed approval, recalculation and subsequent outcome checks | Existing payroll queues consolidated; evaluator schedule retained |
+| Employee questions | Answer from authorized policy and personal records | Answer usefulness or confirmed completion through a governed action | Existing assistant; action orchestration is a future increment |
+| Onboarding and offboarding | Coordinate documents, tasks and follow-ups | Each owning service confirms its task result | Future orchestration adapter; access decisions retain approval |
+| Attendance and leave | Explain exceptions and collect missing context | Approved correction reflected in the owning service | Future orchestration adapter |
+| Compliance | Assemble evidence and chase configured deadlines | Required evidence accepted by the responsible reviewer | Future orchestration adapter; no invented statutory rules |
+
+Measure net human minutes per verified case, including employee and manager effort, rework and
+escalations. Pair this with completion time, overdue work and AI operating cost. Headcount savings
+cannot be inferred from the number of messages sent or model calls made.
+
 This initial slice is a deterministic coordinator of existing AI specialists. It does not yet provide
 a general-purpose model planner or a universal durable execution runtime. Payroll's anomaly sweep
 retains its existing schedule and appears in the same Tower. The following are future increments,
