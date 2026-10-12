@@ -56,3 +56,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 
 | [0100](0100-installation-email-administration.md) | Installation identity email relay administration | Accepted |
 | [0101](0101-manual-identity-enrollment.md) | Administrator-created usernames and temporary passwords | Accepted |
+
+| [0103](0103-onehr-native-performance-and-rewards.md) | OneHR workflows in native Performance, immutable assessment provenance and explicit Rewards import | Accepted |
