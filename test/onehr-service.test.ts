@@ -73,12 +73,11 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.configureOnehrCycle(a,cycleId,1,defaultPolicy(framework))).rejects.toThrow(/fixed/);
   });
   it('preserves the opening company and grade after the native employment changes company',async()=>{
-    await complete();
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Original company cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
     const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination company'}).returning();
     // Entity transfer changes the existing employment company; it does not create a second employment.
     await owner.db.update(schema.employment).set({companyId:destination.id,gradeId:null}).where(eq(schema.employment.id,subject.employmentId));
-    await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','Confirmed after transfer');
+    await complete();
     const c=await perf.getOnehrCalibration(a,sessionId);await perf.lockOnehrCalibration(a,sessionId,c.session.revision,'');
     await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({companyId:destination.id}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/snapshot is immutable/)})});
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
