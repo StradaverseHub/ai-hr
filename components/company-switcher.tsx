@@ -83,8 +83,9 @@ export function CompanySwitcher({
     // r416 — in Monolith the top line also carries the route path, the DEV badge and the clock; with a bare
     // min-w-0 the switcher was the child crushed to 0px on a phone, so it could not be tapped. It keeps
     // room for its ▾ and a few letters; the label still truncates, the route path gives way first.
-    <div data-company-switcher className="relative min-w-0 monolith:min-w-[5.5rem]">
+    <div className="relative min-w-0 monolith:min-w-[5.5rem]">
       <button
+        data-company-switcher
         type="button"
         onClick={() => {
           // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an

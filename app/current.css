@@ -88,7 +88,7 @@
     color: var(--current-selected-ink);
     box-shadow: inset 3px 0 var(--current-band);
   }
-  :root[data-ui-theme='current'] [data-company-switcher] > button {
+  :root[data-ui-theme='current'] [data-company-switcher] {
     min-height: 2.5rem;
     border: 1px solid var(--input);
     border-radius: .625rem;
@@ -96,7 +96,7 @@
     padding-inline: .75rem;
     color: var(--foreground);
   }
-  :root[data-ui-theme='current'] [data-company-switcher] button:hover { background: var(--accent); }
+  :root[data-ui-theme='current'] [data-company-switcher]:hover { background: var(--accent); }
   :root[data-ui-theme='current'] :is(input,select,textarea) {
     accent-color: var(--current-band);
     caret-color: var(--foreground);
