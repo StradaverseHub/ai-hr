@@ -7,7 +7,7 @@ const {push,router}=vi.hoisted(()=>{const push=vi.fn();return {push,router:{push
 vi.mock('next/navigation',()=>({useRouter:()=>router,usePathname:()=>'/admin/attendance/schedule'}));
 import { AttendanceSettingsNavigation } from '../components/attendance-settings-navigation';
 import { __resetUnsavedGuards, hasUnsavedChanges } from '../lib/unsaved-changes';
-function contents(revision=0){return <NextIntlClientProvider locale="en" messages={en}><AttendanceSettingsNavigation formId="first-form" savedRevision={revision}/><a href="/admin/attendance/settings">Back</a><form id="first-form" method="post"><input aria-label="first" name="first" defaultValue="Saved"/><button>Save first</button></form><form method="post"><input aria-label="second" name="second" defaultValue="Saved"/><button>Save second</button></form><form method="get"><input aria-label="search" name="q"/></form></NextIntlClientProvider>;}
+function contents(revision=0,catalogue=en){return <NextIntlClientProvider locale="en" messages={catalogue}><AttendanceSettingsNavigation formId="first-form" savedRevision={revision}/><a href="/admin/attendance/settings">Back</a><form id="first-form" method="post"><input aria-label="first" name="first" defaultValue="Saved"/><button>Save first</button></form><form method="post"><input aria-label="second" name="second" defaultValue="Saved"/><button>Save second</button></form><form method="get"><input aria-label="search" name="q"/></form></NextIntlClientProvider>;}
 function fixture(){return render(contents());}
 beforeEach(()=>{push.mockReset();vi.spyOn(window,'confirm').mockReturnValue(false);});
 afterEach(()=>{cleanup();__resetUnsavedGuards();vi.restoreAllMocks();});
@@ -61,6 +61,21 @@ describe('settings navigation preserves independent form edits',()=>{
     await act(async()=>form.setAttribute('data-attendance-saved-receipt',secondNonce));
     expect(hasUnsavedChanges()).toBe(false);
   });
+  it('retains baselines and the submitted nonce through a same-path catalogue refresh',async()=>{
+    const view=fixture();vi.mocked(window.confirm).mockReturnValue(true);
+    const first=screen.getByLabelText('first') as HTMLInputElement,second=screen.getByLabelText('second') as HTMLInputElement,form=first.closest('form')!;
+    form.setAttribute('data-attendance-save-scope','');
+    fireEvent.change(first,{target:{value:'Submitted'}});fireEvent.change(second,{target:{value:'Other draft'}});
+    fireEvent.submit(form);const nonce=String(new FormData(form).get('__attendanceSaveNonce'));
+    fireEvent.change(first,{target:{value:'Later edit'}});
+    view.rerender(contents(0,JSON.parse(JSON.stringify(en)) as typeof en));
+    expect(screen.getByLabelText('first')).toBe(first);expect(hasUnsavedChanges()).toBe(true);
+    expect(new FormData(form).get('__attendanceSaveNonce')).toBe(nonce);
+    await act(async()=>form.setAttribute('data-attendance-saved-receipt',nonce));
+    fireEvent.change(second,{target:{value:'Saved'}});expect(hasUnsavedChanges()).toBe(true);
+    fireEvent.change(first,{target:{value:'Submitted'}});expect(hasUnsavedChanges()).toBe(false);
+  });
+
   it('keeps the accepted submission identity when a busy form is submitted again',()=>{
     fixture();const form=(screen.getByLabelText('first') as HTMLInputElement).closest('form')!;
     form.setAttribute('data-attendance-save-scope','');

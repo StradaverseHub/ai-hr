@@ -11,6 +11,7 @@ import {
   setAttendanceRuleStatus,
   setRuleShifts,
   updateAttendanceRule,
+  updateAttendanceRuleSection,
   type AttendanceRuleInput,
   type OtRowInput,
 } from '@/core/attendance-rule';
@@ -163,6 +164,22 @@ export async function createAttendanceRuleAction(fd: FormData) {
   revalidatePath(LIST);
   const t = await getTranslations('admin.scheduleConfig');
   okScheduleGroup(created.id, t('createdToast'), 'general');
+}
+
+/** General on the sectioned Schedule Group page owns identity/deduction switch/ladder only.
+ * Full legacy RuleForm actions above/below keep their existing complete-form semantics. */
+export async function saveScheduleGroupGeneralAction(fd: FormData) {
+  const s = await getSession();
+  const ruleId = String(fd.get('ruleId') ?? '');
+  try {
+    await updateAttendanceRuleSection(s, {ruleId,section:'general',
+      name:String(fd.get('name')??'').trim(),description:String(fd.get('description')??'').trim()||null,
+      status:fd.get('status')==='inactive'?'inactive':'active',applyDeductions:bool(fd,'applyDeductions'),
+      otRows:parseOtRows(String(fd.get('otRows')??'')),
+    });
+  } catch(e) {failScheduleGroup(e,ruleId,'general');}
+  const t=await getTranslations('admin.scheduleConfig');
+  okScheduleGroup(ruleId,t('savedToast'),'general',String(fd.get('__attendanceSaveNonce')??''));
 }
 
 export async function updateAttendanceRuleAction(fd: FormData) {

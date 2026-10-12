@@ -17602,5 +17602,9 @@
       "recorded": "Tindakan permohonan direkodkan"
     },
     "hrApprover": "Pentadbir HR"
+  },
+  "scheduleDrafts": {
+    "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
+    "reload": "Muat semula jadual semasa"
   }
 }

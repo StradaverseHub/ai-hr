@@ -17,6 +17,8 @@ const snapshot = (form: HTMLFormElement) => JSON.stringify(Array.from(form.eleme
  * A client action increments savedRevision only after persistence succeeds for formId. */
 export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId?: string; savedRevision?: string | number } = {}) {
   const t = useTranslations('attendanceSettingsHub');
+  const translationRef = useRef(t);
+  translationRef.current = t;
   const router = useRouter();
   const pathname = usePathname();
   const baselinesRef = useRef(new Map<HTMLFormElement, string>());
@@ -43,7 +45,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['value','checked','selected','data-attendance-saved-receipt']});
     const dirtyForms = () => [...baselines].filter(([form,baseline])=>form.isConnected && snapshot(form)!==baseline).map(([form])=>form);
     const dirty = () => !leaving && dirtyForms().length>0;
-    const ask = (proceed:()=>void) => { if (!dirty() || window.confirm(t('leaveUnsaved'))) { leaving=true; proceed(); } };
+    const ask = (proceed:()=>void) => { if (!dirty() || window.confirm(translationRef.current('leaveUnsaved'))) { leaving=true; proceed(); } };
     const unregister=registerUnsavedGuard({isDirty:dirty,prompt:ask});
     const arm=()=>{
       if(active && dirty() && !armed){window.history.pushState({...window.history.state,__attendanceSettingsGuard:true},'',window.location.href);armed=true;}
@@ -64,7 +66,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
       if(!(form instanceof HTMLFormElement))return;
       if(form.hasAttribute('data-attendance-save-scope') && form.getAttribute('aria-busy')==='true'){e.preventDefault();e.stopPropagation();return;}
       const others=dirtyForms().filter(f=>f!==form);
-      if(others.length && !window.confirm(t('leaveOtherUnsaved'))){e.preventDefault();e.stopPropagation();return;}
+      if(others.length && !window.confirm(translationRef.current('leaveOtherUnsaved'))){e.preventDefault();e.stopPropagation();return;}
       if (form.hasAttribute('data-attendance-save-scope')) {
         const nonce = Array.from(window.crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2,'0')).join('');
         let field = form.querySelector<HTMLInputElement>('input[name="__attendanceSaveNonce"]');
@@ -84,7 +86,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     document.addEventListener('click',click,true);document.addEventListener('submit',submit,true);
     window.addEventListener('beforeunload',before);window.addEventListener('popstate',pop);
     return()=>{active=false;observer.disconnect();unregister();document.removeEventListener('input',edit,true);document.removeEventListener('change',edit,true);document.removeEventListener('click',click,true);document.removeEventListener('submit',submit,true);window.removeEventListener('beforeunload',before);window.removeEventListener('popstate',pop);};
-  },[pathname,router,t]);
+  },[pathname,router]);
   useEffect(() => {
     const previous = savedRef.current;
     savedRef.current = { formId, savedRevision };

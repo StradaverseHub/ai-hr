@@ -9,7 +9,7 @@
  * DELETED every overtime band — silently, because an unchecked checkbox and an absent field are the same
  * bytes, and `parseOtRows('')` is `[]`.
  *
- * So app/admin/attendance/schedule/actions.ts re-reads the stored rule, carries every column forward
+ * So the section service locks and re-reads the stored rule, carries unowned columns forward
  * verbatim, and overlays ONLY the fields its own tab renders. These are the tests that make that claim
  * checkable rather than a comment: they RUN the actions against a real row and read what was stored.
  *
@@ -77,7 +77,7 @@ import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupOvertimeAction,
 } from '../app/admin/attendance/schedule/actions';
-import { updateAttendanceRuleAction } from '../app/admin/attendance-policy/rule-actions';
+import { updateAttendanceRuleAction, saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { readFileSync } from 'node:fs';
 import { join as pathJoin, resolve as pathResolve } from 'node:path';
@@ -89,6 +89,19 @@ const fd = (fields: Record<string, string>): FormData => {
   for (const [k, v] of Object.entries(fields)) f.set(k, v);
   return f;
 };
+/** Real Overtime forms always submit every rendered band's rounding identity. */
+async function otFd(ruleId: string, fields: Record<string,string>) {
+  const rule=(await getAttendanceRule(actionCtx!,ruleId))!;
+  const posted: Record<string,string>={ruleId,...fields};
+  for(const row of rule.otRows){
+    posted[`roundingMode_${row.fromMinutes}`]??=row.roundingMode;
+    posted[`roundToMinutes_${row.fromMinutes}`]??=String(row.roundToMinutes??'');
+  }
+  posted.otBandSnapshot=JSON.stringify(rule.otRows.map(row=>({fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,
+    ratePattern:row.ratePattern,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate)})));
+  return fd(posted);
+}
+
 
 /** Run an action that ends in redirect() and return the target, so a refusal is visible as a path. */
 async function captureRedirect(run: () => Promise<void>): Promise<string> {
@@ -206,7 +219,7 @@ describe('A. round trip — posting back what the form renders changes nothing',
       form[`roundingMode_${row.fromMinutes}`] = row.roundingMode;
       form[`roundToMinutes_${row.fromMinutes}`] = row.roundToMinutes == null ? '' : String(row.roundToMinutes);
     }
-    await captureRedirect(() => saveScheduleGroupOvertimeAction(fd(form)));
+    await captureRedirect(async () => saveScheduleGroupOvertimeAction(await otFd(ruleId,form)));
     expect(snap((await getAttendanceRule(actionCtx!, ruleId))!)).toEqual(before);
   });
 });
@@ -238,7 +251,7 @@ describe('B. the deduction switch does not move', () => {
       saveScheduleGroupAttendanceAction(fd({ ruleId, applyDeductions: '', lateGracePeriodMinutes: '4' })),
     );
     expect((await getAttendanceRule(actionCtx!, ruleId))!.applyDeductions, 'still on').toBe(true);
-    await captureRedirect(() => saveScheduleGroupOvertimeAction(fd({ ruleId, applyDeductions: '' })));
+    await captureRedirect(async () => saveScheduleGroupOvertimeAction(await otFd(ruleId,{applyDeductions:''})));
     const after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
     expect(after.applyDeductions, 'still on').toBe(true);
     expect(after.deductionsEffectiveFrom).toBe(before.deductionsEffectiveFrom);
@@ -297,9 +310,9 @@ describe('C. the overtime bands and rates survive a save from either tab', () =>
     const before = snap(rule);
     const first = rule.otRows[0];
     const second = rule.otRows[1];
-    await captureRedirect(() =>
+    await captureRedirect(async () =>
       saveScheduleGroupOvertimeAction(
-        fd({
+        await otFd(ruleId,{
           ruleId,
           earlyOtEditor: '1',
           applyToEarlyOt: 'on',
@@ -364,7 +377,7 @@ describe('C2. the rounding form survives the band ids CHURNING, because it is no
       form[`roundingMode_${row.fromMinutes}`] = 'up';
       form[`roundToMinutes_${row.fromMinutes}`] = '6';
     }
-    await captureRedirect(() => saveScheduleGroupOvertimeAction(fd(form)));
+    await captureRedirect(async () => saveScheduleGroupOvertimeAction(await otFd(ruleId,form)));
 
     const after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
     expect(
@@ -461,12 +474,12 @@ describe('E. the before-shift overtime switch can be turned OFF from the tab', (
     // submission that never carried the control would be identical bytes, and the switch could never be
     // turned off. That is exactly the defect 7c834696 had to fix on this setting in the other editor.
     expect((await getAttendanceRule(actionCtx!, ruleId))!.applyToEarlyOt, 'fixture: it starts ON').toBe(true);
-    await captureRedirect(() => saveScheduleGroupOvertimeAction(fd({ ruleId, earlyOtEditor: '1' })));
+    await captureRedirect(async () => saveScheduleGroupOvertimeAction(await otFd(ruleId,{earlyOtEditor:'1'})));
     expect((await getAttendanceRule(actionCtx!, ruleId))!.applyToEarlyOt).toBe(false);
   });
 
   it('a submission with NO marker leaves it alone, rather than clearing it', async () => {
-    await captureRedirect(() => saveScheduleGroupOvertimeAction(fd({ ruleId })));
+    await captureRedirect(async () => saveScheduleGroupOvertimeAction(await otFd(ruleId,{})));
     expect(
       (await getAttendanceRule(actionCtx!, ruleId))!.applyToEarlyOt,
       'a form that did not carry the control must not be read as "off"',
@@ -492,5 +505,28 @@ describe('F. a missing group refuses instead of writing against nothing', () => 
     // Not onto a per-group page: that is the distinction this case exists to hold.
     expect(target, 'no record path for a record that does not exist').not.toMatch(/\/schedule\/[^?]/);
     expect(decodeURIComponent(target)).toContain('no longer exists');
+  });
+});
+
+
+describe('General action uses the scoped service contract',()=>{
+  it('ignores stale full-form Attendance/Overtime fields and echoes only its success receipt',async()=>{
+    const stale=snap((await getAttendanceRule(actionCtx!,ruleId))!);
+    await captureRedirect(()=>saveScheduleGroupAttendanceAction(fd({ruleId,lateGracePeriodMinutes:'9'})));
+    await captureRedirect(async()=>saveScheduleGroupOvertimeAction(await otFd(ruleId,{
+      earlyOtEditor:'1',roundingMode_0:'up',roundToMinutes_0:'30'})));
+    const nonce='0123456789abcdef0123456789abcdef';
+    const destination=await captureRedirect(()=>saveScheduleGroupGeneralAction(fd({
+      ruleId,name:'Renamed independently',description:stale.description??'',status:stale.status,
+      applyDeductions:'on',otRows:JSON.stringify(stale.otRows),__attendanceSaveNonce:nonce,
+      lateGracePeriodMinutes:'0',includeGraceInLateness:'',applyToEarlyOt:'',
+    })));
+    expect(destination).toContain(`saveAck=${nonce}`);
+    expect(destination).toContain('section=general');expect(destination).not.toContain('error=');
+    const after=snap((await getAttendanceRule(actionCtx!,ruleId))!);
+    expect(after.name).toBe('Renamed independently');expect(after.lateGracePeriodMinutes).toBe(9);
+    expect(after.includeGraceInLateness).toBe(stale.includeGraceInLateness);
+    expect(after.applyToEarlyOt).toBe(false);expect(after.otRows[0].roundingMode).toBe('up');
+    expect(after.otRows[0].roundToMinutes).toBe(30);expect(after.deductionsEffectiveFrom).toBe(stale.deductionsEffectiveFrom);
   });
 });
