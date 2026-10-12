@@ -5,7 +5,10 @@ import * as schema from '../db/schema';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { hireEmployee, setReportingLine, changeEmploymentCompany } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections, allowanceScheduleFactsTx } from '../core/attendance';
+import { createShift, assignDefaultShift } from '../core/roster';
+import { getScheduleRotation, saveScheduleRotation } from '../core/attendance-rotation';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { AttendancePayrollClosedError } from '../core/attendance-punch-change';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, listAttendanceWorkflows, previewAttendanceWorkflow } from '../core/attendance-workflow';
@@ -154,7 +157,7 @@ async function delegationWorld(scope = 'attendance.correction', expired = false,
     const f = await fixture(), stand = await hire('Acting delegate', b.deptB), standSub = await hire('Delegate own report', b.deptB);
     await setReportingLine(f.a, { subordinateEmploymentId: standSub.employmentId, managerEmploymentId: stand.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
     const delegate = await login(stand.personId, 'manager');
-    await setReportingLine(f.a, { subordinateEmploymentId: f.manager.employmentId, managerEmploymentId: stand.employmentId, lineType: 'delegate', validFrom: '2020-01-01', validTo: expired ? '2021-01-01' : null, reason: 'Temporary cover', scopes: [{ module: 'attendance', taskType: scope }], orgScope: departmentId ? { companyId: b.companyId, departmentId } : undefined });
+    await setReportingLine(f.a, { subordinateEmploymentId: f.manager.employmentId, managerEmploymentId: stand.employmentId, lineType: 'delegate', validFrom: '2020-01-01', validTo: expired ? '2021-01-01' : null, reason: 'Temporary cover', scopes: [{ module: 'attendance', taskType: scope }], orgScope: departmentId ? { companyId: b.companyId, departmentId, businessUnitId: null } : undefined });
     return { ...f, delegate };
 }
 describe('request-bound delegated final effects', () => {
@@ -698,5 +701,79 @@ describe('attendance command lock order and historical OT evidence', () => {
         expect((await day(worker.employmentId)).checkInAt).toBe(before.checkInAt);
         expect(await events(batchId, 'payroll-batch.recalc-required')).toHaveLength(1);
         expect(await decisions()).toHaveLength(1);
+    });
+});
+
+describe('dated half-night rotation through staged approval and cancellation', () => {
+    it('uses the rotated midnight boundary only at final approval and restores its effect while marking processed payroll stale', async () => {
+        const { a, worker, mgr, self } = await fixture();
+        const addDays = (value: string, days: number) => new Date(Date.parse(`${value}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+        const anchor = addDays(todayInKualaLumpur(), 8), nightDate = addDays(anchor, 1);
+        const [rule] = await owner.db.insert(schema.attendanceRule).values({ tenantId: b.tenantId,
+            name: 'Staged rotating crew', weeklyPattern: [1, 2, 3, 4, 5] }).returning();
+        const morning = await createShift(a, { name: 'Profile morning', code: 'ST-AM', startTime: '08:00', endTime: '17:00',
+            breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5], ruleId: rule.id });
+        const night = await createShift(a, { name: 'Rotated half night', code: 'ST-PM', startTime: '20:00', endTime: '05:00',
+            breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5], ruleId: rule.id });
+        await assignDefaultShift(a, { employmentId: worker.employmentId, shiftId: morning.id });
+        await owner.db.update(schema.employment).set({ attendanceRuleId: rule.id }).where(eq(schema.employment.id, worker.employmentId));
+        const revision = (await getScheduleRotation(a, rule.id)).revision;
+        const version = await saveScheduleRotation(a, { ruleId: rule.id, expectedRevision: revision,
+            allowedShiftIds: [morning.id, night.id], cycle: { unit: 'day', length: 2, effectiveFrom: anchor, anchorDate: anchor,
+                days: [{ kind: 'full', shiftId: morning.id }, { kind: 'half', shiftId: night.id }] } });
+        const readDay = async () => (await owner.db.select().from(schema.attendance).where(and(
+            eq(schema.attendance.employmentId, worker.employmentId), eq(schema.attendance.attendanceDate, nightDate))))[0];
+        // Non-vacuity: the profile stays morning, while the dated cycle chooses the half-night source.
+        expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id, worker.employmentId)))[0].defaultShiftId).toBe(morning.id);
+        expect(await withTenant(a, tx => allowanceScheduleFactsTx(tx, worker.employmentId, nightDate)))
+            .toEqual({ shiftId: night.id, kind: 'half', scheduledMinutes: 240 });
+        await checkIn(a, { employmentId: worker.employmentId, date: nightDate, time: '20:00', manual: true });
+        await checkOut(a, { employmentId: worker.employmentId, date: nightDate, time: '00:30', manual: true });
+        const before = await readDay(), originalPunches = (await attendanceClockData(a, worker.employmentId, nightDate)).rows
+            .filter(punch => !punch.voidedAt).map(punch => punch.id).sort();
+        expect(originalPunches).toHaveLength(2);
+        expect(before).toMatchObject({ checkInAt: '20:00:00', checkOutAt: '00:30:00', dayType: 'workday', otMinutes: 0,
+            lateMinutes: 0, earlyOutMinutes: 0 });
+        expect(before.calcTrace).toMatchObject({ schedule: { scheduledMinutes: 240, endAbs: 1470, crossesMidnight: true } });
+        await enable(a);
+        const id = (await requestAttendanceCorrection(self, { employmentId: worker.employmentId, date: nightDate,
+            checkIn: '20:00', checkOut: '01:30', reason: 'One verified hour after the rotated half-night boundary' })).correctionId;
+        await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect(await readDay()).toEqual(before);
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 });
+        const approved = await readDay(), trail = await decisions();
+        expect(approved).toMatchObject({ checkInAt: '20:00:00', checkOutAt: '01:30:00', dayType: 'workday', otMinutes: 60,
+            lateMinutes: 0, earlyOutMinutes: 0 });
+        expect(approved.calcTrace).toMatchObject({ schedule: { scheduledMinutes: 240, endAbs: 1470, crossesMidnight: true },
+            overtime: { basis: 'window', normalMinutes: 240, rawMinutes: 60 } });
+        expect(trail).toHaveLength(2);
+        expect(trail.map(row => row.actualUserId)).toEqual([mgr.userId, a.userId]);
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
+        await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: nightDate.slice(0, 7) });
+        await generatePayslips(a, { batchId });
+        const [paid] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+        expect(paid).toMatchObject({ status: 'processed', needsRecalcAt: null });
+        expect(await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId),
+            eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
+        expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Reverse reviewed half-night correction' }))
+            .toEqual({ status: 'cancelled', reversed: true });
+        const restored = await readDay();
+        expect(restored).toMatchObject({ checkInAt: before.checkInAt, checkOutAt: before.checkOutAt, workedMinutes: before.workedMinutes,
+            otMinutes: before.otMinutes, lateMinutes: before.lateMinutes, earlyOutMinutes: before.earlyOutMinutes, calcTrace: before.calcTrace });
+        expect((await attendanceClockData(a, worker.employmentId, nightDate)).rows.filter(punch => !punch.voidedAt)
+            .map(punch => punch.id).sort()).toEqual(originalPunches);
+        const [stale] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+        expect(stale.needsRecalcAt).not.toBeNull();
+        expect(stale.recalcEmploymentIds).toContain(worker.employmentId);
+        expect(await events(batchId, 'payroll-batch.recalc-required')).toHaveLength(1);
+        expect(await decisions()).toEqual(trail);
+        expect((await correction(id))).toMatchObject({ status: 'cancelled', cancellationKind: 'cancelled' });
+        const versions = (await getScheduleRotation(a, rule.id)).versions;
+        expect(versions.map(row => row.id)).toEqual([version.id]);
+        expect(versions[0].effectiveFrom).toBe(anchor);
+        expect(await withTenant(a, tx => allowanceScheduleFactsTx(tx, worker.employmentId, nightDate)))
+            .toEqual({ shiftId: night.id, kind: 'half', scheduledMinutes: 240 });
     });
 });
