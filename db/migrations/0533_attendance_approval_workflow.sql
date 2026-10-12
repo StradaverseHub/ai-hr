@@ -278,7 +278,7 @@ BEGIN
   ELSIF NEW.acting_mode<>'assigned' OR actual_person IS NULL OR actual_person IS DISTINCT FROM assigned_person OR NOT app.can_correct_attendance(w.employment_id)
    THEN RAISE EXCEPTION 'Assigned manager authority required'; END IF;
  END IF;
- IF NEW.previous_status<>'pending' OR NEW.resulting_status<>CASE WHEN NEW.decision='rejected' OR NEW.stage_index=jsonb_array_length(w.stages)-1 THEN NEW.decision ELSE 'pending' END
+ IF NEW.previous_status<>'pending' OR NEW.resulting_status<>(CASE WHEN NEW.decision='rejected' OR NEW.stage_index=jsonb_array_length(w.stages)-1 THEN NEW.decision ELSE 'pending' END)
   THEN RAISE EXCEPTION 'Invalid stage outcome'; END IF;
  RETURN NEW;
 END $$;--> statement-breakpoint
