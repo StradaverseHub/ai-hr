@@ -23,6 +23,8 @@ Prepared 12 October 2026 (Asia/Kuala_Lumpur). This is a preparation/runbook docu
 
 The parked branch also contains older WorkOS integration, dependency and pagination changes. Reconcile selected changes against current main; do not merge its entire history blindly. Main already has newer Keycloak and notification implementations. The old Slice-0 threat model excludes payroll, attendance and AI and therefore cannot serve as the current whole-product threat model.
 
+Production dependency audit on 12 October found pdfjs-dist 5.6.205 affected by [GHSA-hq66-cqwq-w95j](https://github.com/mozilla/pdf.js/security/advisories/GHSA-hq66-cqwq-w95j). The candidate pins the patched 6.2.108 release; browser extraction and full build verification are required. The code uses the PDF text API with eval disabled, not the scripting-enabled viewer described by the advisory; no application exploit is claimed. Repeat the exact-lockfile audit before release.
+
 ## 2. Proposed starting resources
 
 **RECOMMENDATION, subject to load testing and quotation.** Reserve dedicated resources; do not reuse the shared 4 GiB demo machine for the 200-tester acceptance run. Disk figures are initial allocations, not measured demand.

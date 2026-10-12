@@ -10,8 +10,9 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
   const errors = [];
   const placeholder = /change[-_ ]?me|replace[-_ ]?(me|with)|your[-_ ]|<|>|\.\.\./i;
 
-  if (![22, 24].includes(Number(process.versions.node.split('.')[0]))) {
-    errors.push('Customer deployments require Node.js 22 or 24 LTS; install a supported customer toolchain.');
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  if (!(nodeMajor === 24 || (nodeMajor === 22 && nodeMinor >= 13))) {
+    errors.push('Customer deployments require Node.js 22.13+ or 24 LTS; install a supported customer toolchain.');
   }
 
   function required(name, minLength = 1) {

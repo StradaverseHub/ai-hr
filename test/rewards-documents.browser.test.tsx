@@ -17,6 +17,19 @@ describe('Rewards document readers in Chromium', () => {
     const text = await readDescription(new File([new Uint8Array(await doc.save())], 'role.pdf'));
     expect(text).toContain('Lead reporting across three departments.');
   });
+  it('extracts text without running embedded document JavaScript', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage();
+    page.drawText('Prepare workforce reporting for the UAT team.');
+    doc.addJavaScript('uat-script', 'globalThis.__aihrPdfScriptRan = true;');
+    const target = globalThis as typeof globalThis & { __aihrPdfScriptRan?: boolean };
+    delete target.__aihrPdfScriptRan;
+    try {
+      const text = await readDescription(new File([new Uint8Array(await doc.save())], 'scripted.pdf'));
+      expect(text).toContain('Prepare workforce reporting for the UAT team.');
+      expect(target.__aihrPdfScriptRan).toBeUndefined();
+    } finally { delete target.__aihrPdfScriptRan; }
+  });
   it('rejects scanned PDFs, unsupported files, oversized text and expanded Word documents', async () => {
     const pdf = await PDFDocument.create(); pdf.addPage();
     await expect(readDescription(new File([new Uint8Array(await pdf.save())], 'scan.pdf'))).rejects.toThrow();
