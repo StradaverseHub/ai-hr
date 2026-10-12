@@ -26,6 +26,7 @@ import {
   ATTENDANCE_OT_ROUNDING_MODES,
   attendancePolicy,
   attendanceRule,
+  attendanceRotation,
   attendanceRuleOtRow,
   employment,
   shift,
@@ -276,6 +277,9 @@ export function setRuleShifts(
     // Only shifts that actually exist in this tenant can be attached; RLS scopes the read, so a posted id
     // from another tenant simply is not in this list and is dropped rather than written.
     const all = await tx.select({ id: shift.id, ruleId: shift.ruleId }).from(shift);
+    const touched = [...new Set([p.ruleId,...all.filter(s=>p.shiftIds.includes(s.id)).map(s=>s.ruleId)].filter((id):id is string=>!!id))];
+    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(inArray(attendanceRotation.ruleId,touched)).limit(1);
+    if (rotation) throw new Error('Save allowed shifts together with the dated rotation in the Schedule Group.');
     const known = new Set(all.map((r) => r.id));
     const wanted = new Set([...p.shiftIds].filter((id) => known.has(id)));
     const current = new Set(all.filter((r) => r.ruleId === p.ruleId).map((r) => r.id));
@@ -746,6 +750,11 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
 export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } & AttendanceRuleInput): Promise<{ id: string }> {
   const n = normalizeInput(p);
   return withTenant(ctx, async (tx) => {
+    if (p.weeklyPattern !== undefined || p.halfPattern !== undefined || p.offPattern !== undefined) {
+      const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).limit(1);
+      if (rotation) throw new Error('This group uses dated rotations. Save a new cycle version instead of changing its legacy week.');
+    }
+
     // Read the CURRENT switch state before writing: an already-on rule keeps the date it was stamped with,
     // so re-saving a rule for an unrelated reason cannot silently move its deductions' start date forward.
     const [before] = await tx
@@ -981,6 +990,8 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
       .limit(1);
     if (!rule) throw new Error('Rule not found.');
     if (rule.isDefault) throw new StandardRuleUndeletableError();
+    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).limit(1);
+    if (rotation) throw new Error('This Schedule Group has saved rotation history. Mark it inactive instead of deleting it.');
     // ad52212d round 2 — the NAMES, not just "is there one". Deliberately UNCAPPED: the message quotes
     // three and counts the rest, and it can only count the rest honestly if the query returned them. The
     // shift library is an admin-authored, tenant-wide template set (tens of rows), and this runs once on a

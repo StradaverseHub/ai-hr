@@ -113,3 +113,50 @@ export const weekPatternGroupFor = <G extends { id: string; isDefault: boolean }
   const id = (ruleId ?? '').trim();
   return (id ? groups.find((g) => g.id === id) : groups.find((g) => g.isDefault)) ?? null;
 };
+
+
+/** A dated, explicitly saved cycle. Day 1 is anchorDate (week cycles require Monday).
+ * Before effectiveFrom this version has no effect. Positive modulo handles anchors
+ * after the date without using local time or crossing DST boundaries. */
+export type RotationDay = { kind: WeekDayKind; shiftId: string | null };
+export type RotationCycle = {
+  effectiveFrom: string; anchorDate: string; unit: 'week' | 'day'; length: number;
+  days: RotationDay[];
+};
+export const MAX_ROTATION_DAYS = 366;
+export const validRotationDate = (date: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const epoch = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(epoch) && new Date(epoch).toISOString().slice(0, 10) === date;
+};
+export function rotationDayOn(cycle: RotationCycle, date: string): RotationDay | null {
+  if (!validRotationDate(date) || date < cycle.effectiveFrom || cycle.days.length === 0) return null;
+  const offset = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${cycle.anchorDate}T00:00:00Z`)) / 86_400_000);
+  return cycle.days[((offset % cycle.days.length) + cycle.days.length) % cycle.days.length] ?? null;
+}
+export function rotationVersionOn<T extends RotationCycle>(versions: readonly T[], date: string): T | null {
+  return versions.filter(v => v.effectiveFrom <= date)
+    .reduce<T | null>((chosen, v) => !chosen || v.effectiveFrom > chosen.effectiveFrom ? v : chosen, null);
+}
+export function normalizeRotation(cycle: RotationCycle, allowedShiftIds: readonly string[]): RotationCycle {
+  if (!validRotationDate(cycle.effectiveFrom) || !validRotationDate(cycle.anchorDate)) throw new Error('Choose valid effective and rotation start dates.');
+  if (cycle.unit !== 'week' && cycle.unit !== 'day') throw new Error('Choose Week or Day rotation.');
+  const count = cycle.length * (cycle.unit === 'week' ? 7 : 1);
+  if (!Number.isInteger(cycle.length) || cycle.length < 1 || count > MAX_ROTATION_DAYS)
+    throw new Error(`The cycle must contain 1–${MAX_ROTATION_DAYS} days (at most 52 weeks).`);
+  if (cycle.unit === 'week' && new Date(`${cycle.anchorDate}T00:00:00Z`).getUTCDay() !== 1)
+    throw new Error('A weekly rotation must start on a Monday.');
+  if (!Array.isArray(cycle.days) || cycle.days.length !== count) throw new Error('Configure every day in the complete cycle.');
+  const pool = new Set(allowedShiftIds);
+  const days = cycle.days.map(day => {
+    if (!day || !['full', 'half', 'off', 'rest'].includes(day.kind)) throw new Error('Choose a day type for every cycle day.');
+    if (day.kind === 'full' || day.kind === 'half') {
+      if (!day.shiftId || !pool.has(day.shiftId)) throw new Error('Every working day must use a shift from Shifts Allowed.');
+      return { kind: day.kind, shiftId: day.shiftId };
+    }
+    if (day.shiftId) throw new Error('Off and Rest days must not assign a working shift.');
+    return { kind: day.kind, shiftId: null };
+  });
+  if (!days.some(day => day.kind === 'full' || day.kind === 'half')) throw new Error('A rotation must contain at least one Full or Half working day.');
+  return { effectiveFrom: cycle.effectiveFrom, anchorDate: cycle.anchorDate, unit: cycle.unit, length: cycle.length, days };
+}

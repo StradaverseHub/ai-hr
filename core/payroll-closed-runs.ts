@@ -83,6 +83,17 @@ export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: strin
   }).map(row => ({ batchId: row.batch_id, status: row.status }));
 }
 
+/** Future-effective recurring schedules affect every later covered attendance window. */
+export async function lockPayrollForScheduleChange(tx: Tx, employmentId: string, effectiveFrom: string) {
+  const rows = await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`) as unknown as {
+    batch_id: string; status: 'processed' | 'closed'; pay_period: string;
+    policy_config: PayrollPolicyConfig | null; attendance_cutoff_day: number | null;
+  }[];
+  return rows.filter(row => cutOffWindowFor('attendance', row.policy_config,
+    { attendanceCutOffDay: row.attendance_cutoff_day }, row.pay_period).end >= effectiveFrom)
+    .map(row => ({ batchId: row.batch_id, status: row.status }));
+}
+
 export async function markPayrollForAttendanceChange(tx: Tx, ctx: SessionContext, batches: Awaited<ReturnType<typeof lockPayrollForAttendanceChange>>, employmentId: string) {
   for (const batch of batches.filter(row => row.status === 'processed')) {
     const [result] = await tx.execute(sql`select app.mark_attendance_payroll_recalc(${employmentId}::uuid, ${batch.batchId}::uuid) as marked`) as unknown as { marked: boolean }[];

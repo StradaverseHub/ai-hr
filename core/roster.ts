@@ -10,6 +10,7 @@ import { appendEvent, actorOf } from '../db/events';
 import {
   attendance,
   attendanceRule,
+  attendanceRotation,
   employment,
   employmentShiftArrangement,
   leaveRequest,
@@ -34,7 +35,8 @@ import {
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { approvedLeaveDates } from './leave';
-import {workingShiftSchedule} from '../packs/attendance/service';
+import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
+import { rotationVersionOn, rotationDayOn, type RotationCycle } from './week-pattern';
 import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz';
 import {
@@ -785,6 +787,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
   const flexibleBreakEnabled = n.flexibleBreakEnabled ?? false;
   const flexibleBreakMinutes = n.flexibleBreakMinutes ?? null;
   return withTenant(ctx, async (tx) => {
+    await assertRotationPoolWriteTx(tx,null,n.ruleId);
     let row: { id: string };
     try {
       [row] = await tx
@@ -873,11 +876,12 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
     // fresh rows. See the header on `flexibleBreakEnabledForRows` above for why the form itself never
     // reaches that combination; this is the backstop for every other caller.
     const [before] = await tx
-      .select({ flexibleBreakEnabled: shift.flexibleBreakEnabled })
+      .select({ flexibleBreakEnabled: shift.flexibleBreakEnabled, ruleId:shift.ruleId })
       .from(shift)
       .where(eq(shift.id, p.shiftId))
       .limit(1);
     if (!before) throw new Error('Shift not found (or not visible)');
+    if(n.ruleId!==undefined) await assertRotationPoolWriteTx(tx,before.ruleId,n.ruleId);
     // r429 — THE WHOLE-SHIFT SWITCH CAN NO LONGER BE TURNED ON. The form never offers it; the only shifts
     // still carrying flexible_break_enabled = true are the ones migration 0519 could not convert exactly,
     // and they can only ever be switched OFF from here (the "Stop using it" tick) — never back on.
@@ -1024,6 +1028,9 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
     }
     if (!found) throw new Error(shiftCodeTakenMessage(`${baseCode}-2`));
 
+    const [sourceRotation] = src.ruleId ? await tx.select({id:attendanceRotation.id}).from(attendanceRotation)
+      .where(eq(attendanceRotation.ruleId,src.ruleId)).limit(1) : [];
+    const copiedRuleId = sourceRotation ? null : src.ruleId;
     let row: { id: string };
     try {
       [row] = await tx
@@ -1050,7 +1057,7 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
           lateGraceMinutes: src.lateGraceMinutes,
           earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
           otRule: src.otRule,
-          ruleId: src.ruleId,
+          ruleId: copiedRuleId,
           differential: src.differential,
           description: src.description,
           dayType: src.dayType,
@@ -1101,7 +1108,7 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
       aggregateId: row.id,
       eventType: 'shift.copied',
       actor: actorOf(ctx),
-      payload: { sourceShiftId: p.shiftId, sourceCode: src.code, sourceName: src.name, name, code, otWindows: windows.length },
+      payload: { sourceShiftId: p.shiftId, copiedRuleId, sourceCode: src.code, sourceName: src.name, name, code, otWindows: windows.length },
     });
     return { id: row.id };
   });
@@ -2556,6 +2563,9 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
 
 /** One employee's usual shift, as the grid ghosts it onto un-rostered dates. */
 export type UsualShiftRow = {
+  rotations?: RotationCycle[];
+  noDefault?: boolean;
+  rotationShifts?: (typeof shift.$inferSelect)[];
   employmentId: string;
   shiftId: string;
   code: string | null;
@@ -2593,7 +2603,7 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         groupRuleId: employment.attendanceRuleId,
       })
       .from(employment)
-      .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+      .leftJoin(shift, eq(shift.id, employment.defaultShiftId))
       .where(inArray(employment.id, employmentIds));
     // 07ebd04d — the ghost cells follow the SCHEDULE GROUP's week when it has one, the same chain
     // scheduleFor uses (employee's group → shift's group → tenant default), so the grid cannot say OFF on
@@ -2602,9 +2612,15 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
     // Half working weekdays must travel with the resolved full pattern to every roster consumer.
     // They are working cells; this read does not invent half-day duration or reclassify rest/off days.
     const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
-    return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
+    const rotationLookup = await rotationLookupTx(tx);
+    return rows.flatMap(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
+      const rotations = rotationLookup.versions.filter(v => v.ruleId === (groupRuleId ?? shiftRuleId));
+      if (!r.shiftId && !rotations.length) return [];
       const week=lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern });
-      return {...r,pattern:week.pattern,halfPattern:week.halfPattern??null};
+      const ids = new Set(rotations.flatMap(v=>v.allowedShiftIds));
+      return [{...r,shiftId:r.shiftId??'',code:r.code??null,name:r.name??'',startTime:r.startTime??'00:00:00',endTime:r.endTime??'00:00:00',
+        noDefault:!r.shiftId,pattern:week.pattern,halfPattern:week.halfPattern??null,rotations,
+        rotationShifts:rotationLookup.shifts.filter(s=>ids.has(s.id))}];
     });
   });
 }
@@ -2785,8 +2801,9 @@ export async function rosterWindowView(
   const usual: Record<string, UsualShift> = {};
   const usualNames: Record<string, { code: string | null; name: string }> = {};
   for (const u of usualRows) {
-    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern, ...(u.halfPattern?.length?{halfPattern:u.halfPattern}:{}) };
+    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern, noDefault:u.noDefault, rotations:u.rotations, ...(u.halfPattern?.length?{halfPattern:u.halfPattern}:{}) };
     usualNames[u.shiftId] = { code: u.code, name: u.name };
+    for(const sh of u.rotationShifts??[]) usualNames[sh.id]={code:sh.code,name:sh.name};
   }
 
   return {
@@ -2795,7 +2812,7 @@ export async function rosterWindowView(
     dates,
     employees,
     allEmployees,
-    shifts: shiftRows.map((s) => ({
+    shifts: [...new Map([...shiftRows,...usualRows.flatMap(u=>u.rotationShifts??[])].map(sh=>[sh.id,sh])).values()].map((s) => ({
       id: s.id,
       code: s.code,
       name: s.name,
@@ -3254,12 +3271,12 @@ export async function myRosterWindow(
 
   return withTenant(ctx, async (tx) => {
     const usualRow = usualRows[0] ?? null;
-    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, noDefault:usualRow.noDefault, rotations:usualRow.rotations, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
 
     // Only the shifts this window actually references — the legend names what is on screen, and a
     // tenant-wide shift list would serialise every template the company has ever authored into the
     // payload of a page that draws at most a handful.
-    const wantedIds = [...new Set([...roster.map((r) => r.shiftId), usualRow?.shiftId].filter((v): v is string => !!v))];
+    const wantedIds = [...new Set([...roster.map((r) => r.shiftId), usualRow?.shiftId,...(usualRow?.rotationShifts??[]).map(s=>s.id)].filter((v): v is string => !!v))];
     const shiftRows = wantedIds.length
       ? await tx
           .select({
@@ -3309,7 +3326,9 @@ export async function myRosterWindow(
       const baseShift = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
       // Assigned shifts always own their full schedule, exactly as scheduleFor's roster branch does.
       // The usual week was already resolved in one batch through the employee/shift/Standard group.
-      const kind=cell.kind==='usual'&&usual&&shiftDayKindFor(usual,date)==='half'?'half':'full';
+      const cycle=rotationVersionOn(usual?.rotations??[],date);
+      const rotated=cycle?rotationDayOn(cycle,date):null;
+      const kind=cell.kind==='usual'&&usual&&(rotated?.kind??shiftDayKindFor(usual,date))==='half'?'half':'full';
       const schedule=baseShift?workingShiftSchedule(scheduleInputs.get(baseShift.id)!,kind):null;
       const sh=baseShift&&schedule?{...baseShift,startTime:schedule.shiftStart,endTime:schedule.shiftEnd,
         workingMinutes:schedule.normalMinutes}:baseShift;

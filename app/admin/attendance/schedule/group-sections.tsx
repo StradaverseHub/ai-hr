@@ -4,7 +4,6 @@ import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { countEmploymentsInRule, type AttendanceRuleView } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
-import { weekDayKindFor, weekPatternFor } from '@/core/week-pattern';
 import {
   Badge,
   Card,
@@ -29,9 +28,11 @@ import { scheduleGroupEditPath } from '../../attendance-policy/schedule-panel';
 import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupOvertimeAction,
-  saveScheduleGroupWeekAction,
 } from './actions';
-import { ScheduleGroupWeekEditor } from '@/components/schedule-group-week-editor';
+import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
+import { getScheduleRotation, workingShiftSchedule } from '@/packs/attendance/service';
+import { todayInKualaLumpur } from '@/lib/hr-date';
+import type { RotationCycle } from '@/core/week-pattern';
 
 /**
  * ─── 665de026 (r331) · ONE SCHEDULE GROUP, ONE SCREEN ────────────────────────────────────────────────
@@ -154,8 +155,10 @@ export async function ScheduleGroupSections({
   const tp = await getTranslations('admin.attendancePolicy');
   const trs = await getTranslations('roster');
 
+  const rotationT = await getTranslations('admin.rotation');
   const editing = mode === 'edit';
-  const shifts = await listShiftsForTenant(s);
+  const shifts = await listShiftsForTenant(s, { includeArchived: true });
+  const rotationState = await getScheduleRotation(s, rule.id);
   const kinds = dayKindsOf(rule, typedWeek);
   const declaresWeek = ISO_DAYS.some((d) => kinds[d] !== 'rest');
   // r429 (f6819e19) · D7 — "Shifts in this group" (shift.rule_id = group; for Standard, rule_id NULL on
@@ -184,6 +187,7 @@ export async function ScheduleGroupSections({
   const general = editing ? (
     <RuleForm
       rule={rule}
+      hideAllowedShifts
       shifts={ruleShiftChoices(shifts, rules, rule.id)}
       error={bannerFor('general')}
       /* No Cancel: the page header's Back already is the way out that writes nothing, and a "Cancel"
@@ -313,101 +317,35 @@ export async function ScheduleGroupSections({
    */
   // r429 (f6819e19) · D7 — the group's week, resolved as `ScheduleGroupWeekEditor` resolves it, for the
   // VIEW page's read-only "Shifts in this group" list (no live selects there, so no "after" column).
-  const storedGroupWeek = {
-    pattern: ISO_DAYS.filter((d) => kinds[d] === 'full'),
-    halfPattern: ISO_DAYS.filter((d) => kinds[d] === 'half'),
-    offPattern: ISO_DAYS.filter((d) => kinds[d] === 'off'),
-  };
-  const shiftsInGroupReadOnly = groupShifts.map((sh) => {
-    const resolved = weekPatternFor(storedGroupWeek, { pattern: sh.weeklyPattern, halfPattern: sh.halfPattern, offPattern: sh.offPattern });
-    const named = ISO_DAYS.map((d) => [d, weekDayKindFor(resolved, d)] as const).filter(([, k]) => k !== 'rest');
-    const text = named.length > 0 ? named.map(([d, k]) => `${tp(DAY_KEY[d])} ${trs(DAY_KIND_KEY[k])}`).join(' · ') : t('weekNoneShort');
-    return { shift: sh, text, source: resolved.source };
-  });
-
-  const workingDay = (
-    <>
-      <ErrorBanner message={bannerFor('workingDay')} />
-      <Card>
-        <SectionHeader title={SECTION_LABEL.workingDay} subtitle={t('weekSectionHint')} />
-        {editing ? (
-          <form action={saveScheduleGroupWeekAction}>
-            <input type="hidden" name="ruleId" value={rule.id} />
-            {/* ⚠️ THE MARKER, read as a VALUE by the action and never by presence. A <select> is always
-                submitted, so the seven day fields cannot go missing the way a checkbox can — but
-                "undefined" and "three empty arrays" mean DIFFERENT things to updateAttendanceRule, and a
-                submission that carried no day fields would decode to the second and CLEAR the group's
-                week. See ./actions.ts saveScheduleGroupWeekAction. */}
-            <input type="hidden" name="weekEditor" value="1" />
-            {/* r429 (f6819e19) · D7 — the seven selects AND the live "Shifts in this group" preview, one
-                client island so the warning it shows can never disagree with what this Save will do. */}
-            <ScheduleGroupWeekEditor
-              initialKinds={kinds}
-              shifts={groupShifts.map((sh) => ({
-                id: sh.id,
-                name: sh.name,
-                code: sh.code,
-                startTime: sh.startTime,
-                endTime: sh.endTime,
-                pattern: sh.weeklyPattern,
-                halfPattern: sh.halfPattern,
-                offPattern: sh.offPattern,
-              }))}
-              employmentCount={groupEmploymentCount}
-              groupName={rule.name}
-            />
-            <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-              <button className={btnPrimary}>{tr('save')}</button>
-            </div>
-          </form>
-        ) : (
-          <>
-            {declaresWeek ? (
-              <>
-                <div className="flex flex-wrap gap-1.5 p-4">
-                  {ISO_DAYS.map((d) => (
-                    <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
-                      <span className="text-xs font-medium text-foreground">{tp(DAY_KEY[d])}</span>
-                      <span className="text-xs text-muted-foreground">{trs(DAY_KIND_KEY[kinds[d]])}</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('weekRestNote')}</p>
-              </>
-            ) : (
-              <p className="p-4 text-sm text-muted-foreground">{t('weekNone')}</p>
-            )}
-            {/* r429 (f6819e19) · D7 — "Shifts in this group" (read-only half: VIEW offers no selects to
-                preview a change FROM, so there is only "the week in force today", no "after"). */}
-            <div className="border-t border-border">
-              <h3 className="px-4 pt-3 text-sm font-medium text-foreground">
-                {t('shiftsInGroupTitle')} <span className="text-muted-foreground">({groupShifts.length})</span>
-              </h3>
-              {shiftsInGroupReadOnly.length === 0 ? (
-                <p className="px-4 pb-4 pt-1 text-sm text-muted-foreground">{t('shiftsInGroupEmpty')}</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {shiftsInGroupReadOnly.map(({ shift: sh, text, source }) => (
-                    <li key={sh.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
-                      <Link href={`/admin/attendance/${sh.id}`} className="text-primary hover:underline">
-                        {sh.code ? `${sh.code} — ` : ''}
-                        {sh.name}
-                      </Link>
-                      <span className="text-right text-xs text-muted-foreground">
-                        {text}
-                        {' · '}
-                        {source === 'group' ? t('shiftsInGroupFromGroup') : t('shiftsInGroupFromShift')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
-      </Card>
-    </>
-  );
+  const tomorrow = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
+  const latest = rotationState.versions.reduce<(typeof rotationState.versions)[number] | null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
+  const minimumDate = latest && latest.effectiveFrom >= tomorrow
+    ? new Date(Date.parse(`${latest.effectiveFrom}T00:00:00Z`)+86_400_000).toISOString().slice(0,10) : tomorrow;
+  const monday = new Date(Date.parse(`${minimumDate}T00:00:00Z`));
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  const initialRotation: RotationCycle = latest ? { effectiveFrom: editing ? minimumDate : latest.effectiveFrom,
+    anchorDate: latest.anchorDate, unit: latest.unit, length: latest.length, days: latest.days }
+    : { effectiveFrom: minimumDate, anchorDate: monday.toISOString().slice(0,10), unit:'week',length:1,
+      days:ISO_DAYS.map(d=>({kind:kinds[d],shiftId:kinds[d]==='full'||kinds[d]==='half'?groupShifts.find(sh=>!sh.archivedAt)?.id??null:null})) };
+  const workingDay = <>
+    <ErrorBanner message={bannerFor('workingDay')} />
+    <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
+      {rule.isDefault ? <p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p>
+      : <ScheduleRotationEditor key={rotationState.revision} ruleId={rule.id} revision={rotationState.revision}
+          minimumDate={minimumDate} initial={initialRotation} editing={editing}
+          shifts={shifts.map(sh=>{const input={start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
+            breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
+            const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
+            return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
+              fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
+              archived:!!sh.archivedAt,available:!sh.archivedAt&&(!sh.ruleId||sh.ruleId===rule.id),selected:sh.ruleId===rule.id};})}/>
+      }
+      {!latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
+      {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
+        <ul className="mt-2 space-y-1">{rotationState.versions.map(v=><li key={v.id}>{v.effectiveFrom} · {v.unit==='week'?rotationT('week'):rotationT('day')} × {v.length} · {rotationT('anchor')}: {v.anchorDate}</li>)}</ul>
+      </details>}
+    </Card>
+  </>;
 
   /**
    * e5ff7189 stage 1 — THE ATTENDANCE SECTION: the four settings the reporter asked for, which already exist.

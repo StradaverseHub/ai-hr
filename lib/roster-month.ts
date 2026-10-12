@@ -1,3 +1,4 @@
+import { rotationVersionOn, rotationDayOn, type RotationCycle } from '../core/week-pattern';
 /**
  * Monthly roster grid — the pure, CLIENT-SAFE half (item 23390097).
  *
@@ -29,7 +30,8 @@
 export type AssignedCell = { kind: 'shift'; shiftId: string } | { kind: 'rest' } | null;
 
 /** The person's usual (default) shift, with the weekly pattern that decides which days it covers. */
-export type UsualShift = { shiftId: string; pattern: number[] | null; halfPattern?: number[] | null };
+export type UsualShift = { shiftId: string; pattern: number[] | null; halfPattern?: number[] | null;
+  noDefault?: boolean; rotations?: RotationCycle[] };
 
 /** What the cell shows. `usual` is the greyed ghost; `off`/`none` both mean "no shift is scheduled". */
 export type ResolvedCell =
@@ -229,6 +231,11 @@ export const rosterDateLocale = (locale: string): string => (locale === 'en' ? '
 export function resolveRosterCell(iso: string, assigned: AssignedCell, usual: UsualShift | null | undefined): ResolvedCell {
   if (assigned) return assigned.kind === 'shift' ? { kind: 'shift', shiftId: assigned.shiftId } : { kind: 'rest' };
   if (!usual) return { kind: 'none' };
+  const version = rotationVersionOn(usual.rotations ?? [], iso);
+  const day = version ? rotationDayOn(version, iso) : null;
+  if (day) return day.kind === 'full' || day.kind === 'half'
+    ? { kind: 'usual', shiftId: day.shiftId! } : day.kind === 'rest' ? { kind: 'rest' } : { kind: 'off' };
+  if (usual.noDefault) return { kind: 'none' };
   const weekday=isoWeekdayOf(iso);
   return (usual.pattern?.includes(weekday)||usual.halfPattern?.includes(weekday)) ? { kind: 'usual', shiftId: usual.shiftId } : { kind: 'off' };
 }

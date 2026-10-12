@@ -4278,6 +4278,18 @@ export const attendanceRule = pgTable(
   ],
 );
 
+/** Immutable future-effective schedule versions; existing groups receive no backfill. */
+export const attendanceRotation = pgTable('attendance_rotation', {
+  id: id(), tenantId: tenantId(),
+  ruleId: uuid('rule_id').notNull().references(() => attendanceRule.id, { onDelete: 'restrict' }),
+  effectiveFrom: date('effective_from').notNull(), anchorDate: date('anchor_date').notNull(),
+  unit: text('unit').notNull().$type<'week' | 'day'>(), length: integer('length').notNull(),
+  allowedShiftIds: uuid('allowed_shift_ids').array().notNull(),
+  days: jsonb('days').notNull().$type<{ kind: 'full' | 'half' | 'off' | 'rest'; shiftId: string | null }[]>(),
+  createdBy: text('created_by').notNull(), createdAt: createdAt(),
+}, t => [uniqueIndex('attendance_rotation_rule_date_uq').on(t.ruleId, t.effectiveFrom),
+  index('attendance_rotation_tenant_rule_idx').on(t.tenantId, t.ruleId)]);
+
 // One overtime time-band row of an attendance_rule (the reporter's "+ Add Row" OT table). fromMinutes..
 // toMinutes bound the OT duration (minutes past normal); ratePattern 'flat' (any numeric multiplier) or
 // 'variable' (a standardized multiplier). `roundingMode` + `roundToMinutes` round the matched OT minutes.
