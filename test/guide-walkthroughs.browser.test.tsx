@@ -11,7 +11,7 @@ const state = vi.hoisted(() => ({ pathname: '/knowledge-base/example', push: vi.
 vi.mock('next/navigation', () => ({ usePathname: () => state.pathname, useRouter: () => ({ push: state.push }) }));
 vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.complete }));
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); state.pathname = '/knowledge-base/example'; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); });
 
 describe('guide walkthrough launch in Chromium', () => {
   it('launches a new guide, navigates to its module and spotlights a real-sized control', async () => {
@@ -61,7 +61,8 @@ describe('guide walkthrough launch in Chromium', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('keeps the controls in view when a spotlight section is taller than the viewport', async () => {
+  it.each(['monolith', 'classic', 'current'])('keeps the controls in view for a tall spotlight in the %s theme', async theme => {
+    document.documentElement.setAttribute('data-ui-theme', theme);
     state.pathname = '/claims';
     render(<NextIntlClientProvider locale="en" messages={en}>
       <div data-tour="claims-compose" style={{ width: 400, height: 2000 }}>Long claim form</div>
