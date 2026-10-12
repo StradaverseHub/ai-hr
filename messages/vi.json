@@ -14693,7 +14693,9 @@
       "guides": "Thêm hướng dẫn trợ giúp",
       "admin": "Tạo tài khoản quản trị viên",
       "invitation": "Cấp liên kết kích hoạt"
-    }
+    },
+    "knowledgeBase": "Cơ sở kiến thức dành cho người vận hành",
+    "guidesDescription": "Hướng dẫn thiết lập khách hàng, kích hoạt, email và hỗ trợ. Hướng dẫn cập nhật hiện có bằng tiếng Anh."
   },
   "currencySelect": {
     "placeholder": "Chọn tiền tệ",

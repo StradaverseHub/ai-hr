@@ -1,3 +1,5 @@
+import { Markdown } from '@/components/markdown';
+import { loadOperatorGuides } from '@/lib/guide-catalog';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -33,6 +35,7 @@ export default async function OperatorPage() {
   const s = await getSession();
   if (!isOperator(s) || isDemoDeployment()) redirect('/');
 
+  const guides = loadOperatorGuides();
   const t = await getTranslations('operator');
   const locale = await getLocale();
   const requests = await listProvisionRequests(s);
@@ -69,6 +72,7 @@ export default async function OperatorPage() {
           than pointing at the new route: an operator is not a tenant admin, so following it would only
           bounce them. */}
       <PageHeader title={t('title')} description={t('description')} />
+      <a href="#operator-knowledge-base" className="text-sm font-medium text-primary underline underline-offset-2">{t('knowledgeBase')}</a>
 
       <Card className="p-4">
         <SectionHeader title={t('newCustomer')} />
@@ -234,6 +238,20 @@ export default async function OperatorPage() {
             ))}
           </ul>
         )}
+      </Card>
+      <Card className="p-4" >
+        <section id="operator-knowledge-base" aria-labelledby="operator-guides-heading" className="scroll-mt-6">
+          <h2 id="operator-guides-heading" className="text-lg font-semibold">{t('knowledgeBase')}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t('guidesDescription')}</p>
+          <div className="mt-4 divide-y divide-border" lang="en">
+            {guides.map(guide => (
+              <details key={guide.slug} id={guide.slug} className="py-3">
+                <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-primary">{guide.title}</summary>
+                <Markdown className="mt-3">{guide.body}</Markdown>
+              </details>
+            ))}
+          </div>
+        </section>
       </Card>
     </div>
   );

@@ -413,6 +413,11 @@ else
   echo "▸ Customer deployment — the demo seeder was not run and is not reachable from this mode."
 fi
 
+# Refresh bundled documentation on EVERY release, including existing customer tenants.
+# This only upserts system articles; it never runs the destructive demo seed.
+echo "▸ Refreshing system knowledge-base guides…"
+node --env-file=.env.production --import tsx db/seed-guides.ts --all
+
 echo "▸ Restarting service…"
 dstate phase restart
 # Detect the unit directly. The old `list-unit-files | grep -q` form was fragile (under set -o

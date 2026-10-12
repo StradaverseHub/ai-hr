@@ -14693,7 +14693,9 @@
       "guides": "Tambah panduan bantuan",
       "admin": "Cipta log masuk pentadbir",
       "invitation": "Keluarkan pautan pengaktifan"
-    }
+    },
+    "knowledgeBase": "Pangkalan pengetahuan pengendali",
+    "guidesDescription": "Panduan penyediaan pelanggan, pengaktifan, e-mel dan sokongan. Panduan terkini tersedia dalam bahasa Inggeris."
   },
   "currencySelect": {
     "placeholder": "Pilih mata wang",

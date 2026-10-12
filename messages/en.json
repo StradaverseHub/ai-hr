@@ -14693,7 +14693,9 @@
       "guides": "Add the help guides",
       "admin": "Create the administrator login",
       "invitation": "Issue the activation link"
-    }
+    },
+    "knowledgeBase": "Operator knowledge base",
+    "guidesDescription": "Guides for provisioning, activation, email and support. Updated guidance is currently available in English."
   },
   "currencySelect": {
     "placeholder": "Select currency",

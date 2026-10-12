@@ -14693,7 +14693,9 @@
       "guides": "添加帮助指南",
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
-    }
+    },
+    "knowledgeBase": "运营人员知识库",
+    "guidesDescription": "客户开通、激活、邮件和支持指南。更新后的指南目前提供英文版本。"
   },
   "currencySelect": {
     "placeholder": "选择货币",
