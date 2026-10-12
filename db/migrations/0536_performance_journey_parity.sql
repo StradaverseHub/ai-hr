@@ -1,5 +1,6 @@
 -- Native assessment journey: private working copies, persisted conversations and catalogue.
--- Apply strictly after 0531–0534. Historical assessment identifiers remain stable.
+-- Reserved when 1791900000016; journal only after the coordinated handoff.
+-- Apply strictly after 0531–0535. Historical assessment identifiers remain stable.
 ALTER TABLE performance_onehr_review ADD COLUMN profile_id uuid, ADD COLUMN profile_match text, ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
 ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(principle_comments)='object');
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
