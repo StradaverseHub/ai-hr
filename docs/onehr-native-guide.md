@@ -46,6 +46,6 @@ The package supplies source code and handoff documents, not live employee-histor
 
 AI assistance uses the native provider configuration. It selects only authorized existing passages, rechecks access and current evidence after the provider call, and requires the human to edit and use the suggestion. It cannot set ratings, nominations or pay.
 
-Implementation decisions and source provenance: [ADR-0102](adr/0102-onehr-native-performance-and-rewards.md).
+Implementation decisions and source provenance: [ADR-0103](adr/0103-onehr-native-performance-and-rewards.md).
 
 For a disposable local demo, run the normal demo seed followed by `node --env-file=.env.local --import tsx scripts/dev-fixture-onehr.ts`. The fixture refuses non-demo production/authentication settings and creates an isolated fictional company with a finalized assessment and an imported annual Rewards unit. It is not run by deployment.
