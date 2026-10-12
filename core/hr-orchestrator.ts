@@ -16,8 +16,12 @@ function assertAdmin(ctx: SessionContext) {
 }
 
 function scopeDigest(ctx: SessionContext) {
-  return digestOf((ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? [])
-    .map(g => [g.role, g.companyId]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  const grants = ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? [];
+  // Match effective administrative authority, not unrelated employee/manager grants on the same user.
+  if (grants.some(g => g.role === 'super_admin' || (g.role === 'hr_admin' && g.companyId == null))) {
+    return digestOf(['all-employments']);
+  }
+  return digestOf([...new Set(grants.filter(g => g.role === 'hr_admin').map(g => g.companyId))].sort());
 }
 
 export async function reconcileReadinessCases(ctx: SessionContext) {

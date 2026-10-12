@@ -7,8 +7,9 @@
  * review recurs.** This is the shift-left half. Same questions, asked continuously against the RECORD, and
  * answered as a list of things to complete rather than a list of things to disposition.
  *
- * ⚠️ IT IS A QUERY, NOT A STORED VERDICT, AND THAT IS THE DESIGN. There is no readiness table, no sweep and
- * no migration. Readiness is a function of the records as they are RIGHT NOW, so a computed-and-stored
+ * ⚠️ IT IS A QUERY, NOT A STORED VERDICT. Readiness is a function of the records as they are RIGHT NOW.
+ * ADR-0104's coordination cases reference this query and timestamp observations; they do not own facts.
+ * A computed-and-stored
  * answer could only ever be wrong — stale the moment somebody fills a field in, and needing its own
  * invalidation story to stop lying. The payroll adapter persists verdicts because a verdict is a statement
  * about one RUN, which is immutable once made. A gap is a statement about a record, which is not.

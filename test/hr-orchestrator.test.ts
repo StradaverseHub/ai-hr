@@ -98,6 +98,11 @@ describe('central HR orchestrator', () => {
     expect(run.nudge).toMatchObject({ status: 'succeeded', value: { disabled: true } });
     expect(run.triage).toMatchObject({ status: 'succeeded', value: { disabled: true } });
     expect((await cases()).length).toBeGreaterThan(0);
+    const reader = { ...adminCtx(base), grants: [
+      { role: 'hr_admin', companyId: null }, { role: 'employee', companyId: null },
+    ] };
+    expect((await orchestrationQueue(reader)).lastRun?.failed).toBe(false);
+    expect((await orchestrationQueue({ ...adminCtx(base), grants: [{ role: 'super_admin', companyId: null }] })).observedAt).not.toBeNull();
   });
 
   it('a failed specialist does not suppress verification and is recorded as failed', async () => {
