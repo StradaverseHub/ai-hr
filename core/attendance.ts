@@ -3681,6 +3681,38 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
   return row ?? null;
 }
 
+/** All application writers use subject -> correction -> workflow/payroll -> audit order. Discovering
+ * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
+ * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
+async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
+  const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
+    .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
+  if (!visible) return undefined;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
+  const [locked] = await tx.select().from(attendanceCorrection)
+    .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
+    .limit(1).for('update');
+  return locked;
+}
+
+/** NULL appliedAt predates deferred OT and cannot prove that an old approval never reached attendance.
+ * Only the immutable deferred approval event, with no subsequent effect evidence, permits no-op withdrawal. */
+async function provenUnlandedDeferredOtTx(tx: Tx, cor: typeof attendanceCorrection.$inferSelect) {
+  if (cor.status !== 'approved' || cor.appliedAt || cor.requestedOtMinutes == null
+    || cor.proposedCheckIn || cor.proposedCheckOut || cor.clockChanges) return false;
+  const [approval] = await tx.select({ payload: domainEvent.payload }).from(domainEvent)
+    .where(and(eq(domainEvent.tenantId, cor.tenantId), eq(domainEvent.aggregateId, cor.id),
+      eq(domainEvent.eventType, 'attendance-correction.approved')))
+    .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
+  if ((approval?.payload as { deferred?: unknown } | undefined)?.deferred !== true) return false;
+  const [effect] = await tx.select({ id: domainEvent.id }).from(domainEvent)
+    .where(and(eq(domainEvent.tenantId, cor.tenantId), or(
+      and(eq(domainEvent.aggregateId, cor.id), eq(domainEvent.eventType, 'attendance-correction.effect.recorded')),
+      and(eq(domainEvent.eventType, 'attendance.amended'), sql`${domainEvent.payload}->>'correctionId'=${cor.id}`,
+        sql`${domainEvent.payload}->>'otPlanApplied'='true'`)))).limit(1);
+  return !effect;
+}
+
 /** Decide a correction. Approval upserts the attendance row with the proposed punches,
  *  re-derived through the time engine (so corrected OT flows to payroll). No self-approval.
  *
@@ -3700,11 +3732,7 @@ export async function decideAttendanceCorrection(
 ) {
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
   return withTenant(ctx, async (tx) => {
-    const [cor] = await tx
-      .select()
-      .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1).for('update');
+    const cor = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
@@ -3746,7 +3774,6 @@ export async function decideAttendanceCorrection(
         if (!operationalSubject) throw new Error('The assigned manager no longer has attendance calculation access to this employee. Ask an authorised HR administrator to complete the stage.');
       }
     if (p.decision === 'approved') {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + cor.employmentId}, 0))`);
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
       const dayType = sched.dayType;
       const hasClockCorrection = cor.proposedCheckIn != null || cor.clockChanges != null;
@@ -5087,7 +5114,7 @@ async function applyApprovedOtPlanTx(
   const claimed = await tx
     .update(attendanceCorrection)
     .set({ appliedAt: sql`now()` })
-    .where(and(eq(attendanceCorrection.id, plan.id), isNull(attendanceCorrection.appliedAt)))
+    .where(and(eq(attendanceCorrection.id, plan.id), eq(attendanceCorrection.status, 'approved'), isNull(attendanceCorrection.appliedAt)))
     .returning({ id: attendanceCorrection.id });
   if (claimed.length === 0) return null;
 
@@ -5229,11 +5256,7 @@ export async function cancelPlannedOvertime(
 ): Promise<{ status: 'cancelled' }> {
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    const [plan] = await tx
-      .select()
-      .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1).for('update');
+    const plan = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!plan) throw new OvertimePlanWithdrawNotAllowedError('overtime plan not found (or not visible)');
     if (plan.clockChanges) throw new OvertimePlanWithdrawNotAllowedError('A clock correction cannot be withdrawn as an overtime plan.');
 
@@ -5256,6 +5279,11 @@ export async function cancelPlannedOvertime(
       if (plan.appliedAt != null) {
         throw new OvertimePlanWithdrawNotAllowedError(
           'These hours have already been counted on the attendance day, so they can no longer be withdrawn.',
+        );
+      }
+      if (!await provenUnlandedDeferredOtTx(tx, plan)) {
+        throw new OvertimePlanWithdrawNotAllowedError(
+          'This historical approval has no proof that its hours are uncounted. Submit an attendance correction instead.',
         );
       }
       if (plan.attendanceDate < today) {
@@ -5436,11 +5464,7 @@ export async function cancelOwnAttendanceCorrection(
   p: { correctionId: string },
 ): Promise<{ status: 'cancelled' }> {
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx
-      .select()
-      .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1).for('update');
+    const req = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!req) throw new Error('attendance request not found (or not visible)');
     await assertOwnCorrectionTx(tx, ctx, req.employmentId);
     if (attendanceApplicationType(req) === 'self_overtime') {
@@ -6105,7 +6129,7 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
     if (!['cancelled', 'withdrawn'].includes(p.kind) || !p.reason?.trim() || p.reason.trim().length > 1000)
         throw new Error('A cancellation reason of 1–1000 characters is required.');
     return withTenant(ctx, async (tx) => {
-        const [cor] = await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id, p.correctionId)).limit(1).for('update');
+        const cor = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
         if (!cor)
             throw new Error('Attendance application not found or not visible.');
         const [subject] = await tx.select({ personId: employment.personId, allowed: sql<boolean> `app.can_admin_employment(${employment.id})` }).from(employment).where(eq(employment.id, cor.employmentId)).limit(1);
@@ -6115,9 +6139,8 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
             throw new Error('You cannot administratively cancel your own attendance application.');
         if (cor.status !== 'pending' && cor.status !== 'approved')
             throw new Error('Only pending or approved applications can be cancelled or withdrawn.');
-        await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + cor.employmentId},0))`);
         let reversed = false;
-        if (cor.status === 'approved' && (cor.appliedAt || cor.proposedCheckIn || cor.clockChanges)) {
+        if (cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
             const batches = await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
             const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, sql `${attendanceCorrection.decidedAt}>${cor.decidedAt}`)).limit(1);
             if (later.length)
