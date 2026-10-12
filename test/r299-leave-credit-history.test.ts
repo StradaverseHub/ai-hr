@@ -17,9 +17,10 @@ import type { SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { updateLeaveType } from '../core/admin';
 import { setRestDay } from '../core/roster';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
-import { adminCancelLeave, decideLeave, leaveBalance, leaveTypeApplySummary, requestLeave } from '../core/leave';
+import { adminCancelLeave, decideLeave, decideLeaveCancellation, leaveBalance, leaveTypeApplySummary, requestLeave, requestLeaveCancellation } from '../core/leave';
 import { applyLeaveAdjustmentBatch, LeaveAdjustmentError } from '../core/leave-adjustment';
 import { commitLeaveImport, validateLeaveImport } from '../core/leave-import';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -215,6 +216,42 @@ describe('Leave Credit history — derived, classified, and the running total is
     expect((await listLeaveCreditMovements(admin, { from: addDays(TODAY, 400), today: TODAY })).rows).toHaveLength(0);
     expect((await listLeaveCreditMovements(admin, { employmentId: mgr.employmentId, today: TODAY })).rows).toHaveLength(0);
   });
+  it('projects real split consumption over approved dates and returns the original lots after partial cancellation', async () => {
+    const emp = await hire('Split credit employee');
+    const manager = await hire('Split credit manager');
+    await setReportingLine(adminCtx(b), { subordinateEmploymentId:emp.employmentId, managerEmploymentId:manager.employmentId, lineType:'administrative', validFrom:'2024-01-01' });
+    const employee:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,emp.personId,'employee'),personId:emp.personId,roles:['employee'],entitlements:admin.entitlements};
+    const approver:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],entitlements:admin.entitlements};
+    const worked1=`${LAST_MONTH}-08`,worked2=`${LAST_MONTH}-09`;
+    for(const workedDate of [worked1,worked2])await setRestDay(adminCtx(b),{employmentId:emp.employmentId,shiftDate:workedDate});
+    const first=await grantLeaveCredit(admin,{employmentId:emp.employmentId,workedDate:worked1,days:.75,reason:'First lot',expiresOn:addDays(TODAY,90),today:TODAY});
+    const second=await grantLeaveCredit(admin,{employmentId:emp.employmentId,workedDate:worked2,days:1.25,reason:'Second lot',expiresOn:addDays(TODAY,100),today:TODAY});
+    const typeId=await replacementTypeId();
+    await updateLeaveType(admin,{id:typeId,name:'Replacement Leave',employeeCancelApproved:true,cancelNoticeDays:0,cancelAutoApprove:false});
+    const mon=nextMonday(addDays(TODAY,21)),tue=addDays(mon,1);
+    const leave=await requestLeave(employee,{employmentId:emp.employmentId,leaveTypeId:typeId,startDate:mon,endDate:tue,today:TODAY});
+    await decideLeave(approver,{leaveRequestId:leave.leaveRequestId,decision:'approved'});
+    const register=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(register.summary).toEqual({earned:2,used:2,expired:0,available:0});
+    expect(register.rows.find(row=>row.accrualId===first.accrualId)?.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:.75}]);
+    expect(register.rows.find(row=>row.accrualId===second.accrualId)?.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:.25},{requestId:leave.leaveRequestId,date:tue,days:1}]);
+    expect(register.rows.every(row=>row.status==='fully_used'&&row.unattributedUsed===0)).toBe(true);
+    await expect(listEarnedLeaveCredits(employee,{employmentId:emp.employmentId,today:TODAY})).rejects.toThrow(/HR administrators/);
+    const cancel=await requestLeaveCancellation(employee,{leaveRequestId:leave.leaveRequestId,cancelDates:[mon],today:TODAY});
+    await decideLeaveCancellation(approver,{cancellationRequestId:cancel.cancellationRequestId,decision:'approved'});
+    const remaining=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(remaining.summary).toEqual({earned:2,used:1,expired:0,available:1});
+    expect(remaining.rows.find(row=>row.accrualId===first.accrualId)).toMatchObject({used:.75,available:0,usage:[{date:tue,days:.75}]});
+    expect(remaining.rows.find(row=>row.accrualId===second.accrualId)).toMatchObject({used:.25,available:1,usage:[{date:tue,days:.25}]});
+    expect(remaining.rows.every(row=>row.unattributedUsed===0)).toBe(true);
+    const survivor=remaining.rows.flatMap(row=>row.usage).find(usage=>usage.date===tue)!;
+    await adminCancelLeave(admin,{leaveRequestId:survivor.requestId,reason:'Cancel remaining date'});
+    const restored=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(restored.summary).toEqual({earned:2,used:0,expired:0,available:2});
+    expect(restored.rows.find(row=>row.accrualId===first.accrualId)).toMatchObject({available:.75,usage:[]});
+    expect(restored.rows.find(row=>row.accrualId===second.accrualId)).toMatchObject({available:1.25,usage:[]});
+  });
+
 });
 
 describe('Leave Adjustments refuses the Replacement Leave type (gap 8)', () => {

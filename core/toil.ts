@@ -3168,11 +3168,13 @@ export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:s
     if(p.companyIds?.length===0)return empty;
     const accruals=await tx.select({lot:toilAccrual,name:person.fullName,code:employment.employeeCode})
       .from(toilAccrual).innerJoin(employment,eq(employment.id,toilAccrual.employmentId)).innerJoin(person,eq(person.id,employment.personId))
-      .where(and(p.companyIds?inArray(employment.companyId,p.companyIds):undefined,p.employmentId?eq(toilAccrual.employmentId,p.employmentId):undefined))
+      .where(and(sql`app.is_admin_for(${employment.companyId})`,p.companyIds?inArray(employment.companyId,p.companyIds):undefined,p.employmentId?eq(toilAccrual.employmentId,p.employmentId):undefined))
       .orderBy(asc(toilAccrual.workedDate),asc(toilAccrual.createdAt),asc(toilAccrual.id));
     if(!accruals.length)return empty;
     const lotIds=accruals.map(x=>x.lot.id),empIds=[...new Set(accruals.map(x=>x.lot.employmentId))];
-    const events=await tx.select().from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),
+    const events=await tx.select({aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,sequence:domainEvent.sequence,
+      payload:sql<Record<string,unknown>>`jsonb_build_object('requestId', ${domainEvent.payload}->'requestId', 'daysConsumed', ${domainEvent.payload}->'daysConsumed', 'daysRestored', ${domainEvent.payload}->'daysRestored', 'splitFromRequestId', ${domainEvent.payload}->'splitFromRequestId')`})
+      .from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),
       inArray(domainEvent.subjectEmploymentId,empIds),or(inArray(domainEvent.aggregateId,lotIds),eq(domainEvent.eventType,'leave-request.split'))))
       .orderBy(asc(domainEvent.sequence));
     const net=new Map<string,{accrualId:string;requestId:string;days:number;seq:number}>();
@@ -3204,7 +3206,7 @@ export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:s
     }
     const creditIds=accruals.map(x=>x.lot.ledgerEntryId).filter((x):x is string=>!!x);
     const ledger=creditIds.length?await tx.select().from(leaveLedger).where(inArray(leaveLedger.id,creditIds)):[];
-    const grantActors=await tx.select({event:domainEvent,name:person.fullName}).from(domainEvent)
+    const grantActors=await tx.select({event:{aggregateId:domainEvent.aggregateId,occurredAt:domainEvent.occurredAt,subjectEmploymentId:domainEvent.subjectEmploymentId,actorType:domainEvent.actorType},name:person.fullName}).from(domainEvent)
       .leftJoin(appUser,sql`${appUser.id}::text = ${domainEvent.actorId}`).leftJoin(person,eq(person.id,appUser.personId))
       .where(and(inArray(domainEvent.subjectEmploymentId,empIds),eq(domainEvent.tenantId,ctx.tenantId)))
       .orderBy(asc(domainEvent.sequence));

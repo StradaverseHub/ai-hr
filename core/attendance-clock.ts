@@ -9,6 +9,7 @@ import { myEmployment, myEmployments } from './read';
 import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { decodeClockPhoto } from '../lib/attendance-photo';
+import { clockCommandContext } from '../lib/clock-command-context';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,6 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // every existing import and `instanceof` keeps the same identity.
 export { ClockConflictError, CorrectedClockConflictError };
 export class ClockLocationError extends Error {}
+export class ClockContextChangedError extends Error {}
 // r430 — thrown server-side when the employee's attendance_photo_setting is 'required' and the request
 // carried no photo. Never trust the client's own idea of the setting (components/attendance-clock-button.tsx
 // and the admin Daily page are untouched by this — this is Web Clocking's own capture path only).
@@ -23,7 +25,7 @@ export class AttendancePhotoRequiredError extends Error {}
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device); photo/mime are now
 // OPTIONAL — whether one is required, optional or ignored is decided server-side from the employee's own
 // attendance_photo_setting, never from what the client chooses to send.
-export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number; lng: number; accuracy: number; photo?: Buffer; mime?: string };
+export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number; lng: number; accuracy: number; photo?: Buffer; mime?: string; clockContext?: string };
 // r430 — photoAvailable must also check photoDigest: a capture with NO photo (not_required, or optional
 // skipped) has photoPurgedAt null too (nothing was ever purged), which would otherwise misreport a photo
 // that was never taken as available.
@@ -67,6 +69,7 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
 async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number }) {
   const me = native ? (await myEmployments(ctx)).find(e => e.employmentId === native.employmentId) : await myEmployment(ctx);
   if (!me) throw new Error('No active employee profile');
+  if (p.clockContext != null && p.clockContext !== clockCommandContext(ctx.tenantId, ctx.userId, me.employmentId)) throw new ClockContextChangedError('Sign in to the original employee account to recover this clocking.');
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
   if (![p.lat, p.lng, p.accuracy].every(Number.isFinite) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180 || p.accuracy < 0) throw new ClockLocationError('Valid location and accuracy are required');
   return withTenant(ctx, async tx => {

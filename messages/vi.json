@@ -3084,7 +3084,8 @@
       "invalid": "Yêu cầu chấm công bị từ chối. Hãy kiểm tra chi tiết rồi thử lại.",
       "pendingCommand": "Có một lần chấm công đang chờ xác nhận. Hãy kiểm tra trước khi tạo lần mới.",
       "checkSubmission": "Kiểm tra kết quả gửi",
-      "signInAgain": "Đăng nhập lại"
+      "signInAgain": "Đăng nhập lại",
+      "accountChanged": "Tài khoản nhân viên đang đăng nhập đã thay đổi. Hãy đăng nhập tài khoản ban đầu để kiểm tra lần chấm công này."
     },
     "colOtFlat": "Tăng ca cố định",
     "colOt00": "Tăng ca 0.0 (không trả)",
@@ -11611,7 +11612,8 @@
       "usageOn": "{days} vào {date}",
       "legacyUsage": "Đã dùng {days}; bản ghi cũ không lưu từng ngày nghỉ.",
       "expiredOn": "{days} hết hạn vào {date}",
-      "auditLedger": "Sổ biến động (kiểm toán)"
+      "auditLedger": "Sổ biến động (kiểm toán)",
+      "usageHint": "Mức sử dụng hiển thị các ngày nghỉ đã duyệt còn lại sau khi hủy."
     }
   },
   "topbar": {

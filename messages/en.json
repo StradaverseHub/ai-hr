@@ -3084,7 +3084,8 @@
       "invalid": "The clocking request was refused. Check the details and try again.",
       "pendingCommand": "A clocking is awaiting confirmation. Check it before starting another.",
       "checkSubmission": "Check submission",
-      "signInAgain": "Sign in again"
+      "signInAgain": "Sign in again",
+      "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking."
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",
@@ -11611,7 +11612,8 @@
       "usageOn": "{days} on {date}",
       "legacyUsage": "{days} used; individual leave dates were not retained in the legacy record.",
       "expiredOn": "{days} expired on {date}",
-      "auditLedger": "Movement ledger (audit)"
+      "auditLedger": "Movement ledger (audit)",
+      "usageHint": "Usage shows the approved leave that remains after cancellations."
     }
   },
   "topbar": {

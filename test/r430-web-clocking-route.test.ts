@@ -11,6 +11,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { adminCtx, harnessSnapshot, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
+import { ownClockToday } from '../core/attendance-clock-read';
 
 let b: Base;
 let CALLER: SessionContext;
@@ -93,4 +94,19 @@ it('confirms own accepted request and refuses a supplied subject or another empl
   const own=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}`));expect(own.status).toBe(200);expect((await own.json()).receipt).toEqual((await accepted.json()).receipt);
   const invalid=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}&employmentId=${randomUUID()}`));expect(invalid.status).toBe(400);
   await hire();const other=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}`));expect(other.status).toBe(404);
+});
+
+// An expired login may be renewed into a different account in another tab. A retry cannot clock that account.
+it('binds new web commands to the original authenticated employee context',async()=>{
+  const originalId=await hire(),originalCaller=CALLER;
+  const originalContext=(await ownClockToday(CALLER)).clockContext;
+  const requestId=randomUUID();
+  const fields={action:'in',requestId,clockContext:originalContext,lat:'3',lng:'101',accuracy:'10'};
+  expect((await post(fields)).status).toBe(200);
+  const otherId=await hire();
+  const refused=await post(fields);expect(refused.status).toBe(409);expect(await refused.json()).toEqual({error:'accountChanged'});
+  expect(await owner.db.select({id:schema.attendance.id}).from(schema.attendance).where(eq(schema.attendance.employmentId,otherId))).toEqual([]);
+  CALLER=originalCaller;
+  const recovered=await post(fields);expect(recovered.status).toBe(200);
+  expect(await owner.db.select({id:schema.attendanceClockCapture.id}).from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId,originalId))).toHaveLength(1);
 });

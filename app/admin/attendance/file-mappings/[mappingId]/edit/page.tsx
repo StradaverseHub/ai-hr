@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -18,6 +19,7 @@ export default async function EditFileMappingPage({ params }: { params: Promise<
   const { id: _id, createdAt: _c, updatedAt: _u, lastUsedAt: _l, ...initial } = m;
   return (
     <div className="mx-auto max-w-[90rem] space-y-6">
+      <AttendanceSettingsNavigation />
       <PageHeader back={{ href: '/admin/attendance/file-mappings', label: t('back') }} title={t('editTitle')} description={t('intro')} />
       <MappingForm mappingId={m.id} initial={initial} />
     </div>

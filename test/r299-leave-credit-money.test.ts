@@ -39,6 +39,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { leaveBalance } from '../core/leave';
 import {
   grantLeaveCredit,
+  listEarnedLeaveCredits,
   LeaveCreditError,
   previewLeaveCredit,
   reverseLeaveCredit,
@@ -547,6 +548,8 @@ describe('HR credit actions are for an administrator OF THE EMPLOYEE’S COMPANY
       tx.select({ id: schema.toilAccrual.id }).from(schema.toilAccrual).where(eq(schema.toilAccrual.id, creditB.accrualId)),
     );
     expect(visible, 'the manager chain must make the B credit visible, or this case proves nothing').toHaveLength(1);
+    expect((await listEarnedLeaveCredits(scopedCtx, { employmentId: inB.employmentId, today: TODAY })).rows,
+      'the HR register does not inherit the wider manager read scope').toEqual([]);
 
     await expect(
       grantLeaveCredit(scopedCtx, { employmentId: inB.employmentId, workedDate: firstWeekdayOf(7), days: 1, reason: 'x', today: TODAY }),

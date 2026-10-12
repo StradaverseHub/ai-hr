@@ -392,8 +392,8 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
     // precisely what recomputing after a holiday is recorded does — moves what an already-processed run
     // paid while raising nothing. MEASURED: rest_day -> holiday with worked 420 and ot 420 both
     // unchanged moves ot20 420->0 and ot30 0->420, and the run was never flagged.
-    // This is the complete set: every payroll-side reader of an attendance row keys off worked minutes,
-    // OT minutes, or the day type.
+    // Allowance rules also consume lateness and early-out penalties. A duration-rule correction must
+    // flag their processed payroll even when worked and OT minutes stay unchanged.
     const payAffecting = changedRows
       .filter(
         (c) =>

@@ -331,7 +331,7 @@ async function CompanyView({
   return (
     <div className={pageWideCls}>
       <AttendanceSettingsNavigation />
-      <PageHeader back={{ href: '/admin/attendance/settings', label: (await getTranslations('attendanceSettingsHub'))('backToSettings') }}
+      <PageHeader
         title={companyName}
         description={isOrphan ? undefined : t('companyViewDescription')}
         back={{ href: CLOCKING_LIST, label: t('backToAllCompanies') }}

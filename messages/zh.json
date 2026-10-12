@@ -3084,7 +3084,8 @@
       "invalid": "打卡请求被拒绝。请检查详情后重试。",
       "pendingCommand": "一条打卡记录正在等待确认。开始另一次打卡前请先检查。",
       "checkSubmission": "检查提交结果",
-      "signInAgain": "重新登录"
+      "signInAgain": "重新登录",
+      "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",
@@ -11611,7 +11612,8 @@
       "usageOn": "{date}使用{days}",
       "legacyUsage": "已用{days}；旧记录未保留各休假日期。",
       "expiredOn": "{days}于{date}过期",
-      "auditLedger": "变动台账（审计）"
+      "auditLedger": "变动台账（审计）",
+      "usageHint": "使用记录显示取消后仍然有效的已批准假期。"
     }
   },
   "topbar": {

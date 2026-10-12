@@ -1,33 +1,38 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 
-/** Independent forms retain independent save scopes. GET filters are navigation, not edits. */
-export function AttendanceSettingsNavigation() {
+const snapshot = (form: HTMLFormElement) => JSON.stringify(Array.from(form.elements).flatMap(element => {
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) || !element.name || element.name.startsWith('$ACTION_') || ['submit', 'button', 'reset'].includes(element.type)) return [];
+  if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) return [[element.name, element.value, element.checked]];
+  if (element instanceof HTMLInputElement && element.type === 'file') return [[element.name, Array.from(element.files ?? []).map(f => [f.name, f.size, f.lastModified])]];
+  if (element instanceof HTMLSelectElement && element.multiple) return [[element.name, Array.from(element.selectedOptions).map(o => o.value)]];
+  return [[element.name, element.value]];
+}));
+
+/** Independent forms retain independent save scopes. GET filters are navigation, not edits.
+ * A client action increments savedRevision only after persistence succeeds for formId. */
+export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId?: string; savedRevision?: string | number } = {}) {
   const t = useTranslations('attendanceSettingsHub');
   const router = useRouter();
   const pathname = usePathname();
+  const baselinesRef = useRef(new Map<HTMLFormElement, string>());
+  const savedRef = useRef({ formId, savedRevision });
   useEffect(() => {
-    const baselines = new Map<HTMLFormElement,string>();
+    const baselines = baselinesRef.current;
+    baselines.clear();
     let armed = false;
     let leaving = false;
-    const snapshot = (form: HTMLFormElement) => JSON.stringify(Array.from(form.elements).flatMap(element => {
-      if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) || !element.name || element.name.startsWith('$ACTION_') || element.type === 'hidden' || element.type === 'submit') return [];
-      if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) return [[element.name, element.value, element.checked]];
-      if (element instanceof HTMLInputElement && element.type === 'file') return [[element.name, Array.from(element.files ?? []).map(f => [f.name,f.size,f.lastModified])]];
-      if (element instanceof HTMLSelectElement && element.multiple) return [[element.name,Array.from(element.selectedOptions).map(o=>o.value)]];
-      return [[element.name,element.value]];
-    }));
     const observeForms = () => document.querySelectorAll<HTMLFormElement>('form').forEach(form => {
       if (form.getAttribute('method')?.toLowerCase() === 'get' || form.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
       if (!baselines.has(form)) baselines.set(form,snapshot(form));
     });
     observeForms();
-    const observer = new MutationObserver(observeForms);
-    observer.observe(document.body,{childList:true,subtree:true});
+    const observer = new MutationObserver(() => { observeForms(); edit(); });
+    observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['value','checked','selected']});
     const dirtyForms = () => [...baselines].filter(([form,baseline])=>form.isConnected && snapshot(form)!==baseline).map(([form])=>form);
     const dirty = () => !leaving && dirtyForms().length>0;
     const ask = (proceed:()=>void) => { if (!dirty() || window.confirm(t('leaveUnsaved'))) { leaving=true; proceed(); } };
@@ -50,9 +55,7 @@ export function AttendanceSettingsNavigation() {
       if(!(form instanceof HTMLFormElement))return;
       const others=dirtyForms().filter(f=>f!==form);
       if(others.length && !window.confirm(t('leaveOtherUnsaved'))){e.preventDefault();e.stopPropagation();return;}
-      // This form is being saved. Other independent forms are discarded only after explicit confirmation.
-      baselines.set(form,snapshot(form));
-      if(others.length)leaving=true;
+      // Submitting is not proof of persistence. Validation and network failures retain every baseline.
     };
     const pop=()=>{
       if(!armed || leaving)return;
@@ -65,5 +68,12 @@ export function AttendanceSettingsNavigation() {
     window.addEventListener('beforeunload',before);window.addEventListener('popstate',pop);
     return()=>{observer.disconnect();unregister();document.removeEventListener('input',edit,true);document.removeEventListener('change',edit,true);document.removeEventListener('click',click,true);document.removeEventListener('submit',submit,true);window.removeEventListener('beforeunload',before);window.removeEventListener('popstate',pop);};
   },[pathname,router,t]);
+  useEffect(() => {
+    const previous = savedRef.current;
+    savedRef.current = { formId, savedRevision };
+    if (!formId || previous.formId !== formId || previous.savedRevision === savedRevision) return;
+    const form = document.getElementById(formId);
+    if (form instanceof HTMLFormElement && baselinesRef.current.has(form)) baselinesRef.current.set(form, snapshot(form));
+  }, [formId, savedRevision]);
   return null;
 }

@@ -3084,7 +3084,8 @@
       "invalid": "Permintaan rekod waktu ditolak. Semak butiran dan cuba lagi.",
       "pendingCommand": "Rekod waktu menunggu pengesahan. Semak sebelum memulakan rekod lain.",
       "checkSubmission": "Semak penghantaran",
-      "signInAgain": "Log masuk semula"
+      "signInAgain": "Log masuk semula",
+      "accountChanged": "Akaun pekerja yang dilog masuk telah berubah. Log masuk ke akaun asal untuk menyemak rekod waktu ini."
     },
     "colOtFlat": "OT Rata",
     "colOt00": "OT 0.0 (tanpa bayaran)",
@@ -11611,7 +11612,8 @@
       "usageOn": "{days} pada {date}",
       "legacyUsage": "{days} digunakan; tarikh cuti individu tidak disimpan dalam rekod lama.",
       "expiredOn": "{days} tamat pada {date}",
-      "auditLedger": "Lejar pergerakan (audit)"
+      "auditLedger": "Lejar pergerakan (audit)",
+      "usageHint": "Penggunaan menunjukkan cuti diluluskan yang masih berbaki selepas pembatalan."
     }
   },
   "topbar": {

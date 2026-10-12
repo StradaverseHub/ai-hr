@@ -27,36 +27,13 @@ import { grantLeaveCreditRowsAction, leaveCreditGrantContextAction, leaveCreditG
 const PAGE = '/admin/leave-config/leave-credit';
 
 /**
- * 3fb1a611 (r299) — LEAVE CONFIG › LEAVE CREDIT (`/admin/leave-config/leave-credit`).
+ * The Credits tab lists one row per earned lot, its actual consumed amounts and remaining balance.
+ * Worked-date/status filters and employee totals apply before pagination. The full movement ledger stays
+ * in a separate audit disclosure; neither settlement nor restoration is presented as another earning.
  *
- * The approved plan's HR screen, and the answer to "why does this person have two days of Replacement Leave":
- * every credit movement — earned through a request (or the roster / an attendance correction), added by HR,
- * used by Replacement Leave, returned when that leave was cancelled, reversed, expired or paid out — each
- * traced to its date worked, with balance before and after, the reason, who did it and when, and its status.
- *
- * ONE LEDGER. Nothing on this page is stored twice: the list is `listLeaveCreditMovements` (core/toil.ts),
- * DERIVED from the Replacement Leave type's leave_ledger rows joined to the credit register and the audit log.
- * Its RUNNING-TOTAL ORDER is per employee, `effective_on`, then `created_at`, then `id` — stated on screen too,
- * because a line dated earlier than lines already recorded changes Before and After for every later line.
- *
- * THE CREDITS TAB of the Leave Credit row (the Rules tab is its own route, `./rules/page.tsx`, drawn by the
- * row's tab strip in components/leave-config-map.tsx): filters (employee, movement, date range), the
- * movements, + Add Leave Credit, Reverse, and the ledger summary + the two settlement sweeps that used to be
- * /admin/toil (a redirect stub now).
- *
- * ⚠️ GATED ON `toil`, WITH ONE DELIBERATE EXCEPTION — THE WIND-DOWN ARGUMENT, carried over from /admin/toil
- * (now a redirect stub) and not to be tidied away. The row is hidden without the module (sidebar) and this
- * page shows only a notice. BUT the two settlement sweeps are deliberately not entitlement-gated, and must
- * never be re-gated through the UI either: a tenant whose module lapses (trial end, downgrade, non-payment)
- * still owes the credits already banked, and for a First-Schedule employee that debt is statutory — unused
- * credit must convert to pay, never lapse (core/toil.ts `runToilExpiry`). This page is the sweeps' only
- * caller (there is no cron), so hiding them would strand the obligation. So when the module is off AND credits
- * are still outstanding, the page opens a WIND-DOWN view: the movements, the summary, the sweeps and Reverse —
- * no Add (and the Rules tab shows only the notice). Those services are admin-only by design; adding a credit
- * and saving the rules refuse in the service without the module regardless of what this page renders.
- *
- * SERVER COMPONENT. The Add and Reverse dialogs are client islands fed plain data and the server actions
- * only — no translator and no closure crosses the boundary (test/server-client-boundary.test.ts).
+ * Module wind-down remains available while credits are outstanding, including expiry/year-end settlement
+ * and reversals. Add remains entitlement-gated. All data comes from the existing scoped credit, allocation
+ * and ledger owners; this page writes no new accounting facts.
  */
 export default async function LeaveConfigLeaveCreditPage({
   searchParams,
@@ -178,8 +155,6 @@ export default async function LeaveConfigLeaveCreditPage({
           companyIds: visibleIds,
           employmentId: employeeFilter,
 
-          from: isoOrUndefined(sp.from),
-          to: isoOrUndefined(sp.to),
           today,
         })
     : null;
@@ -342,6 +317,7 @@ export default async function LeaveConfigLeaveCreditPage({
               </table>
             </div>
             {register!.truncated&&<p className="mt-2 text-xs text-muted-foreground">{t('truncated',{shown:register!.rows.length,matched:register!.matched})}</p>}
+            <p className="mt-3 text-xs text-muted-foreground">{tr('usageHint')}</p>
             <details className="mt-5"><summary className="cursor-pointer text-sm font-medium">{tr('auditLedger')}</summary>
             <div className={`${tableWrapCls} mt-4`}>
               <table className="w-full min-w-[72rem] text-sm" data-testid="leave-credit-movements">

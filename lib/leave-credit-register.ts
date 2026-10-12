@@ -1,7 +1,7 @@
 /** Credit status is decided from its own lot, never from an employee-wide running balance. */
 export const CREDIT_REGISTER_STATUSES = ['available','partially_used','fully_used','expired','reversed','paid_out'] as const;
 export type CreditRegisterStatus = typeof CREDIT_REGISTER_STATUSES[number];
-export function creditRegisterFigures(p:{earned:number;taken:number;state:string;expiresOn:string;today:string}) {
+export function creditRegisterFigures(p:{earned:number;taken:number;state:'active'|'taken'|'converted_to_pay'|'lapsed'|'reversed';expiresOn:string;today:string}) {
   const earned=Math.round(p.earned*100),used=Math.round(p.taken*100),remaining=Math.max(0,earned-used);
   const status:CreditRegisterStatus=p.state==='reversed'?'reversed':p.state==='converted_to_pay'?'paid_out':remaining===0?'fully_used':p.state==='lapsed'||p.expiresOn<p.today?'expired':used>0?'partially_used':'available';
   return {earned:earned/100,used:used/100,available:status==='available'||status==='partially_used'?remaining/100:0,expired:status==='expired'?remaining/100:0,status,reversible:status==='available'&&used===0};

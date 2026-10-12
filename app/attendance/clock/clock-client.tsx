@@ -54,7 +54,6 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     const sequence=++refreshSequence.current;
     const point=nextGeo??geo;
     const params=point?'?'+new URLSearchParams({lat:String(point.lat),lng:String(point.lng),accuracy:String(point.accuracy)}):'';
-    const start=performance.now();
     const response=await fetch('/api/attendance/today'+params,{cache:'no-store'});
     if(!response.ok) throw new Error(response.status===401?'authentication':'sync');
     const value:Today=await response.json();
@@ -67,8 +66,8 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
   const refreshRef=React.useRef(refresh);refreshRef.current=refresh;
   React.useEffect(()=>{
     let live=true;
-    locate().then(point=>{if(live){setGeo(point);return refreshRef.current(point);}}).catch(()=>{if(live)setError(t('locationRequired'));});
-    const sync=()=>{setSynced(false);refreshRef.current().catch(()=>setError(t('syncFailed')));};sync();
+    locate().then(point=>{if(live){setGeo(point);return refreshRef.current(point);}}).catch(error=>{if(live)setError(t(['locationDenied','locationUnavailable','authentication'].includes(error.message)?error.message:'syncFailed'));});
+    const sync=()=>{setSynced(false);refreshRef.current().catch(error=>setError(t(error.message==='authentication'?'authentication':'syncFailed')));};sync();
     const focus=()=>{if(document.visibilityState==='visible')sync();};
     const hide=()=>{epoch.current++;if(stream.current)setAction(null);stop();setCamera(false);};
     const tick=setInterval(()=>{if(base.current.server)setNow(base.current.server+performance.now()-base.current.mono);},1000);
@@ -115,7 +114,9 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
         if(!command.current){
           const point=await locate();setGeo(point);const value=await refresh(point);
           if(!value.locationValid)throw new Error('outsideGeofence');
+          if(!value.clockContext)throw new Error('sync');
           const requestId=newRequestId(),body=new FormData();
+          body.set('clockContext',value.clockContext);
           for(const [key,val] of Object.entries({action:direction,requestId,...point}))body.set(key,String(val));
           if(photo)body.set('photo',photo,'attendance.jpg');
           command.current={body,requestId,direction};setPending(true);
@@ -126,6 +127,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
         if(response.status>=500)throw new Error('unconfirmed');
         const result=await response.json();
         if(!response.ok){
+          if(result.error==='accountChanged')throw new Error('accountChanged');
           const definite=['origin','invalid','photoInvalid','photoRequired','outsideGeofence','locationRequired','conflict','correctedDay'];
           if(!definite.includes(result.error))throw new Error('unconfirmed');
           command.current=null;setPending(false);throw new Error(result.error);
@@ -139,11 +141,12 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
       await refresh().catch(()=>{setSynced(false);setError(t('syncFailed'));});
     }catch(error){
       const code=(error as Error).message;
-      const known=['outsideGeofence','photoInvalid','photoRequired','conflict','correctedDay','locationRequired','locationDenied','locationUnavailable','authentication','origin','invalid','sync'];
+      if(!command.current && today.attendancePhotoSetting==='not_required')setAction(null);
+      const known=['outsideGeofence','photoInvalid','photoRequired','conflict','correctedDay','locationRequired','locationDenied','locationUnavailable','authentication','accountChanged','origin','invalid','sync'];
       setError(t(code==='sync'?'syncFailed':known.includes(code)?code:'retryFailed'));
     }finally{inFlight.current=false;setBusy(false);}
   }
-  async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch{setError(t('locationRequired'));}finally{setBusy(false);}}
+  async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch(error){const code=(error as Error).message;setError(t(['locationDenied','locationUnavailable','authentication'].includes(code)?code:'syncFailed'));}finally{setBusy(false);}}
   /** r430 — Clock In / Clock Out entry point. BOTH buttons are always enabled (see `blocked`) and route to
    *  one of three flows purely from the employee's own attendancePhotoSetting: required opens the camera
    *  immediately (unchanged); optional sets `action` so the inline Take Photo / Skip Photo choice renders;
@@ -167,7 +170,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
   return <>
     <header><p className="text-xs text-muted-foreground">{t('breadcrumb')}</p><h1 className="text-2xl font-semibold">{t('webTitle')}</h1></header>
     {pending&&<div className="flex flex-wrap items-center gap-3 rounded-lg border p-3"><p className="text-sm">{t('pendingCommand')}</p><Button disabled={busy} onClick={()=>{if(command.current)void confirm(command.current.direction);}}>{t('checkSubmission')}</Button></div>}
-    {error===t('authentication')&&<Link href="/login" target="_blank" rel="noopener noreferrer" className="text-sm underline">{t('signInAgain')}</Link>}
+    {(error===t('authentication')||error===t('accountChanged'))&&<Link href="/login" target="_blank" rel="noopener noreferrer" className="text-sm underline">{t('signInAgain')}</Link>}
     {error&&<p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-destructive">{error}</p>}
     <div className={`grid gap-5 ${showPhotoCard?'md:grid-cols-2':''}`}>
       <Card className="space-y-5 p-5"><p>{new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(today.date+'T12:00:00+08:00'))}</p><div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-full px-3 py-1 text-sm ${today.locationValid?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200':'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>{t(today.locationValid?(today.geofencingRequired?'withinLocation':'locationRecordedNoGeofence'):geo?'outsideLocation':'locationCheckNeeded')}</span><Button className="min-h-11" onClick={retryLocation} disabled={busy}>{t('checkLocation')}</Button></div>
