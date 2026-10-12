@@ -62,6 +62,24 @@
   @media (max-width: 639px) {
     :root[data-ui-theme='current'] [data-app-content] > main { padding: 1rem; }
   }
+  @media (max-width: 767px) {
+    :root[data-ui-theme='current'] [data-app-header] {
+      display: flex; flex-wrap: wrap; height: auto; gap: .75rem;
+      position: relative; z-index: 30; padding-block: .75rem;
+    }
+    :root[data-ui-theme='current'] [data-app-header] > div:first-child {
+      flex-basis: 100%; flex-wrap: wrap; gap: .5rem;
+    }
+    :root[data-ui-theme='current'] [data-app-header] > div:first-child > div:has(> [data-company-switcher]) {
+      position: static; flex: 1; min-width: 8rem;
+    }
+    :root[data-ui-theme='current'] [data-app-header] [data-company-switcher] { width: 100%; }
+    :root[data-ui-theme='current'] [data-app-header] > div:first-child form {
+      left: 1rem; right: 1rem; width: auto;
+    }
+    :root[data-ui-theme='current'] [data-app-header] > div:nth-child(2) { justify-content: flex-start; }
+    :root[data-ui-theme='current'] [data-app-header] > div:last-child { flex: 1; }
+  }
   :root[data-ui-theme='current'] main { scrollbar-color: #87689a var(--background); }
   :root[data-ui-theme='current'] main > * { min-width: 0; }
   :root[data-ui-theme='current'] main h1 { letter-spacing: -.035em; font-weight: 500; }
@@ -161,7 +179,7 @@
 }
 /* Documents retain a paper surface when printed, regardless of the screen theme. */
 @media print {
-  :root[data-ui-theme='current'] {
+  :root[data-ui-theme='current'], :root[data-ui-theme='current'].dark {
     color-scheme: light;
     --canvas: #fff; --background: #fff; --foreground: #111;
     --card: #fff; --card-foreground: #111; --muted: #f4f4f4;
