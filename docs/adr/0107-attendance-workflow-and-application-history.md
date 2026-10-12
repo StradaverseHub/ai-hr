@@ -51,6 +51,13 @@ stage decision and advancement. Frozen managers lose authority after an incompat
 authorised non-self HR can act on behalf, with that distinct mode recorded. Authority follows the
 subject’s current company after a transfer; the saved workflow company remains historical provenance.
 
+Decision and cancellation commands first read the visible correction without a row lock, acquire its
+subject's canonical advisory lock, and re-read the correction for update before validating its current
+state. This preserves subject → correction → workflow/payroll → tenant audit lock order across clock
+writers, OT landing and allowance transfer. No stage event can take the audit lock before the subject
+lock. The deferred landing claim also requires the plan still be approved when its conditional update
+wins; a concurrent legacy writer cannot cancel a selected plan and then have it land anyway.
+
 ## Request-bound delegation
 
 The attendance_correction RLS addition exposes only a request with a valid current delegation from its
@@ -91,7 +98,10 @@ application for that date, and open payroll. It restores only that recorded effe
 events. Historical approvals without an attributable reversible record refuse and require a new
 correction. A dependent Leave Credit must first be reviewed/reversed through its own owning module;
 Attendance does not silently delete or settle that credit. Approved deferred OT with no landed effect
-can be cancelled without a day rewrite. Existing decisions and decided timestamps remain visible.
+can be cancelled without a day rewrite only when the approval event explicitly records deferral and
+no application/landing effect exists. NULL appliedAt alone predates this guarantee: ambiguous historical
+OT refuses administrative cancellation and employee withdrawal. Existing decisions and decided
+timestamps remain visible.
 
 The combined employee status filter includes Cancelled and Withdrawn, while individual outcomes keep
 their distinct labels. New settings and history copy is present in all six locale catalogues. New/edit
@@ -122,6 +132,12 @@ immutable delegate updates, final exactly-once effects, SQL-fault rollback and i
 all history filters, pagination, grants-only and sibling/cross-tenant scope, partial withdrawal,
 approved reversal, later attendance changes, dependent credits and payroll-protected final approval.
 Pure tests cover input validation, canonical type selection and bulk stage tokens.
+
+Additional unrun regressions hold the subject lock on a separate DB connection and assert every decision
+or cancellation waits before taking its correction/audit locks; revalidate a landed plan after that
+wait; cancel a selected plan before its landing claim to exercise the approved-status backstop; refuse
+historical appliedAt-null counted OT; retain genuine deferred cancellation; and mark processed payroll
+stale after a recorded reversal. These are source-prepared tests, not execution evidence.
 
 Non-vacuity oracles include unchanged attendance after an intermediate stage; exactly one winner for
 concurrent clicks; real delegate subject-employment and payslip reads returning zero before/after an

@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
 import { hireEmployee, setReportingLine, changeEmploymentCompany } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections } from '../core/attendance';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { AttendancePayrollClosedError } from '../core/attendance-punch-change';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, listAttendanceWorkflows, previewAttendanceWorkflow } from '../core/attendance-workflow';
@@ -458,5 +459,191 @@ describe('current authority over a frozen company snapshot', () => {
         expect(detail?.workflow?.companyId).toBe(b.companyId);
         expect(detail?.workflow?.decisions[0]).toMatchObject({ actualUserId: hrUser, actingMode: 'administrator' });
         expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+    });
+});
+
+/** Hold the canonical subject lock on a separate connection. The command must wait here before taking
+ * its correction row or tenant audit lock. NOWAIT makes row-order regressions fail without a deadlock. */
+async function commandBehindSubjectLock(a: SessionContext, employmentId: string, correctionId: string,
+    command: () => Promise<unknown>, beforeRelease?: (tx: Tx) => Promise<void>) {
+    // Arm via withTenant, which records the one-way process hint. An owner SQL insert alone would not
+    // arm the later app transaction and would make the audit-order oracle vacuous when env defaults off.
+    const priorAudit = process.env.AUDIT_HASH_CHAIN_ENABLED;
+    try {
+        process.env.AUDIT_HASH_CHAIN_ENABLED = 'true';
+        await withTenant(a, tx => appendEvent(tx, { tenantId: a.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId,
+            eventType: 'test.attendance.chain.armed', actor: actorOf(a), subjectEmploymentId: employmentId, payload: {} }));
+    } finally {
+        if (priorAudit === undefined) delete process.env.AUDIT_HASH_CHAIN_ENABLED;
+        else process.env.AUDIT_HASH_CHAIN_ENABLED = priorAudit;
+    }
+    expect((await events(correctionId, 'test.attendance.chain.armed'))[0].chainSeq).not.toBeNull();
+    let outcome: Promise<{ value?: unknown; error?: unknown }> | undefined;
+    try {
+        await owner.db.transaction(async tx => {
+            await tx.execute(sql`set local lock_timeout='2s'`);
+            const [connection] = await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as { pid: number }[];
+            await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${a.tenantId + ':' + employmentId},0))`);
+            outcome = command().then(value => ({ value }), error => ({ error }));
+            await expect.poll(async () => {
+                const [wait] = await owner.db.execute(sql`select exists(select 1 from pg_stat_activity activity
+                    where ${connection.pid} = any(pg_blocking_pids(activity.pid))
+                      and activity.wait_event_type='Lock' and activity.wait_event='advisory') as blocked`) as unknown as { blocked: boolean }[];
+                return wait.blocked;
+            }, { timeout: 5000, interval: 10 }).toBe(true);
+            const rows = await tx.execute(sql`select id from attendance_correction where id=${correctionId}::uuid for update nowait`);
+            expect(rows).toHaveLength(1);
+            await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+            await appendEvent(tx, { tenantId: a.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId,
+                eventType: 'test.attendance.lock-order', actor: actorOf(a), subjectEmploymentId: employmentId, payload: {} });
+            if (beforeRelease) await beforeRelease(tx);
+        });
+        return await outcome!;
+    } finally {
+        // A failed NOWAIT/poll assertion releases the blocker; always drain the started command.
+        if (outcome) await outcome;
+    }
+}
+
+describe('attendance command lock order and historical OT evidence', () => {
+    it.each(['decide', 'admin cancel', 'own correction withdraw', 'own OT withdraw'] as const)
+        ('takes the subject lock before the correction and audit locks: %s', async action => {
+            const { a, worker, self } = await fixture();
+            let id: string;
+            let command: () => Promise<unknown>;
+            if (action === 'own OT withdraw') {
+                id = (await requestAttendanceCorrection(self, { employmentId: worker.employmentId, date: '2099-07-15',
+                    requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Future deferred plan' })).correctionId;
+                await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+                command = () => cancelPlannedOvertime(self, { correctionId: id });
+            } else {
+                await enable(a, input(['hr_admin']));
+                id = await submit(self, worker.employmentId);
+                command = action === 'decide'
+                    ? () => decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })
+                    : action === 'admin cancel'
+                        ? () => cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'No longer needed' })
+                        : () => cancelOwnAttendanceCorrection(self, { correctionId: id });
+            }
+            const result = await commandBehindSubjectLock(a, worker.employmentId, id, command);
+            expect(result.error).toBeUndefined();
+            expect((await correction(id)).status).toBe(action === 'decide' ? 'approved' : 'cancelled');
+            expect(await events(id, 'test.attendance.lock-order')).toHaveLength(1);
+            expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(action === 'decide' ? 1 : 0);
+        });
+
+    it('rechecks landed OT after withdrawal waits behind the landing subject lock', async () => {
+        const { a, worker, self } = await fixture();
+        const id = (await requestAttendanceCorrection(self, { employmentId: worker.employmentId, date: '2099-07-15',
+            requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Future deferred plan' })).correctionId;
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        expect((await correction(id)).appliedAt).toBeNull();
+        const result = await commandBehindSubjectLock(a, worker.employmentId, id,
+            () => cancelPlannedOvertime(self, { correctionId: id }),
+            async tx => {
+                // The landing winner publishes its stamp while owning the same canonical subject lock.
+                await tx.update(schema.attendanceCorrection).set({ appliedAt: new Date(), approvedOtMinutes: 60 })
+                    .where(eq(schema.attendanceCorrection.id, id));
+            });
+        expect(result.error).toBeInstanceOf(Error);
+        expect((result.error as Error).message).toMatch(/already been counted/);
+        expect((await correction(id))).toMatchObject({ status: 'approved', approvedOtMinutes: 60 });
+        expect((await correction(id)).appliedAt).not.toBeNull();
+        expect(await events(id, 'attendance-correction.cancelled')).toHaveLength(0);
+    });
+
+    it('does not land an approved OT snapshot cancelled by a concurrent legacy writer before its claim', async () => {
+        const { a, worker } = await fixture();
+        const future = '2099-07-15';
+        await checkIn(a, { employmentId: worker.employmentId, date: future, time: '08:00', manual: true });
+        const id = (await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date: future,
+            requestedOtMinutes: 180, requestKind: 'self_overtime', reason: 'Concurrent cancellation' })).correctionId;
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        await owner.db.update(schema.attendanceCorrection).set({ otApprovalMethod: 'requested' })
+            .where(eq(schema.attendanceCorrection.id, id));
+        let clockOut: Promise<{ error?: unknown }> | undefined;
+        try {
+            await owner.db.transaction(async tx => {
+                const [connection] = await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as { pid: number }[];
+                await tx.execute(sql`select id from attendance_correction where id=${id}::uuid for update`);
+                clockOut = checkOut(a, { employmentId: worker.employmentId, date: future, time: '17:00', manual: true })
+                    .then(() => ({}), error => ({ error }));
+                await expect.poll(async () => {
+                    const [wait] = await owner.db.execute(sql`select exists(select 1 from pg_stat_activity activity
+                        where ${connection.pid}=any(pg_blocking_pids(activity.pid)) and activity.wait_event_type='Lock'
+                          and activity.query like '%attendance_correction%') as blocked`) as unknown as { blocked: boolean }[];
+                    return wait.blocked;
+                }, { timeout: 5000, interval: 10 }).toBe(true);
+                // Owner bypass models a historical writer without the new advisory-lock convention.
+                await tx.update(schema.attendanceCorrection).set({ status: 'cancelled' }).where(eq(schema.attendanceCorrection.id, id));
+            });
+            expect((await clockOut!).error).toBeUndefined();
+        } finally {
+            if (clockOut) await clockOut;
+        }
+        expect((await correction(id))).toMatchObject({ status: 'cancelled', appliedAt: null });
+        const [worked] = await owner.db.select().from(schema.attendance).where(and(
+            eq(schema.attendance.employmentId, worker.employmentId), eq(schema.attendance.attendanceDate, future)));
+        expect(worked.checkOutAt).toBe('17:00:00');
+        expect(worked.otMinutes).not.toBe(180);
+        const landings = await owner.db.select().from(schema.domainEvent).where(and(
+            eq(schema.domainEvent.eventType, 'attendance.amended'), sql`${schema.domainEvent.payload}->>'correctionId'=${id}`,
+            sql`${schema.domainEvent.payload}->>'otPlanApplied'='true'`));
+        expect(landings).toHaveLength(0);
+    });
+
+    it('refuses ambiguous legacy approved OT even when appliedAt is null, preserving counted attendance', async () => {
+        const { a, worker, self } = await fixture();
+        await owner.db.update(schema.attendance).set({ otMinutes: 60 }).where(eq(schema.attendance.employmentId, worker.employmentId));
+        const [legacy] = await owner.db.insert(schema.attendanceCorrection).values({ tenantId: b.tenantId,
+            employmentId: worker.employmentId, attendanceDate: date, requestedOtMinutes: 60, approvedOtMinutes: 60,
+            reason: 'Historical immediate approval', status: 'approved', decidedAt: new Date(), appliedAt: null }).returning();
+        const before = await day(worker.employmentId);
+        expect(before.otMinutes).toBe(60);
+        expect(await events(legacy.id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+        await expect(cancelAttendanceApplication(a, { correctionId: legacy.id, kind: 'cancelled', reason: 'Ambiguous historic OT' }))
+            .rejects.toThrow(/no reversible effect record/);
+        await expect(cancelPlannedOvertime(self, { correctionId: legacy.id, today: date }))
+            .rejects.toThrow(/no proof.*uncounted/);
+        expect(await day(worker.employmentId)).toEqual(before);
+        expect((await correction(legacy.id)).status).toBe('approved');
+        expect(await events(legacy.id, 'attendance-correction.cancelled')).toHaveLength(0);
+    });
+
+    it('allows admin cancellation of positively proven unlanded deferred OT without creating attendance', async () => {
+        const { a, worker } = await fixture();
+        const future = '2099-07-15';
+        const id = (await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date: future,
+            requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'No longer scheduled' })).correctionId;
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        expect((await correction(id)).appliedAt).toBeNull();
+        expect((await events(id, 'attendance-correction.approved'))[0].payload).toMatchObject({ deferred: true });
+        expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Plan withdrawn before work' }))
+            .toEqual({ status: 'cancelled', reversed: false });
+        expect(await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId, worker.employmentId),
+            eq(schema.attendance.attendanceDate, future)))).toHaveLength(0);
+        expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(0);
+    });
+
+    it('marks processed payroll for recalculation when an approved application is reversed', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const before = await day(worker.employmentId), id = await submit(a, worker.employmentId);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        await generatePayslips(a, { batchId });
+        const [initial] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+        expect(initial.status).toBe('processed');
+        expect(initial.needsRecalcAt).toBeNull();
+        expect(await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId),
+            eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
+        await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Reverse verified attendance effect' });
+        const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+        expect(batch.needsRecalcAt).not.toBeNull();
+        expect(batch.recalcEmploymentIds).toContain(worker.employmentId);
+        expect((await day(worker.employmentId)).checkInAt).toBe(before.checkInAt);
+        expect(await events(batchId, 'payroll-batch.recalc-required')).toHaveLength(1);
+        expect(await decisions()).toHaveLength(1);
     });
 });
