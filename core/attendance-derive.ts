@@ -35,6 +35,8 @@ export type AttendanceDeriveRow = {
   workedMinutes: number | null;
   /** Net scheduled work minutes for the resolved shift/policy that day; null on a no-work (rest/off) day. */
   scheduledMinutes: number | null;
+  /** Engine-derived shortfall. Zero is authoritative; legacy rows may have no stored result. */
+  underMinutes?: number | null;
   otMinutes: number | null;
   // 7c834696 stage 1 — the STORED per-rate overtime split (migration 0394), written by the engine from the
   // day's rule bands. NULL on any row no engine has touched since the release; otByRate falls back to the
@@ -135,11 +137,11 @@ export type AttendanceFlag = 'late' | 'under' | 'odd' | null;
  *
  *   • Odd   — exactly one of check-in / check-out is recorded (missing punch).
  *   • Late  — the engine already classified the day 'late' (late arrival on a workday).
- *   • Under — a complete day whose worked minutes fell short of the scheduled minutes (left early). Only
- *             meaningful on a workday with a known schedule (rest/holiday work is all OT — no shortfall).
+ *   • Under — the engine recorded a working-hours shortfall. Older rows without that result fall back to
+ *             the displayed schedule. Rest/holiday work has no required-hours shortfall.
  *   • null  — clean day / no attendance row.
  */
-export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'checkInAt' | 'checkOutAt' | 'dayType' | 'workedMinutes' | 'scheduledMinutes'>): AttendanceFlag {
+export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'checkInAt' | 'checkOutAt' | 'dayType' | 'workedMinutes' | 'scheduledMinutes' | 'underMinutes'>): AttendanceFlag {
   if (!row.attendanceId) return null;
   const hasIn = row.checkInAt != null;
   const hasOut = row.checkOutAt != null;
@@ -147,9 +149,9 @@ export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' 
   if (row.status === 'late') return 'late';
   if (
     row.dayType === 'workday' &&
-    row.workedMinutes != null &&
-    row.scheduledMinutes != null &&
-    row.workedMinutes < row.scheduledMinutes
+    (row.underMinutes != null
+      ? row.underMinutes > 0
+      : row.workedMinutes != null && row.scheduledMinutes != null && row.workedMinutes < row.scheduledMinutes)
   ) {
     return 'under';
   }
