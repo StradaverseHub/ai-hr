@@ -38,8 +38,8 @@ const litRow = (pathname: string) =>
     .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
 
 describe('r431: the Settings page cards', () => {
-  it('the five card hrefs equal the five old row hrefs, in order, with no extras', () => {
-    expect(ATTENDANCE_SETTINGS_CARDS.map((c) => c.href)).toEqual([...OLD_ROW_HREFS]);
+  it('the five existing cards remain in order and Attendance adds its independent workflow card', () => {
+    expect(ATTENDANCE_SETTINGS_CARDS.map((c) => c.href)).toEqual([...OLD_ROW_HREFS, '/admin/attendance/approval-workflow']);
   });
 
   it('every card is a real, registered screen — nothing was renamed, so no redirect is needed', () => {
@@ -92,6 +92,7 @@ describe('r431: the Settings page cards', () => {
       'Schedule',
       'Attendance Allowance',
       'Locations',
+      'Approval Workflow',
     ]);
   });
 });

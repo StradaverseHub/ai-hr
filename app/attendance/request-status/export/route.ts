@@ -30,6 +30,7 @@
  * a state do not: Type resolves through KIND_LABEL and Status through `statusLabel`, so a withdrawn row
  * reads "Withdrawn" in the file exactly as it does on screen (r363).
  */
+import { attendanceApplicationType } from '@/lib/attendance-workflow';
 import { getSession } from '@/lib/session';
 import { getTranslations } from 'next-intl/server';
 import { myEmployment, reportingLinesFor } from '@/core/read';
@@ -67,6 +68,7 @@ export async function GET(req: Request) {
   if (!me) return new Response('Forbidden', { status: 403 });
 
   const t = await getTranslations('me');
+  const historyT = await getTranslations('attendanceHistory');
   const url = new URL(req.url);
   const fmtRaw = url.searchParams.get('format');
   const format: ReportFormat = FORMATS.includes(fmtRaw as ReportFormat) ? (fmtRaw as ReportFormat) : 'xlsx';
@@ -89,7 +91,7 @@ export async function GET(req: Request) {
     if (shown.length === 0) return new Response(t('maExportNone'), { status: 404 });
 
     const approver = lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
-    const isOvertime = (r: (typeof shown)[number]) => r.proposedCheckIn == null && r.requestedOtMinutes != null;
+    const isOvertime = (r: (typeof shown)[number]) => attendanceApplicationType(r) === 'self_overtime';
 
     const rows = shown.map((r) => [
       dmy(r.attendanceDate),
@@ -100,8 +102,8 @@ export async function GET(req: Request) {
       dmy(todayInKualaLumpur(r.createdAt)),
       // The screen prints this only on a PENDING row, because on a decided one it asserts the request is
       // still with somebody (see app/attendance/request-status/page.tsx A3). The file follows the screen.
-      r.status === 'pending' ? approver : '',
-      statusLabel(r.status, t, isOvertime(r)),
+      r.status === 'pending' ? r.workflow?.stages[r.workflow.currentStage] ? r.workflow.stages[r.workflow.currentStage].name + ' — ' + r.workflow.stages[r.workflow.currentStage].approvers.map(a=>a.kind==='hr_admin'?historyT('hrApprover'):a.name).join(' / ') : approver : '',
+      r.status === 'cancelled' && r.cancellationKind === 'cancelled' ? historyT('statuses.cancelled') : statusLabel(r.status, t, isOvertime(r)),
       r.status === 'rejected' ? r.rejectReason ?? t('maRejectNotRecorded') : '',
     ]);
 
@@ -116,7 +118,7 @@ export async function GET(req: Request) {
         layout: {
           // Who this is, which tab produced it, and when — so a file sent on can still answer all three.
           header: [me.name, me.employeeCode, me.position, me.company].filter(Boolean).join(' · '),
-          subtitle: status ? statusLabel(status, t, false) : t('maFilterAll'),
+          subtitle: status === 'cancelled' ? historyT('cancelledFilter') : status ? statusLabel(status, t, false) : t('maFilterAll'),
           // WHEN THE FILE WAS PRODUCED, not a column value. `me.maColSubmitted` ("Submitted") was tried here
           // first and read as a second Submitted figure sitting above a Submitted COLUMN — so this is its own
           // unambiguous sentence, English like every other part of the payload (ADR-0047 §9), and it names the

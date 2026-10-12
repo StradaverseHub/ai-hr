@@ -15,6 +15,7 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
   'reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision',
   'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',

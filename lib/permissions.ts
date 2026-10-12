@@ -99,6 +99,8 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
+  {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.attendanceApplicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
   {screenKey:'myEmailNotifications',href:'/me/notifications',labelKey:'workflowEmail.preferencesTitle',guard:'scopedSession',routes:['/me/notifications']},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },

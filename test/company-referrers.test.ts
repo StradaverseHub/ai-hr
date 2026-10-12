@@ -268,6 +268,17 @@ describe('§1 the declared referrer set is the live schema', () => {
     for (const d of COMPANY_CONFIG_DEPENDENTS) expect(d.note.length, `${d.table}.${d.column}`).toBeGreaterThan(20);
   });
 
+  it('retains Attendance workflow history while deleting only unused enablement configuration', () => {
+    const expected = [
+      ['attendance_workflow_template', 'other'],
+      ['attendance_workflow_setting', 'config'],
+      ['attendance_workflow_request', 'employees'],
+    ];
+    for (const [table, disposition] of expected) {
+      expect(COMPANY_REFERRERS.filter(r => r.table === table).map(r => [r.column,r.disposition])).toEqual([['company_id',disposition]]);
+    }
+  });
+
   it('never cascades an employee record or a payroll record', () => {
     const cascaded = cascadedReferrers().map((r) => r.table);
     for (const t of ['employment', 'assignment', 'employee_draft', 'payroll_batch', 'pay_period', 'pcb_payment', 'statutory_report', 'back_pay_run']) {

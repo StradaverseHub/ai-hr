@@ -60,6 +60,10 @@ describe('ADR-0080 rung 2: attendance pack registration', () => {
       'attendance',
       'attendance_punch',
       'attendance_correction',
+      'attendance_workflow_template',
+      'attendance_workflow_setting',
+      'attendance_workflow_request',
+      'attendance_workflow_decision',
       'attendance_policy',
       'attendance_rule',
       'attendance_rule_ot_row',
@@ -215,6 +219,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // so a genuinely new row is DECLARED here instead. The parity assertions below then hold unchanged for
   // the ten original rows, while an undeclared eleventh still fails: growth has to be deliberate.
   const ADDED_SINCE = [
+    { href: '/attendance/application-history', labelKey: 'attendanceApplicationHistory', icon: ClipboardList, adminOnly: true },
     // r274 (2420718d) — Employee Attendance. The SCREEN is not new and neither is its address: it began as
     // a second, administrator-gated way into `/attendance`, which is `scopedSession` and shows each viewer
     // their own scope, and it was the ONLY href in this pack listed twice.
@@ -562,6 +567,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // READING rather than a setting, so it sits above the configuration rows rather than among them.
       // It shares its href with Records in MY_ATTENDANCE_NAV deliberately — see the note on the row.
       '/attendance', // Employee Attendance
+      '/attendance/application-history',
       // 22d67223 (r311) — Attendance Breakdown, SECOND and not among the settings: by this list's own
       // rule the readings lead and the configuration rows follow, and this is the second reading.
       '/attendance/breakdown',
@@ -1006,6 +1012,7 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // r424 (50ed39e1) — "Import Clocking Data", the reporter's name for the screen it now is. Label
       // only: the key stays `attendanceImport` (LABEL_KEY_EXEMPT above).
       '/attendance/import': 'Import Clocking Data',
+      '/attendance/application-history': 'Application History',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.
