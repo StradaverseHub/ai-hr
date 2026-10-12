@@ -139,7 +139,10 @@ async function ensureFixture() {
     const created = await createAttendanceRule(a, {name: ruleName, weeklyPattern: [1,2,3,4,5], halfPattern: [], offPattern: [6],
       lateGracePeriodMinutes: 0, lateAfterMinutes: 0, lateDeductMinutes: 0, includeGraceInLateness: false,
       earlyGracePeriodMinutes: 0, earlyAfterMinutes: 0, earlyDeductMinutes: 0, includeGraceInEarlyOut: false,
-      applyToEarlyOt: false, applyDeductions: false, otRows: []});
+      applyToEarlyOt: false, applyDeductions: false,
+      // A real band lets browser checks retain an independent OT draft while saving another section.
+      otRows: [{fromMinutes: 0, toMinutes: 120, ratePattern: 'flat', rate: 1.5,
+        phRate: null, roundingMode: 'down', roundToMinutes: 15}]});
     [rule] = await owner.db.select().from(s.attendanceRule).where(eq(s.attendanceRule.id, created.id));
   }
   if (rule.status !== 'active') throw new Error('Existing fixture schedule group was deactivated; preserving it.');
