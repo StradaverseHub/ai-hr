@@ -251,7 +251,7 @@ export default async function OperatorPage() {
               return (
               <details key={guide.slug} id={guide.slug} className="py-3">
                 <summary data-tour={`operator-guide-${guide.slug}`} className="cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-primary">{guide.title}</summary>
-                {tourId && <div className="mt-3"><GuideTourButton tourId={tourId} /></div>}
+                {tourId && <div className="mt-3" lang={locale}><GuideTourButton tourId={tourId} /></div>}
                 <Markdown className="mt-3">{guide.body}</Markdown>
               </details>
               );
