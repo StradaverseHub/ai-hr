@@ -85,6 +85,7 @@ export function CompanySwitcher({
     // room for its ▾ and a few letters; the label still truncates, the route path gives way first.
     <div className="relative min-w-0 monolith:min-w-[5.5rem]">
       <button
+        data-company-switcher
         type="button"
         onClick={() => {
           // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an

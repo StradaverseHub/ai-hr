@@ -11662,6 +11662,7 @@
       "toggle": "切换主题"
     },
     "uiTheme": {
+      "current": "Current",
       "label": "主题",
       "monolith": "Monolith",
       "classic": "经典"

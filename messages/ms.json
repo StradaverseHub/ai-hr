@@ -11662,6 +11662,7 @@
       "toggle": "Tukar tema"
     },
     "uiTheme": {
+      "current": "Current",
       "label": "Tema",
       "monolith": "Monolith",
       "classic": "Klasik"

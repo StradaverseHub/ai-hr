@@ -11662,6 +11662,7 @@
       "toggle": "Toggle theme"
     },
     "uiTheme": {
+      "current": "Current",
       "label": "Theme",
       "monolith": "Monolith",
       "classic": "Classic"

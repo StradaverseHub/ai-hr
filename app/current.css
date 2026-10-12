@@ -1,0 +1,176 @@
+/* Current: the approved Plum palette and compact Ledger rhythm.
+   Attribute-scoped, including portal content. Existing markup, permissions,
+   forms, table semantics and server reads remain the source of truth. */
+:root[data-ui-theme='current'] {
+  color-scheme: dark;
+  --canvas: #1b1325;
+  --background: #21172c;
+  --foreground: #f1e7f8;
+  --card: #30213c;
+  --card-foreground: #f1e7f8;
+  --popover: #30213c;
+  --popover-foreground: #f1e7f8;
+  --sidebar: #21172c;
+  --sidebar-foreground: #c6b4d1;
+  --sidebar-border: #695276;
+  --primary: #e1edb6;
+  --primary-foreground: #2b3320;
+  --secondary: #44304f;
+  --secondary-foreground: #efe6f4;
+  --muted: #382642;
+  --muted-foreground: #c6b4d1;
+  --accent: #503960;
+  --accent-foreground: #f1e7f8;
+  --destructive: #ffaebb;
+  --destructive-foreground: #42151f;
+  --border: #695276;
+  --input: #87689a;
+  --ring: #d2b6e6;
+  --radius: .625rem;
+  --radius-panel: .875rem;
+  --shadow-sm: none;
+  --shadow-card: none;
+  --shadow-shell: none;
+  --shadow-pop: 0 16px 48px #10091b55;
+  --current-band: #9678c3;
+  --current-band-ink: #201030;
+  --current-peach: #c47e70;
+  --current-lime: #b6c48a;
+  --current-selected: #c9b1d9;
+  --current-selected-ink: #34233f;
+}
+/* The appearance toggle adjusts depth, without changing Current's Plum identity. */
+:root[data-ui-theme='current'].dark {
+  --canvas: #140e1c;
+  --background: #1b1325;
+  --card: #281c34;
+  --sidebar: #1b1325;
+}
+@media screen {
+  :root[data-ui-theme='current'] body { background: var(--canvas); }
+  :root[data-ui-theme='current'] body:has([data-app-shell]) { padding: 0; }
+  :root[data-ui-theme='current'] [data-app-shell] { gap: 0; }
+  :root[data-ui-theme='current'] [data-app-content] { gap: 0; }
+  :root[data-ui-theme='current'] [data-app-sidebar] {
+    border-radius: 0; border-width: 0 1px 0 0; box-shadow: none;
+  }
+  :root[data-ui-theme='current'] [data-app-header] {
+    border-radius: 0; border-width: 0 0 1px; box-shadow: none;
+    background: var(--background); min-height: 4.5rem;
+  }
+  :root[data-ui-theme='current'] [data-app-content] > main { padding: 1.5rem; }
+  @media (max-width: 639px) {
+    :root[data-ui-theme='current'] [data-app-content] > main { padding: 1rem; }
+  }
+  :root[data-ui-theme='current'] main { scrollbar-color: #87689a var(--background); }
+  :root[data-ui-theme='current'] main > * { min-width: 0; }
+  :root[data-ui-theme='current'] main h1 { letter-spacing: -.035em; font-weight: 500; }
+  :root[data-ui-theme='current'] [data-ui-card] {
+    border-radius: .875rem;
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  :root[data-ui-theme='current'] :is([data-ui-card-header],[data-ui-section-header]) {
+    --foreground: var(--current-band-ink);
+    --muted-foreground: var(--current-band-ink);
+    --primary: var(--current-band-ink);
+    --primary-foreground: var(--current-band);
+    padding: 1rem 1.25rem;
+    background: var(--current-band);
+    color: var(--current-band-ink);
+    border-color: var(--current-band);
+    border-radius: .8rem .8rem 0 0;
+  }
+  :root[data-ui-theme='current'] [data-ui-card-header] :is(h2,h3,p) { color: inherit; }
+  :root[data-ui-theme='current'] [data-tour='nav'] a { border-radius: .5rem; }
+  :root[data-ui-theme='current'] [data-tour='nav'] a[aria-current='page'] {
+    background: var(--current-selected);
+    color: var(--current-selected-ink);
+    box-shadow: inset 3px 0 var(--current-band);
+  }
+  :root[data-ui-theme='current'] [data-company-switcher] {
+    min-height: 2.5rem;
+    border: 1px solid var(--input);
+    border-radius: .625rem;
+    background: var(--card);
+    padding-inline: .75rem;
+    color: var(--foreground);
+  }
+  :root[data-ui-theme='current'] [data-company-switcher]:hover { background: var(--accent); }
+  :root[data-ui-theme='current'] :is(input,select,textarea) {
+    accent-color: var(--current-band);
+    caret-color: var(--foreground);
+  }
+  :root[data-ui-theme='current'] :is(button,a,input,select,textarea):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+  /* Compact Ledger. Keep native tables, sticky columns, sorting and row actions.
+     StackedTable's container queries retain the labelled mobile presentation. */
+  :root[data-ui-theme='current'] main table {
+    font-variant-numeric: tabular-nums;
+    border-color: var(--border);
+  }
+  :root[data-ui-theme='current'] main table thead {
+    background: var(--secondary);
+    color: var(--muted-foreground);
+  }
+  :root[data-ui-theme='current'] main table thead th {
+    font-size: .6875rem;
+    font-weight: 500;
+    letter-spacing: .025em;
+    text-transform: none;
+  }
+  :root[data-ui-theme='current'] main table tbody tr {
+    border-color: var(--border);
+    background: var(--card);
+  }
+  :root[data-ui-theme='current'] main table tbody tr:nth-child(even) { background: var(--muted); }
+  :root[data-ui-theme='current'] main table tbody tr:hover,
+  :root[data-ui-theme='current'] main table tbody tr:focus-within { background: var(--accent); }
+  :root[data-ui-theme='current'] main table tbody td { line-height: 1.65; border-color: var(--border); }
+  :root[data-ui-theme='current'] main table tbody td:first-child {
+    font-variant-numeric: tabular-nums;
+    border-inline-start: 3px solid transparent;
+  }
+  :root[data-ui-theme='current'] main table tbody tr:focus-within > td:first-child,
+  :root[data-ui-theme='current'] main table tbody tr:hover > td:first-child {
+    border-inline-start-color: var(--current-band);
+  }
+  :root[data-ui-theme='current'] main [data-hairline-table] button[aria-current='true'] {
+    background: var(--current-selected);
+    color: var(--current-selected-ink);
+  }
+  :root[data-ui-theme='current'] main [data-hairline-table] button[aria-current='true'] span { color: inherit; }
+  /* Legacy status colours retain meaning on Plum, including light-mode utility classes. */
+  :root[data-ui-theme='current'] :is([class~="text-amber-500"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"]) { color: #f4ca86; }
+  :root[data-ui-theme='current'] :is([class~="text-orange-600"], [class~="text-orange-700"], [class~="text-orange-800"]) { color: #f4ca86; }
+  :root[data-ui-theme='current'] :is([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"], [class~="text-red-900"]) { color: #ffaebb; }
+  :root[data-ui-theme='current'] :is([class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-rose-900"]) { color: #ffaebb; }
+  :root[data-ui-theme='current'] :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-emerald-900"]) { color: #b6dfbd; }
+  :root[data-ui-theme='current'] :is([class~="text-green-800"]) { color: #b6dfbd; }
+  :root[data-ui-theme='current'] :is([class~="text-teal-700"], [class~="text-teal-800"]) { color: #a4ddd4; }
+  :root[data-ui-theme='current'] :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"]) { color: #b9d6ff; }
+  :root[data-ui-theme='current'] :is([class~="text-indigo-500"], [class~="text-indigo-600"], [class~="text-indigo-700"], [class~="text-indigo-800"]) { color: #c9c5ff; }
+  :root[data-ui-theme='current'] :is([class~="text-violet-700"], [class~="text-violet-800"]) { color: #d6bcf5; }
+  :root[data-ui-theme='current'] :is([class~="text-purple-800"], [class~="text-purple-900"]) { color: #d6bcf5; }
+  :root[data-ui-theme='current'] :is([class~="text-slate-700"], [class~="text-slate-800"]) { color: var(--muted-foreground); }
+  :root[data-ui-theme='current'] :is([class~="text-zinc-900"]) { color: var(--muted-foreground); }
+  :root[data-ui-theme='current'] :is(.bg-white:not([data-brand-ground]), [class~="bg-amber-100"], [class~="bg-amber-200/60"], [class~="bg-amber-50"], [class~="bg-amber-50/40"], [class~="bg-amber-50/50"], [class~="bg-amber-50/60"], [class~="bg-amber-50/70"], [class~="bg-blue-100"], [class~="bg-blue-50"], [class~="bg-emerald-100"], [class~="bg-emerald-50"], [class~="bg-emerald-50/40"], [class~="bg-emerald-50/50"], [class~="bg-emerald-50/60"], [class~="bg-emerald-50/70"], [class~="bg-green-100"], [class~="bg-indigo-100"], [class~="bg-indigo-50"], [class~="bg-indigo-50/40"], [class~="bg-indigo-50/50"], [class~="bg-indigo-50/60"], [class~="bg-orange-100"], [class~="bg-orange-50"], [class~="bg-purple-100"], [class~="bg-red-100"], [class~="bg-red-50"], [class~="bg-red-50/40"], [class~="bg-red-50/50"], [class~="bg-red-50/60"], [class~="bg-rose-100"], [class~="bg-rose-50"], [class~="bg-rose-50/60"], [class~="bg-slate-100"], [class~="bg-teal-100"], [class~="bg-teal-50"], [class~="bg-violet-100"], [class~="bg-violet-50"], [class~="bg-zinc-200/80"]) { background-color: var(--muted); }
+  :root[data-ui-theme='current'] :is(.text-gray-900,.text-slate-900,.text-zinc-900) { color: var(--foreground); }
+}
+/* Documents retain a paper surface when printed, regardless of the screen theme. */
+@media print {
+  :root[data-ui-theme='current'] {
+    color-scheme: light;
+    --canvas: #fff; --background: #fff; --foreground: #111;
+    --card: #fff; --card-foreground: #111; --muted: #f4f4f4;
+    --muted-foreground: #444; --border: #bbb;
+    --primary: #111; --primary-foreground: #fff;
+    --accent: #eee; --accent-foreground: #111;
+    --secondary: #f4f4f4; --secondary-foreground: #111;
+    --popover: #fff; --popover-foreground: #111;
+    --input: #888; --ring: #444;
+    --destructive: #a11f31; --destructive-foreground: #fff;
+  }
+}

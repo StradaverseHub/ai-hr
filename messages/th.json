@@ -11662,6 +11662,7 @@
       "toggle": "สลับธีม"
     },
     "uiTheme": {
+      "current": "Current",
       "label": "ธีม",
       "monolith": "Monolith",
       "classic": "คลาสสิก"

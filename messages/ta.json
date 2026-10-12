@@ -11662,6 +11662,7 @@
       "toggle": "தீம் மாற்று"
     },
     "uiTheme": {
+      "current": "Current",
       "label": "தீம்",
       "monolith": "Monolith",
       "classic": "கிளாசிக்"

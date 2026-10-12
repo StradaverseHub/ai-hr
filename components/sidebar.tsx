@@ -840,6 +840,7 @@ export function Sidebar({
     {/* r398 (parent): the Monolith rail follows Classic's breakpoints. The README hides it below 900px, but the app
         has no other way to open navigation at those widths, so hiding it would leave a tablet with no navigation. */}
       <aside
+        data-app-sidebar
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
           collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',
@@ -863,7 +864,7 @@ export function Sidebar({
               four colours are the brand's own and read correctly only on a light ground. A logo that
               re-tints with the colour scheme has stopped being the logo. The ring keeps it from
               dissolving into a light background. */}
-          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
+          <span data-brand-ground className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
             <KingdeeMark className="size-full" />
           </span>
           {!collapsed && (
