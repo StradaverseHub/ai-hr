@@ -5,9 +5,10 @@ import { Card } from '@/components/ui';
 import { refreshOrchestrationAction } from './orchestrator-actions';
 import { RefreshWorkButton } from './refresh-button';
 
-export async function OrchestrationWorkQueue({ view, refresh }: {
+export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = false }: {
   view: Awaited<ReturnType<typeof orchestrationQueue>>;
   refresh?: string;
+  canViewRuns?: boolean;
 }) {
   const t = await getTranslations('controlTower.orchestrator');
   const gaps = await getTranslations('controlTower.readinessScreen.gap');
@@ -23,7 +24,7 @@ export async function OrchestrationWorkQueue({ view, refresh }: {
     <div className="flex flex-wrap gap-x-6 gap-y-2 border-y border-border px-5 py-3 text-sm">
       <span>{t('openCount', { count: view.total })}</span><span>{t('verifiedCount', { count: view.verified })}</span>
       <Link href="/control-tower/agents" className="text-primary hover:underline">{t('manage')}</Link>
-      <Link href="/admin/scheduled-actions" className="text-primary hover:underline">{t('runs')}</Link>
+      {canViewRuns && <Link href="/admin/scheduled-actions" className="text-primary hover:underline">{t('runs')}</Link>}
     </div>
     {view.observedAt && <p className="px-5 pt-3 text-xs text-muted-foreground">{t('observed', { date: f.dateTime(view.observedAt, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) })}</p>}
     {view.rows.length === 0 ? <p className="p-5 text-sm text-muted-foreground">{t(view.observedAt ? 'empty' : 'unobserved')}</p> : <>

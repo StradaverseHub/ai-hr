@@ -30,6 +30,11 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(en.controlTower.orchestrator.unobserved)).toBeTruthy();
     expect(screen.queryByText(en.controlTower.orchestrator.empty)).toBeNull();
     expect(screen.getByRole('button', { name: 'Check current records' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Execution history' })).toBeNull();
+  });
+  it('offers the system execution log only when the parent authorizes that view', async () => {
+    show(await OrchestrationWorkQueue({ view: empty, canViewRuns: true }));
+    expect(screen.getByRole('link', { name: 'Execution history' }).getAttribute('href')).toBe('/admin/scheduled-actions');
   });
   it('keeps core HR available without advertising payroll-specific queues', () => {
     show(<ControlTowerNavigation payrollEnabled={false} />);

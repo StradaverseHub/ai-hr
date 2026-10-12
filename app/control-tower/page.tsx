@@ -3,7 +3,7 @@ import { isModuleEnabled } from '@/core/entitlements';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { OrchestrationWorkQueue } from './work-queue';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { agreementView, controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE, TARGET_AUTO_CLEAR_RATE } from '@/core/control-tower';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 
@@ -27,7 +27,7 @@ export default async function ControlTowerPage({ searchParams }: { searchParams:
     <div data-tour="intelligence-control-tower" className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} />
 
-      <OrchestrationWorkQueue view={queue} refresh={sp.refresh} />
+      <OrchestrationWorkQueue view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)} />
       <details className="space-y-5 rounded-xl border border-border p-5">
         <summary className="cursor-pointer text-base font-semibold focus-visible:outline-2 focus-visible:outline-primary">{orchestration('quality')}</summary>
 
