@@ -39,6 +39,6 @@ export default async function OnehrCalibrationPage({params,searchParams}:{params
         </>}
       </Card>;
     })}
-    {!v.session.lockedAt&&(pmOpen||potOpen)&&<Card className="p-5"><form action={onehrCalibrationAction} className="space-y-4">{fields}<input type="hidden" name="action" value="lock"/>{axisSelect(pmOpen,potOpen)}<Field label={t('overrideReason')}><textarea name="reason" maxLength={4000} className={inputCls}/></Field><ConfirmSubmit description={t('lockConfirm')} variant="secondary">{t('lockCalibration')}</ConfirmSubmit></form></Card>}
+    {v.canLockCohort!==false&&!v.session.lockedAt&&(pmOpen||potOpen)&&<Card className="p-5"><form action={onehrCalibrationAction} className="space-y-4">{fields}<input type="hidden" name="action" value="lock"/>{axisSelect(pmOpen,potOpen)}<Field label={t('overrideReason')}><textarea name="reason" maxLength={4000} className={inputCls}/></Field><ConfirmSubmit description={t('lockConfirm')} variant="secondary">{t('lockCalibration')}</ConfirmSubmit></form></Card>}
   </div>;
 }

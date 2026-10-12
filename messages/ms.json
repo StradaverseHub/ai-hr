@@ -17084,6 +17084,12 @@
     "evidenceLinks": "Link to objectives, competencies or principles",
     "evidenceResponse": "Respond to this evidence",
     "endorse": "Endorse",
-    "dispute": "Dispute"
+    "dispute": "Dispute",
+    "approvalChain": "KPI approval chain (in order)",
+    "approvalStep": "Approver step",
+    "addApprover": "Add approval step",
+    "removeApprover": "Remove step",
+    "confirmed": "Confirmed",
+    "evidenceCorrected": "A newer shared entry corrects this evidence."
   }
 }

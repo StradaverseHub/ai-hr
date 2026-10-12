@@ -53,6 +53,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await complete();expect((await view()).potential).toBe('High');
     expect((await view(self)).competencies.map(c=>c.self)).toEqual(['no','no']);
     expect((await view(self)).peers).toEqual([]);expect((await view(self)).potential).toBeNull();
+    expect(await withTenant(self,tx=>tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'onehr.panel-assigned')))).toEqual([]);
     const frozenId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     expect((await view(self)).result).toMatchObject({id:frozenId,performance:null,potential:null,talent:null});
     expect(await withTenant(self,tx=>tx.select().from(schema.onehrResult))).toEqual([]);
@@ -61,7 +62,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await perf.releaseOnehrResult(a,reviewId,'feedback',true);const own=await view(self);expect(own.feedbackReport).toHaveLength(7);expect(JSON.stringify(own.feedbackReport)).not.toMatch(/employmentId|requestId|count|relationship/);
     await perf.releaseOnehrResult(a,reviewId,'performance',false);expect((await view(self)).result?.performance).toBeNull();
     await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/finalized/);
-    await expect(withTenant(a,tx=>tx.update(schema.onehrResult).set({digest:'tampered'}).where(eq(schema.onehrResult.id,frozenId)))).rejects.toThrow(/immutable/);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrResult).set({digest:'tampered'}).where(eq(schema.onehrResult.id,frozenId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
     await expect(perf.configureOnehrCycle(a,cycleId,1,defaultPolicy(framework))).rejects.toThrow(/fixed/);
   });
   it('rejects stale submissions, self approvals, legacy bypasses, and cross-tenant requests',async()=>{
@@ -74,7 +75,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.closeCycle(a,{cycleId})).rejects.toThrow(/Finalize every/);
   });
   it('calibrates through live assigned scopes, bans self calibration, and revokes stale reviewer access',async()=>{
-    await complete();const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Calibrator'}).returning();
+    await complete();const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Calibrator',primaryEmail:`${randomUUID()}@onehr.test`}).returning();
     const userId=await createAppUser(b.tenantId,p.id,'employee'),calibrator={...self,userId,personId:p.id};
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'BU cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[userId],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
     let v=await perf.getOnehrCalibration(calibrator,sessionId);expect(v.rows[0].managerPotential).toBe('High');
@@ -96,7 +97,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   it('keeps private evidence private, preserves shared evidence and accepts explicit corrections',async()=>{
     const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered a milestone',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
     expect((await view()).evidence).toEqual([]);await perf.changeOnehrEvidenceState(self,id,'shared');expect((await view()).evidence).toHaveLength(1);
-    await expect(withTenant(self,tx=>tx.update(schema.onehrEvidence).set({body:'Rewrite history'}).where(eq(schema.onehrEvidence.id,id)))).rejects.toThrow(/new entry/);
+    await expect(withTenant(self,tx=>tx.update(schema.onehrEvidence).set({body:'Rewrite history'}).where(eq(schema.onehrEvidence.id,id)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/new entry/)})});
     await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Correction: milestone completed later',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:id,links:[]});expect((await view()).evidence).toHaveLength(2);
   });
   it('imports frozen results into Rewards with provenance and new verification, without changing compensation',async()=>{
@@ -145,11 +146,11 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.respondOnehrEvidence(self,id,'endorse','Own endorsement')).rejects.toThrow(/another author/);
     await perf.respondOnehrEvidence(mgr,id,'endorse','Verified delivery');await perf.respondOnehrEvidence(mgr,id,'dispute','A correction is needed');
     expect((await view(self)).evidence[0].responses.map(r=>r.stance)).toEqual(['endorse','dispute']);
-    await expect(withTenant(self,tx=>tx.update(schema.onehrEvidence).set({responses:[]}).where(eq(schema.onehrEvidence.id,id)))).rejects.toThrow(/append-only/);
+    await expect(withTenant(self,tx=>tx.update(schema.onehrEvidence).set({responses:[]}).where(eq(schema.onehrEvidence.id,id)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/append-only/)})});
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect((f.result as {provenance:{evidence:unknown[]}}).provenance.evidence).toHaveLength(1);
     const [panel]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId,reviewId));
-    await expect(withTenant(a,tx=>tx.update(schema.onehrPanel).set({remark:'Restate frozen evidence'}).where(eq(schema.onehrPanel.requestId,panel.requestId)))).rejects.toThrow(/immutable/);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrPanel).set({remark:'Restate frozen evidence'}).where(eq(schema.onehrPanel.requestId,panel.requestId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
   });
 
   it('routes native feedback tasks and released-result updates without disclosing assessment content',async()=>{
@@ -165,6 +166,18 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   it('rejects AI access before contacting a provider or recording a proposal',async()=>{
     await expect(perf.draftOnehrNarrative(peers[0].ctx,reviewId,'Invent a pay award')).rejects.toThrow(/Only the employee/);
     expect(await owner.db.select().from(schema.agentProposal)).toEqual([]);
+  });
+
+  it('requires every KPI approver to act in order and carries each confirmed value forward',async()=>{
+    const matrix=peers[0];await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Ordered approval',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId,approverEmploymentIds:[matrix.employmentId,manager.employmentId]}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}]);
+    await expect(perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,2,'')).rejects.toThrow(/another moderator/);
+    await perf.moderateOnehrKpi(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,id,3,'Verified an additional outcome');expect((await view()).kpis[0].locked).toBe(false);
+    await expect(perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'AE','')).rejects.toThrow(/every KPI/);
+    await expect(perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,2,'')).rejects.toThrow(/Explain/);
+    await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,3,'Confirmed preceding value');expect((await view()).kpis[0].locked).toBe(true);
+    await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'AE','');expect((await view()).managerPerformance).toBe('AE');
   });
 
 });

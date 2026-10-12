@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, requireModule } from '@/lib/authz';
+import { onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
 import { listCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -27,7 +28,7 @@ export default async function PerformancePage({
   // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
   // point; a deep link skips it and meets the service refusal, which is the correct outcome.
   await requireModule('performance');
-  const { s } = await scopedSession();
+  const { s,scopeIds } = await scopedSession();
   const t = await getTranslations('performance.list');
   const admin = isAdmin(s) || canManagePerfComp(s);
   const manager = (s.roles ?? []).includes('manager');
@@ -36,12 +37,14 @@ export default async function PerformancePage({
   const { error } = sp;
   const today = todayInKualaLumpur();
 
-  const [cycles, pending, companies, checkinData] = await Promise.all([
+  const [cycles, pending, companies, checkinData, onehr] = await Promise.all([
     admin ? listCycles(s) : Promise.resolve([]),
     managerPendingReviews(s),
     admin ? listCompanies(s) : Promise.resolve([]),
     managerCheckIns(s),
+    onehrAssignments(s),
   ]);
+  const to=await getTranslations('onehr');
   const { checkins, reports } = checkinData;
   // fc776376 — review cycles accumulate every period; the rest of this screen is a fixed worklist.
   const { rows: cyclePage, state: pgState } = paginateRows(cycles, parsePageQuery(sp));
@@ -58,6 +61,7 @@ export default async function PerformancePage({
         <PageHeader title={t('title')} description={t('description')} />
       </div>
       <ErrorBanner message={error} />
+      {(onehr.reviews.length>0||onehr.sessions.length>0)&&<Card className="space-y-3 p-5"><h2 className="font-semibold">{to('assignments')}</h2>{onehr.reviews.map(r=><p key={r.id}><Link className="text-primary hover:underline" href={`/performance/review/${r.id}`}>{r.name} · {r.cycle} · {r.periodEnd}</Link></p>)}{onehr.sessions.map(c=><p key={c.id}><Link className="text-primary hover:underline" href={`/performance/onehr/calibration/${c.id}`}>{c.name}</Link></p>)}</Card>}
 
       {pending.length > 0 && (
         <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
@@ -209,7 +213,7 @@ export default async function PerformancePage({
           <Card data-tour="performance-new-cycle">
             <details>
               <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
-              <NewCycleForm companies={companies} today={today} />
+              <NewCycleForm companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />
             </details>
           </Card>
         </>

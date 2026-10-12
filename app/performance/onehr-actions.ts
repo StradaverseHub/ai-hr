@@ -39,7 +39,7 @@ export async function onehrReviewAction(f:FormData){
     switch(str(f,'action')){
       case 'kpis':{
         const view=await perf.getOnehrReview(s,id);if(!view)throw Error('Assessment not found.');
-        const rows=ids(f,'kpiId').map(k=>({id:k,title:str(f,`${k}.title`),description:str(f,`${k}.description`),weightBp:Math.round(num(f,`${k}.weight`)*100),unit:str(f,`${k}.unit`),moderatorEmploymentId:str(f,`${k}.moderator`)||view.reviewerEmploymentId,scoring:str(f,`${k}.mechanism`)==='A'?{mechanism:'A',method:str(f,`${k}.method`),rates:[0,1,2,3,4].map(i=>num(f,`${k}.rate.${i}`))}:{mechanism:'B',method:str(f,`${k}.method`),variant:str(f,`${k}.variant`),threshold:num(f,`${k}.threshold`),target:num(f,`${k}.target`),multiple:num(f,`${k}.multiple`),excellence:nullableNumber(f,`${k}.excellence`)}}));
+        const rows=ids(f,'kpiId').map(k=>({id:k,title:str(f,`${k}.title`),description:str(f,`${k}.description`),weightBp:Math.round(num(f,`${k}.weight`)*100),unit:str(f,`${k}.unit`),moderatorEmploymentId:str(f,`${k}.moderator`)||view.reviewerEmploymentId,approverEmploymentIds:ids(f,`${k}.approverIds`),scoring:str(f,`${k}.mechanism`)==='A'?{mechanism:'A',method:str(f,`${k}.method`),rates:[0,1,2,3,4].map(i=>num(f,`${k}.rate.${i}`))}:{mechanism:'B',method:str(f,`${k}.method`),variant:str(f,`${k}.variant`),threshold:num(f,`${k}.threshold`),target:num(f,`${k}.target`),multiple:num(f,`${k}.multiple`),excellence:nullableNumber(f,`${k}.excellence`)}}));
         await perf.saveOnehrKpis(s,id,expected,rows,f.has('propose'));break;
       }
       case 'approve':await perf.approveOnehrScorecard(s,id,expected,str(f,'decision')==='approve',str(f,'remark'));break;

@@ -8,15 +8,17 @@ import { withPerformanceTenant } from '../../../core/module-gate';
 import { resolveActiveAiConfig } from '../../../core/ai-config';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import framework from './framework.json';
-import { assertWindow, bandFor, evidenceResponseSchema, careerSchema, competencySchema, defaultPolicy, frameworkFor, goalSchema, kpiSchema, pmBands, policySchema, potential, potentialBands, referenceCurve, resolveBand, scoreAnswers, scorecard, talentCategory, tiers, validateScorecard, type Competency, type FrozenResult, type KPI, type PMBand, type Policy, type PotentialBand, type Statement, type Tier, type WindowCell } from './model';
+import { assertWindow, kpiApprovers, pendingKpiApprover, bandFor, evidenceResponseSchema, careerSchema, competencySchema, defaultPolicy, frameworkFor, goalSchema, kpiSchema, pmBands, policySchema, potential, potentialBands, referenceCurve, resolveBand, scoreAnswers, scorecard, talentCategory, tiers, validateScorecard, type Competency, type FrozenResult, type KPI, type PMBand, type Policy, type PotentialBand, type Statement, type Tier, type WindowCell } from './model';
 
 const uuid = z.uuid();
 const note = z.string().trim().max(4000);
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 function revision(actual: number, expected: number) { if (!Number.isInteger(expected) || actual !== expected) throw Error('This record changed. Reload before saving.'); }
 async function audit(tx: Tx, ctx: SessionContext, id: string, event: string, payload: Record<string, unknown> = {}) {
-  const [review]=await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(eq(onehrReview.reviewId,id));
-  const [plan]=review?[]:await tx.select({employmentId:onehrPlan.employmentId}).from(onehrPlan).where(eq(onehrPlan.id,id));
+  // Subject-scoped events are readable by the employee. Panel counts and calibration details stay admin-only.
+  const subjectScoped=['scorecard-proposed','scorecard-approved','scorecard-returned','results-submitted','competencies-submitted','plan-shared','plan-reviewed','plan-closed','result-released','result-revoked'].includes(event);
+  const [review]=subjectScoped?await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(eq(onehrReview.reviewId,id)):[];
+  const [plan]=subjectScoped&&!review?await tx.select({employmentId:onehrPlan.employmentId}).from(onehrPlan).where(eq(onehrPlan.id,id)):[];
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onehr', aggregateId: id, eventType: `onehr.${event}`, actor: actorOf(ctx), subjectEmploymentId:review?.employmentId??plan?.employmentId, payload });
 }
 async function isSelf(tx: Tx, employmentId: string) {
@@ -41,7 +43,7 @@ async function loadReview(tx: Tx, reviewId: string, lock = false) {
   const cycle=await loadCycle(tx,row.cycleId);
   return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
-async function moderatorChoices(tx:Tx,id:string){const [r]=await tx.execute<{value:{id:string;name:string}[]}>(sql`select app.onehr_moderator_choices(${id}::uuid) as value`);return r?.value??[];}
+async function moderatorChoices(tx:Tx,id:string){const [r]=await tx.execute<{value:{id:string;name:string;personId:string}[]}>(sql`select app.onehr_moderator_choices(${id}::uuid) as value`);return r?.value??[];}
 async function isModerator(tx:Tx,id:string,kpiId?:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.onehr_moderator(${id}::uuid,${kpiId??null}::uuid) as ok`);return !!r?.ok;}
 
 async function writable(tx: Tx, r: Awaited<ReturnType<typeof loadReview>>, cell: WindowCell, expected: number, actor: 'self'|'manager'|'either'|'moderator') {
@@ -105,14 +107,15 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
 
 /** Whole-scorecard setting. Client state cannot set approval, moderation or results. */
 export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
-  const inputs=z.array(kpiSchema.pick({id:true,title:true,description:true,weightBp:true,unit:true,scoring:true,moderatorEmploymentId:true})).max(100).parse(raw);
+  const inputs=z.array(kpiSchema.pick({id:true,title:true,description:true,weightBp:true,unit:true,scoring:true,moderatorEmploymentId:true}).extend({approverEmploymentIds:z.array(uuid).min(1).max(10).optional()})).max(100).parse(raw);
   if(new Set(inputs.map(k=>k.id)).size!==inputs.length)throw Error('Duplicate KPI.');
   return withPerformanceTenant(ctx,async tx=>{
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting',expected,'self');if(!r.cycle.policy.modules.pm)throw Error('Performance assessment is disabled.');
     if(r.kpis.some(k=>k.setting==='approved'||k.setting==='proposed'))throw Error('The scorecard is already proposed or approved.');
     const moderators=await moderatorChoices(tx,reviewId);
-    if(inputs.some(k=>!moderators.some(m=>m.id===k.moderatorEmploymentId)))throw Error('Choose the assigned reviewer or a current native matrix manager as KPI moderator.');
-    const kpis:KPI[]=inputs.map(k=>({...k,setting:propose?'proposed':'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}));
+    if(inputs.some(k=>(k.approverEmploymentIds??[k.moderatorEmploymentId]).some(id=>!moderators.some(m=>m.id===id))))throw Error('Choose the assigned reviewer or a current native matrix manager as KPI moderator.');
+    if(inputs.some(k=>{const people=(k.approverEmploymentIds??[k.moderatorEmploymentId]).map(id=>moderators.find(m=>m.id===id)?.personId);return new Set(people).size!==people.length;}))throw Error('Choose each approver once in a KPI chain.');
+    const kpis:KPI[]=inputs.map(k=>({...k,moderatorEmploymentId:k.approverEmploymentIds?.[0]??k.moderatorEmploymentId,approvalChain:(k.approverEmploymentIds??[k.moderatorEmploymentId!]).map(employmentId=>({employmentId,actual:null,remark:'',at:null})),setting:propose?'proposed':'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}));
     const mechanism=r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B':'A';
     if(kpis.some(k=>k.scoring.mechanism!==mechanism))throw Error('Use the scoring mechanism configured for this company.');
     if(propose)validateScorecard(kpis);
@@ -144,8 +147,11 @@ export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expect
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_approve',expected,'moderator');
     if(!await isModerator(tx,reviewId,kpiId))throw Error('This KPI is assigned to another moderator.');
     const k=r.kpis.find(k=>k.id===kpiId);if(!r.row.resultsSubmittedAt||!k||k.locked)throw Error('This KPI is not awaiting moderation.');
-    if(actual!==k.actual&&!remark.trim())throw Error('Explain the adjusted result.');
-    const kpis=r.kpis.map(k=>k.id===kpiId?{...k,approvedActual:actual,moderationRemark:remark,locked:true}:k);
+    if(actual!==(k.approvedActual??k.actual)&&!remark.trim())throw Error('Explain the adjusted result.');
+    const chain=k.approvalChain?.length?k.approvalChain:[{employmentId:k.moderatorEmploymentId!,actual:null,remark:'',at:null}];
+    const next=chain.findIndex(step=>!step.at);if(next<0)throw Error('This KPI chain is complete.');
+    const approvalChain=chain.map((step,i)=>i===next?{...step,actual,remark,at:new Date().toISOString()}:step);
+    const kpis=r.kpis.map(k=>k.id===kpiId?{...k,approvalChain,approvedActual:actual,moderationRemark:remark,locked:approvalChain.every(step=>step.at!=null)}:k);
     await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,'kpi-moderated',{kpiId});
   });
 }
@@ -241,7 +247,7 @@ async function decisions(tx:Tx,reviewId:string) {
 }
 async function resolved(tx:Tx,reviewId:string,policy:Policy) {
   const input=await assessment(tx,reviewId,policy),rows=await decisions(tx,reviewId),effective=rows.filter(d=>!(d.tier==='group'&&d.mode==='blend')&&!(d.tier==='bg'&&rows.some(g=>g.tier==='group'&&g.mode==='replace')));
-  return {input,rows,performance:resolveBand(input.performance,effective.map(d=>({...d,band:d.performance,locked:d.performanceLocked}))),potential:resolveBand(input.potential.band,effective.map(d=>({...d,band:d.potential,locked:d.potentialLocked})))};
+  return {input,rows,performance:resolveBand<PMBand>(input.performance,effective.map(d=>({...d,band:d.performance,locked:d.performanceLocked}))),potential:resolveBand<PotentialBand>(input.potential.band,effective.map(d=>({...d,band:d.potential,locked:d.potentialLocked})))};
 }
 export async function createOnehrCalibration(ctx:SessionContext,cycleId:string,raw:unknown) {
   const p=z.object({name:z.string().trim().min(1).max(300),companyId:uuid.nullable(),tier:z.enum(tiers),reviewerUserIds:z.array(uuid).min(1).max(100),reviewIds:z.array(uuid).min(1).max(10000),pbtAchievement:z.number().finite().nullable(),mode:z.enum(['after','replace','blend']).default('after')}).parse(raw);
@@ -303,9 +309,11 @@ export async function lockOnehrCalibration(ctx:SessionContext,sessionId:string,e
  return withPerformanceTenant(ctx,async tx=>{
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);const {pm,pot}=needsAxes(cycle.policy,axis);
   if(!pm&&!pot)throw Error('This assessment axis is disabled.');if(session.lockedAt||pm&&session.performanceLockedAt||pot&&session.potentialLockedAt)throw Error('Calibration axis is already locked.');calibrationWindows(cycle.policy,session.tier as Tier,axis);
+  const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);if(!reviewId&&own?.present)throw Error('A reviewer cannot lock their own calibration.');
   const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId)).orderBy(asc(onehrCalibrationEntry.reviewId));if(!entries.length)throw Error('An empty cohort cannot be locked.');
   if(reviewId&&(!['group','final'].includes(session.tier)||!entries.some(e=>e.reviewId===reviewId)))throw Error('Individual locking is available only within a Group or final cohort.');
   const selected=reviewId?entries.filter(e=>e.reviewId===reviewId):entries;
+  if(own?.present&&cycle.policy.curveStrict&&!overrideReason.trim())throw Error('A separate reviewer or explicit override reason is required to assess a distribution that includes your own result.');
   const bands:{performance:PMBand|null;potential:PotentialBand|null}[]=[];
   for(const e of entries){
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.reviewId},0))`);
@@ -325,7 +333,7 @@ export async function lockOnehrCalibration(ctx:SessionContext,sessionId:string,e
    await tx.update(onehrCalibrationEntry).set({performanceLockedAt:pl,potentialLockedAt:tl,lockedAt:(!cycle.policy.modules.pm||pl)&&(!cycle.policy.modules.tm||tl)?e.lockedAt??now:null}).where(eq(onehrCalibrationEntry.id,e.id));
   }
   const updated=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId));
-  const pmLock=updated.every(e=>e.performanceLockedAt)?session.performanceLockedAt??now:null,potLock=updated.every(e=>e.potentialLockedAt)?session.potentialLockedAt??now:null;
+  const pmLock=!own?.present&&updated.every(e=>e.performanceLockedAt)?session.performanceLockedAt??now:null,potLock=!own?.present&&updated.every(e=>e.potentialLockedAt)?session.potentialLockedAt??now:null;
   const all=(!cycle.policy.modules.pm||pmLock)&&(!cycle.policy.modules.tm||potLock);
   await tx.update(onehrCalibration).set({performanceLockedAt:pmLock,potentialLockedAt:potLock,lockedAt:all?now:null,revision:session.revision+1}).where(eq(onehrCalibration.id,sessionId));
   await audit(tx,ctx,sessionId,'calibration-locked',{axis,reviewId:reviewId??null,override:!!overrideReason.trim(),reason:overrideReason});
@@ -337,7 +345,8 @@ export async function getOnehrCalibration(ctx:SessionContext,sessionId:string) {
     const {session,cycle}=await loadCalibration(tx,sessionId);
     const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId));
     const rows=[];for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;const r=await resolved(tx,entry.reviewId,cycle.policy);rows.push({entry,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,managerPerformance:r.input.performance,managerPotential:r.input.potential.band,currentPerformance:r.performance.band,currentPotential:r.potential.band});}
-    return {session,cycle:{id:cycle.native.id,name:cycle.native.name},modules:cycle.policy.modules,rows,reference:session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement))};
+    const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);
+    return {session,canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name},modules:cycle.policy.modules,rows,reference:session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement))};
   });
 }
 export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expected:number) {
@@ -348,10 +357,10 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     const [existing]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(existing)return existing.id;
     if(!['open','calibration'].includes(r.cycle.native.status))throw Error('The cycle is closed.');
     const resolvedResult=await resolved(tx,reviewId,r.cycle.policy);
-    if(resolvedResult.rows.some(d=>!d.locked&&d.tier!=='final'&&!(d.tier==='bg'&&resolvedResult.rows.some(g=>g.tier==='group'&&g.mode==='replace'))))throw Error('Lock every assigned calibration scope before finalizing.');
+    if(resolvedResult.rows.some(d=>!d.locked&&d.tier!=='final'&&!(d.tier==='group'&&d.mode==='blend')&&!(d.tier==='bg'&&resolvedResult.rows.some(g=>g.tier==='group'&&g.mode==='replace'))))throw Error('Lock every assigned calibration scope before finalizing.');
     if(r.cycle.policy.modules.tm&&!resolvedResult.input.potential.valid)throw Error('Complete the manager assessment and required valid 360 submissions first.');
     if(r.cycle.policy.modules.pm&&!resolvedResult.performance.band||r.cycle.policy.modules.tm&&!resolvedResult.potential.band)throw Error('Complete every enabled assessment axis before finalizing.');
-    const talentDecision=[...resolvedResult.rows].reverse().find(d=>['bg','group','final'].includes(d.tier)&&d.locked);
+    const talentDecision=[...resolvedResult.rows].reverse().find(d=>['bg','group','final'].includes(d.tier)&&!(d.tier==='group'&&d.mode==='blend')&&d.locked);
     const evidence=await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),eq(onehrEvidence.state,'shared')));
     const attachments=await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(eq(performanceAttachment.reviewId,reviewId));
     const result:FrozenResult={version:1,provenance:{evidence,attachments,kpis:r.kpis,competencies:r.competencies,leadership:resolvedResult.input.leadership,decisions:resolvedResult.rows},performance:resolvedResult.performance.band,potential:resolvedResult.potential.band,performanceSource:resolvedResult.performance.source,potentialSource:resolvedResult.potential.source,talent:talentCategory(resolvedResult.performance.band,resolvedResult.potential.band),selfScore:scorecard(r.kpis,r.cycle.policy,r.row.companyId,false).score,managerScore:r.row.managerScore==null?null:Number(r.row.managerScore),potentialPct:resolvedResult.input.potential.pct,grade:r.row.grade,policyDigest:hash(r.cycle.policy),feedback:resolvedResult.input.principles.map(p=>({principle:p.principle,band:p.pct<=r.cycle.policy.lowMaxPct?'Low':p.pct<=r.cycle.policy.midMaxPct?'Mid':'High'})),pip:talentDecision?.pip??false,promotion:talentDecision?.promotion??false,specialReward:talentDecision?.specialReward??false};
@@ -449,8 +458,8 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const attachments=r.cycle.policy.modules.evidence&&(!moderator||admin)?await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(eq(performanceAttachment.reviewId,reviewId)):[];
     const peers=manager||admin?await tx.select({requestId:onehrPanel.requestId,employmentId:onehrPanel.peerEmploymentId,relationship:onehrPanel.relationship,submittedAt:onehrPanel.submittedAt}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt))):[];
     let aiEnabled=false;if(self||manager){try{aiEnabled=!!await resolveActiveAiConfig(tx,ctx);}catch{/* Manual assessment remains available when AI configuration is unusable. */}}
-    return {aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:false,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,admin,moderator,moderators,mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canModerateIds:r.kpis.filter(k=>k.moderatorEmploymentId&&r.native.ownEmploymentIds.includes(k.moderatorEmploymentId)).map(k=>k.id),
-      kpis:moderator&&!admin?r.kpis.filter(k=>k.moderatorEmploymentId&&r.native.ownEmploymentIds.includes(k.moderatorEmploymentId)):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:r.row.managerPerformance,managerScore:r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:r.row.managerRemark,
+    return {aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:false,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,admin,moderator,moderators:moderators.map(({id,name})=>({id,name})),mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next);}).map(k=>k.id),
+      kpis:moderator&&!admin?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:r.row.managerPerformance,managerScore:r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:r.row.managerRemark,
       potential:leadership?.potential.band??null,finalized:!!frozen||!!r.native.closedAt,result:result?{id:frozen!.id,digest:frozen!.digest,performance:!self||frozen!.performanceReleasedAt?result.performance:null,potential:!self||frozen!.potentialReleasedAt?result.potential:null,talent:!self||frozen!.talentReleasedAt?result.talent:null,performanceReleased:!!frozen!.performanceReleasedAt,potentialReleased:!!frozen!.potentialReleasedAt,talentReleased:!!frozen!.talentReleasedAt,feedbackReleased:!!frozen!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,evidence:evidence.map(e=>({...e,responses:evidenceResponseSchema.array().parse(e.responses)})),attachments,peers,choices};
   });
 }
@@ -462,7 +471,7 @@ export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
     return {cycle:cycle.native,policy:cycle.policy,revision:config.revision,reviews,users,companies,sessions:await tx.select().from(onehrCalibration).where(eq(onehrCalibration.cycleId,cycleId))};});
 }
 export async function onehrAssignments(ctx:SessionContext) {
-  return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
+  return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
 }
 /** Rewards consumes this immutable projection under its own transaction and company authorization. */
 export async function onehrRewardResultTx(tx:Tx,employmentId:string,year:number,rewardUnitId:string) {
@@ -474,13 +483,13 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
  uuid.parse(reviewerEmploymentId);
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
-  if(r.row.managerPerformance||r.kpis.some(k=>k.locked)||r.row.competencyStatus==='reviewed')throw Error('Reassignment is closed after manager assessment begins.');
+  if(r.row.managerPerformance||r.kpis.some(k=>k.locked||k.approvalChain?.some(step=>step.at))||r.row.competencyStatus==='reviewed')throw Error('Reassignment is closed after manager assessment begins.');
   const [reviewer]=await tx.select().from(employment).where(eq(employment.id,reviewerEmploymentId));
   const [subject]=await tx.select().from(employment).where(eq(employment.id,r.row.employmentId));
   const [nativeScope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_report_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) or app.heads_department_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) as ok`);
   if(!reviewer||!subject||reviewer.personId===subject.personId||!nativeScope?.ok||reviewer.terminatedOn&&reviewer.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active reviewer other than the subject.');
   const [frozen]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(frozen||r.native.closedAt||r.cycle.native.status==='closed')throw Error('Assessment is finalized.');
-  await tx.update(performanceReview).set({reviewerEmploymentId}).where(eq(performanceReview.id,reviewId));await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>({...k,moderatorEmploymentId:k.moderatorEmploymentId===r.native.reviewerEmploymentId?reviewerEmploymentId:k.moderatorEmploymentId}))});await audit(tx,ctx,reviewId,'reviewer-reassigned',{reviewerEmploymentId});
+  await tx.update(performanceReview).set({reviewerEmploymentId}).where(eq(performanceReview.id,reviewId));await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>({...k,moderatorEmploymentId:k.moderatorEmploymentId===r.native.reviewerEmploymentId?reviewerEmploymentId:k.moderatorEmploymentId,approvalChain:k.approvalChain?.map(step=>step.employmentId===r.native.reviewerEmploymentId?{...step,employmentId:reviewerEmploymentId}:step)}))});await audit(tx,ctx,reviewId,'reviewer-reassigned',{reviewerEmploymentId});
  });
 }
 
