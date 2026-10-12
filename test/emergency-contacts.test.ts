@@ -313,6 +313,11 @@ describe('23ad620e — migration 0322 leaves exactly one home for an emergency c
     expect(policy, 'capture the current migrated policy before replaying legacy DDL').toBeTruthy();
     currentPolicy = { qual: String(policy.qual), with_check: String(policy.with_check) };
   });
+  afterAll(async () => {
+    const [policy] = await owner.client`select qual, with_check from pg_policies
+      where schemaname='public' and tablename='person_emergency_contact' and policyname='person_emergency_contact_rls'`;
+    expect(policy, 'legacy migration fixtures must leave the current worker policy intact').toMatchObject(currentPolicy);
+  });
   const restorePolicy = async () => {
     // Migration 0322 recreates its old policy; restore the exact current definition, including future
     // changes, so another file on this worker does not inherit a pre-0515 policy.
