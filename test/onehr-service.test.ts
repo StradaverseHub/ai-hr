@@ -142,6 +142,10 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     const reviewed=(await perf.getOnehrReview(self,current.reviewId))!.plans[0];expect(reviewed.status).toBe('closed');expect(reviewed.conversation).toBe('Mid-year career check-in');
     await perf.updateOnehrGoalProgress(self,plan.id,reviewed.revision,input.goals[0].id,'in_progress');
     expect((await perf.getOnehrReview(self,current.reviewId))!.plans[0].goals).toMatchObject([{status:'in_progress',area:'Coaching'}]);
+    const {cycleId:disabled}=await perf.createCycle(a,{name:'Development disabled',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-06-30`});
+    const disabledPolicy={...policy,modules:{...policy.modules,idp:false}};await perf.configureOnehrCycle(a,disabled,null,disabledPolicy);await perf.openCycle(a,{cycleId:disabled});
+    const [disabledReview]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,disabled),eq(schema.onehrReview.employmentId,subject.employmentId)));
+    await expect(perf.reviewOnehrPlan(mgr,plan.id,reviewed.revision+1,'Bypass disabled module','Conversation',false,disabledReview.reviewId)).rejects.toThrow(/disabled/);
   });
   it('records quarterly KPI status without numeric ratings or Rewards facts',async()=>{
     const {cycleId:quarter}=await perf.createCycle(a,{name:'Quarterly check-in',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-03-31`});
