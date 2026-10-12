@@ -28,7 +28,7 @@ export function AssessmentDraftForm({children,action,revision,labels,className='
       }).catch(()=>{setError(labels.failed);setState('idle');});
     },600);
   }
-  return <form ref={form} action={async data=>{await queue.current;data.set('draftRevision',currentRevision.current==null?'':String(currentRevision.current));await action(data);}} className={className} onChange={schedule} onSubmit={()=>{if(pending.current)clearTimeout(pending.current);}}>
+  return <form data-assessment-draft ref={form} action={async data=>{await queue.current;data.set('draftRevision',currentRevision.current==null?'':String(currentRevision.current));await action(data);}} className={className} onChange={schedule} onSubmit={()=>{if(pending.current)clearTimeout(pending.current);}}>
     <input type="hidden" name="draftRevision" defaultValue={revision??''}/>
     <p className="text-xs text-muted-foreground" role="status">{state==='saving'?labels.saving:state==='saved'?labels.saved:labels.privateDraft}</p>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}

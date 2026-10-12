@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { pmBands, potentialBands, talentCategory, talentCell9, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
 export function TalentGrid({rows,labels}:{rows:{id:string;name:string;performance:PMBand|null;potential:PotentialBand|null}[];labels:Record<string,string>}) {
- const [columns,setColumns]=useState<9|15>(15);
+ const [columns,setColumns]=useState<9|15>(9);
  const performance=columns===15?[...pmBands]:['low','mid','high'] as const;
  const group=(p:PMBand)=>columns===15?p:['UA','BE'].includes(p)?'low':p==='ME'?'mid':'high';
  const tone=(label:string)=>label==='PIP/Improvement'?'bg-amber-50 dark:bg-amber-500/10':label==='Super Star'?'bg-emerald-100 dark:bg-emerald-500/20':label==='Star'?'bg-emerald-50 dark:bg-emerald-500/10':'bg-muted/30';

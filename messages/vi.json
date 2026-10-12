@@ -17221,7 +17221,15 @@
         "calibration": "Calibration"
       },
       "parts": "Assessment part",
-      "toDo": "To do"
+      "toDo": "To do",
+      "steps": {
+        "rate": "Rate",
+        "results": "Results",
+        "remark": "Remark",
+        "justification": "Justification",
+        "confirm": "Confirm"
+      },
+      "dashboard": "Dashboard"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17291,6 +17299,10 @@
       "confirm": "Fill and lock the eligible KPI lines with this shared result? Employees cannot change a result filled by HR.",
       "applied": "Company KPI results applied.",
       "failed": "Unable to complete the request. Try again."
-    }
+    },
+    "agreementPct": "{value}% agreement",
+    "writtenFeedback": "Written feedback",
+    "lockBusinessUnits": "Lock business units",
+    "lockBusinessUnit": "Lock this unit"
   }
 }
