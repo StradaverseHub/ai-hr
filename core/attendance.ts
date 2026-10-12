@@ -3724,7 +3724,7 @@ export async function decideAttendanceCorrection(
       // (overtime claimed for a day with no recorded work) and holding that line is the regression contract.
       const deferred = !hasClockCorrection && hasOtRequest && cor.attendanceDate > (p.today ?? todayInKualaLumpur());
 
-      const payrollCompanyId = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
+      const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
       const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
@@ -3956,7 +3956,7 @@ export async function decideAttendanceCorrection(
         };
       }
 
-      if (amendedId && payrollCompanyId) await markAttendancePayrollTx(tx,ctx,payrollCompanyId,cor.employmentId,cor.attendanceDate);
+      if (amendedId && payrollBatches) await markAttendancePayrollTx(tx,ctx,payrollBatches,cor.employmentId);
       // Stamp the OT-approval audit fields onto the correction row (requested + approved + method).
       if (hasOtRequest) {
         await tx

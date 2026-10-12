@@ -33,6 +33,10 @@ under the subject lock, including captured originals. This narrows the approved 
 index without weakening its duplicate-restore refusal.
 
 Payroll batches are locked before changing attendance, using the payroll pack's period coverage.
+A narrowly authorised database function reads run membership and attendance cut-off settings for
+manager/delegate decisions without exposing payslips or amounts. The payroll pack uses its existing
+cut-off calculation, and a second restricted function marks only the subject's processed run stale.
+Payslip RLS and salary privacy remain unchanged.
 Closed payroll refuses the change; processed payroll receives its existing reprocessing mark. Approval
 still applies the existing self-decision policy. The capture trigger admits synthetic `admin` punches
 for an effective direct administrative manager or scoped attendance delegate correcting another person's

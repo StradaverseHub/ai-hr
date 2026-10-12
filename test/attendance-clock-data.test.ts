@@ -7,9 +7,9 @@ import { BUILTIN_MAPPING_ID } from '../lib/clocking-file';
 import { setAttendancePhotoSetting } from '../core/clocking-location';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, attendancePunchesForRange, attendancePunchesForDays } from '../core/attendance';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { ClockDataChangedError, AttendancePayrollClosedError, validateClockEntries } from '../core/attendance-punch-change';
@@ -115,6 +115,7 @@ describe('approved attendance clock-data corrections', () => {
     const userId = await createAppUser(b.tenantId, personId, 'employee');
     const employee = { ...a, userId, personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
     await expect(attendanceClockData(employee, employmentId, date)).rejects.toThrow(/administrator/);
+    await expect(withTenant(employee, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`))).rejects.toThrow();
     await expect(requestAttendanceCorrection(employee, { employmentId, date, reason: 'Not an admin', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } })).rejects.toThrow(/administrator/);
     expect((await attendanceClockData(a, employmentId, date)).rows.filter(r => r.voidedAt)).toHaveLength(0);
   });
@@ -134,6 +135,7 @@ describe('approved attendance clock-data corrections', () => {
     await save(a, employmentId, []);
     const other = adminCtx(await seedBase());
     await expect(attendanceClockData(other, employmentId, date)).rejects.toThrow(/administrator/);
+    await expect(withTenant(other, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`))).rejects.toThrow();
     const rows = await withTenant(other, tx => tx.select().from(schema.attendancePunch).where(eq(schema.attendancePunch.employmentId, employmentId)));
     expect(rows).toHaveLength(0);
     const updated = await withTenant(other, tx => tx.update(schema.attendancePunch).set({ voidedAt: null, voidedBy: null, voidReason: null }).where(eq(schema.attendancePunch.employmentId, employmentId)).returning());
@@ -148,6 +150,35 @@ describe('approved attendance clock-data corrections', () => {
     await save(a, employmentId, [{ punchAt: '09:30', direction: 'in' }, { punchAt: '17:00', direction: 'out' }]);
     const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
     expect(batch.needsRecalcAt).not.toBeNull();
+  });
+  it.each(['processed', 'closed'] as const)('protects %s payroll under a manager session without exposing payslips', async status => {
+    const { a, employmentId } = await fixture();
+    const manager = await hireEmployee(a, { person: { fullName: 'Clock correction manager', primaryEmail: 'clock-manager@test.local' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01' });
+    await setReportingLine(a, { subordinateEmploymentId: employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+    const userId = await createAppUser(b.tenantId, manager.personId, 'manager');
+    const mgr = { ...a, userId, personId: manager.personId, roles: ['manager'], grants: [{ role: 'manager', companyId: b.companyId }] };
+    await setCompensation(a, { employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+    await setCompensation(a, { employmentId: manager.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+    await owner.db.insert(schema.companyPayrollConfig).values({ tenantId: b.tenantId, companyId: b.companyId, attendanceCutOffDay: 10 }).onConflictDoUpdate({ target: schema.companyPayrollConfig.companyId, set: { attendanceCutOffDay: 10 } });
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId });
+    const raw = await attendanceClockData(a, employmentId, date);
+    const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date, reason: 'Reviewed by manager', clockChanges: { version: 1, baseline: raw.baseline, entries: [{ punchAt: '09:00', direction: 'in' }, { punchAt: '18:00', direction: 'out' }] } });
+    expect(await withTenant(mgr, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.employmentId, employmentId)))).toHaveLength(0);
+    const facts = await withTenant(mgr, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`));
+    expect(facts).toHaveLength(1);
+    expect(Object.keys(facts[0]).sort()).toEqual(['attendance_cutoff_day', 'batch_id', 'pay_period', 'policy_config', 'status']);
+    if (status === 'closed') {
+      await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
+      await expect(decideAttendanceCorrection(mgr, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+      expect((await day(employmentId)).checkInAt).toBe('08:00:00');
+    } else {
+      await decideAttendanceCorrection(mgr, { correctionId, decision: 'approved' });
+      const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+      expect(batch.needsRecalcAt).not.toBeNull();
+      expect(batch.recalcEmploymentIds).toContain(employmentId);
+    }
+    expect(await withTenant(mgr, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.employmentId, employmentId)))).toHaveLength(0);
   });
   it('retains web photo/GPS evidence byte-for-byte while live clocking displays only the corrected punches', async () => {
     const { a, employmentId, personId } = await fixture();

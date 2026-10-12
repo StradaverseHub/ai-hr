@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
-import { attendancePunch, employment, payrollBatch } from '../db/schema';
+import { attendancePunch } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
-import { batchesCoveringAttendanceDates, closedBatchesCoveringAttendanceDates, markBatchNeedsRecalc } from '../packs/payroll/service';
+import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
 export type ClockEntry = {
   id?: string;
   punchAt: string;
@@ -47,18 +47,12 @@ export function punchesForCorrectionTx(tx: Tx, employmentId: string, date: strin
   return tx.select().from(attendancePunch).where(and(eq(attendancePunch.employmentId, employmentId), eq(attendancePunch.attendanceDate, date))).orderBy(asc(attendancePunch.punchAt), asc(attendancePunch.id));
 }
 export async function lockAttendancePayrollTx(tx: Tx, employmentId: string, date: string) {
-  const [subject] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
-  if (!subject)
-    throw new Error('Employee not visible');
-  // The same row lock used by payroll close serializes a correction with finalisation.
-  await tx.select({ id: payrollBatch.id }).from(payrollBatch).where(eq(payrollBatch.companyId, subject.companyId)).orderBy(asc(payrollBatch.id)).for('update');
-  if ((await closedBatchesCoveringAttendanceDates(tx, { companyId: subject.companyId, entries: [{ employmentId, date }] })).length)
-    throw new AttendancePayrollClosedError();
-  return subject.companyId;
+  const batches = await lockPayrollForAttendanceChange(tx, employmentId, date);
+  if (batches.some(batch => batch.status === 'closed')) throw new AttendancePayrollClosedError();
+  return batches;
 }
-export async function markAttendancePayrollTx(tx: Tx, ctx: SessionContext, companyId: string, employmentId: string, date: string) {
-  for (const b of await batchesCoveringAttendanceDates(tx, { companyId, entries: [{ employmentId, date }] }))
-    await markBatchNeedsRecalc(tx, ctx, { batchId: b.batchId, employmentIds: b.employmentIds });
+export async function markAttendancePayrollTx(tx: Tx, ctx: SessionContext, batches: Awaited<ReturnType<typeof lockAttendancePayrollTx>>, employmentId: string) {
+  await markPayrollForAttendanceChange(tx, ctx, batches, employmentId);
 }
 export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
   attendanceId: string;
