@@ -16900,6 +16900,7 @@
     "onJob": "Learn through work (70)",
     "fromOthers": "Learn from others (20)",
     "formalLearning": "Formal learning (10)",
+    "planCheckInHelp": "Review the plan agreed at the previous year-end and update its progress. Plan definitions are written at year-end.",
     "developmentHelp": "The 70:20:10 prompts describe ways to develop; they are not percentage quotas. Sharing locks your career choices and goal definitions. Progress remains editable throughout the year.",
     "sharePlan": "Share with manager",
     "progressLabel": "Progress",

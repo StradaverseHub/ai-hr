@@ -19,7 +19,7 @@ Employees and assigned reviewers use **My Performance** to open their assessment
 - Employees submit actual results once. Each approver confirms the preceding result in order; changes require a reason. The final approver locks the KPI. The assigned manager then confirms the overall performance band.
 - Employees answer their technical statements. The manager reviews them separately; changed answers require reasons.
 - The manager assigns a panel using native reporting relationships. Numeric grades require the policy's valid-response minimum; the source default is four, with five recommended. Non-numeric grades use one line-manager assessment. An unsubmitted rater can decline or be replaced; submitted responses remain part of the assessment.
-- Development plans are shared with the manager, discussed and closed, then acknowledged by the employee. Shared goal definitions stay fixed; progress remains updateable through the year. Year-end plans cover the next year; mid-year reviews use the current year.
+- Development plans are private drafts until shared with the manager, discussed and closed, then acknowledged by the employee. Shared goal definitions stay fixed; progress remains updateable through the year. Only year-end authors plan definitions for the next year; mid-year reviews use the current year’s already agreed plan.
 - Evidence can remain private in draft or be shared. Correct shared text with a new entry. Endorsements/disputes and native attachments provide context; they do not calculate a rating.
 
 ## Calibrate, finalize and release

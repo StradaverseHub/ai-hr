@@ -388,7 +388,7 @@ export async function releaseOnehrResult(ctx:SessionContext,reviewId:string,comp
 export async function saveOnehrPlan(ctx:SessionContext,reviewId:string,expected:number|null,raw:unknown,share=false) {
   const p=z.object({career:careerSchema,goals:z.array(goalSchema.omit({managerComment:true})).max(30)}).parse(raw);
   return withPerformanceTenant(ctx,async tx=>{
-    const r=await loadReview(tx,reviewId);if(!await isSelf(tx,r.row.employmentId))throw Error('Only the employee may write their plan.');if(!r.cycle.policy.modules.idp)throw Error('Development plans are disabled.');assertWindow(r.cycle.policy,'idp_self');
+    const r=await loadReview(tx,reviewId);if(!await isSelf(tx,r.row.employmentId))throw Error('Only the employee may write their plan.');if(!r.cycle.policy.modules.idp)throw Error('Development plans are disabled.');if(r.cycle.policy.kind!=='year_end')throw Error('Write development plans at year-end; use this period to review the agreed plan.');assertWindow(r.cycle.policy,'idp_self');
     const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
     const [existing]=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,year))).for('update');
     if(existing){revision(existing.revision,expected!);if(existing.status!=='draft')throw Error('Career and development goals are locked after sharing.');}else if(expected!=null)throw Error('Reload this plan.');

@@ -108,13 +108,36 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sessionId));await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
   });
   it('preserves plan definitions after sharing, requires a career conversation to close, and audits year-round progress',async()=>{
-    const goalId=randomUUID();await perf.saveOnehrPlan(self,reviewId,null,{career:{aspiration:'Develop leadership',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:goalId,area:'Facilitation',dueOn:`${year+1}-06-01`,onJob:'Facilitate planning',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    const goalId=randomUUID(),input={career:{aspiration:'Develop leadership',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:goalId,area:'Facilitation',dueOn:`${year+1}-06-01`,onJob:'Facilitate planning',fromOthers:'',formalLearning:'',status:'not_started'}]};
+    await perf.saveOnehrPlan(self,reviewId,null,input);
+    const draft=(await view(self)).plans[0];expect(draft.status).toBe('draft');
+    expect((await view(mgr)).plans).toEqual([]);expect((await view(a)).plans).toEqual([]);
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,draft.id)))).toEqual([]);
+    await perf.saveOnehrPlan(self,reviewId,draft.revision,input,true);
     const plan=(await view()).plans[0];expect(plan.planYear).toBe(year+1);
+    await expect(withTenant(self,tx=>tx.update(schema.onehrPlan).set({career:{aspiration:'Rewrite after sharing'}}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/definitions are immutable/)})});
     await expect(perf.reviewOnehrPlan(mgr,plan.id,plan.revision,'Agreed','',true)).rejects.toThrow(/conversation/);
     await perf.reviewOnehrPlan(mgr,plan.id,plan.revision,'Agreed','Discussed development and mobility',true);
     await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'in_progress');
     await expect(perf.saveOnehrPlan(self,reviewId,(await view()).plans[0].revision,{career:{aspiration:'Changed',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]})).rejects.toThrow(/locked/);
     await perf.acknowledgeOnehrPlan(self,plan.id,(await view()).plans[0].revision);expect((await view()).plans[0].acknowledgedAt).not.toBeNull();
+  });
+  it('uses the previous year-end plan for mid-year review without reopening authoring',async()=>{
+    const {cycleId:previous}=await perf.createCycle(a,{name:'Previous year-end',companyId:b.companyId,periodStart:`${year-1}-01-01`,periodEnd:`${year-1}-12-31`});
+    await perf.configureOnehrCycle(a,previous,null);await perf.openCycle(a,{cycleId:previous});
+    const [prior]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,previous),eq(schema.onehrReview.employmentId,subject.employmentId)));
+    const input={career:{aspiration:'Agreed annual development',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Coaching',dueOn:`${year}-12-31`,onJob:'Coach a colleague',fromOthers:'',formalLearning:'',status:'not_started'}]};
+    await perf.saveOnehrPlan(self,prior.reviewId,null,input,true);
+    const plan=(await perf.getOnehrReview(mgr,prior.reviewId))!.plans[0];await perf.reviewOnehrPlan(mgr,plan.id,plan.revision,'Agreed','Annual career conversation',true);
+    const {cycleId:mid}=await perf.createCycle(a,{name:'Mid-year check-in',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-06-30`});
+    const policy=defaultPolicy(framework);policy.kind='mid_year';await perf.configureOnehrCycle(a,mid,null,policy);await perf.openCycle(a,{cycleId:mid});
+    const [current]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,mid),eq(schema.onehrReview.employmentId,subject.employmentId)));
+    const currentView=(await perf.getOnehrReview(self,current.reviewId))!;expect(currentView.planYear).toBe(year);expect(currentView.plans[0].id).toBe(plan.id);
+    await expect(perf.saveOnehrPlan(self,current.reviewId,currentView.plans[0].revision,input)).rejects.toThrow(/year-end/);
+    await perf.reviewOnehrPlan(mgr,plan.id,currentView.plans[0].revision,'Mid-year progress reviewed','Mid-year career check-in',false,current.reviewId);
+    const reviewed=(await perf.getOnehrReview(self,current.reviewId))!.plans[0];expect(reviewed.status).toBe('closed');expect(reviewed.conversation).toBe('Mid-year career check-in');
+    await perf.updateOnehrGoalProgress(self,plan.id,reviewed.revision,input.goals[0].id,'in_progress');
+    expect((await perf.getOnehrReview(self,current.reviewId))!.plans[0].goals).toMatchObject([{status:'in_progress',area:'Coaching'}]);
   });
   it('keeps private evidence private, preserves shared evidence and accepts explicit corrections',async()=>{
     const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered a milestone',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
