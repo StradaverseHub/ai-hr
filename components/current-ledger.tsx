@@ -28,11 +28,12 @@ export type LedgerRecord = {
   href: string;
 };
 
-export function CurrentLedger({ records, label, children, footer }: {
+export function CurrentLedger({ records, label, children, footer, tour }: {
   records: LedgerRecord[];
   label: string;
   children: ReactNode;
   footer?: ReactNode;
+  tour?: string;
 }) {
   const theme = useUiTheme();
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, serverNarrow);
@@ -60,7 +61,7 @@ export function CurrentLedger({ records, label, children, footer }: {
       <Link className="current-ledger-open" href={selected.href}>{t('openRecord')}<span aria-hidden>↗</span></Link>
       <div className="current-ledger-actions">{selected.actions}</div>
     </aside>;
-  return <div className="current-record-view"><div className="current-record-toolbar" role="group" aria-label={t('view')}>
+  return <div className="current-record-view" data-tour={tableView ? undefined : tour}><div className="current-record-toolbar" role="group" aria-label={t('view')}>
     <button type="button" aria-pressed={!tableView} onClick={() => setTableView(false)}>{t('ledger')}</button>
     <button type="button" aria-pressed={tableView} onClick={() => setTableView(true)}>{t('table')}</button>
   </div>{tableView ? children : <div className="current-ledger-workspace" data-current-ledger>

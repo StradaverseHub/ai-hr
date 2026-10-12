@@ -35,8 +35,8 @@ import {
 import { decideProfileChangeAction } from './actions';
 import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
 import { ColumnPicker } from './column-picker';
-import { DraftRow } from './draft-row';
-import { EmployeeRow } from './employee-row';
+import { DraftRow, draftRowHref } from './draft-row';
+import { EmployeeRow, employeeRowHref } from './employee-row';
 import { employmentPhotoIds } from '@/core/person-photo';
 // 034a5080 — the Create New Employee prompt over this list. Same four-question body the standalone route
 // renders, so it needs the same Employee ID rule resolution the route's page performs.
@@ -651,18 +651,18 @@ export default async function PeoplePage({
         </Card>
       )}
 
-      <CurrentLedger footer={pager} label={t('title')} records={[
+      <CurrentLedger footer={pager} tour="people-table" label={t('title')} records={[
         ...drafts.map((d) => ({
           key: d.id, title: d.label || t('draftUntitled'),
           subtitle: d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady'),
           reference: d.reservedEmployeeCode ?? '—', status: t('statusDraft'),
-          href: `/admin/personnel/new?draft=${d.id}`, actions: null,
+          href: draftRowHref(d.id), actions: null,
           fields: [{ label: t('colCompany'), value: d.companyName ?? t('draftNoCompany') }],
         })),
         ...employees.map((e) => ({
           key: e.employmentId, title: e.name, subtitle: e.email ?? '',
           reference: e.employeeCode ?? '—', status: tStatus(deriveEmploymentStatus(e, today)),
-          href: `/admin/personnel/${e.employmentId}`, actions: null,
+          href: employeeRowHref(e.employmentId), actions: null,
           fields: columns.map((key) => ({ label: t(COLUMN_LABEL_KEY[key]), value: textCell(e, key) })),
         })),
       ]}>
