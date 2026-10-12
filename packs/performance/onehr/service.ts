@@ -504,7 +504,7 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
  uuid.parse(reviewerEmploymentId);
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
-  if(r.row.managerPerformance||r.kpis.some(k=>k.locked||k.approvalChain?.some(step=>step.at))||r.row.competencyStatus==='reviewed')throw Error('Reassignment is closed after manager assessment begins.');
+  if(r.row.managerPerformance||r.kpis.some(k=>k.locked||k.settingApprovals?.length||k.approvalChain?.some(step=>step.at))||r.row.competencyStatus==='reviewed')throw Error('Reassignment is closed after manager assessment begins.');
   const [reviewer]=await tx.select().from(employment).where(eq(employment.id,reviewerEmploymentId));
   const [subject]=await tx.select().from(employment).where(eq(employment.id,r.row.employmentId));
   const [nativeScope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_report_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) or app.heads_department_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) as ok`);

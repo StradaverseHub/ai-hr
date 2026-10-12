@@ -280,6 +280,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     expect((await view(matrix.ctx)).canApproveSettingIds).toEqual([id]);
     await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'Targets verified');
     expect((await view(self)).kpis[0].setting).toBe('proposed');
+    await expect(perf.reassignOnehrReviewer(a,reviewId,(await view(a)).revision,manager.employmentId)).rejects.toThrow(/assessment begins/);
     await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}])).rejects.toThrow(/approved scorecard/);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');
     expect((await view(self)).kpis[0].settingApprovals?.map(s=>s.employmentId)).toEqual([matrix.employmentId,manager.employmentId]);
