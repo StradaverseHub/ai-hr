@@ -15503,7 +15503,7 @@
       "collect": "Dapatkan penyerahan pekerja",
       "review": "HR menyemak dan mengemas kini rekod",
       "shown": "Memaparkan {shown} daripada {total} isu.",
-      "verificationNote": "Penutupan bermaksud medan wajib tersedia ketika semakan direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
+      "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
       "quality": "Kualiti gaji dan AI"
     }
   },

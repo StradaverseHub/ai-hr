@@ -15503,7 +15503,7 @@
       "collect": "Collect employee submission",
       "review": "HR to review and update record",
       "shown": "Showing {shown} of {total} issues.",
-      "verificationNote": "Closure means the required field is present at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
+      "verificationNote": "Closure means the information is present or no longer required at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
       "quality": "Payroll and AI quality"
     }
   },
