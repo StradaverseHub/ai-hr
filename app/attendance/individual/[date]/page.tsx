@@ -49,6 +49,7 @@ import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attenda
  */
 const CORRECTION_MESSAGES: readonly string[] = [
   'clockDataChanged',
+  'clockDataPending',
   'clockDataPayrollClosed',
   'correctionForbidden',
   'correctionBadDate',
@@ -128,6 +129,7 @@ export default async function IndividualAttendanceDayPage({
           ← {t('dayBackToList')}
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
+        {clockData && <AttendanceClockData key={selected.employmentId+date+clockData.baseline} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
       </div>
     );
   }
@@ -235,7 +237,7 @@ export default async function IndividualAttendanceDayPage({
 
       {/* 3 · CLOCK DATA — the pair, plus every punch when the day carries more than two. */}
       <Card className="overflow-hidden">
-        <SectionHeader title={t('daySecClock')} />
+        <SectionHeader title={clockData ? t('clockData.summary') : t('daySecClock')} />
         <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
           <Field label={t('colCheckIn')} value={row.checkInAt?.slice(0, 5) ?? DASH} />
           <Field label={t('colCheckOut')} value={row.checkOutAt?.slice(0, 5) ?? DASH} />
@@ -300,7 +302,7 @@ export default async function IndividualAttendanceDayPage({
         )}
       </Card>
 
-      {clockData && <AttendanceClockData data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
+      {clockData && <AttendanceClockData key={clockData.baseline} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
 
       {/* 4 · OVERTIME + 5 · IRREGULARITY — the eight cells that came off the list, in the SAME island with
           the SAME working, so this screen and the list can never explain one day two ways. */}

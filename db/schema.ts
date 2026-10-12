@@ -3987,7 +3987,10 @@ export const attendancePunch = pgTable(
     voidReason: text('void_reason'),
     createdAt: createdAt(),
   },
-  (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
+  (t) => [
+    index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt),
+    uniqueIndex('attendance_punch_live_clock_uq').on(t.attendanceId, t.punchAt, t.direction).where(sql`${t.voidedAt} is null and ${t.clockCaptureId} is null`),
+  ],
 );
 
 // ── r424 50ed39e1 · Attendance File Structure Mapping + Import Clocking Data (migration 0518) ──────────

@@ -3413,10 +3413,12 @@
       "restore": "Pulihkan ke kehadiran",
       "duplicate": "Masa dan arah yang sama sudah digunakan.",
       "discard": "Buang perubahan waktu yang belum disimpan?",
-      "legacy": "Rekod waktu lama"
+      "legacy": "Rekod waktu lama",
+      "summary": "Ringkasan kehadiran"
     },
     "clockDataChanged": "Data waktu berubah. Muat semula hari ini sebelum menghantar atau meluluskan pembetulan.",
-    "clockDataPayrollClosed": "Hari ini termasuk dalam penggajian yang ditutup. Buka semula penggajian sebelum membetulkannya."
+    "clockDataPayrollClosed": "Hari ini termasuk dalam penggajian yang ditutup. Buka semula penggajian sebelum membetulkannya.",
+    "clockDataPending": "Disimpan sebagai permohonan pembetulan tetapi belum digunakan. Semak dalam Kelulusan; anda tidak boleh meluluskan pembetulan kehadiran sendiri."
   },
   "org": {
     "title": "Carta organisasi",
@@ -4032,7 +4034,8 @@
     "proposedCleared": "— dikosongkan —",
     "requestedPendingLabel": "Dimohon, menunggu kelulusan:",
     "maRejectReason": "Penjelasan penolakan",
-    "maRejectNotRecorded": "Penjelasan tidak direkod"
+    "maRejectNotRecorded": "Penjelasan tidak direkod",
+    "maAskedClockData": "Pembetulan data waktu: {count} rekod dicadangkan"
   },
   "approvals": {
     "title": "Kelulusan",

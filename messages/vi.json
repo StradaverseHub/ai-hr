@@ -3413,10 +3413,12 @@
       "restore": "Khôi phục vào chấm công",
       "duplicate": "Giờ và hướng này đã được sử dụng.",
       "discard": "Bỏ thay đổi chấm công chưa lưu?",
-      "legacy": "Chấm công cũ"
+      "legacy": "Chấm công cũ",
+      "summary": "Tóm tắt chấm công"
     },
     "clockDataChanged": "Dữ liệu chấm công đã thay đổi. Tải lại ngày này trước khi gửi hoặc duyệt điều chỉnh.",
-    "clockDataPayrollClosed": "Ngày này thuộc kỳ lương đã đóng. Mở lại kỳ lương trước khi điều chỉnh."
+    "clockDataPayrollClosed": "Ngày này thuộc kỳ lương đã đóng. Mở lại kỳ lương trước khi điều chỉnh.",
+    "clockDataPending": "Đã lưu yêu cầu điều chỉnh nhưng chưa áp dụng. Xem trong Phê duyệt; bạn không thể tự duyệt điều chỉnh chấm công của mình."
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -4032,7 +4034,8 @@
     "proposedCleared": "— đã xoá —",
     "requestedPendingLabel": "Đã yêu cầu, đang chờ duyệt:",
     "maRejectReason": "Giải thích từ chối",
-    "maRejectNotRecorded": "Chưa ghi giải thích"
+    "maRejectNotRecorded": "Chưa ghi giải thích",
+    "maAskedClockData": "Điều chỉnh chấm công: đề xuất {count} lượt chấm công"
   },
   "approvals": {
     "title": "Phê duyệt",

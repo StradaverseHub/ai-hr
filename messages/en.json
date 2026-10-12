@@ -3413,10 +3413,12 @@
       "restore": "Restore to attendance",
       "duplicate": "The same time and direction is already in use.",
       "discard": "Discard your unsaved clock changes?",
-      "legacy": "Legacy clocking"
+      "legacy": "Legacy clocking",
+      "summary": "Attendance summary"
     },
     "clockDataChanged": "Clock data changed. Reload this day before submitting or approving the correction.",
-    "clockDataPayrollClosed": "This day is included in a closed payroll. Reopen the payroll before correcting it."
+    "clockDataPayrollClosed": "This day is included in a closed payroll. Reopen the payroll before correcting it.",
+    "clockDataPending": "Saved as a correction request, but not applied. Review the request in Approvals; you cannot approve your own attendance correction."
   },
   "org": {
     "title": "Org chart",
@@ -4032,7 +4034,8 @@
     "proposedCleared": "— cleared —",
     "requestedPendingLabel": "Requested, waiting for approval:",
     "maRejectReason": "Rejection explanation",
-    "maRejectNotRecorded": "Explanation not recorded"
+    "maRejectNotRecorded": "Explanation not recorded",
+    "maAskedClockData": "Clock data correction: {count} clockings proposed"
   },
   "approvals": {
     "title": "Approvals",

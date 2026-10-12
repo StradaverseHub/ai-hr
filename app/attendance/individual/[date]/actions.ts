@@ -109,7 +109,7 @@ export async function saveAttendanceClockDataAction(formData: FormData) {
     fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'correctionRejected');
   }
   try {await decideAttendanceCorrection(s,{correctionId:correctionId!,decision:'approved'});}
-  catch(e) {fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'correctionPendingAnotherApprover');}
+  catch(e) {fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'clockDataPending');}
   revalidatePath('/attendance');
   revalidatePath('/attendance/individual');
   revalidatePath('/attendance/my-records');

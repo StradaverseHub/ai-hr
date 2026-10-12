@@ -118,17 +118,10 @@ export class CorrectedClockConflictError extends ClockConflictError {}
 /**
  * r434 — AN APPROVED CORRECTION OWNS THE DAY, FOR EVERY WRITER.
  *
- * decideAttendanceCorrection upserts the day's aggregate (check-in, check-out, worked, overtime) and never
- * writes attendance_punch; checkInTx/checkOutTx rebuild the aggregate FROM the punches. So any clocking
- * written on a corrected day recomputes it from the old punches and silently undoes the approved
- * correction — and corrected hours are paid. Web Clocking (captureEmployeeClockTx) and the file import
- * already refused such a day; the shared writers here did not, so the administrator's manual check-in /
- * check-out could. The rule is now stated once and called by all of them.
- *
- * The condition is the one Web Clocking has always used and is deliberately NOT widened: the day must
- * have stored punches (retained punches are evidence that must not recompute the corrected figures) AND an
- * approved correction that proposed a check-in. A day with no punches is an aggregate-only day, which the
- * writers already handle by anchoring on its own check-in.
+ * Clock corrections now reconcile the effective punch set while retaining superseded raw evidence.
+ * An approved correction still owns the day: subsequent employee, manual or imported clockings must
+ * not silently replace a human decision. That includes an approved removal of every clocking and
+ * aggregate-only legacy corrections. HR can submit a further correction through the same workflow.
  */
 export async function assertDayNotOwnedByCorrectionTx(tx: Tx, employmentId: string, date: string): Promise<void> {
   const [day] = await tx
@@ -3296,7 +3289,8 @@ export async function requestAttendanceCorrection(
     requestKind?: AttendanceRequestKind | null;
   },
 ) {
-  const clockChanges = p.clockChanges ? { ...p.clockChanges, version: 1 as const, entries: validateClockEntries(p.clockChanges.entries) } : null;
+  if (p.clockChanges && (p.clockChanges.version !== 1 || !/^[0-9a-f]{64}$/.test(p.clockChanges.baseline))) throw new Error('Invalid clock-data correction.');
+  const clockChanges = p.clockChanges ? { version: 1 as const, baseline: p.clockChanges.baseline, entries: validateClockEntries(p.clockChanges.entries) } : null;
   if (clockChanges && (p.checkIn || p.checkOut || p.requestedOtMinutes != null)) throw new Error('Save clock data separately from overtime requests.');
   const checkIn = p.checkIn ?? null;
   const checkOut = p.checkOut ?? null;
@@ -3320,6 +3314,7 @@ export async function requestAttendanceCorrection(
   if (reason.length === 0) {
     throw new Error('A reason is required.');
   }
+  if (clockChanges && reason.length > 500) throw new Error('The clock-data correction reason must be at most 500 characters.');
   let requestedOtMinutes: number | null = null;
   if (hasOt) {
     const ot = Math.trunc(p.requestedOtMinutes!);
@@ -3350,6 +3345,8 @@ export async function requestAttendanceCorrection(
       if (!(allowed as unknown as {ok:boolean}[])[0]?.ok) throw new Error('Only an authorised administrator may edit clock data.');
       const rows = await punchesForCorrectionTx(tx,p.employmentId,p.date);
       if (clockChanges.baseline !== clockFingerprint(rows)) throw new ClockDataChangedError();
+      const active = rows.filter(row => !row.voidedAt);
+      if (clockChanges.entries.length === active.length && clockChanges.entries.every(e => active.some(row => row.id === e.id && row.punchAt === e.punchAt && row.direction === e.direction))) throw new Error('Change at least one clocking before saving.');
       for (const e of clockChanges.entries) if (e.id && !rows.some(row=>row.id===e.id)) throw new Error('Clocking does not belong to this attendance day.');
       await lockAttendancePayrollTx(tx,p.employmentId,p.date);
     }
@@ -5179,7 +5176,7 @@ export async function cancelPlannedOvertime(
       .where(eq(attendanceCorrection.id, p.correctionId))
       .limit(1);
     if (!plan) throw new OvertimePlanWithdrawNotAllowedError('overtime plan not found (or not visible)');
-    if (plan.clockChanges || plan.proposedCheckIn != null) throw new OvertimePlanWithdrawNotAllowedError('A clock correction cannot be withdrawn as an overtime plan.');
+    if (plan.clockChanges) throw new OvertimePlanWithdrawNotAllowedError('A clock correction cannot be withdrawn as an overtime plan.');
 
     const [subject] = await tx
       .select({ personId: employment.personId })

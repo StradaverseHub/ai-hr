@@ -457,7 +457,7 @@ export class ClockingImportError extends Error {
  * Decide every line. Reads only; the commit calls this inside its own transaction so the checks are run
  * again at the moment of import (plan item 12).
  */
-async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<Decided[]> {
+async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantId?: string): Promise<Decided[]> {
   const now = { date: todayInKualaLumpur(), time: timeInKualaLumpur() };
   const { lines } = parseWithMapping(text, def, now);
   const decided: Decided[] = lines.map((read) => ({
@@ -547,6 +547,12 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
   }
   const matched = readable.filter((d) => d.result === 'imported' && d.emp);
   if (matched.length === 0) return decided;
+  // Commit shares the correction/clock lock before reading days or approved corrections.
+  // Preview stays read-only. Stable order avoids two multi-employee imports deadlocking.
+  if (lockTenantId) for (const id of [...new Set(matched.map(d=>d.emp!.id))].sort()) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockTenantId + ':' + id}, 0))`);
+  }
+
 
   // 2 · Business day per clocking (the roster window, one query for the file).
   const days = await assignPunchBusinessDays(
@@ -806,7 +812,7 @@ export async function commitClockingImport(
     return await withTenant(ctx, async (tx) => {
       const mapping = await resolveMapping(tx, p.mappingId);
       mappingForFailure = mapping;
-      const decided = await decideLines(tx, mapping.def, p.text);
+      const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId);
       totalForFailure = decided.length;
       const counts = countsOf(decided);
       const personId = await actorPersonId(tx, ctx);

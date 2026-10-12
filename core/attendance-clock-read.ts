@@ -28,7 +28,7 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     let live = punches.map(p => ({ ...p, instant: p.recordedAt?.getTime() ?? toInstant(p.time) })).sort((a,b) => a.instant-b.instant);
     // A correction changes the authoritative pair without re-attributing its original photos.
     const firstIn = live.find(p=>p.direction==='in'), lastOut = live.filter(p=>p.direction==='out').at(-1);
-    if (day && (day.checkInMethod == null || firstIn?.time.slice(0,5) !== day.checkIn?.slice(0,5) || (lastOut?.time.slice(0,5)??null) !== (day.checkOut?.slice(0,5)??null))) live=[];
+    if (day && (firstIn?.time.slice(0,5) !== day.checkIn?.slice(0,5) || (lastOut?.time.slice(0,5)??null) !== (day.checkOut?.slice(0,5)??null))) live=[];
     if (!live.length && day?.checkIn) {
       live.push({direction:'in', time:day.checkIn, captureId:null, recordedAt:null, instant:toInstant(day.checkIn)});
       if (day.checkOut) live.push({direction:'out', time:day.checkOut, captureId:null, recordedAt:null, instant:toInstant(day.checkOut)});
@@ -56,6 +56,6 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
       try { const result = await resolveGeofence(tx,{employmentId:me.employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
-    return { serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
+    return { serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
   });
 }
