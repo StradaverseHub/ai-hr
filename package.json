@@ -52,7 +52,8 @@
     "statutory:sync": "node --env-file=.env.local --import tsx scripts/statutory-sync.ts",
     "seed:catalogs": "node --env-file=.env.local --import tsx scripts/seed-catalogs.ts",
     "claims:backfill-mileage-rate": "node --env-file=.env.local --import tsx scripts/backfill-mileage-flat-rate.ts",
-    "platform:usage": "node --env-file=.env.local --import tsx scripts/platform-usage-report.ts"
+    "platform:usage": "node --env-file=.env.local --import tsx scripts/platform-usage-report.ts",
+    "test:customer-install": "node --test test/customer-keycloak-preflight.node.test.mjs test/bootstrap-db.node.test.mjs test/backup-credential-errors.node.test.mjs test/backup-security.node.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

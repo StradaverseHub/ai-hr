@@ -116,3 +116,9 @@ Configure required jobs once on the jobs host, at the same release SHA, with /op
 Use the hardened scripts/backup-db.sh and scripts/restore-rehearsal.sh with private environment injection. They preserve certificate verification and keep passwords out of argv; they do not provision backup storage, encryption policy, scheduling or alert recipients. Configure those explicitly. Back up HR DB, identity DB, matching secrets/vault/configuration and retained release. Rehearse recovery to isolated databases through working login and HR workflows.
 
 Commission monitoring, controlled alerts, the 1,000-employee synthetic dataset and 200 distinct accounts. Execute the UAT-HOSTING.md checklist, denial cases, 200-user load plan, restore and rollback. Record evidence against the exact release and target. Full repo gate, Linux clean install/upgrade, live security acceptance, off-host recovery and measured 200-user capacity are separate required results. Until all pass, the installation remains preparation in progress.
+
+## Reproduce candidate installation checks
+
+In the repository development environment, hold both CLAUDE.md test-lock slots for every command below. Run pnpm test:customer-install as an unprivileged account with PostgreSQL 16 binaries, Python 3/libpq and OpenSSL available (PG_BIN may select the binary directory). These native tests create disposable private clusters; they are intentionally separate from Vitest and must be run in addition to the full gate. Never run their fixtures against a customer database.
+
+The customer integration suites are test/bootstrap-customer.test.ts, test/r387-customer-env-preflight.test.ts and test/customer-identity-install.test.ts; the existing deployment, platform and identity suites cover shared behavior. Run type checking, the complete chunked repository gate and a production build on the exact candidate SHA. A clean local pass does not replace Linux service/installer and live UAT acceptance.
