@@ -2241,7 +2241,7 @@ export async function submitPeerFeedback(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the OneHR feedback form for this request.'); }
+    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
     if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.insert(peerFeedback).values({
@@ -2268,7 +2268,7 @@ export async function submitPeerFeedback(
 export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the OneHR feedback form for this request.'); }
+    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
     if (!rq) throw new PerfError('Feedback request not found');
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));

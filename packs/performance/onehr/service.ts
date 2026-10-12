@@ -31,7 +31,7 @@ async function loadCycle(tx: Tx, cycleId: string, lock = false) {
   uuid.parse(cycleId);
   const q = tx.select({ native:reviewCycle, config:onehrCycle }).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(eq(reviewCycle.id,cycleId));
   const [r] = await (lock?q.for('no key update'):q);
-  if (!r) throw Error('OneHR cycle not found.');
+  if (!r) throw Error('Performance review cycle not found.');
   return {...r, policy:policySchema.parse(r.config.policy)};
 }
 async function loadReview(tx: Tx, reviewId: string, lock = false) {
@@ -85,7 +85,7 @@ export async function initializeOnehrCycleTx(tx: Tx, ctx: SessionContext, cycleI
 }
 export async function assertStandardCycleTx(tx:Tx,cycleId:string) {
   const [r]=await tx.select({id:onehrCycle.cycleId}).from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
-  if(r)throw Error('Use the OneHR workflow for this cycle.');
+  if(r)throw Error('Use the performance and talent review for this cycle.');
 }
 export async function assertOnehrClosureTx(tx:Tx,cycleId:string) {
   const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));if(!configured)return;

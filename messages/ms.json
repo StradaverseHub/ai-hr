@@ -15356,7 +15356,7 @@
       "planDrafterDoes": "Merangka jawapan kepada permintaan penambahbaikan yang dibangkitkan dari dalam produk. Ini alat kami sendiri, bukan ciri pelan anda.",
       "triage": "Pembaca tuntutan",
       "triageDoes": "Membaca setiap tuntutan perbelanjaan sebaik difailkan dan, jika penerangannya tidak sepadan dengan tuntutan itu, bertanya kepada orang yang memfailkannya — sebelum pelulus menghabiskan masa padanya. Ia hanya boleh bertanya: ia tidak boleh menolak, mengubah atau memutuskan sesuatu tuntutan.",
-      "onehrEvidenceDrafter": "OneHR evidence draft",
+      "onehrEvidenceDrafter": "Assessment evidence draft",
       "onehrEvidenceDrafterDoes": "Selects and orders authorized evidence passages for a human to edit. Deterministic checks resolve every passage; it cannot invent claims or make assessment or pay decisions."
     },
     "why": {
@@ -15471,7 +15471,7 @@
         "failed": "Itu tidak dapat diselesaikan. Tiada apa-apa ditutup."
       }
     },
-    "proposalType_onehr_narrative": "OneHR draft assembled from authorized evidence"
+    "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence"
   },
   "profileRequestSettings": {
     "title": "Permohonan Perubahan Pekerja",
@@ -16745,7 +16745,7 @@
     "adminEmpty": "Tiada kitaran semakan dikonfigurasi untuk skop syarikat anda.",
     "configurationPermission": "Hanya penyemak Ganjaran Kumpulan yang ditugaskan boleh mengedit dasar tahunan semasa semakan dalam draf.",
     "inheritedPolicy": "Semakan luar kitaran mewarisi dasar daripada semakan tahunan.",
-    "onehrSource": "Frozen OneHR assessment",
+    "onehrSource": "Frozen performance assessment",
     "sourceNomination": "Confirmed nomination",
     "sourceProvenance": "Assessment reference",
     "sourceAdoption": "Imported assessment reference",
@@ -16968,7 +16968,7 @@
     "closeCycle": "Close cycle",
     "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
     "policy": "Assessment policy",
-    "policyHelp": "Review these source-derived defaults before opening. No live OneHR database or tenant-specific configuration was included in the package. Native employee, organization and manager records determine the roster.",
+    "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
     "modules": "Enabled workflows",
     "lowMaxPct": "Low potential upper cutoff (%)",
@@ -17009,7 +17009,7 @@
     "groupMode": "Group calibration method",
     "reviewers": "Assigned reviewers",
     "cohort": "Employees in this cohort",
-    "nativeWorkflow": "Native OneHR performance and talent workflow",
+    "nativeWorkflow": "Performance and talent review",
     "feedbackSubmitted": "Your feedback has been submitted.",
     "overallRemark": "Overall feedback remark",
     "submitFeedback": "Submit feedback",
@@ -17025,10 +17025,10 @@
     "overrideReason": "Reason for a distribution exception",
     "lockConfirm": "Lock this calibration cohort?",
     "lockCalibration": "Lock calibration cohort",
-    "enableHelp": "Use the native OneHR workflow for KPI scoring, technical competencies, 360 feedback, calibration and development planning. Configure its policy before opening the cycle.",
-    "enable": "Enable OneHR workflow",
+    "enableHelp": "Set up KPI scoring, technical competencies, 360 feedback, calibration and development planning. Review the policy before opening the cycle.",
+    "enable": "Set up performance and talent review",
     "rewardImportHelp": "Import finalized results for this reward year. The immutable assessment reference is retained and fact verification is reset. Pay recommendations and approvals remain with Rewards. An improvement category does not confirm a PIP case.",
-    "rewardImport": "Import finalized OneHR results",
+    "rewardImport": "Import finalized assessment results",
     "assignments": "Assigned assessment work",
     "extremes": "Enable extreme-reviewer score correction",
     "bonus": "Always-no reviewer bonus (points)",
@@ -17127,7 +17127,7 @@
     "bothAxes": "Performance and potential",
     "keepPrevious": "Keep the preceding assessment",
     "lockPerson": "Lock this person’s assessment",
-    "onehrSource": "Frozen OneHR assessment",
+    "onehrSource": "Frozen performance assessment",
     "sourceNomination": "Confirmed nomination",
     "sourceProvenance": "Assessment reference",
     "sourceAdoption": "Imported assessment reference",
