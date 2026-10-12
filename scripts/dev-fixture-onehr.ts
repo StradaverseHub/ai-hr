@@ -71,6 +71,7 @@ async function main(){
   await perf.submitOnehrFeedback(peers[i].ctx,req.id,Object.fromEntries(card.statements.map(st=>[st.id,answer])),answer==='yes'?'Observed consistently in the release.':'');
  }
  await perf.addOnehrEvidence(subject.ctx,rid,{kind:'delivery',body:'Completed two agreed milestones and verified release acceptance.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[{kind:'kpi',id:kid}]});
+ await perf.addPerformanceAttachment(subject.ctx,{reviewId:rid,stageKind:null,fileName:'delivery-evidence.txt',mimeType:'text/plain',content:Buffer.from('Fictional demo: two agreed milestones accepted and verified.')});
  await perf.saveOnehrPlan(subject.ctx,rid,null,{career:{aspiration:'Build coaching skills',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Coaching',dueOn:`${year+1}-06-01`,onJob:'Lead a retrospective each month',fromOthers:'Observe a mentor',formalLearning:'Practice coaching skills',status:'not_started'}]},true);
  const plan=(await view(manager.ctx)).plans[0];await perf.reviewOnehrPlan(manager.ctx,plan.id,plan.revision,'Agreed development activities','Discussed career goals and support.',true);
  const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Group fixture confirmation',companyId,tier:'group',reviewerUserIds:[a.userId!],reviewIds:[rid],pbtAchievement:100,mode:'replace'});
@@ -84,14 +85,18 @@ async function main(){
  // Leave a second assessment's peer cards pending so the actual rater screen can be verified.
  const [pendingReview]=await owner.db.select().from(s.onehrReview).where(and(eq(s.onehrReview.cycleId,cycleId),eq(s.onehrReview.employmentId,peers[0].employmentId)));
  await perf.assignOnehrPanel(manager.ctx,pendingReview.reviewId,pendingReview.revision,[subject,...peers.slice(1)].map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+ await perf.createOnehrCalibration(a,cycleId,{name:'BU fixture calibration',companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[pendingReview.reviewId],pbtAchievement:100,mode:'after'});
+ const {cycleId:draftCycleId}=await perf.createCycle(a,{name:'OneHR draft (dev fixture)',companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
+ await perf.configureOnehrCycle(a,draftCycleId,null,policy);
  await manifest(cycleId);
 }
 async function manifest(cycleId:string){
  const users=await owner.db.select({id:s.appUser.id,key:s.appUser.workosUserId,personId:s.appUser.personId}).from(s.appUser).where(eq(s.appUser.tenantId,tenantId));
  const rows=await owner.db.select({reviewId:s.onehrReview.reviewId,name:s.person.fullName}).from(s.onehrReview).innerJoin(s.employment,eq(s.employment.id,s.onehrReview.employmentId)).innerJoin(s.person,eq(s.person.id,s.employment.personId)).where(eq(s.onehrReview.cycleId,cycleId));
- const cohorts=await owner.db.select({id:s.onehrCalibration.id}).from(s.onehrCalibration).where(eq(s.onehrCalibration.cycleId,cycleId));
+ const cohorts=await owner.db.select({id:s.onehrCalibration.id,name:s.onehrCalibration.name}).from(s.onehrCalibration).where(eq(s.onehrCalibration.cycleId,cycleId));
  const units=await owner.db.select({id:s.rewardUnit.id}).from(s.rewardUnit).innerJoin(s.rewardCycle,eq(s.rewardCycle.id,s.rewardUnit.cycleId)).where(and(eq(s.rewardUnit.tenantId,tenantId),eq(s.rewardCycle.name,'OneHR rewards (dev fixture)')));
  const feedback=await owner.db.select({id:s.onehrPanel.requestId,reviewId:s.onehrPanel.reviewId,peerEmploymentId:s.onehrPanel.peerEmploymentId}).from(s.onehrPanel).innerJoin(s.onehrReview,eq(s.onehrReview.reviewId,s.onehrPanel.reviewId)).where(and(eq(s.onehrReview.cycleId,cycleId),isNull(s.onehrPanel.submittedAt)));
- console.log(JSON.stringify({cycleId,feedback,users:users.filter(u=>u.key.startsWith('onehr-fixture:')),reviews:rows,calibration:cohorts,rewards:units},null,2));
+ const [draft]=await owner.db.select({id:s.reviewCycle.id}).from(s.reviewCycle).where(and(eq(s.reviewCycle.tenantId,tenantId),eq(s.reviewCycle.name,'OneHR draft (dev fixture)')));
+ console.log(JSON.stringify({cycleId,draftCycleId:draft?.id,feedback,users:users.filter(u=>u.key.startsWith('onehr-fixture:')),reviews:rows,calibration:cohorts,rewards:units},null,2));
 }
 main().then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1);});
