@@ -181,7 +181,7 @@ describe('approved attendance clock-data corrections', () => {
     }
     expect(await withTenant(mgr, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.employmentId, employmentId)))).toHaveLength(0);
   });
-  it.each(['processed', 'closed'] as const)('protects a former company’s %s run after a real entity transfer without exposing its payslip', async status => {
+  it.each(['processed', 'closed'] as const)('protects a former company’s %s run for its transferred employee’s manager without exposing payslips', async status => {
     const { a, employmentId } = await fixture();
     await setCompensation(a, { employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
     await owner.db.insert(schema.companyPayrollConfig).values({ tenantId: b.tenantId, companyId: b.companyId, attendanceCutOffDay: 10 }).onConflictDoUpdate({ target: schema.companyPayrollConfig.companyId, set: { attendanceCutOffDay: 10 } });
@@ -196,28 +196,32 @@ describe('approved attendance clock-data corrections', () => {
     const newPolicy = await createPolicy(a, { companyId: destination.id, name: 'New employer custom cut-off', policyType: 'monthly', config: { cutOff: { mode: 'custom', anchorDay: 28 } } });
     await assignPolicy(a, { employmentId, policyId: newPolicy.id });
     const scoped = { ...a, grants: [{ role: 'hr_admin', companyId: destination.id }] };
+    const manager = await hireEmployee(a, { person: { fullName: 'Destination clock manager', primaryEmail: 'destination-clock-manager@test.local' }, companyId: destination.id, departmentId: department.id, employmentType: 'full_time', hiredOn: '2020-01-01' });
+    await setReportingLine(a, { subordinateEmploymentId: employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: '2026-09-01' });
+    const managerUserId = await createAppUser(b.tenantId, manager.personId, 'manager');
+    const decider = { ...a, userId: managerUserId, personId: manager.personId, roles: ['manager'], grants: [{ role: 'manager', companyId: destination.id }] };
     const original = await attendanceClockData(scoped, employmentId, date);
     expect(original.rows).toHaveLength(2); // Destination HR can operate the subject.
-    expect(await withTenant(scoped, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)))).toHaveLength(0);
-    const facts = await withTenant(scoped, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`));
+    expect(await withTenant(decider, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)))).toHaveLength(0);
+    const facts = await withTenant(decider, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`));
     expect(facts).toHaveLength(1);
     expect(facts[0]).toMatchObject({ batch_id: batchId, status, attendance_cutoff_day: 10, policy_config: null });
     expect(Object.keys(facts[0]).sort()).toEqual(['attendance_cutoff_day', 'batch_id', 'pay_period', 'policy_config', 'status']);
     const { correctionId } = await requestAttendanceCorrection(scoped, { employmentId, date, reason: 'Reviewed original employer clock evidence', clockChanges: { version: 1, baseline: original.baseline, entries: [{ punchAt: '09:00', direction: 'in' }, { punchAt: '18:00', direction: 'out' }] } });
     if (status === 'closed') {
-      await expect(decideAttendanceCorrection(scoped, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+      await expect(decideAttendanceCorrection(decider, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
       expect((await day(employmentId)).checkInAt).toBe('08:00:00');
       const [pending] = await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, correctionId));
       expect(pending.status).toBe('pending');
       expect((await attendanceClockData(scoped, employmentId, date)).baseline).toBe(original.baseline);
     } else {
-      await decideAttendanceCorrection(scoped, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(decider, { correctionId, decision: 'approved' });
       expect((await day(employmentId)).checkInAt).toBe('09:00:00');
       const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
       expect(batch.needsRecalcAt).not.toBeNull(); expect(batch.recalcEmploymentIds).toContain(employmentId);
     }
     expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id, paid.id)))[0]).toEqual(paid);
-    expect(await withTenant(scoped, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)))).toHaveLength(0);
+    expect(await withTenant(decider, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)))).toHaveLength(0);
     const oldCompanyOnly = { ...a, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
     await expect(withTenant(oldCompanyOnly, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`))).rejects.toThrow();
   });
