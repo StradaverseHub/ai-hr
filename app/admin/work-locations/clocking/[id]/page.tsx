@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -67,6 +68,7 @@ export default async function ViewClockingLocationPage({
 
   return (
     <div className={pageWideCls}>
+      <AttendanceSettingsNavigation />
       <PageHeader
         title={t('viewClockingTitle')}
         description={site.name}

@@ -380,9 +380,12 @@ describe('transferAllowancesToBatch', () => {
   it('throws UnsupportedBatchComponentError for a PCB-only non-payable component', async () => {
     const { a } = await seedEmployeesAndAttendance();
     const bad = await unsupportedComponentId();
-    const { id } = await createAllowancePolicy(a, {
-      companyId: b.companyId, code: 'BADATT', name: 'P', amount: 200, payComponentId: bad, effectiveFrom: '2026-07-01', criteria: { maxAbsentDays: 0 },
-    });
+    const definition = {companyId:b.companyId,code:'BADATT',name:'P',amount:200,payComponentId:bad,effectiveFrom:'2026-07-01',criteria:{maxAbsentDays:0}};
+    // Setup rejects an incompatible code immediately; transfer still checks old/imported definitions.
+    await expect(createAllowancePolicy(a, definition)).rejects.toBeInstanceOf(UnsupportedBatchComponentError);
+    const supported = await attendanceComponentId(a);
+    const { id } = await createAllowancePolicy(a, {...definition,payComponentId:supported});
+    await owner.db.update(schema.attendanceAllowancePolicy).set({payComponentId:bad}).where(eq(schema.attendanceAllowancePolicy.id,id));
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
     // Precondition again: the gate short-circuits ahead of the supported-component guard, so the module
     // has to be genuinely on for this tenant or the throw under test is unreachable.

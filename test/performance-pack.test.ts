@@ -45,6 +45,14 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'calibration_session',
       'calibration_entry',
       'performance_attachment',
+      'performance_onehr_cycle',
+      'performance_onehr_review',
+      'performance_onehr_panel',
+      'performance_onehr_calibration',
+      'performance_onehr_calibration_entry',
+      'performance_onehr_plan',
+      'performance_onehr_evidence',
+      'performance_onehr_result',
     ]);
   });
 

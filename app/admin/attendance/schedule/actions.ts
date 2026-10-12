@@ -181,7 +181,7 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
     failScheduleGroup(e, ruleId, 'attendance');
   }
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'attendance');
+  okScheduleGroup(ruleId, t('savedToast'), 'attendance', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 /**
@@ -249,7 +249,7 @@ export async function saveScheduleGroupOvertimeAction(fd: FormData) {
     failScheduleGroup(e, ruleId, 'overtime');
   }
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'overtime');
+  okScheduleGroup(ruleId, t('savedToast'), 'overtime', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 /**

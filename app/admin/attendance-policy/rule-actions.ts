@@ -179,7 +179,7 @@ export async function updateAttendanceRuleAction(fd: FormData) {
   }
   revalidatePath(LIST);
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'general');
+  okScheduleGroup(ruleId, t('savedToast'), 'general', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 /**

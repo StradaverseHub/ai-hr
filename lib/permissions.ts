@@ -99,6 +99,7 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/onehr/feedback/[requestId]','/performance/onehr/calibration/[sessionId]'],hasScopeNote:true},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.attendanceApplicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
@@ -937,7 +938,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/attendance-allowance',
     labelKey: 'nav.attendanceAllowance',
     guard: 'scopedAdmin',
-    routes: ['/admin/attendance-allowance'],
+    routes: ['/admin/attendance-allowance','/admin/attendance-allowance/new','/admin/attendance-allowance/[policyId]'],
   },
   {
     // 639bf4a5 (r336) — the SCREEN moved (Attendance › Clocking Location, /admin/locations) and its

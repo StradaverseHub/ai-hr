@@ -1,3 +1,5 @@
+import { getOnehrReview } from '@/packs/performance/service';
+import { OnehrReviewView } from '../../onehr/review-view';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -62,6 +64,8 @@ export default async function ReviewPage({
   const s = await getSession();
   const { reviewId } = await params;
   const { error, toast } = await searchParams;
+  const onehr = await getOnehrReview(s, reviewId);
+  if (onehr) return <OnehrReviewView v={onehr} error={error}/>;
   const r = await reviewForViewer(s, reviewId);
   if (!r) notFound();
   const scale = r.ratingScale;

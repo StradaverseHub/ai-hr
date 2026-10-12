@@ -96,7 +96,9 @@ export type ProposalTypeId =
    * because the gap either closed within the settle window or it did not. Everything else either has no
    * human decision (`anomaly_narration`) or cannot observe a decline (`close_fixed_upstream`).
    */
-  | 'readiness_fix';
+  | 'readiness_fix'
+  /** Native OneHR: selected evidence references, resolved into verbatim authorized passages. */
+  | 'onehr_narrative';
 
 /** The adjudication contract (§2.4). Every proposal type supplies one; the reason is stored on failure. */
 export type Adjudication = { ok: true } | { ok: false; reason: string };

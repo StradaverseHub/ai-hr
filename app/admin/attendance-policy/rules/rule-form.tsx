@@ -45,7 +45,13 @@ export async function RuleForm({
   shifts,
   error,
   cancel,
+  hideAllowedShifts = false,
+  saveScope = false,
+  savedReceipt,
 }: {
+  hideAllowedShifts?: boolean;
+  saveScope?: boolean;
+  savedReceipt?: string;
   rule: AttendanceRuleView | null;
   shifts: readonly RuleShiftChoice[];
   error?: string;
@@ -112,7 +118,7 @@ export async function RuleForm({
     <div className="space-y-6">
       <ErrorBanner message={error} />
 
-      <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} className="space-y-6">
+      <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
         {editing && <input type="hidden" name="ruleId" value={rule!.id} />}
 
         <Card className="space-y-4 p-4">
@@ -213,7 +219,7 @@ export async function RuleForm({
             getAll('allowedShiftIds'). Without the marker, clearing the last shift would silently do
             nothing. The marker is read as a VALUE, never by presence — the trap 7c834696 hit on this very
             form (see `bool` in ../rule-actions.ts). */}
-        <Card className="space-y-3 p-4">
+        {!hideAllowedShifts && <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('shiftsAllowedTitle')}</h2>
           <p className="text-xs text-muted-foreground">{t('shiftsAllowedHint')}</p>
           <input type="hidden" name="allowedShiftsEditor" value="1" />
@@ -245,7 +251,7 @@ export async function RuleForm({
               ))}
             </ul>
           )}
-        </Card>
+        </Card>}
 
         {/* Section 3 — Overtime */}
         <Card className="p-4">

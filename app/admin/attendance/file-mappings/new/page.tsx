@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { PageHeader } from '@/components/ui';
@@ -9,6 +10,7 @@ export default async function NewFileMappingPage() {
   const t = await getTranslations('clockingFile.form');
   return (
     <div className="mx-auto max-w-[90rem] space-y-6">
+      <AttendanceSettingsNavigation />
       <PageHeader back={{ href: '/admin/attendance/file-mappings', label: t('back') }} title={t('newTitle')} description={t('intro')} />
       <MappingForm mappingId={null} initial={null} />
     </div>
