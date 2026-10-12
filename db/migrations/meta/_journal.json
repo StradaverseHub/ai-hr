@@ -3048,10 +3048,10 @@
       "breakpoints": true
     },
     {
-      "idx": 528,
+      "idx": 530,
       "version": "7",
-      "when": 1791900000008,
-      "tag": "0528_persisted_audit_chain",
+      "when": 1791900000010,
+      "tag": "0530_persisted_audit_chain",
       "breakpoints": true
     }
   ]
