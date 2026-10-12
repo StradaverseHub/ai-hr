@@ -11,6 +11,7 @@ const str=(f:FormData,k:string)=>String(f.get(k)??'').trim();
 const num=(f:FormData,k:string)=>{const s=str(f,k);if(!s||!Number.isFinite(Number(s)))throw Error('Enter a number in every required numeric field.');return Number(s);};
 const nullableNumber=(f:FormData,k:string)=>str(f,k)?num(f,k):null;
 const ids=(f:FormData,k:string)=>f.getAll(k).map(v=>z.uuid().parse(String(v)));
+const readWindows=(f:FormData)=>Object.fromEntries(windowCells.map(cell=>[cell,{opensAt:str(f,`${cell}.opens`)?`${str(f,`${cell}.opens`)}:00+08:00`:null,closesAt:str(f,`${cell}.closes`)?`${str(f,`${cell}.closes`)}:00+08:00`:null}]));
 export async function enableOnehrAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));
   try{await perf.configureOnehrCycle(s,id,null);}catch(e){redirect(`/performance/${id}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
@@ -24,8 +25,10 @@ export async function onehrCycleAction(f:FormData){
       let catalogue={framework:view.policy.framework,profiles:view.policy.profiles};
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
-      const windows=Object.fromEntries(windowCells.map(cell=>[cell,{opensAt:str(f,`${cell}.opens`)?`${str(f,`${cell}.opens`)}:00+08:00`:null,closesAt:str(f,`${cell}.closes`)?`${str(f,`${cell}.closes`)}:00+08:00`:null}]));
+      const windows=readWindows(f);
       await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),idpMinGoals:num(f,'idpMinGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
+    }else if(str(f,'action')==='windows'){
+      await perf.updateOnehrWindows(s,id,num(f,'revision'),readWindows(f),str(f,'reason'));
     }else if(str(f,'action')==='calibration'){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode')});
     }else throw Error('Unknown action.');

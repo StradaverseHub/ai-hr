@@ -110,6 +110,17 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
   });
 }
 
+/** Operational deadlines can change without reopening inputs or changing assessment rules. */
+export async function updateOnehrWindows(ctx:SessionContext,cycleId:string,expected:number,raw:unknown,reason:string) {
+  const windows=policySchema.shape.windows.parse(raw);z.string().trim().min(1).max(4000).parse(reason);
+  return withPerformanceTenant(ctx,async tx=>{
+    const cycle=await loadCycle(tx,cycleId,true);await requireAdmin(tx,cycleId);revision(cycle.config.revision,expected);
+    if(!['open','calibration'].includes(cycle.native.status))throw Error('Change active-cycle deadlines only; closed periods are read-only.');
+    await tx.update(onehrCycle).set({policy:{...cycle.policy,windows},revision:cycle.config.revision+1}).where(eq(onehrCycle.cycleId,cycleId));
+    await audit(tx,ctx,cycleId,'windows-updated',{reason,previous:cycle.policy.windows,next:windows});
+  });
+}
+
 /** Whole-scorecard setting. Client state cannot set approval, moderation or results. */
 export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
   const inputs=z.array(kpiSchema.pick({id:true,title:true,description:true,weightBp:true,unit:true,scoring:true,moderatorEmploymentId:true}).extend({approverEmploymentIds:z.array(uuid).min(1).max(10).optional()})).max(100).parse(raw);

@@ -87,6 +87,27 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     const [stored]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
     expect(stored).toMatchObject({companyId:b.companyId,grade:'12'});expect((await view(self)).grade).toBe('12');
   });
+  it('audits active deadline changes without allowing assessment rules or frozen inputs to reopen',async()=>{
+    const closed={pm_setting:{opensAt:null,closesAt:new Date(Date.now()-60_000).toISOString()}};
+    await expect(perf.updateOnehrWindows(self,cycleId,1,closed,'Close setting')).rejects.toThrow(/administrator/);
+    await expect(perf.updateOnehrWindows(a,cycleId,1,closed,'')).rejects.toThrow();
+    await perf.updateOnehrWindows(a,cycleId,1,closed,'Setting cutoff reached');
+    const kpi={id:randomUUID(),title:'A deadline-controlled objective',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId};
+    await expect(perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[kpi])).rejects.toThrow(/closed/);
+    await expect(perf.updateOnehrWindows(a,cycleId,1,{},'Stale request')).rejects.toThrow(/changed/);
+    await perf.updateOnehrWindows(a,cycleId,2,{},'Extend setting for approved correction');
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[kpi]);
+    const configured=await perf.getOnehrCycle(a,cycleId);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrCycle).set({policy:{...configured!.policy,lowMaxPct:1}}).where(eq(schema.onehrCycle.cycleId,cycleId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
+    await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const frozen=(await view(a)).result!;await perf.updateOnehrWindows(a,cycleId,3,{},'Reconfirm schedule');
+    expect((await view(a)).result?.digest).toBe(frozen.digest);
+    await expect(perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[kpi])).rejects.toThrow(/finalized/);
+    const history=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,cycleId),eq(schema.domainEvent.eventType,'onehr.windows-updated')));
+    expect(history).toHaveLength(3);expect(history.some(e=>(e.payload as {previous?:unknown;reason?:string}).reason==='Extend setting for approved correction')).toBe(true);
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
+    await expect(perf.updateOnehrWindows(a,cycleId,4,{},'Reopen closed period')).rejects.toThrow(/read-only/);
+  });
   it('rejects stale submissions, self approvals, legacy bypasses, and cross-tenant requests',async()=>{
     const first=await view(self);await perf.saveOnehrKpis(self,reviewId,first.revision,[],false);
     await expect(perf.saveOnehrKpis(self,reviewId,first.revision,[],false)).rejects.toThrow(/changed/);
