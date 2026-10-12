@@ -121,6 +121,10 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'in_progress');
     await expect(perf.saveOnehrPlan(self,reviewId,(await view()).plans[0].revision,{career:{aspiration:'Changed',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]})).rejects.toThrow(/locked/);
     await perf.acknowledgeOnehrPlan(self,plan.id,(await view()).plans[0].revision);expect((await view()).plans[0].acknowledgedAt).not.toBeNull();
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
+    await expect(perf.saveOnehrPlan(self,reviewId,(await view(self)).plans[0].revision,input)).rejects.toThrow(/read-only/);
+    await expect(perf.reviewOnehrPlan(mgr,plan.id,(await view()).plans[0].revision,'Rewrite','Another conversation',true)).rejects.toThrow(/read-only/);
+    await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'done');expect((await view(self)).plans[0].goals).toMatchObject([{status:'done'}]);
   });
   it('uses the previous year-end plan for mid-year review without reopening authoring',async()=>{
     const {cycleId:previous}=await perf.createCycle(a,{name:'Previous year-end',companyId:b.companyId,periodStart:`${year-1}-01-01`,periodEnd:`${year-1}-12-31`});
