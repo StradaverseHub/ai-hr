@@ -58,7 +58,10 @@ Tenant-wide HR authority is checked from current DB grants, not session role cla
 Company-scoped HR cannot safely change a tenant-wide group affecting employees hidden
 by company RLS. The table uses tenant RLS, group-admin insert authority, immutable
 version guards, same-tenant/active shift validation, shape/size checks, and retained
-shift references. Archived templates remain readable by existing versions; new
+shift references. Company deletion also declares the retained rule FK and allowed-shift
+UUID array as blocking dependencies, so company-owned legacy setup refuses before its
+cascade can reach immutable rotation history. The company-referrer guard still compares
+every actual FK exactly and separately verifies declared UUID arrays. Archived templates remain readable by existing versions; new
 versions must use active templates. Hard deletion of referenced templates is refused.
 
 Every affected employment's overlapping or later processed/closed attendance-payroll
@@ -86,8 +89,10 @@ the group, even if the employee has a later assignment elsewhere.
 The cycle editor uses the same unsaved pool immediately, previews every configured
 day, confirms unit replacement/shortening, retains input after server validation
 errors, and guards browser unload while dirty. The obsolete "rotation not stored"
-card is removed. All six locales contain the new namespace; explanatory fallback
-English remains in some Malay/Tamil/Chinese messages under the existing locale policy.
+card is removed. All six locales contain translated controls and explanatory copy in the new namespace.
+The stored product label Standard is retained in translated explanations. Domain/service
+validation exception messages remain English; translating those error responses is still
+unsupported in this build.
 
 The migration is additive and performs no backfill. This build's migration allocation
 is 0531; integration must union preceding allocated journal entries before validation.

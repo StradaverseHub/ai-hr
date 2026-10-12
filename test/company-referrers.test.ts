@@ -230,8 +230,22 @@ describe('§1 the declared referrer set is the live schema', () => {
           .map((f) => `${f.table}.${f.column} -> ${f.references}`),
       ),
     ].sort();
-    const declared = COMPANY_CONFIG_DEPENDENTS.map((d) => `${d.table}.${d.column} -> ${d.references}`).sort();
+    const declared = COMPANY_CONFIG_DEPENDENTS.filter(d=>d.referenceKind!=='uuid-array').map((d) => `${d.table}.${d.column} -> ${d.references}`).sort();
     expect(declared, 'core/company-refs.ts COMPANY_CONFIG_DEPENDENTS must match the live keys').toEqual(live);
+  });
+
+  it('a retained array declaration names a real UUID array and its owner enforces retention',async()=>{
+    const arrays=COMPANY_CONFIG_DEPENDENTS.filter(d=>d.referenceKind==='uuid-array');
+    expect(arrays.map(d=>`${d.table}.${d.column} -> ${d.references}`)).toContain('attendance_rotation.allowed_shift_ids -> shift');
+    for(const d of arrays){
+      const rows=await owner.db.execute(sql`select udt_name from information_schema.columns where table_schema='public' and table_name=${d.table} and column_name=${d.column}`) as unknown as {udt_name:string}[];
+      expect(rows,`${d.table}.${d.column} must be a real UUID array, not a hidden foreign key`).toEqual([{udt_name:'_uuid'}]);
+      expect(d.effect).toBe('blocks');
+    }
+    const migration=readFileSync(fileURLToPath(new URL('../db/migrations/0531_attendance_rotation.sql',import.meta.url)),'utf8');
+    expect(migration).toContain('BEFORE DELETE ON shift');
+    expect(migration).toContain('OLD.id=ANY(allowed_shift_ids)');
+    expect(companyDeleteBlockSqlText('company.id')).toMatch(/join "shift" co\d+ on co\d+\.id = ANY\(cd\d+\."allowed_shift_ids"\)/);
   });
 
   it('every dependent points INTO a table deleted with the company (the generated SQL joins on it)', () => {
@@ -303,6 +317,14 @@ describe('§1 the declared referrer set is the live schema', () => {
 // ── §2 ─────────────────────────────────────────────────────────────────────────────────────────────
 type Case = { name: string; expected: CompanyDeleteBlock | null; setup: (id: string) => Promise<void> };
 const CASES: Case[] = [
+  ...(['rule','shift'] as const).map(source=>({
+    name:`retained schedule rotation ${source}`,expected:'other' as const,setup:async(id:string)=>{
+      const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning();
+      const [shift]=await owner.db.insert(schema.shift).values({tenantId:b.tenantId,companyId:source==='shift'?id:null,name:`Rotation source ${randomUUID()}`,startTime:'08:00',endTime:'17:00'}).returning();
+      const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
+      await owner.db.insert(schema.attendanceRotation).values({tenantId:b.tenantId,ruleId:rule.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:b.adminUserId});
+    }
+  })),
   {
     name: 'an unposted reward review', expected: 'payroll', setup: async (id) => {
       const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
