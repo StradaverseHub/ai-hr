@@ -227,3 +227,109 @@ CREATE FUNCTION app.assessment_competency_started(wanted_review uuid) RETURNS bo
 $$;
 REVOKE ALL ON FUNCTION app.assessment_competency_started(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_competency_started(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Working talent consequences belong to the assessment, not to a reviewer's grid.
+CREATE TABLE performance_assessment_talent (
+ review_id uuid PRIMARY KEY REFERENCES performance_onehr_review(review_id),
+ tenant_id uuid NOT NULL REFERENCES tenant(id),actions jsonb NOT NULL CHECK(jsonb_typeof(actions)='object'),revision integer NOT NULL DEFAULT 1,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE performance_assessment_talent_history (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ employment_id uuid NOT NULL REFERENCES employment(id),year integer NOT NULL,
+ category text NOT NULL CHECK(category IN ('PIP/Improvement','Solid Core','Star','Super Star')),
+ performance text NOT NULL CHECK(performance IN ('UA','BE','ME','AE','OU')),
+ potential text NOT NULL CHECK(potential IN ('Low','Mid','High')),
+ review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),session_id uuid NOT NULL REFERENCES performance_onehr_calibration(id),
+ recorded_at timestamptz NOT NULL DEFAULT now(),UNIQUE(employment_id,year)
+);
+ALTER TABLE performance_assessment_talent ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_talent FORCE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_talent_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_talent_history FORCE ROW LEVEL SECURITY;
+GRANT SELECT ON performance_assessment_talent,performance_assessment_talent_history TO ai_hr_app;
+-- Read and write projections are the only app access. No direct DML privileges or permissive policies.
+CREATE FUNCTION app.assessment_talent_context(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('actions',coalesce(a.actions,'{}'::jsonb),'revision',coalesce(a.revision,0),'history',coalesce((SELECT jsonb_agg(jsonb_build_object('year',h.year,'category',h.category) ORDER BY h.year DESC) FROM performance_assessment_talent_history h WHERE h.tenant_id=r.tenant_id AND h.employment_id=r.employment_id),'[]'::jsonb))
+ FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ LEFT JOIN performance_assessment_talent a ON a.review_id=r.review_id AND a.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
+ AND (app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id)))
+$$;
+CREATE FUNCTION app.assessment_talent_write(wanted_session uuid,wanted_review uuid,kind text,selected boolean,reason text,grade text,title text,expected_revision integer) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE s performance_onehr_calibration; e performance_onehr_calibration_entry; a jsonb; noms jsonb; c review_cycle; rev integer;
+BEGIN
+ SELECT * INTO s FROM performance_onehr_calibration WHERE id=wanted_session AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF s.id IS NULL OR NOT app.onehr_calibration_access(s.id) THEN RAISE EXCEPTION 'Talent decisions are outside your calibration scope'; END IF;
+ SELECT * INTO e FROM performance_onehr_calibration_entry WHERE session_id=s.id AND review_id=wanted_review AND tenant_id=s.tenant_id;
+ IF e.id IS NULL OR EXISTS(SELECT 1 FROM employment emp WHERE emp.id=e.employment_id AND app.is_self_person(emp.person_id)) THEN RAISE EXCEPTION 'You cannot decide this assessment'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(wanted_review::text,0));
+ SELECT * INTO c FROM review_cycle WHERE id=s.cycle_id AND tenant_id=s.tenant_id;
+ IF c.status NOT IN ('open','calibration') OR EXISTS(SELECT 1 FROM performance_onehr_result WHERE review_id=wanted_review) THEN RAISE EXCEPTION 'Closed or finalized decisions are immutable'; END IF;
+ IF kind NOT IN ('pip','promotion','specialReward','nomination') OR selected IS NULL OR reason IS NULL OR length(reason)>4000 OR grade IS NULL OR length(grade)>20 OR title IS NULL OR length(title)>120 THEN RAISE EXCEPTION 'Invalid talent decision'; END IF;
+ IF kind IN ('specialReward','nomination') THEN
+  IF s.tier NOT IN ('bu','bg','group','final') OR s.locked_at IS NOT NULL OR e.locked_at IS NOT NULL OR kind='nomination' AND s.tier<>'bg' THEN RAISE EXCEPTION 'Pins require an open authorized Talent Box'; END IF;
+  IF s.tier='bu' AND EXISTS(SELECT 1 FROM performance_onehr_calibration_entry be JOIN performance_onehr_calibration bs ON bs.id=be.session_id WHERE be.review_id=wanted_review AND bs.tier='bg' AND (be.locked_at IS NOT NULL OR bs.locked_at IS NOT NULL)) THEN RAISE EXCEPTION 'BU calibration is closed after BG locks'; END IF;
+ ELSE
+  IF s.tier NOT IN ('bg','group','final') OR s.locked_at IS NULL OR kind='pip' AND s.pip_locked_at IS NOT NULL OR kind='promotion' AND s.promotion_locked_at IS NOT NULL THEN RAISE EXCEPTION 'Decisions require a locked box and an open decision list'; END IF;
+ END IF;
+ -- A list confirmed anywhere protects the same shared consequence everywhere.
+ IF kind IN ('pip','promotion') AND EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id WHERE ce.review_id=wanted_review AND (kind='pip' AND cs.pip_locked_at IS NOT NULL OR kind='promotion' AND cs.promotion_locked_at IS NOT NULL)) THEN RAISE EXCEPTION 'Reopen the confirmed decision list before changing this decision'; END IF;
+ SELECT actions,revision INTO a,rev FROM performance_assessment_talent WHERE review_id=wanted_review FOR UPDATE;
+ IF expected_revision IS DISTINCT FROM coalesce(rev,0) THEN RAISE EXCEPTION 'Talent decisions changed. Reload before saving'; END IF;
+ a:=coalesce(a,'{}'::jsonb);
+ IF kind='nomination' THEN
+  SELECT coalesce(jsonb_agg(n),'[]'::jsonb) INTO noms FROM jsonb_array_elements(coalesce(a->'nominations','[]'::jsonb)) n WHERE n->>'userId'<>app.current_user_id()::text;
+  IF selected THEN noms:=noms||jsonb_build_array(jsonb_build_object('userId',app.current_user_id(),'grade',grade,'title',title,'reason',reason,'at',now())); END IF;
+  a:=a||jsonb_build_object('nominations',noms);
+ ELSE
+  a:=a||jsonb_build_object(kind,selected,kind||'Reason',CASE WHEN kind='specialReward' AND NOT selected THEN '' ELSE reason END);
+  IF kind='promotion' THEN a:=a||jsonb_build_object('confirmedGrade',CASE WHEN selected THEN grade ELSE '' END,'confirmedTitle',CASE WHEN selected THEN title ELSE '' END); END IF;
+ END IF;
+ INSERT INTO performance_assessment_talent(review_id,tenant_id,actions) VALUES(wanted_review,s.tenant_id,a)
+ ON CONFLICT(review_id) DO UPDATE SET actions=excluded.actions,revision=performance_assessment_talent.revision+1,updated_at=now();
+END $$;
+CREATE FUNCTION app.assessment_talent_snapshot() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE s performance_onehr_calibration; yr integer; cat text;
+BEGIN
+ IF NEW.locked_at IS NULL OR NEW.performance IS NULL OR NEW.potential IS NULL OR (TG_OP='UPDATE' AND NEW.locked_at IS NOT DISTINCT FROM OLD.locked_at) THEN RETURN NEW; END IF;
+ SELECT * INTO s FROM performance_onehr_calibration WHERE id=NEW.session_id;
+ IF s.tier NOT IN ('bu','bg','group','final') THEN RETURN NEW; END IF;
+ SELECT extract(year from period_end)::integer INTO yr FROM review_cycle WHERE id=s.cycle_id;
+ cat:=CASE WHEN NEW.performance='UA' OR NEW.performance='BE' AND NEW.potential<>'High' THEN 'PIP/Improvement'
+ WHEN NEW.potential='High' AND NEW.performance IN ('AE','OU') THEN 'Super Star'
+ WHEN NEW.potential='High' AND NEW.performance='ME' OR NEW.potential='Mid' AND NEW.performance IN ('AE','OU') THEN 'Star' ELSE 'Solid Core' END;
+ INSERT INTO performance_assessment_talent_history(tenant_id,employment_id,year,category,performance,potential,review_id,session_id)
+ VALUES(NEW.tenant_id,NEW.employment_id,yr,cat,NEW.performance,NEW.potential,NEW.review_id,NEW.session_id)
+ ON CONFLICT(employment_id,year) DO UPDATE SET category=excluded.category,performance=excluded.performance,potential=excluded.potential,review_id=excluded.review_id,session_id=excluded.session_id,recorded_at=now();
+ RETURN NEW;
+END $$;
+CREATE TRIGGER assessment_talent_snapshot AFTER INSERT OR UPDATE ON performance_onehr_calibration_entry FOR EACH ROW EXECUTE FUNCTION app.assessment_talent_snapshot();
+REVOKE ALL ON FUNCTION app.assessment_talent_context(uuid),app.assessment_talent_write(uuid,uuid,text,boolean,text,text,text,integer),app.assessment_talent_snapshot() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_talent_context(uuid),app.assessment_talent_write(uuid,uuid,text,boolean,text,text,text,integer) TO ai_hr_app;
+-- Preserve existing confirmed outcomes during the transition; new writes use only the shared record.
+INSERT INTO performance_assessment_talent(review_id,tenant_id,actions)
+ SELECT DISTINCT ON(e.review_id) e.review_id,e.tenant_id,jsonb_build_object('pip',e.pip,'promotion',e.promotion,'specialReward',e.special_reward)
+ FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id
+ ORDER BY e.review_id,CASE s.tier WHEN 'final' THEN 5 WHEN 'group' THEN 4 WHEN 'bg' THEN 3 WHEN 'bu' THEN 2 ELSE 1 END DESC;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onehr_decisions(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL,'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',coalesce((a.actions->>'pip')::boolean,false),'promotion',coalesce((a.actions->>'promotion')::boolean,false),'specialReward',coalesce((a.actions->>'specialReward')::boolean,false)) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
+ FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id AND s.tenant_id=e.tenant_id JOIN performance_review r ON r.id=e.review_id AND r.tenant_id=e.tenant_id JOIN employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
+ LEFT JOIN performance_assessment_talent a ON a.review_id=e.review_id AND a.tenant_id=e.tenant_id
+ WHERE e.review_id=wanted_review AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(emp.person_id) AND (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND app.onehr_calibration_access(ce.session_id)))
+$$;
+REVOKE ALL ON FUNCTION app.onehr_decisions(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_decisions(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_onehr_source(wanted_unit uuid,wanted_employment uuid,wanted_year integer) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('id',f.id,'reviewId',f.review_id,'cycleId',f.cycle_id,'digest',f.digest,'frozenAt',f.frozen_at,'performance',f.result->'performance','potential',f.result->'potential','talent',f.result->'talent','pip',f.result->'pip','promotion',f.result->'promotion','specialReward',f.result->'specialReward','policyDigest',f.result->'policyDigest','confirmedGrade',f.result->'confirmedGrade','confirmedTitle',f.result->'confirmedTitle','pipReason',f.result->'pipReason','promotionReason',f.result->'promotionReason','specialRewardReason',f.result->'specialRewardReason')
+ FROM performance_onehr_result f JOIN review_cycle c ON c.id=f.cycle_id AND c.tenant_id=f.tenant_id JOIN employment e ON e.id=f.employment_id AND e.tenant_id=f.tenant_id JOIN reward_unit u ON u.id=wanted_unit AND u.tenant_id=e.tenant_id AND u.company_id=e.company_id JOIN app_user a ON a.id=app.current_user_id() AND a.tenant_id=u.tenant_id
+ WHERE f.tenant_id=app.current_tenant_id() AND f.employment_id=wanted_employment AND (f.result->>'performance' IS NOT NULL OR f.result->>'potential' IS NOT NULL OR f.result->>'pip'='true' OR f.result->>'promotion'='true' OR f.result->>'specialReward'='true') AND extract(year from c.period_end)::integer=wanted_year AND (u.policy->>'year')::integer=wanted_year AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND NOT app.is_self_person(e.person_id) AND (app.reward_admin(u.company_id) OR 'gr' IN (SELECT app.reward_roles(u.id))) AND (app.reward_admin(u.company_id) OR EXISTS(SELECT 1 FROM reward_entry re WHERE re.unit_id=u.id AND re.employment_id=e.id))
+ ORDER BY c.period_end DESC,CASE WHEN (SELECT policy->>'kind' FROM performance_onehr_cycle oc WHERE oc.cycle_id=f.cycle_id)='year_end' THEN 0 ELSE 1 END,f.frozen_at DESC,f.id DESC LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION app.reward_onehr_source(uuid,uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_onehr_source(uuid,uuid,integer) TO ai_hr_app;

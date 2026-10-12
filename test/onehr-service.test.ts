@@ -213,7 +213,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'QUARTER',name:'Quarterly test unit'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
     const unitId=await createRewardUnit(a,{name:'Annual rewards without quarterly ratings',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
-    await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized OneHR/);
+    await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
   });
   it('keeps private evidence private, preserves shared evidence and accepts explicit corrections',async()=>{
     const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered a milestone',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
@@ -264,11 +264,34 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const bu=await perf.createOnehrCalibration(a,cycleId,{name:'BU baseline',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
     await perf.lockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'');
     const bg=await perf.createOnehrCalibration(a,cycleId,{name:'BG nominations',companyId:b.companyId,tier:'bg',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.saveOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:''});
+    await perf.saveAssessmentTalentDecision(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,reviewId,'specialReward',true,'Exceptional delivery');
+    await perf.saveAssessmentTalentDecision(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,reviewId,'nomination',true,'Ready for a broader role',{grade:'13',title:'Senior engineer'});
     await perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'','performance');
-    await perf.saveOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:'',confirmTalentDecisions:true,promotion:true,specialReward:true});
     await perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'','potential');
+    await perf.saveAssessmentTalentDecision(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,reviewId,'promotion',true,'Confirmed by review panel',{grade:'13',title:'Senior engineer'});
+    await perf.confirmAssessmentTalentList(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'pip');
+    await perf.confirmAssessmentTalentList(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'promotion');
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
-    const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect(f.result).toMatchObject({performance:'ME',potential:'High',promotion:true,specialReward:true,pip:false});
+    const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect(f.result).toMatchObject({performance:'ME',potential:'High',promotion:true,specialReward:true,pip:false,confirmedGrade:'13',confirmedTitle:'Senior engineer'});
+  });
+  it('shares pins across tiers but requires a nomination before promotion approval',async()=>{
+    await complete();
+    const bu=await perf.createOnehrCalibration(a,cycleId,{name:'Shared BU',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const bg=await perf.createOnehrCalibration(a,cycleId,{name:'Shared BG',companyId:b.companyId,tier:'bg',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const before=(await perf.getOnehrCalibration(a,bg)).rows[0].talent.revision;
+    await perf.saveAssessmentTalentDecision(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,reviewId,'specialReward',true,'Shared evidence');
+    expect((await perf.getOnehrCalibration(a,bg)).rows[0].entry).toMatchObject({specialReward:true,specialRewardReason:'Shared evidence'});
+    await expect(perf.saveAssessmentTalentDecision(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,reviewId,'specialReward',false,'',{talentRevision:before})).rejects.toThrow();
+    await expect(perf.saveAssessmentTalentDecision(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,reviewId,'nomination',true,'')).rejects.toThrow(/Only the BG/);
+    await perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'');
+    await expect(perf.saveAssessmentTalentDecision(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,reviewId,'promotion',true,'')).rejects.toThrow(/no nomination/);
+    const [history]=await owner.db.select().from(schema.assessmentTalentHistory).where(eq(schema.assessmentTalentHistory.employmentId,subject.employmentId));
+    expect(history).toMatchObject({year,category:'Star',performance:'ME',potential:'High'});
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentTalent))).toEqual([]);
+    const [privateContext]=await withTenant(self,tx=>tx.execute<{value:unknown}>(sql`select app.assessment_talent_context(${reviewId}::uuid) as value`));
+    expect(privateContext.value).toBeNull();
+    await expect(withTenant(self,tx=>tx.execute(sql`select app.assessment_talent_write(${bg}::uuid,${reviewId}::uuid,'promotion',true,'','','',0)`))).rejects.toThrow();
   });
   it('uses individually locked Group replacements without requiring an unused BG tier',async()=>{
     await complete();

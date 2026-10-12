@@ -17330,6 +17330,14 @@
     "principleComment": "Examples or comments for this principle (optional)",
     "competencyProfile": "Competency profile",
     "assignProfile": "Assign profile",
-    "competencyProfileHelp": "Assignments follow the role’s required skill levels and the next available proficiency level. A started assessment cannot be replaced."
+    "competencyProfileHelp": "Assignments follow the role’s required skill levels and the next available proficiency level. A started assessment cannot be replaced.",
+    "nominatePromotion": "Nominate for promotion",
+    "proposedGrade": "Proposed grade",
+    "proposedTitle": "Proposed job title",
+    "confirmedGrade": "Confirmed grade",
+    "confirmedTitle": "Confirmed job title",
+    "talentSelectionCount": "{selected} selected · {percent}% of {total} people",
+    "noTalentCandidates": "No eligible candidates in this scope.",
+    "nominationCount": "{count} nomination(s)"
   }
 }

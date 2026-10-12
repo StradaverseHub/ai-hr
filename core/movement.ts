@@ -1138,6 +1138,19 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
   };
 }
 
+/** Minimal promotion fact for authorized workflow consumers. Uses the same reversal,
+ * scheduling and custom-event classification as Employment History; never returns pay. */
+export async function lastAppliedPromotionOnTx(tx: Tx, tenantId: string, employmentId: string): Promise<{known:boolean;date:string|null}> {
+  const [access] = await tx.execute<{allowed:boolean}>(sql`select app.can_see_employment(${employmentId}::uuid) as allowed`);
+  if (!access?.allowed) return {known:false,date:null};
+  const {rows,statusOf} = await projectRows(tx,tenantId,employmentId);
+  const custom = await tx.select({code:movementEventType.code}).from(movementEventType)
+    .where(and(eq(movementEventType.tenantId,tenantId),eq(movementEventType.behaviourKind,'promotion')));
+  const kinds = new Set(['promotion',...custom.map(r=>r.code)]);
+  const dates = rows.filter(r=>kinds.has(r.kind)&&statusOf(r)==='applied').map(r=>r.effectiveDate).sort();
+  return {known:true,date:dates.at(-1)??null};
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return withTenant(ctx, async (tx) => {

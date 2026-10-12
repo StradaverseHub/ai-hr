@@ -10018,3 +10018,17 @@ export const assessmentAttachmentLink = pgTable('performance_assessment_attachme
   attachmentId:uuid('attachment_id').notNull().references(()=>performanceAttachment.id),
   kpiId:uuid('kpi_id').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('performance_assessment_attachment_kpi_uq').on(t.attachmentId,t.kpiId)]);
+
+// One decision record per assessment, shared by every authorized calibration tier.
+// Frozen results copy these human decisions; Rewards never reads working decisions.
+export const assessmentTalent = pgTable('performance_assessment_talent', {
+ reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
+ actions:jsonb('actions').notNull(),revision:integer('revision').notNull().default(1),
+ updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const assessmentTalentHistory = pgTable('performance_assessment_talent_history', {
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ year:integer('year').notNull(),category:text('category').notNull(),performance:text('performance').notNull(),potential:text('potential').notNull(),
+ reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_talent_history_year_uq').on(t.employmentId,t.year)]);

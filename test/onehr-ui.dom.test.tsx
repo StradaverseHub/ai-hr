@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { defaultPolicy } from '../packs/performance/onehr/model';
+import { emptyTalentActions } from '../packs/performance/onehr/talent-model';
 import framework from '../packs/performance/onehr/framework.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 const ports=vi.hoisted(()=>({calibration:vi.fn(),session:vi.fn()}));
@@ -27,16 +28,16 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.queryByRole('option',{name:en.onehr.mechanismA})).toBeNull();
  });
  it('keeps a locked performance axis visible while leaving only potential editable',async()=>{
-  ports.calibration.mockResolvedValue({session:{name:'BU review',tier:'bu',revision:2,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]});
+  ports.calibration.mockResolvedValue({session:{name:'BU review',tier:'bu',revision:2,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]});
   show(await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})}));
   expect(screen.queryByLabelText(en.onehr.performance)).toBeNull();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
   for(const select of screen.getAllByLabelText(en.onehr.assessmentAxis))expect((select as HTMLSelectElement).value).toBe('potential');
   expect(ports.session).toHaveBeenCalledOnce();
  });
  it('keeps talent decisions separate from an open calibration',async()=>{
-  ports.calibration.mockResolvedValue({session:{name:'Group review',tier:'group',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:false},units:[],modules:{pm:true,tm:false},reference:null,rows:[{name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:null,currentPerformance:'ME',currentPotential:null,entry:{id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false}}]});
+  ports.calibration.mockResolvedValue({session:{name:'Group review',tier:'group',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:false},units:[],modules:{pm:true,tm:false},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:null,currentPerformance:'ME',currentPotential:null,entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false}}]});
   show(await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})}));
-  expect(screen.queryByLabelText(en.onehr.promotion)).toBeNull();expect(screen.getByLabelText(en.onehr.specialReward)).toBeTruthy();expect(screen.queryByLabelText(en.onehr.potential)).toBeNull();
+  expect(screen.queryByLabelText(en.onehr.promotion)).toBeNull();expect(screen.queryByLabelText(en.onehr.specialReward)).toBeNull();expect(screen.queryByLabelText(en.onehr.potential)).toBeNull();
   expect(document.querySelector('input[name="confirmTalentDecisions"]')).toBeNull();
  });
  it('offers setting approval to the matrix reviewer whose chain step is pending',async()=>{

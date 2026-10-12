@@ -90,7 +90,7 @@ export type RewardSource = {
   onehr?: { id: string; reviewId: string; cycleId: string; digest: string; frozenAt: string;
     performance: typeof performances[number] | null; potential: 'Low'|'Mid'|'High'|null;
     talent: 'PIP/Improvement'|'Solid Core'|'Star'|'Super Star'|null;
-    pip: boolean; promotion: boolean; specialReward: boolean; policyDigest: string } | null;
+    pip: boolean; promotion: boolean; specialReward: boolean; policyDigest: string; confirmedGrade?:string; confirmedTitle?:string; pipReason?:string; promotionReason?:string; specialRewardReason?:string } | null;
 };
 export type RewardEntry = { id: string; source: RewardSource; facts: RewardFacts; recommendation: Recommendation };
 export type Plan = 'standard' | 'h' | 'ec';

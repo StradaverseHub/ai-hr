@@ -1,3 +1,4 @@
+import { talentContext, writeTalentAction } from './talent-service';
 import { careerRoutes, demonstratedSkills, resolveTechnicalProfile, technicalProfilePlan } from './career-model';
 import { anonymousFeedbackReport } from './feedback-report';
 import { assertOverallRemark } from './journey-model';
@@ -479,12 +480,12 @@ export async function getOnehrCalibration(ctx:SessionContext,sessionId:string) {
   return withPerformanceTenant(ctx,async tx=>{
     const {session,cycle}=await loadCalibration(tx,sessionId);
     const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId));
-    const rows=[];for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;const r=await resolved(tx,entry.reviewId,cycle.policy);rows.push({entry,companyId:r.input.companyId,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,managerPerformance:r.input.performance,managerPotential:r.input.potential.band,currentPerformance:boxBands(r,session.tier).performance,currentPotential:boxBands(r,session.tier).potential,performanceSource:boxBands(r,session.tier).performanceSource,potentialSource:boxBands(r,session.tier).potentialSource});}
+    const rows=[];for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;const r=await resolved(tx,entry.reviewId,cycle.policy);const talent=await talentContext(tx,ctx.tenantId,entry.reviewId,entry.employmentId,cycle.policy);rows.push({entry:{...entry,...talent.actions},talent,companyId:r.input.companyId,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,managerPerformance:r.input.performance,managerPotential:r.input.potential.band,currentPerformance:boxBands(r,session.tier).performance,currentPotential:boxBands(r,session.tier).potential,performanceSource:boxBands(r,session.tier).performanceSource,potentialSource:boxBands(r,session.tier).potentialSource});}
     const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);
     const companyIds=[...new Set(rows.map(r=>r.companyId))];
     const companies=companyIds.length?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,companyIds)):[];
     const units=companyIds.map(id=>({id,name:companies.find(c=>c.id===id)?.name??id,locked:rows.filter(r=>r.companyId===id).every(r=>r.entry.lockedAt)}));
-    return {units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,'both',session.tier),rows,reference:session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement))};
+    return {actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,'both',session.tier),rows,reference:session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement))};
   });
 }
 export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expected:number) {
@@ -511,7 +512,8 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     const panel=await tx.select({answers:onehrPanel.answers,remark:onehrPanel.remark,comments:onehrPanel.principleComments}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt),sql`${onehrPanel.submittedAt} is not null`));
     const attachmentLinks=await tx.select({attachmentId:assessmentAttachmentLink.attachmentId,kpiId:assessmentAttachmentLink.kpiId}).from(assessmentAttachmentLink).where(eq(assessmentAttachmentLink.reviewId,reviewId));
     const anonymousFeedback=anonymousFeedbackReport(z.array(statementSchema).parse(r.row.statements),panel.map(p=>({answers:z.record(z.string(),z.enum(['yes','no'])).parse(p.answers),remark:p.remark,comments:p.comments})));
-    const result:FrozenResult={version:1,anonymousFeedback,provenance:{selfRemark:r.row.selfRemark,managerRemark:r.row.managerRemark,competencySelfRemark:r.row.competencySelfRemark,competencyManagerRemark:r.row.competencyManagerRemark,attachmentLinks,evidence,attachments,kpis:r.kpis,competencies:r.competencies,leadership:resolvedResult.input.leadership,decisions:resolvedResult.rows},performance:resolvedResult.performance.band,potential:resolvedResult.potential.band,performanceSource:resolvedResult.performance.source,potentialSource:resolvedResult.potential.source,talent:talentCategory(resolvedResult.performance.band,resolvedResult.potential.band),selfScore:scorecard(r.kpis,r.cycle.policy,r.row.companyId,false).score,managerScore:r.row.managerScore==null?null:Number(r.row.managerScore),potentialPct:resolvedResult.input.potential.pct,grade:r.row.grade,policyDigest:hash(r.cycle.policy),feedback:resolvedResult.input.principles.map(p=>({principle:p.principle,band:p.pct<=r.cycle.policy.lowMaxPct?'Low':p.pct<=r.cycle.policy.midMaxPct?'Mid':'High'})),pip:talentDecision?.pip??false,promotion:talentDecision?.promotion??false,specialReward:talentDecision?.specialReward??false};
+    const sharedTalent=(await talentContext(tx,ctx.tenantId,reviewId,r.row.employmentId,r.cycle.policy)).actions;
+    const result:FrozenResult={version:1,anonymousFeedback,confirmedGrade:sharedTalent.promotion?sharedTalent.confirmedGrade:'',confirmedTitle:sharedTalent.promotion?sharedTalent.confirmedTitle:'',pipReason:sharedTalent.pipReason,promotionReason:sharedTalent.promotionReason,specialRewardReason:sharedTalent.specialRewardReason,provenance:{selfRemark:r.row.selfRemark,managerRemark:r.row.managerRemark,competencySelfRemark:r.row.competencySelfRemark,competencyManagerRemark:r.row.competencyManagerRemark,attachmentLinks,evidence,attachments,kpis:r.kpis,competencies:r.competencies,leadership:resolvedResult.input.leadership,decisions:resolvedResult.rows},performance:resolvedResult.performance.band,potential:resolvedResult.potential.band,performanceSource:resolvedResult.performance.source,potentialSource:resolvedResult.potential.source,talent:talentCategory(resolvedResult.performance.band,resolvedResult.potential.band),selfScore:scorecard(r.kpis,r.cycle.policy,r.row.companyId,false).score,managerScore:r.row.managerScore==null?null:Number(r.row.managerScore),potentialPct:resolvedResult.input.potential.pct,grade:r.row.grade,policyDigest:hash(r.cycle.policy),feedback:resolvedResult.input.principles.map(p=>({principle:p.principle,band:p.pct<=r.cycle.policy.lowMaxPct?'Low':p.pct<=r.cycle.policy.midMaxPct?'Mid':'High'})),pip:sharedTalent.pip,promotion:sharedTalent.promotion,specialReward:sharedTalent.specialReward};
     const [frozen]=await tx.insert(onehrResult).values({tenantId:ctx.tenantId,reviewId,cycleId:r.row.cycleId,employmentId:r.row.employmentId,result,digest:hash({reviewId,policy:r.cycle.policy,result})}).returning();
     // Legacy ratings stay null: OneHR's frozen record is the sole authoritative final assessment.
     await tx.update(performanceReview).set({closedAt:new Date(),status:'submitted'}).where(eq(performanceReview.id,reviewId));await audit(tx,ctx,reviewId,'assessment-frozen',{resultId:frozen.id,digest:frozen.digest});return frozen.id;
@@ -636,7 +638,7 @@ export async function onehrAssignments(ctx:SessionContext) {
 }
 /** Rewards consumes this immutable projection under its own transaction and company authorization. */
 export async function onehrRewardResultTx(tx:Tx,employmentId:string,year:number,rewardUnitId:string) {
-  const [r]=await tx.execute<{value:{id:string;reviewId:string;cycleId:string;digest:string;frozenAt:string;performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];pip:boolean;promotion:boolean;specialReward:boolean;policyDigest:string}|null}>(sql`select app.reward_onehr_source(${rewardUnitId}::uuid,${employmentId}::uuid,${year}) as value`);
+  const [r]=await tx.execute<{value:{id:string;reviewId:string;cycleId:string;digest:string;frozenAt:string;performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];pip:boolean;promotion:boolean;specialReward:boolean;policyDigest:string;confirmedGrade?:string;confirmedTitle?:string;pipReason?:string;promotionReason?:string;specialRewardReason?:string}|null}>(sql`select app.reward_onehr_source(${rewardUnitId}::uuid,${employmentId}::uuid,${year}) as value`);
   return r?.value??null;
 }
 
@@ -761,11 +763,12 @@ export async function performanceWorkspace(ctx:SessionContext) {
  });
 }
 
-export async function saveAssessmentTalentDecision(ctx:SessionContext,sessionId:string,expected:number,reviewId:string,kind:'pip'|'promotion'|'specialReward',selected:boolean,reason:string) {
- uuid.parse(reviewId);z.enum(['pip','promotion','specialReward']).parse(kind);note.parse(reason);
+export async function saveAssessmentTalentDecision(ctx:SessionContext,sessionId:string,expected:number,reviewId:string,kind:'pip'|'promotion'|'specialReward'|'nomination',selected:boolean,reason:string,details:{grade?:string;title?:string;talentRevision?:number}={}) {
+ uuid.parse(reviewId);z.enum(['pip','promotion','specialReward','nomination']).parse(kind);note.parse(reason);
+ const grade=z.string().trim().max(20).parse(details.grade??''),title=z.string().trim().max(120).parse(details.title??'');
  return withPerformanceTenant(ctx,async tx=>{
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);
-  if(kind==='specialReward'){if(!['bu','bg','group','final'].includes(session.tier)||session.lockedAt)throw Error('Special reward pins belong to an open Talent Box.');}
+  if(kind==='specialReward'||kind==='nomination'){if(kind==='nomination'&&session.tier!=='bg')throw Error('Only the BG reviewer can nominate from the Talent Box.');if(!['bu','bg','group','final'].includes(session.tier)||session.lockedAt)throw Error('Special reward pins belong to an open Talent Box.');}
   else if(!['bg','group','final'].includes(session.tier)||!session.lockedAt)throw Error('Lock BG or Group calibration before confirming talent decisions.');
   if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');
   if(kind==='pip'&&session.pipLockedAt||kind==='promotion'&&session.promotionLockedAt)throw Error('Reopen this decision list before changing it.');
@@ -774,14 +777,15 @@ export async function saveAssessmentTalentDecision(ctx:SessionContext,sessionId:
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
   const current=await resolved(tx,reviewId,cycle.policy);if(current.input.finalized)throw Error('Finalized talent decisions are immutable.');
   calibrationWindows(cycle.policy,session.tier as Tier,'both');
-  if(kind==='specialReward'){if(entry.lockedAt)throw Error('This business unit is already locked.');assertPrecedingTier(current.rows,session.tier as Tier,session.mode,true,true);}
+  if(kind==='specialReward'||kind==='nomination'){if(entry.lockedAt)throw Error('This business unit is already locked.');assertPrecedingTier(current.rows,session.tier as Tier,session.mode,true,true);}
   const category=talentCategory(entry.performance??boxBands(current,session.tier).performance,entry.potential??boxBands(current,session.tier).potential);
-  if(selected&&(kind==='pip'?category!=='PIP/Improvement':category==null||category==='PIP/Improvement'))throw Error('This decision is not available for the calibrated talent category.');
+  const talent=await talentContext(tx,ctx.tenantId,reviewId,entry.employmentId,cycle.policy);
+  if(kind==='promotion'&&!talent.promotionEligible)throw Error('This person has no nomination or qualifying promotion history.');
+  if(kind==='pip'&&category!=='PIP/Improvement'||(kind==='specialReward'||kind==='nomination')&&(category==null||category==='PIP/Improvement'))throw Error('This decision is not available for the calibrated talent category.');
   if(kind==='specialReward'&&!selected)reason='';
-  const data=kind==='pip'?{pip:selected,pipReason:reason}:kind==='promotion'?{promotion:selected,promotionReason:reason}:{specialReward:selected,specialRewardReason:reason};
-  await tx.update(onehrCalibrationEntry).set(data).where(eq(onehrCalibrationEntry.id,entry.id));
+  await writeTalentAction(tx,sessionId,reviewId,kind,selected,reason,grade,title,details.talentRevision??talent.revision);
   await tx.update(onehrCalibration).set({revision:session.revision+1}).where(eq(onehrCalibration.id,sessionId));
-  await audit(tx,ctx,sessionId,'talent-decision-saved',{reviewId,kind,previous:entry[kind],selected,reason});
+  await audit(tx,ctx,sessionId,'talent-decision-saved',{reviewId,kind,previous:kind==='nomination'?talent.actions.nominations:talent.actions[kind],selected,reason,grade,title});
  });
 }
 export async function confirmAssessmentTalentList(ctx:SessionContext,sessionId:string,expected:number,kind:'pip'|'promotion',reopen=false,reason='') {
