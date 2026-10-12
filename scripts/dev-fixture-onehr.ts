@@ -88,6 +88,14 @@ async function main(){
  await perf.createOnehrCalibration(a,cycleId,{name:'BU fixture calibration',companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[pendingReview.reviewId],pbtAchievement:100,mode:'after'});
  const {cycleId:draftCycleId}=await perf.createCycle(a,{name:'OneHR draft (dev fixture)',companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
  await perf.configureOnehrCycle(a,draftCycleId,null,policy);
+ const {cycleId:quarterCycleId}=await perf.createCycle(a,{name:'OneHR quarterly (dev fixture)',companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-03-31`});
+ const quarterPolicy=defaultPolicy(framework);quarterPolicy.kind='quarterly';quarterPolicy.modules={pm:true,tm:false,idp:false,evidence:false};
+ await perf.configureOnehrCycle(a,quarterCycleId,null,quarterPolicy);await perf.openCycle(a,{cycleId:quarterCycleId});
+ const [quarterReview]=await owner.db.select().from(s.onehrReview).where(and(eq(s.onehrReview.cycleId,quarterCycleId),eq(s.onehrReview.employmentId,subject.employmentId)));const qid=quarterReview.reviewId,qk=randomUUID();
+ const qview=async(ctx:SessionContext)=>(await perf.getOnehrReview(ctx,qid))!;
+ await perf.saveOnehrKpis(subject.ctx,qid,(await qview(subject.ctx)).revision,[{id:qk,title:'Quarterly delivery progress',description:'Track progress without calculating a rating.',weightBp:10000,unit:'milestones',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+ await perf.approveOnehrScorecard(manager.ctx,qid,(await qview(manager.ctx)).revision,true,'');
+ await perf.saveOnehrKpiCheckIn(subject.ctx,qid,(await qview(subject.ctx)).revision,qk,'at_risk','Waiting for an external dependency.');
  await manifest(cycleId);
 }
 async function manifest(cycleId:string){
@@ -97,6 +105,7 @@ async function manifest(cycleId:string){
  const units=await owner.db.select({id:s.rewardUnit.id}).from(s.rewardUnit).innerJoin(s.rewardCycle,eq(s.rewardCycle.id,s.rewardUnit.cycleId)).where(and(eq(s.rewardUnit.tenantId,tenantId),eq(s.rewardCycle.name,'OneHR rewards (dev fixture)')));
  const feedback=await owner.db.select({id:s.onehrPanel.requestId,reviewId:s.onehrPanel.reviewId,peerEmploymentId:s.onehrPanel.peerEmploymentId}).from(s.onehrPanel).innerJoin(s.onehrReview,eq(s.onehrReview.reviewId,s.onehrPanel.reviewId)).where(and(eq(s.onehrReview.cycleId,cycleId),isNull(s.onehrPanel.submittedAt)));
  const [draft]=await owner.db.select({id:s.reviewCycle.id}).from(s.reviewCycle).where(and(eq(s.reviewCycle.tenantId,tenantId),eq(s.reviewCycle.name,'OneHR draft (dev fixture)')));
- console.log(JSON.stringify({cycleId,draftCycleId:draft?.id,feedback,users:users.filter(u=>u.key.startsWith('onehr-fixture:')),reviews:rows,calibration:cohorts,rewards:units},null,2));
+ const quarterly=await owner.db.select({reviewId:s.onehrReview.reviewId,name:s.person.fullName,cycleId:s.onehrReview.cycleId}).from(s.onehrReview).innerJoin(s.reviewCycle,eq(s.reviewCycle.id,s.onehrReview.cycleId)).innerJoin(s.employment,eq(s.employment.id,s.onehrReview.employmentId)).innerJoin(s.person,eq(s.person.id,s.employment.personId)).where(and(eq(s.onehrReview.tenantId,tenantId),eq(s.reviewCycle.name,'OneHR quarterly (dev fixture)')));
+ console.log(JSON.stringify({cycleId,draftCycleId:draft?.id,quarterly,feedback,users:users.filter(u=>u.key.startsWith('onehr-fixture:')),reviews:rows,calibration:cohorts,rewards:units},null,2));
 }
 main().then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1);});
