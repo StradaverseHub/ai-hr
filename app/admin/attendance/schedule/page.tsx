@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -101,6 +102,7 @@ export default async function ScheduleListPage({
   searchParams: Promise<{ error?: string; policy?: string; viewPolicy?: string }>;
 }) {
   const s = await requireAdmin();
+  const settingsT = await getTranslations('attendanceSettingsHub');
   const t = await getTranslations('admin.scheduleConfig');
   const tp = await getTranslations('admin.attendancePolicy');
   const sp = await searchParams;
@@ -168,7 +170,8 @@ export default async function ScheduleListPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('pageTitle')} description={t('listSubtitle')} />
+      <AttendanceSettingsNavigation />
+      <PageHeader back={{ href: '/admin/attendance/settings', label: settingsT('backToSettings') }} title={t('pageTitle')} description={t('listSubtitle')} />
       {/* A refusal from a row action (Duplicate, Activate/Deactivate, Delete) lands here. While a company
           policy panel is open the refusal belongs to the panel and is shown there instead, so the same
           message is never printed twice. */}

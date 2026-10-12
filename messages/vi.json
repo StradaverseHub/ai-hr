@@ -3073,7 +3073,18 @@
       "geofencingNotRequired": "Không yêu cầu hàng rào địa lý",
       "skipPhoto": "Bỏ qua ảnh",
       "photoOptionalPrompt": "Bạn có thể chụp ảnh hoặc bỏ qua — dù chọn cách nào, lần chấm công này vẫn được lưu.",
-      "photoRequired": "Cần có ảnh trước khi có thể lưu lần chấm công này."
+      "photoRequired": "Cần có ảnh trước khi có thể lưu lần chấm công này.",
+      "cameraContext": "Quyền dùng máy ảnh cần HTTPS hoặc localhost. Bạn có thể bỏ qua ảnh không bắt buộc.",
+      "cameraDenied": "Quyền dùng máy ảnh bị từ chối. Hãy cho phép hoặc bỏ qua ảnh không bắt buộc.",
+      "cameraUnavailable": "Không tìm thấy máy ảnh dùng được. Hãy kết nối máy ảnh hoặc bỏ qua ảnh không bắt buộc.",
+      "locationDenied": "Quyền vị trí bị từ chối. Hãy cho phép vị trí rồi thử lại.",
+      "locationUnavailable": "Không đọc được vị trí. Hãy kiểm tra cài đặt vị trí thiết bị rồi thử lại.",
+      "authentication": "Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại rồi kiểm tra chính yêu cầu này.",
+      "origin": "Trình duyệt không thể gửi từ địa chỉ này. Hãy mở lại Chấm công Web từ ứng dụng.",
+      "invalid": "Yêu cầu chấm công bị từ chối. Hãy kiểm tra chi tiết rồi thử lại.",
+      "pendingCommand": "Có một lần chấm công đang chờ xác nhận. Hãy kiểm tra trước khi tạo lần mới.",
+      "checkSubmission": "Kiểm tra kết quả gửi",
+      "signInAgain": "Đăng nhập lại"
     },
     "colOtFlat": "Tăng ca cố định",
     "colOt00": "Tăng ca 0.0 (không trả)",
@@ -11581,6 +11592,26 @@
       "bf": "Nhập số dư nghỉ phép chuyển sang",
       "pageDescription": "Nhập lịch sử nghỉ phép hoặc số dư đầu kỳ bằng quy trình hiện có.",
       "wrongType": "Tệp không khớp với loại nhập đã chọn. Đổi lựa chọn ở Bước 1 hoặc tải mẫu tương ứng."
+    },
+    "leaveCreditRegister": {
+      "available": "Khả dụng",
+      "partiallyUsed": "Đã dùng một phần",
+      "fullyUsed": "Đã dùng hết",
+      "expired": "Hết hạn",
+      "reversed": "Đã đảo",
+      "paidOut": "Đã thanh toán",
+      "filterStatus": "Trạng thái",
+      "allStatuses": "Mọi trạng thái",
+      "workedFrom": "Ngày làm việc từ",
+      "workedTo": "Ngày làm việc đến",
+      "earned": "Tín dụng đã kiếm",
+      "used": "Đã dùng (Nghỉ bù)",
+      "availableBalance": "Số dư khả dụng",
+      "addedBy": "Người thêm",
+      "usageOn": "{days} vào {date}",
+      "legacyUsage": "Đã dùng {days}; bản ghi cũ không lưu từng ngày nghỉ.",
+      "expiredOn": "{days} hết hạn vào {date}",
+      "auditLedger": "Sổ biến động (kiểm toán)"
     }
   },
   "topbar": {
@@ -16508,7 +16539,10 @@
       "desc": "Địa điểm chấm công và nơi làm việc theo công ty.",
       "cta": "Mở"
     },
-    "footnote": "Mỗi thẻ mở đúng trang bạn đang dùng hiện nay."
+    "footnote": "Mỗi thẻ mở đúng trang bạn đang dùng hiện nay.",
+    "backToSettings": "Về Cài đặt",
+    "leaveUnsaved": "Rời trang này và bỏ các thay đổi chưa lưu?",
+    "leaveOtherUnsaved": "Lưu biểu mẫu này sẽ rời các thay đổi chưa lưu ở biểu mẫu khác. Bỏ các thay đổi đó?"
   },
   "rewards": {
     "title": "Đãi ngộ",

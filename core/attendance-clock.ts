@@ -29,6 +29,20 @@ export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number
 // that was never taken as available.
 const publicReceipt = (row: typeof attendanceClockCapture.$inferSelect) => ({ id: row.id, direction: row.direction, recordedAt: row.serverRecordedAt.toISOString(), date: row.attendanceDate, photoAvailable: row.photoDigest != null && row.photoPurgedAt == null });
 
+/** Look up only the current employee's accepted command; no caller-supplied subject is accepted. */
+export async function ownClockReceipt(ctx: SessionContext, requestId: string) {
+  if (!UUID.test(requestId)) return null;
+  const me = await myEmployment(ctx);
+  if (!me) return null;
+  return withTenant(ctx, async tx => {
+    const [row] = await tx.select().from(attendanceClockCapture).where(and(
+      eq(attendanceClockCapture.employmentId, me.employmentId),
+      eq(attendanceClockCapture.requestId, requestId),
+    )).limit(1);
+    return row ? publicReceipt(row) : null;
+  });
+}
+
 /**
  * r423 — the employee's "Use Geofencing for Clocking" switch decides the geofence here, as it does for every
  * other punch (core/attendance.ts resolveGeofence). ON: the position must fall inside an active assigned

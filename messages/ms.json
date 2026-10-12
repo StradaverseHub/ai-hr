@@ -3073,7 +3073,18 @@
       "geofencingNotRequired": "Geopagar tidak diperlukan",
       "skipPhoto": "Langkau Foto",
       "photoOptionalPrompt": "Anda boleh ambil gambar atau langkau sahaja — rekod daftar masuk/keluar ini tetap disimpan.",
-      "photoRequired": "Gambar diperlukan sebelum rekod ini boleh disimpan."
+      "photoRequired": "Gambar diperlukan sebelum rekod ini boleh disimpan.",
+      "cameraContext": "Akses kamera memerlukan HTTPS atau localhost. Foto pilihan boleh dilangkau.",
+      "cameraDenied": "Kebenaran kamera ditolak. Benarkan akses atau langkau foto pilihan.",
+      "cameraUnavailable": "Tiada kamera yang boleh digunakan. Sambungkan kamera atau langkau foto pilihan.",
+      "locationDenied": "Kebenaran lokasi ditolak. Benarkan akses lokasi dan cuba lagi.",
+      "locationUnavailable": "Lokasi tidak dapat dibaca. Semak tetapan lokasi peranti dan cuba lagi.",
+      "authentication": "Sesi log masuk tamat. Log masuk semula, kemudian semak permintaan yang sama.",
+      "origin": "Pelayar tidak dapat menghantar dari alamat ini. Buka semula Rekod Waktu Web melalui aplikasi.",
+      "invalid": "Permintaan rekod waktu ditolak. Semak butiran dan cuba lagi.",
+      "pendingCommand": "Rekod waktu menunggu pengesahan. Semak sebelum memulakan rekod lain.",
+      "checkSubmission": "Semak penghantaran",
+      "signInAgain": "Log masuk semula"
     },
     "colOtFlat": "OT Rata",
     "colOt00": "OT 0.0 (tanpa bayaran)",
@@ -11581,6 +11592,26 @@
       "bf": "Import B/F Cuti",
       "pageDescription": "Muatkan rekod cuti terdahulu atau baki dibawa ke hadapan melalui aliran kerja sedia ada.",
       "wrongType": "Fail ini tidak sepadan dengan Jenis Import dipilih. Tukar pilihan pada Langkah 1 atau muat turun templatnya."
+    },
+    "leaveCreditRegister": {
+      "available": "Tersedia",
+      "partiallyUsed": "Digunakan Sebahagian",
+      "fullyUsed": "Digunakan Sepenuhnya",
+      "expired": "Tamat Tempoh",
+      "reversed": "Dibatalkan",
+      "paidOut": "Dibayar",
+      "filterStatus": "Status",
+      "allStatuses": "Semua status",
+      "workedFrom": "Tarikh Bekerja Dari",
+      "workedTo": "Tarikh Bekerja Hingga",
+      "earned": "Kredit Diperoleh",
+      "used": "Digunakan (Cuti Gantian)",
+      "availableBalance": "Baki Tersedia",
+      "addedBy": "Ditambah Oleh",
+      "usageOn": "{days} pada {date}",
+      "legacyUsage": "{days} digunakan; tarikh cuti individu tidak disimpan dalam rekod lama.",
+      "expiredOn": "{days} tamat pada {date}",
+      "auditLedger": "Lejar pergerakan (audit)"
     }
   },
   "topbar": {
@@ -16508,7 +16539,10 @@
       "desc": "Lokasi pencapan dan lokasi kerja mengikut syarikat.",
       "cta": "Buka"
     },
-    "footnote": "Setiap kad membuka halaman yang sama seperti yang anda gunakan hari ini."
+    "footnote": "Setiap kad membuka halaman yang sama seperti yang anda gunakan hari ini.",
+    "backToSettings": "Kembali ke Tetapan",
+    "leaveUnsaved": "Tinggalkan halaman ini dan buang perubahan yang belum disimpan?",
+    "leaveOtherUnsaved": "Menyimpan borang ini akan meninggalkan perubahan belum disimpan dalam borang lain. Buang perubahan tersebut?"
   },
   "rewards": {
     "title": "Ganjaran",

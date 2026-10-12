@@ -1038,7 +1038,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
       dailyCutoffMinutes: ra.cutoffOn && ra.cutoffAt ? toMinutes(ra.cutoffAt) : null,
       flexibleBreakMinutes: ra.flexOn && ra.flexMin != null ? ra.flexMin : null,
       normalMinutesOverride: ra.override ?? null,
-      flexiDuration: ra.shiftType === 'full_flexi',
+      flexiDuration: ra.shiftType === 'full_flexi' || ra.shiftType === 'semi_flexi',
       otRule: ra.otRule ?? null,
       otWindows,
       rule,
@@ -1171,7 +1171,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
         // the break too would deduct it twice over.
         flexibleBreakMinutes: ds.flexOn && ds.flexMin != null ? ds.flexMin : null,
         normalMinutesOverride: override,
-        flexiDuration: ds.shiftType === 'full_flexi',
+        flexiDuration: ds.shiftType === 'full_flexi' || ds.shiftType === 'semi_flexi',
         otRule: ds.otRule ?? null,
         otWindows,
         rule,
@@ -1251,7 +1251,7 @@ function deriveAttendance(
   checkOutAt: string | null,
   attendanceDate: string,
 ): DerivedDay {
-  // r274 (439565ff) — A FULL FLEXI DAY HAS NO TIME TO BE LATE FOR. `lateAfter` is still resolved (it is
+  // r274 (439565ff) — A DURATION-BASED FLEXI DAY HAS NO FIXED ARRIVAL PENALTY. `lateAfter` is still resolved (it is
   // shift start + grace, and the column is NOT NULL), but on this type the shift's start is the earliest
   // clocking accepted rather than a time anybody must arrive by, so comparing against it would record a
   // 08:31 arrival as late on a shift whose only requirement is nine hours.
@@ -1269,7 +1269,7 @@ function deriveAttendance(
   const deductible = deductionsApplyOn(s.rule, attendanceDate);
   // Lateness is a workday concept measured against a schedule; rest-day / holiday work has no start to be
   // late against (the same reason `status` never reads 'late' on those days).
-  // NULL on full flexi, not 0: zero minutes late asserts they arrived on time against a start that does
+  // NULL on duration-based flexi, not 0: zero minutes late asserts they arrived on time against a start that does
   // not exist, and `late_deduct_minutes` reads this figure.
   const lateMinutes: number | null =
     s.dayType === 'workday' && !s.flexiDuration && schedStartAbs != null && inAbsSched != null

@@ -3073,7 +3073,18 @@
       "geofencingNotRequired": "Geofencing not required",
       "skipPhoto": "Skip Photo",
       "photoOptionalPrompt": "You may take a photo or skip it — either way this clocking is saved.",
-      "photoRequired": "A photo is required before this clocking can be saved."
+      "photoRequired": "A photo is required before this clocking can be saved.",
+      "cameraContext": "Camera access needs HTTPS or localhost. You can skip an optional photo.",
+      "cameraDenied": "Camera permission was denied. Allow access or skip an optional photo.",
+      "cameraUnavailable": "No usable camera was found. Connect a camera or skip an optional photo.",
+      "locationDenied": "Location permission was denied. Allow location access, then try again.",
+      "locationUnavailable": "Location could not be read. Check your device location settings and retry.",
+      "authentication": "Your sign-in has expired. Sign in again, then check this same request.",
+      "origin": "The browser could not submit from this address. Reopen Web Clocking from the application.",
+      "invalid": "The clocking request was refused. Check the details and try again.",
+      "pendingCommand": "A clocking is awaiting confirmation. Check it before starting another.",
+      "checkSubmission": "Check submission",
+      "signInAgain": "Sign in again"
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",
@@ -11581,6 +11592,26 @@
       "bf": "Leave B/F Data Import",
       "pageDescription": "Load past leave records or opening brought-forward figures using their existing workflows.",
       "wrongType": "This file does not match the selected Import Type. Change the selection in Step 1 or download its template."
+    },
+    "leaveCreditRegister": {
+      "available": "Available",
+      "partiallyUsed": "Partially Used",
+      "fullyUsed": "Fully Used",
+      "expired": "Expired",
+      "reversed": "Reversed",
+      "paidOut": "Paid Out",
+      "filterStatus": "Status",
+      "allStatuses": "All statuses",
+      "workedFrom": "Date Worked From",
+      "workedTo": "Date Worked To",
+      "earned": "Credit Earned",
+      "used": "Used (Replacement Leave)",
+      "availableBalance": "Available Balance",
+      "addedBy": "Added By",
+      "usageOn": "{days} on {date}",
+      "legacyUsage": "{days} used; individual leave dates were not retained in the legacy record.",
+      "expiredOn": "{days} expired on {date}",
+      "auditLedger": "Movement ledger (audit)"
     }
   },
   "topbar": {
@@ -16508,7 +16539,10 @@
       "desc": "Clocking and work locations by company.",
       "cta": "Open"
     },
-    "footnote": "Each card opens the same page you use today."
+    "footnote": "Each card opens the same page you use today.",
+    "backToSettings": "Back to Settings",
+    "leaveUnsaved": "Leave this page and discard unsaved changes?",
+    "leaveOtherUnsaved": "Saving this form will leave unsaved changes in another form. Discard those changes?"
   },
   "rewards": {
     "title": "Rewards",

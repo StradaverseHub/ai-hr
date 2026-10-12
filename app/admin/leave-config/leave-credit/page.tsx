@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { CREDIT_REGISTER_STATUSES, type CreditRegisterStatus } from '@/lib/leave-credit-register';
 
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
@@ -11,6 +12,7 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import {
   LEAVE_CREDIT_MOVEMENTS,
   listLeaveCreditMovements,
+  listEarnedLeaveCredits,
   type LeaveCreditMovement,
   type LeaveCreditStatus,
 } from '@/packs/leave/service';
@@ -62,6 +64,7 @@ export default async function LeaveConfigLeaveCreditPage({
   searchParams: Promise<{
     employee?: string;
     movement?: string;
+    status?: string;
     from?: string;
     to?: string;
     error?: string;
@@ -86,6 +89,7 @@ export default async function LeaveConfigLeaveCreditPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leaveCredit');
   const tToil = await getTranslations('admin.toilPolicy');
+  const tr = await getTranslations('admin.leaveCreditRegister');
   const locale = await getLocale();
   const sp = await searchParams;
   const header = await leaveConfigPageHeader('leaveCredit');
@@ -165,21 +169,22 @@ export default async function LeaveConfigLeaveCreditPage({
     paid_out: { label: t('status.paidOut'), cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' },
   };
 
-  const movementFilter = (LEAVE_CREDIT_MOVEMENTS as readonly string[]).includes(sp.movement ?? '')
-    ? (sp.movement as LeaveCreditMovement)
-    : undefined;
+  const registerStatus:CreditRegisterStatus|undefined=(CREDIT_REGISTER_STATUSES as readonly string[]).includes(sp.status??'')?sp.status as CreditRegisterStatus:undefined;
+  const registerLabels:Record<CreditRegisterStatus,string>={available:tr('available'),partially_used:tr('partiallyUsed'),fully_used:tr('fullyUsed'),expired:tr('expired'),reversed:tr('reversed'),paid_out:tr('paidOut')};
   const isoOrUndefined = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
   const employeeFilter = employees.some((e) => e.employmentId === sp.employee) ? sp.employee : undefined;
   const movements = showCredits
     ? await listLeaveCreditMovements(s, {
           companyIds: visibleIds,
           employmentId: employeeFilter,
-          movement: movementFilter,
+
           from: isoOrUndefined(sp.from),
           to: isoOrUndefined(sp.to),
           today,
         })
     : null;
+
+  const register = showCredits ? await listEarnedLeaveCredits(s,{companyIds:visibleIds,employmentId:employeeFilter,status:registerStatus,from:isoOrUndefined(sp.from),to:isoOrUndefined(sp.to),today}) : null;
 
   const banner = (text: string, extra?: string) => (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -291,22 +296,18 @@ export default async function LeaveConfigLeaveCreditPage({
                 </select>
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('filterMovement')}</span>
-                <select name="movement" defaultValue={movementFilter ?? ''} className={inputCls}>
-                  <option value="">{t('filterAllMovements')}</option>
-                  {LEAVE_CREDIT_MOVEMENTS.map((m) => (
-                    <option key={m} value={m}>
-                      {MOVEMENT_LABEL[m]}
-                    </option>
-                  ))}
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{tr('filterStatus')}</span>
+                <select name="status" defaultValue={registerStatus??''} className={inputCls}>
+                  <option value="">{tr('allStatuses')}</option>
+                  {CREDIT_REGISTER_STATUSES.map(status=><option key={status} value={status}>{registerLabels[status]}</option>)}
                 </select>
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('filterFrom')}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{tr('workedFrom')}</span>
                 <input type="date" name="from" defaultValue={isoOrUndefined(sp.from) ?? ''} className={inputCls} />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('filterTo')}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{tr('workedTo')}</span>
                 <input type="date" name="to" defaultValue={isoOrUndefined(sp.to) ?? ''} className={inputCls} />
               </label>
               <div className="flex gap-2">
@@ -317,6 +318,31 @@ export default async function LeaveConfigLeaveCreditPage({
               </div>
             </form>
 
+            {employeeFilter&&register&&<div className="my-4 grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="earned-credit-summary">
+              <Stat label={tr('earned')} value={formatDays(register.summary.earned)}/><Stat label={tr('used')} value={formatDays(register.summary.used)}/><Stat label={tr('expired')} value={formatDays(register.summary.expired)}/><Stat label={tr('availableBalance')} value={formatDays(register.summary.available)}/>
+            </div>}
+            <div className={`${tableWrapCls} mt-4`}>
+              <table className="w-full min-w-[68rem] text-sm" data-testid="earned-leave-credits">
+                <thead className={theadCls}><tr>
+                  <th scope="col" className={thCls}>{t('col.dateWorked')}</th><th scope="col" className={thCls}>{t('col.employee')}</th>
+                  <th scope="col" className={thCls}>{tr('earned')}</th><th scope="col" className={thCls}>{tr('used')}</th><th scope="col" className={thCls}>{tr('availableBalance')}</th>
+                  <th scope="col" className={thCls}>{t('col.expires')}</th><th scope="col" className={thCls}>{t('col.reason')}</th><th scope="col" className={thCls}>{tr('addedBy')}</th><th scope="col" className={thCls}>{t('col.status')}</th><th scope="col" className={thCls}>{t('col.action')}</th>
+                </tr></thead>
+                <tbody className={tbodyCls}>{register!.rows.length===0?<tr><td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">{t('empty')}</td></tr>:register!.rows.map(row=><tr key={row.accrualId} className="align-top">
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.workedDate)}{row.workedDayKind&&<span className="block text-xs text-muted-foreground">{KIND_LABEL[row.workedDayKind]}</span>}</td>
+                  <td className="px-3 py-2"><EmployeeName code={row.employeeCode} name={row.employeeName}/></td>
+                  <td className="px-3 py-2 tabular-nums">{formatDays(row.earned)}</td>
+                  <td className="px-3 py-2">{row.usage.length===0&&row.used===0?DAY_DASH:row.usage.map((use,i)=><div key={use.requestId+use.date+String(i)}>{tr('usageOn',{days:formatDays(use.days),date:fmtDate(use.date)})}</div>)}{row.unattributedUsed>0&&<p className="text-xs text-muted-foreground">{tr('legacyUsage',{days:formatDays(row.unattributedUsed)})}</p>}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatDays(row.available)}{row.expired>0&&<p className="text-xs text-destructive">{tr('expiredOn',{days:formatDays(row.expired),date:fmtDate(row.expiresOn)})}</p>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.expiresOn)}</td><td className="px-3 py-2 text-muted-foreground">{row.reason??DAY_DASH}{row.reversalReason&&<p>{row.reversalReason}</p>}</td>
+                  <td className="px-3 py-2">{row.actorName??(row.actorIsSystem?t('bySystem'):DAY_DASH)}<span className="block text-xs text-muted-foreground">{fmtInstant(row.recordedAt)}</span></td>
+                  <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${row.status==='available'?'bg-emerald-50 text-emerald-700':row.status==='partially_used'?'bg-amber-50 text-amber-700':row.status==='expired'?'bg-rose-50 text-rose-700':'bg-muted text-muted-foreground'}`}>{registerLabels[row.status]}</span></td>
+                  <td className="px-3 py-2">{row.reversible&&<LeaveCreditReverseDialog accrualId={row.accrualId} action={reverseLeaveCreditAction}/>}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            {register!.truncated&&<p className="mt-2 text-xs text-muted-foreground">{t('truncated',{shown:register!.rows.length,matched:register!.matched})}</p>}
+            <details className="mt-5"><summary className="cursor-pointer text-sm font-medium">{tr('auditLedger')}</summary>
             <div className={`${tableWrapCls} mt-4`}>
               <table className="w-full min-w-[72rem] text-sm" data-testid="leave-credit-movements">
                 <thead className={theadCls}>
@@ -385,6 +411,8 @@ export default async function LeaveConfigLeaveCreditPage({
                 </tbody>
               </table>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('orderFootnote')}</p>
+            </details>
             {movements!.truncated && (
               <p className="mt-2 text-xs text-muted-foreground">
                 {t('truncated', { shown: movements!.rows.length, matched: movements!.matched })}

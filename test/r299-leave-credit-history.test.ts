@@ -27,6 +27,7 @@ import {
   EXPIRING_SOON_DAYS,
   grantLeaveCredit,
   listLeaveCreditMovements,
+  listEarnedLeaveCredits,
   reverseLeaveCredit,
   runToilExpiry,
   setToilPolicy,
@@ -155,7 +156,19 @@ describe('Leave Credit history — derived, classified, and the running total is
       today: TODAY,
     });
     await decideLeave(mgrCtx, { leaveRequestId: leave.leaveRequestId, decision: 'approved' });
+    const beforeReturn = await listEarnedLeaveCredits(admin,{companyIds:[b.companyId],employmentId:emp.employmentId,today:TODAY,limit:1});
+    expect(beforeReturn.matched).toBe(4);expect(beforeReturn.rows).toHaveLength(1);
+    expect(beforeReturn.summary).toEqual({earned:4.5,used:1,expired:.5,available:2});
+    const usedCredit=(await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,status:'partially_used',today:TODAY})).rows[0];
+    expect(usedCredit.workedDate).toBe(worked(5));expect(usedCredit.used).toBe(1);
+    expect(usedCredit.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:1}]);
     await adminCancelLeave(admin, { leaveRequestId: leave.leaveRequestId, reason: 'Plans changed' });
+    const afterReturn=await listEarnedLeaveCredits(admin,{companyIds:[b.companyId],employmentId:emp.employmentId,today:TODAY});
+    expect(afterReturn.rows).toHaveLength(4);expect(afterReturn.summary).toEqual({earned:4.5,used:0,expired:.5,available:3});
+    expect(afterReturn.rows.find(row=>row.accrualId===usedCredit.accrualId)).toMatchObject({used:0,available:2,status:'available',usage:[]});
+    expect(afterReturn.rows.find(row=>row.accrualId===toReverse.accrualId)).toMatchObject({status:'reversed',reversible:false});
+    expect(afterReturn.rows.find(row=>row.accrualId===toExpire.accrualId)).toMatchObject({status:'expired',available:0,expired:.5});
+    expect((await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,status:'available',today:TODAY})).summary.available).toBe(3);
 
     const { rows, matched, truncated } = await listLeaveCreditMovements(admin, { companyIds: [b.companyId], today: TODAY });
     expect(truncated).toBe(false);

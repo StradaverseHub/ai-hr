@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listAttendanceRules } from '@/core/attendance-rule';
@@ -68,6 +69,7 @@ export default async function AddScheduleGroupPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <AttendanceSettingsNavigation />
       <PageHeader
         title={t('addTitle')}
         description={t('addSubtitle')}

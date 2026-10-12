@@ -441,13 +441,23 @@ describe('a refreshed day inside an already-processed pay run', () => {
     expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
   });
 
-  it('a lateness-only refresh flags nothing: it cannot disagree with what the run paid', async () => {
+  it('refuses a closed payroll before rewriting any attendance figures',async()=>{
+    const {a,s,batchId}=await withProcessedRun('CLOSEDREC');
+    await owner.db.update(schema.payrollBatch).set({status:'closed'}).where(eq(schema.payrollBatch.id,batchId));
+    await updateShift(a,{shiftId:s.id,name:'x',code:'PRCLOSEDREC',startTime:'09:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]});
+    const before=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.tenantId,b.tenantId));
+    await expect(recomputeAttendance(a,scope())).rejects.toThrow(/closed payroll/);
+    const after=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.tenantId,b.tenantId));
+    expect(after).toEqual(before);expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
+  });
+
+  it('a lateness-only refresh marks the processed run for downstream attendance rules', async () => {
     const { a, s, batchId } = await withProcessedRun('R174');
     // Only the shift START moves ⇒ the late mark is recut, worked and overtime are not.
     await updateShift(a, { shiftId: s.id, name: 'x', code: 'PRR174', startTime: '09:00', endTime: '17:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5, 6, 7] });
     const r = await recomputeAttendance(a, scope());
-    expect(r.batchWarnings).toHaveLength(0);
-    expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
+    expect(r.batchWarnings.map(x=>x.batchId)).toContain(batchId);
+    expect((await batchRow(batchId)).needsRecalcAt).not.toBeNull();
   });
 
   it('an unchanged day marks nothing', async () => {

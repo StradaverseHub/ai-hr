@@ -3073,7 +3073,18 @@
       "geofencingNotRequired": "无需地理围栏",
       "skipPhoto": "跳过拍照",
       "photoOptionalPrompt": "您可以拍照或跳过——无论哪种方式，这次打卡都会被保存。",
-      "photoRequired": "必须先拍照才能保存此次打卡。"
+      "photoRequired": "必须先拍照才能保存此次打卡。",
+      "cameraContext": "相机访问需要 HTTPS 或 localhost。可跳过非必需的照片。",
+      "cameraDenied": "相机权限被拒绝。请允许访问，或跳过非必需的照片。",
+      "cameraUnavailable": "未找到可用相机。请连接相机，或跳过非必需的照片。",
+      "locationDenied": "定位权限被拒绝。请允许定位后重试。",
+      "locationUnavailable": "无法读取位置。请检查设备定位设置后重试。",
+      "authentication": "登录已过期。请重新登录，然后检查同一请求。",
+      "origin": "浏览器无法从此地址提交。请从应用重新打开网页打卡。",
+      "invalid": "打卡请求被拒绝。请检查详情后重试。",
+      "pendingCommand": "一条打卡记录正在等待确认。开始另一次打卡前请先检查。",
+      "checkSubmission": "检查提交结果",
+      "signInAgain": "重新登录"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",
@@ -11581,6 +11592,26 @@
       "bf": "休假结转数据导入",
       "pageDescription": "使用现有流程导入历史休假记录或期初结转余额。",
       "wrongType": "此文件与所选导入类型不符。请在步骤 1 更改类型或下载对应模板。"
+    },
+    "leaveCreditRegister": {
+      "available": "可用",
+      "partiallyUsed": "部分使用",
+      "fullyUsed": "全部使用",
+      "expired": "已过期",
+      "reversed": "已冲销",
+      "paidOut": "已支付",
+      "filterStatus": "状态",
+      "allStatuses": "所有状态",
+      "workedFrom": "工作日期起",
+      "workedTo": "工作日期止",
+      "earned": "获得额度",
+      "used": "已用（补休）",
+      "availableBalance": "可用余额",
+      "addedBy": "添加人",
+      "usageOn": "{date}使用{days}",
+      "legacyUsage": "已用{days}；旧记录未保留各休假日期。",
+      "expiredOn": "{days}于{date}过期",
+      "auditLedger": "变动台账（审计）"
     }
   },
   "topbar": {
@@ -16508,7 +16539,10 @@
       "desc": "按公司划分的打卡地点和工作地点。",
       "cta": "打开"
     },
-    "footnote": "每张卡片打开的都是你现在使用的同一页面。"
+    "footnote": "每张卡片打开的都是你现在使用的同一页面。",
+    "backToSettings": "返回设置",
+    "leaveUnsaved": "离开此页面并放弃未保存的更改？",
+    "leaveOtherUnsaved": "保存此表单会离开另一表单的未保存更改。放弃这些更改？"
   },
   "rewards": {
     "title": "薪酬奖励",

@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
@@ -159,7 +160,8 @@ async function CompanyList({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader
+      <AttendanceSettingsNavigation />
+      <PageHeader back={{ href: '/admin/attendance/settings', label: (await getTranslations('attendanceSettingsHub'))('backToSettings') }}
         title={t('pageTitle')}
         description={t('companyListDescription')}
         actions={
@@ -328,7 +330,8 @@ async function CompanyView({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader
+      <AttendanceSettingsNavigation />
+      <PageHeader back={{ href: '/admin/attendance/settings', label: (await getTranslations('attendanceSettingsHub'))('backToSettings') }}
         title={companyName}
         description={isOrphan ? undefined : t('companyViewDescription')}
         back={{ href: CLOCKING_LIST, label: t('backToAllCompanies') }}

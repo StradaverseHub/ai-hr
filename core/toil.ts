@@ -12,7 +12,7 @@
  * to convert unused TOIL to pay on expiry (never lapse). The same worked day is cash XOR TOIL — the OT-pay
  * prefill (core/payroll.ts) excludes any day with a non-lapsed accrual.
  */
-import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -26,6 +26,7 @@ import {
   employment,
   leaveLedger,
   leaveRequest,
+  leaveRequestDate,
   leaveType,
   payrollBatch,
   payrollInput,
@@ -52,6 +53,7 @@ import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isAttendanceTrace, type AttendanceTraceV1 } from './attendance-trace';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
+import { creditRegisterFigures, projectCreditUsage, type CreditRegisterStatus, type CreditUsageDate } from '../lib/leave-credit-register';
 // r406 952129bb — HR's row-grant: the roster adjudication (pure) and the approved-overtime read the employee's
 // form already shows. Neither module imports this file, so both are static.
 import { adjudicateDayTypes, isLeaveCreditDayType } from '../lib/leave-credit-day-type';
@@ -1611,7 +1613,7 @@ export async function consumeReplacementLeaveTx(
     })
     .from(toilAccrual)
     .where(and(eq(toilAccrual.employmentId, p.employmentId), eq(toilAccrual.status, 'active')))
-    .orderBy(asc(toilAccrual.expiresOn), asc(toilAccrual.workedDate));
+    .orderBy(asc(toilAccrual.expiresOn), asc(toilAccrual.workedDate), asc(toilAccrual.id));
 
   for (const a of active) {
     if (remaining <= 0) break;
@@ -3146,6 +3148,84 @@ export async function listLeaveCreditMovements(
           : b.ledgerEntryId.localeCompare(a.ledgerEntryId),
     );
     return { rows: filtered.slice(0, limit), matched: filtered.length, truncated: filtered.length > limit };
+  });
+}
+
+export type EarnedLeaveCreditRow = {
+  accrualId:string;employmentId:string;employeeName:string;employeeCode:string|null;
+  workedDate:string;workedDayKind:ToilWorkedDayKind|null;expiresOn:string;
+  earned:number;used:number;available:number;expired:number;status:CreditRegisterStatus;reversible:boolean;
+  reason:string|null;actorName:string|null;actorIsSystem:boolean;recordedAt:string;
+  usage:CreditUsageDate[];unattributedUsed:number;settled:boolean;reversalReason:string|null;
+};
+
+/** One row per actual earned lot; its ledger and allocation events remain the audit authority. */
+export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:string[];employmentId?:string;status?:CreditRegisterStatus;from?:string;to?:string;today?:string;limit?:number}={}) {
+  const today=p.today??todayInKualaLumpur(),limit=Math.max(1,Math.min(500,p.limit??500));
+  return withTenant(ctx,async tx=>{
+    if(!isAdminCtx(ctx))throw new ToilSweepForbiddenError('Only HR administrators may view the earned credit register.');
+    const empty={rows:[] as EarnedLeaveCreditRow[],matched:0,truncated:false,summary:{earned:0,used:0,expired:0,available:0}};
+    if(p.companyIds?.length===0)return empty;
+    const accruals=await tx.select({lot:toilAccrual,name:person.fullName,code:employment.employeeCode})
+      .from(toilAccrual).innerJoin(employment,eq(employment.id,toilAccrual.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+      .where(and(p.companyIds?inArray(employment.companyId,p.companyIds):undefined,p.employmentId?eq(toilAccrual.employmentId,p.employmentId):undefined))
+      .orderBy(asc(toilAccrual.workedDate),asc(toilAccrual.createdAt),asc(toilAccrual.id));
+    if(!accruals.length)return empty;
+    const lotIds=accruals.map(x=>x.lot.id),empIds=[...new Set(accruals.map(x=>x.lot.employmentId))];
+    const events=await tx.select().from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),
+      inArray(domainEvent.subjectEmploymentId,empIds),or(inArray(domainEvent.aggregateId,lotIds),eq(domainEvent.eventType,'leave-request.split'))))
+      .orderBy(asc(domainEvent.sequence));
+    const net=new Map<string,{accrualId:string;requestId:string;days:number;seq:number}>();
+    const roots=new Map<string,string>();
+    for(const event of events){
+      const payload=event.payload as Record<string,unknown>;
+      if(event.eventType==='leave-request.split'&&typeof payload.splitFromRequestId==='string')roots.set(event.aggregateId,payload.splitFromRequestId);
+      if((event.eventType==='toil.consumed'||event.eventType==='toil.restored')&&typeof payload.requestId==='string'){
+        const key=event.aggregateId+'|'+payload.requestId,old=net.get(key);
+        const amount=Number(event.eventType==='toil.consumed'?payload.daysConsumed:payload.daysRestored)*(event.eventType==='toil.consumed'?1:-1);
+        if(Number.isFinite(amount))net.set(key,{accrualId:event.aggregateId,requestId:payload.requestId,days:round2((old?.days??0)+amount),seq:old?.seq??Number(event.sequence)});
+      }
+    }
+    const rootOf=(id:string)=>{const seen=new Set<string>();while(roots.has(id)&&!seen.has(id)){seen.add(id);id=roots.get(id)!;}return id;};
+    const requests=await tx.select().from(leaveRequest).where(inArray(leaveRequest.employmentId,empIds)).orderBy(asc(leaveRequest.startDate),asc(leaveRequest.id));
+    const requestIds=requests.map(x=>x.id);
+    const dates=requestIds.length?await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,requestIds)).orderBy(asc(leaveRequestDate.leaveDate),asc(leaveRequestDate.id)):[];
+    const usageByLot=new Map<string,CreditUsageDate[]>();
+    for(const root of [...new Set([...net.values()].map(x=>x.requestId))]){
+      const approved:CreditUsageDate[]=[];
+      for(const request of requests.filter(x=>rootOf(x.id)===root)){
+        const stored=dates.filter(x=>x.leaveRequestId===request.id);
+        if(stored.length)for(const date of stored.filter(x=>x.status==='approved'))approved.push({requestId:request.id,date:date.leaveDate,days:Number(date.days)});
+        else if(request.status==='approved'&&request.startDate===request.endDate)approved.push({requestId:request.id,date:request.startDate,days:Number(request.days)});
+      }
+      approved.sort((a,b)=>a.date.localeCompare(b.date)||a.requestId.localeCompare(b.requestId));
+      const split=projectCreditUsage([...net.values()].filter(x=>x.requestId===root&&x.days>0).sort((a,b)=>a.seq-b.seq||a.accrualId.localeCompare(b.accrualId)),approved);
+      for(const [id,rows]of split)usageByLot.set(id,[...(usageByLot.get(id)??[]),...rows]);
+    }
+    const creditIds=accruals.map(x=>x.lot.ledgerEntryId).filter((x):x is string=>!!x);
+    const ledger=creditIds.length?await tx.select().from(leaveLedger).where(inArray(leaveLedger.id,creditIds)):[];
+    const grantActors=await tx.select({event:domainEvent,name:person.fullName}).from(domainEvent)
+      .leftJoin(appUser,sql`${appUser.id}::text = ${domainEvent.actorId}`).leftJoin(person,eq(person.id,appUser.personId))
+      .where(and(inArray(domainEvent.subjectEmploymentId,empIds),eq(domainEvent.tenantId,ctx.tenantId)))
+      .orderBy(asc(domainEvent.sequence));
+    const claims=await tx.select({accrualId:replacementLeaveRequestDate.accrualId,reason:replacementLeaveRequest.reason})
+      .from(replacementLeaveRequestDate).innerJoin(replacementLeaveRequest,eq(replacementLeaveRequest.id,replacementLeaveRequestDate.requestId))
+      .where(inArray(replacementLeaveRequestDate.accrualId,lotIds));
+    const all:EarnedLeaveCreditRow[]=accruals.map(({lot,name,code})=>{
+      const facts=creditRegisterFigures({earned:Number(lot.daysCredited),taken:Number(lot.daysTaken),state:lot.status,expiresOn:lot.expiresOn,today});
+      const credit=ledger.find(x=>x.id===lot.ledgerEntryId);
+      const actor=grantActors.find(x=>x.event.aggregateId===lot.id&&x.event.occurredAt.getTime()===(credit?.createdAt??lot.createdAt).getTime())??
+        grantActors.find(x=>credit&&x.event.occurredAt.getTime()===credit.createdAt.getTime()&&x.event.subjectEmploymentId===lot.employmentId);
+      const usage=usageByLot.get(lot.id)??[];
+      return {accrualId:lot.id,employmentId:lot.employmentId,employeeName:name,employeeCode:code,workedDate:lot.workedDate,
+        workedDayKind:lot.workedDayKind??lot.dayType,expiresOn:lot.expiresOn,...facts,reason:lot.note??claims.find(x=>x.accrualId===lot.id)?.reason??null,
+        actorName:actor?.name??null,actorIsSystem:actor?.event.actorType==='system',recordedAt:(credit?.createdAt??lot.createdAt).toISOString(),
+        usage,unattributedUsed:round2(Math.max(0,facts.used-usage.reduce((sum,x)=>sum+x.days,0))),settled:lot.settledLedgerEntryId!=null,reversalReason:lot.reversalReason};
+    });
+    const filtered=all.filter(row=>(!p.status||row.status===p.status)&&(!p.from||row.workedDate>=p.from)&&(!p.to||row.workedDate<=p.to));
+    filtered.sort((a,b)=>b.workedDate.localeCompare(a.workedDate)||b.recordedAt.localeCompare(a.recordedAt)||b.accrualId.localeCompare(a.accrualId));
+    const summary=filtered.reduce((sum,row)=>({earned:round2(sum.earned+row.earned),used:round2(sum.used+row.used),expired:round2(sum.expired+row.expired),available:round2(sum.available+row.available)}),empty.summary);
+    return {rows:filtered.slice(0,limit),matched:filtered.length,truncated:filtered.length>limit,summary};
   });
 }
 

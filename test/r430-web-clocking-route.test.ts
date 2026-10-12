@@ -19,7 +19,7 @@ vi.mock('../lib/session', async (importOriginal) => ({
   getSession: async () => CALLER,
 }));
 
-const { POST } = await import('../app/api/attendance/clock/route');
+const { POST, GET } = await import('../app/api/attendance/clock/route');
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
@@ -85,4 +85,12 @@ describe('r430 — POST /api/attendance/clock contract', () => {
     const res = await POST(new Request('http://localhost/api/attendance/clock', { method: 'POST', headers: { origin: 'http://localhost' }, body }));
     expect(res.status).toBe(400);
   });
+});
+
+// Receipt lookup accepts only a request ID, and scopes it to the current employee.
+it('confirms own accepted request and refuses a supplied subject or another employee receipt',async()=>{
+  await hire();const requestId=randomUUID();const accepted=await post({action:'in',requestId,lat:'3',lng:'101',accuracy:'10'});expect(accepted.status).toBe(200);
+  const own=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}`));expect(own.status).toBe(200);expect((await own.json()).receipt).toEqual((await accepted.json()).receipt);
+  const invalid=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}&employmentId=${randomUUID()}`));expect(invalid.status).toBe(400);
+  await hire();const other=await GET(new Request(`http://localhost/api/attendance/clock?requestId=${requestId}`));expect(other.status).toBe(404);
 });
