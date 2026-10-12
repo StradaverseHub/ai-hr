@@ -200,3 +200,19 @@ $$;
 REVOKE ALL ON FUNCTION app.onehr_attachment_access(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_attachment_access(uuid) TO ai_hr_app;
 CREATE POLICY onehr_attachment_scope ON performance_attachment AS RESTRICTIVE FOR ALL USING(app.onehr_attachment_access(review_id)) WITH CHECK(app.onehr_attachment_access(review_id));
+
+--> statement-breakpoint
+-- Company administration sees only a retained-history boolean, even when assessment RLS
+-- hides a group-wide cycle or the employee has moved outside the caller's company scope.
+CREATE FUNCTION app.onehr_review_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.is_admin_for(wanted_company) AND EXISTS(SELECT 1 FROM public.performance_onehr_review r
+ WHERE r.tenant_id=app.current_tenant_id() AND r.company_id=wanted_company);
+$$;
+CREATE FUNCTION app.onehr_calibration_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.is_admin_for(wanted_company) AND EXISTS(SELECT 1 FROM public.performance_onehr_calibration c
+ WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=wanted_company);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_company_in_use(uuid),app.onehr_calibration_company_in_use(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.onehr_review_company_in_use(uuid),app.onehr_calibration_company_in_use(uuid) TO ai_hr_app;

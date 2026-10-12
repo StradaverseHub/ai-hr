@@ -455,6 +455,44 @@ describe('§2 the panel and the delete guard give the same answer, for every dis
     });
   }
 
+  it('retains a hidden group-cycle opening-company snapshot after an employee transfers', async () => {
+    const original = await bare({ parentCompanyId: b.companyId });
+    const destination = await bare();
+    const [cycle] = await owner.db.insert(schema.reviewCycle).values({ tenantId: b.tenantId, name: 'Group OneHR', periodStart: '2026-01-01', periodEnd: '2026-12-31', ratingScale: [] }).returning();
+    await owner.db.insert(schema.onehrCycle).values({ tenantId: b.tenantId, cycleId: cycle.id, policy: {} });
+    const [employment] = await owner.db.insert(schema.employment).values({ tenantId: b.tenantId, personId: await newPerson(), companyId: original, hiredOn: '2025-01-01' }).returning();
+    const [review] = await owner.db.insert(schema.performanceReview).values({ tenantId: b.tenantId, cycleId: cycle.id, employmentId: employment.id }).returning();
+    await owner.db.insert(schema.onehrReview).values({ tenantId: b.tenantId, cycleId: cycle.id, reviewId: review.id, employmentId: employment.id, companyId: original, grade: '12' });
+    await owner.db.update(schema.employment).set({ companyId: destination }).where(eq(schema.employment.id, employment.id));
+    // A parent-company administrator can manage the old company but cannot read a group cycle.
+    await owner.db.update(schema.roleAssignment).set({ companyId: b.companyId }).where(eq(schema.roleAssignment.appUserId, b.adminUserId));
+    const ctx = scopedAdmin(b.companyId);
+    expect(await withTenant(ctx, tx => tx.select().from(schema.onehrReview))).toEqual([]);
+    expect(await withTenant(ctx, tx => tx.select().from(schema.employment).where(eq(schema.employment.id, employment.id)))).toEqual([]);
+    expect(await companyDeleteStatus(ctx, original)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(ctx, original)).toBe('other');
+    expect(await exists(original)).toBe(true);
+    const [retained] = await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId, review.id));
+    expect(retained.companyId).toBe(original);
+    // The boolean cannot be used as an assessment or cross-company discovery endpoint.
+    const [outside] = await withTenant(scopedAdmin(destination), tx => tx.execute(sql`select app.onehr_review_company_in_use(${original}::uuid) as used`));
+    expect(outside.used).toBe(false);
+    const [employee] = await withTenant(member(), tx => tx.execute(sql`select app.onehr_review_company_in_use(${original}::uuid) as used`));
+    expect(employee.used).toBe(false);
+  });
+
+  it('retains an otherwise empty calibration company scope in a group cycle', async () => {
+    const original = await bare();
+    const [cycle] = await owner.db.insert(schema.reviewCycle).values({ tenantId: b.tenantId, name: 'Group calibration', periodStart: '2026-01-01', periodEnd: '2026-12-31', ratingScale: [] }).returning();
+    await owner.db.insert(schema.onehrCycle).values({ tenantId: b.tenantId, cycleId: cycle.id, policy: {} });
+    await owner.db.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId: cycle.id, companyId: original, name: 'Retained cohort scope', tier: 'bu', reviewerUserIds: [b.adminUserId] });
+    expect(await companyDeleteStatus(ADMIN(), original)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(ADMIN(), original)).toBe('other');
+    expect(await exists(original)).toBe(true);
+    const [outside] = await withTenant(scopedAdmin(b.companyId), tx => tx.execute(sql`select app.onehr_calibration_company_in_use(${original}::uuid) as used`));
+    expect(outside.used).toBe(false);
+  });
+
   it('the org structure goes with the company when nothing outside uses it', async () => {
     const id = await fresh();
     await CASES.at(-1)!.setup(id);
