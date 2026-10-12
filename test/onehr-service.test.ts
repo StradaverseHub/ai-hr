@@ -303,6 +303,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   });
 
   it('requires every KPI approver to act in order and carries each confirmed value forward',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);
     const matrix=peers[0];await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Ordered approval',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:matrix.employmentId,approverEmploymentIds:[matrix.employmentId,manager.employmentId]}],true);
     await expect(perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'')).rejects.toThrow(/your turn/);
