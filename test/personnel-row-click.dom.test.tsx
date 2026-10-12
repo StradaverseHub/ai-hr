@@ -284,8 +284,11 @@ describe('420ebab5 · the listing renders those rows, and nothing else', () => {
   const LISTING = read('app/admin/personnel/page.tsx');
 
   it('both kinds of row come from their components, not from a hand-built <tr>', () => {
-    expect(LISTING).toContain("import { EmployeeRow } from './employee-row';");
-    expect(LISTING).toContain("import { DraftRow } from './draft-row';");
+    expect(LISTING).toMatch(/import \{[^}]*\bEmployeeRow\b[^}]*\} from '\.\/employee-row';/);
+    expect(LISTING).toMatch(/import \{[^}]*\bDraftRow\b[^}]*\} from '\.\/draft-row';/);
+    // Ledger uses the same destination helpers, including Personnel's return context.
+    expect(LISTING).toContain('href: employeeRowHref(e.employmentId)');
+    expect(LISTING).toContain('href: draftRowHref(d.id)');
     // The components are what the two maps return — re-inlining a row here is what this catches.
     expect(LISTING).toMatch(/employees\.map\(\(e\) => \{[\s\S]{0,800}<EmployeeRow/);
     expect(LISTING).toMatch(/drafts\.map\(\(d\) => \([\s\S]{0,200}<DraftRow/);
