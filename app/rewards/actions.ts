@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { ZodError } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
-import { createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import { importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
 import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -113,3 +113,5 @@ export async function offcycleAction(f: FormData) {
   catch (e) { redirect(`/rewards/${encodeURIComponent(parent)}?error=${encodeURIComponent(errorText(e))}`); }
   revalidatePath('/rewards', 'layout'); redirect(`/rewards/${id}`);
 }
+
+export async function importOnehrAction(f:FormData) { return change(f,(s,id,rev)=>importOnehrRewardResults(s,id,rev)); }
