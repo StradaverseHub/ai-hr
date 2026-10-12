@@ -35,20 +35,20 @@ export function allowanceCents(value: string | number): bigint {
   const text = String(value).trim();
   if (!/^\d{1,10}(?:\.\d{1,2})?$/.test(text)) throw new Error('Amount must be non-negative with at most two decimal places');
   const [whole, fraction = ''] = text.split('.');
-  const cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
-  if (cents > 999999999999n) throw new Error('Allowance amount is too large');
+  const cents = BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, '0'));
+  if (cents > BigInt('999999999999')) throw new Error('Allowance amount is too large');
   return cents;
 }
 export function allowanceMoney(cents: bigint): string {
-  if (cents < 0n || cents > 999999999999n) throw new Error('Allowance total is outside the supported amount range');
-  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+  if (cents < BigInt(0) || cents > BigInt('999999999999')) throw new Error('Allowance total is outside the supported amount range');
+  return `${cents / BigInt(100)}.${String(cents % BigInt(100)).padStart(2, '0')}`;
 }
 /** Hundredths of minutes/days; hours convert exactly to minute-hundredths. */
 function threshold(value: unknown, unit: AllowanceAttendanceCriterion['unit']): bigint {
   if (typeof value !== 'string' || !/^\d{1,8}(?:\.\d{1,2})?$/.test(value)) throw new Error('Threshold must have at most two decimal places');
   const [whole, fraction = ''] = value.split('.');
-  const fixed = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
-  return unit === 'hours' ? fixed * 60n : fixed;
+  const fixed = BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, '0'));
+  return unit === 'hours' ? fixed * BigInt(60) : fixed;
 }
 export function validateAllowanceRules(raw: unknown): AllowanceRules {
   const r = bag(raw), e = bag(r.employee), a = bag(r.attendance);
@@ -142,6 +142,6 @@ export function evaluateAllowancePeriods(p: { method: AllowancePeriodMethod; mon
     if (days.some(d => !d.complete)) reasons.push('incompleteAttendance');
     if (!(p.rules.attendance.logic === 'and' ? criteria.every(c => c.pass) : criteria.length === 0 || criteria.some(c => c.pass))) reasons.push('criteriaFailed');
     const qualified = reasons.length === 0;
-    return { ...period, qualified, amount: allowanceMoney(qualified ? amount : 0n), eligibleDates: days.map(d => d.date), attendanceIds: days.flatMap(d => d.attendanceId ? [d.attendanceId] : []), metrics, criteria, reasons, sourceDays:days };
+    return { ...period, qualified, amount: allowanceMoney(qualified ? amount : BigInt(0)), eligibleDates: days.map(d => d.date), attendanceIds: days.flatMap(d => d.attendanceId ? [d.attendanceId] : []), metrics, criteria, reasons, sourceDays:days };
   });
 }
