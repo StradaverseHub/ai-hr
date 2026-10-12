@@ -189,7 +189,6 @@ describe('approved attendance clock-data corrections', () => {
     await generatePayslips(a, { batchId });
     const [paid] = await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, employmentId)));
     expect(paid).toBeDefined(); // Positive membership, not a refusal caused by missing payroll.
-    if (status === 'closed') await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
     const [destination] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Destination clock company' }).returning();
     const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: destination.id, name: 'Destination team' }).returning();
     await withTenant(a, tx => transferEmploymentCompanyTx(tx, a, { employmentId, newCompanyId: destination.id, effectiveDate: '2026-09-01', placement: { departmentId: department.id, positionId: null, businessUnitId: null, locationId: null, managerEmploymentId: null }, movement: { type: 'entityTransfer', groupId: randomUUID() } }));
@@ -203,11 +202,12 @@ describe('approved attendance clock-data corrections', () => {
     const original = await attendanceClockData(scoped, employmentId, date);
     expect(original.rows).toHaveLength(2); // Destination HR can operate the subject.
     expect(await withTenant(decider, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)))).toHaveLength(0);
+    const { correctionId } = await requestAttendanceCorrection(scoped, { employmentId, date, reason: 'Reviewed original employer clock evidence', clockChanges: { version: 1, baseline: original.baseline, entries: [{ punchAt: '09:00', direction: 'in' }, { punchAt: '18:00', direction: 'out' }] } });
+    if (status === 'closed') await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
     const facts = await withTenant(decider, tx => tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`));
     expect(facts).toHaveLength(1);
     expect(facts[0]).toMatchObject({ batch_id: batchId, status, attendance_cutoff_day: 10, policy_config: null });
     expect(Object.keys(facts[0]).sort()).toEqual(['attendance_cutoff_day', 'batch_id', 'pay_period', 'policy_config', 'status']);
-    const { correctionId } = await requestAttendanceCorrection(scoped, { employmentId, date, reason: 'Reviewed original employer clock evidence', clockChanges: { version: 1, baseline: original.baseline, entries: [{ punchAt: '09:00', direction: 'in' }, { punchAt: '18:00', direction: 'out' }] } });
     if (status === 'closed') {
       await expect(decideAttendanceCorrection(decider, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
       expect((await day(employmentId)).checkInAt).toBe('08:00:00');
