@@ -58,6 +58,13 @@ writers, OT landing and allowance transfer. No stage event can take the audit lo
 lock. The deferred landing claim also requires the plan still be approved when its conditional update
 wins; a concurrent legacy writer cannot cancel a selected plan and then have it land anyway.
 
+The final-approved stage event is carried as fixed audit data until the existing attendance effect and
+payroll recalculation work completes and delegated identity is restored. It preserves the original
+database decision timestamp, actual actor, assignment and remarks in the same atomic transaction.
+Intermediate approval and rejection emit immediately. This also preserves payroll batch → tenant audit
+lock ordering: payroll generation must be able to finish its audit while a final approval waits for its
+batch. Returning fixed event data grants no arbitrary callback or additional authority.
+
 ## Request-bound delegation
 
 The attendance_correction RLS addition exposes only a request with a valid current delegation from its
@@ -138,6 +145,10 @@ or cancellation waits before taking its correction/audit locks; revalidate a lan
 wait; cancel a selected plan before its landing claim to exercise the approved-status backstop; refuse
 historical appliedAt-null counted OT; retain genuine deferred cancellation; and mark processed payroll
 stale after a recorded reversal. These are source-prepared tests, not execution evidence.
+A separate two-session regression arms the tenant audit chain, holds a processed payroll batch, waits
+until final approval is blocked in payroll protection, and verifies the batch session can acquire the
+exact tenant audit key and append its event. After release it checks the original stage actor/timestamp
+and exactly one stage event after the effect/recalculation events. This case remains unrun too.
 
 Non-vacuity oracles include unchanged attendance after an intermediate stage; exactly one winner for
 concurrent clicks; real delegate subject-employment and payslip reads returning zero before/after an

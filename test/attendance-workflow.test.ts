@@ -462,10 +462,7 @@ describe('current authority over a frozen company snapshot', () => {
     });
 });
 
-/** Hold the canonical subject lock on a separate connection. The command must wait here before taking
- * its correction row or tenant audit lock. NOWAIT makes row-order regressions fail without a deadlock. */
-async function commandBehindSubjectLock(a: SessionContext, employmentId: string, correctionId: string,
-    command: () => Promise<unknown>, beforeRelease?: (tx: Tx) => Promise<void>) {
+async function armAttendanceAudit(a: SessionContext, employmentId: string, correctionId: string) {
     // Arm via withTenant, which records the one-way process hint. An owner SQL insert alone would not
     // arm the later app transaction and would make the audit-order oracle vacuous when env defaults off.
     const priorAudit = process.env.AUDIT_HASH_CHAIN_ENABLED;
@@ -478,6 +475,13 @@ async function commandBehindSubjectLock(a: SessionContext, employmentId: string,
         else process.env.AUDIT_HASH_CHAIN_ENABLED = priorAudit;
     }
     expect((await events(correctionId, 'test.attendance.chain.armed'))[0].chainSeq).not.toBeNull();
+}
+
+/** Hold the canonical subject lock on a separate connection. The command must wait here before taking
+ * its correction row or tenant audit lock. NOWAIT makes row-order regressions fail without a deadlock. */
+async function commandBehindSubjectLock(a: SessionContext, employmentId: string, correctionId: string,
+    command: () => Promise<unknown>, beforeRelease?: (tx: Tx) => Promise<void>) {
+    await armAttendanceAudit(a, employmentId, correctionId);
     let outcome: Promise<{ value?: unknown; error?: unknown }> | undefined;
     try {
         await owner.db.transaction(async tx => {
@@ -506,6 +510,55 @@ async function commandBehindSubjectLock(a: SessionContext, employmentId: string,
 }
 
 describe('attendance command lock order and historical OT evidence', () => {
+    it('waits for a payroll batch before taking tenant audit authority for final approval', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        await setCompensation(a, { employmentId: worker.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2020-01-01' });
+        const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+        await generatePayslips(a, { batchId });
+        expect(await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId),
+            eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(1);
+        await armAttendanceAudit(a, worker.employmentId, id);
+        let approval: Promise<{ error?: unknown }> | undefined;
+        try {
+            await owner.db.transaction(async tx => {
+                await tx.execute(sql`set local lock_timeout='2s'`);
+                const [connection] = await tx.execute(sql`select pg_backend_pid() as pid`) as unknown as { pid: number }[];
+                await tx.execute(sql`select id from payroll_batch where id=${batchId}::uuid for update`);
+                approval = decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })
+                    .then(() => ({}), error => ({ error }));
+                await expect.poll(async () => {
+                    const [wait] = await owner.db.execute(sql`select exists(select 1 from pg_stat_activity activity
+                        where ${connection.pid}=any(pg_blocking_pids(activity.pid)) and activity.wait_event_type='Lock'
+                          and activity.query like '%attendance_payroll_protection%') as blocked`) as unknown as { blocked: boolean }[];
+                    return wait.blocked;
+                }, { timeout: 5000, interval: 10 }).toBe(true);
+                // Exact audit trigger key, on a real second session. The old stage event already owned
+                // this lock while waiting for our batch: try-lock returned false and closing would deadlock.
+                const [audit] = await tx.execute(sql`select pg_try_advisory_xact_lock(hashtext(${'audit-chain:' + a.tenantId})) as acquired`) as unknown as { acquired: boolean }[];
+                expect(audit.acquired).toBe(true);
+                await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+                await appendEvent(tx, { tenantId: a.tenantId, aggregateType: 'payroll-batch', aggregateId: batchId,
+                    eventType: 'test.payroll.batch-audit', actor: actorOf(a), subjectEmploymentId: worker.employmentId, payload: {} });
+            });
+            expect((await approval!).error).toBeUndefined();
+        } finally {
+            if (approval) await approval;
+        }
+        const [stage] = await events(id, 'attendance-workflow.stage.decided');
+        const [effect] = await events(id, 'attendance-correction.effect.recorded');
+        const [recalc] = await events(batchId, 'payroll-batch.recalc-required');
+        expect(await events(id, 'attendance-workflow.stage.decided')).toHaveLength(1);
+        expect(stage.actorId).toBe(a.userId);
+        expect(stage.chainSeq).not.toBeNull();
+        expect(stage.payload).toMatchObject({ decidedAt: (await decisions())[0].decidedAt.toISOString(), actingMode: 'assigned' });
+        expect(stage.sequence).toBeGreaterThan(effect.sequence);
+        expect(stage.sequence).toBeGreaterThan(recalc.sequence);
+        expect((await correction(id)).status).toBe('approved');
+        expect((await day(worker.employmentId)).checkInAt).toBe('09:00:00');
+    });
+
     it.each(['decide', 'admin cancel', 'own correction withdraw', 'own OT withdraw'] as const)
         ('takes the subject lock before the correction and audit locks: %s', async action => {
             const { a, worker, self } = await fixture();
