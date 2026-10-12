@@ -54,6 +54,10 @@ saved version identities and inherited shift-group links. Stale saves fail with 
 reload instruction. Effective dates must be tomorrow or later and later than every
 saved version; neither existing versions nor historical attendance are rewritten.
 
+The new rotation save is commercially gated on Attendance at its service entry point.
+Existing ungated rule/roster spine services are unchanged, and tx-taking rotation
+readers remain available to core Leave and payroll consumers.
+
 Tenant-wide HR authority is checked from current DB grants, not session role claims.
 Company-scoped HR cannot safely change a tenant-wide group affecting employees hidden
 by company RLS. The table uses tenant RLS, group-admin insert authority, immutable
@@ -88,7 +92,11 @@ the group, even if the employee has a later assignment elsewhere.
 
 The cycle editor uses the same unsaved pool immediately, previews every configured
 day, confirms unit replacement/shortening, retains input after server validation
-errors, and guards browser unload while dirty. The obsolete "rotation not stored"
+errors, and uses the shared Attendance settings navigation guard for browser unload,
+links, history navigation and independent form baselines. Successful persistence
+returns the transaction’s fresh optimistic revision and saved-version token, rebasing
+only the rotation form; failures keep its baseline and draft. Standard’s edit page
+mounts one generic guard because it has other forms but no rotation editor. The obsolete "rotation not stored"
 card is removed. All six locales contain translated controls and explanatory copy in the new namespace.
 The stored product label Standard is retained in translated explanations. Domain/service
 validation exception messages remain English; translating those error responses is still

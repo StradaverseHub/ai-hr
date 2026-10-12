@@ -4,6 +4,7 @@ import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { attendanceRotation, attendanceRule, employment, shift } from '../db/schema';
+import { assertModuleGate } from './module-gate';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { normalizeRotation, rotationDayOn, rotationVersionOn, type RotationCycle } from './week-pattern';
 import { lockPayrollForScheduleChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
@@ -62,6 +63,8 @@ export async function getScheduleRotation(ctx: SessionContext, ruleId: string) {
 export async function saveScheduleRotation(ctx: SessionContext, p: {
   ruleId: string; expectedRevision: string; allowedShiftIds: string[]; cycle: RotationCycle;
 }) {
+  // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
+  assertModuleGate(ctx,'attendance');
   return withTenant(ctx, async tx => {
     const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
     if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');
@@ -104,7 +107,8 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       eventType: 'attendance-rule.rotation-saved', actor: actorOf(ctx),
       payload: { versionId: version.id, effectiveFrom: cycle.effectiveFrom, anchorDate: cycle.anchorDate,
         unit: cycle.unit, length: cycle.length, allowedShiftIds: pool, days: cycle.days, previousVersionIds: versions.map(v => v.id) } });
-    return { id: version.id };
+    const linked=all.map(s=>pool.includes(s.id)?{...s,ruleId:rule.id}:s);
+    return { id: version.id, revision:revisionOf([...versions,version],linked,rule.id), effectiveFrom:version.effectiveFrom };
   });
 }
 

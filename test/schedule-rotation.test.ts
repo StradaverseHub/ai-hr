@@ -66,6 +66,20 @@ describe('approved Schedule Group rotation workflow',()=>{
     expect(await facts(f,add(f.date,4))).toEqual({shiftId:f.morning.id,kind:'full',scheduledMinutes:480});
     expect((await getScheduleRotation(f.a,f.rule.id)).versions).toHaveLength(1);
   });
+  it('returns the committed revision for another dated save without an intervening read',async()=>{
+    const f=await fixture();const first=await save(f);
+    expect(first.revision).toBe((await getScheduleRotation(f.a,f.rule.id)).revision);
+    const second=await saveScheduleRotation(f.a,{ruleId:f.rule.id,expectedRevision:first.revision,
+      allowedShiftIds:[f.morning.id,f.night.id],cycle:{...f.cycle,effectiveFrom:add(f.date,8)}});
+    expect(second.revision).not.toBe(first.revision);
+    expect(second.revision).toBe((await getScheduleRotation(f.a,f.rule.id)).revision);
+  });
+  it('refuses a rotation write when the optional Attendance module is disabled',async()=>{
+    const f=await fixture(),revision=(await getScheduleRotation(f.a,f.rule.id)).revision;
+    const ctx={...f.a,entitlements:{...f.a.entitlements!,enabledModules:f.a.entitlements!.enabledModules.filter(code=>code!=='attendance')}};
+    await expect(saveScheduleRotation(ctx,{ruleId:f.rule.id,expectedRevision:revision,allowedShiftIds:[f.morning.id,f.night.id],cycle:f.cycle})).rejects.toThrow(/module|enabled/i);
+    expect((await getScheduleRotation(f.a,f.rule.id)).versions).toHaveLength(0);
+  });
   it('retains explicit shift/rest roster precedence over cycles',async()=>{
     const f=await fixture();await save(f);
     await assignShift(f.a,{employmentId:f.e.employmentId,shiftId:f.night.id,shiftDate:f.date});

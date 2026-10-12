@@ -60,6 +60,8 @@ class RedirectError extends Error {
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => ctx) }));
 vi.mock('../lib/authz', () => ({ requireAdmin: vi.fn(async () => ctx) }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/admin/attendance/schedule/group/edit',
   redirect: (p: string): never => {
     throw new RedirectError(p);
   },

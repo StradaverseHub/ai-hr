@@ -29,6 +29,7 @@ import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupOvertimeAction,
 } from './actions';
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
 import { getScheduleRotation, workingShiftSchedule } from '@/packs/attendance/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -314,8 +315,8 @@ export async function ScheduleGroupSections({
   const workingDay = <>
     <ErrorBanner message={bannerFor('workingDay')} />
     <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
-      {rule.isDefault ? <p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p>
-      : <ScheduleRotationEditor key={rotationState.revision} ruleId={rule.id} revision={rotationState.revision}
+      {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
+      : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
           minimumDate={minimumDate} initial={initialRotation} editing={editing}
           shifts={shifts.map(sh=>{const input={start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
             breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
