@@ -79,14 +79,14 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
         placeholder.test(decodeURIComponent(url.href))) throw new Error('Invalid database configuration');
       // postgres.js merges query parameters into its startup message after the URL's user/database.
       // Checking only URL.username would accept ?user=postgres as an app-role connection.
-      if (['user', 'username', 'password', 'pass', 'database', 'dbname', 'host', 'hostname', 'port', 'role', 'options', 'ssl']
+      if (['user', 'username', 'password', 'pass', 'database', 'dbname', 'host', 'hostname', 'port', 'role', 'options']
         .some((key) => [...url.searchParams.keys()].some((actual) => actual.toLowerCase() === key))) {
         errors.push(`${name} must not override identity or connection details in query parameters.`);
         return;
       }
       const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase());
       if (!loopback && (url.searchParams.getAll('sslmode').length !== 1 ||
-        url.searchParams.get('sslmode') !== 'verify-full' || url.searchParams.has('ssl'))) {
+        url.searchParams.get('sslmode') !== 'verify-full' || [...url.searchParams.keys()].some(key => key.toLowerCase() === 'ssl'))) {
         errors.push(`${name} must use sslmode=verify-full for a remote database; use a trusted certificate and its private DNS name.`);
         return;
       }
