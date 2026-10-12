@@ -26,6 +26,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     baselines.clear();
     let armed = false;
     let leaving = false;
+    let active = true;
     const observeForms = () => document.querySelectorAll<HTMLFormElement>('form').forEach(form => {
       if (form.getAttribute('method')?.toLowerCase() === 'get' || form.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
       if (!baselines.has(form)) baselines.set(form,snapshot(form));
@@ -37,9 +38,10 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     const dirty = () => !leaving && dirtyForms().length>0;
     const ask = (proceed:()=>void) => { if (!dirty() || window.confirm(t('leaveUnsaved'))) { leaving=true; proceed(); } };
     const unregister=registerUnsavedGuard({isDirty:dirty,prompt:ask});
-    const edit=()=>{
-      if(dirty() && !armed){window.history.pushState({...window.history.state,__attendanceSettingsGuard:true},'',window.location.href);armed=true;}
+    const arm=()=>{
+      if(active && dirty() && !armed){window.history.pushState({...window.history.state,__attendanceSettingsGuard:true},'',window.location.href);armed=true;}
     };
+    const edit=()=>{arm();queueMicrotask(arm);}; // Controlled fields can update their hidden business value after the native event.
     const before=(e:BeforeUnloadEvent)=>{if(dirty()){e.preventDefault();e.returnValue='';}};
     const click=(e:MouseEvent)=>{
       if(!dirty() || e.defaultPrevented || e.button!==0 || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)return;
@@ -66,7 +68,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     document.addEventListener('input',edit,true);document.addEventListener('change',edit,true);
     document.addEventListener('click',click,true);document.addEventListener('submit',submit,true);
     window.addEventListener('beforeunload',before);window.addEventListener('popstate',pop);
-    return()=>{observer.disconnect();unregister();document.removeEventListener('input',edit,true);document.removeEventListener('change',edit,true);document.removeEventListener('click',click,true);document.removeEventListener('submit',submit,true);window.removeEventListener('beforeunload',before);window.removeEventListener('popstate',pop);};
+    return()=>{active=false;observer.disconnect();unregister();document.removeEventListener('input',edit,true);document.removeEventListener('change',edit,true);document.removeEventListener('click',click,true);document.removeEventListener('submit',submit,true);window.removeEventListener('beforeunload',before);window.removeEventListener('popstate',pop);};
   },[pathname,router,t]);
   useEffect(() => {
     const previous = savedRef.current;

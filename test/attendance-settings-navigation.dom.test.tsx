@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const {push,router}=vi.hoisted(()=>{const push=vi.fn();return {push,router:{push}};});
@@ -14,6 +14,13 @@ afterEach(()=>{cleanup();__resetUnsavedGuards();vi.restoreAllMocks();});
 describe('settings navigation preserves independent form edits',()=>{
   it('does not prompt for GET filters or untouched forms',()=>{fixture();fireEvent.change(screen.getByLabelText('search'),{target:{value:'search'}});expect(hasUnsavedChanges()).toBe(false);fireEvent.click(screen.getByText('Back'));expect(window.confirm).not.toHaveBeenCalled();});
   it('cancelling Back preserves the edited form, while discard proceeds',()=>{fixture();fireEvent.change(screen.getByLabelText('first'),{target:{value:'Edited'}});expect(hasUnsavedChanges()).toBe(true);fireEvent.click(screen.getByText('Back'));expect(window.confirm).toHaveBeenCalled();expect(push).not.toHaveBeenCalled();expect((screen.getByLabelText('first') as HTMLInputElement).value).toBe('Edited');vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByText('Back'));expect(push).toHaveBeenCalledWith('/admin/attendance/settings');});
+  it('detects a controlled rule edit whose posted value lives in a hidden field',async()=>{
+    function RuleForm(){const [value,setValue]=React.useState('and');return <NextIntlClientProvider locale="en" messages={en}><AttendanceSettingsNavigation/><form method="post"><select aria-label="logic" value={value} onChange={e=>setValue(e.target.value)}><option value="and">AND</option><option value="or">OR</option></select><input type="hidden" name="rules" value={value}/></form></NextIntlClientProvider>;}
+    const pushed=vi.spyOn(window.history,'pushState');render(<RuleForm/>);
+    expect(hasUnsavedChanges()).toBe(false);fireEvent.change(screen.getByLabelText('logic'),{target:{value:'or'}});
+    await waitFor(()=>expect(pushed).toHaveBeenCalledTimes(1));expect(hasUnsavedChanges()).toBe(true);
+    const unload=new Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);expect(unload.defaultPrevented).toBe(true);
+  });
   it('warns on browser Back, preserves edits on cancel and traverses past its sentinel on discard',()=>{
     const go=vi.spyOn(window.history,'go').mockImplementation(()=>{});
     const pushState=vi.spyOn(window.history,'pushState');
