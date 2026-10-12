@@ -4,8 +4,8 @@
  * The shell "welcome" tour orients a first-time user. Each module also has its own walkthrough that a
  * Knowledge Base guide can launch (ADR-0017) — these navigate to the module (`route`) and spotlight the
  * real controls there. Steps are data: a `data-tour` anchor (or null for a centered card), translated keys
- * or explicitly English guide copy, a
- * placement, an optional role filter, and an optional `route` to navigate to before the step shows.
+ * or explicitly English guide copy, a placement, an optional role filter, and an optional `route` to
+ * navigate to before the step shows.
  * The server resolves each tour for the caller's roles and hands the set to the client tour component.
  */
 export type TourPlacement = 'center' | 'top' | 'bottom' | 'left' | 'right';
@@ -57,8 +57,8 @@ const WELCOME_STEPS: TourStep[] = [
   { id: 'finish', target: null, titleKey: 'finishTitle', bodyKey: 'finishBody', placement: 'center' },
 ];
 
-// Module walkthroughs are generated from the real pages (anchors + steps) into module-tours.json by
-// scripts/merge-guide-tours.mjs; their step text lives under the `onboarding.tour.*` i18n keys.
+// Module walkthroughs are maintained alongside the real pages (anchors + steps) in module-tours.json.
+// Older steps use onboarding.tour.* keys; refreshed guides can carry explicitly English copy.
 import moduleTours from './module-tours.json';
 
 export const TOURS: Record<string, Tour> = {

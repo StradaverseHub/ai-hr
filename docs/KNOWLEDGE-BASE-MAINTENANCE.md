@@ -70,6 +70,8 @@ The catalog intentionally explains optional modules without claiming they are en
 
 ## Walkthrough language and behavior
 
+Maintain `lib/module-tours.json` directly. The historical `scripts/merge-guide-tours.mjs` is a one-off importer that replaces the entire tour catalog and English tour key namespace; do not run it as an incremental update. Catalog coverage checks must pass after any import.
+
 Existing translated tours keep their `onboarding.tour.*` keys. The refreshed guides' new walkthrough steps carry explicit English `text` with `lang: "en"`; the coachmark marks that copy as English while Next/Back/Skip/Done remain localized. This does not claim that the new explanatory text has been translated. When reviewed translations are available, replace the explicit text with translated keys rather than publishing stale or unreviewed copy.
 
 Walkthroughs navigate and explain controls; they do not submit HR forms, publish designs, send mail or create customers. The destination pages retain their access and module checks. Operator tours are role-filtered out of non-operator bundles and stay on `/operator`; instructions for separate installation capabilities and controlled tools explain those boundaries without sending operators to screens they may not be enrolled to use.
