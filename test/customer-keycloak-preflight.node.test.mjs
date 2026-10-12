@@ -48,3 +48,11 @@ test('refuses demo identity, unarmed audit, insecure DB and mixed-case role over
     assert.ok(errors(changes).length > 0, JSON.stringify(Object.keys(changes)));
   }
 });
+
+test('customer service explicitly drops privileged database credentials', () => {
+  const unit = fs.readFileSync(new URL('../deploy/aihr-customer.service', import.meta.url), 'utf8');
+  const removed = unit.split('\n').filter(line => line.startsWith('UnsetEnvironment=')).flatMap(line => line.slice('UnsetEnvironment='.length).split(/\s+/));
+  for (const key of ['MIGRATION_DATABASE_URL', 'PLATFORM_DATABASE_URL', 'BACKUP_DATABASE_URL', 'REHEARSAL_DATABASE_URL', 'AIHR_IDENTITY_EMAIL_DATABASE_URL', 'PGPASSWORD']) assert.ok(removed.includes(key), key);
+  assert.match(unit, /^User=aihr$/m);
+  assert.match(unit, /^InaccessiblePaths=.*\/etc\/aihr/m);
+});
