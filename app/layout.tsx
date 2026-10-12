@@ -181,7 +181,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <UiThemeProvider theme={uiTheme}>
           {/* Detached floating layout: the rail, the top bar, and each content card
               float separately on the canvas with gutters between them. */}
-          <div className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
+          <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
             <Sidebar
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
@@ -208,7 +208,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               viewerName={viewer.name}
               viewerCode={viewer.employeeCode}
             />
-            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
+            <div data-app-content className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
                   centred regardless of what each cluster contains (dev switcher hidden in production,
                   bell variants, …). The centre track is bounded from sm up so the w-full trigger has a
@@ -263,7 +263,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   Dashboard" covered "Log out" (reported: "can't log out or change company after new theme").
                   Raising the header's own context above <main> puts its menus back on top.
                   test/r416-monolith-header-menus.browser.test.tsx measures it in Chromium. */}
-              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv monolith:relative monolith:z-30">
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv monolith:relative monolith:z-30" data-app-header>
                 {/* Left cluster = WHERE you are working. The CompanySwitcher MOVED here from the right
                     cluster (r256): this track is a full 1fr — 243px at 1280, 563px at 1920 — carrying
                     one static group label, while the switcher was being crushed to 27px on the right

@@ -840,6 +840,7 @@ export function Sidebar({
     {/* r398 (parent): the Monolith rail follows Classic's breakpoints. The README hides it below 900px, but the app
         has no other way to open navigation at those widths, so hiding it would leave a tablet with no navigation. */}
       <aside
+        data-app-sidebar
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
           collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',

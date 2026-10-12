@@ -48,6 +48,20 @@
 }
 @media screen {
   :root[data-ui-theme='current'] body { background: var(--canvas); }
+  :root[data-ui-theme='current'] body:has([data-app-shell]) { padding: 0; }
+  :root[data-ui-theme='current'] [data-app-shell] { gap: 0; }
+  :root[data-ui-theme='current'] [data-app-content] { gap: 0; }
+  :root[data-ui-theme='current'] [data-app-sidebar] {
+    border-radius: 0; border-width: 0 1px 0 0; box-shadow: none;
+  }
+  :root[data-ui-theme='current'] [data-app-header] {
+    border-radius: 0; border-width: 0 0 1px; box-shadow: none;
+    background: var(--background); min-height: 4.5rem;
+  }
+  :root[data-ui-theme='current'] [data-app-content] > main { padding: 1.5rem; }
+  @media (max-width: 639px) {
+    :root[data-ui-theme='current'] [data-app-content] > main { padding: 1rem; }
+  }
   :root[data-ui-theme='current'] main { scrollbar-color: #87689a var(--background); }
   :root[data-ui-theme='current'] main > * { min-width: 0; }
   :root[data-ui-theme='current'] main h1 { letter-spacing: -.035em; font-weight: 500; }
