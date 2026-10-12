@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { Children, isValidElement, type ReactNode } from 'react';
+import { CurrentLedger } from '@/components/current-ledger';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
@@ -217,6 +219,214 @@ export default async function PayrollPage({
     { key: 'closed', label: t('status.closed'), value: summary.closed, tone: 'text-emerald-600 dark:text-emerald-400' },
   ];
 
+  const batchTableRows = batchPage.map((b) => {
+    const totals = b.totals as { net?: number } | null;
+    // 0b326d5f — the run's own mark, read through the shared derivation so the badge, the
+    // count and the status filter cannot disagree about which runs are stale.
+    const stale = needsReprocess(b);
+    const staleIds = reprocessEmploymentIds(b);
+    return (
+      <tr key={b.id} className="hover:bg-muted/40">
+        <td className="whitespace-nowrap px-3 py-2.5">
+          {/* A DRAFT batch resumes into the wizard at Step 1 (Payroll Period & Company shown
+              read-only for review — feedback 4f00d8f0), then Employee Selection. Processed/closed
+              batches open directly as read-only, unchanged. */}
+          {/* d75b0c11 — THE PERIOD CELL IS A LINK TOO, and it was the one that lost the
+              selection. 9066bd6c gave `?from=` to View / Reprocess / Remove / Reset but not to
+              this link or to Continue below, both of which go through `resumeHref` — so the
+              most natural way into a run (clicking the run itself) was still landing on a
+              screen whose Back went to a bare /payroll. */}
+          <Link href={resumeHref(b.id, b.status, fromQuery)} className="font-medium hover:text-primary">
+            {b.payPeriod}
+          </Link>
+        </td>
+        {/* Payroll Cycle: same pattern as the batch detail page — the runType label, plus the
+            free-text remarks (e.g. Advance Salary / Mid-Month) when present, so wizard cycles
+            stored under the generic 'off_cycle' bucket display distinctly. */}
+        <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
+          {t(`runType.${b.runType}`)}
+          {b.remarks ? ` — ${b.remarks}` : ''}
+        </td>
+        <td className="px-3 py-2.5 text-muted-foreground">{b.company}</td>
+        <td
+          className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground"
+          title={b.batchDate?.endsWith('-28') ? t('paymentDateLegacyNote') : undefined}
+        >
+          {showDate(b.batchDate)}
+        </td>
+        <td className="px-3 py-2.5 text-right tabular-nums">{b.employeeCount}</td>
+        {/* Money goes through lib/money.formatMoney with the COMPANY's own currency — this
+            list spans every company in scope, which is exactly where a hard-coded "RM" makes
+            a false statement about somebody's pay. */}
+        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+          {totals?.net != null ? formatMoney(totals.net, b.currency) : '—'}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2.5">
+          {/* 0b326d5f — a processed run whose inputs have moved reads "Reprocess Required"
+              INSTEAD OF "Processed", which is the reporter's actual ask. Underneath it is
+              still `status = 'processed'`; only what this cell says changes. A CLOSED run
+              never reaches this branch — `needsReprocess` keys on 'processed' — so the
+              "Closed remains protected" rule holds however the flag was left. */}
+          {stale ? (
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REPROCESS_PILL}`}
+              title={t('reprocessBadgeNote')}
+            >
+              {t('status.reprocessRequired')}
+            </span>
+          ) : (
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]}`}
+            >
+              {t(`status.${b.status}`)}
+            </span>
+          )}
+          {/* ef31d251 — a second badge, from the SHARED derivation rather than a repeated
+              inline `b.status === 'processed'` test, so this and the run detail header can
+              never drift apart about what has actually reached employees. */}
+          {payrollPublicationState(b) === 'unpublished' && (
+            <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+              {t('notPublishedBadge')}
+            </span>
+          )}
+          {/* WHO IS AFFECTED, AND THE WAY IN. The reporter's last line asks not to have to
+              investigate what changed by hand: the run already knows, in
+              `recalc_employment_ids`, and that is the exact set /payroll/<id>/reprocess
+              arrives pre-ticked with (it reads the same column — no parameter to carry, so
+              nothing here can hand it a stale selection).
+
+              Gated on `multiCycleOn` — the SAME condition as the Reprocess row action in the
+              ⋯ menu below, written from the same flag, so this screen never offers a door
+              the destination will refuse. Without the module the count still shows, because
+              "your figures are stale" is true whether or not you can act on it here. */}
+          {stale && staleIds.length > 0 && (
+            <div className="mt-1">
+              {multiCycleOn ? (
+                <Link
+                  href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
+                  // The count is the STATEMENT; the destination is the title, borrowed from
+                  // the run-detail banner's own action label (payroll.batch) rather than
+                  // written twice, so the two ways into the same screen read the same. A link
+                  // labelled only "2 employees affected" says nothing about where it goes to
+                  // anyone reading the page through a list of its links.
+                  title={tb('recalcBannerAction')}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {t('reprocessAffected', { n: staleIds.length })}
+                </Link>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  {t('reprocessAffected', { n: staleIds.length })}
+                </span>
+              )}
+            </div>
+          )}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
+          {showDate(processedOn.get(b.id))}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+          <div className="flex items-center justify-end gap-1.5">
+            <Link
+              href={`/payroll/${b.id}?from=${fromQuery}`}
+              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+            >
+              {t('rowView')}
+            </Link>
+            {b.status === 'draft' && (
+              <Link
+                href={resumeHref(b.id, b.status, fromQuery)}
+                className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+              >
+                {t('rowContinue')}
+              </Link>
+            )}
+            {/* Delete is available for DRAFT runs ONLY (feedback 4f00d8f0) — processed/closed rows
+                render nothing here. ConfirmSubmit gates the destructive submit behind the reporter's
+                confirmation copy; the draft-only guard is re-enforced server-side (deleteDraftBatch
+                throws BatchNotDraftError for anything else). */}
+            {b.status === 'draft' && (
+              <form action={deleteDraftBatchAction}>
+                <input type="hidden" name="batchId" value={b.id} />
+                <ConfirmSubmit
+                  size="sm"
+                  title={t('deleteDraftTitle')}
+                  description={t('deleteDraftBody')}
+                  confirmLabel={t('deleteDraft')}
+                >
+                  {t('deleteDraft')}
+                </ConfirmSubmit>
+              </form>
+            )}
+            {/* 65e2d5de — THE OTHER THREE ACTIONS MOVE BEHIND A ⋯ MENU, and nothing else about
+                them changes. Each is written here, under its own unchanged condition, and
+                handed to the island as an already-rendered node; the island only decides
+                WHERE it sits (and renders a lone survivor inline rather than a menu of one).
+                The reporter's complaint was the width four side-by-side controls forced on
+                the grid, not the actions themselves — see app/payroll/row-actions.tsx. */}
+            <PayrollRowActions moreLabel={t('rowMoreActions')}>
+              {/* e440991b — REPROCESS, from the list. Correcting one person on a processed run
+                  used to mean opening the run, scrolling past the payslips and past the
+                  Recalculation History, and finding tick-boxes at the bottom of a 1,286-line
+                  page; this screen offered no way in at all. PROCESSED rows only (a draft has
+                  no payslips; a closed run is immutable) and only with multi-cycle on — the
+                  same gates the destination re-asserts and the service enforces. Placed
+                  between View and Reset because Reset is the different, whole-run action. */}
+              {b.status === 'processed' && multiCycleOn && (
+                <Link
+                  href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                >
+                  {tb('reprocessAction')}
+                </Link>
+              )}
+              {/* 9066bd6c — REMOVE EMPLOYEE PAYROLL, between Reprocess and Reset because that
+                  is the order of escalation: correct one person, take one person off, clear
+                  the whole run. PROCESSED rows only, multi-cycle on (the Reprocess screen is
+                  the way back, and removal must never be offered where re-adding is
+                  impossible) and the same `payroll.reset_enabled` risk switch Reset rides —
+                  all three re-asserted by the destination and by the service. */}
+              {b.status === 'processed' && multiCycleOn && resetOn && (
+                <Link
+                  href={`/payroll/${b.id}/remove?from=${fromQuery}`}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                >
+                  {tb('removeAction')}
+                </Link>
+              )}
+              {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is
+                  locked; the controlled reset returns it to Draft (payslips cleared, loan/claim
+                  side-effects reversed, audited). Closed rows render nothing: permanently
+                  immutable. Admin-only + processed-only re-enforced server-side. This is the
+                  "Rollback (subject to permissions)" action the request listed.
+
+                  9f8cd608 — IT IS A LINK NOW, exactly like Reprocess and Remove Employee above,
+                  and the condition on it is untouched. It used to be a `<form>` carrying a
+                  ConfirmSubmit dialog rendered inside the menu; the menu is a `position: fixed`
+                  panel that closes on any scroll, the dialog was OWNED by that subtree, and
+                  opening it emitted a scroll on the table's `overflow-x-auto` wrapper — so the
+                  dialog was created and destroyed in the same tick and the operator saw nothing
+                  happen. (Measured in Chromium at 1280×720; which of the dialog's side effects
+                  emits that scroll was not isolated and does not matter — the panel closes on
+                  any scroll at all.)
+                  The confirmation, the reason field and the run's own identity now live on
+                  app/payroll/[batchId]/reset, which also carries the filter selection through as
+                  `from` so a successful reset still lands on this list as it was left. */}
+              {b.status === 'processed' && resetOn && (
+                <Link
+                  href={`/payroll/${b.id}/reset?from=${fromQuery}`}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                >
+                  {tb('resetPayroll')}
+                </Link>
+              )}
+            </PayrollRowActions>
+          </div>
+        </td>
+      </tr>
+    );
+  });
+
   return (
     <div className={pageWideCls}>
       <div data-tour="payroll-intro">
@@ -309,6 +519,18 @@ export default async function PayrollPage({
         <SectionHeader title={t('batches')} count={rows.length} />
         {/* Full-width table; horizontal scroll lives on this wrapper so a narrow viewport scrolls the
             GRID rather than the page, and no column has to wrap to fit. */}
+        <CurrentLedger label={t('batches')} records={batchPage.map((b, i) => {
+          const cells = Children.toArray(batchTableRows[i].props.children)
+            .filter(isValidElement<{ children: ReactNode }>);
+          const labels = ['colPeriod', 'colCycle', 'colCompany', 'colPaymentDate', 'colEmployees', 'colNetPay', 'colStatus', 'colProcessedDate'];
+          return {
+            key: b.id, title: b.payPeriod, subtitle: `${b.company} · ${t(`runType.${b.runType}`)}`,
+            reference: String(pgState.offset + i + 1), status: t(`status.${needsReprocess(b) ? 'reprocessRequired' : b.status}`),
+            href: resumeHref(b.id, b.status, fromQuery),
+            fields: labels.map((key, ci) => ({ label: t(key), value: cells[ci]?.props.children })),
+            actions: cells[8]?.props.children,
+          };
+        })}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[64rem] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -325,213 +547,7 @@ export default async function PayrollPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {batchPage.map((b) => {
-                const totals = b.totals as { net?: number } | null;
-                // 0b326d5f — the run's own mark, read through the shared derivation so the badge, the
-                // count and the status filter cannot disagree about which runs are stale.
-                const stale = needsReprocess(b);
-                const staleIds = reprocessEmploymentIds(b);
-                return (
-                  <tr key={b.id} className="hover:bg-muted/40">
-                    <td className="whitespace-nowrap px-3 py-2.5">
-                      {/* A DRAFT batch resumes into the wizard at Step 1 (Payroll Period & Company shown
-                          read-only for review — feedback 4f00d8f0), then Employee Selection. Processed/closed
-                          batches open directly as read-only, unchanged. */}
-                      {/* d75b0c11 — THE PERIOD CELL IS A LINK TOO, and it was the one that lost the
-                          selection. 9066bd6c gave `?from=` to View / Reprocess / Remove / Reset but not to
-                          this link or to Continue below, both of which go through `resumeHref` — so the
-                          most natural way into a run (clicking the run itself) was still landing on a
-                          screen whose Back went to a bare /payroll. */}
-                      <Link href={resumeHref(b.id, b.status, fromQuery)} className="font-medium hover:text-primary">
-                        {b.payPeriod}
-                      </Link>
-                    </td>
-                    {/* Payroll Cycle: same pattern as the batch detail page — the runType label, plus the
-                        free-text remarks (e.g. Advance Salary / Mid-Month) when present, so wizard cycles
-                        stored under the generic 'off_cycle' bucket display distinctly. */}
-                    <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-                      {t(`runType.${b.runType}`)}
-                      {b.remarks ? ` — ${b.remarks}` : ''}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{b.company}</td>
-                    <td
-                      className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground"
-                      title={b.batchDate?.endsWith('-28') ? t('paymentDateLegacyNote') : undefined}
-                    >
-                      {showDate(b.batchDate)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{b.employeeCount}</td>
-                    {/* Money goes through lib/money.formatMoney with the COMPANY's own currency — this
-                        list spans every company in scope, which is exactly where a hard-coded "RM" makes
-                        a false statement about somebody's pay. */}
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
-                      {totals?.net != null ? formatMoney(totals.net, b.currency) : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5">
-                      {/* 0b326d5f — a processed run whose inputs have moved reads "Reprocess Required"
-                          INSTEAD OF "Processed", which is the reporter's actual ask. Underneath it is
-                          still `status = 'processed'`; only what this cell says changes. A CLOSED run
-                          never reaches this branch — `needsReprocess` keys on 'processed' — so the
-                          "Closed remains protected" rule holds however the flag was left. */}
-                      {stale ? (
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REPROCESS_PILL}`}
-                          title={t('reprocessBadgeNote')}
-                        >
-                          {t('status.reprocessRequired')}
-                        </span>
-                      ) : (
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]}`}
-                        >
-                          {t(`status.${b.status}`)}
-                        </span>
-                      )}
-                      {/* ef31d251 — a second badge, from the SHARED derivation rather than a repeated
-                          inline `b.status === 'processed'` test, so this and the run detail header can
-                          never drift apart about what has actually reached employees. */}
-                      {payrollPublicationState(b) === 'unpublished' && (
-                        <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                          {t('notPublishedBadge')}
-                        </span>
-                      )}
-                      {/* WHO IS AFFECTED, AND THE WAY IN. The reporter's last line asks not to have to
-                          investigate what changed by hand: the run already knows, in
-                          `recalc_employment_ids`, and that is the exact set /payroll/<id>/reprocess
-                          arrives pre-ticked with (it reads the same column — no parameter to carry, so
-                          nothing here can hand it a stale selection).
-
-                          Gated on `multiCycleOn` — the SAME condition as the Reprocess row action in the
-                          ⋯ menu below, written from the same flag, so this screen never offers a door
-                          the destination will refuse. Without the module the count still shows, because
-                          "your figures are stale" is true whether or not you can act on it here. */}
-                      {stale && staleIds.length > 0 && (
-                        <div className="mt-1">
-                          {multiCycleOn ? (
-                            <Link
-                              href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
-                              // The count is the STATEMENT; the destination is the title, borrowed from
-                              // the run-detail banner's own action label (payroll.batch) rather than
-                              // written twice, so the two ways into the same screen read the same. A link
-                              // labelled only "2 employees affected" says nothing about where it goes to
-                              // anyone reading the page through a list of its links.
-                              title={tb('recalcBannerAction')}
-                              className="text-xs font-medium text-primary hover:underline"
-                            >
-                              {t('reprocessAffected', { n: staleIds.length })}
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              {t('reprocessAffected', { n: staleIds.length })}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
-                      {showDate(processedOn.get(b.id))}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/payroll/${b.id}?from=${fromQuery}`}
-                          className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          {t('rowView')}
-                        </Link>
-                        {b.status === 'draft' && (
-                          <Link
-                            href={resumeHref(b.id, b.status, fromQuery)}
-                            className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                          >
-                            {t('rowContinue')}
-                          </Link>
-                        )}
-                        {/* Delete is available for DRAFT runs ONLY (feedback 4f00d8f0) — processed/closed rows
-                            render nothing here. ConfirmSubmit gates the destructive submit behind the reporter's
-                            confirmation copy; the draft-only guard is re-enforced server-side (deleteDraftBatch
-                            throws BatchNotDraftError for anything else). */}
-                        {b.status === 'draft' && (
-                          <form action={deleteDraftBatchAction}>
-                            <input type="hidden" name="batchId" value={b.id} />
-                            <ConfirmSubmit
-                              size="sm"
-                              title={t('deleteDraftTitle')}
-                              description={t('deleteDraftBody')}
-                              confirmLabel={t('deleteDraft')}
-                            >
-                              {t('deleteDraft')}
-                            </ConfirmSubmit>
-                          </form>
-                        )}
-                        {/* 65e2d5de — THE OTHER THREE ACTIONS MOVE BEHIND A ⋯ MENU, and nothing else about
-                            them changes. Each is written here, under its own unchanged condition, and
-                            handed to the island as an already-rendered node; the island only decides
-                            WHERE it sits (and renders a lone survivor inline rather than a menu of one).
-                            The reporter's complaint was the width four side-by-side controls forced on
-                            the grid, not the actions themselves — see app/payroll/row-actions.tsx. */}
-                        <PayrollRowActions moreLabel={t('rowMoreActions')}>
-                          {/* e440991b — REPROCESS, from the list. Correcting one person on a processed run
-                              used to mean opening the run, scrolling past the payslips and past the
-                              Recalculation History, and finding tick-boxes at the bottom of a 1,286-line
-                              page; this screen offered no way in at all. PROCESSED rows only (a draft has
-                              no payslips; a closed run is immutable) and only with multi-cycle on — the
-                              same gates the destination re-asserts and the service enforces. Placed
-                              between View and Reset because Reset is the different, whole-run action. */}
-                          {b.status === 'processed' && multiCycleOn && (
-                            <Link
-                              href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
-                              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                            >
-                              {tb('reprocessAction')}
-                            </Link>
-                          )}
-                          {/* 9066bd6c — REMOVE EMPLOYEE PAYROLL, between Reprocess and Reset because that
-                              is the order of escalation: correct one person, take one person off, clear
-                              the whole run. PROCESSED rows only, multi-cycle on (the Reprocess screen is
-                              the way back, and removal must never be offered where re-adding is
-                              impossible) and the same `payroll.reset_enabled` risk switch Reset rides —
-                              all three re-asserted by the destination and by the service. */}
-                          {b.status === 'processed' && multiCycleOn && resetOn && (
-                            <Link
-                              href={`/payroll/${b.id}/remove?from=${fromQuery}`}
-                              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                            >
-                              {tb('removeAction')}
-                            </Link>
-                          )}
-                          {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is
-                              locked; the controlled reset returns it to Draft (payslips cleared, loan/claim
-                              side-effects reversed, audited). Closed rows render nothing: permanently
-                              immutable. Admin-only + processed-only re-enforced server-side. This is the
-                              "Rollback (subject to permissions)" action the request listed.
-
-                              9f8cd608 — IT IS A LINK NOW, exactly like Reprocess and Remove Employee above,
-                              and the condition on it is untouched. It used to be a `<form>` carrying a
-                              ConfirmSubmit dialog rendered inside the menu; the menu is a `position: fixed`
-                              panel that closes on any scroll, the dialog was OWNED by that subtree, and
-                              opening it emitted a scroll on the table's `overflow-x-auto` wrapper — so the
-                              dialog was created and destroyed in the same tick and the operator saw nothing
-                              happen. (Measured in Chromium at 1280×720; which of the dialog's side effects
-                              emits that scroll was not isolated and does not matter — the panel closes on
-                              any scroll at all.)
-                              The confirmation, the reason field and the run's own identity now live on
-                              app/payroll/[batchId]/reset, which also carries the filter selection through as
-                              `from` so a successful reset still lands on this list as it was left. */}
-                          {b.status === 'processed' && resetOn && (
-                            <Link
-                              href={`/payroll/${b.id}/reset?from=${fromQuery}`}
-                              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                            >
-                              {tb('resetPayroll')}
-                            </Link>
-                          )}
-                        </PayrollRowActions>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {batchTableRows}
               {batchPage.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
@@ -544,6 +560,7 @@ export default async function PayrollPage({
             </tbody>
           </table>
         </div>
+        </CurrentLedger>
         {/* Paging must carry the whole filter state, so page 2 of a four-month selection is still that
             selection. hrefFor (rather than `params`) because the address holds REPEATED params. */}
         <Pager

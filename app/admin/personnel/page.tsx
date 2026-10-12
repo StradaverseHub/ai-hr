@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CurrentLedger } from '@/components/current-ledger';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
@@ -408,6 +409,12 @@ export default async function PeoplePage({
       employmentType: e.employmentType ? t(EMPLOYMENT_TYPE_KEY[e.employmentType] ?? 'employmentType') : null,
     });
 
+  const pager = <Pager
+          basePath="/admin/personnel"
+          params={{ q, company, dept, status: sp.status, type, bucket: sp.bucket }}
+          state={pgState}
+        />;
+
   return (
     // c002b3c3 — the Personnel module goes FULL WIDTH. `max-w-[100rem]` is not a new number: it is the
     // container this codebase already settled on for wide screens, chosen there after measuring —
@@ -644,6 +651,21 @@ export default async function PeoplePage({
         </Card>
       )}
 
+      <CurrentLedger footer={pager} label={t('title')} records={[
+        ...drafts.map((d) => ({
+          key: d.id, title: d.label || t('draftUntitled'),
+          subtitle: d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady'),
+          reference: d.reservedEmployeeCode ?? '—', status: t('statusDraft'),
+          href: `/admin/personnel/new?draft=${d.id}`, actions: null,
+          fields: [{ label: t('colCompany'), value: d.companyName ?? t('draftNoCompany') }],
+        })),
+        ...employees.map((e) => ({
+          key: e.employmentId, title: e.name, subtitle: e.email ?? '',
+          reference: e.employeeCode ?? '—', status: tStatus(deriveEmploymentStatus(e, today)),
+          href: `/admin/personnel/${e.employmentId}`, actions: null,
+          fields: columns.map((key) => ({ label: t(COLUMN_LABEL_KEY[key]), value: textCell(e, key) })),
+        })),
+      ]}>
       <Card className="overflow-hidden" data-tour="people-table">
         {/* The table can now carry up to sixteen columns, so it scrolls INSIDE its card rather than
             pushing the page sideways — the same rule the full-width change (c002b3c3) was careful about. */}
@@ -723,12 +745,10 @@ export default async function PeoplePage({
             </tbody>
           </table>
         </div>
-        <Pager
-          basePath="/admin/personnel"
-          params={{ q, company, dept, status: sp.status, type, bucket: sp.bucket }}
-          state={pgState}
-        />
+        {pager}
       </Card>
+      </CurrentLedger>
+
     </div>
   );
 }

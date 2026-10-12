@@ -11669,6 +11669,13 @@
     },
     "drawer": {
       "close": "Close"
+    },
+    "current": {
+      "selectedRecord": "Selected record",
+      "openRecord": "Open full record",
+      "view": "View records",
+      "ledger": "Ledger",
+      "table": "Table"
     }
   },
   "kb": {
