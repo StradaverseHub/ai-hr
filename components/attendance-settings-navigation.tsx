@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 
-const snapshot = (form: HTMLFormElement) => JSON.stringify(Array.from(form.elements).flatMap(element => {
+const snapshot = (form: HTMLFormElement) => JSON.stringify(Array.from(form.elements).flatMap<unknown[]>(element => {
   if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) || !element.name || (element.name.startsWith('$ACTION_') || element.name === '__attendanceSaveNonce') || ['submit', 'button', 'reset'].includes(element.type)) return [];
   if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) return [[element.name, element.value, element.checked]];
   if (element instanceof HTMLInputElement && element.type === 'file') return [[element.name, Array.from(element.files ?? []).map(f => [f.name, f.size, f.lastModified])]];
@@ -62,6 +62,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
     const submit=(e:Event)=>{
       const form=e.target;
       if(!(form instanceof HTMLFormElement))return;
+      if(form.hasAttribute('data-attendance-save-scope') && form.getAttribute('aria-busy')==='true'){e.preventDefault();e.stopPropagation();return;}
       const others=dirtyForms().filter(f=>f!==form);
       if(others.length && !window.confirm(t('leaveOtherUnsaved'))){e.preventDefault();e.stopPropagation();return;}
       if (form.hasAttribute('data-attendance-save-scope')) {
