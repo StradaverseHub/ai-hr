@@ -51,3 +51,12 @@ existing absence rules. An out-only day remains an incomplete present day. Exist
 reconcile their effective punches when a new correction is approved. Raw evidence remains readable,
 while the live clock view displays only effective entries. Clock-data saves are separate from overtime
 requests and from the later Shift/Day Type, manual overtime, allowance and whole-page Save rounds.
+
+
+Forward migration 0530 corrects protection after an entity transfer. Existing payslip membership,
+not the employment's current company, identifies protected runs. Locks include current and former
+assignment companies and existing member runs, in batch-id order. The cut-off context belongs to the
+run's company; a newly assigned destination policy cannot change an earlier employer's window.
+The seam still exposes only operational run status and cut-off fields, with current subject authority;
+it grants no payslip access. Historical configuration changes are not reconstructed: this retains the
+existing current-configuration cut-off semantics and does not claim an immutable cut-off snapshot.
