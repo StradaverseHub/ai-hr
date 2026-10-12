@@ -128,7 +128,7 @@ describe('customer deploy refuses unsafe configuration before any install or dat
       '?sslmode=verify-full&sslmode=disable', '?sslmode=verify-full&ssl=false']) {
       refused(runDeploy({ [key]: `postgresql://restricted:fixture@db.internal/preflight${query}` }), 'sslmode=verify-full');
     }
-    const result = runDeploy({ [key]: 'postgresql://restricted:fixture@db.internal/preflight?sslmode=verify-full' });
+    const result = runDeploy({ DATABASE_URL: 'postgresql://app:fixture@db.internal/preflight?sslmode=verify-full', MIGRATION_DATABASE_URL: 'postgresql://owner:fixture@db.internal/preflight?sslmode=verify-full' });
     expect(result.status, result.output).toBe(0);
   });
   it.each([undefined, 'development', 'test'])('refuses NODE_ENV=%s', (value) => {
@@ -149,6 +149,9 @@ describe('customer deploy refuses unsafe configuration before any install or dat
     const result = runDeploy({ DATABASE_URL: value });
     refused(result, 'DATABASE_URL');
     if (value) expect(result.output).not.toContain(value);
+  });
+  it('refuses migrating a different database from the application', () => {
+    refused(runDeploy({ MIGRATION_DATABASE_URL: SAFE_ENV.MIGRATION_DATABASE_URL.replace('/preflight', '/different') }), 'same database endpoint');
   });
   it('refuses the migration role reused by the app on the same database', () => {
     refused(runDeploy({ DATABASE_URL: SAFE_ENV.MIGRATION_DATABASE_URL }), 'separate database roles');
