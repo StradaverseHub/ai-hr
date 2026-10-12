@@ -12,6 +12,7 @@ import { entryAction } from '../../../actions';
 
 export default async function RewardPersonPage({ params }: { params: Promise<{ unitId: string; entryId: string }> }) {
   await requireModule('rewards'); const { s } = await scopedSession(); const { unitId, entryId } = await params;
+  const onehrText = await getTranslations('onehr');
   const t = await getTranslations('rewards'); const v = await getRewardUnit(s, unitId); const e = v.rows.find(r => r.id === entryId);
   if (!e) notFound();
   const canEdit = v.unit.status === 'draft' && (v.canEdit || e.plan === 'ec' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)));
@@ -38,7 +39,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
           <input type="hidden" name="facts" value="true" />
           <h2 className="pt-3 text-base font-semibold">{t('classification')}</h2><p className="max-w-3xl text-sm text-muted-foreground">{t('classificationHelp')}</p>
           {!e.source.onehr&&e.source.performanceReviewId && <p className="text-sm">{t('sourceRating')}: <Link href={`/performance/review/${e.source.performanceReviewId}`} className="text-primary hover:underline">{e.source.performanceRating ?? '—'}</Link></p>}
-          {e.source.onehr&&<section className="space-y-2 rounded-lg border border-border p-4"><h3 className="font-medium">{t('onehrSource')}</h3><p className="text-sm">{t('performance')}: {e.source.onehr.performance??'—'} · {t('potential')}: {e.source.onehr.potential??'—'} · {t('talent')}: {e.source.onehr.talent??'—'}</p><p className="text-sm">{t('sourceNomination')}: {['pip','promotion','specialReward'].filter(k=>e.source.onehr![k as 'pip'|'promotion'|'specialReward']).join(', ')||'—'}</p><p className="break-all font-mono text-xs">{t('sourceProvenance')}: {e.source.onehr.id} · {e.source.onehr.digest}</p>{e.source.onehrFactImport&&<p className="break-all font-mono text-xs">{t('sourceAdoption')}: {e.source.onehrFactImport.resultId} · {e.source.onehrFactImport.digest}</p>}</section>}
+          {e.source.onehr&&<section className="space-y-2 rounded-lg border border-border p-4"><h3 className="font-medium">{t('onehrSource')}</h3><p className="text-sm">{t('performance')}: {e.source.onehr.performance??'—'} · {t('potential')}: {e.source.onehr.potential??'—'} · {t('talent')}: {e.source.onehr.talent??'—'}</p><p className="text-sm">{t('sourceNomination')}: {(['pip','promotion','specialReward'] as const).filter(k=>e.source.onehr![k]).map(k=>onehrText(k)).join(', ')||'—'}</p><p className="break-all font-mono text-xs">{t('sourceProvenance')}: {e.source.onehr.id} · {e.source.onehr.digest}</p>{e.source.onehrFactImport&&<p className="break-all font-mono text-xs">{t('sourceAdoption')}: {e.source.onehrFactImport.resultId} · {e.source.onehrFactImport.digest}</p>}</section>}
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label={t('talent')}><select name="talent" defaultValue={f.talent ?? ''} className={inputCls}><option value="">{t('notAvailable')}</option>{talents.map(k => <option key={k}>{k}</option>)}</select></Field>
             <Field label={t('performance')}><select name="performance" defaultValue={f.performance ?? ''} className={inputCls}><option value="">{t('notAvailable')}</option>{performances.map(k => <option key={k}>{k}</option>)}</select></Field>

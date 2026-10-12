@@ -9,6 +9,8 @@ CREATE TABLE performance_onehr_evidence(id uuid PRIMARY KEY DEFAULT gen_random_u
 CREATE TABLE performance_onehr_result(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_review(id),cycle_id uuid NOT NULL REFERENCES review_cycle(id),employment_id uuid NOT NULL REFERENCES employment(id),result jsonb NOT NULL,digest text NOT NULL,frozen_at timestamptz NOT NULL DEFAULT now(),performance_released_at timestamptz,potential_released_at timestamptz,talent_released_at timestamptz,feedback_released_at timestamptz,UNIQUE(review_id));
 CREATE INDEX performance_onehr_review_cycle_idx ON performance_onehr_review(cycle_id);
 CREATE INDEX performance_onehr_panel_review_idx ON performance_onehr_panel(review_id);
+CREATE INDEX performance_onehr_calibration_entry_review_idx ON performance_onehr_calibration_entry(review_id);
+CREATE INDEX performance_onehr_panel_peer_idx ON performance_onehr_panel(peer_employment_id) WHERE submitted_at IS NULL AND archived_at IS NULL;
 CREATE INDEX performance_onehr_calibration_cycle_idx ON performance_onehr_calibration(cycle_id);
 CREATE INDEX performance_onehr_evidence_subject_idx ON performance_onehr_evidence(employment_id);
 CREATE INDEX performance_onehr_result_subject_idx ON performance_onehr_result(employment_id,cycle_id);
