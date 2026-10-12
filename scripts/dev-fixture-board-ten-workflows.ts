@@ -128,7 +128,8 @@ async function prepare(base: Base) {
         bankName: 'Fictional demo bank', bankAccountNo: `BOARD10-DEV-${index + 1}`});
     }
     // Existing profiles and tax elections are intentionally never overwritten. The real batch advisory
-    // below reports missing/contradictory configuration; no declaration or tax position is fabricated.
+    // below checks its supported compensation/statutory/bank gaps, but does not validate tax selections
+    // or incentive declarations. Payroll processing performs those separate country-pack checks.
   }
   let [night] = await owner.db.select().from(s.shift).where(and(eq(s.shift.tenantId, tenantId), eq(s.shift.code, nightCode)));
   if (!night) {
@@ -268,7 +269,8 @@ async function manifest(base: Base, reused: boolean) {
       recipientCredits: '0.75 fully used, 1.25 partially used (0.25 used / 1 available), 1 available.', controlCredits: '1 available after real leave approval and HR cancellation.'},
     limitations: ['Never run during a test/release gate; this script has not been executed by its author.',
       'No automatic attendance approval, allowance transfer, payroll generation or browser verification.',
-      'No tax declarations/elections or statutory table overrides; the actual payroll advisory remains authoritative.',
+      'No tax declarations/elections or statutory table overrides. Payroll advisory does not validate tax selections or incentive declarations; processing can still refuse unresolved, stale or unsupported tax configuration.',
+      'UNKNOWN until runtime: database timezone/current_date versus Kuala Lumpur today. Leave manager authorization uses current_date and can refuse a not-yet-effective base reporting line; no dates or roles are rewritten to bypass it.',
       'HR manual non-working-day grants use fictional HR evidence, not fabricated clockings.',
       'Attendance stage one includes HR cover because the same department contains the top manager; browser may still exercise manager then HR.',
       'Control demonstrates full HR cancellation; employee partial-cancellation settings on the shared Leave Type are preserved.',
