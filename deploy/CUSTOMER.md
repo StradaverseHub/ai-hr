@@ -91,7 +91,7 @@ On a fresh system with mail not activated, an authorized operator must verify ac
 
 ## 6. Install the private email agent and web service
 
-After all migrations (including 0527), create an additional root-only installer env file containing MIGRATION_DATABASE_URL, AIHR_IDENTITY_EMAIL_DATABASE_URL (the precreated restricted role on the same remote HR DB), NODE_EXTRA_CA_CERTS and AIHR_APP_USER=aihr. No credential belongs in the command itself.
+After all migrations (including 0527), create an additional root-only installer env file containing MIGRATION_DATABASE_URL, AIHR_IDENTITY_EMAIL_DATABASE_URL (the precreated restricted role on the same remote HR DB), NODE_EXTRA_CA_CERTS and AIHR_APP_USER=aihr. No credential belongs in the command itself. If the HR database uses a private CA, also put NODE_EXTRA_CA_CERTS with the same approved absolute certificate-bundle path in /etc/aihr-keycloak/email-agent.env before installation. The installer environment is temporary and is not inherited by the installed service. Keep that CA bundle root-owned, read-only and readable by aihr-identity-email under an accessible system path such as /etc/ssl/certs; do not put it under a protected home directory. Verify certificate trust from the running service after installation.
 
 ```bash
 cd /opt/ai-hr
