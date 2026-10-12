@@ -86,6 +86,20 @@ describe('mapping editor business snapshot and successful-save receipt', () => {
     expect(hasUnsavedChanges()).toBe(true);
   });
 
+  it('already guards a replacement sample while its bytes are still being read', async () => {
+    let finish!: (value: ArrayBuffer) => void;
+    mount();
+    const file = new File(['EMP2'], 'pending.csv', {type: 'text/csv'});
+    Object.defineProperty(file, 'arrayBuffer', {value: () => new Promise<ArrayBuffer>(resolve => {finish = resolve;})});
+    fireEvent.change(document.querySelector<HTMLInputElement>('input[type="file"]')!, {target: {files: [file]}});
+    await waitFor(() => expect(draft()).toMatchObject({drafts: {pendingSampleName: 'pending.csv'}}));
+    expect(hasUnsavedChanges()).toBe(true); expect(screen.getByRole('button', {name: t.form.save})).toBeDisabled();
+    fireEvent.click(screen.getByText('Back to settings')); expect(window.confirm).toHaveBeenCalledTimes(1); expect(push).not.toHaveBeenCalled();
+    await act(async () => {finish(new TextEncoder().encode('EMP2,13,10,2026,18,00').buffer);});
+    await waitFor(() => expect(draft()).toMatchObject({sampleFileName: 'pending.csv', drafts: {pendingSampleName: ''}}));
+    expect(hasUnsavedChanges()).toBe(true);
+  });
+
   it('keeps the actual mapping draft on browser Back cancellation and traverses only on discard', async () => {
     const go = vi.spyOn(window.history, 'go').mockImplementation(() => {});
     mount(); fireEvent.change(name(), {target: {value: 'Browser Back draft'}});

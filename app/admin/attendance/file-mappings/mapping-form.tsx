@@ -82,7 +82,9 @@ export function MappingForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const savingRef = useRef(false);
+  const readingSampleRef = useRef(false);
   const [readingSample, setReadingSample] = useState(false);
+  const [pendingSampleName, setPendingSampleName] = useState('');
 
   const [name, setName] = useState(initial?.name ?? '');
   const [deviceName, setDeviceName] = useState(initial?.deviceName ?? '');
@@ -147,7 +149,7 @@ export function MappingForm({
   const fieldLabel = (f: ClockingField) => t(`fields.${f}`);
 
   const loadFile = async (f: File) => {
-    if (savingRef.current) return;
+    if (savingRef.current || readingSampleRef.current) return;
     setFileError(null);
     if (/\.(xlsx|xls)$/i.test(f.name)) {
       setFileError(t('form.excelRefused'));
@@ -157,7 +159,9 @@ export function MappingForm({
       setFileError(t('form.fileTooLarge'));
       return;
     }
+    readingSampleRef.current = true;
     setReadingSample(true);
+    setPendingSampleName(f.name);
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
       if (savingRef.current) return;
@@ -168,7 +172,9 @@ export function MappingForm({
     } catch {
       setFileError(t('form.fileUnreadable'));
     } finally {
+      readingSampleRef.current = false;
       setReadingSample(false);
+      setPendingSampleName('');
     }
   };
 
@@ -244,11 +250,11 @@ export function MappingForm({
   // unsaved work from the page's one AttendanceSettingsNavigation guard.
   const draftSnapshot = JSON.stringify({name, deviceName, description, active, ...def,
     fields: CLOCKING_FIELDS.map(field => [field, fields[field] ?? null]), sampleLines: sample.lines, sampleFileName: sampleName,
-    drafts: {delimChoice, otherChar, codes, colFields: CLOCKING_FIELDS.map(field => [field, colFields[field] ?? null]),
+    drafts: {delimChoice, otherChar, codes, pendingSampleName, colFields: CLOCKING_FIELDS.map(field => [field, colFields[field] ?? null]),
       posFields: CLOCKING_FIELDS.map(field => [field, posFields[field] ?? null])}});
 
   const save = (form: HTMLFormElement) => {
-    if (savingRef.current || readingSample) return;
+    if (savingRef.current || readingSampleRef.current) return;
     setSubmitted(true);
     setServerError(null);
     if (!name.trim()) {
