@@ -312,7 +312,8 @@ export function scheduleGroupPath(ruleId: string): string {
   return ruleId ? `${SCHEDULE_GROUPS}/${encodeURIComponent(ruleId)}/edit` : SCHEDULE_GROUPS;
 }
 
-export function okScheduleGroup(ruleId: string, msg: string, section = ''): never {
+export function okScheduleGroup(ruleId: string, msg: string, section = '', saveReceipt = ''): never {
+  const acknowledgement = /^[a-f0-9]{32}$/.test(saveReceipt) ? `&saveAck=${saveReceipt}` : '';
   const path = scheduleGroupPath(ruleId);
   revalidatePath(SCHEDULE_GROUPS);
   if (path !== SCHEDULE_GROUPS) {
@@ -321,7 +322,7 @@ export function okScheduleGroup(ruleId: string, msg: string, section = ''): neve
     revalidatePath(`${SCHEDULE_GROUPS}/${encodeURIComponent(ruleId)}`);
   }
   redirect(
-    `${path}?toast=${encodeURIComponent(msg)}${section ? `&section=${encodeURIComponent(section)}#section-${section}` : ''}`,
+    `${path}?toast=${encodeURIComponent(msg)}${acknowledgement}${section ? `&section=${encodeURIComponent(section)}#section-${section}` : ''}`,
   );
 }
 

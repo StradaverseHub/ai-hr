@@ -62,7 +62,7 @@ export default async function EditScheduleGroupPage({
   searchParams,
 }: {
   params: Promise<{ ruleId: string }>;
-  searchParams: Promise<{ error?: string; section?: string; typedWeek?: string }>;
+  searchParams: Promise<{ error?: string; section?: string; typedWeek?: string; saveAck?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.scheduleConfig');
@@ -106,6 +106,8 @@ export default async function EditScheduleGroupPage({
         error={sp.error}
         section={resolveSection(sp.section)}
         typedWeek={sp.typedWeek}
+        savedSection={!sp.error ? resolveSection(sp.section) : null}
+        savedReceipt={typeof sp.saveAck === 'string' && /^[a-f0-9]{32}$/.test(sp.saveAck) ? sp.saveAck : undefined}
       />
     </div>
   );

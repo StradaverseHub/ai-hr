@@ -10,6 +10,7 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
 // allowlist and copies no new pattern.
+import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
 import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/core/attendance';
 import { listProfileChangeRequests } from '@/core/profile';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
@@ -102,6 +103,7 @@ function DecideButtons({
   labels,
   nav,
   rejectReasonLabel,
+  workflowStage,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
@@ -109,6 +111,7 @@ function DecideButtons({
   labels: { yourRequest: string; approve: string; reject: string };
   nav: NavParams;
   rejectReasonLabel?: string;
+  workflowStage?: number;
 }) {
   if (disabled) {
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
@@ -117,6 +120,7 @@ function DecideButtons({
     <div className="flex items-center justify-end gap-2">
       <form action={action}>
         <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
         <Button type="submit" size="sm">
@@ -125,6 +129,7 @@ function DecideButtons({
       </form>
       {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <form action={action}>
         <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         {rejectReasonLabel && <label className="block text-xs">{rejectReasonLabel}<textarea name="rejectReason" required maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
@@ -133,6 +138,7 @@ function DecideButtons({
         </Button>
       </form></details> :       <form action={action}>
         <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         <Button type="submit" size="sm" variant="outline">
@@ -417,6 +423,7 @@ export default async function ApprovalsPage({
           .map((c) => ({
             id: c.id,
             type: 'attendance' as const,
+            ...(c.workflow ? {expectedStageIndex:c.workflow.currentStage} : {}),
             category: (isOvertimeCorrection(c) ? 'overtime' : 'attendance') as BulkCategory,
           }))
       : []),
@@ -1045,9 +1052,10 @@ export default async function ApprovalsPage({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}{c.workflow && <AttendanceWorkflowProgress workflow={c.workflow} status={c.status} />}</td>
                   <td className="px-4 py-2.5">
                     <DecideButtons
+                      workflowStage={c.workflow?.currentStage}
                       action={approveCorrectionAction}
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}

@@ -78,6 +78,9 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  { table: 'attendance_workflow_template', column: 'company_id', disposition: 'other', note: 'Immutable approval template versions are retained configuration history.' },
+  { table: 'attendance_workflow_setting', column: 'company_id', disposition: 'config', note: 'Attendance workflow enablement has no meaning after its company is deleted.' },
+  { table: 'attendance_workflow_request', column: 'company_id', disposition: 'employees', note: 'Submitted routing is employee decision history and must be retained.' },
   // ── employees: any row refuses ───────────────────────────────────────────────────────────────────────
   { table: 'employment', column: 'company_id', disposition: 'employees', note: 'The employment itself, terminated ones included: a former employee is still employment history.' },
   { table: 'assignment', column: 'company_id', disposition: 'employees', note: 'An employee\'s placement (department, position) over time. Exists only alongside an employment.' },
@@ -113,6 +116,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'app_manual_identity_enrollment', column: 'company_id', disposition: 'other', existsFunction: 'app.manual_identity_company_in_use', note: 'Manual account enrollment is retained access history, including cancelled attempts. Never delete its company scope implicitly.' },
   { table: 'reporting_line', column: 'scope_company_id', disposition: 'other', note: 'A reporting line scoped to this company. It belongs to employments, possibly of another company.' },
   { table: 'review_cycle', column: 'company_id', disposition: 'other', note: 'A performance review cycle run for this company.' },
+  { table: 'performance_onehr_review', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_review_company_in_use', note: 'The opening-company snapshot of an assessment remains retained history after an employee transfers company, including in group-wide cycles.' },
+  { table: 'performance_onehr_calibration', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_calibration_company_in_use', note: 'A company-scoped calibration retains its original cohort scope and approval history even when its members transfer away.' },
   { table: 'tenant_module', column: 'company_id', disposition: 'other', note: 'A module grant scoped to this company. Composite key with tenant_id. Entitlement is the platform\'s to remove.' },
   { table: 'module_change_request', column: 'company_id', disposition: 'other', note: 'A module activation request for this company. Composite key with tenant_id.' },
   { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
@@ -167,12 +172,14 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'business_unit', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Last: departments, assignments and approval rules reference it.' },
 ];
 
-/** A foreign key INTO one of the tables deleted with the company. */
+/** A foreign key or retained UUID array INTO a table deleted with the company. */
 export type CompanyConfigDependent = {
   table: string;
   column: string;
   /** The cascaded table it references (by `id`). */
   references: string;
+  /** Absent = real foreign key. A retained UUID array is guarded by its owning table's trigger. */
+  referenceKind?: 'uuid-array';
   /**
    * `part`   — an ON DELETE CASCADE child that is part of the parent row (a shift's OT windows). Goes with it.
    * `blocks` — a row here pointing at one of the company's rows refuses the delete as `other`, unless the row
@@ -183,6 +190,8 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'attendance_rotation', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable rotation versions retain their Schedule Group. Deleting company-owned legacy setup must not erase saved calendar history.' },
+  { table: 'attendance_rotation', column: 'allowed_shift_ids', references: 'shift', referenceKind: 'uuid-array', effect: 'blocks', note: 'Saved allowed pools retain every source shift, including company-owned legacy templates. The shift retention trigger forbids deletion; refuse it before cascading company setup.' },
   { table: 'attendance_allowance_version', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'Immutable definition history retains its policy, even when a company has never transferred an allowance.' },
   { table: 'attendance_allowance_result', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A period calculation retains the policy that explains its financial outcome.' },
   { table: 'payroll_attendance_allowance_source', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A payroll contribution retains the policy that owns it; company deletion cannot detach it.' },
@@ -258,8 +267,9 @@ export function companyDeleteBlockSqlText(idExpr: string): string {
     const outside = isCascadedTable(d.table)
       ? ` and ${dep}.${q(cascadedColumn(d.table))} is distinct from ${idExpr}`
       : '';
+    const link=d.referenceKind==='uuid-array' ? `${own}.id = ANY(${dep}.${q(d.column)})` : `${own}.id = ${dep}.${q(d.column)}`;
     groups.other.push(
-      `exists (select 1 from ${q(d.table)} ${dep} join ${q(d.references)} ${own} on ${own}.id = ${dep}.${q(d.column)} ` +
+      `exists (select 1 from ${q(d.table)} ${dep} join ${q(d.references)} ${own} on ${link} ` +
         `where ${own}.${q(cascadedColumn(d.references))} = ${idExpr}${outside})`,
     );
   });

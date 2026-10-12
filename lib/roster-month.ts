@@ -1,3 +1,4 @@
+import { rotationVersionOn, rotationDayOn, type RotationCycle } from '../core/week-pattern';
 /**
  * Monthly roster grid — the pure, CLIENT-SAFE half (item 23390097).
  *
@@ -29,7 +30,9 @@
 export type AssignedCell = { kind: 'shift'; shiftId: string } | { kind: 'rest' } | null;
 
 /** The person's usual (default) shift, with the weekly pattern that decides which days it covers. */
-export type UsualShift = { shiftId: string; pattern: number[] | null; halfPattern?: number[] | null };
+export type UsualShift = { shiftId: string; pattern: number[] | null; halfPattern?: number[] | null;
+  noDefault?: boolean; rotations?: (RotationCycle & {ruleId?:string})[];
+  rotationPeriods?: {validFrom:string;ruleId:string|null}[] };
 
 /** What the cell shows. `usual` is the greyed ghost; `off`/`none` both mean "no shift is scheduled". */
 export type ResolvedCell =
@@ -223,12 +226,27 @@ export function stepRosterWindow(w: RosterWindow, direction: 1 | -1): RosterWind
  */
 export const rosterDateLocale = (locale: string): string => (locale === 'en' ? 'en-GB' : locale);
 
+/** The dated inherited group uses the same greatest-start/earliest fallback as
+ * the arrangement ladder. Only rotation metadata travels to the client. */
+export function rotationDayForUsual(iso:string, usual:UsualShift | null | undefined) {
+  if (!usual) return null;
+  const periods=usual.rotationPeriods;
+  const period=periods?.length ? [...periods].reverse().find(p=>p.validFrom<=iso)??periods[0] : null;
+  const versions=period ? (usual.rotations??[]).filter(v=>v.ruleId===period.ruleId) : usual.rotations??[];
+  const version=rotationVersionOn(versions,iso);
+  return version ? rotationDayOn(version,iso) : null;
+}
+
 /**
  * One cell, resolved. See the precedence note at the top of the file.
  */
 export function resolveRosterCell(iso: string, assigned: AssignedCell, usual: UsualShift | null | undefined): ResolvedCell {
   if (assigned) return assigned.kind === 'shift' ? { kind: 'shift', shiftId: assigned.shiftId } : { kind: 'rest' };
   if (!usual) return { kind: 'none' };
+  const day = rotationDayForUsual(iso,usual);
+  if (day) return day.kind === 'full' || day.kind === 'half'
+    ? { kind: 'usual', shiftId: day.shiftId! } : day.kind === 'rest' ? { kind: 'rest' } : { kind: 'off' };
+  if (usual.noDefault) return { kind: 'none' };
   const weekday=isoWeekdayOf(iso);
   return (usual.pattern?.includes(weekday)||usual.halfPattern?.includes(weekday)) ? { kind: 'usual', shiftId: usual.shiftId } : { kind: 'off' };
 }

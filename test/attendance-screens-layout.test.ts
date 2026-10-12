@@ -1,3 +1,4 @@
+import { attendanceApplicationType } from '../lib/attendance-workflow';
 /**
  * af7a8eb4 — Attendance module: full-width list screens, and the shift form on its own page.
  *
@@ -695,15 +696,15 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     return t as unknown as Parameters<typeof statusLabel>[1];
   };
 
-  it('r363 — the chip, a cancelled OVERTIME row and a cancelled CORRECTION row read the SAME word', () => {
+  it('r363 legacy withdrawals retain the same word; administrative cancellations have a distinct combined filter', () => {
     // The kind predicate is re-run here rather than imported (it is the page's own const), so it is
     // pinned verbatim first — otherwise this case could go on asserting a rule the screen had stopped
     // using, which is precisely how case D was once defeated.
     const ISOVERTIME =
-      'const isOvertime = (r: RequestRow) => r.proposedCheckIn == null && r.requestedOtMinutes != null;';
+      "const isOvertime = (r: RequestRow) => attendanceApplicationType(r) === 'self_overtime';";
     expect(PAGE, 'the kind predicate this case re-runs must still be the one the screen ships').toContain(ISOVERTIME);
     const isOvertime = (r: { proposedCheckIn: string | null; requestedOtMinutes: number | null }) =>
-      r.proposedCheckIn == null && r.requestedOtMinutes != null;
+      attendanceApplicationType(r) === 'self_overtime';
 
     // A real row of each kind, as myAttendanceCorrections returns them: an overtime plan carries minutes
     // and no proposed clock-in; a clock correction is the other way round.
@@ -731,7 +732,11 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
         correctionWord,
         `${locale}: a taken-back correction and a taken-back overtime plan must read the SAME word`,
       ).toBe(planWord);
-      expect(chipWord, `${locale}: and the filter chip above them must read that same word`).toBe(planWord);
+      expect(chipWord, `${locale}: the shared legacy label remains a withdrawal`).toBe(planWord);
+      expect(PAGE).toContain("f === 'cancelled' ? historyT('cancelledFilter')");
+      const all = JSON.parse(read(`messages/${locale}.json`));
+      expect(all.attendanceHistory.cancelledFilter).not.toBe(all.attendanceHistory.statuses.cancelled);
+      expect(all.attendanceHistory.cancelledFilter).not.toBe(planWord);
     }
 
     // It is Self Overtime's own key that they agree on — which is why nothing had to be written or

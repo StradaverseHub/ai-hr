@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -25,7 +26,8 @@ export default async function FileMappingViewPage({ params }: { params: Promise<
     const last = await builtinMappingLastUsed(s);
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader back={back} title={BUILTIN_MAPPING_NAME} description={t('view.builtinIntro')} />
+        <AttendanceSettingsNavigation />
+      <PageHeader back={back} title={BUILTIN_MAPPING_NAME} description={t('view.builtinIntro')} />
         <SectionCard index={1} title={t('form.secDetails')}>
           <LabelValueList columns={2}>
             <LabelValue label={t('list.colDevice')} value={t('list.anyDevice')} />

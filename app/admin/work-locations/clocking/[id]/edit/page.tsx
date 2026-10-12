@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
@@ -85,6 +86,7 @@ export default async function EditClockingLocationPage({
 
   return (
     <div className={pageWideCls}>
+      <AttendanceSettingsNavigation />
       <PageHeader title={t('editClockingTitle')} description={site.name} back={{ href: listHref, label: t('backToLocations') }} />
       <ClockingLocationForm
         t={t}

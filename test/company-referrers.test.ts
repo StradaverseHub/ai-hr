@@ -230,8 +230,22 @@ describe('§1 the declared referrer set is the live schema', () => {
           .map((f) => `${f.table}.${f.column} -> ${f.references}`),
       ),
     ].sort();
-    const declared = COMPANY_CONFIG_DEPENDENTS.map((d) => `${d.table}.${d.column} -> ${d.references}`).sort();
+    const declared = COMPANY_CONFIG_DEPENDENTS.filter(d=>d.referenceKind!=='uuid-array').map((d) => `${d.table}.${d.column} -> ${d.references}`).sort();
     expect(declared, 'core/company-refs.ts COMPANY_CONFIG_DEPENDENTS must match the live keys').toEqual(live);
+  });
+
+  it('a retained array declaration names a real UUID array and its owner enforces retention',async()=>{
+    const arrays=COMPANY_CONFIG_DEPENDENTS.filter(d=>d.referenceKind==='uuid-array');
+    expect(arrays.map(d=>`${d.table}.${d.column} -> ${d.references}`)).toContain('attendance_rotation.allowed_shift_ids -> shift');
+    for(const d of arrays){
+      const rows=await owner.db.execute(sql`select udt_name from information_schema.columns where table_schema='public' and table_name=${d.table} and column_name=${d.column}`) as unknown as {udt_name:string}[];
+      expect(rows,`${d.table}.${d.column} must be a real UUID array, not a hidden foreign key`).toEqual([{udt_name:'_uuid'}]);
+      expect(d.effect).toBe('blocks');
+    }
+    const migration=readFileSync(fileURLToPath(new URL('../db/migrations/0531_attendance_rotation.sql',import.meta.url)),'utf8');
+    expect(migration).toContain('BEFORE DELETE ON shift');
+    expect(migration).toContain('OLD.id=ANY(allowed_shift_ids)');
+    expect(companyDeleteBlockSqlText('company.id')).toMatch(/join "shift" co\d+ on co\d+\.id = ANY\(cd\d+\."allowed_shift_ids"\)/);
   });
 
   it('every dependent points INTO a table deleted with the company (the generated SQL joins on it)', () => {
@@ -266,6 +280,17 @@ describe('§1 the declared referrer set is the live schema', () => {
       expect(r.note.length, `${r.table} must say WHY`).toBeGreaterThan(20);
     }
     for (const d of COMPANY_CONFIG_DEPENDENTS) expect(d.note.length, `${d.table}.${d.column}`).toBeGreaterThan(20);
+  });
+
+  it('retains Attendance workflow history while deleting only unused enablement configuration', () => {
+    const expected = [
+      ['attendance_workflow_template', 'other'],
+      ['attendance_workflow_setting', 'config'],
+      ['attendance_workflow_request', 'employees'],
+    ];
+    for (const [table, disposition] of expected) {
+      expect(COMPANY_REFERRERS.filter(r => r.table === table).map(r => [r.column,r.disposition])).toEqual([['company_id',disposition]]);
+    }
   });
 
   it('never cascades an employee record or a payroll record', () => {
@@ -303,6 +328,14 @@ describe('§1 the declared referrer set is the live schema', () => {
 // ── §2 ─────────────────────────────────────────────────────────────────────────────────────────────
 type Case = { name: string; expected: CompanyDeleteBlock | null; setup: (id: string) => Promise<void> };
 const CASES: Case[] = [
+  ...(['rule','shift'] as const).map(source=>({
+    name:`retained schedule rotation ${source}`,expected:'other' as const,setup:async(id:string)=>{
+      const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning();
+      const [shift]=await owner.db.insert(schema.shift).values({tenantId:b.tenantId,companyId:source==='shift'?id:null,name:`Rotation source ${randomUUID()}`,startTime:'08:00',endTime:'17:00'}).returning();
+      const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
+      await owner.db.insert(schema.attendanceRotation).values({tenantId:b.tenantId,ruleId:rule.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:b.adminUserId});
+    }
+  })),
   {
     name: 'an unposted reward review', expected: 'payroll', setup: async (id) => {
       const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
@@ -454,6 +487,44 @@ describe('§2 the panel and the delete guard give the same answer, for every dis
       }
     });
   }
+
+  it('retains a hidden group-cycle opening-company snapshot after an employee transfers', async () => {
+    const original = await bare({ parentCompanyId: b.companyId });
+    const destination = await bare();
+    const [cycle] = await owner.db.insert(schema.reviewCycle).values({ tenantId: b.tenantId, name: 'Group OneHR', periodStart: '2026-01-01', periodEnd: '2026-12-31', ratingScale: [] }).returning();
+    await owner.db.insert(schema.onehrCycle).values({ tenantId: b.tenantId, cycleId: cycle.id, policy: {} });
+    const [employment] = await owner.db.insert(schema.employment).values({ tenantId: b.tenantId, personId: await newPerson(), companyId: original, hiredOn: '2025-01-01' }).returning();
+    const [review] = await owner.db.insert(schema.performanceReview).values({ tenantId: b.tenantId, cycleId: cycle.id, employmentId: employment.id }).returning();
+    await owner.db.insert(schema.onehrReview).values({ tenantId: b.tenantId, cycleId: cycle.id, reviewId: review.id, employmentId: employment.id, companyId: original, grade: '12' });
+    await owner.db.update(schema.employment).set({ companyId: destination }).where(eq(schema.employment.id, employment.id));
+    // A parent-company administrator can manage the old company but cannot read a group cycle.
+    await owner.db.update(schema.roleAssignment).set({ companyId: b.companyId }).where(eq(schema.roleAssignment.appUserId, b.adminUserId));
+    const ctx = scopedAdmin(b.companyId);
+    expect(await withTenant(ctx, tx => tx.select().from(schema.onehrReview))).toEqual([]);
+    expect(await withTenant(ctx, tx => tx.select().from(schema.employment).where(eq(schema.employment.id, employment.id)))).toEqual([]);
+    expect(await companyDeleteStatus(ctx, original)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(ctx, original)).toBe('other');
+    expect(await exists(original)).toBe(true);
+    const [retained] = await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId, review.id));
+    expect(retained.companyId).toBe(original);
+    // The boolean cannot be used as an assessment or cross-company discovery endpoint.
+    const [outside] = await withTenant(scopedAdmin(destination), tx => tx.execute(sql`select app.onehr_review_company_in_use(${original}::uuid) as used`));
+    expect(outside.used).toBe(false);
+    const [employee] = await withTenant(member(), tx => tx.execute(sql`select app.onehr_review_company_in_use(${original}::uuid) as used`));
+    expect(employee.used).toBe(false);
+  });
+
+  it('retains an otherwise empty calibration company scope in a group cycle', async () => {
+    const original = await bare();
+    const [cycle] = await owner.db.insert(schema.reviewCycle).values({ tenantId: b.tenantId, name: 'Group calibration', periodStart: '2026-01-01', periodEnd: '2026-12-31', ratingScale: [] }).returning();
+    await owner.db.insert(schema.onehrCycle).values({ tenantId: b.tenantId, cycleId: cycle.id, policy: {} });
+    await owner.db.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId: cycle.id, companyId: original, name: 'Retained cohort scope', tier: 'bu', reviewerUserIds: [b.adminUserId] });
+    expect(await companyDeleteStatus(ADMIN(), original)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(ADMIN(), original)).toBe('other');
+    expect(await exists(original)).toBe(true);
+    const [outside] = await withTenant(scopedAdmin(b.companyId), tx => tx.execute(sql`select app.onehr_calibration_company_in_use(${original}::uuid) as used`));
+    expect(outside.used).toBe(false);
+  });
 
   it('the org structure goes with the company when nothing outside uses it', async () => {
     const id = await fresh();

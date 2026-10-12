@@ -8,6 +8,11 @@
  * domain event (ADR-0006).
  */
 import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, type ClockChanges } from './attendance-punch-change';
+import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
+import { isDeepStrictEqual } from 'node:util';
+import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
+import { snapshotAttendanceWorkflowTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -80,6 +85,8 @@ import {
   attendanceCorrection,
   // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
   attendanceCorrectionAttachment,
+  domainEvent,
+  toilAccrual,
   attendancePolicy,
   // 07ebd04d (migration 0483) — the Schedule Group carries the WORKING WEEK; see weekLookupTx below.
   attendanceRule,
@@ -627,7 +634,7 @@ export function workingShiftSchedule(input:{start:string;end:string;crosses:bool
   const shiftEnd=kind==='half'
     ? fmtTime((toMinutes(input.start)+Math.floor(shiftSpan(input.start,input.end,input.crosses)/2))%MINS_PER_DAY)
     : input.end;
-  const crosses=kind==='half'?false:input.crosses;
+  const crosses=kind==='half'?toMinutes(shiftEnd)<toMinutes(input.start):input.crosses;
   const normalMinutesOverride=input.normalMinutesOverride==null?null:
     kind==='half'?Math.floor(input.normalMinutesOverride/2):input.normalMinutesOverride;
   return {scheduledMinutes,normalMinutes:normalMinutesOverride??scheduledMinutes,
@@ -636,6 +643,8 @@ export function workingShiftSchedule(input:{start:string;end:string;crosses:bool
 
 type ResolvedSchedule = {
   /** Display-only identity of the shift selected by this exact date resolver. */
+  displayShiftId?: string | null;
+  scheduleDayKind?: 'full' | 'half' | 'off' | 'rest';
   displayShiftCode?: string | null;
   displayShiftName?: string | null;
   dayType: DayType;
@@ -999,6 +1008,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     earlyGraceMinutes: baseRule?.earlyGracePeriodMinutes ?? 0,
     crossesMidnight: false,
     source: 'policy',
+    // A policy half marker classifies the day but retains the legacy full required minutes.
+    scheduleDayKind: pol.halfWorkingDays.includes(isoWeekday(date)) ? 'half' : 'full',
   });
 
   // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
@@ -1038,7 +1049,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
       dailyCutoffMinutes: ra.cutoffOn && ra.cutoffAt ? toMinutes(ra.cutoffAt) : null,
       flexibleBreakMinutes: ra.flexOn && ra.flexMin != null ? ra.flexMin : null,
       normalMinutesOverride: ra.override ?? null,
-      flexiDuration: ra.shiftType === 'full_flexi',
+      flexiDuration: ra.shiftType === 'full_flexi' || ra.shiftType === 'semi_flexi',
       otRule: ra.otRule ?? null,
       otWindows,
       rule,
@@ -1048,6 +1059,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
       earlyGraceMinutes: earlyGrace ?? 0,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
+      scheduleDayKind: 'full',
+      displayShiftId: ra.shiftId,
       displayShiftCode: ra.code,
       displayShiftName: ra.name,
     };
@@ -1102,7 +1115,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     flexMin: shift.flexibleBreakMinutes,
     shiftType: shift.type,
   };
-  const [ds] = arrangement
+  const [legacyDs] = arrangement
     ? await memoized(memo, `shift|${arrangement.shiftId}`, () =>
         tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1),
       )
@@ -1114,6 +1127,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
           .where(eq(employment.id, employmentId))
           .limit(1),
       );
+  const rotations = await memoized(memo, 'rotations', () => rotationLookupTx(tx));
+  const rotation = rotations(groupRule?.id ?? legacyDs?.ruleId ?? defaultRule?.id, date);
+  const ds = rotation ? rotationScheduleRow(rotation, date) : legacyDs;
   if (ds) {
     // 07ebd04d (r331, migration 0483) — THE WORKING WEEK IS THE SCHEDULE GROUP'S WHEN IT HAS ONE.
     //
@@ -1131,7 +1147,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     // b8aa3466 — FOUR-WAY. Full and Half are both WORKING days of the default shift; Rest and Off are not.
     // A shift written before migration 0429 has empty half/off arrays, so this resolves Full-where-ticked
     // and Rest-otherwise — byte-identically to the two-way test it replaces.
-    const kind = shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
+    const kind = rotation?.day.kind ?? shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
     if (isWorkingDayKind(kind)) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
       // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
@@ -1171,7 +1187,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
         // the break too would deduct it twice over.
         flexibleBreakMinutes: ds.flexOn && ds.flexMin != null ? ds.flexMin : null,
         normalMinutesOverride: override,
-        flexiDuration: ds.shiftType === 'full_flexi',
+        flexiDuration: ds.shiftType === 'full_flexi' || ds.shiftType === 'semi_flexi',
         otRule: ds.otRule ?? null,
         otWindows,
         rule,
@@ -1181,6 +1197,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
         earlyGraceMinutes: earlyGrace ?? 0,
         crossesMidnight: crosses,
         source: 'default-shift',
+        scheduleDayKind: kind === 'half' ? 'half' : 'full',
+        displayShiftId: ds.shiftId,
         displayShiftCode: ds.code,
         displayShiftName: ds.name,
       };
@@ -1204,9 +1222,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     // allowlist — a second money-bearing change across core/payroll.ts and localization/, for a value the
     // statute already pays on the leg that exists. The day is REPORTED as a workday; it is PAID correctly.
     if (kind === 'off') {
-      return { ...policyBranch('workday'), scheduledMinutes: 0, normalMinutesOverride: null, source: 'default-shift-rest' };
+      return { ...policyBranch('workday'), scheduledMinutes: 0, normalMinutesOverride: null, scheduleDayKind: 'off', source: 'default-shift-rest' };
     }
-    return { ...policyBranch('rest_day'), source: 'default-shift-rest' };
+    return { ...policyBranch('rest_day'), scheduleDayKind: 'rest', source: 'default-shift-rest' };
   }
 
   if (isHoliday) return policyBranch('holiday');
@@ -1251,7 +1269,7 @@ function deriveAttendance(
   checkOutAt: string | null,
   attendanceDate: string,
 ): DerivedDay {
-  // r274 (439565ff) — A FULL FLEXI DAY HAS NO TIME TO BE LATE FOR. `lateAfter` is still resolved (it is
+  // r274 (439565ff) — A DURATION-BASED FLEXI DAY HAS NO FIXED ARRIVAL PENALTY. `lateAfter` is still resolved (it is
   // shift start + grace, and the column is NOT NULL), but on this type the shift's start is the earliest
   // clocking accepted rather than a time anybody must arrive by, so comparing against it would record a
   // 08:31 arrival as late on a shift whose only requirement is nine hours.
@@ -1269,7 +1287,7 @@ function deriveAttendance(
   const deductible = deductionsApplyOn(s.rule, attendanceDate);
   // Lateness is a workday concept measured against a schedule; rest-day / holiday work has no start to be
   // late against (the same reason `status` never reads 'late' on those days).
-  // NULL on full flexi, not 0: zero minutes late asserts they arrived on time against a start that does
+  // NULL on duration-based flexi, not 0: zero minutes late asserts they arrived on time against a start that does
   // not exist, and `late_deduct_minutes` reads this figure.
   const lateMinutes: number | null =
     s.dayType === 'workday' && !s.flexiDuration && schedStartAbs != null && inAbsSched != null
@@ -1764,8 +1782,17 @@ export async function payableHoursForCycle(
       ...clampWeek(cachedRow.ruleId, cachedRow),
     };
   }
+  const clampRotations = await rotationLookupTx(tx);
   const clampOn = (d: string): ClampShift | null => {
     const p = pickArrangementOn(periods, d);
+    const raw = p ? ladderShifts.find(s => s.id === p.shiftId) : cachedRow;
+    const rotation = clampRotations(clampEmp?.ruleId ?? raw?.ruleId, d);
+    if (rotation) {
+      const row = rotationScheduleRow(rotation, d);
+      const sched = workingShiftSchedule({start:row.start,end:row.end,crosses:row.crosses,breakMinutes:row.brk,
+        roundingMinutes:row.rounding,normalMinutesOverride:row.override},'full');
+      return { ...row, net: sched.normalMinutes };
+    }
     return p ? (clampByShiftId.get(p.shiftId) ?? null) : cachedClamp;
   };
 
@@ -2297,6 +2324,7 @@ export async function weekLookupTx(
 }
 
 type DefaultShiftRow = {
+  rotationKind?: 'full' | 'half' | 'off' | 'rest';
   code: string | null;
   start: string;
   end: string;
@@ -2366,7 +2394,8 @@ function isScheduledOffDay(
   companyWorkingDay: boolean,
   deductAbsence: boolean,
 ): boolean {
-  if (!deductAbsence) return !companyWorkingDay;
+  // Explicit rotation opt-in uses its dated membership even before absence deductions are enabled.
+  if (!deductAbsence && !def?.rotationKind) return !companyWorkingDay;
   const c = classifyScheduleDay(date, roster, def, companyWorkingDay);
   return c === 'roster_rest' || c === 'default_rest' || c === 'policy_rest';
 }
@@ -2708,6 +2737,14 @@ async function attendanceDayRowsTx(
       if (!defaultShiftByEmp.has(dr.employmentId)) defaultShiftByEmp.set(dr.employmentId, { ...dr, ...weekFor(dr.employmentId, dr) });
     }
 
+    const gridRotations = await rotationLookupTx(tx);
+    const rawByEmp = new Map(profileShifts.map(s => [s.employmentId, s]));
+    for (const eid of empIds) {
+      const raw = byShiftId.get(shiftIdForDate.get(eid) ?? '') ?? rawByEmp.get(eid);
+      const rotation = gridRotations(groupByEmp.get(eid) ?? raw?.ruleId, date);
+      if (rotation) defaultShiftByEmp.set(eid, rotationScheduleRow(rotation, date));
+    }
+
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
     // → state → national), the SAME calendar leave + checkIn use — so a group/state holiday explains a
     // missing row exactly as it freezes the day-type. Only no-row employees need this context.
@@ -2886,6 +2923,7 @@ export function attendanceForEmploymentsRange(
       halfPattern:shift.halfPattern,offPattern:shift.offPattern,ruleId:shift.ruleId,rounding:shift.normalHoursRoundingMinutes})
       .from(shift).where(inArray(shift.id,shiftIds)) : [];
     const rangeWeek=await weekLookupTx(tx,null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]);
+    const rangeRotations = await rotationLookupTx(tx);
     const rowsByEmployment=new Map<string,typeof rows>();
     const rosterByEmployment=new Map<string,typeof rosters>();
     for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
@@ -2903,7 +2941,12 @@ export function attendanceForEmploymentsRange(
       const periods=arrangements.get(emp.id)??[];
       const shiftById=new Map<string,DefaultShiftRow>(rangeShifts.map(sr=>[sr.id,{...sr,...rangeWeek(sr.ruleId,sr,emp.ruleId)}]));
       const cachedDefShift=periods.length===0&&emp.defShiftId ? shiftById.get(emp.defShiftId) : undefined;
-      const defShiftOn=(d:string):DefaultShiftRow|undefined=>{const p=pickArrangementOn(periods,d);return p ? shiftById.get(p.shiftId) : cachedDefShift;};
+      const defShiftOn=(d:string):DefaultShiftRow|undefined=>{
+        const p=pickArrangementOn(periods,d);
+        const raw=rangeShifts.find(s=>s.id===(p?.shiftId??emp.defShiftId));
+        const rotation=rangeRotations(emp.ruleId??raw?.ruleId,d);
+        return rotation ? rotationScheduleRow(rotation,d) : p ? shiftById.get(p.shiftId) : cachedDefShift;
+      };
       const deductAbsence=deducted.has(employmentId);
     const out: AttendanceRangeRow[] = [];
     let d = from;
@@ -3337,7 +3380,8 @@ export async function requestAttendanceCorrection(
   // switch belongs to the Attendance Request Settings screen, which is deliberately stage two. An empty
   // string stores as NULL rather than as a blank note nobody wrote.
   const remark = (p.remark ?? '').trim() || null;
-  const requestKind = p.requestKind ?? null;
+  if (p.requestKind && ((p.requestKind === 'self_overtime') !== (!clockChanges && !checkIn && !checkOut && hasOt))) throw new Error('The application type does not match the requested clock or overtime changes.');
+  const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
   return withTenant(ctx, async (tx) => {
     if (clockChanges) {
@@ -3440,6 +3484,7 @@ export async function requestAttendanceCorrection(
         clockChanges,
       })
       .returning({ id: attendanceCorrection.id });
+    await snapshotAttendanceWorkflowTx(tx, ctx, row.id, p.employmentId, attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-correction',
@@ -3514,7 +3559,7 @@ export async function addAttendanceCorrectionAttachment(
       .select({ employmentId: attendanceCorrection.employmentId, status: attendanceCorrection.status })
       .from(attendanceCorrection)
       .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+      .limit(1).for('update');
     if (!req) throw new Error('attendance request not found (or not visible)');
     if (req.status !== 'pending') throw new Error('A file can only be attached while the request is waiting.');
     const [row] = await tx
@@ -3673,6 +3718,38 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
   return row ?? null;
 }
 
+/** Decision/cancellation writers use subject -> correction -> workflow/payroll -> audit order. Discovering
+ * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
+ * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
+async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
+  const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
+    .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
+  if (!visible) return undefined;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
+  const [locked] = await tx.select().from(attendanceCorrection)
+    .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
+    .limit(1).for('update');
+  return locked;
+}
+
+/** NULL appliedAt predates deferred OT and cannot prove that an old approval never reached attendance.
+ * Only the immutable deferred approval event, with no subsequent effect evidence, permits no-op withdrawal. */
+async function provenUnlandedDeferredOtTx(tx: Tx, cor: typeof attendanceCorrection.$inferSelect) {
+  if (cor.status !== 'approved' || cor.appliedAt || cor.requestedOtMinutes == null
+    || cor.proposedCheckIn || cor.proposedCheckOut || cor.clockChanges) return false;
+  const [approval] = await tx.select({ payload: domainEvent.payload }).from(domainEvent)
+    .where(and(eq(domainEvent.tenantId, cor.tenantId), eq(domainEvent.aggregateId, cor.id),
+      eq(domainEvent.eventType, 'attendance-correction.approved')))
+    .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
+  if ((approval?.payload as { deferred?: unknown } | undefined)?.deferred !== true) return false;
+  const [effect] = await tx.select({ id: domainEvent.id }).from(domainEvent)
+    .where(and(eq(domainEvent.tenantId, cor.tenantId), or(
+      and(eq(domainEvent.aggregateId, cor.id), eq(domainEvent.eventType, 'attendance-correction.effect.recorded')),
+      and(eq(domainEvent.eventType, 'attendance.amended'), sql`${domainEvent.payload}->>'correctionId'=${cor.id}`,
+        sql`${domainEvent.payload}->>'otPlanApplied'='true'`)))).limit(1);
+  return !effect;
+}
+
 /** Decide a correction. Approval upserts the attendance row with the proposed punches,
  *  re-derived through the time engine (so corrected OT flows to payroll). No self-approval.
  *
@@ -3688,14 +3765,11 @@ export class MissingAttendanceRejectReasonError extends Error {
 
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
-  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; deciderEmploymentId?: string; today?: string },
+  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; deciderEmploymentId?: string; today?: string },
 ) {
+  ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
   return withTenant(ctx, async (tx) => {
-    const [cor] = await tx
-      .select()
-      .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1).for('update');
+    const cor = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
@@ -3703,6 +3777,12 @@ export async function decideAttendanceCorrection(
     if (!['approved', 'rejected'].includes(p.decision)) throw new Error('Invalid attendance decision');
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
     if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
+    if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
+    // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
+    const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
+    const actualDeciderEmploymentId = actualDecider?.id ?? null;
+    const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex });
+    if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
 
 
     // 1e9145d4 — true when this approval was HELD ON THE PLAN rather than written to an attendance day.
@@ -3710,8 +3790,27 @@ export async function decideAttendanceCorrection(
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
 
+    // This fixed effect closure may assume only the frozen manager's live database authority.
+    // Audit/event contexts always retain the real delegate. No caller-provided callback executes here.
+    let restoreIdentity: { userId: string; roles: string; grants: string } | undefined;
+    let delegatedIdentity: {user_id:string;roles:string;grants:unknown} | undefined;
+    if (workflowStage.delegatedFinalStageIndex != null) {
+      const identities = await tx.execute(sql`select * from app.attendance_workflow_effect_identity(${cor.id}::uuid,${workflowStage.delegatedFinalStageIndex})`) as unknown as {user_id:string;roles:string;grants:unknown}[];
+      delegatedIdentity = identities[0];
+      if (!delegatedIdentity) throw new Error('The assigned manager no longer has a live login and attendance authority for this request. Ask an authorised HR administrator to complete this stage on their behalf.');
+      const settings = await tx.execute(sql`select current_setting('app.user_id',true) as "userId",current_setting('app.roles',true) as roles,current_setting('app.grants',true) as grants`) as unknown as {userId:string;roles:string;grants:string}[];
+      restoreIdentity = settings[0];
+      await tx.execute(sql`SAVEPOINT attendance_workflow_effect`);
+    }
+    try {
+      if (delegatedIdentity) {
+        await tx.execute(sql`select set_config('app.user_id',${delegatedIdentity.user_id},true),set_config('app.roles',${delegatedIdentity.roles},true),set_config('app.grants',${JSON.stringify(delegatedIdentity.grants)},true)`);
+      }
+      if (restoreIdentity) {
+        const [operationalSubject] = await tx.select({id:employment.id}).from(employment).where(eq(employment.id,cor.employmentId)).limit(1);
+        if (!operationalSubject) throw new Error('The assigned manager no longer has attendance calculation access to this employee. Ask an authorised HR administrator to complete the stage.');
+      }
     if (p.decision === 'approved') {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + cor.employmentId}, 0))`);
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
       const dayType = sched.dayType;
       const hasClockCorrection = cor.proposedCheckIn != null || cor.clockChanges != null;
@@ -3784,6 +3883,7 @@ export async function decideAttendanceCorrection(
       // `attendance.amended` at all: its before/after is taken at the moment the plan LANDS, in
       // applyApprovedOtPlanTx, because that is the moment a figure actually moves.
       const beforeFigures = deferred ? null : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
+      const beforePunches = deferred ? [] : (await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).filter(row => !row.voidedAt).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
 
       let amendedId: string | null = null;
       let eventPayload: Record<string, unknown>;
@@ -3991,6 +4091,8 @@ export async function decideAttendanceCorrection(
         // to the write. `applyApprovedOtPlanTx` above can re-assert ot_minutes and its six split columns
         // after the upsert, so the row is the only thing that knows what the day now says.
         const afterFigures = await attendanceFiguresByIdTx(tx, amendedId);
+        const afterPunchFingerprint = clockFingerprint(await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate));
+        await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-correction',aggregateId:cor.id,eventType:'attendance-correction.effect.recorded',actor:actorOf(ctx),subjectEmploymentId:cor.employmentId,payload:{attendanceId:amendedId,date:cor.attendanceDate,before:beforeFigures,after:afterFigures,beforePunches,afterPunchFingerprint,clockChanged:hasClockCorrection}});
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'attendance',
@@ -4056,12 +4158,30 @@ export async function decideAttendanceCorrection(
       deferredApproval = deferred;
     }
 
+    } catch (effectError) {
+      // A SQL error aborts the subtransaction. Restore its savepoint before resetting identity.
+      if (restoreIdentity) await tx.execute(sql`ROLLBACK TO SAVEPOINT attendance_workflow_effect`);
+      throw effectError;
+    } finally {
+      if (restoreIdentity) await tx.execute(sql`select set_config('app.user_id',${restoreIdentity.userId},true),set_config('app.roles',${restoreIdentity.roles},true),set_config('app.grants',${restoreIdentity.grants},true)`);
+      if (restoreIdentity) await tx.execute(sql`RELEASE SAVEPOINT attendance_workflow_effect`);
+    }
+
+    if (restoreIdentity) {
+      const [restored] = await tx.execute(sql`select current_setting('app.user_id',true) as "userId",current_setting('app.roles',true) as roles,current_setting('app.grants',true) as grants`) as unknown as {userId:string;roles:string;grants:string}[];
+      if (!isDeepStrictEqual(restored,restoreIdentity)) throw new Error('Delegated attendance authority was not restored. The decision was rolled back.');
+    }
+
+    // Final approval emits its stage audit only after the effect, payroll/recalc work and delegated
+    // identity restoration. The original actor and database decidedAt were frozen with the decision.
+    if (workflowStage.finalApprovalEvent) await appendEvent(tx, workflowStage.finalApprovalEvent);
+
     await tx
       .update(attendanceCorrection)
       .set({
         status: p.decision,
         rejectReason,
-        decidedByEmploymentId: p.deciderEmploymentId ?? null,
+        decidedByEmploymentId: actualDeciderEmploymentId,
         decidedAt: sql`now()`,
       })
       .where(eq(attendanceCorrection.id, cor.id));
@@ -4075,7 +4195,11 @@ export async function decideAttendanceCorrection(
       payload: {
         decision: p.decision,
         rejectReason,
-        deciderEmploymentId: p.deciderEmploymentId ?? null,
+        deciderEmploymentId: actualDeciderEmploymentId,
+        actualUserId: actorOf(ctx).id,
+        actualPersonId: ctx.personId ?? null,
+        ...(restoreIdentity ? { effectAuthorityRestored: true } : {}),
+        remarks: p.remarks?.trim() || null,
         // 1e9145d4 — `overtime` tells a consumer which KIND of request was decided. The notification
         // registry needs it: this one event type covers both an overtime plan and a clock-time correction,
         // and a notice headed "Overtime plan approved" on somebody's forgotten clock-out would be wrong.
@@ -4103,10 +4227,11 @@ export function listAttendanceCorrections(
     const rows = await tx
       .select({
         id: attendanceCorrection.id,
+        requestKind: attendanceCorrection.requestKind,
         employmentId: attendanceCorrection.employmentId,
-        personId: employment.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode,
+        personId: sql<string>`subject.person_id`,
+        employee: sql<string>`subject.employee`,
+        employeeCode: sql<string | null>`subject.employee_code`,
         attendanceDate: attendanceCorrection.attendanceDate,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
@@ -4127,8 +4252,7 @@ export function listAttendanceCorrections(
         otApprovalCalculation: attendancePolicy.otApprovalCalculation,
       })
       .from(attendanceCorrection)
-      .innerJoin(employment, eq(employment.id, attendanceCorrection.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`, sql`true`)
       .leftJoin(
         attendance,
         and(
@@ -4136,20 +4260,22 @@ export function listAttendanceCorrections(
           eq(attendance.attendanceDate, attendanceCorrection.attendanceDate),
         ),
       )
-      .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
+      .leftJoin(attendancePolicy, sql`${attendancePolicy.companyId}=subject.company_id`)
       .where(
         and(
           opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
           opts.companyIds && opts.companyIds.length
-            ? inArray(employment.companyId, opts.companyIds)
+            ? sql`subject.company_id IN (${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`,`)})`
             : undefined,
         ),
       )
-      .orderBy(desc(attendanceCorrection.createdAt))
+      .orderBy(desc(attendanceCorrection.createdAt),desc(attendanceCorrection.id))
       .limit(100);
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage
     // from the approver-facing list (a no-op for rows the caller sees in their own right).
-    return filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const visible = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
+    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null }));
   });
 }
 
@@ -4290,6 +4416,20 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
   if (s.dayType === 'rest_day') return 'rest_day';
   if (s.source === 'default-shift-rest') return 'off_day';
   return 'workday';
+}
+
+/** Canonical date facts for attendance allowance previews. No measurement is recomputed here.
+ * Company-policy halfWorkingDays classify as half, while the policy branch retains
+ * its existing full scheduled-minute threshold. This seam never invents a duration. */
+export async function allowanceScheduleFactsTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<{
+  shiftId: string | null; kind: 'full' | 'half' | 'off' | 'rest' | 'holiday'; scheduledMinutes: number;
+}> {
+  const resolved = await scheduleFor(tx, employmentId, date, memo);
+  const kind = resolved.dayType === 'holiday' ? 'holiday'
+    : resolved.dayType === 'rest_day' ? 'rest'
+    : resolved.scheduleDayKind ?? (resolved.source === 'default-shift-rest' ? 'off' : 'full');
+  return { shiftId: resolved.displayShiftId ?? null, kind,
+    scheduledMinutes: kind === 'off' || kind === 'rest' ? 0 : resolved.normalMinutesOverride ?? resolved.scheduledMinutes };
 }
 
 /**
@@ -4436,9 +4576,12 @@ export function otPlanCalendarMonth(
     const shiftById = new Map<string, MonthShift>();
     for (const sr of periodShifts) shiftById.set(sr.id, { ...sr, ...week(sr.ruleId, sr) });
     const cachedDefault: MonthShift | undefined = cachedRow ? { ...cachedRow, ...week(cachedRow.ruleId, cachedRow) } : undefined;
+    const monthRotations = await rotationLookupTx(tx);
     const defaultOn = (d: string): MonthShift | undefined => {
       const p = pickArrangementOn(periods, d);
-      return p ? shiftById.get(p.shiftId) : cachedDefault;
+      const raw = p ? periodShifts.find(s => s.id === p.shiftId) : cachedRow;
+      const rotation = monthRotations(empRow[0].ruleId ?? raw?.ruleId,d);
+      return rotation ? rotationScheduleRow(rotation,d) : p ? shiftById.get(p.shiftId) : cachedDefault;
     };
 
     const hhmm = (t: string | null | undefined): string | null => (t == null ? null : t.slice(0, 5));
@@ -5029,7 +5172,7 @@ async function applyApprovedOtPlanTx(
   const claimed = await tx
     .update(attendanceCorrection)
     .set({ appliedAt: sql`now()` })
-    .where(and(eq(attendanceCorrection.id, plan.id), isNull(attendanceCorrection.appliedAt)))
+    .where(and(eq(attendanceCorrection.id, plan.id), eq(attendanceCorrection.status, 'approved'), isNull(attendanceCorrection.appliedAt)))
     .returning({ id: attendanceCorrection.id });
   if (claimed.length === 0) return null;
 
@@ -5171,11 +5314,7 @@ export async function cancelPlannedOvertime(
 ): Promise<{ status: 'cancelled' }> {
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    const [plan] = await tx
-      .select()
-      .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+    const plan = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!plan) throw new OvertimePlanWithdrawNotAllowedError('overtime plan not found (or not visible)');
     if (plan.clockChanges) throw new OvertimePlanWithdrawNotAllowedError('A clock correction cannot be withdrawn as an overtime plan.');
 
@@ -5200,6 +5339,11 @@ export async function cancelPlannedOvertime(
           'These hours have already been counted on the attendance day, so they can no longer be withdrawn.',
         );
       }
+      if (!await provenUnlandedDeferredOtTx(tx, plan)) {
+        throw new OvertimePlanWithdrawNotAllowedError(
+          'This historical approval has no proof that its hours are uncounted. Submit an attendance correction instead.',
+        );
+      }
       if (plan.attendanceDate < today) {
         throw new OvertimePlanWithdrawNotAllowedError(
           'The overtime date has passed, so this plan can no longer be withdrawn.',
@@ -5209,7 +5353,7 @@ export async function cancelPlannedOvertime(
 
     await tx
       .update(attendanceCorrection)
-      .set({ status: 'cancelled' })
+      .set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: 'withdrawn' })
       .where(eq(attendanceCorrection.id, plan.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -5250,6 +5394,8 @@ export type MyAttendanceRequestRow = {
   createdAt: Date;
   /** True when a supporting file was attached (the file itself streams from its own route). */
   hasAttachment: boolean;
+  workflow?: Awaited<ReturnType<typeof import('./attendance-workflow').attendanceWorkflowForTx>>;
+  cancellationKind?: 'cancelled' | 'withdrawn' | null;
 };
 
 /**
@@ -5315,6 +5461,7 @@ export function myAttendanceCorrections(
         clockChanges: attendanceCorrection.clockChanges,
         remark: attendanceCorrection.remark,
         requestKind: attendanceCorrection.requestKind,
+        cancellationKind: attendanceCorrection.cancellationKind,
         status: attendanceCorrection.status,
         appliedAt: attendanceCorrection.appliedAt,
         decidedAt: attendanceCorrection.decidedAt,
@@ -5346,7 +5493,8 @@ export function myAttendanceCorrections(
           )
       ).map((r) => r.id),
     );
-    return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id) }));
+    const workflows = await attendanceWorkflowsForTx(tx, rows.map(r => r.id));
+    return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id), workflow: workflows.get(r.id) ?? null }));
   });
 }
 
@@ -5374,14 +5522,10 @@ export async function cancelOwnAttendanceCorrection(
   p: { correctionId: string },
 ): Promise<{ status: 'cancelled' }> {
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx
-      .select()
-      .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+    const req = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!req) throw new Error('attendance request not found (or not visible)');
     await assertOwnCorrectionTx(tx, ctx, req.employmentId);
-    if (req.proposedCheckIn == null && req.requestedOtMinutes != null) {
+    if (attendanceApplicationType(req) === 'self_overtime') {
       throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
     }
     if (req.status !== 'pending') {
@@ -5398,7 +5542,7 @@ export async function cancelOwnAttendanceCorrection(
     }
     await tx
       .update(attendanceCorrection)
-      .set({ status: 'cancelled' })
+      .set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: 'withdrawn' })
       .where(eq(attendanceCorrection.id, p.correctionId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -5943,41 +6087,6 @@ export async function addImportedPunchesBatchTx(
 //
 // Owned by feedback item 1c1b321a. core/attendance-recompute.ts is its only caller.
 
-/** The shift the recompute measured a day against, for the preview's Shift column. Keyed off the SOURCE
- *  scheduleFor itself reported, so it cannot name a shift the engine did not use: only the two shift
- *  branches have a shift at all, and the rest/policy branches honestly have none. */
-async function recomputeShiftCode(
-  tx: Tx,
-  employmentId: string,
-  date: string,
-  source: ResolvedSchedule['source'],
-): Promise<string | null> {
-  if (source === 'roster-shift') {
-    const [row] = await tx
-      .select({ code: shift.code })
-      .from(rosterAssignment)
-      .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
-      .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, date)))
-      .limit(1);
-    return row?.code ?? null;
-  }
-  if (source === 'default-shift') {
-    // Same ladder scheduleFor walked one call earlier: the dated arrangement in force on `date`
-    // (18504ca6), else employment.default_shift_id.
-    const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
-    const [row] = arrangement
-      ? await tx.select({ code: shift.code }).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
-      : await tx
-          .select({ code: shift.code })
-          .from(employment)
-          .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-          .where(eq(employment.id, employmentId))
-          .limit(1);
-    return row?.code ?? null;
-  }
-  return null;
-}
-
 /**
  * Re-derive ONE stored day against the schedule that applies to it TODAY, and hand back both the figures
  * and the exact column bag to write. Writes nothing itself.
@@ -6012,7 +6121,7 @@ export async function recomputeDayFigures(
   return {
     dayType: sched.dayType,
     source: sched.source,
-    shiftCode: await recomputeShiftCode(tx, p.employmentId, p.date, sched.source),
+    shiftCode: sched.displayShiftCode ?? null,
     otPreserved: keepOt,
     /** Exactly the columns a recompute may write: status, day type, the two totals and every stage-1
      *  figure. `check_in_at` / `check_out_at` are absent by construction — see the header above. */
@@ -6029,5 +6138,85 @@ export async function recomputeDayFigures(
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
-  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: await recomputeShiftCode(tx, employmentId, date, schedule.source) };
+  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
+}
+
+
+/** Administrative cancellation/withdrawal. Historical decisions remain immutable. Approved results may
+ * be reversed only if the recorded effect still owns the day and no dependent leave credit exists. */
+export async function cancelAttendanceApplication(ctx: SessionContext, p: {
+    correctionId: string;
+    kind: 'cancelled' | 'withdrawn';
+    reason: string;
+}) {
+    if (!['cancelled', 'withdrawn'].includes(p.kind) || !p.reason?.trim() || p.reason.trim().length > 1000)
+        throw new Error('A cancellation reason of 1–1000 characters is required.');
+    return withTenant(ctx, async (tx) => {
+        const cor = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
+        if (!cor)
+            throw new Error('Attendance application not found or not visible.');
+        const [subject] = await tx.select({ personId: employment.personId, allowed: sql<boolean> `app.can_admin_employment(${employment.id})` }).from(employment).where(eq(employment.id, cor.employmentId)).limit(1);
+        if (!subject?.allowed || (!hasGrantFor(withEffectiveGrants(ctx), 'hr_admin') && !hasGrantFor(withEffectiveGrants(ctx), 'super_admin')))
+            throw new Error('Only an authorised HR administrator may cancel attendance applications.');
+        if (ctx.personId && ctx.personId === subject.personId)
+            throw new Error('You cannot administratively cancel your own attendance application.');
+        if (cor.status !== 'pending' && cor.status !== 'approved')
+            throw new Error('Only pending or approved applications can be cancelled or withdrawn.');
+        let reversed = false;
+        if (cor.status === 'approved' && !await provenUnlandedDeferredOtTx(tx, cor)) {
+            const batches = await lockAttendancePayrollTx(tx, cor.employmentId, cor.attendanceDate);
+            const later = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId, cor.employmentId), eq(attendanceCorrection.attendanceDate, cor.attendanceDate), eq(attendanceCorrection.status, 'approved'), sql `${attendanceCorrection.id}<>${cor.id}`, sql `${attendanceCorrection.decidedAt}>${cor.decidedAt}`)).limit(1);
+            if (later.length)
+                throw new Error('A later approval affects this day. Use a new correction so its decisions are preserved.');
+            const credits = await tx.select({ id: toilAccrual.id }).from(toilAccrual).where(and(eq(toilAccrual.employmentId, cor.employmentId), eq(toilAccrual.workedDate, cor.attendanceDate), sql `${toilAccrual.status}<>'reversed'`)).limit(1);
+            if (credits.length)
+                throw new Error('This day has a dependent Leave Credit. Review and reverse that credit through Leave Credits before cancelling this application.');
+            const [day] = await tx.select({ id: attendance.id }).from(attendance).where(and(eq(attendance.employmentId, cor.employmentId), eq(attendance.attendanceDate, cor.attendanceDate))).limit(1).for('update');
+            const [effect] = await tx.select({ payload: domainEvent.payload }).from(domainEvent).where(and(eq(domainEvent.aggregateId, cor.id), eq(domainEvent.eventType, 'attendance-correction.effect.recorded'))).orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
+            type Figures = NonNullable<Awaited<ReturnType<typeof attendanceFiguresByIdTx>>>;
+            let data = effect?.payload as {
+                attendanceId: string;
+                before: Figures | null;
+                after: Figures;
+                beforePunches: {
+                    id: string;
+                    punchAt: string;
+                    direction: 'in' | 'out';
+                }[];
+                afterPunchFingerprint: string;
+                clockChanged: boolean;
+            } | undefined;
+            // A deferred overtime plan records its effect when it lands, in attendance.amended. It changes only OT.
+            if (!data && !cor.proposedCheckIn && !cor.clockChanges) {
+                const [landing] = await tx.select({ payload: domainEvent.payload, attendanceId: domainEvent.aggregateId }).from(domainEvent).where(and(eq(domainEvent.eventType, 'attendance.amended'), sql `${domainEvent.payload}->>'correctionId'=${cor.id}`, sql `${domainEvent.payload}->>'otPlanApplied'='true'`)).orderBy(desc(domainEvent.occurredAt), desc(domainEvent.id)).limit(1);
+                if (landing) {
+                    const v = landing.payload as {
+                        before: Figures;
+                        after: Figures;
+                    };
+                    data = { attendanceId: landing.attendanceId, before: v.before, after: v.after, beforePunches: [], afterPunchFingerprint: '', clockChanged: false };
+                }
+            }
+            if (!day || !data || day.id !== data.attendanceId)
+                throw new Error('This historical application has no reversible effect record. Submit a new attendance correction.');
+            const current = await attendanceFiguresByIdTx(tx, day.id);
+            if (!isDeepStrictEqual(current, data.after))
+                throw new Error('Attendance has changed since this approval. Submit a new correction instead of reversing later changes.');
+            const raw = await punchesForCorrectionTx(tx, cor.employmentId, cor.attendanceDate);
+            if (data.clockChanged && clockFingerprint(raw) !== data.afterPunchFingerprint)
+                throw new Error('Clock data has changed since this approval. Submit a new correction instead.');
+            if (data.clockChanged)
+                await applyClockChangesTx(tx, ctx, { attendanceId: day.id, employmentId: cor.employmentId, date: cor.attendanceDate, reason: p.reason.trim(), correctionId: cor.id, changes: { version: 1, baseline: clockFingerprint(raw), entries: data.beforePunches } });
+            // The projection is serialized as unknown-valued audit data, but these immutable internal
+            // receipts contain exactly this schema projection. Keep the write's type equally narrow.
+            const restored = (data.before ?? Object.fromEntries(Object.keys(AMENDED_FIGURE_COLUMNS).map(k => [k, k === 'status' ? 'absent' : k === 'dayType' ? data!.after.dayType : null]))) as Pick<typeof attendance.$inferSelect, keyof typeof AMENDED_FIGURE_COLUMNS>;
+            await tx.update(attendance).set(restored).where(eq(attendance.id, day.id));
+            await markAttendancePayrollTx(tx, ctx, batches, cor.employmentId);
+            await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance', aggregateId: day.id, eventType: 'attendance.application.reversed', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { correctionId: cor.id, reason: p.reason.trim(), before: current, after: await attendanceFiguresByIdTx(tx, day.id) } });
+            reversed = true;
+        }
+        await tx.update(attendanceCorrection).set({ status: 'cancelled', cancelledAt: new Date(), cancelledByUserId: actorOf(ctx).id ?? 'system', cancellationKind: p.kind, cancellationReason: p.reason.trim() }).where(eq(attendanceCorrection.id, cor.id));
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
+        return { status: 'cancelled' as const, reversed };
+    });
 }

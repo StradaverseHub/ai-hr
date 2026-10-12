@@ -43,6 +43,7 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
     {state.error&&<ErrorBanner message={state.error}/>}
     {policy&&<input type="hidden" name="id" value={policy.id}/>}
     <input type="hidden" name="rules" value={advanced?JSON.stringify(rules):''}/>
+    <fieldset disabled={pending} className="space-y-6">
     <section className="space-y-4 rounded-2xl border border-border p-5">
       <h2 className="font-semibold">{t('sections.information')}</h2>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -108,5 +109,6 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" required name="reviewed" checked={reviewed} onChange={e=>{e.stopPropagation();setReviewed(e.target.checked);}}/>{t('reviewConfirm')}</label>
       <div className="flex items-center gap-4"><button type="submit" className={btnPrimary} disabled={!reviewed||pending}>{t('save')}</button><a className="text-sm text-muted-foreground" href="/admin/attendance-allowance">{t('cancel')}</a></div>
     </section>
+    </fieldset>
   </form>;
 }

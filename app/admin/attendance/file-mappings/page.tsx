@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -24,6 +25,7 @@ export default async function FileMappingsPage({
   searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string }>;
 }) {
   const s = await requireAdmin();
+  const settingsT = await getTranslations('attendanceSettingsHub');
   const t = await getTranslations('clockingFile');
   const sp = await searchParams;
   const [mappings, builtinLast] = await Promise.all([listClockingMappings(s), builtinMappingLastUsed(s)]);
@@ -55,7 +57,8 @@ export default async function FileMappingsPage({
 
   return (
     <div className="mx-auto max-w-[90rem] space-y-6">
-      <PageHeader
+      <AttendanceSettingsNavigation />
+      <PageHeader back={{ href: '/admin/attendance/settings', label: settingsT('backToSettings') }}
         title={t('list.title')}
         description={t('list.description')}
         actions={

@@ -445,7 +445,7 @@ describe('1c5602cc — every string on the screen exists in all six locales', ()
     // catalogue is the word it always was.
     expect(keys).toContain('sectionGeneral');
     expect(keys).toContain('sectionWorkingDay');
-    expect(keys).toContain('gapRotationTitle');
+    expect(keys).toContain('gapRosterTitle');
     // Every one of the four per-group pages is actually swept, not just the list.
     for (const f of SCREEN_FILES) expect(read(f), `${f} resolves admin.scheduleConfig`).toContain("getTranslations('admin.scheduleConfig')");
   });
@@ -495,28 +495,27 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
     ...new Set([...stripComments(read('db/schema.ts')).matchAll(/\w+\(\s*'([a-z][a-z0-9_]*)'/g)].map((m) => m[1])),
   ];
 
-  it('the card and this guard cover the SAME four gaps', () => {
+  it('the card and this guard cover the SAME remaining gaps', () => {
     expect(
       renderedGaps(),
       `A gap entry was added to or removed from the "Not configured here" card without its staleness ` +
         `guard moving with it. Every entry on that card is a claim that something is not stored; each one ` +
         `needs a case below that fails when it becomes stored, or the card silently rots into a lie.`,
-    ).toEqual(['gapDayTypes', 'gapOtCap', 'gapRoster', 'gapRotation']);
+    ).toEqual(['gapDayTypes', 'gapOtCap', 'gapRoster']);
   });
 
-  it('gapRotation — no rotation cycle is stored anywhere', () => {
-    // `rotat` only: this repo already stores a payroll cycle and a review cycle, so a bare `cycle`
-    // scan is all false alarm. A rotation column would carry the word the reporter used.
-    const stored = schemaIdentifiers().filter((n) => /rotat/.test(n));
-    const inGenerator = [...stripComments(read('core/roster.ts')).matchAll(/\brotation\b/g)].length;
-    expect(
-      { stored, inGenerator },
-      `admin.scheduleConfig.gapRotationTitle/gapRotationBody say a repeating rotation cycle is "not stored ` +
-        `anywhere" and that a control for it "would need storage that does not exist yet". Something ` +
-        `rotation-shaped now exists. If rotation storage has shipped, DELETE gapRotationTitle and ` +
-        `gapRotationBody from all six messages/*.json and drop their <dl> row from ${PAGE} — then build ` +
-        `the control the card was standing in for.`,
-    ).toEqual({ stored: [], inGenerator: 0 });
+  it('rotation storage has replaced its obsolete gap card with an atomic editor', () => {
+    expect(schemaIdentifiers()).toContain('attendance_rotation');
+    expect(read(PAGE)).not.toMatch(/gapRotation/);
+    const group = read('app/admin/attendance/schedule/group-sections.tsx');
+    expect(group).toContain('ScheduleRotationEditor');
+    expect(read('app/admin/attendance/schedule/rotation-actions.ts')).toContain('saveScheduleRotation');
+    for (const locale of ['en','ms','ta','th','vi','zh']) {
+      const messages = JSON.parse(read(`messages/${locale}.json`));
+      expect(messages.admin.scheduleConfig).not.toHaveProperty('gapRotationTitle');
+      expect(messages.admin.scheduleConfig).not.toHaveProperty('gapRotationBody');
+      expect(messages.admin.rotation.title).toBeTruthy();
+    }
   });
 
   it('gapRoster — the roster rule is still a pure predicate, not a stored setting', () => {

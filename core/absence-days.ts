@@ -88,12 +88,13 @@ import { holidayDatesFor, holidayMemoKey } from './holidays';
 // does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
 // dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
 // fix is never test/pack-drift-allowlist.json — that list is audited kernel-contract debt and only shrinks.
-import { isWorkingDayKind, shiftDayKindFor, weekPatternFor } from '../packs/attendance/service';
+import { isWorkingDayKind, shiftDayKindFor, weekPatternFor, rotationLookupTx } from '../packs/attendance/service';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
 // approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
 // audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
 // the facade, which is what packs/leave/service exists for. `core/holidays` is deliberately NOT a pack
 // boundary (shared spine, see packs/leave/index.ts) and is imported directly.
+import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
 import { approvedLeaveDates } from '../packs/leave/service';
 
 const MS_DAY = 86_400_000;
@@ -235,6 +236,8 @@ export async function absenceBreakdownByEmployment(
   if (ids.length === 0) return out;
 
   const scheduled = opts.rules === 'scheduled';
+  const rotations = await rotationLookupTx(tx);
+  const readSchedule = scheduled || rotations.versions.length > 0;
   const until = opts.until ?? todayInKualaLumpur();
   const lastCounted = periodEnd < until ? periodEnd : until;
 
@@ -282,7 +285,7 @@ export async function absenceBreakdownByEmployment(
     // requests (§4C), so the request's own status is the whole answer here. Spans are expanded by the
     // caller loop below; a partial request is almost always one day. `scheduled` only: the legacy count
     // treated a partial-leave date with no attendance row as a plain absence, and legacy must not move.
-    scheduled
+    readSchedule
       ? tx
           .select({
             employmentId: leaveRequest.employmentId,
@@ -311,7 +314,7 @@ export async function absenceBreakdownByEmployment(
     // shift — scheduleFor requires start AND end before it treats the row as work — so it falls through to
     // the rostered-rest branch exactly as scheduleFor does. `scheduled` only: the legacy count never
     // looked at the roster at all.
-    scheduled
+    readSchedule
       ? tx
           .select({
             employmentId: rosterAssignment.employmentId,
@@ -333,7 +336,7 @@ export async function absenceBreakdownByEmployment(
     // ec4cbf63 — the employee's DEFAULT shift and its weekly pattern, which decides working-vs-rest BEFORE
     // the flat company policy. A pattern-less shift has no working days (deliberate; see scheduleFor).
     // `scheduled` only, for the same reason as the roster.
-    scheduled
+    readSchedule
       ? tx
           .select({
             employmentId: employment.id,
@@ -362,13 +365,13 @@ export async function absenceBreakdownByEmployment(
     // the Schedule Group of each listed employment, and the week every group in the tenant declares.
     // The rule table is one small tenant-wide library (production: two rows), so it is read whole rather
     // than joined per employment. `scheduled` only, for the same reason as the roster and the shifts.
-    scheduled
+    readSchedule
       ? tx
           .select({ employmentId: employment.id, ruleId: employment.attendanceRuleId })
           .from(employment)
           .where(inArray(employment.id, empIds))
       : Promise.resolve([] as { employmentId: string; ruleId: string | null }[]),
-    scheduled
+    readSchedule
       ? tx
           .select({
             id: attendanceRule.id,
@@ -400,6 +403,16 @@ export async function absenceBreakdownByEmployment(
       return [d.employmentId, weekPatternFor(ruleId ? weekOfRule.get(ruleId) : null, d)] as const;
     }),
   );
+
+  const periodsByEmployment = rotations.versions.length ? await liveArrangementsTx(tx, empIds) : new Map();
+  const datedIds = [...new Set([...periodsByEmployment.values()].flatMap(periods=>periods.map((p:{shiftId:string})=>p.shiftId)))];
+  const datedRules = datedIds.length ? await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,datedIds)) : [];
+  const ruleByShift = new Map(datedRules.map(s=>[s.id,s.ruleId]));
+  const rotationOn = (id:string,date:string) => {
+    const period = pickArrangementOn(periodsByEmployment.get(id),date);
+    const fallback = period ? ruleByShift.get(period.shiftId) : defaultShifts.find(s=>s.employmentId===id)?.ruleId;
+    return rotations(groupOfEmp.get(id) ?? fallback,date);
+  };
 
   // ── The holiday memo ────────────────────────────────────────────────────────────────────────────────
   // `holidayDatesFor` is single-employment and costs 3–4 round trips a call; a company-wide month roll-up
@@ -498,6 +511,7 @@ export async function absenceBreakdownByEmployment(
       // reaches the same `continue`.)
       if (holidays.has(d)) continue;
 
+      const rotated = rotationOn(e.employmentId,d);
       if (!scheduled) {
         // ── LEGACY: main's loop, transcribed. Company weekday pattern only; ANY attendance row means the
         //    day is spoken for (so an explicitly-Absent row is NOT an absence, and the month roll-up's
@@ -505,7 +519,10 @@ export async function absenceBreakdownByEmployment(
         //    everything else scheduled and unrecorded is an absence. Partial-day leave is invisible here,
         //    so a half-day leave date with no clock-in counts as a whole absent day — wrong, and exactly
         //    what production does today.
-        if (!companyDays.includes(isoWeekdayOf(d))) continue;
+        const override = roster?.get(d);
+        const working = rotated ? override ? !override.isRestDay && override.hasShift
+          : isWorkingDayKind(rotated.day.kind) : companyDays.includes(isoWeekdayOf(d));
+        if (!working) continue;
         if (recorded.has(d)) continue;
         if (onLeave.has(d)) leaveDays += 1;
         else absentDays += 1;
@@ -517,6 +534,7 @@ export async function absenceBreakdownByEmployment(
       const ra = roster?.get(d);
       let isScheduled: boolean;
       if (ra) isScheduled = !ra.isRestDay && ra.hasShift;
+      else if (rotated) isScheduled = isWorkingDayKind(rotated.day.kind);
       else if (hasDefaultShift) isScheduled = pattern != null && isWorkingDayKind(shiftDayKindFor(pattern, d));
       else isScheduled = companyDays.includes(isoWeekdayOf(d));
       if (!isScheduled) continue;
