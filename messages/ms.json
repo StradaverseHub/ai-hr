@@ -11708,6 +11708,13 @@
     },
     "drawer": {
       "close": "Tutup"
+    },
+    "current": {
+      "selectedRecord": "Rekod dipilih",
+      "openRecord": "Buka rekod penuh",
+      "view": "Paparan rekod",
+      "ledger": "Lejar",
+      "table": "Jadual"
     }
   },
   "kb": {

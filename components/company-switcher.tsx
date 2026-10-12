@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
 import { cn } from '@/lib/utils';
-import { useIsMonolith } from '@/components/ui-theme-context';
+import { useIsMonolith, useUiTheme } from '@/components/ui-theme-context';
 
 /**
  * Odoo-style multi-company context: shows the active company/companies, multi-select to re-scope.
@@ -57,6 +57,7 @@ export function CompanySwitcher({
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
   const monolith = useIsMonolith();
+  const current = useUiTheme() === 'current';
 
   // Resync the pending picks from the server-resolved scope after every revalidation, WITHOUT
   // remounting (a key on the component would tear down and close the popover mid-pick). The Set is
@@ -96,8 +97,8 @@ export function CompanySwitcher({
         aria-expanded={open}
         className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98] monolith:gap-1.5 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink monolith:active:scale-100"
       >
-        <span className="size-2 shrink-0 rounded-full bg-primary monolith:hidden" />
-        <span className="min-w-0 max-w-[14rem] truncate">{label}</span>
+        {current ? <span className="current-scope-mark" aria-hidden>{label.slice(0, 1)}</span> : <span className="size-2 shrink-0 rounded-full bg-primary monolith:hidden" />}
+        <span className="min-w-0 max-w-[14rem] truncate">{current && <span className="current-scope-caption">{t('companyContext')}</span>}{label}</span>
         {/* r398 — Monolith's top line names the company as mono text with a ▾ (README §3). */}
         {monolith && (
           <span aria-hidden className="shrink-0 text-ink">

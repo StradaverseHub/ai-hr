@@ -11708,6 +11708,13 @@
     },
     "drawer": {
       "close": "Đóng"
+    },
+    "current": {
+      "selectedRecord": "Bản ghi đã chọn",
+      "openRecord": "Mở bản ghi đầy đủ",
+      "view": "Chế độ xem bản ghi",
+      "ledger": "Sổ cái",
+      "table": "Bảng"
     }
   },
   "kb": {

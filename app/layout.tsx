@@ -277,7 +277,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     every control it has in Classic and gets MORE room, not less. */}
                 <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground monolith:flex-1 monolith:gap-[22px] monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em]">
                   <ShellRoutePath />
-                  <span className="shrink-0 font-medium text-foreground/80 monolith:hidden">Demo Group</span>
+                  <span data-shell-group-label className="shrink-0 font-medium text-foreground/80 monolith:hidden">Demo Group</span>
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   {showDevSwitcher && (
                     <>
