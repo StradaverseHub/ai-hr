@@ -13,6 +13,11 @@ import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner,
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
+vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('../lib/ai')>(),generateDraft:vi.fn()}));
+vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
+import { generateDraft } from '../lib/ai';
+import { resolveActiveAiConfig } from '../core/ai-config';
+
 const year=Number(todayInKualaLumpur().slice(0,4));
 describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   let b:Base,a:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},self:SessionContext,mgr:SessionContext,cycleId:string,reviewId:string;
@@ -20,6 +25,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   const hire=(name:string)=>hireEmployee(a,{person:{fullName:name,primaryEmail:`${randomUUID()}@onehr.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
   const view=(ctx:SessionContext=mgr)=>perf.getOnehrReview(ctx,reviewId).then(v=>{if(!v)throw Error('Missing view');return v;});
   beforeEach(async()=>{
+    vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
     await resetDb();b=await seedBase();a=adminCtx(b);await setModule(b.tenantId,'performance','active');await setModule(b.tenantId,'rewards','active');a=await entitledCtx(b);
     subject=await hire('Assessment subject');manager=await hire('Assessment manager');
     const ctx=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...a,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:undefined});
@@ -54,6 +60,7 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     expect((await view(self)).competencies.map(c=>c.self)).toEqual(['no','no']);
     expect((await view(self)).peers).toEqual([]);expect((await view(self)).potential).toBeNull();
     expect(await withTenant(self,tx=>tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'onehr.panel-assigned')))).toEqual([]);
+    expect(await withTenant(self,tx=>tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'peer-feedback-request.created')))).toEqual([]);
     const frozenId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     expect((await view(self)).result).toMatchObject({id:frozenId,performance:null,potential:null,talent:null});
     expect(await withTenant(self,tx=>tx.select().from(schema.onehrResult))).toEqual([]);
@@ -64,6 +71,19 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/finalized/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrResult).set({digest:'tampered'}).where(eq(schema.onehrResult.id,frozenId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
     await expect(perf.configureOnehrCycle(a,cycleId,1,defaultPolicy(framework))).rejects.toThrow(/fixed/);
+  });
+  it('preserves the opening company and grade after the native employment changes company',async()=>{
+    await complete();
+    const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Original company cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
+    const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination company'}).returning();
+    // Entity transfer changes the existing employment company; it does not create a second employment.
+    await owner.db.update(schema.employment).set({companyId:destination.id,gradeId:null}).where(eq(schema.employment.id,subject.employmentId));
+    await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','Confirmed after transfer');
+    const c=await perf.getOnehrCalibration(a,sessionId);await perf.lockOnehrCalibration(a,sessionId,c.session.revision,'');
+    await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({companyId:destination.id}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/snapshot is immutable/)})});
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [stored]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+    expect(stored).toMatchObject({companyId:b.companyId,grade:'12'});expect((await view(self)).grade).toBe('12');
   });
   it('rejects stale submissions, self approvals, legacy bypasses, and cross-tenant requests',async()=>{
     const first=await view(self);await perf.saveOnehrKpis(self,reviewId,first.revision,[],false);
@@ -124,6 +144,34 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
     c=await perf.getOnehrCalibration(a,sessionId);expect(c.session.lockedAt).not.toBeNull();
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('ME');
   });
+  it('keeps a reviewer’s own calibration hidden even inside an assigned mixed cohort',async()=>{
+    const [other]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Mixed own cohort',companyId:b.companyId,tier:'group',reviewerUserIds:[self.userId!],reviewIds:[reviewId,other.reviewId],pbtAchievement:null,mode:'replace'});
+    const c=await perf.getOnehrCalibration(self,sid);expect(c.canLockCohort).toBe(false);expect(c.rows.map(r=>r.entry.reviewId)).toEqual([other.reviewId]);
+    expect((await withTenant(self,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sid)))).map(r=>r.reviewId)).toEqual([other.reviewId]);
+    await expect(perf.saveOnehrCalibration(self,sid,c.session.revision,{reviewId,performance:'OU',potential:'High',performanceNote:'Own rating',potentialNote:''})).rejects.toThrow(/cannot be calibrated/);
+    await expect(perf.lockOnehrCalibration(self,sid,c.session.revision,'')).rejects.toThrow(/own calibration/);
+  });
+  it('confirms reward nominations when the two assessment axes are locked separately',async()=>{
+    await complete();
+    const bu=await perf.createOnehrCalibration(a,cycleId,{name:'BU baseline',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.lockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'');
+    const bg=await perf.createOnehrCalibration(a,cycleId,{name:'BG nominations',companyId:b.companyId,tier:'bg',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'','performance');
+    await perf.saveOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:'',confirmTalentDecisions:true,promotion:true,specialReward:true});
+    await perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'','potential');
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect(f.result).toMatchObject({performance:'ME',potential:'High',promotion:true,specialReward:true,pip:false});
+  });
+  it('uses individually locked Group replacements without requiring an unused BG tier',async()=>{
+    await complete();
+    const [pending]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Group replacement',companyId:b.companyId,tier:'group',reviewerUserIds:[a.userId!],reviewIds:[reviewId,pending.reviewId],pbtAchievement:null,mode:'replace'});
+    let c=await perf.getOnehrCalibration(a,sid);await perf.saveOnehrCalibration(a,sid,c.session.revision,{reviewId,performance:'AE',potential:'High',performanceNote:'Cross-company evidence reviewed',potentialNote:''});
+    c=await perf.getOnehrCalibration(a,sid);await perf.lockOnehrCalibration(a,sid,c.session.revision,'','both',reviewId);
+    expect((await perf.getOnehrCalibration(a,sid)).session.lockedAt).toBeNull();
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('AE');
+  });
   it('gives matrix moderators only their assigned KPI lines and revokes access with the edge',async()=>{
     const matrix=peers[0];
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
@@ -166,6 +214,24 @@ describe('OneHR native workflow and Rewards boundary with real RLS',()=>{
   it('rejects AI access before contacting a provider or recording a proposal',async()=>{
     await expect(perf.draftOnehrNarrative(peers[0].ctx,reviewId,'Invent a pay award')).rejects.toThrow(/Only the employee/);
     expect(await owner.db.select().from(schema.agentProposal)).toEqual([]);
+  });
+
+  it('drafts only from authorized current evidence and records indices without evidence text',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Private evidence must stay private.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
+    const old=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Outdated milestone claim.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});
+    await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Corrected milestone evidence.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:old,links:[]});
+    const before=await view(mgr);expect(await perf.draftOnehrNarrative(mgr,reviewId,'Verified delivery.')).toBe('Verified delivery.');
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).toContain('Corrected milestone evidence.');expect(prompt).not.toMatch(/Private evidence|Outdated milestone/);
+    expect((await view(mgr)).revision).toBe(before.revision);expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
+    const [proposal]=await owner.db.select().from(schema.agentProposal);expect(proposal).toMatchObject({proposalType:'onehr_narrative',proposal:{items:[0]},adjudication:'accepted',decision:null});expect(JSON.stringify(proposal)).not.toContain('Verified delivery.');
+  });
+  it('silently discards a draft if evidence is retracted while the provider runs',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Evidence about delivery.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.changeOnehrEvidenceState(self,id,'retracted');return '{"items":[1]}';});
+    expect(await perf.draftOnehrNarrative(mgr,reviewId,'Prepare a draft.')).toBe('');
+    const [proposal]=await owner.db.select().from(schema.agentProposal);expect(proposal).toMatchObject({adjudication:'rejected',decision:null});
   });
 
   it('requires every KPI approver to act in order and carries each confirmed value forward',async()=>{

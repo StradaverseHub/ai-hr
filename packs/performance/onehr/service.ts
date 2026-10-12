@@ -203,7 +203,7 @@ export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expect
       }
       const [request]=await tx.insert(peerFeedbackRequest).values({tenantId:ctx.tenantId,reviewId,subjectEmploymentId:r.row.employmentId,peerEmploymentId:peer.id,subjectName:subject.name,peerName:peer.name,cycleName:r.cycle.native.name,requestedByUserId:ctx.userId}).returning();
       await tx.insert(onehrPanel).values({tenantId:ctx.tenantId,requestId:request.id,reviewId,subjectEmploymentId:r.row.employmentId,peerEmploymentId:peer.id,relationship:input.relationship});
-      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'peer-feedback-request',aggregateId:request.id,eventType:'peer-feedback-request.created',actor:actorOf(ctx),subjectEmploymentId:r.row.employmentId,payload:{reviewId}});
+      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'peer-feedback-request',aggregateId:request.id,eventType:'peer-feedback-request.created',actor:actorOf(ctx),payload:{reviewId}});
     }
     for(const p of omitted){await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,p.requestId));await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,p.requestId));}
     await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,'panel-assigned',{count:inputs.length,removed:omitted.length});
@@ -280,7 +280,7 @@ function assertPrecedingTier(rows:Awaited<ReturnType<typeof decisions>>,tier:Tie
  if(tier==='hod'&&rows.some(d=>['bu','bg'].includes(d.tier)&&(pm&&d.performanceLocked||pot&&d.potentialLocked)))throw Error('HOD calibration is closed after BU or BG locks.');
 }
 export async function saveOnehrCalibration(ctx:SessionContext,sessionId:string,expected:number,raw:unknown) {
- const p=z.object({reviewId:uuid,axis:z.enum(['performance','potential','both']).default('both'),performance:z.enum(pmBands).nullable(),potential:z.enum(potentialBands).nullable(),performanceNote:note,potentialNote:note,pip:z.boolean().default(false),promotion:z.boolean().default(false),specialReward:z.boolean().default(false)}).parse(raw);
+ const p=z.object({reviewId:uuid,axis:z.enum(['performance','potential','both']).default('both'),performance:z.enum(pmBands).nullable(),potential:z.enum(potentialBands).nullable(),performanceNote:note,potentialNote:note,pip:z.boolean().default(false),promotion:z.boolean().default(false),specialReward:z.boolean().default(false),confirmTalentDecisions:z.boolean().default(false)}).parse(raw);
  return withPerformanceTenant(ctx,async tx=>{
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);if(session.lockedAt||!['open','calibration'].includes(cycle.native.status))throw Error('This calibration is locked.');
   const {pm,pot}=needsAxes(cycle.policy,p.axis);if(!pm&&!pot)throw Error('This assessment axis is disabled.');calibrationWindows(cycle.policy,session.tier as Tier,p.axis);
@@ -295,10 +295,13 @@ export async function saveOnehrCalibration(ctx:SessionContext,sessionId:string,e
   const baselinePot=resolveBand(current.input.potential.band,below.map(d=>({...d,band:d.potential,locked:d.potentialLocked}))).band;
   if(pm&&p.performance!=null&&p.performance!==baselinePm&&!p.performanceNote.trim()||pot&&p.potential!=null&&p.potential!==baselinePot&&!p.potentialNote.trim())throw Error('Explain each changed band.');
   if((p.pip||p.promotion||p.specialReward)&&!['bg','group','final'].includes(session.tier))throw Error('Talent decisions require BG, Group or final reviewer confirmation.');
-  if((p.pip||p.promotion||p.specialReward)&&(cycle.policy.modules.pm&&!p.performance||cycle.policy.modules.tm&&!p.potential))throw Error('Confirm both enabled axes before making talent decisions.');
+  const confirmTalent=p.axis==='both'||p.confirmTalentDecisions;
+  if(p.confirmTalentDecisions&&!['bg','group','final'].includes(session.tier))throw Error('Talent decisions require BG, Group or final reviewer confirmation.');
+  const confirmedPm=pm?p.performance??baselinePm:entry.performance??baselinePm,confirmedPot=pot?p.potential??baselinePot:entry.potential??baselinePot;
+  if(confirmTalent&&(p.pip||p.promotion||p.specialReward)&&(cycle.policy.modules.pm&&!confirmedPm||cycle.policy.modules.tm&&(!confirmedPot||!current.input.potential.valid)))throw Error('Confirm both enabled axes before making talent decisions.');
   const final=session.tier==='final',now=new Date();
   const pmLock=pm&&final&&p.performance?now:entry.performanceLockedAt,potLock=pot&&final&&p.potential?now:entry.potentialLockedAt;
-  const data={...(pm?{performance:p.performance,performanceNote:p.performanceNote,seenPerformance:baselinePm,performanceLockedAt:pmLock}:{}),...(pot?{potential:p.potential,potentialNote:p.potentialNote,seenPotential:baselinePot,potentialLockedAt:potLock}:{}),...(p.axis==='both'?{pip:p.pip,promotion:p.promotion,specialReward:p.specialReward}:{}),lockedAt:(!cycle.policy.modules.pm||pmLock)&&(!cycle.policy.modules.tm||potLock)?now:null};
+  const data={...(pm?{performance:p.performance,performanceNote:p.performanceNote,seenPerformance:baselinePm,performanceLockedAt:pmLock}:{}),...(pot?{potential:p.potential,potentialNote:p.potentialNote,seenPotential:baselinePot,potentialLockedAt:potLock}:{}),...(confirmTalent?{pip:p.pip,promotion:p.promotion,specialReward:p.specialReward}:{}),lockedAt:(!cycle.policy.modules.pm||pmLock)&&(!cycle.policy.modules.tm||potLock)?now:null};
   await tx.update(onehrCalibrationEntry).set(data).where(eq(onehrCalibrationEntry.id,entry.id));
   await tx.update(onehrCalibration).set({revision:session.revision+1}).where(eq(onehrCalibration.id,sessionId));
   await audit(tx,ctx,sessionId,'calibration-recorded',{reviewId:p.reviewId,axis:p.axis,previous:{performance:entry.performance,potential:entry.potential,performanceNote:entry.performanceNote,potentialNote:entry.potentialNote},next:data});
@@ -319,13 +322,16 @@ export async function lockOnehrCalibration(ctx:SessionContext,sessionId:string,e
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.reviewId},0))`);
    if(await isSelf(tx,e.employmentId))throw Error('A reviewer cannot lock their own calibration.');
    const r=await resolved(tx,e.reviewId,cycle.policy);if(r.input.finalized&&selected.some(x=>x.id===e.id)&&(pm&&!e.performanceLockedAt||pot&&!e.potentialLockedAt))throw Error('An assessment in this cohort is already finalized.');
-   assertPrecedingTier(r.rows,session.tier as Tier,session.mode,pm,pot);
-   const effective={performance:e.performance??r.performance.band,potential:e.potential??r.potential.band};
-   if(pm&&!effective.performance||pot&&(!effective.potential||!r.input.potential.valid))throw Error('Complete the enabled assessment axes and required valid responses first.');bands.push(effective);
+   const chosen=selected.some(x=>x.id===e.id);
+   if(chosen)assertPrecedingTier(r.rows,session.tier as Tier,session.mode,pm,pot);
+   const effective={performance:z.enum(pmBands).nullable().parse(e.performance??r.performance.band),potential:z.enum(potentialBands).nullable().parse(e.potential??r.potential.band)};
+   const valid=(!pm||!!effective.performance)&&(!pot||!!effective.potential&&r.input.potential.valid);
+   if(chosen&&!valid)throw Error('Complete the enabled assessment axes and required valid responses first.');
+   if(valid)bands.push(effective);
   }
   const counts=Object.fromEntries(pmBands.map(b=>[b,bands.filter(e=>e.performance===b).length])) as Record<PMBand,number>;
   const curve=session.pbtAchievement==null?null:referenceCurve(Number(session.pbtAchievement)),tolerance=Math.max(cycle.policy.curveTolerancePeople,entries.length*cycle.policy.curveTolerancePct/100);
-  const out=pm&&curve&&pmBands.some(b=>Math.abs(counts[b]-entries.length*curve[b]/100)>tolerance)||pot&&potentialBands.some(b=>Math.abs(bands.filter(e=>e.potential===b).length-entries.length*({Low:15,Mid:70,High:15}[b])/100)>tolerance);
+  const out=bands.length!==entries.length||pm&&curve&&pmBands.some(b=>Math.abs(counts[b]-entries.length*curve[b]/100)>tolerance)||pot&&potentialBands.some(b=>Math.abs(bands.filter(e=>e.potential===b).length-entries.length*({Low:15,Mid:70,High:15}[b])/100)>tolerance);
   if(session.tier!=='hod'&&cycle.policy.curveStrict&&out&&!overrideReason.trim())throw Error('The reference distribution needs an override reason.');
   const now=new Date();
   for(const e of selected){const pl=pm?e.performanceLockedAt??now:e.performanceLockedAt,tl=pot?e.potentialLockedAt??now:e.potentialLockedAt;
@@ -446,8 +452,9 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     uuid.parse(reviewId);const [exists]=await tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));if(!exists)return null;
     const r=await loadReview(tx,reviewId);const self=await isSelf(tx,r.row.employmentId),manager=!self&&await isManager(tx,reviewId),admin=!self&&await isAdmin(tx,r.row.cycleId),moderator=!self&&!manager&&await isModerator(tx,reviewId);if(!self&&!manager&&!admin&&!moderator)throw Error('Assessment is not assigned to you.');
     const name={name:r.native.name};const moderators=self||manager||admin?await moderatorChoices(tx,reviewId):[];
-    let [frozen]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
-    if(self){const [card]=await tx.execute<{value:typeof frozen|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`);frozen=card?.value??undefined as unknown as typeof frozen;}
+    const [stored]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+    let frozen:typeof stored|undefined=stored;
+    if(self){const [card]=await tx.execute<{value:typeof frozen|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`);frozen=card?.value??undefined;}
     const result=frozen?.result as FrozenResult|undefined;
     const leadership=manager||admin?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);

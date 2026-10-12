@@ -54,10 +54,10 @@ BEGIN
   ELSE
    IF eid<>r.employment_id THEN RAISE EXCEPTION 'Invalid OneHR subject'; END IF;
    IF TG_TABLE_NAME IN ('performance_onehr_review','performance_onehr_result') AND (n->>'cycle_id')::uuid<>r.cycle_id THEN RAISE EXCEPTION 'Invalid OneHR cycle reference'; END IF;
-   IF TG_TABLE_NAME='performance_onehr_review' AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=eid AND e.tenant_id=tid AND e.company_id=(n->>'company_id')::uuid) THEN RAISE EXCEPTION 'Invalid OneHR company'; END IF;
+   IF TG_TABLE_NAME='performance_onehr_review' AND TG_OP='INSERT' AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=eid AND e.tenant_id=tid AND e.company_id=(n->>'company_id')::uuid) THEN RAISE EXCEPTION 'Invalid OneHR company'; END IF;
    IF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
     SELECT * INTO s FROM performance_onehr_calibration WHERE id=(n->>'session_id')::uuid AND tenant_id=tid;
-    IF s.id IS NULL OR s.cycle_id<>r.cycle_id OR s.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND (e.company_id=s.company_id OR app.is_company_descendant(e.company_id,s.company_id))) THEN RAISE EXCEPTION 'Invalid OneHR calibration cohort'; END IF;
+    IF s.id IS NULL OR s.cycle_id<>r.cycle_id OR s.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM performance_onehr_review e WHERE e.review_id=r.id AND e.tenant_id=tid AND (e.company_id=s.company_id OR app.is_company_descendant(e.company_id,s.company_id))) THEN RAISE EXCEPTION 'Invalid OneHR calibration cohort'; END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended(r.id::text,0));
     IF EXISTS(SELECT 1 FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration c ON c.id=e.session_id WHERE e.review_id=rid AND c.tier=s.tier AND e.session_id<>s.id) THEN RAISE EXCEPTION 'A person may belong to one calibration scope at each tier'; END IF;
    END IF;
@@ -68,6 +68,7 @@ BEGIN
  IF TG_OP='UPDATE' THEN
   o:=to_jsonb(OLD);
   IF n->>'tenant_id' IS DISTINCT FROM o->>'tenant_id' OR n->>'review_id' IS DISTINCT FROM o->>'review_id' OR n->>'employment_id' IS DISTINCT FROM o->>'employment_id' OR n->>'cycle_id' IS DISTINCT FROM o->>'cycle_id' THEN RAISE EXCEPTION 'OneHR record identity is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND (n->'company_id' IS DISTINCT FROM o->'company_id' OR n->'grade' IS DISTINCT FROM o->'grade' OR n->'statements' IS DISTINCT FROM o->'statements') THEN RAISE EXCEPTION 'OneHR opening snapshot is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') THEN RAISE EXCEPTION 'An opened OneHR policy is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_result' AND n-ARRAY['performance_released_at','potential_released_at','talent_released_at','feedback_released_at'] IS DISTINCT FROM o-ARRAY['performance_released_at','potential_released_at','talent_released_at','feedback_released_at'] THEN RAISE EXCEPTION 'A frozen OneHR result is immutable'; END IF;
   IF TG_TABLE_NAME IN ('performance_onehr_panel','performance_onehr_calibration_entry') AND EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=rid) AND n IS DISTINCT FROM o THEN RAISE EXCEPTION 'Finalized assessment inputs are immutable'; END IF;
