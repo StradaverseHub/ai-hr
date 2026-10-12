@@ -78,6 +78,24 @@ describe('four-section allowance editor', () => {
     expect(leave.defaultPrevented).toBe(true);
   });
 
+  it('locks the submitted draft until the action resolves, then retains it after refusal', async () => {
+    let resolve!: (result:{error:string})=>void;
+    submit.mockImplementationOnce(()=>new Promise<{error:string}>(done=>{resolve=done;}));
+    mount();const user=userEvent.setup(),t=en.allowanceV2;
+    const name=screen.getByLabelText(t.name);
+    fireEvent.change(name,{target:{value:'Reviewed draft'}});
+    fireEvent.submit(form());
+    await waitFor(()=>expect(name).toBeDisabled());
+    await user.type(name,' lost edit');
+    expect(name).toHaveValue('Reviewed draft');
+    expect(screen.getByLabelText(t.method)).toBeDisabled();
+    resolve({error:'Save refused'});
+    await screen.findByText('Save refused');
+    expect(name).toBeEnabled();expect(name).toHaveValue('Reviewed draft');
+    const leave=new Event('beforeunload',{cancelable:true});window.dispatchEvent(leave);
+    expect(leave.defaultPrevented).toBe(true);
+  });
+
   it('filters earning/deduction mappings and keeps legacy monthly rules until explicitly converted', async () => {
     const policy={id:'66666666-6666-4666-8666-666666666666',tenantId:companyId,companyId,code:'LEGACY',name:'Legacy',method:'monthly',amount:'20.00',payComponentId:earningId,effectiveFrom:'2025-01-01',status:'active',policyType:'earning',version:1,rules:null,criteria:{maxAbsentDays:0},scope:{},archivedAt:null,createdAt:new Date('2025-01-01T00:00:00Z')};
     mount('en',policy);const user=userEvent.setup(),t=en.allowanceV2;
