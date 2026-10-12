@@ -42,11 +42,13 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
       const schedule=await allowanceScheduleFactsTx(tx,employee.id,date,memo);
       const row=recordByDay.get(`${employee.id}:${date}`);
       // The three-way day type is frozen on recorded attendance. Never relabel a recorded holiday or
-      // rest day as work merely because the calendar was edited. Full/half and shift applicability use
+      // rest day as work merely because the calendar was edited. Full/half/off and shift applicability use
       // the canonical dated resolver; old traces contain no shift identity and are not reconstructed.
+      // Off-day work is deliberately stored as workday for ordinary-overtime pricing. Its canonical
+      // off marker must survive here; source='default-shift-rest' is shared by both Off and Rest.
       const kind = row?.dayType==='holiday' ? 'holiday' : row?.dayType==='rest_day'
-        ? (row.calcTrace?.schedule.source==='default-shift-rest' ? 'off' : 'rest')
-        : row?.dayType==='workday' && schedule.kind!=='half' ? 'full' : schedule.kind;
+        ? 'rest' : row?.dayType==='workday'
+        ? (schedule.kind==='half'||schedule.kind==='off'?schedule.kind:'full') : schedule.kind;
       const working=kind==='full'||kind==='half';
       const absentDays=absenceByDay.get(date)?.get(employee.id)?.absentDays??0;
       const attended=!!row&&row.status!=='absent';
