@@ -56,3 +56,4 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 
 | [0100](0100-installation-email-administration.md) | Installation identity email relay administration | Accepted |
 | [0101](0101-manual-identity-enrollment.md) | Administrator-created usernames and temporary passwords | Accepted |
+| [0102](0102-attendance-clock-corrections.md) | Audited clock corrections with retained raw evidence, effective-punch readers and payroll protection | Accepted |

@@ -39,7 +39,8 @@ app-user identity; interactive sessions retain their internal app-user ID.
 
 ## Consequences
 
-Existing days are not rewritten or recalculated by the migration. Legacy pair corrections now also
+Removing every punch clears worked and overtime figures and marks the retained day absent, using the
+existing absence rules. An out-only day remains an incomplete present day. Existing days are not rewritten or recalculated by the migration. Legacy pair corrections now also
 reconcile their effective punches when a new correction is approved. Raw evidence remains readable,
 while the live clock view displays only effective entries. Clock-data saves are separate from overtime
 requests and from the later Shift/Day Type, manual overtime, allowance and whole-page Save rounds.

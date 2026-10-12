@@ -129,7 +129,7 @@ export default async function IndividualAttendanceDayPage({
           ← {t('dayBackToList')}
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
-        {clockData && <AttendanceClockData key={selected.employmentId+date+clockData.baseline} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
+        {clockData && <AttendanceClockData key={selected.employmentId + date + clockData.baseline + (sp.error === 'clockDataPending' ? 'pending' : '')} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
       </div>
     );
   }
@@ -302,7 +302,7 @@ export default async function IndividualAttendanceDayPage({
         )}
       </Card>
 
-      {clockData && <AttendanceClockData key={clockData.baseline} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
+      {clockData && <AttendanceClockData key={selected.employmentId + date + clockData.baseline + (sp.error === 'clockDataPending' ? 'pending' : '')} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
 
       {/* 4 · OVERTIME + 5 · IRREGULARITY — the eight cells that came off the list, in the SAME island with
           the SAME working, so this screen and the list can never explain one day two ways. */}

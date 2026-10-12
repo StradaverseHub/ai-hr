@@ -61,6 +61,7 @@ describe('approved attendance clock-data corrections', () => {
     await save(a, employmentId, []);
     const cleared = await day(employmentId);
     expect([cleared.checkInAt, cleared.checkOutAt, cleared.workedMinutes, cleared.otMinutes, cleared.lateMinutes]).toEqual([null, null, null, null, null]);
+    expect(cleared.status).toBe('absent');
     expect((await attendanceClockData(a, employmentId, date)).rows.every(r => !!r.voidedAt)).toBe(true);
     await expect(checkIn(a, { employmentId, date, time: '19:00', manual: true })).rejects.toThrow(/correction owns/);
     await save(a, employmentId, original.rows.map(r => ({ id: r.id, punchAt: r.punchAt, direction: r.direction })));
