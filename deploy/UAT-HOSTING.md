@@ -23,7 +23,7 @@ Prepared 12 October 2026 (Asia/Kuala_Lumpur). This is a preparation/runbook docu
 
 The parked branch also contains older WorkOS integration, dependency and pagination changes. Reconcile selected changes against current main; do not merge its entire history blindly. Main already has newer Keycloak and notification implementations. The old Slice-0 threat model excludes payroll, attendance and AI and therefore cannot serve as the current whole-product threat model.
 
-Production dependency audit on 12 October found pdfjs-dist 5.6.205 affected by [GHSA-hq66-cqwq-w95j](https://github.com/mozilla/pdf.js/security/advisories/GHSA-hq66-cqwq-w95j). The candidate pins the patched 6.2.108 release; browser extraction and full build verification are required. The code uses the PDF text API with eval disabled, not the scripting-enabled viewer described by the advisory; no application exploit is claimed. Repeat the exact-lockfile audit before release.
+Production dependency audit on 12 October found pdfjs-dist 5.6.205 affected by [GHSA-hq66-cqwq-w95j](https://github.com/mozilla/pdf.js/security/advisories/GHSA-hq66-cqwq-w95j). The candidate pins the patched 6.2.108 release; browser extraction and full build verification are required. The reader uses the PDF text API, not the scripting-enabled viewer described by the advisory; no application exploit is claimed. PDF.js 6 removed its eval-based PostScript compiler and the old isEvalSupported option; the candidate reader follows that API. Repeat the exact-lockfile audit before release.
 
 ## 2. Proposed starting resources
 
@@ -126,6 +126,8 @@ Restore the HR database, identity database and matching configuration/keys. The 
 ### Step 5 — Gate and identify the release
 
 Use an isolated clean candidate checkout based on current main. Record SHA, lockfile digest, dependency scan, migration list and evidence locations. Use CLAUDE.md's classifier and lock discipline; a deployment/runtime/security change requires the full gate. Do not gate against a shared disposable DB while another gate rebuilds it.
+
+The local compiler exhausted its default 4 GiB heap; its completed retry used about 4.7 GiB. Reserve the proposed 16 GiB builder and run type checking/builds with build-only NODE_OPTIONS=--max-old-space-size=6144 when needed. Do not copy this environment override into the hardened web service.
 
 The repository full-gate sequence is type checking, `CHUNKS=8 bash scripts/gate-chunked.sh`, Next production build, and `env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow` for migrations, under the prescribed test locks. Print cwd/branch in each gate command. Run the relevant browser/identity/isolation and Linux installation acceptance as well. Never hand-write a PASS receipt.
 

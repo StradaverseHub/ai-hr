@@ -22,7 +22,9 @@ export async function readDescription(file: File): Promise<string> {
   } else if (suffix === 'pdf') {
     const pdfjs = await import('pdfjs-dist');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
-    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true });
+    // PDF.js 6 removed its eval-based PostScript compiler and the isEvalSupported option.
+    // Use the text API only; do not instantiate the scripting-enabled viewer.
+    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableFontFace: true });
     try {
       const pdf = await task.promise;
       if (pdf.numPages > 10) throw new Error('file');
