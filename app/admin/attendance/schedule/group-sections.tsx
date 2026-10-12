@@ -53,7 +53,7 @@ import type { RotationCycle } from '@/core/week-pattern';
  * named and empty: holiday, request, notification. They render one sentence saying so.
  *
  * DO NOT "finish" this screen by drawing a control for a setting nothing stores. The list page's header
- * names the four that are not stored anywhere (rotation, the duty-roster controls, the day-type
+ * names the remaining gaps (the duty-roster controls, the day-type
  * allow-list, the monthly OT cap) and where each is actually governed from.
  *
  * ── WHY THE GENERAL SECTION IS NOT THE OLD GENERAL TAB ──────────────────────────────────────────────────
@@ -299,24 +299,8 @@ export async function ScheduleGroupSections({
     </>
   );
 
-  /**
-   * ─── WORKING DAY / SCHEDULE PATTERN — the seventh section, and the only NEW one ─────────────────────
-   *
-   * 07ebd04d (r331, migration 0483) put the four-way weekly row on `attendance_rule`; until this screen
-   * nothing read or wrote it. THE GROUP SAYS WHICH DAYS ARE WORKED; THE SHIFT SAYS WHAT HOURS.
-   *
-   * ⚠️ AN ALL-REST WEEK IS A FIRST-CLASS VALUE AND MEANS "THIS GROUP DECLARES NO WEEK". It is what every
-   * row written before 0483 holds, and what the tenant's un-deletable Standard group MUST keep holding:
-   * it is the fallback for every shift whose `rule_id` is NULL, so a week on it would be imposed on every
-   * ungrouped shift in the tenant (core/week-pattern.ts `weekPatternFor`, which resolves group-first and
-   * deliberately does NOT let a group with no working day win). The section SAYS that in words rather
-   * than showing seven "Rest" dropdowns and letting the reader guess.
-   *
-   * REST IS DERIVED, NEVER STORED: a weekday in none of the three arrays is a Rest day, exactly as on
-   * `shift`. There is no fourth column.
-   */
-  // r429 (f6819e19) · D7 — the group's week, resolved as `ScheduleGroupWeekEditor` resolves it, for the
-  // VIEW page's read-only "Shifts in this group" list (no live selects there, so no "after" column).
+  // Legacy groups retain their weekly pattern until a future-dated cycle is saved.
+  // The immutable version owns both its allowed pool and every day of the cycle.
   const tomorrow = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
   const latest = rotationState.versions.reduce<(typeof rotationState.versions)[number] | null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
   const minimumDate = latest && latest.effectiveFrom >= tomorrow
@@ -338,7 +322,7 @@ export async function ScheduleGroupSections({
             const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
             return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
               fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
-              archived:!!sh.archivedAt,available:!sh.archivedAt&&(!sh.ruleId||sh.ruleId===rule.id),selected:sh.ruleId===rule.id};})}/>
+              archived:!!sh.archivedAt,available:!sh.archivedAt&&(!sh.ruleId||sh.ruleId===rule.id),selected:latest?latest.allowedShiftIds.includes(sh.id):sh.ruleId===rule.id};})}/>
       }
       {!latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
       {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>

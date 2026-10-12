@@ -2756,6 +2756,19 @@ export async function resolveWorkingDaysIso(tx: Tx, employmentId: string): Promi
   return [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
 }
 
+/** Working-day membership counter for dated calendars. Half days count as a
+ * working date here, as in the legacy weekday union; leave deduction weights
+ * stay owned by dayWeight. Callers supply their already-resolved holiday set. */
+export async function leaveWorkingDaysCounterTx(tx:Tx,employmentId:string) {
+  const schedule=await resolveSchedule(tx,employmentId);
+  const weekdays=new Set([...schedule.workingDaysIso,...schedule.halfDaysIso]);
+  return Object.assign((start:string,end:string,holidays:Set<string>):number => eachDate(start,end).filter(date=>{
+    if(holidays.has(date))return false;
+    const rotated=schedule.rotationKindOn?.(date);
+    return rotated ? rotated==='full'||rotated==='half' : weekdays.has(isoWeekday(date));
+  }).length,{hasWorkingDates:weekdays.size>0||!!schedule.rotationKindOn});
+}
+
 /** Feedback 31474452 (4a): one query resolving an employment's full schedule — the company's configured
  *  Full working days, Half working days, and the company's half-day-deduction toggle. Falls back to
  *  Mon-Fri / no-half-days / toggle-off so existing single-company behaviour is byte-identical when no policy
@@ -2792,7 +2805,7 @@ async function resolveSchedule(
       shiftId:rosterAssignment.shiftId}).from(rosterAssignment)
       .where(and(eq(rosterAssignment.employmentId,employmentId),gte(rosterAssignment.shiftDate,first)));
     const byDate = new Map(roster.map(r=>[r.date,r]));
-    rotationKindOn = date => {
+    if(rotationLookup.versions.some(v=>row.ruleId ? v.ruleId===row.ruleId : [...byShift.values()].includes(v.ruleId))) rotationKindOn = date => {
       const period = pickArrangementOn(periods,date);
       const rotated = rotationLookup(row.ruleId ?? byShift.get(period?.shiftId ?? row.defaultShiftId ?? ''),date);
       if (!rotated) return null;
@@ -4177,7 +4190,7 @@ export async function previewLeaveDeduction(
     if (lt?.counting === 'working_days') {
       hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
       sched = await resolveSchedule(tx, p.employmentId);
-      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => sched!.halfDaysIso.includes(isoWeekday(d)));
+      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => {const rotated=sched!.rotationKindOn?.(d);return rotated ? rotated==='half' : sched!.halfDaysIso.includes(isoWeekday(d));});
       if (durationType === 'full_day' || isEmergencySplit) {
         const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
         days = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
@@ -4239,12 +4252,12 @@ export async function previewLeaveDeduction(
         // and the notice window is [today, startDate), a different range entirely.
         const noticeDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
         let noticeRotation: LeaveResolvedSchedule['rotationKindOn'];
-    let noticeRoster: number[] | undefined;
+        let noticeRoster: number[] | undefined;
         let noticeHolidays: Set<string> | undefined;
         if (noticeDayType === 'working_days' && p.startDate > today) {
           const noticeSchedule = await resolveSchedule(tx, p.employmentId);
-      noticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
-      noticeRotation = noticeSchedule.rotationKindOn;
+          noticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
+          noticeRotation = noticeSchedule.rotationKindOn;
           noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
         }
         const noticeGiven = noticeDaysGiven(today, p.startDate, noticeDayType, noticeRoster, noticeHolidays, noticeRotation);
@@ -4365,11 +4378,12 @@ async function resolveApplyDayRows(
   const sched = p.sched ?? (await resolveSchedule(tx, p.employmentId));
   return eachDate(p.startDate, p.endDate).map((date) => {
     const dow = isoWeekday(date);
+    const rotated = sched.rotationKindOn?.(date);
     const status: LeaveApplyDayStatus = hols.has(date)
       ? 'public_holiday'
-      : sched.workingDaysIso.includes(dow)
+      : (rotated ? rotated === 'full' : sched.workingDaysIso.includes(dow))
         ? 'working_day'
-        : sched.halfDaysIso.includes(dow)
+        : (rotated ? rotated === 'half' : sched.halfDaysIso.includes(dow))
           ? 'half_working_day'
           : 'rest_day';
     // A calendar_days type deducts every date in the span, whatever the schedule says — the label still

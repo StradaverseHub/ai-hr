@@ -11085,8 +11085,6 @@
       "bandOpenEnded": "{from} minutes and above",
       "gapsTitle": "Not configured here",
       "gapsHint": "These were asked for on this tab. Each one is named rather than drawn as a control, because nothing behind it would save.",
-      "gapRotationTitle": "How a rotation advances",
-      "gapRotationBody": "Recurring Week or Day cycles are configured in each named Schedule Group under Working Day / Schedule Pattern, with dated versions and explicit roster overrides.",
       "gapRosterTitle": "Duty Roster controls",
       "gapRosterBody": "Fixed rules, not settings. Only an HR administrator may change a roster date that is today or earlier, and roster edits are restricted at the database. Neither can be turned off from a screen.",
       "rosterLink": "Open the Duty Roster →",
@@ -11627,7 +11625,8 @@
       "weekday4": "Thursday",
       "weekday5": "Friday",
       "weekday6": "Saturday",
-      "weekday7": "Sunday"
+      "weekday7": "Sunday",
+      "poolHint": "This dated pool controls rotation choices. Removing a shift from it keeps the shift’s inherited group and earlier saved versions intact."
     }
   },
   "topbar": {

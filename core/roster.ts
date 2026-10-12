@@ -36,7 +36,7 @@ import {
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
-import { rotationVersionOn, rotationDayOn, type RotationCycle } from './week-pattern';
+import type { RotationCycle } from './week-pattern';
 import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz';
 import {
@@ -48,6 +48,7 @@ import {
   monthRange,
   cellIsWorking,
   resolveRosterCell,
+  rotationDayForUsual,
   shiftCodeOf,
   type AssignedCell,
   type ResolvedCell,
@@ -58,7 +59,7 @@ import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
 // core/shift-arrangement-resolve.ts is a declared LEAF (its only value import is db/schema), which is
 // exactly why the resolver lives there and not in core/shift-arrangement.ts: that module imports THIS
 // one, so importing it back would close a cycle. See its header.
-import { arrangementsForEmploymentTx, pickArrangementOn } from './shift-arrangement-resolve';
+import { arrangementsForEmploymentTx, liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -1172,6 +1173,9 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
       .where(eq(employmentShiftArrangement.shiftId, p.shiftId))
       .limit(1);
     if (arr) throw new ShiftInUseError();
+    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation)
+      .where(sql`${p.shiftId}::uuid = ANY(${attendanceRotation.allowedShiftIds})`).limit(1);
+    if (rotation) throw new ShiftInUseError('This shift is retained by a schedule rotation — archive it instead.');
     await tx.delete(shift).where(eq(shift.id, p.shiftId));
     // SUBSTRATE: the row is gone but the append log is independent — record the deletion (aggregateId = the
     // now-deleted shift id; the human key lives in the payload).
@@ -2563,7 +2567,8 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
 
 /** One employee's usual shift, as the grid ghosts it onto un-rostered dates. */
 export type UsualShiftRow = {
-  rotations?: RotationCycle[];
+  rotations?: (RotationCycle & {ruleId?:string})[];
+  rotationPeriods?: UsualShift['rotationPeriods'];
   noDefault?: boolean;
   rotationShifts?: (typeof shift.$inferSelect)[];
   employmentId: string;
@@ -2613,14 +2618,22 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
     // They are working cells; this read does not invent half-day duration or reclassify rest/off days.
     const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
     const rotationLookup = await rotationLookupTx(tx);
+    const periodsByEmp = rotationLookup.versions.length ? await liveArrangementsTx(tx,employmentIds) : new Map();
+    const datedIds=[...new Set([...periodsByEmp.values()].flatMap(periods=>periods.map((p:{shiftId:string})=>p.shiftId)))];
+    const datedRules=datedIds.length ? await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,datedIds)) : [];
+    const ruleByShift=new Map(datedRules.map(sh=>[sh.id,sh.ruleId]));
     return rows.flatMap(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
-      const rotations = rotationLookup.versions.filter(v => v.ruleId === (groupRuleId ?? shiftRuleId));
+      const periods:{validFrom:string;ruleId:string|null}[] = !groupRuleId ? (periodsByEmp.get(r.employmentId)??[])
+        .map((p:{validFrom:string;shiftId:string})=>({validFrom:p.validFrom,ruleId:ruleByShift.get(p.shiftId)??null})) : [];
+      const ruleIds=periods.length ? periods.map(p=>p.ruleId) : [groupRuleId??shiftRuleId];
+      const rotations = rotationLookup.versions.filter(v => ruleIds.includes(v.ruleId));
       if (!r.shiftId && !rotations.length) return [];
       const week=lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern });
       const ids = new Set(rotations.flatMap(v=>v.allowedShiftIds));
       return [{...r,shiftId:r.shiftId??'',code:r.code??null,name:r.name??'',startTime:r.startTime??'00:00:00',endTime:r.endTime??'00:00:00',
-        noDefault:!r.shiftId,pattern:week.pattern,halfPattern:week.halfPattern??null,rotations,
-        rotationShifts:rotationLookup.shifts.filter(s=>ids.has(s.id))}];
+        pattern:week.pattern,halfPattern:week.halfPattern??null,
+        ...(rotations.length?{noDefault:!r.shiftId,rotations:rotations.map(({ruleId,effectiveFrom,anchorDate,unit,length,days})=>({ruleId,effectiveFrom,anchorDate,unit,length,days})),...(periods.length?{rotationPeriods:periods}:{}),
+          rotationShifts:rotationLookup.shifts.filter(s=>ids.has(s.id))}:{})}];
     });
   });
 }
@@ -2801,7 +2814,7 @@ export async function rosterWindowView(
   const usual: Record<string, UsualShift> = {};
   const usualNames: Record<string, { code: string | null; name: string }> = {};
   for (const u of usualRows) {
-    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern, noDefault:u.noDefault, rotations:u.rotations, ...(u.halfPattern?.length?{halfPattern:u.halfPattern}:{}) };
+    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern, ...(u.rotations?.length?{noDefault:u.noDefault,rotations:u.rotations,rotationPeriods:u.rotationPeriods}:{}), ...(u.halfPattern?.length?{halfPattern:u.halfPattern}:{}) };
     usualNames[u.shiftId] = { code: u.code, name: u.name };
     for(const sh of u.rotationShifts??[]) usualNames[sh.id]={code:sh.code,name:sh.name};
   }
@@ -3271,7 +3284,7 @@ export async function myRosterWindow(
 
   return withTenant(ctx, async (tx) => {
     const usualRow = usualRows[0] ?? null;
-    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, noDefault:usualRow.noDefault, rotations:usualRow.rotations, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, ...(usualRow.rotations?.length?{noDefault:usualRow.noDefault,rotations:usualRow.rotations,rotationPeriods:usualRow.rotationPeriods}:{}), ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
 
     // Only the shifts this window actually references — the legend names what is on screen, and a
     // tenant-wide shift list would serialise every template the company has ever authored into the
@@ -3326,8 +3339,7 @@ export async function myRosterWindow(
       const baseShift = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
       // Assigned shifts always own their full schedule, exactly as scheduleFor's roster branch does.
       // The usual week was already resolved in one batch through the employee/shift/Standard group.
-      const cycle=rotationVersionOn(usual?.rotations??[],date);
-      const rotated=cycle?rotationDayOn(cycle,date):null;
+      const rotated=rotationDayForUsual(date,usual);
       const kind=cell.kind==='usual'&&usual&&(rotated?.kind??shiftDayKindFor(usual,date))==='half'?'half':'full';
       const schedule=baseShift?workingShiftSchedule(scheduleInputs.get(baseShift.id)!,kind):null;
       const sh=baseShift&&schedule?{...baseShift,startTime:schedule.shiftStart,endTime:schedule.shiftEnd,

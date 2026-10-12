@@ -278,6 +278,7 @@ export function setRuleShifts(
     // from another tenant simply is not in this list and is dropped rather than written.
     const all = await tx.select({ id: shift.id, ruleId: shift.ruleId }).from(shift);
     const touched = [...new Set([p.ruleId,...all.filter(s=>p.shiftIds.includes(s.id)).map(s=>s.ruleId)].filter((id):id is string=>!!id))];
+    await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,touched)).orderBy(asc(attendanceRule.id)).for('update');
     const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(inArray(attendanceRotation.ruleId,touched)).limit(1);
     if (rotation) throw new Error('Save allowed shifts together with the dated rotation in the Schedule Group.');
     const known = new Set(all.map((r) => r.id));

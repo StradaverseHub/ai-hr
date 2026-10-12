@@ -39,6 +39,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
     <p className="text-sm text-muted-foreground">{editing?t('futureHint'):t('viewHint')}</p>
     <fieldset disabled={!editing||pending} className="space-y-3">
       <legend className="text-sm font-medium">{t('pool')}</legend>
+      <p className="text-xs text-muted-foreground">{t('poolHint')}</p>
       <div className="grid gap-2 sm:grid-cols-2">
         {shifts.map(s=><label key={s.id} className="flex items-start gap-2 rounded border border-border p-2 text-sm">
           <input type="checkbox" name="allowedShiftIds" value={s.id} checked={pool.includes(s.id)}
@@ -47,8 +48,8 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
         </label>)}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">{t('basedOn')}<select className={inputCls} value={unit} onChange={e=>setUnit(e.target.value as 'week'|'day')}><option value="week">{t('week')}</option><option value="day">{t('day')}</option></select></label>
-        <label className="text-sm">{t('length')}<input type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>setLength(e.target.value)}/></label>
+        <label className="text-sm">{t('basedOn')}<select className={inputCls} value={unit} onChange={e=>{setUnit(e.target.value as 'week'|'day');setDirty(true);}}><option value="week">{t('week')}</option><option value="day">{t('day')}</option></select></label>
+        <label className="text-sm">{t('length')}<input type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>{setLength(e.target.value);setDirty(true);}}/></label>
         <label className="text-sm">{t('effective')}<input type="date" min={minimumDate} value={cycle.effectiveFrom} className={inputCls} onChange={e=>mark({...cycle,effectiveFrom:e.target.value})}/></label>
         <label className="text-sm">{t('anchor')}<input type="date" value={cycle.anchorDate} className={inputCls} onChange={e=>mark({...cycle,anchorDate:e.target.value})}/></label>
       </div>

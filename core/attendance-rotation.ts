@@ -1,6 +1,6 @@
 /** Schedule Group cycle owner. Immutable dated versions; raw attendance is never recalculated here. */
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { attendanceRotation, attendanceRule, employment, shift } from '../db/schema';
@@ -81,18 +81,23 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       // Existing assignments may keep archived sources; a new revision must use active ones.
       if (sh.archivedAt) throw new Error(`Shift ${sh.name} is archived. Select an active shift for the new rotation.`);
       if (sh.ruleId && sh.ruleId !== rule.id) throw new Error(`Shift ${sh.name} belongs to another Schedule Group. Move it there first before using it in this rotation.`);
+      if (!sh.ruleId) {
+        const [inherited] = await tx.select({id:employment.id}).from(employment)
+          .where(sql`${employment.attendanceRuleId} IS NULL AND (${employment.defaultShiftId}=${sh.id} OR EXISTS(SELECT 1 FROM employment_shift_arrangement a WHERE a.employment_id=${employment.id} AND a.superseded_at IS NULL AND a.shift_id=${sh.id}))`).limit(1);
+        if (inherited) throw new Error(`Shift ${sh.name} is used by an employee without an explicit Schedule Group. Set the employee’s intended group before adding this shift to the rotation.`);
+      }
     }
     // Tenant-wide rules cannot bypass a company's payroll lock through payslip RLS.
     // This seam returns only operational window/status facts and locks the runs.
-    const members = await tx.select({ id: employment.id }).from(employment).where(sql`${employment.attendanceRuleId} = ${rule.id} OR ${employment.defaultShiftId} IN (SELECT id FROM shift WHERE rule_id=${rule.id})`).orderBy(asc(employment.id));
+    const members = await tx.select({ id: employment.id }).from(employment).where(sql`${employment.attendanceRuleId} = ${rule.id} OR (${employment.attendanceRuleId} IS NULL AND (${employment.defaultShiftId} IN (SELECT id FROM shift WHERE rule_id=${rule.id}) OR EXISTS(SELECT 1 FROM employment_shift_arrangement a JOIN shift s ON s.id=a.shift_id WHERE a.employment_id=${employment.id} AND a.superseded_at IS NULL AND s.rule_id=${rule.id})))`).orderBy(asc(employment.id));
     for (const member of members) {
       const batches = await lockPayrollForScheduleChange(tx, member.id, cycle.effectiveFrom);
       if (batches.some(b => b.status === 'closed')) throw new Error('This rotation would change a closed payroll attendance period. Choose a later effective date.');
       await markPayrollForAttendanceChange(tx, ctx, batches, member.id);
     }
     if (pool.length) await tx.update(shift).set({ ruleId: rule.id }).where(inArray(shift.id, pool));
-    const detach = all.filter(s => s.ruleId === rule.id && !pool.includes(s.id)).map(s => s.id);
-    if (detach.length) await tx.update(shift).set({ ruleId: null }).where(inArray(shift.id, detach));
+    // ruleId is also the inherited group for legacy employee assignments. Keep those
+    // links when a shift leaves the allowed pool; version.allowedShiftIds owns the pool.
     const [version] = await tx.insert(attendanceRotation).values({ tenantId: ctx.tenantId, ruleId: rule.id,
       ...cycle, allowedShiftIds: pool, createdBy: ctx.userId ?? 'system' }).returning();
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-rule', aggregateId: rule.id,
@@ -108,6 +113,7 @@ export async function assertRotationPoolWriteTx(tx: Tx, from: string | null | un
   if (from === to) return;
   const ids = [...new Set([from,to].filter((id):id is string=>!!id))];
   if (!ids.length) return;
+  await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,ids)).orderBy(asc(attendanceRule.id)).for('update');
   const [saved] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation)
     .where(inArray(attendanceRotation.ruleId,ids)).limit(1);
   if (saved) throw new Error('Edit Shifts Allowed together with the dated rotation in its Schedule Group.');

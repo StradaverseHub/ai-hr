@@ -179,7 +179,7 @@ const esc = (s: string) =>
 /** The `defaultValue` React emits for each day select: `<option value="x" selected="">`. */
 function selectedKinds(html: string): string[] {
   return [1, 2, 3, 4, 5, 6, 7].map((d) => {
-    const at = html.indexOf(`name="dayKind_${d}"`);
+    const at = html.indexOf(`aria-label="${en.admin.rotation.dayType} ${d}"`);
     if (at < 0) return 'ABSENT';
     const block = html.slice(at, html.indexOf('</select>', at));
     return /<option value="([a-z]+)" selected=""/.exec(block)?.[1] ?? 'NONE';
@@ -440,7 +440,8 @@ describe('C. the marker — a submission that said nothing must not CLEAR the we
     expect(src, 'never by presence').not.toMatch(/fd\.get\('weekEditor'\)\s*[!=]=\s*null/);
     // And the page really does emit it, so the contract is pinned across BOTH files (CLAUDE.md §8).
     const page = readFileSync(pathJoin(root, 'app/admin/attendance/schedule/group-sections.tsx'), 'utf8');
-    expect(page, 'the form carries the marker').toContain('name="weekEditor" value="1"');
+    expect(page, 'the new editor saves pool and rotation together').toContain('ScheduleRotationEditor');
+    expect(page, 'the legacy independent week form is retired').not.toContain('name="weekEditor" value="1"');
   });
 });
 
@@ -582,7 +583,7 @@ describe('F. the screen — Edit edits it, View shows it, and "no week" is a sen
     // The state every row written before migration 0483 is in, and the one the Standard group must keep.
     expect(week((await getAttendanceRule(ctx!, ruleId))!).weeklyPattern).toBeNull();
     expect(await renderView(ruleId), 'the View page explains it rather than showing seven "Rest" boxes').toContain(
-      esc(SC.weekNone),
+      esc(en.admin.rotation.legacy),
     );
     // On the Edit page the seven dropdowns ARE the answer, all preset to Rest — the sentence would be a
     // second, contradicting explanation beside a control that already says it.

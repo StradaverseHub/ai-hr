@@ -11085,8 +11085,6 @@
       "bandOpenEnded": "{from} நிமிடங்கள் மற்றும் அதற்கு மேல்",
       "gapsTitle": "இங்கே அமைக்கப்படவில்லை",
       "gapsHint": "இவை இந்தத் தாவலுக்குக் கோரப்பட்டவை. ஒவ்வொன்றும் கட்டுப்பாடாக வரையப்படாமல் பெயரிடப்பட்டுள்ளது, ஏனெனில் அதன் பின்னால் சேமிக்கத்தக்கது எதுவும் இல்லை.",
-      "gapRotationTitle": "சுழற்சி எவ்வாறு முன்னேறுகிறது",
-      "gapRotationBody": "Recurring Week or Day cycles are configured in each named Schedule Group under Working Day / Schedule Pattern, with dated versions and explicit roster overrides.",
       "gapRosterTitle": "பணி ரோஸ்டர் கட்டுப்பாடுகள்",
       "gapRosterBody": "இவை நிலையான விதிகள், அமைப்புகள் அல்ல. இன்று அல்லது அதற்கு முந்தைய ரோஸ்டர் தேதியை HR நிர்வாகி மட்டுமே மாற்ற முடியும், மேலும் ரோஸ்டர் திருத்தங்கள் தரவுத்தளத்திலேயே கட்டுப்படுத்தப்படுகின்றன. இரண்டையும் திரையிலிருந்து அணைக்க முடியாது.",
       "rosterLink": "பணி ரோஸ்டரைத் திறக்கவும் →",
@@ -11627,7 +11625,8 @@
       "weekday4": "Thursday",
       "weekday5": "Friday",
       "weekday6": "Saturday",
-      "weekday7": "Sunday"
+      "weekday7": "Sunday",
+      "poolHint": "இந்த தேதியிட்ட பட்டியல் சுழற்சிக்கான ஷிப்டுகளை நிர்ணயிக்கிறது. ஷிப்டை நீக்கினாலும் அதன் முந்தைய குழுவும் சேமித்த பழைய பதிப்புகளும் பாதுகாக்கப்படும்."
     }
   },
   "topbar": {

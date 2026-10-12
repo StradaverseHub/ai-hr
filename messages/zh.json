@@ -11085,8 +11085,6 @@
       "bandOpenEnded": "{from} 分钟以上",
       "gapsTitle": "不在此处配置",
       "gapsHint": "以下各项虽属于本标签页的需求，但均以文字说明而非控件呈现，因为其背后没有可保存的存储。",
-      "gapRotationTitle": "轮班如何推进",
-      "gapRotationBody": "Recurring Week or Day cycles are configured in each named Schedule Group under Working Day / Schedule Pattern, with dated versions and explicit roster overrides.",
       "gapRosterTitle": "值班表控制",
       "gapRosterBody": "这是固定规则，而非可调设置。只有人力资源管理员才能修改当天或更早的排班日期，且排班编辑在数据库层面受到限制。两者都无法从界面关闭。",
       "rosterLink": "打开值班表 →",
@@ -11627,7 +11625,8 @@
       "weekday4": "星期四",
       "weekday5": "星期五",
       "weekday6": "星期六",
-      "weekday7": "星期日"
+      "weekday7": "星期日",
+      "poolHint": "此日期版本的允许班次列表决定轮班选项。移除班次后，班次原有组别和历史版本仍保留。"
     }
   },
   "topbar": {

@@ -156,7 +156,7 @@ import {
   type LeaveHistoryRunRow,
 } from '../lib/leave-history-import-schema';
 import { holidayDatesByEmployment } from './holidays';
-import { earnedCycleStart, resolveLeaveYearCycle, resolveWorkingDaysIso, workingDays } from './leave';
+import { earnedCycleStart, resolveLeaveYearCycle, leaveWorkingDaysCounterTx } from './leave';
 import { listLeaveTypes } from './read';
 
 export {
@@ -551,14 +551,14 @@ async function analyze(
         startDate: minStart,
         endDate: maxEnd,
       });
-      const rosterMemo = new Map<string, number[]>();
+      const rosterMemo = new Map<string, Awaited<ReturnType<typeof leaveWorkingDaysCounterTx>>>();
       for (const r of dayCheck) {
         let roster = rosterMemo.get(r.employmentId);
         if (!roster) {
-          roster = await resolveWorkingDaysIso(tx, r.employmentId);
+          roster = await leaveWorkingDaysCounterTx(tx, r.employmentId);
           rosterMemo.set(r.employmentId, roster);
         }
-        const expected = workingDays(r.start, r.end, holidays.get(r.employmentId) ?? new Set(), roster);
+        const expected = roster(r.start, r.end, holidays.get(r.employmentId) ?? new Set());
         if (round2(expected) !== r.days) {
           resolved[r.idx].result.warnings.push(
             `Our calendar makes this ${expected} day(s); the file says ${r.days}. Kept as ${r.days}.`,

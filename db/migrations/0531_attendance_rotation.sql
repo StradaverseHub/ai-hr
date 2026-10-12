@@ -26,8 +26,8 @@ BEGIN
  PERFORM 1 FROM attendance_rule WHERE id=NEW.rule_id AND tenant_id=NEW.tenant_id AND NOT is_default FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Choose a non-Standard Schedule Group in this tenant'; END IF;
  FOREACH sid IN ARRAY NEW.allowed_shift_ids LOOP
-  PERFORM 1 FROM shift WHERE id=sid AND tenant_id=NEW.tenant_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Unknown shift in rotation pool'; END IF;
+  PERFORM 1 FROM shift WHERE id=sid AND tenant_id=NEW.tenant_id AND archived_at IS NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Unknown or archived shift in rotation pool'; END IF;
  END LOOP;
  FOR item IN SELECT value FROM jsonb_array_elements(NEW.days) LOOP
   IF jsonb_typeof(item)<>'object' OR coalesce(item->>'kind','') NOT IN ('full','half','off','rest') THEN RAISE EXCEPTION 'Invalid rotation day'; END IF;

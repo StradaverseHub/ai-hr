@@ -628,7 +628,7 @@ export function workingShiftSchedule(input:{start:string;end:string;crosses:bool
   const shiftEnd=kind==='half'
     ? fmtTime((toMinutes(input.start)+Math.floor(shiftSpan(input.start,input.end,input.crosses)/2))%MINS_PER_DAY)
     : input.end;
-  const crosses=kind==='half'?false:input.crosses;
+  const crosses=kind==='half'?toMinutes(shiftEnd)<toMinutes(input.start):input.crosses;
   const normalMinutesOverride=input.normalMinutesOverride==null?null:
     kind==='half'?Math.floor(input.normalMinutesOverride/2):input.normalMinutesOverride;
   return {scheduledMinutes,normalMinutes:normalMinutesOverride??scheduledMinutes,
@@ -1002,6 +1002,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
     earlyGraceMinutes: baseRule?.earlyGracePeriodMinutes ?? 0,
     crossesMidnight: false,
     source: 'policy',
+    // A policy half marker classifies the day but retains the legacy full required minutes.
+    scheduleDayKind: pol.halfWorkingDays.includes(isoWeekday(date)) ? 'half' : 'full',
   });
 
   // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
@@ -2316,6 +2318,7 @@ export async function weekLookupTx(
 }
 
 type DefaultShiftRow = {
+  rotationKind?: 'full' | 'half' | 'off' | 'rest';
   code: string | null;
   start: string;
   end: string;
@@ -2385,7 +2388,8 @@ function isScheduledOffDay(
   companyWorkingDay: boolean,
   deductAbsence: boolean,
 ): boolean {
-  if (!deductAbsence) return !companyWorkingDay;
+  // Explicit rotation opt-in uses its dated membership even before absence deductions are enabled.
+  if (!deductAbsence && !def?.rotationKind) return !companyWorkingDay;
   const c = classifyScheduleDay(date, roster, def, companyWorkingDay);
   return c === 'roster_rest' || c === 'default_rest' || c === 'policy_rest';
 }
@@ -4325,7 +4329,9 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
   return 'workday';
 }
 
-/** Canonical date facts for attendance allowance previews. No measurement is recomputed here. */
+/** Canonical date facts for attendance allowance previews. No measurement is recomputed here.
+ * Company-policy halfWorkingDays classify as half, while the policy branch retains
+ * its existing full scheduled-minute threshold. This seam never invents a duration. */
 export async function allowanceScheduleFactsTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<{
   shiftId: string | null; kind: 'full' | 'half' | 'off' | 'rest' | 'holiday'; scheduledMinutes: number;
 }> {
@@ -5990,41 +5996,6 @@ export async function addImportedPunchesBatchTx(
 // this path clear of recomputeDayFromPunches' first-in/last-out rewrite.
 //
 // Owned by feedback item 1c1b321a. core/attendance-recompute.ts is its only caller.
-
-/** The shift the recompute measured a day against, for the preview's Shift column. Keyed off the SOURCE
- *  scheduleFor itself reported, so it cannot name a shift the engine did not use: only the two shift
- *  branches have a shift at all, and the rest/policy branches honestly have none. */
-async function recomputeShiftCode(
-  tx: Tx,
-  employmentId: string,
-  date: string,
-  source: ResolvedSchedule['source'],
-): Promise<string | null> {
-  if (source === 'roster-shift') {
-    const [row] = await tx
-      .select({ code: shift.code })
-      .from(rosterAssignment)
-      .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
-      .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, date)))
-      .limit(1);
-    return row?.code ?? null;
-  }
-  if (source === 'default-shift') {
-    // Same ladder scheduleFor walked one call earlier: the dated arrangement in force on `date`
-    // (18504ca6), else employment.default_shift_id.
-    const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
-    const [row] = arrangement
-      ? await tx.select({ code: shift.code }).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
-      : await tx
-          .select({ code: shift.code })
-          .from(employment)
-          .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-          .where(eq(employment.id, employmentId))
-          .limit(1);
-    return row?.code ?? null;
-  }
-  return null;
-}
 
 /**
  * Re-derive ONE stored day against the schedule that applies to it TODAY, and hand back both the figures
