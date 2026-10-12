@@ -55,6 +55,11 @@ async function takeFrame(setting: 'required' | 'optional') {
   await screen.findByAltText(en.attendance.clock.photoReview);
 }
 describe('Web Clocking optional camera and uncertain commands',()=>{
+  it.each(['optional', 'not_required'] as const)('does not promise photo capture when the setting is %s', setting => {
+    mount(setting);
+    expect(screen.getByRole('status')).toHaveTextContent(en.attendance.clock.serverTimeNote);
+    expect(screen.getByRole('status')).not.toHaveTextContent(en.attendance.clock.photoHelper);
+  });
   it.each(['required', 'optional'] as const)('reviews a granted %s camera frame before submitting its photo and showing the server time', async setting => {
     const {stop, revoke} = allowCamera(); mount(setting); await takeFrame(setting);
     expect(stop).toHaveBeenCalledTimes(1); expect(post).not.toHaveBeenCalled();
