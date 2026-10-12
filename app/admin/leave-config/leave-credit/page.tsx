@@ -34,6 +34,17 @@ const PAGE = '/admin/leave-config/leave-credit';
  * Module wind-down remains available while credits are outstanding, including expiry/year-end settlement
  * and reversals. Add remains entitlement-gated. All data comes from the existing scoped credit, allocation
  * and ledger owners; this page writes no new accounting facts.
+ *
+ * ⚠️ GATED ON `toil`, WITH ONE DELIBERATE EXCEPTION — THE WIND-DOWN ARGUMENT, carried over from /admin/toil
+ * (now a redirect stub) and not to be tidied away. The row is hidden without the module (sidebar) and this
+ * page shows only a notice. BUT the two settlement sweeps are deliberately not entitlement-gated, and must
+ * never be re-gated through the UI either: a tenant whose module lapses (trial end, downgrade, non-payment)
+ * still owes the credits already banked, and for a First-Schedule employee that debt is statutory — unused
+ * credit must convert to pay, never lapse (core/toil.ts `runToilExpiry`). This page is the sweeps' only
+ * caller (there is no cron), so hiding them would strand the obligation. So when the module is off AND credits
+ * are still outstanding, the page opens a WIND-DOWN view: the movements, the summary, the sweeps and Reverse —
+ * no Add (and the Rules tab shows only the notice). Those services are admin-only by design; adding a credit
+ * and saving the rules refuse in the service without the module regardless of what this page renders.
  */
 export default async function LeaveConfigLeaveCreditPage({
   searchParams,
