@@ -3341,8 +3341,9 @@ export async function requestAttendanceCorrection(
 
   return withTenant(ctx, async (tx) => {
     if (clockChanges) {
-      const allowed = await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) as ok`);
-      if (!(allowed as unknown as {ok:boolean}[])[0]?.ok) throw new Error('Only an authorised administrator may edit clock data.');
+      const [subject] = await tx.select({ allowed: sql<boolean>`app.can_admin_employment(${employment.id})` })
+        .from(employment).where(eq(employment.id, p.employmentId)).limit(1);
+      if (!subject?.allowed) throw new Error('Only an authorised administrator may edit clock data.');
       const rows = await punchesForCorrectionTx(tx,p.employmentId,p.date);
       if (clockChanges.baseline !== clockFingerprint(rows)) throw new ClockDataChangedError();
       const active = rows.filter(row => !row.voidedAt);

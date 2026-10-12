@@ -1,16 +1,14 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
-import { appUser, person, clockingImportLine, clockingImportRun, attendanceClockCapture } from '../db/schema';
+import { appUser, person, employment, clockingImportLine, clockingImportRun, attendanceClockCapture } from '../db/schema';
 import { withAttendanceTenant } from './module-gate';
 import { clockFingerprint, punchesForCorrectionTx } from './attendance-punch-change';
 /** Explicit raw-evidence read, separate from every effective-punch calculation. */
 export async function attendanceClockData(ctx: SessionContext, employmentId: string, date: string) {
   return withAttendanceTenant(ctx, async (tx) => {
-    const allowed = await tx.execute(sql `select app.can_admin_employment(${employmentId}::uuid) as ok`);
-    if (!(allowed as unknown as {
-      ok: boolean;
-    }[])[0]?.ok)
-      throw new Error('Only an authorised administrator may read raw clock data.');
+    const [subject] = await tx.select({ allowed: sql<boolean>`app.can_admin_employment(${employment.id})` })
+      .from(employment).where(eq(employment.id, employmentId)).limit(1);
+    if (!subject?.allowed) throw new Error('Only an authorised administrator may read raw clock data.');
     const rows = await punchesForCorrectionTx(tx, employmentId, date);
     const ids = rows.map(r => r.id);
     const imports = ids.length ? await tx.select({ punchId: clockingImportLine.attendancePunchId, runId: clockingImportLine.runId, fileName: clockingImportRun.fileName }).from(clockingImportLine).innerJoin(clockingImportRun, eq(clockingImportRun.id, clockingImportLine.runId)).where(inArray(clockingImportLine.attendancePunchId, ids)) : [];
