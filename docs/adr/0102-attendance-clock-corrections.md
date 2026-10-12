@@ -34,7 +34,10 @@ index without weakening its duplicate-restore refusal.
 
 Payroll batches are locked before changing attendance, using the payroll pack's period coverage.
 Closed payroll refuses the change; processed payroll receives its existing reprocessing mark. Approval
-still refuses self-decision. Actor attribution is text to represent a service actor where there is no
+still applies the existing self-decision policy. The capture trigger admits synthetic `admin` punches
+for an effective direct administrative manager or scoped attendance delegate correcting another person's
+day; the existing employee capture requirement remains enforced, including a forged `admin` method.
+Actor attribution is text to represent a service actor where there is no
 app-user identity; interactive sessions retain their internal app-user ID.
 
 ## Consequences

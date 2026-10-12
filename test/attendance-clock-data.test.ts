@@ -118,6 +118,17 @@ describe('approved attendance clock-data corrections', () => {
     await expect(requestAttendanceCorrection(employee, { employmentId, date, reason: 'Not an admin', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } })).rejects.toThrow(/administrator/);
     expect((await attendanceClockData(a, employmentId, date)).rows.filter(r => r.voidedAt)).toHaveLength(0);
   });
+  it('an employee cannot forge an administrative punch to bypass capture requirements', async () => {
+    const { a, employmentId, personId } = await fixture();
+    const userId = await createAppUser(b.tenantId, personId, 'employee');
+    const employee = { ...a, userId, personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
+    const d = await day(employmentId);
+    await expect(withTenant(employee, tx => tx.insert(schema.attendancePunch).values({
+      tenantId: b.tenantId, employmentId, attendanceId: d.id, attendanceDate: date,
+      punchAt: '19:00:00', direction: 'in', method: 'admin',
+    }))).rejects.toMatchObject({ cause: { message: 'Employee clocking requires a photo capture' } });
+    expect((await attendanceClockData(a, employmentId, date)).rows).toHaveLength(2);
+  });
   it('cross-tenant raw reads and punch updates see no rows under application RLS', async () => {
     const { a, employmentId } = await fixture();
     await save(a, employmentId, []);
