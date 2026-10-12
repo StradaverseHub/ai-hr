@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { guideTourId, toursForRoles } from '../lib/onboarding-tour';
@@ -14,7 +15,7 @@ vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.co
 const { GuideTourButton } = await import('../components/guide-tour-button');
 const { OnboardingTour } = await import('../components/onboarding-tour');
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); });
+afterEach(async () => { cleanup(); vi.clearAllMocks(); state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); await page.viewport(1280, 720); });
 
 describe('guide walkthrough launch in Chromium', () => {
   it('launches a new guide, navigates to its module and spotlights a real-sized control', async () => {
@@ -78,6 +79,25 @@ describe('guide walkthrough launch in Chromium', () => {
       expect(bubble.height).toBeGreaterThan(100);
       expect(bubble.top).toBeGreaterThanOrEqual(13);
       expect(bubble.bottom).toBeLessThanOrEqual(window.innerHeight - 13);
+    });
+  });
+
+  it('resizes a centered walkthrough when the window becomes narrow', async () => {
+    await page.viewport(1280, 720);
+    state.pathname = '/claims';
+    render(<NextIntlClientProvider locale="en" messages={en}>
+      <OnboardingTour tours={toursForRoles(['employee'])} autoStartTourId="claimsEmployee" />
+    </NextIntlClientProvider>);
+    const heading = await screen.findByRole('heading', { name: 'Submit an expense claim' });
+    expect(heading.closest('[style]')!.getBoundingClientRect().width).toBe(320);
+    await page.viewport(280, 400);
+    await waitFor(() => {
+      const bubble = heading.closest('[style]')!.getBoundingClientRect();
+      expect(bubble.width).toBe(252);
+      expect(bubble.left).toBeGreaterThanOrEqual(13);
+      expect(bubble.right).toBeLessThanOrEqual(267);
+      expect(bubble.top).toBeGreaterThanOrEqual(13);
+      expect(bubble.bottom).toBeLessThanOrEqual(387);
     });
   });
 });

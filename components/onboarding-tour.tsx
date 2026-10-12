@@ -36,9 +36,16 @@ export function OnboardingTour({
   const [box, setBox] = useState<Box | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [bubbleHeight, setBubbleHeight] = useState(240);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   // Client-only overlay — don't render during SSR (its position is measured from the live DOM).
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    resize();
+    setMounted(true);
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
 
   const steps = activeTourId ? (tours[activeTourId] ?? []) : [];
   const step = steps[index];
@@ -150,8 +157,8 @@ export function OnboardingTour({
   // Bubble position from the target box + placement, clamped to the viewport.
   const bubbleStyle = useMemo<React.CSSProperties>(() => {
     if (typeof window === 'undefined') return {};
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const vw = viewport.width || window.innerWidth;
+    const vh = viewport.height || window.innerHeight;
     const width = Math.min(BUBBLE_W, vw - GAP * 2);
     const clampL = (l: number) => Math.max(GAP, Math.min(l, vw - width - GAP));
     const clampT = (top: number) => Math.max(GAP, Math.min(top, vh - bubbleHeight - GAP));
@@ -172,7 +179,7 @@ export function OnboardingTour({
       left = clampL(box.left);
     }
     return { ...bounds, top: clampT(top), left: clampL(left), width };
-  }, [box, step, bubbleHeight]);
+  }, [box, step, bubbleHeight, viewport]);
 
   if (!mounted || !open || !step) return null;
 
