@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import { Card, ErrorBanner, Field, btnPrimary, inputCls } from '@/components/ui';
 import { AttendanceRuleOtEditor, type OtEditorRow } from '@/components/attendance-rule-ot-editor';
 import type { AttendanceRuleView } from '@/core/attendance-rule';
@@ -118,7 +119,7 @@ export async function RuleForm({
     <div className="space-y-6">
       <ErrorBanner message={error} />
 
-      <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
+      <AttendanceSettingsActionForm submitAction={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} preserveDrafts={saveScope} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
         {editing && <input type="hidden" name="ruleId" value={rule!.id} />}
 
         <Card className="space-y-4 p-4">
@@ -263,14 +264,14 @@ export async function RuleForm({
         </p>
 
         <div className="flex items-center gap-3">
-          <button className={btnPrimary}>{t('save')}</button>
+          <AttendanceSettingsSaveButton className={btnPrimary}>{t('save')}</AttendanceSettingsSaveButton>
           {cancel && (
             <Link href={cancel.href} className="text-sm text-muted-foreground hover:text-foreground">
               {cancel.label}
             </Link>
           )}
         </div>
-      </form>
+      </AttendanceSettingsActionForm>
     </div>
   );
 }

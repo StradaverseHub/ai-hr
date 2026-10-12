@@ -19,3 +19,28 @@ Real browser/DOM camera and uncertain-response flows, own/other receipt access, 
 Allowance and workflow editors disable the submitted draft while their save is pending. A successful save acknowledgment must never rebase newer edits that were not part of the saved payload.
 
 Same-path legacy Schedule Group saves carry a per-submit nonce, echoed only on successful persistence. The guard consumes the matching receipt once for that form and rebases to its submitted snapshot, preserving other forms and edits typed while the response was pending. Old success URLs, unrelated refreshes and refusal redirects cannot acknowledge an unsaved draft.
+
+Next 16.3.8's client server-action reducer rejects a redirecting action with a handled
+redirect even after scheduling the destination's seeded RSC navigation. Its RedirectBoundary
+intentionally remounts the caller subtree when that rejection reaches a form transition.
+Stable overtime band keys cannot preserve independent forms through that remount. Schedule
+General/Attendance/Overtime therefore submit through a narrow client event handler, outside
+React's native action-form transition/reset. It catches only an already-handled Next redirect;
+ordinary errors and unhandled redirects still reach the error boundary. Existing server actions,
+validation and redirect destinations remain authoritative. The pending Save button is disabled,
+while draft inputs remain editable; the receipt acknowledges only the submitted snapshot.
+These three edit forms require hydrated JavaScript to submit. Other legacy settings forms retain
+their existing native action behavior, including redirect remounts. Different-path internal
+redirects still leave the page via Next's reducer; the capture guard warns about other dirty forms
+before submission. External redirects may additionally trigger the browser's unload warning.
+Real browser verification of the shipping Next/React bundle remains required.
+
+This is based on the installed Next 16.3.8 source: `server-action-reducer.js`
+rejects with `createRedirectErrorForAction` and separately returns the seeded or fallback
+navigation result; `createRedirectErrorForAction` marks the rejection `handled`.
+`redirect-boundary.js` remounts even handled redirects. The bundled React DOM
+`startHostTransition` requests a reset for native function actions; the protected forms
+instead prevent the submit default and start a client transition with no form action.
+DOM regressions invoke the wrapper's action, emulate its handled redirect and assert
+node/value preservation, while separately asserting the native fallback retains its action.
+They cannot establish real RSC reconciliation behavior or replace a browser run.
