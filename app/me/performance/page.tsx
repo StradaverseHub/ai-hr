@@ -50,6 +50,7 @@ export default async function MyPerformancePage({
     onehrAssignments(s),
   ]);
 
+  const standardFeedbackRequests=feedbackRequests.filter(r=>!onehr.feedback.some(a=>a.id===r.requestId));
   const onehrText=await getTranslations('onehr');
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
@@ -216,12 +217,12 @@ export default async function MyPerformancePage({
       </Card>
 
       {/* 360 feedback requests (ADR-0022) — the peer responds; their identity stays with HR/manager */}
-      {feedbackRequests.length > 0 && (
+      {standardFeedbackRequests.length > 0 && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('feedbackTitle')} count={feedbackRequests.length} />
+          <SectionHeader title={t('feedbackTitle')} count={standardFeedbackRequests.length} />
           <p className="px-4 pt-3 text-xs text-muted-foreground">{t('feedbackIntro')}</p>
           <ul className="divide-y divide-border">
-            {feedbackRequests.filter(r=>!onehr.feedback.some(a=>a.id===r.requestId)).map((fr) => (
+            {standardFeedbackRequests.map((fr) => (
               <li key={fr.requestId} className="px-4 py-4">
                 <div className="text-sm font-medium">
                   {t('feedbackOn', { name: fr.subject })}

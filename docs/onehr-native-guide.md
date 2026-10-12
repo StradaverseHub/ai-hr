@@ -7,7 +7,7 @@ OneHR assessments use the existing HR login, employee records, company scope and
 1. In **Performance**, create a draft cycle for the intended company and dates.
 2. Open the draft and choose **Enable OneHR workflow**. Review the policy before opening the cycle.
 3. Choose the assessment kind and enabled modules. Set the fourteen step windows in Malaysia time. Blank window boundaries leave that step open while its workflow allows it.
-4. Review the leadership framework, technical profiles, grade weights and potential cutoffs. Download the assessment catalogue JSON to edit/import the actual approved catalogue. Profiles can explicitly assign native employment IDs when several roles share a grade; otherwise one company/grade default must match.
+4. Review the leadership framework, technical profiles, grade weights and potential cutoffs. Download the assessment catalogue JSON to edit/import the actual approved catalogue (JSON smaller than 750 KB). Profiles can explicitly assign native employment IDs when several roles share a grade; otherwise one company/grade default must match.
 5. Review each company's KPI mechanism and band cutoffs. Company achievement bands select Mechanism B; otherwise the company uses Mechanism A. Do not use source defaults as evidence of your organization's approved configuration.
 6. Open the cycle. This snapshots the roster, grades and assigned statements and fixes the policy for that cycle.
 
