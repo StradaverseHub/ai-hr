@@ -15,3 +15,4 @@ export * from '../../core/performance';
 
 export * from "./onehr/service";
 export { draftOnehrNarrative } from './onehr/ai';
+export { getReviewConversation, sendReviewMessage, type ConversationStage, type ReviewMessage } from './onehr/conversation';

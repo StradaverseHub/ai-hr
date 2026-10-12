@@ -13,18 +13,18 @@ const text = z.string().trim().max(4000);
 const answer = z.enum(['yes','no']);
 export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean() });
 export type Statement = z.infer<typeof statementSchema>;
-const scoringSchema = z.discriminatedUnion('mechanism', [
+export const scoringSchema = z.discriminatedUnion('mechanism', [
   z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
   z.object({ mechanism: z.literal('B'), method: z.enum(['more','less']), variant: z.enum(['base','excellence']), threshold: finite, target: finite.refine(n=>n!==0,'Target cannot be zero.'), multiple: finite.min(0).max(10000), excellence: finite.nullable() }).superRefine((v,c)=>{if(v.variant==='excellence'&&v.excellence==null)c.addIssue({code:'custom',message:'An excellence value is required.'});}),
 ]);
 export type Scoring = z.infer<typeof scoringSchema>;
 export const checkInAnswers = ['on_track','at_risk','off_track','nothing_yet'] as const;
-export const kpiSchema = z.object({ id:z.uuid(), title:z.string().trim().min(1).max(300), description:text, weightBp:z.number().int().min(1).max(10000), unit:z.string().max(80), scoring:scoringSchema, moderatorEmploymentId:z.uuid().nullable(), approvalChain:z.array(z.object({employmentId:z.uuid(),actual:finite.nullable(),remark:text,at:z.iso.datetime().nullable()})).max(10).optional(), setting:z.enum(['draft','proposed','approved','returned']), settingApprovals:z.array(z.object({employmentId:z.uuid(),action:z.enum(['approved','returned']),remark:text,at:z.iso.datetime()})).max(10).optional(), settingRemark:text, checkIn:z.object({answer:z.enum(checkInAnswers),note:text,at:z.iso.datetime(),userId:z.uuid()}).optional(), actual:finite.nullable(), note:text, approvedActual:finite.nullable(), moderationRemark:text, locked:z.boolean() });
+export const kpiSchema = z.object({ id:z.uuid(), category:text.optional(), hrOwned:z.boolean().optional(), moderatorSource:z.enum(['line','matrix']).optional(),libraryId:z.uuid().nullable().optional(), title:z.string().trim().min(1).max(300), description:text, weightBp:z.number().int().min(1).max(10000), unit:z.string().max(80), scoring:scoringSchema, moderatorEmploymentId:z.uuid().nullable(), approvalChain:z.array(z.object({employmentId:z.uuid(),actual:finite.nullable(),remark:text,at:z.iso.datetime().nullable()})).max(10).optional(), setting:z.enum(['draft','proposed','approved','returned']), settingApprovals:z.array(z.object({employmentId:z.uuid(),action:z.enum(['approved','returned']),remark:text,at:z.iso.datetime()})).max(10).optional(), settingRemark:text, checkIn:z.object({answer:z.enum(checkInAnswers),note:text,at:z.iso.datetime(),userId:z.uuid()}).optional(), actual:finite.nullable(), note:text, approvedActual:finite.nullable(), moderationRemark:text, locked:z.boolean() });
 export type KPI = z.infer<typeof kpiSchema>;
 export function pendingKpiApprover(k:KPI):string|null {return k.locked?null:k.approvalChain?.length?k.approvalChain.find(s=>!s.at)?.employmentId??null:k.moderatorEmploymentId;}
 export function pendingSettingApprover(k:KPI):string|null {return k.setting==='proposed'?kpiApprovers(k)[(k.settingApprovals??[]).filter(s=>s.action==='approved').length]??null:null;}
 export function kpiApprovers(k:KPI):string[]{return k.approvalChain?.length?k.approvalChain.map(s=>s.employmentId):k.moderatorEmploymentId?[k.moderatorEmploymentId]:[];}
-export const competencySchema = z.object({ ...statementSchema.shape, self:answer.nullable(), manager:answer.nullable(), managerRemark:text });
+export const competencySchema = z.object({ ...statementSchema.shape, selfRemark:text.optional(), self:answer.nullable(), manager:answer.nullable(), managerRemark:text });
 export type Competency = z.infer<typeof competencySchema>;
 export const policySchema = z.object({
   extremes:z.object({enabled:z.boolean(),bonus:z.number().finite().min(0).max(1000),penalty:z.number().finite().min(0).max(1000)}).default({enabled:false,bonus:5,penalty:5}),
@@ -32,13 +32,14 @@ export const policySchema = z.object({
   modules:z.object({pm:z.boolean(),tm:z.boolean(),idp:z.boolean(),evidence:z.boolean()}),
   windows:z.partialRecord(z.enum(windowCells),z.object({opensAt:z.iso.datetime({offset:true}).nullable(),closesAt:z.iso.datetime({offset:true}).nullable()}).refine(w=>!w.opensAt||!w.closesAt||Date.parse(w.opensAt)<Date.parse(w.closesAt),'The window must close after it opens.')),
   aBands:z.tuple([finite,finite,finite,finite,finite]),
-  bBands:z.array(z.object({companyId:z.uuid(),minima:z.tuple([finite,finite,finite,finite,finite])})).max(200),
+  bBands:z.array(z.object({companyId:z.uuid(),variant:z.enum(['base','excellence']).optional(),minima:z.tuple([finite,finite,finite,finite,finite])})).max(200),
   lowMaxPct:finite.min(0).max(100),midMaxPct:finite.min(0).max(100),minValid:z.number().int().min(1).max(30),
   weights:z.record(z.string().min(1).max(30),z.number().int().min(0).max(10000)), // 360 basis points; rest is competency
   framework:z.array(z.object({gradeMin:z.number().int(),gradeMax:z.number().int(),letters:z.array(z.string().min(1).max(30)),statements:z.array(statementSchema).min(1).max(200)})).min(1).max(30),
   profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).min(1).max(200)})).max(1000),
   idpMinGoals:z.number().int().min(1).max(30), idpRequireAllActions:z.boolean(),
-  curveTolerancePct:finite.min(0).max(100),curveTolerancePeople:z.number().int().min(0).max(100),curveStrict:z.boolean(),
+  curveToleranceMode:z.enum(['people','percent']).default('people'),
+  curveTolerancePct:finite.min(0).max(100),curveTolerancePeople:z.number().int().min(1).max(100),curveStrict:z.boolean(),
 }).superRefine((v,c)=>{
   if(v.lowMaxPct>=v.midMaxPct)c.addIssue({code:'custom',message:'Potential cutoffs must increase.'});
   for(const minima of [v.aBands,...v.bBands.map(b=>b.minima)])if(minima.some((n,i)=>i>0&&n<=minima[i-1]))c.addIssue({code:'custom',message:'Performance band cutoffs must increase.'});
@@ -49,7 +50,7 @@ export const policySchema = z.object({
 });
 export type Policy = z.infer<typeof policySchema>;
 export function defaultPolicy(framework: Policy['framework']):Policy {
-  return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpRequireAllActions:false,curveTolerancePct:10,curveTolerancePeople:1,curveStrict:false};
+  return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpRequireAllActions:false,curveToleranceMode:'people',curveTolerancePct:10,curveTolerancePeople:1,curveStrict:true};
 }
 export function ratedPerformance(policy:Policy):boolean {return policy.modules.pm&&policy.kind!=='quarterly';}
 export function assertWindow(policy:Policy,cell:WindowCell,now=new Date()):void {
@@ -102,7 +103,7 @@ export function resolveBand<T>(raw:T|null,decisions:{tier:Tier;band:T|null;locke
 export function referenceCurve(pbt:number):Record<PMBand,number>{return pbt<70?{UA:10,BE:25,ME:60,AE:5,OU:0}:pbt>130?{UA:0,BE:5,ME:60,AE:25,OU:10}:{UA:5,BE:10,ME:70,AE:10,OU:5};}
 export const goalSchema=z.object({id:z.uuid(),area:z.string().trim().min(1).max(300),dueOn:z.iso.date(),onJob:text,fromOthers:text,formalLearning:text,status:z.enum(['not_started','in_progress','done','dropped']),managerComment:text});
 export type DevelopmentGoal=z.infer<typeof goalSchema>;
-export const careerSchema=z.object({aspiration:text,mobility:z.enum(['stay','role_in_unit','company_in_group','other_group','relocate']),mobilityNote:text,targetProfileId:z.uuid().nullable()});
+export const careerSchema=z.object({aspiration:text,aspirationNow:text.optional(),aspirationLong:text.optional(),strengths:text.optional(),preferences:text.optional(),mentor:text.optional(),selfProfileId:z.uuid().nullable().optional(),mobility:z.enum(['stay','role_in_unit','company_in_group','other_group','relocate']).nullable(),mobilityNote:text,targetProfileId:z.uuid().nullable()});
 export type Career=z.infer<typeof careerSchema>;
 export const evidenceResponseSchema=z.object({userId:z.uuid(),stance:z.enum(['endorse','dispute']),note:z.string().trim().min(1).max(1200),at:z.iso.datetime()});
 export type FrozenResult={version:1;provenance?:{evidence:unknown[];attachments:{id:string;fileName:string;sizeBytes:number}[];kpis:KPI[];competencies:Competency[];leadership:{score:number;max:number}[];decisions:{tier:Tier;mode:string;performance:PMBand|null;potential:PotentialBand|null;locked:boolean;performanceLocked:boolean;potentialLocked:boolean;pip:boolean;promotion:boolean;specialReward:boolean}[]};performance:PMBand|null;potential:PotentialBand|null;performanceSource:Tier|'manager';potentialSource:Tier|'manager';talent:Talent|null;selfScore:number|null;managerScore:number|null;potentialPct:number|null;grade:string;policyDigest:string;feedback:{principle:string;band:PotentialBand}[];pip:boolean;promotion:boolean;specialReward:boolean};

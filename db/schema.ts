@@ -9944,7 +9944,9 @@ export const onehrReview = pgTable('performance_onehr_review', {
   kpis: jsonb('kpis').notNull().default([]), competencies: jsonb('competencies').notNull().default([]), statements: jsonb('statements').notNull().default([]),
   resultsSubmittedAt: timestamp('results_submitted_at', {withTimezone:true}), competencyStatus: text('competency_status').notNull().default('pending'),
   managerPerformance: text('manager_performance'), managerScore: numeric('manager_score',{precision:20,scale:8}),
-  managerRemark: text('manager_remark').notNull().default(''), revision: integer('revision').notNull().default(1), createdAt: createdAt(),
+  managerRemark: text('manager_remark').notNull().default(''), selfRemark:text('self_remark').notNull().default(''),
+  competencySelfRemark:text('competency_self_remark').notNull().default(''), competencyManagerRemark:text('competency_manager_remark').notNull().default(''),
+  revision: integer('revision').notNull().default(1), createdAt: createdAt(),
 },t=>[index('performance_onehr_review_cycle_idx').on(t.cycleId)]);
 export const onehrPanel = pgTable('performance_onehr_panel', {
   requestId: uuid('request_id').primaryKey().references(() => peerFeedbackRequest.id), tenantId: tenantId(),
@@ -9957,6 +9959,7 @@ export const onehrCalibration = pgTable('performance_onehr_calibration', {
   companyId: uuid('company_id').references(()=>company.id), name: text('name').notNull(), tier: text('tier').notNull(),
   reviewerUserIds: uuid('reviewer_user_ids').array().notNull(), pbtAchievement: numeric('pbt_achievement',{precision:12,scale:2}),
   mode:text('mode').notNull().default('after'), performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}), lockedAt: timestamp('locked_at',{withTimezone:true}), revision:integer('revision').notNull().default(1), createdAt:createdAt(),
+  pipLockedAt:timestamp('pip_locked_at',{withTimezone:true}), promotionLockedAt:timestamp('promotion_locked_at',{withTimezone:true}),
 },t=>[index('performance_onehr_calibration_cycle_idx').on(t.cycleId)]);
 export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entry', {
   id:id(),tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),
@@ -9964,6 +9967,7 @@ export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entr
   performance:text('performance'),potential:text('potential'),performanceNote:text('performance_note').notNull().default(''),potentialNote:text('potential_note').notNull().default(''),
   seenPerformance:text('seen_performance'),seenPotential:text('seen_potential'),performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}),lockedAt:timestamp('locked_at',{withTimezone:true}),
   pip:boolean('pip').notNull().default(false),promotion:boolean('promotion').notNull().default(false),specialReward:boolean('special_reward').notNull().default(false),
+  pipReason:text('pip_reason').notNull().default(''),promotionReason:text('promotion_reason').notNull().default(''),specialRewardReason:text('special_reward_reason').notNull().default(''),
 },t=>[uniqueIndex('performance_onehr_calibration_entry_uq').on(t.sessionId,t.reviewId)]);
 export const onehrPlan = pgTable('performance_onehr_plan', {
   id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),
@@ -9983,3 +9987,31 @@ export const onehrResult = pgTable('performance_onehr_result', {
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
 },t=>[uniqueIndex('performance_onehr_result_review_uq').on(t.reviewId),index('performance_onehr_result_subject_idx').on(t.employmentId,t.cycleId)]);
+
+// Private working copies never enter a submitted assessment or another actor's projection.
+export const assessmentDraft = pgTable('performance_assessment_draft', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+  actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),kind:text('kind').notNull(),
+  contextId:uuid('context_id').notNull(),payload:jsonb('payload').notNull(),
+  revision:integer('revision').notNull().default(1),reviewRevision:integer('review_revision').notNull(),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_draft_actor_uq').on(t.reviewId,t.actorUserId,t.kind,t.contextId)]);
+export const assessmentConversation = pgTable('performance_assessment_conversation', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+  actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),stage:text('stage').notNull(),
+  messages:jsonb('messages').notNull().default([]),revision:integer('revision').notNull().default(1),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_conversation_actor_uq').on(t.reviewId,t.actorUserId,t.stage)]);
+export const performanceKpiLibrary = pgTable('performance_kpi_library', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').references(()=>company.id),
+  groupCompanyId:uuid('group_company_id').references(()=>company.id),tier:integer('tier').notNull().default(0),
+  name:text('name').notNull(),description:text('description').notNull().default(''),
+  template:jsonb('template').notNull(),grades:text('grades').array().notNull().default([]),
+  departmentIds:uuid('department_ids').array().notNull().default([]),archivedAt:timestamp('archived_at',{withTimezone:true}),
+  revision:integer('revision').notNull().default(1),createdAt:createdAt(),
+});
+export const assessmentAttachmentLink = pgTable('performance_assessment_attachment_link', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+  attachmentId:uuid('attachment_id').notNull().references(()=>performanceAttachment.id),
+  kpiId:uuid('kpi_id').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('performance_assessment_attachment_kpi_uq').on(t.attachmentId,t.kpiId)]);

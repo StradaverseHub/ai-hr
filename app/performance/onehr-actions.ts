@@ -1,4 +1,5 @@
 'use server';
+import { assessmentReturnPath } from '@/lib/performance-navigation';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -12,6 +13,10 @@ const num=(f:FormData,k:string)=>{const s=str(f,k);if(!s||!Number.isFinite(Numbe
 const nullableNumber=(f:FormData,k:string)=>str(f,k)?num(f,k):null;
 const ids=(f:FormData,k:string)=>f.getAll(k).map(v=>z.uuid().parse(String(v)));
 const readWindows=(f:FormData)=>Object.fromEntries(windowCells.map(cell=>[cell,{opensAt:str(f,`${cell}.opens`)?`${str(f,`${cell}.opens`)}:00+08:00`:null,closesAt:str(f,`${cell}.closes`)?`${str(f,`${cell}.closes`)}:00+08:00`:null}]));
+
+const destination=(f:FormData,fallback:string)=>assessmentReturnPath(f.get('returnTo'),fallback);
+const withError=(url:string,error:unknown)=>`${url}${url.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(error))}`;
+
 export async function enableOnehrAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));
   try{await perf.configureOnehrCycle(s,id,null);}catch(e){redirect(`/performance/${id}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
@@ -26,17 +31,17 @@ export async function onehrCycleAction(f:FormData){
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
-      await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),idpMinGoals:num(f,'idpMinGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
+      await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),idpMinGoals:num(f,'idpMinGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
     }else if(str(f,'action')==='windows'){
       await perf.updateOnehrWindows(s,id,num(f,'revision'),readWindows(f),str(f,'reason'));
     }else if(str(f,'action')==='calibration'){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode')});
     }else throw Error('Unknown action.');
-  }catch(e){redirect(`${url}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
+  }catch(e){redirect(withError(url,e));}
   revalidatePath(url);redirect(url);
 }
 export async function onehrReviewAction(f:FormData){
-  const s=await getSession(),id=z.uuid().parse(str(f,'reviewId'));const url=`/performance/review/${id}`;
+  const s=await getSession(),id=z.uuid().parse(str(f,'reviewId'));const url=destination(f,`/performance/review/${id}`);
   try{
     const expected=num(f,'revision');
     switch(str(f,'action')){
@@ -46,19 +51,31 @@ export async function onehrReviewAction(f:FormData){
         await perf.saveOnehrKpis(s,id,expected,rows,f.has('propose'));break;
       }
       case 'approve':await perf.approveOnehrScorecard(s,id,expected,str(f,'decision')==='approve',str(f,'remark'));break;
-      case 'results':await perf.submitOnehrResults(s,id,expected,ids(f,'kpiId').map(k=>({id:k,actual:num(f,`${k}.actual`),note:str(f,`${k}.note`)})));break;
+      case 'results':
+        if(str(f,'intent')==='draft')await saveDraftForm(s,f);
+        else await perf.submitOnehrResults(s,id,expected,ids(f,'kpiId').map(k=>({id:k,actual:num(f,`${k}.actual`),note:str(f,`${k}.note`)})),str(f,'overallRemark'));
+        break;
       case 'check-in':await perf.saveOnehrKpiCheckIn(s,id,expected,str(f,'kpiId'),str(f,'answer') as 'on_track'|'at_risk'|'off_track'|'nothing_yet',str(f,'note'));break;
+      case 'moderation':
+        if(str(f,'intent')==='draft')await saveDraftForm(s,f);
+        else await perf.submitAssessmentModeration(s,id,expected,ids(f,'kpiId').map(k=>({id:k,actual:num(f,`${k}.actual`),note:str(f,`${k}.note`)})),str(f,'overallRemark'));
+        break;
       case 'moderate':await perf.moderateOnehrKpi(s,id,expected,str(f,'kpiId'),num(f,'actual'),str(f,'remark'));break;
       case 'performance':await perf.confirmOnehrPerformance(s,id,expected,str(f,'band') as PMBand,str(f,'remark'));break;
-      case 'competencies':await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'));break;
+      case 'competencies':
+        if(str(f,'intent')==='draft')await saveDraftForm(s,f);
+        else await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'),str(f,'overallRemark'));
+        break;
       case 'panel':await perf.assignOnehrPanel(s,id,expected,ids(f,'peerIds').map(employmentId=>({employmentId,relationship:str(f,`relationship.${employmentId}`)||'peer'})));break;
       case 'reassign':await perf.reassignOnehrReviewer(s,id,expected,str(f,'reviewerEmploymentId'));break;
       case 'freeze':await perf.freezeOnehrReview(s,id,expected);break;
       case 'release':await perf.releaseOnehrResult(s,id,str(f,'component') as 'performance'|'potential'|'talent'|'feedback',str(f,'release')==='true');break;
       case 'plan':{
         const goals=ids(f,'goalId').filter(k=>str(f,`${k}.area`)).map(k=>({id:k,area:str(f,`${k}.area`),dueOn:str(f,`${k}.dueOn`),onJob:str(f,`${k}.onJob`),fromOthers:str(f,`${k}.fromOthers`),formalLearning:str(f,`${k}.formalLearning`),status:'not_started'}));
-        await perf.saveOnehrPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,{career:{aspiration:str(f,'aspiration'),mobility:str(f,'mobility'),mobilityNote:str(f,'mobilityNote'),targetProfileId:str(f,'targetProfileId')||null},goals},f.has('share'));break;
+        await perf.saveOnehrPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,{career:{aspiration:str(f,'aspiration'),mobility:str(f,'mobility')||null,aspirationNow:str(f,'aspirationNow'),aspirationLong:str(f,'aspirationLong'),strengths:str(f,'strengths'),preferences:str(f,'preferences'),mentor:str(f,'mentor'),selfProfileId:str(f,'selfProfileId')||null,mobilityNote:str(f,'mobilityNote'),targetProfileId:str(f,'targetProfileId')||null},goals},f.has('share'));break;
       }
+      case 'plan-goal-edit':await perf.editAssessmentDevelopmentGoal(s,id,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),{area:str(f,'area'),dueOn:str(f,'dueOn'),onJob:str(f,'onJob'),fromOthers:str(f,'fromOthers'),formalLearning:str(f,'formalLearning'),managerComment:str(f,'managerComment')});break;
+      case 'kpi-moderator':await perf.assignAssessmentKpiModerator(s,id,expected,str(f,'kpiId'),str(f,'moderatorEmploymentId'));break;
       case 'plan-review':await perf.reviewOnehrPlan(s,str(f,'planId'),num(f,'planRevision'),str(f,'comment'),str(f,'conversation'),f.has('close'),id);break;
       case 'plan-ack':await perf.acknowledgeOnehrPlan(s,str(f,'planId'),num(f,'planRevision'));break;
       case 'goal-progress':await perf.updateOnehrGoalProgress(s,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),str(f,'status') as z.infer<typeof goalSchema>['status']);break;
@@ -67,21 +84,39 @@ export async function onehrReviewAction(f:FormData){
       case 'evidence-state':await perf.changeOnehrEvidenceState(s,str(f,'evidenceId'),str(f,'state') as 'shared'|'retracted');break;
       default:throw Error('Unknown assessment action.');
     }
-  }catch(e){redirect(`${url}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
+  }catch(e){redirect(withError(url,e));}
   revalidatePath(url);revalidatePath('/me/performance');redirect(url);
 }
 export async function onehrFeedbackAction(f:FormData){
-  const s=await getSession(),id=z.uuid().parse(str(f,'requestId'));const url=`/performance/onehr/feedback/${id}`;
+  const s=await getSession(),id=z.uuid().parse(str(f,'requestId'));const url=destination(f,`/performance/assessment/feedback/${id}`);
   const declined=str(f,'action')==='decline';
-  try{if(declined)await perf.declineOnehrFeedback(s,id);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'));}catch(e){redirect(`${url}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
+  try{if(declined)await perf.declineOnehrFeedback(s,id);else if(str(f,'intent')==='draft')await saveDraftForm(s,f);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'));}catch(e){redirect(withError(url,e));}
   revalidatePath('/me/performance');revalidatePath(url);redirect(declined?'/me/performance':url);
 }
 export async function onehrCalibrationAction(f:FormData){
-  const s=await getSession(),id=z.uuid().parse(str(f,'sessionId'));const url=`/performance/onehr/calibration/${id}`;
-  try{if(str(f,'action')==='unlock')await perf.unlockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else if(str(f,'action')==='lock')await perf.lockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else await perf.saveOnehrCalibration(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),axis:str(f,'axis')||'both',performance:str(f,'performance') as PMBand||null,potential:str(f,'potential') as PotentialBand||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote'),confirmTalentDecisions:f.has('confirmTalentDecisions'),pip:f.has('pip'),promotion:f.has('promotion'),specialReward:f.has('specialReward')});}catch(e){redirect(`${url}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
+  const s=await getSession(),id=z.uuid().parse(str(f,'sessionId'));const url=destination(f,`/performance/assessment/calibration/${id}`);
+  try{if(str(f,'action')==='talent-save')await perf.saveAssessmentTalentDecision(s,id,num(f,'revision'),str(f,'reviewId'),str(f,'kind') as 'pip'|'promotion'|'specialReward',f.has('selected'),str(f,'reason'));else if(['talent-lock','talent-reopen'].includes(str(f,'action')))await perf.confirmAssessmentTalentList(s,id,num(f,'revision'),str(f,'kind') as 'pip'|'promotion',str(f,'action')==='talent-reopen',str(f,'reason'));else if(str(f,'action')==='unlock')await perf.unlockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else if(str(f,'action')==='lock')await perf.lockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else await perf.saveOnehrCalibration(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),axis:str(f,'axis')||'both',performance:str(f,'performance') as PMBand||null,potential:str(f,'potential') as PotentialBand||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote'),confirmTalentDecisions:f.has('confirmTalentDecisions'),pip:f.has('pip'),promotion:f.has('promotion'),specialReward:f.has('specialReward')});}catch(e){redirect(withError(url,e));}
   revalidatePath(url);redirect(url);
 }
 export async function onehrDraftAction(reviewId:string,words:string) {
   const s=await getSession();
   try{return {draft:await perf.draftOnehrNarrative(s,reviewId,words)};}catch(e){return {error:publicErrorMessage(e)};}
+}
+
+async function saveDraftForm(s:Awaited<ReturnType<typeof getSession>>,f:FormData) {
+  const kind=str(f,'draftKind'),reviewId=z.uuid().parse(str(f,'reviewId'));
+  let payload:unknown;
+  if(kind==='results'||kind==='moderation')payload={kind,lines:ids(f,'kpiId').map(id=>({id,actual:nullableNumber(f,`${id}.actual`),note:str(f,`${id}.note`)})),remark:str(f,'overallRemark')};
+  else if(kind==='feedback')payload={kind,answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),str(f,`answer.${id}`)]).filter(([,answer])=>!!answer)),remark:str(f,'remark')};
+  else payload={kind,answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),{answer:str(f,`answer.${id}`)||null,remark:str(f,`remark.${id}`)}])),remark:str(f,'overallRemark')};
+  return perf.saveAssessmentDraft(s,reviewId,kind==='feedback'?0:num(f,'revision'),str(f,'draftRevision')?num(f,'draftRevision'):null,payload,kind==='feedback'?str(f,'requestId'):reviewId);
+}
+export async function saveAssessmentDraftAction(f:FormData) {
+  const s=await getSession();
+  try{return await saveDraftForm(s,f);}catch(e){return {error:publicErrorMessage(e)};}
+}
+
+export async function reviewConversationAction(reviewId:string,stage:perf.ConversationStage,revision:number|null,requestId:string,text:string,intent:'guide'|'draft') {
+ const s=await getSession();
+ try{return await perf.sendReviewMessage(s,reviewId,stage,revision,requestId,text,intent);}catch(e){return {error:publicErrorMessage(e)};}
 }

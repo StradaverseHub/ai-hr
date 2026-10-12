@@ -62,7 +62,8 @@ export default async function MyPerformancePage({
       />
 
       <ErrorBanner message={error} />
-      {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle} · {a.periodEnd}</Link></p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/onehr/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/onehr/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}
+      <Link href="/performance/workspace" className="flex min-h-11 items-center justify-between rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{onehrText('workspace.title')}<span className="text-sm font-normal">{onehrText('workspace.description')} →</span></Link>
+      {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle} · {a.periodEnd}</Link></p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}
 
       {/* Performance reviews */}
       {standardReviews.length > 0 && (

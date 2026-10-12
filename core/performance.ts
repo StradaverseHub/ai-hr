@@ -1,3 +1,4 @@
+import { linkAssessmentAttachmentTx, configureAssessmentCycleTx } from '../packs/performance/service';
 /**
  * Performance & talent — Phase A (ADR-0013). The first config-driven, statute-free module.
  *
@@ -237,6 +238,7 @@ export async function createCycle(
     meritBudget?: MeritBudget;
     eligibilityRules?: EligibilityRules | null;
     stages?: CycleStage[];
+    assessmentWorkflow?: boolean;
   },
 ) {
   // Admin or a perf-comp partner scoped to the cycle's company (group-wide cycles need a group grant).
@@ -277,6 +279,7 @@ export async function createCycle(
         stages,
       })
       .returning({ id: reviewCycle.id });
+    if(p.assessmentWorkflow)await configureAssessmentCycleTx(tx,ctx,row.id);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'review-cycle',
@@ -992,7 +995,7 @@ export async function closeReview(
  *  review's subject, so RLS admits the subject + manager + admin, not peers). */
 export async function addPerformanceAttachment(
   ctx: SessionContext,
-  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer },
+  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer; kpiId?: string },
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new PerfError('Empty file');
   if (p.content.byteLength > 10 * 1024 * 1024) throw new PerfError('File exceeds 10 MB');
@@ -1013,6 +1016,7 @@ export async function addPerformanceAttachment(
         uploadedByUserId: ctx.userId ?? null,
       })
       .returning({ id: performanceAttachment.id });
+    if(p.kpiId)await linkAssessmentAttachmentTx(tx,ctx,p.reviewId,row.id,p.kpiId);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'performance-review',
