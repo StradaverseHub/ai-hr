@@ -6,7 +6,9 @@ import { guideTourId, tourSteps, TOURS, toursForRoles } from '../lib/onboarding-
 
 describe('knowledge-base walkthrough coverage', () => {
   it('offers a runnable walkthrough for every bundled tenant guide and its audience', () => {
-    for (const { meta } of loadGuides()) {
+    const guides = loadGuides();
+    expect(guides.length).toBeGreaterThan(0);
+    for (const { meta } of guides) {
       const id = guideTourId(meta.slug);
       expect(id, meta.slug).not.toBeNull();
       const roles = meta.audience === 'hr_admin' ? ['hr_admin'] : meta.audience === 'manager' ? ['manager'] : ['employee'];
