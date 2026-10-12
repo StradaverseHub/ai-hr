@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
@@ -442,7 +443,7 @@ export async function ScheduleGroupSections({
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
         {editing && (
           <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-            <button className={btnPrimary}>{tr('save')}</button>
+            <AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton>
           </div>
         )}
       </Card>
@@ -453,10 +454,10 @@ export async function ScheduleGroupSections({
     <>
       <ErrorBanner message={bannerFor('attendance')} />
       {editing ? (
-        <form action={saveScheduleGroupAttendanceAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'attendance' ? savedReceipt : undefined} className="space-y-6">
+        <AttendanceSettingsActionForm submitAction={saveScheduleGroupAttendanceAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'attendance' ? savedReceipt : undefined} className="space-y-6">
           <input type="hidden" name="ruleId" value={rule.id} />
           {attendanceBody}
-        </form>
+        </AttendanceSettingsActionForm>
       ) : (
         <div className="space-y-6">{attendanceBody}</div>
       )}
@@ -598,7 +599,7 @@ export async function ScheduleGroupSections({
         )}
         {editing && (
           <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-            <button className={btnPrimary}>{tr('save')}</button>
+            <AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton>
           </div>
         )}
       </Card>
@@ -609,14 +610,14 @@ export async function ScheduleGroupSections({
     <>
       <ErrorBanner message={bannerFor('overtime')} />
       {editing ? (
-        <form action={saveScheduleGroupOvertimeAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'overtime' ? savedReceipt : undefined} className="space-y-6">
+        <AttendanceSettingsActionForm submitAction={saveScheduleGroupOvertimeAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'overtime' ? savedReceipt : undefined} className="space-y-6">
           <input type="hidden" name="ruleId" value={rule.id} />
           {/* ⚠️ THE MARKER, read as a VALUE by the action and never by presence. A browser omits an
               unchecked checkbox, so without this "turned off" and "this form did not carry the control"
               are the same bytes — the trap 7c834696 hit on this exact setting. */}
           <input type="hidden" name="earlyOtEditor" value="1" />
           {overtimeBody}
-        </form>
+        </AttendanceSettingsActionForm>
       ) : (
         <div className="space-y-6">{overtimeBody}</div>
       )}
