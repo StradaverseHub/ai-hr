@@ -31,6 +31,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const BOUNDARIES = [
   'core/attendance',
   'core/attendance-allowance',
+  'core/attendance-allowance-context',
   // 7c834696 stage 1 — the pure per-day calculation module. Declared as a boundary (not slipped into the
   // debt allowlist) because it IS pack implementation, exactly like attendance-derive beside it.
   'core/attendance-calc',
@@ -53,6 +54,7 @@ const ALWAYS_ALLOWED = [
   'packs/attendance/', // the pack itself: wiring (index.ts) + service facade
   'core/attendance.ts', // implementation files import each other freely
   'core/attendance-allowance.ts',
+  'core/attendance-allowance-context.ts',
   'core/attendance-calc.ts',
   'core/attendance-derive.ts',
   'core/attendance-device.ts',

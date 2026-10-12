@@ -58,3 +58,5 @@ export * from '../../core/loans-compute';
 export * from '../../core/statutory-authority';
 // 2ef69d1e — Back Pay (Arrears): detection, the read-only difference engine, verify/approve/post/cancel.
 export * from '../../core/back-pay';
+
+export * from '../../core/payroll-attendance-allowance';

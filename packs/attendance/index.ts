@@ -18,7 +18,7 @@
  *   `core/attendance-clock-read.ts` (own live status and effective clockings),
  *   `core/attendance-clock-data.ts` (authorised raw evidence),
  *   `core/attendance-punch-change.ts` (audited correction sets and payroll protection),
- *   `core/attendance-allowance.ts` (attendance-triggered allowances), and
+ *   `core/attendance-allowance.ts` + `core/attendance-allowance-context.ts` (attendance-triggered allowances), and
  *   `core/clocking-location.ts` — clocking sites ARE pack-owned: they exist solely for the clock
  *   portal's geofence/device gate and per-employee site assignment, not for the org spine
  *   (`core/location.ts`, the office/worksite spine, stays kernel).
@@ -652,6 +652,10 @@ export const attendancePack: ModulePack = {
     { table: 'attendance_rule', note: 'lateness / early-out / overtime rule library (88e94371)' },
     { table: 'attendance_rule_ot_row', note: 'per-rule OT rate rows' },
     { table: 'attendance_allowance_policy', note: 'attendance-triggered allowance policies' },
+    { table: 'attendance_allowance_version', note: 'immutable allowance policy snapshots' },
+    { table: 'attendance_allowance_result', note: 'period calculation current results' },
+    { table: 'attendance_allowance_result_revision', note: 'immutable calculation evidence revisions' },
+    { table: 'attendance_allowance_transfer', note: 'authorised transfer receipts and failures' },
     { table: 'clocking_location', note: 'geofenced clocking sites (clock portal), not the org location spine' },
     { table: 'employee_clocking_location', note: 'employee ↔ clocking-site assignment + geofence flag' },
     { table: 'employee_device', note: 'registered clocking devices + revocation (device gate, R63)' },

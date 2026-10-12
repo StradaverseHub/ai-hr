@@ -3060,6 +3060,13 @@
       "when": 1791900000011,
       "tag": "0531_attendance_rotation",
       "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1791900000012,
+      "tag": "0532_attendance_allowance_periods",
+      "breakpoints": true
     }
   ]
 }
