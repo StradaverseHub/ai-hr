@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./current.css";
 
 /* next-themes toggles the `.dark` class on <html>, so make Tailwind's
    `dark:` variant respond to that class instead of the OS preference. */

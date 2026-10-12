@@ -3048,6 +3048,27 @@
       "breakpoints": true
     },
     {
+      "idx": 528,
+      "version": "7",
+      "when": 1791900000008,
+      "tag": "0528_attendance_punch_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 529,
+      "version": "7",
+      "when": 1791900000009,
+      "tag": "0529_onehr_native",
+      "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1791900000010,
+      "tag": "0530_attendance_payroll_entity_protection",
+      "breakpoints": true
+    },
+    {
       "idx": 534,
       "version": "7",
       "when": 1791900000014,

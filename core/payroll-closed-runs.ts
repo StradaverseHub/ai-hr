@@ -1,8 +1,9 @@
-import { and, eq, inArray } from 'drizzle-orm';
-import { type Tx } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { type Tx, type SessionContext } from '../db/client';
 import { companyPayrollConfig, payrollBatch, payslip } from '../db/schema';
 import { resolveAssignedPolicy } from './payroll-policy';
-import { cutOffWindowFor, type CompanyCutOffConfig } from './payroll-policy-config';
+import { cutOffWindowFor, type CompanyCutOffConfig, type PayrollPolicyConfig } from './payroll-policy-config';
 
 /**
  * r424 (50ed39e1) — the CLOSED sibling of `batchesCoveringAttendanceDates` (core/payroll.ts), with the same
@@ -68,4 +69,27 @@ export async function closedBatchesCoveringAttendanceDates(
     if (hit.size > 0) out.push({ batchId: b.id, payPeriod: b.payPeriod, batchDate: b.batchDate, employmentIds: [...hit].sort(), entries });
   }
   return out;
+}
+
+/** Scoped operational facts only: managers cannot read the payslips that establish coverage. */
+export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: string, date: string) {
+  const rows = await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`) as unknown as {
+    batch_id: string; status: 'processed' | 'closed'; pay_period: string;
+    policy_config: PayrollPolicyConfig | null; attendance_cutoff_day: number | null;
+  }[];
+  return rows.filter(row => {
+    const window = cutOffWindowFor('attendance', row.policy_config, { attendanceCutOffDay: row.attendance_cutoff_day }, row.pay_period);
+    return date >= window.start && date <= window.end;
+  }).map(row => ({ batchId: row.batch_id, status: row.status }));
+}
+
+export async function markPayrollForAttendanceChange(tx: Tx, ctx: SessionContext, batches: Awaited<ReturnType<typeof lockPayrollForAttendanceChange>>, employmentId: string) {
+  for (const batch of batches.filter(row => row.status === 'processed')) {
+    const [result] = await tx.execute(sql`select app.mark_attendance_payroll_recalc(${employmentId}::uuid, ${batch.batchId}::uuid) as marked`) as unknown as { marked: boolean }[];
+    if (result?.marked) await appendEvent(tx, {
+      tenantId: ctx.tenantId, aggregateType: 'payroll-batch', aggregateId: batch.batchId,
+      eventType: 'payroll-batch.recalc-required', actor: actorOf(ctx), subjectEmploymentId: employmentId,
+      payload: { addedEmploymentIds: [employmentId] },
+    });
+  }
 }

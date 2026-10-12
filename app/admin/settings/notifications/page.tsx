@@ -15,8 +15,8 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
     <PageHeader title={t('title')} description={t('description')}/>
     <ErrorBanner message={query.error?t('error'):undefined}/>
     {query.saved==='1'&&<p role="status" className="text-sm">{t('saved')}</p>}
-    <Card className="space-y-3 p-5"><p role="status" className="text-sm font-medium">{t(!relay?'upgradeRequired':relay.ready?'relayReady':'relayOff')}</p><p className="text-sm text-muted-foreground">{t('policyHelp')}</p></Card>
-    <Card className="p-5"><SectionHeader title={t('policyTitle')}/>
+    <Card data-tour="workflow-email-readiness" className="space-y-3 p-5"><p role="status" className="text-sm font-medium">{t(!relay?'upgradeRequired':relay.ready?'relayReady':'relayOff')}</p><p className="text-sm text-muted-foreground">{t('policyHelp')}</p></Card>
+    <Card data-tour="workflow-email-policy" className="p-5"><SectionHeader title={t('policyTitle')}/>
       <form action={saveWorkflowEmailPolicy} className="space-y-4">
         <fieldset disabled={!mayWrite} className="grid gap-3 sm:grid-cols-2">
           {notificationEmailCategories.map(category=><label key={category} className="flex items-center gap-2 text-sm"><input type="checkbox" name="category" value={category} defaultChecked={enabled.has(category)}/>{t(`categories.${category}`)}</label>)}
@@ -24,7 +24,7 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
         {mayWrite?<button type="submit" className={btnPrimary}>{t('savePolicy')}</button>:<p className="text-sm text-muted-foreground">{t('groupAdminHelp')}</p>}
       </form>
     </Card>
-    <Card className="p-5"><SectionHeader title={t('deliveries')}/><p className="mb-4 text-sm text-muted-foreground">{t('deliveriesHelp')}</p>
+    <Card data-tour="workflow-email-deliveries" className="p-5"><SectionHeader title={t('deliveries')}/><p className="mb-4 text-sm text-muted-foreground">{t('deliveriesHelp')}</p>
       {!deliveries.length?<p className="text-sm text-muted-foreground">{t('noDeliveries')}</p>:<ul className="divide-y divide-border">{deliveries.map(d=><li key={d.id} className="space-y-3 py-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"><strong>{notificationEmailCategories.find(c=>c===d.category)?t(`categories.${d.category}`):t('category')}</strong><span>{t(`statuses.${d.status}`)}</span><span>{t('attempts')}: {d.attempts}</span><time dateTime={d.createdAt.toISOString()}>{d.createdAt.toISOString().slice(0,16).replace('T',' ')} UTC</time></div>
         {notificationEmailErrors.find(e=>e===d.error)&&<p className="text-sm text-muted-foreground">{t(`errors.${d.error}`)}</p>}

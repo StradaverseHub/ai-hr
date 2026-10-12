@@ -4,7 +4,7 @@ import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useIsMonolith } from './ui-theme-context';
+import { useIsMonolith, useUiTheme } from './ui-theme-context';
 import { KingdeeMark } from './kingdee-mark';
 import {
   ArrowLeftRight,
@@ -557,6 +557,8 @@ export function Sidebar({
   // on desktop"), so it offers no collapse and ignores the preference. Classic reads it exactly as before;
   // the `rail_collapsed` cookie is neither read differently nor written by Monolith.
   const monolith = useIsMonolith();
+  const current = useUiTheme() === 'current';
+  const [workspaceKey, setWorkspaceKey] = useState<string | null>(null);
   const collapsed = monolith ? false : collapsedPref;
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
@@ -590,6 +592,7 @@ export function Sidebar({
   // effect never fires when switching report categories).
   useEffect(() => {
     setOpenKey(null);
+    setWorkspaceKey(null);
   }, [pathname]);
   /**
    * Is this row's owning module on the tenant's plan? (ADR-0077 slice 4.)
@@ -829,6 +832,59 @@ export function Sidebar({
     </>
   );
 
+  // Current uses the same authorized navigation graph, arranged as workspace tabs.
+  // Browsing another workspace never changes scope or grants access to a destination.
+  if (current) {
+    const workspace = groups.find((g) => g.labelKey === workspaceKey)
+      ?? groups.find((g) => g.labelKey === activeSectionKey) ?? groups[0];
+    return <div data-current-navigation data-tour="nav" className="current-navigation">
+      <div className="current-workspaces">
+        <Link href="/" className="current-brand" aria-label={t('home')}>
+          <span data-brand-ground><KingdeeMark className="size-7" /></span>
+          <span>{tCommon('appName')}</span>
+        </Link>
+        <nav aria-label={tCommon('appName')} className="current-workspace-tabs">
+          {groups.map((g) => <button type="button" key={g.labelKey}
+            aria-expanded={workspace === g} aria-controls="current-workspace-links"
+            onClick={() => { setWorkspaceKey(g.labelKey ?? null); setOpenKey(null); }}>
+            {t(g.labelKey!)}
+            {g.labelKey === activeSectionKey && <span className="current-location-dot" aria-hidden />}
+          </button>)}
+        </nav>
+      </div>
+      <nav id="current-workspace-links" aria-label={t(workspace.labelKey!)} className="current-workspace-links">
+        {workspace.items.map((item) => {
+          if (!isCollapsible(item)) return <Link key={item.href} href={item.navigationHref ?? item.href}
+            data-tour={item.tour} aria-current={isRowActive(item) ? 'page' : undefined}
+            >
+            {t(item.labelKey)}{item.href === '/approvals' && approvalCount > 0 && <ApprovalCountBadge count={approvalCount} collapsed={false} />}
+          </Link>;
+          const children = item.children.filter(canSeeChild);
+          const active = item.defaultHref || item.activeMatch === 'children'
+            ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths));
+          return <div className="current-module" key={item.labelKey}>
+            <button type="button" aria-expanded={openKey === item.labelKey}
+              aria-controls={`current-module-${item.labelKey}`} data-active={active || undefined}
+              onClick={() => setOpenKey(openKey === item.labelKey ? null : item.labelKey)}>
+              {t(item.labelKey)}<ChevronDown className="size-3.5" aria-hidden />
+            </button>
+          </div>;
+        })}
+      </nav>
+      {workspace.items.filter(isCollapsible).filter((item) => item.labelKey === openKey).map((item) => {
+        const children = item.children.filter(canSeeChild);
+        const currentHref = children.filter(isRowActive).sort((a,b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
+        return <nav key={item.labelKey} id={`current-module-${item.labelKey}`} aria-label={t(item.labelKey)}
+          className="current-module-links" onKeyDown={(e) => {
+            if (e.key === 'Escape') { setOpenKey(null); document.querySelector<HTMLButtonElement>(`[aria-controls="current-module-${item.labelKey}"]`)?.focus(); }
+          }}>
+          {children.map((child) => <Link key={child.href} href={child.href} aria-current={child.href === currentHref ? 'page' : undefined}
+            onClick={() => setOpenKey(null)}>{t(child.labelKey)}</Link>)}
+        </nav>;
+      })}
+    </div>;
+  }
+
   return (
     // Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
     // it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
@@ -840,6 +896,7 @@ export function Sidebar({
     {/* r398 (parent): the Monolith rail follows Classic's breakpoints. The README hides it below 900px, but the app
         has no other way to open navigation at those widths, so hiding it would leave a tablet with no navigation. */}
       <aside
+        data-app-sidebar
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
           collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',
@@ -863,7 +920,7 @@ export function Sidebar({
               four colours are the brand's own and read correctly only on a light ground. A logo that
               re-tints with the colour scheme has stopped being the logo. The ring keeps it from
               dissolving into a light background. */}
-          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
+          <span data-brand-ground className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
             <KingdeeMark className="size-full" />
           </span>
           {!collapsed && (

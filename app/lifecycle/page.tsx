@@ -26,7 +26,7 @@ export default async function LifecycleHub({ searchParams }: { searchParams: Pro
   ];
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('subtitle')} actions={<Link href="/lifecycle/asset-requests/new"><Button size="sm">{t('hub.requestEquipment')}</Button></Link>} />
+      <PageHeader title={t('title')} description={t('subtitle')} actions={<Link data-tour="lifecycle-request" href="/lifecycle/asset-requests/new"><Button size="sm">{t('hub.requestEquipment')}</Button></Link>} />
       <ErrorBanner message={error} />
       <LifecycleTabs level={level} active="overview" />
 
@@ -77,7 +77,7 @@ export default async function LifecycleHub({ searchParams }: { searchParams: Pro
         </>
       )}
 
-      <Card className="overflow-hidden">
+      <Card data-tour="lifecycle-my-requests" className="overflow-hidden">
         <SectionHeader title={t('hub.myRequests')} count={myRequests.length} />
         {myRequests.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">{t('hub.noRequests')}</p>

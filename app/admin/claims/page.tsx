@@ -50,7 +50,7 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
       <ClaimsTabs active="types" />
       <ErrorBanner message={error} />
 
-      <Card className="overflow-hidden">
+      <Card data-tour="claims-types" className="overflow-hidden">
         {/* e7eb5d83 point 1 — the create form used to sit permanently open in a Card of its own below the
             list, with no way to put it away and no "Add new" anywhere. It now lives behind a disclosure
             whose control is the top-right of this card's header.

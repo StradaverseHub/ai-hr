@@ -195,6 +195,7 @@ export default async function ApprovalsPage({
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
   const category = parseApprovalCategory(categoryParam, { admin });
   const t = await getTranslations('approvals');
+  const tClock = await getTranslations('attendance.clockData');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
   // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
@@ -1012,7 +1013,8 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 font-medium">{c.employee}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {c.proposedCheckIn && <p className="text-xs text-muted-foreground">{t('originalTimes')}: {c.originalClockSnapshot == null ? t('originalNotRecorded') : c.originalClockSnapshot.attendanceId == null ? t('originalNoRecord') : `${c.originalClockSnapshot.originalCheckIn ?? '—'} → ${c.originalClockSnapshot.originalCheckOut ?? '—'}`}</p>}
+                    {(c.proposedCheckIn || c.clockChanges) && <p className="text-xs text-muted-foreground">{t('originalTimes')}: {c.originalClockSnapshot == null ? t('originalNotRecorded') : c.originalClockSnapshot.attendanceId == null ? t('originalNoRecord') : `${c.originalClockSnapshot.originalCheckIn ?? '—'} → ${c.originalClockSnapshot.originalCheckOut ?? '—'}`}</p>}
+                    {c.clockChanges && <div><p className="font-medium">{tClock('proposed')}</p>{c.clockChanges.entries.length ? <ul>{c.clockChanges.entries.map((entry,i)=><li key={i}>{entry.punchAt} · {tClock(entry.direction)}</li>)}</ul> : <p>{tClock('empty')}</p>}</div>}
                     {c.proposedCheckIn
                       ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
                       : ''}

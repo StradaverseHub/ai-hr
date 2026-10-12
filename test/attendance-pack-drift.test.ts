@@ -38,6 +38,8 @@ const BOUNDARIES = [
   'core/attendance-device',
   'core/attendance-clock',
   'core/attendance-clock-read',
+  'core/attendance-clock-data',
+  'core/attendance-punch-change',
   'core/attendance-rule',
   'core/clocking-location',
   // r424 (50ed39e1) — the clocking-file import: mapping library, line decisions, import logs. Pack
@@ -56,6 +58,8 @@ const ALWAYS_ALLOWED = [
   // r378: narrow pack-owned implementations; outside consumers still require the facade.
   'core/attendance-clock.ts',
   'core/attendance-clock-read.ts',
+  'core/attendance-clock-data.ts',
+  'core/attendance-punch-change.ts',
   'core/attendance-rule.ts',
   'core/clocking-location.ts',
   'core/attendance-clocking-import.ts', // r424 — pack implementation; imports core/attendance directly

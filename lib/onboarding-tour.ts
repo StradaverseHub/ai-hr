@@ -3,24 +3,29 @@
  *
  * The shell "welcome" tour orients a first-time user. Each module also has its own walkthrough that a
  * Knowledge Base guide can launch (ADR-0017) — these navigate to the module (`route`) and spotlight the
- * real controls there. Steps are data: a `data-tour` anchor (or null for a centered card), i18n keys, a
- * placement, an optional role filter, and an optional `route` to navigate to before the step shows.
+ * real controls there. Steps are data: a `data-tour` anchor (or null for a centered card), translated keys
+ * or explicitly English guide copy, a placement, an optional role filter, and an optional `route` to
+ * navigate to before the step shows.
  * The server resolves each tour for the caller's roles and hands the set to the client tour component.
  */
 export type TourPlacement = 'center' | 'top' | 'bottom' | 'left' | 'right';
 
-export type TourStep = {
+type TourStepBase = {
   id: string;
   /** CSS selector for the anchor element, or null for a centered card. */
   target: string | null;
-  titleKey: string;
-  bodyKey: string;
   placement: TourPlacement;
   /** If set, the step shows only when the user holds one of these roles. */
   roles?: string[];
   /** If set, navigate here before showing this step (cross-page walkthroughs). */
   route?: string;
 };
+
+/** Older tours use translated keys; the refreshed English guides carry explicitly English copy. */
+export type TourStep = TourStepBase & (
+  | { titleKey: string; bodyKey: string }
+  | { text: { title: string; body: string; lang: 'en' } }
+);
 
 export type Tour = { id: string; steps: TourStep[] };
 
@@ -52,8 +57,8 @@ const WELCOME_STEPS: TourStep[] = [
   { id: 'finish', target: null, titleKey: 'finishTitle', bodyKey: 'finishBody', placement: 'center' },
 ];
 
-// Module walkthroughs are generated from the real pages (anchors + steps) into module-tours.json by
-// scripts/merge-guide-tours.mjs; their step text lives under the `onboarding.tour.*` i18n keys.
+// Module walkthroughs are maintained alongside the real pages (anchors + steps) in module-tours.json.
+// Older steps use onboarding.tour.* keys; refreshed guides can carry explicitly English copy.
 import moduleTours from './module-tours.json';
 
 export const TOURS: Record<string, Tour> = {
@@ -97,6 +102,21 @@ const GUIDE_TOUR: Record<string, string> = {
   'employee-attendance': 'attendance',
   'employee-payslips': 'me',
   'employee-profile-performance': 'me',
+  'admin-attendance-engine': 'attendanceCalculation',
+  'employee-claims': 'claimsEmployee',
+  'admin-claims-loans': 'claimsAdmin',
+  'employee-lifecycle': 'lifecycleEmployee',
+  'admin-lifecycle': 'lifecycleAdmin',
+  'admin-rewards': 'rewardsAdmin',
+  'manager-rewards': 'rewardsReviewer',
+  'admin-ai-reporting': 'intelligence',
+  'admin-mobile-app': 'mobileDesign',
+  'employee-notifications': 'notifications',
+  'admin-communications': 'communications',
+  'operator-provisioning': 'operatorProvisioning',
+  'operator-identity-email': 'operatorIdentity',
+  'operator-tenant-operations': 'operatorTenantOperations',
+  'operator-maintenance': 'operatorMaintenance',
 };
 
 /** The tour id a guide should offer, or null if there isn't one (e.g. a user-uploaded doc). */

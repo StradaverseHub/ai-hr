@@ -94,7 +94,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     // either on an already-open or already-closed day; checkOutTx creates the day row itself when none
     // exists yet (an out-first day), and the aggregate stores and flags it rather than refusing it.
     if (lastCapture && now.getTime() <= lastCapture.time.getTime()) throw new ClockConflictError('Clocking must follow the previous accepted event');
-    const priorPunches = day ? await tx.select({time:attendancePunch.punchAt,captureId:attendancePunch.clockCaptureId}).from(attendancePunch).where(eq(attendancePunch.attendanceId,day.id)) : [];
+    const priorPunches = day ? await tx.select({time:attendancePunch.punchAt,captureId:attendancePunch.clockCaptureId}).from(attendancePunch).where(and(eq(attendancePunch.attendanceId,day.id),isNull(attendancePunch.voidedAt))) : [];
     // Approved clock corrections own the aggregate. Retained punches remain evidence and must not recompute
     // that corrected day. The rule is shared with checkInTx/checkOutTx (r434); it stays HERE too so a corrected
     // day is refused before the ordering checks below, with the same typed error. Locking the day above

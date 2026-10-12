@@ -47,7 +47,7 @@ export default async function ControlTowerPage() {
   const mins = (v: number | null) => (v == null ? '—' : `${Math.round(v / 60)}m`);
 
   return (
-    <div className={pageWideCls}>
+    <div data-tour="intelligence-control-tower" className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} />
 
       {/* One line naming what this plane currently watches. It reads "1 of 4 domains live" rather than

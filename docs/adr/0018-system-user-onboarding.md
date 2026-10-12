@@ -100,3 +100,18 @@ the real Balances card (step 2/5), role-filtered (admin-only `/admin/leave` step
   SECURITY DEFINER function restricts the write to exactly `onboarded_at`.
 - **A separate `user_onboarding` table** — overkill for one nullable timestamp; revisit if we add
   multiple independent tours with per-tour completion.
+
+## Update (2026-10-12) — walkthrough coverage for refreshed guides
+
+Every bundled tenant and operator guide now maps to a runnable walkthrough. New steps cover the
+attendance-calculation guide and claims/loans, lifecycle, rewards, AI/reporting, mobile design,
+communications and operator responsibilities. A catalog-wide guard pins mappings, audience-role
+coverage, real routes/anchors and operator isolation. Operator launch buttons are rendered inside
+the existing guarded console; its tours require the operator role and remain on that route.
+
+The new explanatory text is explicitly English, matching the reviewed guide bodies. `TourStep`
+accepts either the existing translation keys or `{ text: { title, body, lang: 'en' } }`; the coachmark
+marks inline copy with its language while navigation controls remain localized. This is an honest
+intermediate publication state, not a claim of translated content. Reviewed localized copy can move
+back to the existing translation-key representation. Walkthroughs explain real controls and navigate;
+they never submit the business actions they describe.

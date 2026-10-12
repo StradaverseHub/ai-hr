@@ -49,7 +49,7 @@ export default async function KnowledgeBasePage({
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-1">
+    <div data-tour="knowledge-base-library" className="mx-auto max-w-5xl space-y-5 px-1">
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
 

@@ -549,5 +549,769 @@
         ]
       }
     ]
+  },
+  "attendanceCalculation": {
+    "id": "attendanceCalculation",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/admin/attendance/settings",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Trace an attendance result",
+          "body": "Check the employee and date first. The roster, backup shift and company schedule can produce different expected hours.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/admin/attendance/settings",
+        "target": "[data-tour=\"attendance-configuration\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review the schedule configuration",
+          "body": "Use these settings to inspect shifts, schedules, breaks, file mappings and locations. Review the effective assignment before changing a result.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/attendance",
+        "target": "[data-tour=\"attendance-summary\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Check the calculated attendance",
+          "body": "Compare raw punches, leave and holidays with the calculated day. Use an authorized correction or recompute, then review payroll separately.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "claimsEmployee": {
+    "id": "claimsEmployee",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/claims",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Submit an expense claim",
+          "body": "Start with the correct claim type and date. A saved draft has not yet been submitted for approval.",
+          "lang": "en"
+        }
+      },
+      {
+        "id": "2",
+        "route": "/claims",
+        "target": "[data-tour=\"claims-compose\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Prepare the claim",
+          "body": "Enter the amount and required details, attach receipts where required, and review the applicable limit. Save a draft or submit when ready.",
+          "lang": "en"
+        }
+      },
+      {
+        "id": "3",
+        "route": "/claims",
+        "target": "[data-tour=\"claims-history\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Track the result",
+          "body": "Review submitted claims and their statuses here. Approval and reimbursement are separate stages; an approved claim does not prove payment.",
+          "lang": "en"
+        }
+      }
+    ]
+  },
+  "claimsAdmin": {
+    "id": "claimsAdmin",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/admin/claims",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Configure claims and loans",
+          "body": "Review company scope, claim rules and payroll treatment before processing reimbursements or loan deductions.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/admin/claims",
+        "target": "[data-tour=\"claims-types\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review claim types",
+          "body": "This area lists claim types and their rules. Add new opens the configuration form. Confirm limits, receipt requirements and applicability before saving.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/admin/loans",
+        "target": "[data-tour=\"loans-overview\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review employee loans",
+          "body": "Select the intended employee and inspect existing loans and applied deductions. Review repayment terms and payroll results before adding another loan.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "lifecycleEmployee": {
+    "id": "lifecycleEmployee",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/lifecycle",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Your onboarding and equipment",
+          "body": "Your checklist appears when you have an assigned onboarding case. Complete only your assigned tasks and review any required evidence.",
+          "lang": "en"
+        }
+      },
+      {
+        "id": "2",
+        "route": "/lifecycle",
+        "target": "[data-tour=\"lifecycle-request\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Request equipment",
+          "body": "This opens an equipment request. Check the item and reason before submitting; a request still needs the configured review and fulfilment.",
+          "lang": "en"
+        }
+      },
+      {
+        "id": "3",
+        "route": "/lifecycle",
+        "target": "[data-tour=\"lifecycle-my-requests\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Track your requests",
+          "body": "Follow your recent equipment requests here. An approved request and an issued asset are different outcomes.",
+          "lang": "en"
+        }
+      }
+    ]
+  },
+  "lifecycleAdmin": {
+    "id": "lifecycleAdmin",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/admin/lifecycle",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Configure lifecycle responsibilities",
+          "body": "Lifecycle staff assignments, case steps, company rules and equipment checklists work together. HR administration alone does not assign every operational responsibility.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/admin/lifecycle",
+        "target": "[data-tour=\"lifecycle-staff\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Assign the responsible staff",
+          "body": "Review each person’s lifecycle level and company scope before saving. These assignments control the work they can perform.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/admin/lifecycle",
+        "target": "[data-tour=\"lifecycle-configuration\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review the configuration areas",
+          "body": "Use these tabs for steps, checklists, company rules, custom fields and the equipment catalogue. Check defaults before loading or resetting them.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "rewardsAdmin": {
+    "id": "rewardsAdmin",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/admin/rewards",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Prepare a rewards review",
+          "body": "Set up the cycle, unit, policy and reviewed employee facts before the assigned reviewers decide compensation changes.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/admin/rewards",
+        "target": "[data-tour=\"rewards-configuration\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Check setup scope",
+          "body": "Create a review unit only for the intended company and business unit. Review the cycle, year and snapshot date before submitting.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/admin/rewards",
+        "target": "[data-tour=\"rewards-admin-units\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Open and follow a review unit",
+          "body": "Open a listed unit to configure its policy and membership and follow its review state. Approved rewards require a separate authorized payroll posting.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "rewardsReviewer": {
+    "id": "rewardsReviewer",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/rewards",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Review your assigned rewards work",
+          "body": "Only assigned reviewers can make the decisions allowed by a unit’s current route and stage. A manager title alone does not assign a review.",
+          "lang": "en"
+        },
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/rewards",
+        "target": "[data-tour=\"rewards-review-units\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Open an available review unit",
+          "body": "Choose a unit you can access. Inspect its employee facts, policy and proposed changes before deciding or returning work.",
+          "lang": "en"
+        },
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/rewards",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Verify the next state",
+          "body": "After an authorized decision, check the unit’s resulting stage and outstanding reviewers. Approval does not itself post a payroll payment.",
+          "lang": "en"
+        },
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "intelligence": {
+    "id": "intelligence",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/control-tower",
+        "target": "[data-tour=\"intelligence-control-tower\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review operational evidence",
+          "body": "Use Control Tower to inspect readiness and exceptions. Check the underlying facts before accepting an explanation or action.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/assistant",
+        "target": "[data-tour=\"intelligence-assistant\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Use the assistant with context",
+          "body": "Ask about a specific company, employee or period. Review cited records and proposals; AI inherits your access and does not replace payroll calculations or human decisions.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/reports",
+        "target": "[data-tour=\"intelligence-reports\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Check a report before sharing",
+          "body": "Choose the relevant report and verify its filters, population and totals. An export does not establish that an external submission was accepted.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "mobileDesign": {
+    "id": "mobileDesign",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/mobile-preview",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Design the tenant’s mobile experience",
+          "body": "Group administrators edit this design. Preview interactions demonstrate presentation; use the explicitly labelled live experience only for real HR actions.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/mobile-preview",
+        "target": "[data-tour=\"mobile-navigation\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Choose a screen or section",
+          "body": "Use the navigator to select the supported screen and composition. Changing presentation does not grant modules or permissions.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/mobile-preview",
+        "target": "[data-tour=\"mobile-design\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review design and history",
+          "body": "Use the inspector for branding, typography, colours and supported layouts. Review appearance and release history before publication.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "4",
+        "route": "/mobile-preview",
+        "target": "[data-tour=\"mobile-publication\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Save before publishing",
+          "body": "Save the draft, review the published preview, then deliberately publish. A revision conflict needs a refresh and reconciliation; publication does not distribute an app-store binary.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "notifications": {
+    "id": "notifications",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/notices",
+        "target": "[data-tour=\"notices-mine\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Read notices intended for you",
+          "body": "Open a notice to read its content and complete any required acknowledgement. The list reflects your audience and publication window.",
+          "lang": "en"
+        }
+      },
+      {
+        "id": "2",
+        "route": "/me/notifications",
+        "target": "[data-tour=\"notification-consent\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Choose workflow email preferences",
+          "body": "Email needs enabled tenant categories, your explicit consent and a ready installation relay. Review the verified identity requirement and choose preferences for the correct employment.",
+          "lang": "en"
+        }
+      },
+      {
+        "id": "3",
+        "route": "/me/notifications",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Confirm saved preferences",
+          "body": "Choose your email language and save when ready. Saving preferences does not replay historical notifications or prove that an email arrived.",
+          "lang": "en"
+        }
+      }
+    ]
+  },
+  "communications": {
+    "id": "communications",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/admin/notice-board",
+        "target": "[data-tour=\"notices-administration\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Manage company notices",
+          "body": "Review the audience, publication dates and acknowledgement requirement before publishing. Check the resulting status and intended recipients.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/knowledge-base",
+        "target": "[data-tour=\"knowledge-base-library\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Publish company knowledge",
+          "body": "Add company policies as separate articles or uploads. System guides are release-managed; each guide’s walkthrough explains the relevant screens.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/admin/settings/notifications",
+        "target": "[data-tour=\"workflow-email-readiness\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Check email readiness",
+          "body": "Relay readiness, tenant policy and recipient consent are separate prerequisites. An inactive relay or missing installation upgrade needs the installation maintainer.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "4",
+        "route": "/admin/settings/notifications",
+        "target": "[data-tour=\"workflow-email-policy\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review category policy",
+          "body": "Group administrators can enable categories here. Enabling applies to future events; it does not grant recipient consent or send a historical backlog.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "5",
+        "route": "/admin/settings/notifications",
+        "target": "[data-tour=\"workflow-email-deliveries\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Inspect delivery outcomes",
+          "body": "Review status and attempts before retrying a failure. Sent means relay acceptance, not inbox delivery or human reading.",
+          "lang": "en"
+        },
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "operatorProvisioning": {
+    "id": "operatorProvisioning",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Provision a customer",
+          "body": "Confirm the customer, initial administrator, country and purchased modules. Operator access and customer HR administration are separate capabilities.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/operator",
+        "target": "[data-tour=\"operator-customer-form\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review the provisioning request",
+          "body": "Enter the intended customer and administrator, then review country and module choices. Submit only when ready to create the customer.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/operator",
+        "target": "[data-tour=\"operator-requests\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Follow the runner outcome",
+          "body": "Pending and Running are not completed customers. Review the failed step before retrying; a retry preserves the original request history.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "4",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Deliver activation deliberately",
+          "body": "After Done, reveal the activation link only when ready to deliver it privately. A consumed reveal cannot be recovered by refreshing; request reissue when needed.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      }
+    ]
+  },
+  "operatorIdentity": {
+    "id": "operatorIdentity",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Check installation identity readiness",
+          "body": "Confirm the intended sign-in provider, first-owner activation and required human enrollment. A successful build does not prove those steps happened.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/operator",
+        "target": "[data-tour=\"operator-guide-operator-identity-email\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review the separate email capability",
+          "body": "Installation email settings require a separately enrolled email administrator. The operator grant alone does not open that screen.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Verify delivery prerequisites",
+          "body": "The enrolled administrator saves a draft, tests it, confirms human receipt and activates that exact tested draft. Tenant policy and recipient consent are additional workflow-email prerequisites.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      }
+    ]
+  },
+  "operatorTenantOperations": {
+    "id": "operatorTenantOperations",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/operator",
+        "target": "[data-tour=\"operator-guide-operator-tenant-operations\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Review existing-tenant operations",
+          "body": "Module changes, usage reporting, suspension, reinstatement and closure use controlled installation tools. These are not extra provisioning-console buttons.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Confirm authority and disposition",
+          "body": "Confirm the target tenant, approved operation, dependencies and blockers with the responsible maintainer. Operator access alone does not supply owner or reporting credentials.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Verify the recorded outcome",
+          "body": "Check the runner result and resulting tenant state. Reinstatement can require follow-up sweeps; closure starts retention and is not immediate deletion.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      }
+    ]
+  },
+  "operatorMaintenance": {
+    "id": "operatorMaintenance",
+    "steps": [
+      {
+        "id": "1",
+        "route": "/operator",
+        "target": "[data-tour=\"operator-guide-operator-maintenance\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Maintain current guidance",
+          "body": "Releases refresh eligible tenants’ system guides while preserving company content. After reinstatement, refresh a tenant skipped during suspension.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "2",
+        "route": "/operator",
+        "target": "[data-tour=\"operator-requests\"]",
+        "placement": "bottom",
+        "text": {
+          "title": "Triage with the recorded state",
+          "body": "For provisioning, start with the request state and failed step. Keep activation links, passwords and unnecessary personal data out of support records.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      },
+      {
+        "id": "3",
+        "route": "/operator",
+        "target": null,
+        "placement": "center",
+        "text": {
+          "title": "Confirm publication evidence",
+          "body": "Verify the running build, completed refresh and intended tenant before reporting an update as live. Review translations against the current English source before publishing them.",
+          "lang": "en"
+        },
+        "roles": [
+          "operator"
+        ]
+      }
+    ]
   }
 }

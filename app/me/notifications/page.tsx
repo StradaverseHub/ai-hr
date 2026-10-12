@@ -15,7 +15,7 @@ export default async function MyEmailNotificationsPage({searchParams}:{searchPar
   const verified=identity?.emailVerified===true,allowed=new Set(view.policy.filter(p=>p.enabled).map(p=>p.category));
   return <div className="max-w-3xl space-y-6"><PageHeader title={t('preferencesTitle')} description={t('preferencesDescription')}/>
     <ErrorBanner message={query.error?t('error'):undefined}/>{query.saved==='1'&&<p role="status" className="text-sm">{t('saved')}</p>}
-    <p className="text-sm text-muted-foreground">{t('consentHelp')}</p>
+    <p data-tour="notification-consent" className="text-sm text-muted-foreground">{t('consentHelp')}</p>
     {!verified&&<p role="status" className="text-sm text-muted-foreground">{t('identityRequired')}</p>}
     {!view.employments.length&&<Card className="p-5"><p>{t('noEmployment')}</p></Card>}
     {view.employments.map(e=>{

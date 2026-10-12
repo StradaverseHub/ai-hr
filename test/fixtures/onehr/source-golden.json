@@ -1,0 +1,2172 @@
+{
+  "source": {
+    "commit": "a644fd6",
+    "sha256": "f0201b7df23a1a56e696671a8e13eab81cef412913351c58d9cb57e55dc776a4",
+    "functions": [
+      "pm_pct_mechanism_b_base",
+      "pm_pct_mechanism_b_excellence",
+      "pm_rating_mechanism_a",
+      "talent_category"
+    ],
+    "method": "Python AST: execute only the four verified pure functions and their literal talent table; never import the Flask app"
+  },
+  "scoring": [
+    {
+      "actual": -20,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 0.01,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 49.99,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 2
+    },
+    {
+      "actual": 99.999,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 2
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 3
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 3
+    },
+    {
+      "actual": 149.99,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 3
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 4
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 4
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 5
+    },
+    {
+      "actual": 220,
+      "scoring": {
+        "mechanism": "A",
+        "method": "more",
+        "rates": [
+          0,
+          50,
+          100,
+          150,
+          200
+        ]
+      },
+      "expected": 5
+    },
+    {
+      "actual": -20,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 5
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 5
+    },
+    {
+      "actual": 0.01,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 4
+    },
+    {
+      "actual": 49.99,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 4
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 4
+    },
+    {
+      "actual": 99.999,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 3
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 3
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 2
+    },
+    {
+      "actual": 149.99,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 2
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 2
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 220,
+      "scoring": {
+        "mechanism": "A",
+        "method": "less",
+        "rates": [
+          200,
+          150,
+          100,
+          50,
+          0
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 20.001
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 20.001
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 20.001
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 20.001
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 20.001
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 99.99
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 99.99
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 99.99
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 99.99
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 99.99
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 100.3
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 100.6
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 101.19999999999999
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 100.6
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 125.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 200.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 149.995
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 199.99
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 299.98
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 200.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 300.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 150.005
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 200.01
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 300.02
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 175.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 250.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "base",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 400.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "more",
+        "variant": "excellence",
+        "threshold": 20,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 150
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 200.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 300.0
+    },
+    {
+      "actual": 0,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 140.005
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 180.01
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 260.02
+    },
+    {
+      "actual": 19.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 140.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 180.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 260.0
+    },
+    {
+      "actual": 20,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 139.9995
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 179.999
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 259.998
+    },
+    {
+      "actual": 20.001,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 125.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 200.0
+    },
+    {
+      "actual": 50,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 150.0
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 100.00500000000001
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 100.01000000000002
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 100.02000000000004
+    },
+    {
+      "actual": 99.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 100.01000000000002
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 100.0
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 99.4
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 99.4
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 99.4
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 99.4
+    },
+    {
+      "actual": 100.6,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 99.4
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 150,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 50.0
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.009999999999998899
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.009999999999998899
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.009999999999998899
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.009999999999998899
+    },
+    {
+      "actual": 199.99,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 0.009999999999998899
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 200.01,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 0,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 50,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "base",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 200,
+        "excellence": null
+      },
+      "expected": 0.0
+    },
+    {
+      "actual": 250,
+      "scoring": {
+        "mechanism": "B",
+        "method": "less",
+        "variant": "excellence",
+        "threshold": 200,
+        "target": 100,
+        "multiple": 100,
+        "excellence": 50
+      },
+      "expected": 0.0
+    }
+  ],
+  "talent": [
+    {
+      "performance": "UA",
+      "potential": "Low",
+      "expected": "PIP/Improvement"
+    },
+    {
+      "performance": "UA",
+      "potential": "Mid",
+      "expected": "PIP/Improvement"
+    },
+    {
+      "performance": "UA",
+      "potential": "High",
+      "expected": "PIP/Improvement"
+    },
+    {
+      "performance": "BE",
+      "potential": "Low",
+      "expected": "PIP/Improvement"
+    },
+    {
+      "performance": "BE",
+      "potential": "Mid",
+      "expected": "PIP/Improvement"
+    },
+    {
+      "performance": "BE",
+      "potential": "High",
+      "expected": "Solid Core"
+    },
+    {
+      "performance": "ME",
+      "potential": "Low",
+      "expected": "Solid Core"
+    },
+    {
+      "performance": "ME",
+      "potential": "Mid",
+      "expected": "Solid Core"
+    },
+    {
+      "performance": "ME",
+      "potential": "High",
+      "expected": "Star"
+    },
+    {
+      "performance": "AE",
+      "potential": "Low",
+      "expected": "Solid Core"
+    },
+    {
+      "performance": "AE",
+      "potential": "Mid",
+      "expected": "Star"
+    },
+    {
+      "performance": "AE",
+      "potential": "High",
+      "expected": "Super Star"
+    },
+    {
+      "performance": "OU",
+      "potential": "Low",
+      "expected": "Solid Core"
+    },
+    {
+      "performance": "OU",
+      "potential": "Mid",
+      "expected": "Star"
+    },
+    {
+      "performance": "OU",
+      "potential": "High",
+      "expected": "Super Star"
+    }
+  ]
+}

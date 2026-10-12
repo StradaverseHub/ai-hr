@@ -42,7 +42,7 @@ export default async function AssistantPage({
 
   if (!access.allowed) {
     return (
-      <div className="mx-auto max-w-2xl space-y-5">
+      <div data-tour="intelligence-assistant" className="mx-auto max-w-2xl space-y-5">
         <PageHeader title={t('title')} description={t('description')} />
         <Card className="p-6">
           {/* Three different reasons, three different next steps. "No" with no route forward is the one
@@ -73,7 +73,7 @@ export default async function AssistantPage({
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div data-tour="intelligence-assistant" className="mx-auto max-w-2xl space-y-5">
       <PageHeader title={t('title')} description={t('description')} />
       <ErrorBanner message={sp.error ? t(`err_${sp.error}`) : undefined} />
 

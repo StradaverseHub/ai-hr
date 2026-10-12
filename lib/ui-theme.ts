@@ -1,19 +1,19 @@
 /**
  * r396 — the user-selectable UI THEME (Monolith rollout, step 1).
  *
- * Two themes: `monolith` (the default — docs/design/monolith/) and `classic` (the indigo, rounded,
+ * Themes: Current (Plum + Ledger), `monolith` (the default — docs/design/monolith/) and `classic` (the indigo, rounded,
  * floating-shell look the app had before). The theme is ONE axis; light/dark (next-themes, the `.dark`
  * class) is the other, and the two are independent: every theme has a light and a dark palette.
  *
  * The choice is per browser, in the `ui_theme` cookie. app/layout.tsx reads it on the SERVER and writes
  * it as `<html data-ui-theme="…">`, so the very first paint is already in the right theme (no flash);
  * app/globals.css scopes Monolith's tokens under `:root[data-ui-theme="monolith"]`. An absent, empty or
- * unknown cookie value resolves to the default — a hand-edited cookie can never produce a third state.
+ * unknown cookie value resolves to the default — a hand-edited cookie can never produce an unsupported state.
  *
  * Client-safe: no imports, so both the server layout and the client switcher share these constants.
  */
 export const UI_THEME_COOKIE = 'ui_theme';
-export const UI_THEMES = ['monolith', 'classic'] as const;
+export const UI_THEMES = ['monolith', 'classic', 'current'] as const;
 export type UiTheme = (typeof UI_THEMES)[number];
 export const DEFAULT_UI_THEME: UiTheme = 'monolith';
 /** The attribute on <html> that globals.css scopes Monolith's tokens under. */

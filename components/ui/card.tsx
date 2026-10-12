@@ -18,6 +18,7 @@ const MONO_CONTENT = 'monolith:px-0';
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-ui-card
       className={cn(
         'rounded-[1.25rem] border border-border bg-card text-card-foreground shadow-[var(--shadow-card)]',
         MONO_SECTION,
@@ -29,7 +30,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex items-center justify-between border-b border-border px-4 py-3', MONO_HEADER, className)} {...props} />;
+  return <div data-ui-card-header className={cn('flex items-center justify-between border-b border-border px-4 py-3', MONO_HEADER, className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {

@@ -30,7 +30,7 @@
  *    is never stored. A run that stops writes a Failed row in its own transaction.
  */
 import { createHash } from 'node:crypto';
-import { and, desc, eq, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -457,7 +457,7 @@ export class ClockingImportError extends Error {
  * Decide every line. Reads only; the commit calls this inside its own transaction so the checks are run
  * again at the moment of import (plan item 12).
  */
-async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<Decided[]> {
+async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantId?: string): Promise<Decided[]> {
   const now = { date: todayInKualaLumpur(), time: timeInKualaLumpur() };
   const { lines } = parseWithMapping(text, def, now);
   const decided: Decided[] = lines.map((read) => ({
@@ -547,6 +547,12 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
   }
   const matched = readable.filter((d) => d.result === 'imported' && d.emp);
   if (matched.length === 0) return decided;
+  // Commit shares the correction/clock lock before reading days or approved corrections.
+  // Preview stays read-only. Stable order avoids two multi-employee imports deadlocking.
+  if (lockTenantId) for (const id of [...new Set(matched.map(d=>d.emp!.id))].sort()) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockTenantId + ':' + id}, 0))`);
+  }
+
 
   // 2 · Business day per clocking (the roster window, one query for the file).
   const days = await assignPunchBusinessDays(
@@ -560,7 +566,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
   const sortedDays = matched.map((d) => d.day!).sort();
   const from = sortedDays[0];
   const to = sortedDays[sortedDays.length - 1];
-  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' };
+  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
   const existingBy = new Map<string, Existing[]>();
   const correctedDays = new Set<string>();
   for (const ids of chunks(empIds)) {
@@ -573,7 +579,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
         method: attendancePunch.method,
       })
       .from(attendancePunch)
-      .where(and(inArray(attendancePunch.employmentId, ids), gte(attendancePunch.attendanceDate, from), lte(attendancePunch.attendanceDate, to)));
+      .where(and(isNull(attendancePunch.voidedAt), inArray(attendancePunch.employmentId, ids), gte(attendancePunch.attendanceDate, from), lte(attendancePunch.attendanceDate, to)));
     const withKids = new Set<string>();
     for (const p of punches) {
       const k = `${p.employmentId}|${p.date}`;
@@ -612,7 +618,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string): Promise<De
           gte(attendanceCorrection.attendanceDate, from),
           lte(attendanceCorrection.attendanceDate, to),
           eq(attendanceCorrection.status, 'approved'),
-          or(isNotNull(attendanceCorrection.proposedCheckIn), isNotNull(attendanceCorrection.proposedCheckOut)),
+          or(isNotNull(attendanceCorrection.proposedCheckIn), isNotNull(attendanceCorrection.proposedCheckOut), isNotNull(attendanceCorrection.clockChanges)),
         ),
       );
     for (const c of corr) correctedDays.add(`${c.employmentId}|${c.date}`);
@@ -806,7 +812,7 @@ export async function commitClockingImport(
     return await withTenant(ctx, async (tx) => {
       const mapping = await resolveMapping(tx, p.mappingId);
       mappingForFailure = mapping;
-      const decided = await decideLines(tx, mapping.def, p.text);
+      const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId);
       totalForFailure = decided.length;
       const counts = countsOf(decided);
       const personId = await actorPersonId(tx, ctx);

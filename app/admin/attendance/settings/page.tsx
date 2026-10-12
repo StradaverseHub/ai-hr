@@ -24,7 +24,7 @@ export default async function AttendanceSettingsPage() {
     <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-tour="attendance-configuration" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {ATTENDANCE_SETTINGS_CARDS.map((c) => (
           <Card key={c.key} className="flex flex-col p-5">
             <h2 className="text-base font-semibold">{t(`${c.key}.title`)}</h2>

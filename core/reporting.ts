@@ -4,6 +4,7 @@
  * a recorded generation is persisted as an append-only `statutory_report` artefact + domain event
  * (audit / idempotency / reproducibility). Filed per legal entity — RLS gates on is_admin_for.
  */
+import { onehrReportResultsTx } from '../packs/performance/service';
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Pcb2iiForm } from '../lib/pcb2ii-form';
 import { alias } from 'drizzle-orm/pg-core';
@@ -2551,6 +2552,7 @@ export async function performanceReviewReport(
     const reviewerPerson = alias(person, 'reviewer_person');
     const rows = await tx
       .select({
+        reviewId:performanceReview.id,
         employeeCode: employment.employeeCode,
         name: person.fullName,
         companyName: company.legalName,
@@ -2586,7 +2588,13 @@ export async function performanceReviewReport(
       .leftJoin(reviewerPerson, eq(reviewerPerson.id, reviewerEmp.personId))
       .where(p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined)
       .orderBy(desc(reviewCycle.periodStart), person.fullName);
+    const finalized=await onehrReportResultsTx(tx,rows.map(r=>r.reviewId));
     return rows.map((r) => ({
+      performanceBand:finalized.get(r.reviewId)?.performance??null,
+      potentialBand:finalized.get(r.reviewId)?.potential??null,
+      talentCategory:finalized.get(r.reviewId)?.talent??null,
+      assessmentResultId:finalized.get(r.reviewId)?.id??null,
+      assessmentDigest:finalized.get(r.reviewId)?.digest??null,
       employeeCode: r.employeeCode ?? null,
       name: r.name,
       company: r.companyName,

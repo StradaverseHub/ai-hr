@@ -3819,7 +3819,7 @@ export const geofenceStatusEnum = pgEnum('geofence_status', ['pass', 'not_enforc
 // the `attendance.amended` event's top-level `before` block (core/attendance.ts AMENDED_FIGURE_COLUMNS),
 // so the Audit Trail shows the loss as "old → new" rather than leaving it invisible. Still no column and
 // still no snapshot table: see the ADR-0069 note on attendance_correction below.
-export const clockMethodEnum = pgEnum('clock_method', ['web', 'import']);
+export const clockMethodEnum = pgEnum('clock_method', ['web', 'import', 'admin']);
 
 // Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
 // absenteeism analytics can categorise unplanned absence (planned absence is already typed via leave).
@@ -3982,9 +3982,15 @@ export const attendancePunch = pgTable(
     geofenceStatus: geofenceStatusEnum('geofence_status'),
     radiusM: integer('radius_m'),
     clockCaptureId: uuid('clock_capture_id').unique().references(() => attendanceClockCapture.id),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedBy: text('voided_by'),
+    voidReason: text('void_reason'),
     createdAt: createdAt(),
   },
-  (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
+  (t) => [
+    index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt),
+    uniqueIndex('attendance_punch_live_clock_uq').on(t.attendanceId, t.punchAt, t.direction).where(sql`${t.voidedAt} is null and ${t.clockCaptureId} is null`),
+  ],
 );
 
 // ── r424 50ed39e1 · Attendance File Structure Mapping + Import Clocking Data (migration 0518) ──────────
@@ -4418,6 +4424,7 @@ export const attendanceCorrection = pgTable(
     remark: text('remark'),
     requestKind: text('request_kind').$type<AttendanceRequestKind>(),
     rejectReason: text('reject_reason'),
+    clockChanges: jsonb('clock_changes').$type<{ version: 1; baseline: string; entries: { id?: string; punchAt: string; direction: 'in' | 'out' }[] }>(),
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
       version: 1; attendanceId: string | null; originalCheckIn: string | null;
       originalCheckOut: string | null; capturedAt: string;
@@ -9924,3 +9931,55 @@ export const rewardDecision = pgTable('reward_decision', {
   action: text('action').notNull(), fromStage: text('from_stage').notNull(), toStage: text('to_stage').notNull(),
   reason: text('reason').notNull().default(''), digest: text('digest').notNull(), createdAt: createdAt(),
 });
+
+// OneHR native aggregates. Identity, employment, organization and compensation remain kernel-owned.
+export const onehrCycle = pgTable('performance_onehr_cycle', {
+  cycleId: uuid('cycle_id').primaryKey().references(() => reviewCycle.id), tenantId: tenantId(),
+  policy: jsonb('policy').notNull(), revision: integer('revision').notNull().default(1), createdAt: createdAt(),
+});
+export const onehrReview = pgTable('performance_onehr_review', {
+  reviewId: uuid('review_id').primaryKey().references(() => performanceReview.id), tenantId: tenantId(),
+  cycleId: uuid('cycle_id').notNull().references(() => reviewCycle.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  companyId: uuid('company_id').notNull().references(() => company.id), grade: text('grade').notNull(),
+  kpis: jsonb('kpis').notNull().default([]), competencies: jsonb('competencies').notNull().default([]), statements: jsonb('statements').notNull().default([]),
+  resultsSubmittedAt: timestamp('results_submitted_at', {withTimezone:true}), competencyStatus: text('competency_status').notNull().default('pending'),
+  managerPerformance: text('manager_performance'), managerScore: numeric('manager_score',{precision:20,scale:8}),
+  managerRemark: text('manager_remark').notNull().default(''), revision: integer('revision').notNull().default(1), createdAt: createdAt(),
+},t=>[index('performance_onehr_review_cycle_idx').on(t.cycleId)]);
+export const onehrPanel = pgTable('performance_onehr_panel', {
+  requestId: uuid('request_id').primaryKey().references(() => peerFeedbackRequest.id), tenantId: tenantId(),
+  reviewId: uuid('review_id').notNull().references(() => performanceReview.id), subjectEmploymentId: uuid('subject_employment_id').notNull().references(() => employment.id),
+  peerEmploymentId: uuid('peer_employment_id').notNull().references(() => employment.id), relationship: text('relationship').notNull(),
+  answers: jsonb('answers'), remark: text('remark').notNull().default(''), submittedAt: timestamp('submitted_at',{withTimezone:true}), archivedAt: timestamp('archived_at',{withTimezone:true}),
+},t=>[index('performance_onehr_panel_review_idx').on(t.reviewId)]);
+export const onehrCalibration = pgTable('performance_onehr_calibration', {
+  id: id(), tenantId: tenantId(), cycleId: uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  companyId: uuid('company_id').references(()=>company.id), name: text('name').notNull(), tier: text('tier').notNull(),
+  reviewerUserIds: uuid('reviewer_user_ids').array().notNull(), pbtAchievement: numeric('pbt_achievement',{precision:12,scale:2}),
+  mode:text('mode').notNull().default('after'), performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}), lockedAt: timestamp('locked_at',{withTimezone:true}), revision:integer('revision').notNull().default(1), createdAt:createdAt(),
+},t=>[index('performance_onehr_calibration_cycle_idx').on(t.cycleId)]);
+export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entry', {
+  id:id(),tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),
+  reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  performance:text('performance'),potential:text('potential'),performanceNote:text('performance_note').notNull().default(''),potentialNote:text('potential_note').notNull().default(''),
+  seenPerformance:text('seen_performance'),seenPotential:text('seen_potential'),performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}),lockedAt:timestamp('locked_at',{withTimezone:true}),
+  pip:boolean('pip').notNull().default(false),promotion:boolean('promotion').notNull().default(false),specialReward:boolean('special_reward').notNull().default(false),
+},t=>[uniqueIndex('performance_onehr_calibration_entry_uq').on(t.sessionId,t.reviewId)]);
+export const onehrPlan = pgTable('performance_onehr_plan', {
+  id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),
+  planYear:integer('plan_year').notNull(),status:text('status').notNull().default('draft'),career:jsonb('career'),goals:jsonb('goals').notNull().default([]),
+  managerComment:text('manager_comment').notNull().default(''),conversation:text('conversation').notNull().default(''),acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}),
+  revision:integer('revision').notNull().default(1),createdAt:createdAt(),
+},t=>[uniqueIndex('performance_onehr_plan_year_uq').on(t.employmentId,t.planYear)]);
+export const onehrEvidence = pgTable('performance_onehr_evidence', {
+  id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),
+  authorUserId:uuid('author_user_id').notNull().references(()=>appUser.id),kind:text('kind').notNull(),body:text('body').notNull(),occurredOn:date('occurred_on').notNull(),
+  state:text('state').notNull().default('draft'),supersedesId:uuid('supersedes_id'),links:jsonb('links').notNull().default([]),responses:jsonb('responses').notNull().default([]),createdAt:createdAt(),
+},t=>[index('performance_onehr_evidence_subject_idx').on(t.employmentId)]);
+export const onehrResult = pgTable('performance_onehr_result', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),result:jsonb('result').notNull(),digest:text('digest').notNull(),
+  frozenAt:timestamp('frozen_at',{withTimezone:true}).notNull().defaultNow(),
+  performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
+  talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
+},t=>[uniqueIndex('performance_onehr_result_review_uq').on(t.reviewId),index('performance_onehr_result_subject_idx').on(t.employmentId,t.cycleId)]);

@@ -51,6 +51,7 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
+import { useUiTheme } from '@/components/ui-theme-context';
 import { Button, Card } from '@/components/ui';
 import { SectionOrdinalProvider } from '@/components/monolith/section-ordinal';
 import {
@@ -427,6 +428,7 @@ export function DashboardCustomizer({
     return null;
   };
 
+  const current = useUiTheme() === 'current';
   const labelFor = (key: string) => byKey.get(key)?.label ?? key;
 
   return (
@@ -623,6 +625,13 @@ export function DashboardCustomizer({
               )}
             </SortableContext>
           </DndContext>
+        </div>
+      ) : current ? (
+        <div className="current-work-ribbons">
+          {visible.map((key, i) => <details key={key} className="current-work-ribbon" open={i === 0}>
+            <summary><span>{labelFor(key)}</span><span aria-hidden className="current-ribbon-toggle">+</span></summary>
+            <div className="current-work-focus">{nodeFor(key)}</div>
+          </details>)}
         </div>
       ) : (
         <div className="space-y-6">

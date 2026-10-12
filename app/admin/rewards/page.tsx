@@ -15,10 +15,10 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   const units = await listRewardUnits(s, choices.companies.map(c => c.id));
   const today = todayInKualaLumpur();
   return <div className="w-full space-y-6">
-    <PageHeader title={t('adminTitle')} description={t('adminDescription')} />
+    <div data-tour="rewards-configuration"><PageHeader title={t('adminTitle')} description={t('adminDescription')} /></div>
     <Link href="/rewards" className="text-sm text-primary hover:underline">{t('openReviews')}</Link>
     <ErrorBanner message={error} />
-    <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle', 'company', 'unit', 'stage', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
+    <div data-tour="rewards-admin-units" className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle', 'company', 'unit', 'stage', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
       <tbody className={tbodyCls}>{units.map(u => <tr key={u.id}><td className="px-3 py-3 font-medium">{u.cycle} · {t(`kinds.${u.kind}`)}<span className="ml-2 text-muted-foreground">{u.year}</span></td><td className="px-3 py-3">{u.company}</td><td className="px-3 py-3">{u.unit}</td><td className="px-3 py-3">{t(`stages.${u.status}`)}</td><td className="px-3 py-3"><Link className="font-medium text-primary hover:underline" href={`/admin/rewards/${u.id}`}>{t('configure')}</Link></td></tr>)}</tbody>
     </table>{!units.length && <p className="max-w-2xl px-5 py-10 text-sm text-muted-foreground">{t('adminEmpty')}</p>}</div>
     {choices.companies.length > 0 && <Card><SectionHeader title={t('createUnit')} /><form action={createRewardAction} className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">

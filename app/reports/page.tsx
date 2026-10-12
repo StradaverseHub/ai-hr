@@ -51,7 +51,7 @@ export default async function ReportsPage({
   const saved = await listCustomReports(s);
 
   return (
-    <div className="space-y-6">
+    <div data-tour="intelligence-reports" className="space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
       {sp.error && <ErrorBanner message={sp.error} />}
       {sp.toast && (
