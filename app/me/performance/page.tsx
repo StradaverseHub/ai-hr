@@ -50,6 +50,7 @@ export default async function MyPerformancePage({
     onehrAssignments(s),
   ]);
 
+  const standardReviews=reviews.filter(r=>!onehr.reviews.some(a=>a.id===r.reviewId));
   const standardFeedbackRequests=feedbackRequests.filter(r=>!onehr.feedback.some(a=>a.id===r.requestId));
   const onehrText=await getTranslations('onehr');
   return (
@@ -64,9 +65,9 @@ export default async function MyPerformancePage({
       {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle} · {a.periodEnd}</Link></p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/onehr/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/onehr/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}
 
       {/* Performance reviews */}
-      {reviews.filter(r=>!onehr.reviews.some(a=>a.id===r.reviewId)).length > 0 && (
+      {standardReviews.length > 0 && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('myReviews')} count={reviews.length} />
+          <SectionHeader title={t('myReviews')} count={standardReviews.length} />
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -77,7 +78,7 @@ export default async function MyPerformancePage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {reviews.filter(r=>!onehr.reviews.some(a=>a.id===r.reviewId)).map((r) => {
+              {standardReviews.map((r) => {
                 // Employee-facing status: their own perspective, not the raw enum.
                 const label =
                   r.status === 'self_review'
