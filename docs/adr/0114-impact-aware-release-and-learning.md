@@ -67,6 +67,10 @@ selected tests, failures, timings and explained classification transitions. They
 credentials, source contents or raw environment values. The build record explicitly does not claim the
 separately performed service restart was verified.
 
+Mirrors preserve the original immutable timestamp, classifications and transitions verbatim.
+Out-of-order retries retain the newest source observation rather than treating receive time as release
+time; duplicate delivery is idempotent, and conflicting bytes for the same record refuse.
+
 Unknown classifications remain saved. New executable coverage or resolved dependencies can establish
 a known category on a later release; a passing run alone does not lower risk. Historical failures only
 add tests. `pnpm gate:learning` shows the latest accumulated classification evidence. Corrupt/unavailable

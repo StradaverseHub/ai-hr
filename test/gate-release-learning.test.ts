@@ -2,7 +2,7 @@ import { afterEach,describe,expect,it } from 'vitest';
 import { mkdtempSync,rmSync,readdirSync,writeFileSync,mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { saveGate,saveRelease,gateHistory,releaseHistory,failureHistory,fullRegressionDue,queueReleaseMirror,pendingReleaseMirrors,acknowledgeReleaseMirror,riskKnowledge } from '../scripts/gate-learning';
+import { saveGate,saveRelease,saveMirroredRelease,gateHistory,releaseHistory,failureHistory,fullRegressionDue,queueReleaseMirror,pendingReleaseMirrors,acknowledgeReleaseMirror,riskKnowledge } from '../scripts/gate-learning';
 import { planImpact } from '../scripts/gate-impact';
 const dirs:string[]=[];const dir=()=>{const d=mkdtempSync(join(tmpdir(),'impact-learning-'));dirs.push(d);return d;};
 afterEach(()=>{for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
@@ -56,5 +56,19 @@ describe('release evidence retry and accumulated knowledge',()=>{
   const d=dir();saveRelease({sha,buildId:'one',gate:null,classifications:plan().classifications},d);
   saveRelease({sha:'c'.repeat(40),buildId:'two',gate:null,classifications:[]},d);
   expect(riskKnowledge(d)[0].classification.risk).toBe('unknown');
+ });
+});
+
+
+describe('immutable release mirroring',()=>{
+ it('preserves source timestamps and transitions through out-of-order retries, keeping the newest classification',()=>{
+  const source=dir(),remote=dir(),p=plan();
+  const older=saveRelease({sha,buildId:'older',gate:null,classifications:p.classifications},source);
+  const known={...p.classifications[0],risk:'moderate' as const,reason:'coverage now resolves',uncertainties:[]};
+  const newer={...saveRelease({sha:'c'.repeat(40),buildId:'newer',gate:null,classifications:[known]},source),at:new Date(Date.parse(older.at)+1000).toISOString()};
+  saveMirroredRelease(newer,remote);saveMirroredRelease(older,remote);saveMirroredRelease(older,remote);
+  expect(releaseHistory(remote)).toEqual([older,newer]);
+  expect(riskKnowledge(remote)[0].classification.risk).toBe('moderate');
+  expect(()=>saveMirroredRelease({...older,at:new Date(Date.parse(older.at)+2000).toISOString()},remote)).toThrow('cannot be overwritten');
  });
 });
