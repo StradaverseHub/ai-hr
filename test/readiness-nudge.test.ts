@@ -219,6 +219,21 @@ describe('ADR-0084 §2.5 — the readiness nudge agent', () => {
     expect(rate!.agreementRate).toBeCloseTo(0.5);
   });
 
+  it('does not credit an ended employment as a successful correction', async () => {
+    const employee = await personMissing('bank');
+    const ctx = await on();
+    expect((await sweepReadinessNudges(ctx)).sent).toBe(1);
+    await owner.db.update(schema.agentProposal)
+      .set({ proposedAt: new Date(Date.now() - (NUDGE_SETTLE_DAYS + 1) * 86_400_000) })
+      .where(eq(schema.agentProposal.proposalType, 'readiness_fix'));
+    await owner.db.update(schema.employment).set({ terminatedOn: '2025-01-01' })
+      .where(eq(schema.employment.id, employee.employmentId));
+    expect((await sweepReadinessNudges(ctx)).settled).toBe(0);
+    const fixes = (await proposals()).filter(r => r.type === 'readiness_fix');
+    expect(fixes).toHaveLength(1);
+    expect(fixes[0].decision).toBeNull();
+  });
+
   it('turns a nudge into a notification that deep-links where the reader can act', async () => {
     await personMissing('bank');
     const ctx = await on();

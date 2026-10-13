@@ -7913,8 +7913,8 @@
       }
     },
     "controlTower": {
-      "title": "Trung tâm điều hành bảng lương",
-      "description": "Mọi kỳ đang mở, việc nào cần người, và các kiểm tra này có thực sự hữu ích không.",
+      "title": "Trung tâm điều hành nhân sự",
+      "description": "Điều phối công việc nhân sự, xem xét ngoại lệ và xác minh kết quả.",
       "backToPayroll": "Bảng lương",
       "ratioTitle": "Cần bao nhiêu người để chạy bảng lương này?",
       "ratioUnavailable": "Chúng tôi chưa hiển thị con số nhân sự, vì nó sẽ không có ý nghĩa.",
@@ -15552,7 +15552,41 @@
         "failed": "Không thể hoàn tất. Không có gì bị đóng."
       }
     },
-    "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence"
+    "proposalType_onehr_narrative": "Assessment draft assembled from authorized evidence",
+    "orchestrator": {
+      "checking": "Đang kiểm tra hồ sơ…",
+      "runFailed": "Lần tự động hóa gần nhất cần được xử lý. Hãy xem lịch sử thực thi.",
+      "navigation": "Điều hướng trung tâm điều hành",
+      "overview": "Tổng quan",
+      "readiness": "Dữ liệu nhân viên",
+      "exceptions": "Ngoại lệ bảng lương",
+      "actions": "Phê duyệt",
+      "agents": "Tự động hóa",
+      "guide": "Cách hoạt động",
+      "workTitle": "Công việc cần hoàn thành",
+      "workDescription": "Theo dõi thông tin nhân viên còn thiếu, người có thể xử lý và kết quả kiểm tra của hệ thống nhân sự.",
+      "refresh": "Kiểm tra hồ sơ hiện tại",
+      "refreshFailed": "Kiểm tra không thành công. Công việc hiện có được giữ nguyên. Vui lòng thử lại.",
+      "refreshed": "Đã kiểm tra hồ sơ. Lần kiểm tra này không gửi lời nhắc.",
+      "openCount": "{count} vấn đề đang mở",
+      "verifiedCount": "{count} lần đóng đã xác minh",
+      "manage": "Quản lý tự động hóa",
+      "runs": "Lịch sử thực thi",
+      "observed": "Kiểm tra gần nhất: {date}",
+      "empty": "Không tìm thấy vấn đề đang mở trong lần kiểm tra gần nhất.",
+      "unobserved": "Kiểm tra hồ sơ hiện tại để bắt đầu theo dõi. Kiểm tra định kỳ cũng cập nhật danh sách này.",
+      "employee": "Nhân viên",
+      "issue": "Thông tin còn thiếu",
+      "next": "Hành động tiếp theo",
+      "owner": "Bên chịu trách nhiệm",
+      "hr": "Nhân sự",
+      "reopened": "Đã mở lại {count} lần",
+      "collect": "Thu thập thông tin nhân viên gửi",
+      "review": "Nhân sự kiểm tra và cập nhật hồ sơ",
+      "shown": "Hiển thị {shown} trên {total} vấn đề.",
+      "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
+      "quality": "Chất lượng bảng lương và AI"
+    }
   },
   "profileRequestSettings": {
     "title": "Yêu cầu thay đổi của nhân viên",

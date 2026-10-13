@@ -1,43 +1,20 @@
 import Link from 'next/link';
+import { isModuleEnabled } from '@/core/entitlements';
+import { orchestrationQueue } from '@/core/hr-orchestrator';
+import { OrchestrationWorkQueue } from './work-queue';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { agreementView, controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE, TARGET_AUTO_CLEAR_RATE } from '@/core/control-tower';
-import { domainsFor } from '@/core/control-domains';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 
-/**
- * ADR-0074 — THE PAYROLL CONTROL TOWER, IN ONE PLACE.
- *
- * Until now the control tower existed but had no front door: the exceptions queue hung off one run at a
- * time (/payroll/<batch>/anomalies), the sweep was a cron script, and the four north-star metrics existed
- * in core/payroll-anomaly.ts with nothing rendering them. An operator could work a run; nobody could see
- * the OPERATION. This screen is that door, and it exists to answer one question the owner keeps asking:
- * does this actually let three people run three thousand?
- *
- * THE PAGE IS BUILT AROUND A NUMBER IT REFUSES TO PRINT.
- *
- * The staffing projection is the thing everyone will screenshot, so it is the thing most worth getting
- * right. It renders ONLY when the tower has verdicts, the thresholds have been tuned away from r177's
- * shipped placeholders, and at least one human has dispositioned a flag. Until then the tile shows what
- * is missing instead of a figure — because a headcount projection is acted on, and one computed from
- * placeholder thresholds that nobody has audited would be a confident wrong number about somebody's job
- * (AGENTS 28; r177 says outright never to quote an auto-clear rate from an unvalidated basis).
- *
- * COVERAGE SITS BESIDE THE CLEAR RATE, SAME SIZE — the discipline the per-run queue already established.
- * A 100% clear rate on 40% coverage is a thin bill of health, not a clean one, and separating the two is
- * what stops the first being read as the second.
- *
- * NOTHING HERE CHANGES A FIGURE. It reads verdicts and batch rows; every action lives on the per-run
- * queue this page links into.
- */
-export default async function ControlTowerPage() {
+/** ADR-0109: shared operations workspace, with payroll and AI quality evidence retained below. */
+export default async function ControlTowerPage({ searchParams }: { searchParams: Promise<{ refresh?: string }> }) {
   const s = await requireAdmin();
+  const queue = await orchestrationQueue(s);
+  const sp = await searchParams;
+  const orchestration = await getTranslations('controlTower.orchestrator');
   const t = await getTranslations('payroll.controlTower');
-  // ADR-0083 §2.2 — read the REGISTRY, not the word "payroll". The tower is a control plane whose first
-  // domain happens to be payroll; a screen that hardcodes the noun has to be rewritten for the second.
-  const domains = domainsFor(s);
-  const live = domains.filter((d) => d.status === 'live');
-  const view = await controlTowerView(s);
+  const view = isModuleEnabled(s, 'payroll') ? await controlTowerView(s) : null;
   // ⚠️ A SECOND, SEPARATE CALL ON PURPOSE — see agreementView's header. It reads the proposal ledger,
   // which opens its own transaction, and controlTowerView is one big one. Folding this into that view
   // would nest `withTenant` inside `withTenant`, which core/agent-proposal.ts property 2 forbids.
@@ -50,27 +27,11 @@ export default async function ControlTowerPage() {
     <div data-tour="intelligence-control-tower" className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} />
 
-      {/* One line naming what this plane currently watches. It reads "1 of 4 domains live" rather than
-          nothing, so an operator can tell the queue in front of them is one loop out of several. */}
-      <p className="text-xs text-muted-foreground">
-        {t('domainsLine', { live: live.length, total: domains.length })}{' '}
-        <Link href="/control-tower/how-it-works" className="font-medium text-primary hover:underline">
-          {t('howItWorksLink')}
-        </Link>{' '}
-        ·{' '}
-        {/* ADR-0084 r243 — the way to switch an agent on. It sits beside the explainer because the two
-            answer consecutive questions: what does this thing do, and is any of it actually running. */}
-        <Link href="/control-tower/agents" className="font-medium text-primary hover:underline">
-          {t('agentsLink')}
-        </Link>{' '}
-        ·{' '}
-        {/* r245 — the work itself. It sits last because the three read in order: what does this do, is
-            any of it running, and what is waiting for me. */}
-        <Link href="/control-tower/exceptions" className="font-medium text-primary hover:underline">
-          {t('exceptionsLink')}
-        </Link>
-      </p>
+      <OrchestrationWorkQueue view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)} />
+      <details className="space-y-5 rounded-xl border border-border p-5">
+        <summary className="cursor-pointer text-base font-semibold focus-visible:outline-2 focus-visible:outline-primary">{orchestration('quality')}</summary>
 
+      {view && <>
       {/* ── THE RATIO. The question the tower exists to answer, and the honest refusal when it cannot. ── */}
       <Card className="p-5">
         <SectionHeader title={t('ratioTitle')} />
@@ -139,6 +100,7 @@ export default async function ControlTowerPage() {
       </Card>
 
 
+      </>}
       {/* ── ADR-0084 Phase 3 item 5 — DOES THE AI AGREE WITH US? Three rates per proposal type, and the
              same honest refusal the ratio card makes when there is nothing to stand behind. ── */}
       <Card className="p-5">
@@ -208,6 +170,7 @@ export default async function ControlTowerPage() {
         )}
       </Card>
 
+      {view && <>
       {/* ── The queue, across every open run. The per-run screen is where the work is done. ── */}
       <Card className="overflow-hidden">
         <SectionHeader title={t('runsTitle')} count={view.runs.length} />
@@ -272,6 +235,8 @@ export default async function ControlTowerPage() {
           </table>
         </div>
       </Card>
+      </>}
+      </details>
     </div>
   );
 }

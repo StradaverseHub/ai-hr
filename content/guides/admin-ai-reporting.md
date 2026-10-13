@@ -1,5 +1,20 @@
 Use [Control Tower](/control-tower) to review operational readiness and exceptions. AI suggestions support a responsible reviewer; they are not authority to pay, terminate employment or change access.
 
+## Coordinate outstanding work
+
+The Overview shows readiness issues, the responsible party and the next action. **Check current records**
+refreshes the queue from the HR engine without sending reminders. The scheduled review also refreshes
+it and runs the existing readiness and claims agents when their tenant switches are enabled.
+
+A verified closure means the missing field is now present or no longer required. HR still validates
+the information itself. Ended employments are retired from the queue without being counted as fixes.
+If a gap returns, its case reopens and the reopen count is shown. The recorded check time identifies
+the observation behind the queue. Execution failures are shown separately from outstanding HR work.
+
+Use the shared navigation to move between employee data, payroll exceptions, approvals, automation
+and the explanation of each capability. Expand **Payroll and AI quality** on the Overview for the
+existing quality and coverage metrics. The employee links open the authoritative personnel record.
+
 ## Work through an exception
 
 1. Select the company and period where offered.

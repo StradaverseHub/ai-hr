@@ -33,7 +33,7 @@ import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { settingEnabled } from './entitlements';
 import { hrAdminsForCompany } from './notifications';
-import { recordReadiness, type ReadinessGapId } from './record-readiness';
+import { readinessSnapshot, type ReadinessGapId } from './record-readiness';
 import { recordDecision, recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 import { generateDraft } from '../lib/ai';
@@ -218,7 +218,7 @@ export type NudgeSweepResult = {
  * **the gap either closed or it did not.** That makes this the first place the ledger measures something
  * that could come back unflattering, which is the whole point of building it.
  */
-async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>): Promise<number> {
+async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>, activeEmploymentIds: Set<string>): Promise<number> {
   const cutoff = new Date(Date.now() - NUDGE_SETTLE_DAYS * 24 * 60 * 60 * 1000);
   const due = await withTenant(ctx, (tx) =>
     tx
@@ -243,6 +243,8 @@ async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>): Pr
 
   let settled = 0;
   for (const row of due) {
+    // A leaver, invisible record or unsupported gap is not evidence that a reminder worked.
+    if (!row.subjectId || !activeEmploymentIds.has(row.subjectId) || !Object.hasOwn(NUDGE_AUDIENCE, row.gap)) continue;
     // Outside the transaction above — `recordDecision` opens its own (agent-proposal property 2).
     const stillOpen = openGapKeys.has(`${row.subjectId}:${row.gap}`);
     await recordDecision(ctx, { proposalId: row.id, decision: stillOpen ? 'declined' : 'approved' });
@@ -272,11 +274,11 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
   // UNCAPPED, deliberately. `recordReadiness`'s default trims each gap to 25 names so a screen stays
   // readable; iterating that list would chase only the first 25 people per gap and report a clean run.
   // The blast-radius cap below is the ONLY thing that bounds this sweep, and it says so when it bites.
-  const view = await recordReadiness(ctx, { peopleLimit: Number.POSITIVE_INFINITY });
+  const { view, activeEmploymentIds } = await withTenant(ctx, tx => readinessSnapshot(tx, Number.POSITIVE_INFINITY));
   const openGapKeys = new Set<string>();
   for (const g of view.gaps) for (const p of g.people) openGapKeys.add(`${p.employmentId}:${g.id}`);
 
-  const settled = await settleOutcomes(ctx, openGapKeys);
+  const settled = await settleOutcomes(ctx, openGapKeys, new Set(activeEmploymentIds));
 
   // Who has been nudged recently, for which gap. ONE query rather than one per person: this has to open
   // for a 3,000-person tenant.
@@ -343,8 +345,16 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
 
       if (body === null) body = await draftBody(ctx, gap.id, audience);
 
-      await withTenant(ctx, (tx) =>
-        appendEvent(tx, {
+      const emitted = await withTenant(ctx, async (tx) => {
+        // The event is the durable effect receipt. A best-effort proposal ledger cannot deduplicate it.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${ctx.tenantId}), hashtext(${person.employmentId + ':' + gap.id}))`);
+        const [alreadySent] = await tx.select({ id: schema.domainEvent.id }).from(schema.domainEvent)
+          .where(and(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'),
+            eq(schema.domainEvent.subjectEmploymentId, person.employmentId),
+            gte(schema.domainEvent.occurredAt, since),
+            sql`${schema.domainEvent.payload} ->> 'gap' = ${gap.id}`)).limit(1);
+        if (alreadySent) return false;
+        await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'employment',
           aggregateId: person.employmentId,
@@ -356,8 +366,10 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
           // The BODY travels on the event because the notification registry renders from the payload and
           // stores the result. `audience` is what the registry's recipient resolver branches on.
           payload: { gap: gap.id, audience, body, recipients },
-        }),
-      );
+        });
+        return true;
+      });
+      if (!emitted) { cooled++; continue; }
 
       await recordProposal(ctx, {
         type: 'readiness_fix',
