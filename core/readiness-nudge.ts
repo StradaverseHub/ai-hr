@@ -15,12 +15,12 @@
  *
  * **Deterministic code decides WHO and WHETHER** — which gap, whose record, who can act on it, whether
  * the cooldown allows it, whether the tenant switched this on at all. None of that is a model's decision.
- * **The model decides only HOW IT READS**, once per gap per run, and its draft is adjudicated before use.
+ * **The model decides only HOW IT READS**, once per gap and audience per run, and its draft is adjudicated before use.
  *
- * ⚠️ **THE ROUTING TABLE BELOW IS THE MOST IMPORTANT THING IN THIS FILE.** Nudging somebody about
+ * ⚠️ **THE SHARED ACTION CATALOGUE GOVERNS ROUTING.** Nudging somebody about
  * something they cannot fix is worse than not nudging them: it trains them to ignore the channel, and the
  * record still does not get fixed. So the audience is derived from what the product ACTUALLY LETS EACH
- * PERSON DO, read out of `app/me/actions.ts`, not from what would be convenient.
+ * PERSON DO, derived from the existing request declaration, tenant permissions and pending submissions.
  *
  * ⚠️ **IT IS OFF BY DEFAULT AND THAT IS THE KILL SWITCH.** `notifications.readiness_nudge_enabled`
  * defaults to `false`. ADR-0083 §2.5's kill switch was deliberately deferred for the action layer because
@@ -33,35 +33,15 @@ import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { settingEnabled } from './entitlements';
 import { hrAdminsForCompany } from './notifications';
-import { readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { loadReadinessActions } from './readiness-actions';
+import { resolveEntitlementsTx } from './entitlements';
 import { recordDecision, recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 import { generateDraft } from '../lib/ai';
 
-/** Who can actually act on a gap. */
+/** The audience is resolved from current request permissions and pending submissions (ADR-0111). */
 export type NudgeAudience = 'employee' | 'hr';
-
-/**
- * WHICH GAPS THE PERSON THEMSELVES CAN FIX, read out of what the product actually offers.
- *
- * `app/me/actions.ts`'s `myRequestProfileChange` carries exactly four statutory-ish fields —
- * `bankName`, `bankAccountNo`, `taxCategory`, `numChildren` — plus three identity ones, and routes them
- * through an APPROVAL. Of the six readiness gaps, only the bank account has a self-service path.
- * **Everything else is HR's to key in**, so telling the employee about it would be telling somebody about
- * a screen they do not have.
- *
- * If ESS ever grows a field, this table moves with it — and it is the ONE thing to re-check when it does.
- */
-export const NUDGE_AUDIENCE: Record<ReadinessGapId, NudgeAudience> = {
-  // `/me` → Request a change → bank details. A real, reachable self-service path.
-  no_bank_account: 'employee',
-  // Tax/EPF/SOCSO numbers, identity documents and compensation are all admin-only writers.
-  no_tax_number: 'hr',
-  no_epf_number: 'hr',
-  no_socso_number: 'hr',
-  no_identity: 'hr',
-  no_compensation: 'hr',
-};
 
 /**
  * The tenant switch. Default `false` — see the header: here there is no button, so this is the button.
@@ -109,6 +89,19 @@ export const NUDGE_TEMPLATE: Record<ReadinessGapId, string> = {
   no_compensation: 'This employee has no salary record, so payroll cannot compute anything for them.',
 };
 
+export const EMPLOYEE_NUDGE_TEMPLATE: Partial<Record<ReadinessGapId, string>> = {
+  no_bank_account: NUDGE_TEMPLATE.no_bank_account,
+  no_identity: 'Your record has no IC or passport. Request an identity correction from My Profile for HR approval.',
+  no_tax_number: 'Your record has no tax number. Request a correction from Bank & Statutory in My Profile for HR approval.',
+  no_epf_number: 'Your record has no EPF number. Request a correction from Bank & Statutory in My Profile for HR approval.',
+  no_socso_number: 'Your record has no SOCSO number. Request a correction from Bank & Statutory in My Profile for HR approval.',
+};
+
+const fallbackBody = (gap: ReadinessGapId, audience: NudgeAudience) => audience === 'employee'
+  ? EMPLOYEE_NUDGE_TEMPLATE[gap] ?? NUDGE_TEMPLATE[gap]
+  : gap === 'no_bank_account' ? 'This employee has no bank account on file. Review the employee record to complete the payment details.'
+    : NUDGE_TEMPLATE[gap];
+
 /** A word the body must contain for the gap it is about — the cheap half of adjudication. */
 const REQUIRED_WORD: Record<ReadinessGapId, string> = {
   no_bank_account: 'bank',
@@ -147,7 +140,7 @@ const SYSTEM = [
 ].join(' ');
 
 /**
- * Draft one body for one gap. ONE call per gap per run, not per person — the same message goes to
+ * Draft one body for one gap and audience. ONE call per gap/audience per run, not per person — the same message goes to
  * everyone with that gap, which is cheaper, reviewable, and fairer than personalising a chaser.
  *
  * Returns the template on ANY failure (no provider, outage, unfaithful draft), so the caller cannot end
@@ -161,7 +154,7 @@ async function draftBody(
   const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).catch(() => null);
   // No provider is not a failure — it is the ordinary state of a tenant that has not bought one, and the
   // deterministic body is a perfectly good chaser. Nothing is recorded, because nothing was proposed.
-  if (!cfg) return NUDGE_TEMPLATE[gap];
+  if (!cfg) return fallbackBody(gap, audience);
 
   let draft = '';
   try {
@@ -170,16 +163,17 @@ async function draftBody(
         system: SYSTEM,
         prompt:
           `Missing from the record: ${gap.replace(/_/g, ' ')}. ` +
-          `The reader is ${audience === 'employee' ? 'the employee themselves' : 'an HR administrator'}.`,
+          `The reader is ${audience === 'employee' ? 'the employee themselves; ask them to submit a correction from My Profile for HR approval, never to apply or approve it' : 'an HR administrator'}.`,
         maxTokens: 160,
       })
     ).trim();
   } catch {
     // Provider down or refused. Same outcome as no provider: the template goes out.
-    return NUDGE_TEMPLATE[gap];
+    return fallbackBody(gap, audience);
   }
 
-  const ok = nudgeIsFaithful(draft, gap);
+  const ok = nudgeIsFaithful(draft, gap) &&
+    (audience !== 'employee' || (/approval/i.test(draft) && !/(without|no).{0,20}approval|already.{0,20}(fixed|approved)/i.test(draft)));
   await recordProposal(ctx, {
     type: 'readiness_nudge',
     facts: { gap, audience },
@@ -190,10 +184,14 @@ async function draftBody(
     provider: cfg.provider,
     model: cfg.model,
   });
-  return ok ? draft : NUDGE_TEMPLATE[gap];
+  return ok ? draft : fallbackBody(gap, audience);
 }
 
 export type NudgeSweepResult = {
+  /** A relevant correction is already awaiting the existing approval workflow. */
+  awaitingReview: number;
+  /** Source facts or permissions changed before an effect could be committed. */
+  changed: number;
   /** Nudges actually raised. */
   sent: number;
   /** In cooldown, so deliberately not raised again. */
@@ -244,7 +242,7 @@ async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>, act
   let settled = 0;
   for (const row of due) {
     // A leaver, invisible record or unsupported gap is not evidence that a reminder worked.
-    if (!row.subjectId || !activeEmploymentIds.has(row.subjectId) || !Object.hasOwn(NUDGE_AUDIENCE, row.gap)) continue;
+    if (!row.subjectId || !activeEmploymentIds.has(row.subjectId) || !Object.hasOwn(GAP_BLOCKS, row.gap)) continue;
     // Outside the transaction above — `recordDecision` opens its own (agent-proposal property 2).
     const stillOpen = openGapKeys.has(`${row.subjectId}:${row.gap}`);
     await recordDecision(ctx, { proposalId: row.id, decision: stillOpen ? 'declined' : 'approved' });
@@ -261,6 +259,8 @@ async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>, act
  */
 export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSweepResult> {
   const empty: NudgeSweepResult = {
+    awaitingReview: 0,
+    changed: 0,
     sent: 0,
     cooled: 0,
     orphaned: 0,
@@ -274,7 +274,10 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
   // UNCAPPED, deliberately. `recordReadiness`'s default trims each gap to 25 names so a screen stays
   // readable; iterating that list would chase only the first 25 people per gap and report a clean run.
   // The blast-radius cap below is the ONLY thing that bounds this sweep, and it says so when it bites.
-  const { view, activeEmploymentIds } = await withTenant(ctx, tx => readinessSnapshot(tx, Number.POSITIVE_INFINITY));
+  const { view, activeEmploymentIds, actions } = await withTenant(ctx, async tx => {
+    const snapshot = await readinessSnapshot(tx, Number.POSITIVE_INFINITY);
+    return { ...snapshot, actions: await loadReadinessActions(tx, ctx, snapshot.activeEmploymentIds) };
+  });
   const openGapKeys = new Set<string>();
   for (const g of view.gaps) for (const p of g.people) openGapKeys.add(`${p.employmentId}:${g.id}`);
 
@@ -303,14 +306,19 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
   let cooled = 0;
   let orphaned = 0;
   let cappedOut = false;
+  let awaitingReview = 0;
+  let changed = 0;
 
   for (const gap of view.gaps) {
-    const audience = NUDGE_AUDIENCE[gap.id];
     // Drafted ONCE per gap, and only when this gap actually has somebody to nudge — a provider call for a
     // gap whose every subject is in cooldown is spend with no message at the end of it.
-    let body: string | null = null;
+    const bodies = new Map<NudgeAudience, string>();
 
     for (const person of gap.people) {
+      const action = actions.get(`${person.employmentId}:${gap.id}`);
+      if (!action) { changed++; continue; }
+      if (action.type === 'review_submission') { awaitingReview++; continue; }
+      const audience = action.audience;
       if (sent >= MAX_NUDGES_PER_RUN) {
         cappedOut = true;
         break;
@@ -343,17 +351,27 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
         continue;
       }
 
-      if (body === null) body = await draftBody(ctx, gap.id, audience);
+      if (!bodies.has(audience)) bodies.set(audience, await draftBody(ctx, gap.id, audience));
+      const body = bodies.get(audience)!;
 
       const emitted = await withTenant(ctx, async (tx) => {
         // The event is the durable effect receipt. A best-effort proposal ledger cannot deduplicate it.
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${ctx.tenantId}), hashtext(${person.employmentId + ':' + gap.id}))`);
+        // Provider calls run outside the transaction. Re-read facts, submissions and the kill switch.
+        const entitlements = await resolveEntitlementsTx(tx, ctx.tenantId);
+        const fresh = { ...ctx, entitlements, entitlementsExempt: undefined };
+        if (!settingEnabled(fresh, 'notifications.readiness_nudge_enabled')) return 'changed';
+        const snapshot = await readinessSnapshot(tx, Number.POSITIVE_INFINITY, false, { employmentIds: [person.employmentId] });
+        if (!snapshot.view.gaps.some(g => g.id === gap.id)) return 'changed';
+        const nowAction = (await loadReadinessActions(tx, fresh, snapshot.activeEmploymentIds))
+          .get(`${person.employmentId}:${gap.id}`);
+        if (nowAction?.type !== action.type || nowAction.audience !== audience) return 'changed';
         const [alreadySent] = await tx.select({ id: schema.domainEvent.id }).from(schema.domainEvent)
           .where(and(eq(schema.domainEvent.eventType, 'readiness.nudge-raised'),
             eq(schema.domainEvent.subjectEmploymentId, person.employmentId),
             gte(schema.domainEvent.occurredAt, since),
             sql`${schema.domainEvent.payload} ->> 'gap' = ${gap.id}`)).limit(1);
-        if (alreadySent) return false;
+        if (alreadySent) return 'cooled';
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'employment',
@@ -365,11 +383,12 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
           subjectEmploymentId: person.employmentId,
           // The BODY travels on the event because the notification registry renders from the payload and
           // stores the result. `audience` is what the registry's recipient resolver branches on.
-          payload: { gap: gap.id, audience, body, recipients },
+          payload: { gap: gap.id, audience, action: action.type, body, recipients },
         });
-        return true;
+        return 'sent';
       });
-      if (!emitted) { cooled++; continue; }
+      if (emitted === 'changed') { changed++; continue; }
+      if (emitted === 'cooled') { cooled++; continue; }
 
       await recordProposal(ctx, {
         type: 'readiness_fix',
@@ -384,5 +403,5 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
     if (cappedOut) break;
   }
 
-  return { sent, cooled, orphaned, settled, disabled: false, cappedOut };
+  return { sent, cooled, orphaned, settled, disabled: false, cappedOut, awaitingReview, changed };
 }

@@ -40,6 +40,7 @@ import {
 import { resolveSubjectHead } from './leave';
 import { sanitizeApprovalLevels } from './leave-approval-policy';
 import { isModuleEnabled } from './entitlements';
+import { READINESS_CORRECTIONS } from '../lib/readiness-correction-actions';
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
@@ -571,7 +572,11 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       // hand-replayed or malformed event degrades to a true sentence rather than the string "undefined".
       body: typeof p?.body === 'string' && p.body.length > 0 ? p.body : 'A record is incomplete and is holding up payroll or a statutory filing.',
       // Deep-link to the screen the RECIPIENT can actually act on — the whole point of the routing split.
-      linkPath: p?.audience === 'employee' ? '/me' : '/control-tower/readiness',
+      linkPath: p?.audience === 'employee'
+        ? p?.action === 'submit_correction' && typeof p?.gap === 'string' && Object.hasOwn(READINESS_CORRECTIONS, p.gap)
+          ? `/me?tab=${READINESS_CORRECTIONS[p.gap as keyof typeof READINESS_CORRECTIONS].tab}#section-request-${READINESS_CORRECTIONS[p.gap as keyof typeof READINESS_CORRECTIONS].tab}`
+          : '/me'
+        : '/control-tower/readiness',
     }),
     recipients: async (tx, ev, payload) => {
       if (!ev.subjectEmploymentId) return [];

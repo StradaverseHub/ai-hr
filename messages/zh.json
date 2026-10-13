@@ -15587,6 +15587,19 @@
       "shown": "显示 {total} 个问题中的 {shown} 个。",
       "verificationNote": "关闭表示检查时相关信息已填写或已不再需要。人力资源仍需验证其准确性。薪资和访问权限决定继续使用现有审批。",
       "quality": "薪资与 AI 质量"
+    },
+    "corrections": {
+      "employeeTitle": "完善您的资料",
+      "employeeDescription": "通过现有个人资料表单补充缺失信息。每项更正须经人力资源审核后才会更新记录。",
+      "waitingHelp": "您已提交这些信息。人力资源审核期间无需再次申请。",
+      "submit": "补充缺失信息",
+      "waiting": "等待人力资源审核",
+      "waitingGroup": "等待集团人力资源审核",
+      "approvalNote": "更正须获批且记录更新后才算完成。",
+      "unavailable": "资料任务暂时无法显示。您仍可使用个人资料表单。",
+      "review": "审核已提交的更正",
+      "groupHr": "集团人力资源",
+      "actionUnavailable": "下一步操作暂时无法显示"
     }
   },
   "profileRequestSettings": {

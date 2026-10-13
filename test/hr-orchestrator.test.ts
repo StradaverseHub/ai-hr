@@ -16,11 +16,15 @@ describe('central HR orchestrator', () => {
   afterAll(closeAll);
 
   async function hire() {
-    return hireEmployee(adminCtx(base), {
+    const employee = await hireEmployee(adminCtx(base), {
       person: { fullName: 'Orchestration fixture', primaryEmail: 'orchestrator@example.test' },
       companyId: base.companyId, departmentId: base.deptA,
       employmentType: 'full_time', hiredOn: '2024-01-01', paymentMethod: 'bank_transfer',
     } as never);
+    await owner.db.insert(schema.employeeStatutoryMy).values({ tenantId: base.tenantId,
+      personId: employee.personId, passportNumber: 'ORCH-PASSPORT',
+      taxNumber: 'ORCH-TAX', epfNumber: 'ORCH-EPF', socsoNumber: 'ORCH-SOCSO' });
+    return employee;
   }
   const cases = () => owner.db.select().from(schema.hrOrchestrationCase).orderBy(schema.hrOrchestrationCase.id);
 

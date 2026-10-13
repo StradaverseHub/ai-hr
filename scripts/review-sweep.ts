@@ -59,6 +59,8 @@ async function main() {
   let totalMovements = 0;
   let totalNudges = 0;
   let totalNudgesSettled = 0;
+  let totalAwaitingReview = 0;
+  let totalChangedBeforeSend = 0;
   let nudgeTenants = 0;
   let triageTenants = 0;
   let totalQueries = 0;
@@ -104,7 +106,7 @@ async function main() {
       // failure; those tenants are simply not counted below.
       const orchestration = await runHrOrchestrator(ctx);
       const nudge = orchestration.nudge.status === 'succeeded' ? orchestration.nudge.value
-        : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false };
+        : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false, awaitingReview: 0, changed: 0 };
       const triage = orchestration.triage.status === 'succeeded' ? orchestration.triage.value
         : { disabled: true, queried: 0, candidates: 0, cleared: 0, rejected: 0, notConfigured: false, cappedOut: false };
       if (!nudge.disabled) nudgeTenants++;
@@ -127,6 +129,8 @@ async function main() {
       totalMovements += movementsApplied;
       totalNudges += nudge.sent;
       totalNudgesSettled += nudge.settled;
+      totalAwaitingReview += nudge.awaitingReview;
+      totalChangedBeforeSend += nudge.changed;
       console.log(
         `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${movementsApplied} movement(s) applied` +
           (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : '') +
@@ -139,6 +143,8 @@ async function main() {
               (nudge.cooled > 0 ? `, ${nudge.cooled} in cooldown` : '') +
               (nudge.settled > 0 ? `, ${nudge.settled} outcome(s) judged` : '') +
               (nudge.orphaned > 0 ? ` — ⚠ ${nudge.orphaned} gap(s) with NO ONE to notify` : '') +
+              (nudge.awaitingReview > 0 ? `, ${nudge.awaitingReview} awaiting correction review (not chased)` : '') +
+              (nudge.changed > 0 ? `, ${nudge.changed} changed before sending` : '') +
               (nudge.cappedOut ? ' — ⚠ CAPPED, more remain' : '')) +
           // Same rule as the nudge counters: every one is printed, including the unflattering ones. A
           // discarded proposal is the adjudicator refusing a question we would otherwise have put in
@@ -181,6 +187,8 @@ async function main() {
         movementsApplied: totalMovements,
         nudgesSent: totalNudges,
         nudgeOutcomesJudged: totalNudgesSettled,
+        readinessAwaitingReview: totalAwaitingReview,
+        readinessChangedBeforeSend: totalChangedBeforeSend,
         nudgeTenants,
         notificationsCreated,
         notificationCappedTenants,

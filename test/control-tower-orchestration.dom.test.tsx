@@ -10,11 +10,14 @@ vi.mock('next-intl/server', () => ({
   getFormatter: async () => ({ dateTime: (date: Date) => date.toISOString() }),
 }));
 vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
+vi.mock('../core/readiness-actions', () => ({ myReadinessActions: vi.fn() }));
+import { myReadinessActions } from '../core/readiness-actions';
+import { MyReadinessWork } from '../app/me/readiness-work';
 import { ControlTowerNavigation } from '../app/control-tower/navigation';
 import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
 
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
-const empty = { rows: [], total: 0, verified: 0, inactive: 0, observedAt: null, lastRun: null };
+const empty = { actionsUnavailable: false, rows: [], total: 0, verified: 0, inactive: 0, observedAt: null, lastRun: null };
 afterEach(cleanup);
 
 describe('consolidated Control Tower', () => {
@@ -49,5 +52,27 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(en.controlTower.orchestrator.empty)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe(en.controlTower.orchestrator.runFailed);
     expect(screen.getByText(en.controlTower.orchestrator.verificationNote)).toBeTruthy();
+  });
+});
+
+
+describe('personal correction guidance', () => {
+  const session = { tenantId: 'tenant', personId: 'person', roles: ['employee'] };
+  it('offers the permitted existing form, then replaces the task link while approval is pending', async () => {
+    vi.mocked(myReadinessActions).mockResolvedValue([{ gap: 'no_bank_account', type: 'submit_correction', audience: 'employee', tab: 'bankStatutory', requestId: null, approver: 'admin' }]);
+    show(await MyReadinessWork({ session, employmentId: 'employment' }));
+    expect(screen.getByRole('link', { name: en.controlTower.corrections.submit }).getAttribute('href')).toBe('/me?tab=bankStatutory#section-request-bankStatutory');
+    cleanup();
+    vi.mocked(myReadinessActions).mockResolvedValue([{ gap: 'no_bank_account', type: 'review_submission', audience: 'hr', tab: 'bankStatutory', requestId: 'request', approver: 'group_admin' }]);
+    show(await MyReadinessWork({ session, employmentId: 'employment' }));
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText(en.controlTower.corrections.waitingGroup)).toBeTruthy();
+    expect(screen.getByText(en.controlTower.corrections.approvalNote)).toBeTruthy();
+  });
+  it('shows an unavailable status rather than a false complete record', async () => {
+    vi.mocked(myReadinessActions).mockRejectedValue(new Error('unavailable'));
+    show(await MyReadinessWork({ session, employmentId: 'employment' }));
+    expect(screen.getByRole('status').textContent).toBe(en.controlTower.corrections.unavailable);
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });

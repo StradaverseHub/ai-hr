@@ -3,8 +3,11 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
-import { readinessSnapshot, type ReadinessGapId } from './record-readiness';
-import { NUDGE_AUDIENCE, sweepReadinessNudges } from './readiness-nudge';
+import { GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { sweepReadinessNudges } from './readiness-nudge';
+import { loadReadinessActions } from './readiness-actions';
+import { EntitlementError } from './entitlements';
+import type { ReadinessAction } from '../lib/readiness-correction-actions';
 import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
 import { HR_HARNESS_VERSION, readinessTransition, runHarnessStep } from './orchestrator-harness';
@@ -30,6 +33,7 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
     // Serialize overlapping reconcilers before reading source facts. No model/network call holds this lock.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('hr-orchestrator'), hashtext(${ctx.tenantId}))`);
     const { view, activeEmploymentIds } = await readinessSnapshot(tx, Number.POSITIVE_INFINITY, true);
+    const actions = await loadReadinessActions(tx, ctx, activeEmploymentIds);
     const active = new Set(activeEmploymentIds);
     const existing = await tx.select().from(schema.hrOrchestrationCase);
     const byKey = new Map(existing.map(c => [`${c.employmentId}:${c.gap}`, c]));
@@ -49,8 +53,9 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
       const current = missing.get(key);
       const employmentId = current?.employmentId ?? previous!.employmentId;
       const gap = current?.gap ?? previous!.gap;
-      if (!Object.hasOwn(NUDGE_AUDIENCE, gap)) continue;
-      const audience = current ? NUDGE_AUDIENCE[current.gap] : previous!.audience;
+      if (!Object.hasOwn(GAP_BLOCKS, gap)) continue;
+      const action = actions.get(key);
+      const audience = current ? action?.audience ?? 'hr' : previous!.audience;
       const observation = current ? 'missing' : active.has(employmentId) ? 'complete' : inactive.has(employmentId) ? 'inactive' : 'unknown';
       const state = readinessTransition(observation, audience);
       if (state == null) continue;
@@ -81,7 +86,8 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
         eventType: `orchestrator.case-${reopened ? 'reopened' : state}`,
         actor: ctx.userId ? { type: 'user', id: ctx.userId } : { type: 'agent' },
         subjectEmploymentId: employmentId,
-        payload: { gap, from: previous?.state ?? null, to: state, harnessVersion: HR_HARNESS_VERSION },
+        payload: { gap, from: previous?.state ?? null, to: state, action: action?.type ?? null,
+          requestId: action?.requestId ?? null, harnessVersion: HR_HARNESS_VERSION },
       });
     }
     for (let offset = 0; offset < unchanged.length; offset += 500) {
@@ -139,12 +145,21 @@ export async function orchestrationQueue(ctx: SessionContext) {
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
       .orderBy(desc(schema.domainEvent.occurredAt)).limit(1);
     const open = rows.filter(r => r.state === 'needs_input' || r.state === 'needs_review');
+    let actions = new Map<string, ReadinessAction>();
+    let actionsUnavailable = false;
+    try { actions = await loadReadinessActions(tx, ctx, [...new Set(open.map(row => row.employmentId))]); }
+    catch (error) {
+      // Settings resolution happens before action queries; a display failure must not hide the queue.
+      if (!(error instanceof EntitlementError)) throw error;
+      actionsUnavailable = true;
+    }
     const runs = await tx.select({ at: schema.domainEvent.occurredAt,
       failed: sql<boolean>`coalesce((${schema.domainEvent.payload} ->> 'failed')::boolean, false)` })
       .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'orchestrator.pass-finished'),
         sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
       .orderBy(desc(schema.domainEvent.occurredAt)).limit(1);
-    return { rows: open.slice(0, 50), total: open.length,
+    return { rows: open.slice(0, 50).map(row => ({ ...row, action: actions.get(`${row.employmentId}:${row.gap}`) ?? null })), total: open.length,
+      actionsUnavailable,
       verified: rows.filter(r => r.state === 'verified').length,
       inactive: rows.filter(r => r.state === 'inactive').length,
       observedAt: checks.length ? checks[0].at : null,

@@ -1,5 +1,5 @@
 /** Versioned, provider-independent coordination policy. HR services own every business decision. */
-export const HR_HARNESS_VERSION = 'readiness-v1';
+export const HR_HARNESS_VERSION = 'readiness-v2';
 export type CaseState = 'needs_input' | 'needs_review' | 'verified' | 'inactive';
 export type CaseObservation = 'missing' | 'complete' | 'inactive' | 'unknown';
 

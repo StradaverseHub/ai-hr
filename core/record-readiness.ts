@@ -24,7 +24,7 @@
  * ADR-0083's action layer (§2.5) is a separate build with its own security review; this is the read that
  * tells you what to fix. Naming the gap is the whole deliverable.
  */
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 
@@ -154,7 +154,8 @@ export async function recordReadiness(
 }
 
 /** Same engine read, in the orchestrator's transaction so completion has positive source evidence. */
-export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, adminOnly = false) {
+export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, adminOnly = false,
+  scope?: { employmentIds?: readonly string[]; personId?: string }) {
     const rows = await tx
       .select({
         employmentId: schema.employment.id,
@@ -184,6 +185,8 @@ export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, ad
       // ACTIVE ONLY. A leaver with no SOCSO number is a historical record, not a thing to go and fix, and
       // listing them would bury the people whose next payslip actually depends on it.
       .where(and(isNull(schema.employment.terminatedOn),
+        scope?.employmentIds ? inArray(schema.employment.id, [...scope.employmentIds]) : undefined,
+        scope?.personId ? eq(schema.employment.personId, scope.personId) : undefined,
         adminOnly ? sql`app.can_admin_employment(${schema.employment.id})` : undefined));
 
     const buckets = new Map<ReadinessGapId, ReadinessPerson[]>();

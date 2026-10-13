@@ -15587,6 +15587,19 @@
       "shown": "Showing {shown} of {total} issues.",
       "verificationNote": "Closure means the information is present or no longer required at the recorded check. HR remains responsible for validating its accuracy. Payroll and access decisions use their existing approvals.",
       "quality": "Payroll and AI quality"
+    },
+    "corrections": {
+      "employeeTitle": "Complete your record",
+      "employeeDescription": "Provide missing details through your existing profile forms. HR reviews each correction before it changes your record.",
+      "waitingHelp": "You have already submitted these details. No new request is needed while HR reviews them.",
+      "submit": "Provide missing details",
+      "waiting": "Waiting for HR review",
+      "waitingGroup": "Waiting for group HR review",
+      "approvalNote": "A correction is complete only after approval and an updated record.",
+      "unavailable": "Record tasks are temporarily unavailable. You can still use your profile forms.",
+      "review": "Review submitted correction",
+      "groupHr": "Group HR",
+      "actionUnavailable": "Next action temporarily unavailable"
     }
   },
   "profileRequestSettings": {

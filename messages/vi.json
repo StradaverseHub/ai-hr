@@ -15587,6 +15587,19 @@
       "shown": "Hiển thị {shown} trên {total} vấn đề.",
       "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
       "quality": "Chất lượng bảng lương và AI"
+    },
+    "corrections": {
+      "employeeTitle": "Hoàn thiện hồ sơ của bạn",
+      "employeeDescription": "Bổ sung thông tin còn thiếu qua các biểu mẫu hồ sơ hiện có. Nhân sự xét duyệt từng yêu cầu trước khi cập nhật hồ sơ.",
+      "waitingHelp": "Bạn đã gửi thông tin này. Không cần gửi yêu cầu mới trong lúc chờ nhân sự xét duyệt.",
+      "submit": "Bổ sung thông tin còn thiếu",
+      "waiting": "Đang chờ nhân sự xét duyệt",
+      "waitingGroup": "Đang chờ nhân sự tập đoàn xét duyệt",
+      "approvalNote": "Sửa đổi chỉ hoàn tất sau khi được phê duyệt và hồ sơ đã cập nhật.",
+      "unavailable": "Tạm thời không thể hiển thị công việc hồ sơ. Bạn vẫn có thể dùng các biểu mẫu hồ sơ.",
+      "review": "Xét duyệt yêu cầu sửa đổi",
+      "groupHr": "Nhân sự tập đoàn",
+      "actionUnavailable": "Tạm thời không thể hiển thị bước tiếp theo"
     }
   },
   "profileRequestSettings": {
