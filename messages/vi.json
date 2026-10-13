@@ -8557,7 +8557,34 @@
       "deletePermanently": "Xóa vĩnh viễn",
       "gradeRestored": "Đã khôi phục cấp bậc {code}.",
       "deleteGradeTitle": "Xóa cấp bậc?",
-      "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
+      "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
+      "excel": {
+        "template": "Tải mẫu",
+        "import": "Nhập Excel",
+        "help": "Tải mẫu, nhập tùy chọn tổ chức vào từng trang tính và xem trước mọi dòng trước khi lưu. Giữ nguyên mã định danh và phạm vi công ty hiện có.",
+        "file": "Sổ làm việc Excel",
+        "mode": "Chế độ nhập",
+        "add": "Thêm mới — bỏ qua bản trùng khớp",
+        "update": "Cập nhật hiện có — xem thay đổi",
+        "working": "Đang kiểm tra…",
+        "preview": "Xem trước sổ làm việc",
+        "row": "Trang tính / dòng",
+        "result": "Kết quả",
+        "current": "Giá trị hiện tại",
+        "proposed": "Giá trị đề xuất",
+        "message": "Chi tiết",
+        "fixErrors": "Sửa mọi dòng không hợp lệ hoặc xung đột rồi xem trước lại trước khi lưu.",
+        "errors": "Tải báo cáo lỗi",
+        "confirmUpdates": "Tôi đã xem giá trị hiện tại và đề xuất, đồng thời xác nhận cập nhật các tùy chọn hiện có.",
+        "confirm": "Xác nhận nhập",
+        "summary": "Đã nhập {imported} · Đã cập nhật {updated} · Đã bỏ qua {skipped} · Thất bại {failed}",
+        "outcome": {
+          "add": "Thêm",
+          "update": "Cập nhật",
+          "skip": "Bỏ qua",
+          "error": "Lỗi"
+        }
+      }
     },
     "leave": {
       "typesSectionTitle": "Cài đặt loại nghỉ phép",

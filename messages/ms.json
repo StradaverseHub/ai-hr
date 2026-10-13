@@ -8557,7 +8557,34 @@
       "deletePermanently": "Padam secara kekal",
       "gradeRestored": "Gred {code} telah dipulihkan.",
       "deleteGradeTitle": "Padam gred jawatan?",
-      "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
+      "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan.",
+      "excel": {
+        "template": "Muat Turun Templat",
+        "import": "Import Excel",
+        "help": "Muat turun templat, isi pilihan organisasi dalam helaian bernama, kemudian pratonton setiap baris sebelum menyimpan. Pengecam sedia ada dan skop syarikat dikekalkan.",
+        "file": "Buku kerja Excel",
+        "mode": "Mod import",
+        "add": "Tambah Baharu — langkau pendua tepat",
+        "update": "Kemas Kini Sedia Ada — semak perubahan",
+        "working": "Menyemak…",
+        "preview": "Pratonton buku kerja",
+        "row": "Helaian / baris",
+        "result": "Hasil",
+        "current": "Nilai semasa",
+        "proposed": "Nilai cadangan",
+        "message": "Butiran",
+        "fixErrors": "Betulkan semua baris tidak sah atau bercanggah dan pratonton semula sebelum menyimpan.",
+        "errors": "Muat turun laporan ralat",
+        "confirmUpdates": "Saya telah menyemak nilai semasa dan cadangan serta mengesahkan kemas kini pilihan sedia ada.",
+        "confirm": "Sahkan import",
+        "summary": "Diimport {imported} · Dikemas kini {updated} · Dilangkau {skipped} · Gagal {failed}",
+        "outcome": {
+          "add": "Tambah",
+          "update": "Kemas kini",
+          "skip": "Langkau",
+          "error": "Ralat"
+        }
+      }
     },
     "leave": {
       "typesSectionTitle": "Tetapan jenis cuti",

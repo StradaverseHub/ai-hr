@@ -8557,7 +8557,34 @@
       "deletePermanently": "Delete permanently",
       "gradeRestored": "Grade {code} restored.",
       "deleteGradeTitle": "Delete job grade?",
-      "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
+      "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone.",
+      "excel": {
+        "template": "Download Template",
+        "import": "Import Excel",
+        "help": "Download the template, enter organisation options in their named sheets, then preview every row before saving. Existing identifiers and company scope are preserved.",
+        "file": "Excel workbook",
+        "mode": "Import mode",
+        "add": "Add New — skip exact duplicates",
+        "update": "Update Existing — review changes",
+        "working": "Checking…",
+        "preview": "Preview workbook",
+        "row": "Worksheet / row",
+        "result": "Result",
+        "current": "Current values",
+        "proposed": "Proposed values",
+        "message": "Details",
+        "fixErrors": "Correct every invalid or conflicting row and preview the workbook again before saving.",
+        "errors": "Download error report",
+        "confirmUpdates": "I reviewed the current and proposed values and confirm updates to existing options.",
+        "confirm": "Confirm import",
+        "summary": "Imported {imported} · Updated {updated} · Skipped {skipped} · Failed {failed}",
+        "outcome": {
+          "add": "Add",
+          "update": "Update",
+          "skip": "Skip",
+          "error": "Error"
+        }
+      }
     },
     "leave": {
       "typesSectionTitle": "Leave type settings",

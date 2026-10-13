@@ -1,3 +1,4 @@
+import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Shared System Labels — the multi-company assignment resolver + mutations (ADR-0073, feedback d356dec8).
  *
@@ -357,11 +358,12 @@ async function autoEnableSharedLabels(
 export function assignLabelToCompanies(
   ctx: SessionContext,
   p: { kind: string; labelId: string; companyIds: string[] },
+  existingTx?: Tx,
 ): Promise<{ assigned: string[] }> {
   assertKind(p.kind);
   const kind = p.kind;
   const companyIds = Array.from(new Set(p.companyIds.filter(Boolean)));
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     await loadLabel(tx, ctx.tenantId, kind, p.labelId); // 404 if the label is not real.
     if (companyIds.length === 0) return { assigned: [] };
     await tx
@@ -430,11 +432,12 @@ export function unassignLabelFromCompanies(
 export function setLabelGlobal(
   ctx: SessionContext,
   p: { kind: string; labelId: string; isGlobal: boolean },
+  existingTx?: Tx,
 ): Promise<{ isGlobal: boolean }> {
   assertKind(p.kind);
   const kind = p.kind;
   const table = KIND_TABLE[kind];
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     const label = await loadLabel(tx, ctx.tenantId, kind, p.labelId);
     if (label.isGlobal === p.isGlobal) return { isGlobal: p.isGlobal }; // no-op, no event.
 

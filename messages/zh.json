@@ -8557,7 +8557,34 @@
       "deletePermanently": "永久删除",
       "gradeRestored": "已恢复职级 {code}。",
       "deleteGradeTitle": "删除职级？",
-      "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
+      "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。",
+      "excel": {
+        "template": "下载模板",
+        "import": "导入 Excel",
+        "help": "下载模板，在相应工作表中填写组织选项，保存前预览每一行。现有标识和公司范围将保留。",
+        "file": "Excel 工作簿",
+        "mode": "导入模式",
+        "add": "新增 — 跳过完全重复项",
+        "update": "更新现有项 — 审核变更",
+        "working": "正在检查…",
+        "preview": "预览工作簿",
+        "row": "工作表 / 行",
+        "result": "结果",
+        "current": "当前值",
+        "proposed": "拟议值",
+        "message": "详情",
+        "fixErrors": "请修正所有无效或冲突行，重新预览后再保存。",
+        "errors": "下载错误报告",
+        "confirmUpdates": "我已审核当前值和拟议值，并确认更新现有选项。",
+        "confirm": "确认导入",
+        "summary": "已导入 {imported} · 已更新 {updated} · 已跳过 {skipped} · 失败 {failed}",
+        "outcome": {
+          "add": "新增",
+          "update": "更新",
+          "skip": "跳过",
+          "error": "错误"
+        }
+      }
     },
     "leave": {
       "typesSectionTitle": "休假类型设置",

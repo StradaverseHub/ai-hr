@@ -1,3 +1,4 @@
+import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Admin / setup services — org structure, leave config, and role management.
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
@@ -836,6 +837,7 @@ export async function createJobGrade(
   // `description` (e3c733df): optional display-only detail, mirroring profile_option.description. Omitted
   // ⇒ NULL, so every existing caller is unchanged.
   p: { code: string; name: string; rank?: number; description?: string | null },
+  existingTx?: Tx,
 ) {
   const code = cleanName(p.code, 'Grade code').toUpperCase().replace(/ /g, '_');
   if (!/^[A-Z][A-Z0-9_]{0,31}$/.test(code)) {
@@ -846,7 +848,7 @@ export async function createJobGrade(
   // Trimmed, and blank collapses to NULL so an empty box and an untouched field mean the same thing in
   // the database rather than one storing '' and the other NULL.
   const description = p.description?.trim() ? p.description.trim() : null;
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     // r224 — RESTORE INSTEAD OF DUPLICATE. Both grade uniqueness indexes are PARTIAL —
     // job_grade_code_uq (0090) and job_grade_name_uq (0183) are `... WHERE archived_at IS NULL` — so an
     // archived grade does NOT hold its code and this insert would SUCCEED, leaving the tenant with two
@@ -918,6 +920,7 @@ export async function updateJobGrade(
   // e3c733df — `description` follows the same optional/undefined rule as `code`: undefined leaves the
   // stored value alone, so a rank-or-name-only edit can never blank a description someone wrote.
   p: { id: string; name: string; rank?: number; code?: string; reason?: string | null; description?: string | null },
+  existingTx?: Tx,
 ) {
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
@@ -933,7 +936,7 @@ export async function updateJobGrade(
           }
           return c;
         })();
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
     // events that predate this change keep their new-values-only payload; the log is append-only).
     const [prev] = await tx
@@ -2807,9 +2810,10 @@ export async function bulkSaveLabels(
   ctx: SessionContext,
   kind: LabelKindStr,
   p: { creates: LabelCreateInput[]; updates: LabelUpdateInput[] },
+  existingTx?: Tx,
 ): Promise<{ created: number; updated: number; createdIds: { key: string; id: string }[] }> {
   const agg = KIND_AGG[kind];
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     const errors: LabelRowError[] = [];
     // Maps each created draft's client key → its new server id so the grid can convert the draft row
     // into a persisted row in place (instead of leaving it as a dirty draft that re-inserts on next Save).
