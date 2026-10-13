@@ -26,3 +26,5 @@ export { getAssessmentPersonalRecord } from './onehr/personal-record-service';
 export { importAssessmentArchitecture, generateAssessmentProfiles, saveAssessmentCatalogueProfile, setAssessmentCareerRoute } from './onehr/architecture-service';
 
 export { getFeedbackConversation, sendFeedbackMessage } from './onehr/feedback-conversation';
+
+export { buildAssessmentPanels, importAssessmentPanels } from './onehr/panel-admin-service';

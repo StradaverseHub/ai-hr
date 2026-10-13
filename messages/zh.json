@@ -17694,7 +17694,42 @@
       "yes": "是",
       "no": "尚未观察到"
     },
-    "cycleArchived": "此评估周期已归档。"
+    "cycleArchived": "此评估周期已归档。",
+    "panelAdmin": {
+      "title": "360 评估者名单",
+      "help": "为此周期生成或导入评估者名单。应用前请检查更改。",
+      "build": "生成评估者名单",
+      "buildHelp": "选择经理、任职时间最长的直属下属及符合条件的同事。补充操作会保留已有反馈提交或报告发布的名单。",
+      "mode": "操作",
+      "missing": "创建缺失名单",
+      "topup": "补充未满名单",
+      "preview": "预览名单",
+      "apply": "应用名单更改",
+      "applied": "名单更改已应用。",
+      "confirm": "应用这些名单更改？已提交的反馈将保留。成员变更后，需要重新发布该名单的匿名报告。",
+      "import": "导入评估者名单",
+      "importHelp": "使用 Subject Employee ID、Assessor Employee ID 和 Relationship 列。替换会归档文件中未包含且尚未提交的成员；已提交成员必须保留在文件中。文件明确包含的已归档关系将恢复。",
+      "add": "添加至现有名单",
+      "replace": "替换所选名单",
+      "status": "状态",
+      "before": "更改前",
+      "after": "更改后",
+      "target": "目标人数",
+      "assessors": "新增评估者",
+      "created": "新建",
+      "updated": "更新",
+      "restored": "恢复",
+      "archived": "归档",
+      "statuses": {
+        "has_panel": "已有名单",
+        "full": "已达到目标",
+        "started": "反馈已提交，保留原名单",
+        "released": "报告已发布，保留原名单",
+        "finalized": "已定稿，保留原名单",
+        "add": "新增评估者",
+        "short": "无符合条件的新增人员"
+      }
+    }
   },
   "allowanceV2": {
     "title": "考勤津贴",

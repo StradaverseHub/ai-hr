@@ -1,4 +1,22 @@
+import { parseCsvRecords } from '../../../lib/csv';
 export type PanelPerson={id:string;personId:string;code:string;name:string;companyId:string;groupId:string;department:string;grade:number|null;service:number;joinedOn:string|null;managerId:string|null;participates:boolean;canAssess?:boolean};
+export const panelImportHeaders=['Subject Employee ID','Assessor Employee ID','Relationship'];
+export type PanelRelationship='line_manager'|'matrix_manager'|'peer'|'direct_report';
+export function panelImportRows(csv:string){
+ if(new TextEncoder().encode(csv).length>2_000_000)throw Error('Choose a panel import smaller than 2 MB.');
+ const {headers,records}=parseCsvRecords(csv.replace(/^\uFEFF/,''));
+ if(new Set(headers).size!==headers.length)throw Error('The panel import has duplicate headings.');
+ if(!records.length||records.length>20000)throw Error('Choose a panel file with between 1 and 20,000 rows.');
+ const synonyms:Record<string,PanelRelationship>={line_manager:'line_manager','line manager':'line_manager',manager:'line_manager',lm:'line_manager',supervisor:'line_manager',matrix_manager:'matrix_manager','matrix manager':'matrix_manager',matrix:'matrix_manager',dotted_line_manager:'matrix_manager','dotted line manager':'matrix_manager','dotted line':'matrix_manager','dotted manager':'matrix_manager',dlm:'matrix_manager',peer:'peer',peers:'peer',colleague:'peer','peer/stakeholder':'peer','peer/stakeholders':'peer',stakeholder:'peer',stakeholders:'peer',direct_report:'direct_report','direct report':'direct_report',report:'direct_report',reports:'direct_report',subordinate:'direct_report',dr:'direct_report'};
+ const pick=(r:Record<string,string>,names:string[])=>names.map(n=>r[n]?.trim()).find(s=>s&&s.toLowerCase()!=='nan')??'';
+ return records.map((r,i)=>{
+  const subject=pick(r,['subject_employee_id','subject_id','subject','subject_eid']),assessor=pick(r,['assessor_employee_id','assessor_id','assessor','assessor_eid']);
+  const raw=pick(r,['relationship','rel','type']).toLowerCase().replace(/\s+/g,' ').replace(/\s*\/\s*/g,'/'),relationship=synonyms[raw];
+  if(!subject&&!assessor&&!raw)return null;
+  if(!subject||!assessor||!relationship)throw Error(`Row ${i+2}: enter a subject, assessor and valid relationship.`);
+  return {row:i+2,subject,assessor,relationship};
+ }).filter((r):r is NonNullable<typeof r>=>!!r);
+}
 export type PanelMember={employmentId:string;relationship:'line_manager'|'direct_report'|'peer';personId?:string};
 export type PanelCandidates={subjectId:string;members:PanelMember[];directAvailable:number;peerAvailable:number;managerStatus:'ok'|'no_manager'|'ineligible_lm_grade'};
 const stable=(a:PanelPerson,b:PanelPerson)=>a.code.localeCompare(b.code)||a.id.localeCompare(b.id);

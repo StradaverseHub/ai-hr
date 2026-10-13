@@ -17694,7 +17694,42 @@
       "yes": "Có",
       "no": "Chưa quan sát thấy"
     },
-    "cycleArchived": "Kỳ đánh giá này đã được lưu trữ."
+    "cycleArchived": "Kỳ đánh giá này đã được lưu trữ.",
+    "panelAdmin": {
+      "title": "Danh sách người đánh giá 360",
+      "help": "Tạo hoặc nhập danh sách người đánh giá cho kỳ này. Kiểm tra thay đổi trước khi áp dụng.",
+      "build": "Tạo danh sách",
+      "buildHelp": "Chọn quản lý, cấp dưới trực tiếp làm việc lâu nhất và đồng nghiệp đủ điều kiện. Bổ sung giữ nguyên danh sách đã có phản hồi nộp hoặc báo cáo công bố.",
+      "mode": "Thao tác",
+      "missing": "Tạo danh sách còn thiếu",
+      "topup": "Bổ sung danh sách chưa đủ",
+      "preview": "Xem trước danh sách",
+      "apply": "Áp dụng thay đổi",
+      "applied": "Đã áp dụng thay đổi danh sách.",
+      "confirm": "Áp dụng các thay đổi này? Phản hồi đã nộp được giữ lại. Danh sách đổi thành viên cần công bố lại báo cáo ẩn danh.",
+      "import": "Nhập danh sách người đánh giá",
+      "importHelp": "Dùng các cột Subject Employee ID, Assessor Employee ID và Relationship. Thay thế lưu trữ thành viên chưa nộp không có trong tệp; thành viên đã nộp phải được giữ trong tệp. Các cặp đã lưu trữ được ghi rõ sẽ được khôi phục.",
+      "add": "Thêm vào danh sách hiện có",
+      "replace": "Thay thế danh sách đã chọn",
+      "status": "Trạng thái",
+      "before": "Trước",
+      "after": "Sau",
+      "target": "Mục tiêu",
+      "assessors": "Người đánh giá mới",
+      "created": "Đã tạo",
+      "updated": "Đã cập nhật",
+      "restored": "Đã khôi phục",
+      "archived": "Đã lưu trữ",
+      "statuses": {
+        "has_panel": "Đã có danh sách",
+        "full": "Đã đủ mục tiêu",
+        "started": "Đã nộp phản hồi — giữ nguyên",
+        "released": "Đã công bố báo cáo — giữ nguyên",
+        "finalized": "Đã chốt — giữ nguyên",
+        "add": "Người đánh giá mới",
+        "short": "Không có người đủ điều kiện để thêm"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

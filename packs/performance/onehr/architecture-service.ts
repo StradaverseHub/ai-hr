@@ -2,29 +2,16 @@ import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { type SessionContext, type Tx } from '../../../db/client';
-import { actorOf, appendEvent } from '../../../db/events';
-import { assignment, assessmentCareerProfile, department, employment, onehrCycle, onehrReview, person, position, reviewCycle } from '../../../db/schema';
+import { assignment, assessmentCareerProfile, department, employment, onehrCycle, onehrReview, person, position } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
+import { loadAssessmentAdminCycleTx as load, auditAssessmentAdminTx as event } from './admin-context';
 import { importArchitecture, type architectureSheets } from './architecture-model';
 import { resolveTechnicalProfile, technicalProfilePlan } from './career-model';
 import { careerSchema, policySchema, type Policy } from './model';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stableId=(cycleId:string,key:string)=>{const h=digest([cycleId,key]);return `${h.slice(0,8)}-${h.slice(8,12)}-5${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
-async function load(tx:Tx,cycleId:string){
- z.uuid().parse(cycleId);
- const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.onehr_cycle_admin(${cycleId}::uuid) as ok`);
- if(!allowed?.ok)throw Error('Performance administrator access is required.');
- const [cycle]=await tx.select().from(reviewCycle).where(eq(reviewCycle.id,cycleId)).for('update');
- const [config]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId)).for('update');
- if(!cycle||!config)throw Error('Assessment cycle not found.');
- if(cycle.status==='closed')throw Error('An archived catalogue is read-only.');
- return {cycle,config,policy:policySchema.parse(config.policy)};
-}
-async function event(tx:Tx,ctx:SessionContext,id:string,name:string,payload:Record<string,unknown>){
- await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:id,eventType:`onehr.${name}`,actor:actorOf(ctx),payload});
-}
 async function save(tx:Tx,cycleId:string,revision:number,policy:Policy){
  // Company and employment references must stay inside this administrator's native scope.
  for(const p of policy.profiles){

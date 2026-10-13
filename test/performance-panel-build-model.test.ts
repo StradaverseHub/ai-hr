@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { additivePanelPlan, buildPanelCandidates, type PanelPerson } from '../packs/performance/onehr/panel-build-model';
+import { additivePanelPlan, buildPanelCandidates, panelImportRows, type PanelPerson } from '../packs/performance/onehr/panel-build-model';
 const person=(id:string,patch:Partial<PanelPerson>={}):PanelPerson=>({id,personId:id,code:id,name:id,companyId:'company',groupId:'group',department:'Operations',grade:12,service:2,joinedOn:'2020-01-01',managerId:null,participates:false,...patch});
 const population=[person('subject',{participates:true,managerId:'manager'}),person('manager'),person('older-report',{managerId:'subject',service:4}),person('newer-report',{managerId:'subject',service:3}),person('third-report',{managerId:'subject',service:1}),person('peer-1',{managerId:'manager',service:1}),person('peer-2',{managerId:'manager',grade:20,service:2}),person('tier-2',{service:10,grade:13}),person('other-department',{managerId:'manager',department:'Finance',service:20})];
 describe('source bulk-panel selection and preservation',()=>{
@@ -38,4 +38,10 @@ describe('source bulk-panel selection and preservation',()=>{
   const plan=additivePanelPlan(candidate,[{employmentId:'peer-old-job',personId:'peer-1',relationship:'peer',archived:true,submitted:false}],'missing',5);
   expect(plan.add.some(m=>m.personId==='peer-1')).toBe(false);
  });
+ it('reads the source panel template and relationship synonyms, and refuses incomplete rows',()=>{
+  expect(panelImportRows('Subject Employee ID,Assessor Employee ID,Relationship\n001,002,Peer / Stakeholder\n003,004,dlm')).toEqual([{row:2,subject:'001',assessor:'002',relationship:'peer'},{row:3,subject:'003',assessor:'004',relationship:'matrix_manager'}]);
+  expect(()=>panelImportRows('Subject,Assessor,Relationship\n001,,peer')).toThrow(/Row 2/);
+  expect(()=>panelImportRows('Subject,Assessor,Relationship\n001,002,unknown')).toThrow(/valid relationship/);
+ });
+
 });

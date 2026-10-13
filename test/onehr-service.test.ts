@@ -342,6 +342,49 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect((await perf.getOnehrCalibration(a,id)).rows[0].currentPerformance).toBe('AE');expect(await perf.getReviewConversation(self,reviewId,'career')).toMatchObject({revision:message.revision,messages:message.messages});
   });
 
+  it('previews source bulk panels without lasting writes and leaves scored panels unchanged on top-up',async()=>{
+    const events=(await owner.db.select().from(schema.domainEvent)).length;
+    await expect(perf.buildAssessmentPanels(self,cycleId,'missing')).rejects.toThrow(/administrator/);
+    const preview=await perf.buildAssessmentPanels(a,cycleId,'missing');
+    expect(preview.rows.find(r=>r.reviewId===reviewId)).toMatchObject({status:'add',before:0,after:5});
+    expect(await owner.db.select().from(schema.onehrPanel)).toEqual([]);expect((await owner.db.select().from(schema.domainEvent)).length).toBe(events);
+    expect((await view(a)).revision).toBe(1);
+    const applied=await perf.buildAssessmentPanels(a,cycleId,'missing',preview.token);expect(applied.applied).toBe(true);expect((await view(a)).peers.filter(p=>!p.archivedAt)).toHaveLength(5);
+    await expect(perf.buildAssessmentPanels(a,cycleId,'missing',preview.token)).rejects.toThrow(/changed/);
+    expect((await perf.buildAssessmentPanels(a,cycleId,'missing')).rows.every(r=>!r.add.length)).toBe(true);
+    const [another]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    const row=(await perf.getOnehrReview(a,another.reviewId))!;expect(row.peers).toHaveLength(5);
+    for(const member of row.peers.slice(2))await perf.changeAssessmentPanelState(a,another.reviewId,(await perf.getOnehrReview(a,another.reviewId))!.revision,member.requestId,'archive','Prepare an incomplete scored-panel fixture');
+    const active=(await perf.getOnehrReview(a,another.reviewId))!.peers.find(p=>!p.archivedAt)!;
+    const rater=active.employmentId===manager.employmentId?mgr:peers.find(p=>p.employmentId===active.employmentId)?.ctx??self;
+    const card=await perf.getOnehrFeedback(rater,active.requestId);await perf.submitOnehrFeedback(rater,active.requestId,Object.fromEntries(card.statements.map(s=>[s.id,'no'])),'');
+    const before=(await perf.getOnehrReview(a,another.reviewId))!.peers;
+    const topup=await perf.buildAssessmentPanels(a,cycleId,'topup');expect(topup.rows.find(r=>r.reviewId===another.reviewId)).toMatchObject({status:'started',add:[]});
+    await perf.buildAssessmentPanels(a,cycleId,'topup',topup.token);
+    expect((await perf.getOnehrReview(a,another.reviewId))!.peers).toEqual(before);
+  });
+  it('imports panels atomically, preserves submitted answers on relationship edits and restores explicit archived pairings',async()=>{
+    const eids=await owner.db.select({id:schema.employment.id,code:schema.employment.employeeCode}).from(schema.employment),code=(id:string)=>eids.find(e=>e.id===id)!.code;
+    const file=(rows:string[][])=>toCsv([['Subject Employee ID','Assessor Employee ID','Relationship'],...rows]);
+    const source=file(peers.map(p=>[code(subject.employmentId),code(p.employmentId),'Peer / Stakeholder']));
+    const preview=await perf.importAssessmentPanels(a,cycleId,source,'add');expect(preview.rows).toMatchObject([{count:4,created:4}]);expect(await owner.db.select().from(schema.onehrPanel)).toEqual([]);
+    const bad=file([[code(subject.employmentId),code(peers[0].employmentId),'peer'],[code(peers[1].employmentId),code(peers[1].employmentId),'peer']]);
+    await expect(perf.importAssessmentPanels(a,cycleId,bad,'add')).rejects.toThrow(/different active assessor/);expect(await owner.db.select().from(schema.onehrPanel)).toEqual([]);
+    await perf.importAssessmentPanels(a,cycleId,source,'add',preview.token);
+    for(const peer of peers){const req=(await perf.onehrAssignments(peer.ctx)).feedback.find(f=>f.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(peer.ctx,req.id);await perf.submitOnehrFeedback(peer.ctx,req.id,Object.fromEntries(card.statements.map(s=>[s.id,'no'])),'');}
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    const request=(await view(a)).peers.find(p=>p.employmentId===peers[0].employmentId)!.requestId;
+    const original=await perf.getOnehrFeedback(peers[0].ctx,request),change=file([[code(subject.employmentId),code(peers[0].employmentId),'matrix manager']]);
+    const edit=await perf.importAssessmentPanels(a,cycleId,change,'add');expect(edit.rows).toMatchObject([{created:0,updated:1}]);await perf.importAssessmentPanels(a,cycleId,change,'add',edit.token);
+    expect((await perf.getOnehrFeedback(peers[0].ctx,request)).answers).toEqual(original.answers);expect((await view(self)).result?.feedbackReleased).toBe(true);
+    await expect(perf.importAssessmentPanels(a,cycleId,change,'replace')).rejects.toThrow(/Keep every submitted assessor/);expect((await view(a)).peers).toHaveLength(4);
+    await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,request,'archive','Retain the submitted feedback');
+    const restore=await perf.importAssessmentPanels(a,cycleId,change,'add');expect(restore.rows).toMatchObject([{restored:1}]);
+    expect((await view(a)).peers.find(p=>p.requestId===request)?.archivedAt).not.toBeNull();
+    await perf.importAssessmentPanels(a,cycleId,change,'add',restore.token);
+    expect(await perf.getOnehrFeedback(peers[0].ctx,request)).toMatchObject({submitted:true,answers:original.answers});
+  });
+
   it('imports a live architecture and generates only unstarted, unpinned competency snapshots',async()=>{
     const sheets={Job_Profile:'',Job_Skills:toCsv([architectureHeaders.Job_Skills,['Technical','Analyst','12','','','','','ANA-3','Analysis','Technical','Analysis','3','Analyse a delivery','Understand context','Prepare analysis']])};
     await expect(perf.importAssessmentArchitecture(self,cycleId,sheets)).rejects.toThrow(/administrator/);

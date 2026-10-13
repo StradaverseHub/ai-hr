@@ -175,3 +175,10 @@ export async function assessmentArchitectureAction(cycleId:string,sheets:{Job_Pr
 export async function assessmentGenerateProfilesAction(cycleId:string,token?:string){
  const s=await getSession();try{const result=await perf.generateAssessmentProfiles(s,cycleId,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:publicErrorMessage(error)};}
 }
+
+export async function assessmentPanelsBuildAction(cycleId:string,mode:'missing'|'topup',token?:string){
+ const s=await getSession();try{const result=await perf.buildAssessmentPanels(s,cycleId,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function assessmentPanelsImportAction(cycleId:string,csv:string,mode:'add'|'replace',token?:string){
+ const s=await getSession();try{const result=await perf.importAssessmentPanels(s,cycleId,csv,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:publicErrorMessage(error)};}
+}

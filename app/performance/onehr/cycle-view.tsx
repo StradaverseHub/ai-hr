@@ -1,3 +1,4 @@
+import { PanelAdmin } from './panel-admin';
 import { CatalogueAdmin } from './catalogue-admin';
 import { AssessmentParticipants } from './participants';
 import Link from 'next/link';
@@ -27,6 +28,7 @@ export async function OnehrCycleView({v,error}:{v:View;error?:string}){
     {['open','calibration'].includes(cycle.status)&&<Card className="space-y-4 p-5"><h2 className="font-semibold">{t('modules')}</h2><p className="text-sm text-muted-foreground">{t('moduleSwitchHelp')}</p><form action={onehrCycleAction} className="space-y-4">{fields}<input type="hidden" name="action" value="modules"/><fieldset className="flex flex-wrap gap-5">{assessmentModuleKeys.map(k=><label key={k} className="flex gap-2 text-sm"><input type="checkbox" name={k} defaultChecked={policy.modules[k]!==false}/>{t(`modulesNames.${k}`)}</label>)}</fieldset><Button type="submit">{t('saveModules')}</Button></form></Card>}
     {['open','calibration'].includes(cycle.status)&&<Card className="space-y-4 p-5"><h2 className="font-semibold">{t('windows')}</h2><p className="text-sm text-muted-foreground">{t('activeWindowHelp')}</p><form action={onehrCycleAction} className="space-y-4">{fields}<input type="hidden" name="action" value="windows"/>{windowFields}<Field label={t('windowChangeReason')}><textarea required name="reason" maxLength={4000} className={inputCls}/></Field><Button type="submit">{t('saveWindows')}</Button></form></Card>}
     {['open','calibration'].includes(cycle.status)&&<Card className="p-5"><AssessmentParticipants cycleId={cycle.id} revision={v.revision} participants={v.participants} frozenEmploymentIds={v.reviews.filter(r=>r.frozenId).map(r=>r.employmentId)} labels={Object.fromEntries(['title','help','search','filter','out','changed','all','employee','status','actions','add','remove','clear','empty','previous','next','added','removed','confirmed','not_confirmed','confirmed_after_open','left','native_rule','existing_review','noReview'].map(k=>[k,t(`participants.${k}`)]))}/></Card>}
+    {['open','calibration'].includes(cycle.status)&&policy.modules.tm&&<PanelAdmin cycleId={cycle.id}/>}
     {cycle.status!=='closed'&&<CatalogueAdmin cycleId={cycle.id} revision={v.revision} policy={policy} companies={v.companies}/>}
     {cycle.status!=='closed'&&policy.modules.pm&&<AssessmentKpiImport cycleId={cycle.id}/>}
     {['open','calibration'].includes(cycle.status)&&ratedPerformance(policy)&&v.kpiNames.length>0&&<CompanyKpiFill cycleId={cycle.id} companies={v.companies} names={v.kpiNames}/>}

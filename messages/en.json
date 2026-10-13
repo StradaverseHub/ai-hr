@@ -17694,7 +17694,42 @@
       "yes": "Yes",
       "no": "Not yet"
     },
-    "cycleArchived": "This review cycle is archived."
+    "cycleArchived": "This review cycle is archived.",
+    "panelAdmin": {
+      "title": "360 assessor panels",
+      "help": "Build or import assessor panels for this cycle. Review the changes before applying them.",
+      "build": "Build panels",
+      "buildHelp": "Select managers, longest-serving direct reports and eligible peers. Top-ups preserve panels with submitted feedback or a released report.",
+      "mode": "Operation",
+      "missing": "Create missing panels",
+      "topup": "Top up incomplete panels",
+      "preview": "Preview panels",
+      "apply": "Apply panel changes",
+      "applied": "Panel changes applied.",
+      "confirm": "Apply these panel changes? Submitted feedback will be retained. Any changed panel membership requires its anonymous report to be released again.",
+      "import": "Import assessor panels",
+      "importHelp": "Use the source Subject Employee ID, Assessor Employee ID and Relationship columns. Replace archives omitted, unsubmitted members; submitted members must remain in the file. Explicit archived pairings included in the file will be restored.",
+      "add": "Add to existing panels",
+      "replace": "Replace selected panels",
+      "status": "Status",
+      "before": "Before",
+      "after": "After",
+      "target": "Target",
+      "assessors": "New assessors",
+      "created": "Created",
+      "updated": "Updated",
+      "restored": "Restored",
+      "archived": "Archived",
+      "statuses": {
+        "has_panel": "Has a panel",
+        "full": "Already at target",
+        "started": "Feedback submitted — preserved",
+        "released": "Report released — preserved",
+        "finalized": "Finalized — preserved",
+        "add": "New assessors",
+        "short": "No eligible additions"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

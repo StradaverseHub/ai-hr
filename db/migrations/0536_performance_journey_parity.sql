@@ -225,9 +225,9 @@ BEGIN
   IF TG_TABLE_NAME='performance_onehr_panel' THEN
    IF (o->>'submitted_at') IS NOT NULL AND n IS DISTINCT FROM o AND (
     NOT app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND app.is_self_person(e.person_id))
-    OR n-ARRAY['submitted_at','reset_at','archived_at','archive_reason'] IS DISTINCT FROM o-ARRAY['submitted_at','reset_at','archived_at','archive_reason']
+    OR n-ARRAY['submitted_at','reset_at','archived_at','archive_reason','relationship'] IS DISTINCT FROM o-ARRAY['submitted_at','reset_at','archived_at','archive_reason','relationship']
     OR n->'submitted_at' IS DISTINCT FROM o->'submitted_at' AND (n->>'submitted_at' IS NOT NULL OR n->>'reset_at' IS NULL OR o->>'archived_at' IS NOT NULL)
-   ) THEN RAISE EXCEPTION 'Submitted feedback is immutable except scoped HR archive, restore or reset-to-draft'; END IF;
+   ) THEN RAISE EXCEPTION 'Submitted feedback is immutable except scoped HR relationship, archive, restore or reset-to-draft'; END IF;
    IF (n->'reset_at' IS DISTINCT FROM o->'reset_at' OR n->'archive_reason' IS DISTINCT FROM o->'archive_reason') AND (NOT app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND app.is_self_person(e.person_id))) THEN RAISE EXCEPTION 'Only scoped HR may reset or archive feedback'; END IF;
   END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=r.cycle_id AND c.tenant_id=tid AND c.status='closed') THEN RAISE EXCEPTION 'An archived assessment is read-only'; END IF;
@@ -944,3 +944,16 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_file_lock_proof(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_file_lock_proof(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Aggregate workload only; no out-of-scope subjects, answers or rater identities are returned.
+CREATE FUNCTION app.assessment_peer_load(wanted_cycle uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_object_agg(load.peer_employment_id::text,load.n),'{}'::jsonb) FROM (
+  SELECT p.peer_employment_id,count(*)::integer n FROM performance_onehr_panel p JOIN performance_onehr_review r ON r.review_id=p.review_id AND r.tenant_id=p.tenant_id
+  WHERE r.cycle_id=wanted_cycle AND p.tenant_id=app.current_tenant_id() AND p.archived_at IS NULL AND p.relationship='peer'
+   AND app.onehr_cycle_admin(wanted_cycle) AND app.can_see_employment(p.peer_employment_id)
+  GROUP BY p.peer_employment_id
+ ) load
+$$;
+REVOKE ALL ON FUNCTION app.assessment_peer_load(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_peer_load(uuid) TO ai_hr_app;

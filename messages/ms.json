@@ -17694,7 +17694,42 @@
       "yes": "Ya",
       "no": "Belum lagi"
     },
-    "cycleArchived": "Kitaran ulasan ini telah diarkibkan."
+    "cycleArchived": "Kitaran ulasan ini telah diarkibkan.",
+    "panelAdmin": {
+      "title": "Panel penilai 360",
+      "help": "Bina atau import panel penilai bagi kitaran ini. Semak perubahan sebelum menggunakannya.",
+      "build": "Bina panel",
+      "buildHelp": "Pilih pengurus, laporan langsung paling lama berkhidmat dan rakan yang layak. Penambahan mengekalkan panel dengan maklum balas dihantar atau laporan diterbitkan.",
+      "mode": "Operasi",
+      "missing": "Cipta panel yang tiada",
+      "topup": "Lengkapkan panel kurang ahli",
+      "preview": "Pratonton panel",
+      "apply": "Gunakan perubahan panel",
+      "applied": "Perubahan panel digunakan.",
+      "confirm": "Gunakan perubahan panel ini? Maklum balas dihantar dikekalkan. Laporan tanpa nama bagi panel yang berubah perlu diterbitkan semula.",
+      "import": "Import panel penilai",
+      "importHelp": "Gunakan lajur Subject Employee ID, Assessor Employee ID dan Relationship. Penggantian mengarkibkan ahli belum menghantar yang tidak disenaraikan; ahli yang telah menghantar mesti kekal dalam fail. Pasangan diarkibkan yang disenaraikan akan dipulihkan.",
+      "add": "Tambah ke panel sedia ada",
+      "replace": "Gantikan panel dipilih",
+      "status": "Status",
+      "before": "Sebelum",
+      "after": "Selepas",
+      "target": "Sasaran",
+      "assessors": "Penilai baharu",
+      "created": "Dicipta",
+      "updated": "Dikemas kini",
+      "restored": "Dipulihkan",
+      "archived": "Diarkibkan",
+      "statuses": {
+        "has_panel": "Panel sedia ada",
+        "full": "Sudah mencapai sasaran",
+        "started": "Maklum balas dihantar — dikekalkan",
+        "released": "Laporan diterbitkan — dikekalkan",
+        "finalized": "Dimuktamadkan — dikekalkan",
+        "add": "Penilai baharu",
+        "short": "Tiada tambahan layak"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",
