@@ -34,6 +34,8 @@ export async function onehrCycleAction(f:FormData){
       await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
     }else if(str(f,'action')==='windows'){
       await perf.updateOnehrWindows(s,id,num(f,'revision'),readWindows(f),str(f,'reason'));
+    }else if(str(f,'action')==='participation'){
+      await perf.setAssessmentParticipation(s,id,num(f,'revision'),str(f,'employmentId'),str(f,'participantRevision')?num(f,'participantRevision'):null,z.enum(['add','remove','clear']).parse(str(f,'mode')));
     }else if(str(f,'action')==='calibration'){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode')});
     }else throw Error('Unknown action.');

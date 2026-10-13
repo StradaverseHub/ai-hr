@@ -17345,6 +17345,33 @@
     "idpMaxGoals": "Maximum development goals (0 for no configured limit)",
     "progressNote": "Check-in note",
     "goalEditedBy": "Edited by {name} on {date}",
-    "checkinHistory": "Check-in history"
+    "checkinHistory": "Check-in history",
+    "participants": {
+      "title": "Cycle participants",
+      "help": "Employees confirmed before opening, or with more than one year of service at opening, take part by default. HR can change participation. Staff can still give feedback to colleagues. Adding someone creates their review; imports and panel assignment remain separate.",
+      "search": "Search employees",
+      "filter": "Show participants",
+      "out": "Not taking part",
+      "changed": "Changed by HR",
+      "all": "All employees",
+      "employee": "Employee",
+      "status": "Participation",
+      "actions": "Actions",
+      "add": "Include",
+      "remove": "Take out",
+      "clear": "Restore opening rule",
+      "empty": "No matching employees.",
+      "previous": "Previous",
+      "next": "Next",
+      "added": "Taking part — added by HR",
+      "removed": "Not taking part — removed by HR",
+      "confirmed": "Taking part — confirmed",
+      "not_confirmed": "Not taking part — not confirmed",
+      "confirmed_after_open": "Not taking part — confirmed after opening",
+      "left": "Left the company",
+      "native_rule": "Excluded by cycle eligibility rules",
+      "existing_review": "Existing review retained",
+      "noReview": "No opening snapshot; use Include to create a review."
+    }
   }
 }

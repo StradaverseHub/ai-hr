@@ -40,6 +40,38 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+  it('keeps excluded staff available as raters and preserves inputs across HR roster changes',async()=>{
+    const newcomer=await hireEmployee(a,{person:{fullName:'Unconfirmed rater',primaryEmail:`${randomUUID()}@assessment.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+    const [numericGrade]=await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId,b.tenantId),eq(schema.jobGrade.code,'12')));
+    await owner.db.update(schema.employment).set({gradeId:numericGrade.id}).where(eq(schema.employment.id,newcomer.employmentId));
+    const newcomerCtx={...a,userId:await createAppUser(b.tenantId,newcomer.personId,'employee'),personId:newcomer.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
+    const next=await perf.createCycle(a,{name:'Participation boundary',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:true});
+    const preview=await perf.previewEligibleCount(a,{companyId:b.companyId,assessmentWorkflow:true});
+    const opened=await perf.openCycle(a,{cycleId:next.cycleId});expect(opened.reviewsSpawned).toBe(preview.count);
+    expect(await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)))).toHaveLength(0);
+    const [target]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));
+    await perf.assignOnehrPanel(a,target.id,1,[{employmentId:newcomer.employmentId,relationship:'peer'}]);
+    const assignments=await perf.onehrAssignments(newcomerCtx);expect(assignments.reviews.some(r=>r.cycle==='Participation boundary')).toBe(false);expect(assignments.feedback.some(f=>f.subject==='Assessment subject')).toBe(true);
+    let cycle=(await perf.getOnehrCycle(a,next.cycleId))!;
+    const original=cycle.participants.find(p=>p.employmentId===newcomer.employmentId)!;expect(original).toMatchObject({takingPart:false,reason:'not_confirmed'});
+    await expect(perf.setAssessmentParticipation(newcomerCtx,next.cycleId,cycle.revision,newcomer.employmentId,original.revision,'add')).rejects.toThrow(/administrator/);
+    await perf.setAssessmentParticipation(a,next.cycleId,cycle.revision,newcomer.employmentId,original.revision,'add');
+    cycle=(await perf.getOnehrCycle(a,next.cycleId))!;let participant=cycle.participants.find(p=>p.employmentId===newcomer.employmentId)!;
+    const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)));
+    expect((await perf.onehrAssignments(newcomerCtx)).reviews.some(r=>r.id===review.id)).toBe(true);
+    const kpi=randomUUID();await owner.db.update(schema.onehrReview).set({selfRemark:'Retain the original working record'}).where(eq(schema.onehrReview.reviewId,review.id));
+    await perf.setAssessmentParticipation(a,next.cycleId,cycle.revision,newcomer.employmentId,participant.revision,'remove');
+    expect((await perf.onehrAssignments(newcomerCtx)).reviews.some(r=>r.id===review.id)).toBe(false);
+    await expect(perf.saveOnehrKpis(newcomerCtx,review.id,1,[{id:kpi,title:'Excluded task',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:null}])).rejects.toThrow(/not participating/);
+    expect(await withTenant(newcomerCtx,tx=>tx.select().from(schema.assessmentParticipationSnapshot).where(eq(schema.assessmentParticipationSnapshot.cycleId,next.cycleId)))).toHaveLength(0);
+    expect((await perf.getOnehrReview(a,review.id))?.selfRemark).toBe('Retain the original working record');
+    const [preserved]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,review.id));expect(preserved.selfRemark).toBe('Retain the original working record');
+    cycle=(await perf.getOnehrCycle(a,next.cycleId))!;participant=cycle.participants.find(p=>p.employmentId===newcomer.employmentId)!;
+    await perf.setAssessmentParticipation(a,next.cycleId,cycle.revision,newcomer.employmentId,participant.revision,'clear');
+    cycle=(await perf.getOnehrCycle(a,next.cycleId))!;expect(cycle.participants.find(p=>p.employmentId===newcomer.employmentId)).toMatchObject({takingPart:false,override:null,reason:'not_confirmed'});
+    expect(await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)))).toHaveLength(1);
+  });
+
   async function complete(){
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver agreed outcomes',description:'Evidence-led delivery',weightBp:10000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId}],true);

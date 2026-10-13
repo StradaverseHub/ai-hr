@@ -1,3 +1,4 @@
+import { assessmentParticipantsTx } from './participation-service';
 import { talentContext, writeTalentAction } from './talent-service';
 import { careerRoutes, demonstratedSkills, resolveTechnicalProfile, technicalProfilePlan } from './career-model';
 import { anonymousFeedbackReport } from './feedback-report';
@@ -59,6 +60,8 @@ async function isModerator(tx:Tx,id:string,kpiId?:string){const [r]=await tx.exe
 
 async function writable(tx: Tx, r: Awaited<ReturnType<typeof loadReview>>, cell: WindowCell, expected: number, actor: 'self'|'manager'|'either'|'moderator') {
   revision(r.row.revision,expected);
+  const [participation]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${r.row.reviewId}::uuid) as ok`);
+  if(!participation?.ok)throw Error('This employee is not participating in the cycle.');
   const self=await isSelf(tx,r.row.employmentId), manager=!self&&await isManager(tx,r.row.reviewId);
   if (actor==='self'?!self:actor==='manager'?!manager:actor==='moderator'?self||!await isModerator(tx,r.row.reviewId):!self&&!manager) throw Error('This action is not assigned to you.');
   if (!['open','calibration'].includes(r.cycle.native.status)) throw Error('The cycle is not open.');
@@ -72,12 +75,12 @@ async function touchReview(tx: Tx, reviewId: string, data: Partial<typeof onehrR
 }
 
 /** Called by the existing cycle opener inside its transaction. No second roster or identity master. */
-export async function initializeOnehrCycleTx(tx: Tx, ctx: SessionContext, cycleId: string) {
+export async function initializeOnehrCycleTx(tx: Tx, ctx: SessionContext, cycleId: string, reviewIds?:string[]) {
   const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
   if (!configured) return;
   await requireAdmin(tx,cycleId);
   const policy=policySchema.parse(configured.policy);
-  const reviews=await tx.select({id:performanceReview.id,employmentId:employment.id,companyId:employment.companyId,grade:jobGrade.code}).from(performanceReview).innerJoin(employment,eq(employment.id,performanceReview.employmentId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(eq(performanceReview.cycleId,cycleId));
+  const reviews=await tx.select({id:performanceReview.id,employmentId:employment.id,companyId:employment.companyId,grade:jobGrade.code}).from(performanceReview).innerJoin(employment,eq(employment.id,performanceReview.employmentId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(and(eq(performanceReview.cycleId,cycleId),reviewIds?inArray(performanceReview.id,reviewIds):undefined,sql`not exists(select 1 from performance_onehr_review ar where ar.review_id=${performanceReview.id})`));
   for (const r of reviews) {
     const grade=(r.grade??'').replace(/^JG\s*/i,'').trim();
     const [role]=await tx.select({department:department.name,title:position.title}).from(assignment).innerJoin(department,eq(department.id,assignment.departmentId)).leftJoin(position,eq(position.id,assignment.positionId)).where(and(eq(assignment.employmentId,r.employmentId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${todayInKualaLumpur()}::date and (${assignment.validTo} is null or ${assignment.validTo}>${todayInKualaLumpur()}::date)`)).orderBy(desc(assignment.validFrom)).limit(1);
@@ -95,7 +98,7 @@ export async function assertStandardCycleTx(tx:Tx,cycleId:string) {
 }
 export async function assertOnehrClosureTx(tx:Tx,cycleId:string) {
   const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));if(!configured)return;
-  const [missing]=await tx.select({id:onehrReview.reviewId}).from(onehrReview).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).where(and(eq(onehrReview.cycleId,cycleId),isNull(performanceReview.closedAt))).limit(1);
+  const [missing]=await tx.select({id:onehrReview.reviewId}).from(onehrReview).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).where(and(eq(onehrReview.cycleId,cycleId),sql`app.assessment_review_participates(${onehrReview.reviewId})`,isNull(performanceReview.closedAt))).limit(1);
   if(missing)throw Error('Finalize every assessment before closing this cycle.');
 }
 export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expected:number|null,raw?:unknown) {
@@ -246,6 +249,7 @@ export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expect
   return withPerformanceTenant(ctx,async tx=>{
     const r=await loadReview(tx,reviewId,true),admin=await isAdmin(tx,r.row.cycleId);
     if(admin){
+     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);if(!participant?.ok)throw Error('This employee is not participating in the cycle.');
      revision(r.row.revision,expected);if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to assign your panel.');
      const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
      if(frozen||r.native.closedAt||!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment is finalized or closed.');
@@ -314,6 +318,7 @@ export async function declineOnehrFeedback(ctx:SessionContext,requestId:string) 
 
 type Inputs={reviewId:string;employmentId:string;companyId:string;grade:string;name:string;performance:PMBand|null;managerScore:number|null;finalized:boolean;competencyStatus:string;competencyAssigned:boolean;competencies:Competency[];selfCompetencies:Competency[];submittedKpis:KPI[];leadership:{score:number;max:number}[];principles:{principle:string;pct:number}[]};
 async function assessment(tx:Tx,reviewId:string,policy:Policy) {
+  const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);if(!participant?.ok)throw Error('This employee is not participating in the cycle.');
   const [r]=await tx.execute<{value:Inputs|null}>(sql`select app.onehr_assessment_inputs(${reviewId}::uuid) as value`);if(!r?.value)throw Error('Assessment not available to this calibration scope.');
   const input=r.value;const c=input.competencies;
   const tech=input.competencyStatus==='reviewed'&&c.length?scoreAnswers(c,Object.fromEntries(c.map(s=>[s.id,s.manager??s.self!]))):null;
@@ -348,7 +353,7 @@ export async function createOnehrCalibration(ctx:SessionContext,cycleId:string,r
     const cycle=await loadCycle(tx,cycleId,true);await requireAdmin(tx,cycleId);if(cycle.policy.kind!=='year_end')throw Error('Calibration is available only in year-end cycles.');if(!ratedPerformance(cycle.policy)&&!cycle.policy.modules.tm)throw Error('This cycle has no rating axes to calibrate.');if(!['open','calibration'].includes(cycle.native.status))throw Error('Open the cycle before assigning calibration.');
     if(new Set(p.reviewIds).size!==p.reviewIds.length)throw Error('Duplicate assessment.');
     const reviews=await tx.select().from(onehrReview).where(and(eq(onehrReview.cycleId,cycleId),inArray(onehrReview.reviewId,p.reviewIds)));
-    if(reviews.length!==p.reviewIds.length)throw Error('Every assessment must belong to this cycle and your scope.');
+    if(reviews.length!==p.reviewIds.length||!(await tx.execute<{ok:boolean}>(sql`select bool_and(app.assessment_review_participates(r)) as ok from unnest(${p.reviewIds}::uuid[]) r`))[0]?.ok)throw Error('Every assessment must belong to this cycle and your scope.');
     if(p.companyId!=null){const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_admin(${p.companyId}::uuid) as ok`);if(!scope?.ok)throw Error('Company outside your scope.');}
     const [session]=await tx.insert(onehrCalibration).values({tenantId:ctx.tenantId,cycleId,companyId:p.companyId,name:p.name,tier:p.tier,reviewerUserIds:[...new Set(p.reviewerUserIds)],pbtAchievement:p.pbtAchievement==null?null:String(p.pbtAchievement),mode:p.mode}).returning();
     for(const r of reviews)await tx.insert(onehrCalibrationEntry).values({tenantId:ctx.tenantId,sessionId:session.id,reviewId:r.reviewId,employmentId:r.employmentId});
@@ -641,7 +646,8 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     let frozen:typeof stored|undefined=stored;
     if(self){const [card]=await tx.execute<{value:typeof frozen|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`);frozen=card?.value??undefined;}
     const result=frozen?.result as FrozenResult|undefined;
-    const leadership=manager||admin?await assessment(tx,reviewId,r.cycle.policy):null;
+    const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
+    const leadership=(manager||admin)&&participant?.ok?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
     const plans=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)));
     const [careerProfile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
@@ -663,9 +669,9 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const careerChoice=careerProfile?careerSchema.parse(careerProfile.career).selfProfileId:null;
     const mapProfile=careerChoice&&!['roster','assigned'].includes(r.row.profileMatch??'')?r.cycle.policy.profiles.find(p=>p.id===careerChoice&&p.active!==false)??profile:profile;
     const routes=mapProfile?careerRoutes(mapProfile,r.cycle.policy.profiles,skills,r.cycle.policy.careerRoutes??[]):[];
-    return {careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,drafts:drafts.map(d=>({...d,payload:assessmentDraftSchema.parse(d.payload)})),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
+    return {participating:!!participant?.ok,careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,drafts:drafts.map(d=>({...d,payload:assessmentDraftSchema.parse(d.payload)})),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
       kpis:moderator&&!admin?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:moderator&&!admin?null:r.row.managerPerformance,managerScore:moderator&&!admin||r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:moderator&&!admin?'':r.row.managerRemark,
-      potential:leadership?.potential.band??null,finalized:!!frozen||!!r.native.closedAt,result:result?{id:frozen!.id,digest:frozen!.digest,performance:!self||frozen!.performanceReleasedAt?result.performance:null,potential:!self||frozen!.potentialReleasedAt?result.potential:null,talent:!self||frozen!.talentReleasedAt?result.talent:null,performanceReleased:!!frozen!.performanceReleasedAt,potentialReleased:!!frozen!.potentialReleasedAt,talentReleased:!!frozen!.talentReleasedAt,feedbackReleased:!!frozen!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&frozen!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,responses:evidenceResponseSchema.array().parse(e.responses)})),attachments,peers,choices};
+      potential:leadership?.potential.band??null,finalized:!!frozen||!!r.native.closedAt||!participant?.ok,result:result?{id:frozen!.id,digest:frozen!.digest,performance:!self||frozen!.performanceReleasedAt?result.performance:null,potential:!self||frozen!.potentialReleasedAt?result.potential:null,talent:!self||frozen!.talentReleasedAt?result.talent:null,performanceReleased:!!frozen!.performanceReleasedAt,potentialReleased:!!frozen!.potentialReleasedAt,talentReleased:!!frozen!.talentReleasedAt,feedbackReleased:!!frozen!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&frozen!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,responses:evidenceResponseSchema.array().parse(e.responses)})),attachments,peers,choices};
   });
 }
 export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
@@ -673,10 +679,10 @@ export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
     const reviews=await tx.select({reviewId:onehrReview.reviewId,employmentId:onehrReview.employmentId,revision:onehrReview.revision,kpis:onehrReview.kpis,grade:onehrReview.grade,name:person.fullName,managerPerformance:onehrReview.managerPerformance,frozenId:sql<string|null>`case when ${performanceReview.closedAt} is not null then ${performanceReview.id} end`}).from(onehrReview).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).innerJoin(person,eq(person.id,employment.personId)).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).where(eq(onehrReview.cycleId,cycleId));
     const users=await tx.select({id:appUser.id,name:person.fullName,email:person.primaryEmail}).from(appUser).leftJoin(person,eq(person.id,appUser.personId)).where(and(isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`));
     const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(sql`app.onehr_admin(${company.id})`);
-    return {cycle:cycle.native,policy:cycle.policy,revision:config.revision,kpiNames:[...new Set(reviews.flatMap(r=>kpiSchema.array().parse(r.kpis).map(k=>k.title)))].sort(),reviews:reviews.map(({kpis,...r})=>r),users,companies,sessions:await tx.select().from(onehrCalibration).where(eq(onehrCalibration.cycleId,cycleId))};});
+    return {cycle:cycle.native,policy:cycle.policy,revision:config.revision,participants:await assessmentParticipantsTx(tx,cycleId),kpiNames:[...new Set(reviews.flatMap(r=>kpiSchema.array().parse(r.kpis).map(k=>k.title)))].sort(),reviews:reviews.map(({kpis,...r})=>r),users,companies,sessions:await tx.select().from(onehrCalibration).where(eq(onehrCalibration.cycleId,cycleId))};});
 }
 export async function onehrAssignments(ctx:SessionContext) {
-  return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
+  return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
 }
 /** Rewards consumes this immutable projection under its own transaction and company authorization. */
 export async function onehrRewardResultTx(tx:Tx,employmentId:string,year:number,rewardUnitId:string) {
@@ -771,7 +777,7 @@ export async function performanceWorkspace(ctx:SessionContext) {
   const items:PerformanceWorkspaceItem[]=[];
   const reviews=await tx.select({row:onehrReview,cycle:reviewCycle,policy:onehrCycle.policy,header:sql<{name:string;ownEmploymentIds:string[]}>`app.onehr_review_header(${onehrReview.reviewId})`,self:sql<boolean>`exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,manager:sql<boolean>`app.onehr_manager(${onehrReview.reviewId})`})
    .from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId))
-   .where(sql`app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId));
+   .where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId));
   for(const {row,cycle,policy:raw,header,self,manager} of reviews){
    const policy=policySchema.parse(raw),kpis=kpiSchema.array().parse(row.kpis),closed=cycle.status==='closed';
    const base={id:row.reviewId,kind:'review' as const,cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:self?'mine' as const:'team' as const,title:header.name,locked:false};

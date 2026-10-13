@@ -1,4 +1,4 @@
-import { linkAssessmentAttachmentTx, configureAssessmentCycleTx } from '../packs/performance/service';
+import { linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
 /**
  * Performance & talent — Phase A (ADR-0013). The first config-driven, statute-free module.
  *
@@ -378,7 +378,9 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
     const rules = (cycle.eligibilityRules ?? null) as EligibilityRules | null;
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, cycle.companyId, asOf);
-    const members = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
+    const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
+    const memberIds = await snapshotAssessmentParticipantsTx(tx, ctx, cycle.id, candidates.map(c=>c.employmentId), nativeEligible.map(c=>c.employmentId), asOf);
+    const members = candidates.filter(c=>memberIds.includes(c.employmentId));
 
     let spawned = 0;
     for (const e of members) {
@@ -407,6 +409,19 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
   });
 }
 
+/** Kernel roster owner: an explicit HR addition creates the same native review as cycle opening. */
+export async function ensureAssessmentCycleReviewTx(tx:Tx,ctx:SessionContext,cycleId:string,employmentId:string):Promise<string> {
+  const cycle=await loadCycle(tx,cycleId);
+  if(!canAdminPerfCtx(ctx,cycle.companyId)||!['open','calibration'].includes(cycle.status))throw new PerfError('An authorized open review cycle is required');
+  const [subject]=await tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId)));
+  if(!subject||!canAdminPerfCtx(ctx,subject.companyId)||cycle.companyId&&subject.companyId!==cycle.companyId||subject.terminatedOn&&subject.terminatedOn<=todayInKualaLumpur())throw new PerfError('Employee outside this cycle or your authorized scope');
+  const [existing]=await tx.select({id:performanceReview.id}).from(performanceReview).where(and(eq(performanceReview.cycleId,cycleId),eq(performanceReview.employmentId,employmentId)));
+  if(existing)return existing.id;
+  const reviewerEmploymentId=await currentAdminManager(tx,ctx.tenantId,employmentId);
+  const [review]=await tx.insert(performanceReview).values({tenantId:ctx.tenantId,cycleId,employmentId,reviewerEmploymentId,status:'self_review'}).returning({id:performanceReview.id});
+  return review.id;
+}
+
 /**
  * Point-in-time preview of how many employees a rule set would snapshot — the "Preview eligible
  * employees" button. Runs the EXACT same candidate query + evaluateEligibility openCycle uses (via the
@@ -416,7 +431,7 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
  */
 export async function previewEligibleCount(
   ctx: SessionContext,
-  p: { companyId?: string | null; eligibilityRules?: EligibilityRules | null },
+  p: { companyId?: string | null; eligibilityRules?: EligibilityRules | null; assessmentWorkflow?: boolean },
 ): Promise<{ count: number }> {
   // Same authorization as createCycle: only an admin / scoped partner may preview a company's roster.
   if (!canAdminPerfCtx(ctx, p.companyId ?? null)) {
@@ -435,7 +450,8 @@ export async function previewEligibleCount(
   return withTenant(ctx, async (tx) => {
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
-    const count = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).length;
+    const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).map(c=>c.employmentId);
+    const count = p.assessmentWorkflow ? (await previewAssessmentParticipantsTx(tx,nativeEligible,asOf)).length : nativeEligible.length;
     return { count };
   });
 }

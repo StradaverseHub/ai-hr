@@ -6,6 +6,52 @@ ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
 ALTER TABLE performance_onehr_calibration ADD COLUMN pip_locked_at timestamptz, ADD COLUMN promotion_locked_at timestamptz;
 ALTER TABLE performance_onehr_calibration_entry ADD COLUMN performance_pinned boolean NOT NULL DEFAULT false, ADD COLUMN potential_pinned boolean NOT NULL DEFAULT false, ADD COLUMN pip_reason text NOT NULL DEFAULT '', ADD COLUMN promotion_reason text NOT NULL DEFAULT '', ADD COLUMN special_reward_reason text NOT NULL DEFAULT '';
+ALTER TABLE performance_onehr_cycle ADD COLUMN participation_opened_on date;
+CREATE TABLE performance_assessment_participation (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ cycle_id uuid NOT NULL REFERENCES review_cycle(id),employment_id uuid NOT NULL REFERENCES employment(id),
+ eligible_at_open boolean NOT NULL,reason text NOT NULL CHECK(reason IN ('confirmed','not_confirmed','confirmed_after_open','left','native_rule','existing_review')),
+ override text CHECK(override IN ('add','remove')),revision integer NOT NULL DEFAULT 1,
+ updated_by uuid REFERENCES app_user(id),updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(cycle_id,employment_id)
+);
+-- Applied reviews predate the confirmation snapshot. Preserve them, rather than silently withdrawing tasks.
+INSERT INTO performance_assessment_participation(tenant_id,cycle_id,employment_id,eligible_at_open,reason)
+ SELECT tenant_id,cycle_id,employment_id,true,'existing_review' FROM performance_onehr_review;
+ALTER TABLE performance_assessment_participation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_participation FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_participation TO ai_hr_app;
+CREATE POLICY assessment_participation_admin ON performance_assessment_participation FOR ALL
+ USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=performance_assessment_participation.tenant_id AND app.onehr_admin(e.company_id)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND EXISTS(SELECT 1 FROM employment e JOIN review_cycle c ON c.id=cycle_id WHERE e.id=employment_id AND e.tenant_id=performance_assessment_participation.tenant_id AND app.onehr_admin(e.company_id) AND (c.company_id IS NULL OR c.company_id=e.company_id)));
+CREATE FUNCTION app.assessment_review_participates(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN performance_assessment_participation p ON p.cycle_id=r.cycle_id AND p.employment_id=r.employment_id AND p.tenant_id=r.tenant_id
+  WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id()
+   AND (c.status='closed' OR e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END
+   AND (app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR app.onehr_moderator(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
+$$;
+CREATE FUNCTION app.assessment_participation_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE c review_cycle;
+BEGIN
+ SELECT * INTO c FROM review_cycle WHERE id=NEW.cycle_id AND tenant_id=NEW.tenant_id;
+ IF c.id IS NULL OR NOT EXISTS(SELECT 1 FROM performance_onehr_cycle WHERE cycle_id=c.id AND tenant_id=NEW.tenant_id)
+  OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND (c.company_id IS NULL OR e.company_id=c.company_id))
+  OR NEW.updated_by IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.updated_by AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Invalid participation scope'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.tenant_id<>OLD.tenant_id OR NEW.cycle_id<>OLD.cycle_id OR NEW.employment_id<>OLD.employment_id OR NEW.eligible_at_open<>OLD.eligible_at_open OR NEW.reason<>OLD.reason) THEN RAISE EXCEPTION 'Participation opening snapshot is immutable'; END IF;
+ IF c.status='closed' OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.cycle_id=NEW.cycle_id AND f.employment_id=NEW.employment_id AND f.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Finalized participation is immutable'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER assessment_participation_links BEFORE INSERT OR UPDATE ON performance_assessment_participation FOR EACH ROW EXECUTE FUNCTION app.assessment_participation_validate();
+REVOKE ALL ON FUNCTION app.assessment_review_participates(uuid),app.assessment_participation_validate() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_review_participates(uuid) TO ai_hr_app;
+-- Excluded staff retain their inputs. They disappear from active calibration cohorts, including direct SQL.
+DROP POLICY onehr_calibration_entry_access ON performance_onehr_calibration_entry;
+CREATE POLICY onehr_calibration_entry_access ON performance_onehr_calibration_entry FOR ALL
+ USING(tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND (app.assessment_review_participates(review_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN review_cycle c ON c.id=s.cycle_id WHERE s.id=session_id AND c.status='closed')))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND app.assessment_review_participates(review_id));
+--> statement-breakpoint
 CREATE TABLE performance_assessment_draft (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
  review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id), actor_user_id uuid NOT NULL REFERENCES app_user(id),
@@ -127,6 +173,7 @@ BEGIN
    ) THEN RAISE EXCEPTION 'Company-owned KPI results are read-only'; END IF;
   END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND (n->'company_id' IS DISTINCT FROM o->'company_id' OR n->'grade' IS DISTINCT FROM o->'grade' OR n->'statements' IS DISTINCT FROM o->'statements') THEN RAISE EXCEPTION 'assessment opening snapshot is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_cycle' AND n->'participation_opened_on' IS DISTINCT FROM o->'participation_opened_on' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') THEN RAISE EXCEPTION 'Participation opening date is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') AND ((n->'policy')-'windows' IS DISTINCT FROM (o->'policy')-'windows' OR EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status='closed')) THEN RAISE EXCEPTION 'An opened assessment policy is immutable; only active deadlines can change'; END IF;
   IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' THEN
    IF (SELECT coalesce(jsonb_agg(g->'id' ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g->'id' ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) THEN RAISE EXCEPTION 'Shared goal identities are immutable'; END IF;
@@ -263,6 +310,7 @@ DECLARE s performance_onehr_calibration; e performance_onehr_calibration_entry; 
 BEGIN
  SELECT * INTO s FROM performance_onehr_calibration WHERE id=wanted_session AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF s.id IS NULL OR NOT app.onehr_calibration_access(s.id) THEN RAISE EXCEPTION 'Talent decisions are outside your calibration scope'; END IF;
+ IF NOT app.assessment_review_participates(wanted_review) THEN RAISE EXCEPTION 'Employee is not participating in this cycle'; END IF;
  SELECT * INTO e FROM performance_onehr_calibration_entry WHERE session_id=s.id AND review_id=wanted_review AND tenant_id=s.tenant_id;
  IF e.id IS NULL OR EXISTS(SELECT 1 FROM employment emp WHERE emp.id=e.employment_id AND app.is_self_person(emp.person_id)) THEN RAISE EXCEPTION 'You cannot decide this assessment'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended(wanted_review::text,0));

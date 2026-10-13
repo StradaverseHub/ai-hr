@@ -17345,6 +17345,33 @@
     "idpMaxGoals": "Maximum development goals (0 for no configured limit)",
     "progressNote": "Check-in note",
     "goalEditedBy": "Edited by {name} on {date}",
-    "checkinHistory": "Check-in history"
+    "checkinHistory": "Check-in history",
+    "participants": {
+      "title": "Người tham gia kỳ đánh giá",
+      "help": "Nhân viên được xác nhận trước khi mở kỳ hoặc có hơn một năm làm việc khi mở kỳ mặc định tham gia. HR có thể thay đổi việc tham gia. Nhân viên vẫn có thể phản hồi cho đồng nghiệp. Thêm người tạo hồ sơ đánh giá; nhập dữ liệu và phân công nhóm đánh giá được thực hiện riêng.",
+      "search": "Tìm nhân viên",
+      "filter": "Hiển thị người tham gia",
+      "out": "Không tham gia",
+      "changed": "HR đã thay đổi",
+      "all": "Tất cả nhân viên",
+      "employee": "Nhân viên",
+      "status": "Tham gia",
+      "actions": "Thao tác",
+      "add": "Thêm vào",
+      "remove": "Loại ra",
+      "clear": "Khôi phục quy tắc lúc mở kỳ",
+      "empty": "Không có nhân viên phù hợp.",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "added": "Tham gia — HR đã thêm",
+      "removed": "Không tham gia — HR đã loại",
+      "confirmed": "Tham gia — đã xác nhận",
+      "not_confirmed": "Không tham gia — chưa xác nhận",
+      "confirmed_after_open": "Không tham gia — xác nhận sau khi mở kỳ",
+      "left": "Đã rời công ty",
+      "native_rule": "Không đáp ứng quy tắc đủ điều kiện của kỳ",
+      "existing_review": "Giữ hồ sơ đánh giá hiện có",
+      "noReview": "Chưa có ảnh chụp lúc mở kỳ; chọn Thêm vào để tạo hồ sơ đánh giá."
+    }
   }
 }

@@ -9935,8 +9935,15 @@ export const rewardDecision = pgTable('reward_decision', {
 // OneHR native aggregates. Identity, employment, organization and compensation remain kernel-owned.
 export const onehrCycle = pgTable('performance_onehr_cycle', {
   cycleId: uuid('cycle_id').primaryKey().references(() => reviewCycle.id), tenantId: tenantId(),
-  policy: jsonb('policy').notNull(), revision: integer('revision').notNull().default(1), createdAt: createdAt(),
+  policy: jsonb('policy').notNull(), participationOpenedOn:date('participation_opened_on'), revision: integer('revision').notNull().default(1), createdAt: createdAt(),
 });
+export const assessmentParticipationSnapshot = pgTable('performance_assessment_participation', {
+ id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ eligibleAtOpen:boolean('eligible_at_open').notNull(),reason:text('reason').notNull(),
+ override:text('override'),revision:integer('revision').notNull().default(1),
+ updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_participation_uq').on(t.cycleId,t.employmentId)]);
 export const onehrReview = pgTable('performance_onehr_review', {
   reviewId: uuid('review_id').primaryKey().references(() => performanceReview.id), tenantId: tenantId(),
   cycleId: uuid('cycle_id').notNull().references(() => reviewCycle.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),

@@ -17345,6 +17345,33 @@
     "idpMaxGoals": "Maximum development goals (0 for no configured limit)",
     "progressNote": "Check-in note",
     "goalEditedBy": "Edited by {name} on {date}",
-    "checkinHistory": "Check-in history"
+    "checkinHistory": "Check-in history",
+    "participants": {
+      "title": "Peserta kitaran",
+      "help": "Pekerja yang disahkan sebelum pembukaan atau berkhidmat lebih setahun semasa pembukaan menyertai secara lalai. HR boleh mengubah penyertaan. Kakitangan masih boleh memberi maklum balas kepada rakan. Menambah peserta mencipta semakan; import dan penetapan panel dibuat berasingan.",
+      "search": "Cari pekerja",
+      "filter": "Paparkan peserta",
+      "out": "Tidak menyertai",
+      "changed": "Diubah oleh HR",
+      "all": "Semua pekerja",
+      "employee": "Pekerja",
+      "status": "Penyertaan",
+      "actions": "Tindakan",
+      "add": "Sertakan",
+      "remove": "Keluarkan",
+      "clear": "Pulihkan peraturan pembukaan",
+      "empty": "Tiada pekerja sepadan.",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "added": "Menyertai — ditambah oleh HR",
+      "removed": "Tidak menyertai — dikeluarkan oleh HR",
+      "confirmed": "Menyertai — disahkan",
+      "not_confirmed": "Tidak menyertai — belum disahkan",
+      "confirmed_after_open": "Tidak menyertai — disahkan selepas pembukaan",
+      "left": "Telah meninggalkan syarikat",
+      "native_rule": "Dikecualikan oleh peraturan kelayakan kitaran",
+      "existing_review": "Semakan sedia ada dikekalkan",
+      "noReview": "Tiada rekod pembukaan; pilih Sertakan untuk mencipta semakan."
+    }
   }
 }

@@ -127,6 +127,7 @@ export async function previewEligibilityAction(formData: FormData): Promise<{ co
     const { count } = await previewEligibleCount(s, {
       companyId: str(formData.get('companyId')) ?? null,
       eligibilityRules: parseEligibilityRules(formData),
+      assessmentWorkflow:formData.get('workflow')==='assessment',
     });
     return { count };
   } catch (e) {

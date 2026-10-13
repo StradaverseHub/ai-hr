@@ -17345,6 +17345,33 @@
     "idpMaxGoals": "Maximum development goals (0 for no configured limit)",
     "progressNote": "Check-in note",
     "goalEditedBy": "Edited by {name} on {date}",
-    "checkinHistory": "Check-in history"
+    "checkinHistory": "Check-in history",
+    "participants": {
+      "title": "周期参与人员",
+      "help": "在周期开放前已转正，或开放时服务超过一年的员工默认参与。人力资源可调整参与状态。未参与者仍可向同事提供反馈。纳入员工将创建评估；导入和评审组分配需另行进行。",
+      "search": "搜索员工",
+      "filter": "显示参与人员",
+      "out": "未参与",
+      "changed": "人力资源已调整",
+      "all": "所有员工",
+      "employee": "员工",
+      "status": "参与状态",
+      "actions": "操作",
+      "add": "纳入",
+      "remove": "移出",
+      "clear": "恢复开放时规则",
+      "empty": "没有匹配的员工。",
+      "previous": "上一页",
+      "next": "下一页",
+      "added": "参与 — 人力资源已纳入",
+      "removed": "未参与 — 人力资源已移出",
+      "confirmed": "参与 — 已转正",
+      "not_confirmed": "未参与 — 尚未转正",
+      "confirmed_after_open": "未参与 — 开放后转正",
+      "left": "已离职",
+      "native_rule": "不符合周期资格规则",
+      "existing_review": "保留现有评估",
+      "noReview": "无开放时快照；选择纳入以创建评估。"
+    }
   }
 }
