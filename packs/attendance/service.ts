@@ -38,3 +38,5 @@ export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/
 export * from '../../core/attendance-rotation';
 export * from '../../core/attendance-workflow';
 export * from '../../core/attendance-application-history';
+
+export * from './day-adjustment';

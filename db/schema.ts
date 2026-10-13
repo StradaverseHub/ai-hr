@@ -1,3 +1,4 @@
+import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 /**
  * Slice 0 schema — "the spine".
  *
@@ -3932,6 +3933,14 @@ export const attendancePunchDirectionEnum = pgEnum('attendance_punch_direction',
 // and a photo is no longer always taken (attendance_photo_setting 'optional' skipped, or 'not_required').
 // The CHECK below is a genuinely new nullable SET, so it is written explicitly rather than relying on a
 // comment — unlike the geofence columns' "null together" convention just below, which stays comment-only.
+export const attendanceDayAdjustment = pgTable('attendance_day_adjustment', {
+  id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  attendanceDate:date('attendance_date').notNull(),shiftId:uuid('shift_id').references(()=>shift.id),
+  dayKind:text('day_kind').$type<AttendanceDayKindOverride>(),manualOtRows:jsonb('manual_ot_rows').$type<ManualOtRows>().notNull().default({}),
+  version:integer('version').notNull().default(1),reason:text('reason').notNull(),updatedBy:text('updated_by').notNull(),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('attendance_day_adjustment_day_uq').on(t.tenantId,t.employmentId,t.attendanceDate)]);
+
 export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   id: id(), tenantId: tenantId(), employmentId: uuid('employment_id').notNull().references(() => employment.id),
   attendanceDate: date('attendance_date').notNull(), direction: attendancePunchDirectionEnum('direction').notNull(),
@@ -4387,6 +4396,7 @@ export const attendanceCorrection = pgTable(
     // ADR-0069: relaxed to NULLABLE (was NOT NULL) so an OT-only request (no clock-in/out) can be represented.
     // A DB check constraint (migration 0145) requires at least one of proposedCheckIn / proposedCheckOut /
     // requestedOtMinutes to be present.
+    adminAmendment: jsonb('admin_amendment').$type<AttendanceAdminAmendment>(),
     proposedCheckIn: time('proposed_check_in'),
     proposedCheckOut: time('proposed_check_out'),
     reason: text('reason'),

@@ -50,6 +50,8 @@ import {
   earlyOutMinutes as earlyOutOf,
   latenessMinutes as latenessOf,
   splitOtMinutes,
+  effectiveOvertimeRows,
+  overtimeCalculationRows,
   type OtSplit,
 } from './attendance-calc';
 // e2632276 — absence days are counted in ONE place now (see core/absence-days.ts), because the same count
@@ -88,6 +90,7 @@ import {
   domainEvent,
   toilAccrual,
   attendancePolicy,
+  attendanceDayAdjustment,
   // 07ebd04d (migration 0483) — the Schedule Group carries the WORKING WEEK; see weekLookupTx below.
   attendanceRule,
   attendancePunch,
@@ -690,6 +693,7 @@ type ResolvedSchedule = {
   // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
   // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
   otRule: ShiftOtRule | null;
+  manualOtRows?: import('../lib/attendance-day-adjustment').ManualOtRows;
   // cf21e554 stage 2 — the resolved shift's own Overtime Schedule (shift_ot_window), in grid order. NULL on
   // the policy branch and on any shift with no windows ⇒ workday OT keeps being "time past the shift end",
   // byte-identical. When present these windows decide WHICH minutes count; rounding and pay stay with the
@@ -765,6 +769,7 @@ export type ScheduleMemo = {
   cache: Map<string, Promise<unknown>>;
   /** When set, the roster row for `${employmentId}|${date}` (absent = no roster row) — see prefetch. */
   roster?: Map<string, RosterRow>;
+  adjustments?: Map<string,typeof attendanceDayAdjustment.$inferSelect>;
 };
 type RosterRow = {
   isRestDay: boolean;
@@ -836,7 +841,11 @@ export async function newScheduleMemo(tx: Tx, p: { employmentIds: string[]; from
       if (!roster.has(k)) roster.set(k, r);
     }
   }
-  return { from: p.from, to: p.to, cache: new Map(), roster };
+  const adjustments=new Map<string,typeof attendanceDayAdjustment.$inferSelect>();
+  if(p.employmentIds.length)for(const row of await tx.select().from(attendanceDayAdjustment).where(and(
+    inArray(attendanceDayAdjustment.employmentId,p.employmentIds),gte(attendanceDayAdjustment.attendanceDate,p.from),lte(attendanceDayAdjustment.attendanceDate,p.to))))
+    adjustments.set(`${row.employmentId}|${row.attendanceDate}`,row);
+  return { from: p.from, to: p.to, cache: new Map(), roster, adjustments };
 }
 
 function memoized<T>(memo: ScheduleMemo | undefined, key: string, f: () => Promise<T>): Promise<T> {
@@ -855,6 +864,20 @@ function memoized<T>(memo: ScheduleMemo | undefined, key: string, f: () => Promi
  *  company policy. No roster row and no default shift ⇒ the policy branch, which reproduces the
  *  pre-Phase-C engine exactly. `memo` (r424) is an optional read cache; see ScheduleMemo. */
 async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<ResolvedSchedule> {
+  const adjustment=memo?.adjustments ? memo.adjustments.get(`${employmentId}|${date}`)
+    : (await tx.select().from(attendanceDayAdjustment).where(and(eq(attendanceDayAdjustment.employmentId,employmentId),eq(attendanceDayAdjustment.attendanceDate,date))).limit(1))[0];
+  const base=await scheduleBaseFor(tx,employmentId,date,memo,adjustment?.shiftId??undefined);
+  if(!adjustment)return base;
+  const kind=adjustment.dayKind;
+  return {...base,manualOtRows:adjustment.manualOtRows,...(kind ? {
+    dayType:kind==='holiday'?'holiday':kind==='rest_day'?'rest_day':'workday',
+    ...(kind==='off_day'||kind==='rest_day'?{scheduledMinutes:0,scheduledStart:null,scheduledEnd:null,
+      normalMinutesOverride:kind==='off_day'?0:null,flexiDuration:kind==='off_day',scheduleDayKind:kind==='off_day'?'off' as const:'rest' as const,
+      ...(kind==='off_day'?{source:'default-shift-rest' as const}:{})}:{}),
+  }: {})};
+}
+
+async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo, datedShiftId?:string): Promise<ResolvedSchedule> {
   const pol = await memoized(memo, `pol|${employmentId}`, () => policyFor(tx, employmentId));
   const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
   // ADR-0055: the day-type holiday flag comes from the unified resolver — business-group → state →
@@ -940,40 +963,12 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
       .orderBy(shiftOtWindow.sortOrder);
     return rows.length > 0 ? rows : null;
   };
-  const prefetched = memo?.roster;
-  const [ra] = prefetched
-    ? ((r) => (r ? [r] : []))(prefetched.get(`${employmentId}|${date}`))
-    : await tx
-    .select({
-      isRestDay: rosterAssignment.isRestDay,
-      shiftId: shift.id,
-      code: shift.code,
-      name: shift.name,
-      start: shift.startTime,
-      end: shift.endTime,
-      brk: shift.breakMinutes,
-      crosses: shift.crossesMidnight,
-      override: shift.normalMinutesOverride,
-      periods: shift.breakPeriods,
-      lateGrace: shift.lateGraceMinutes,
-      earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
-      otRule: shift.otRule,
-      ruleId: shift.ruleId,
-      // cf21e554 stage 1 — the two General boxes that MOVE a figure (see db/schema.ts).
-      rounding: shift.normalHoursRoundingMinutes,
-      halfDayFirstOut: shift.halfDayFirstOut,
-      // b8aa3466 — the daily cut-off (migration 0429).
-      cutoffOn: shift.dailyCutoffEnabled,
-      cutoffAt: shift.dailyCutoffTime,
-      // 6340aecb — the flexible break (migration 0457).
-      flexOn: shift.flexibleBreakEnabled,
-      flexMin: shift.flexibleBreakMinutes,
-      shiftType: shift.type,
-    })
-    .from(rosterAssignment)
-    .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
-    .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, date)))
-    .limit(1);
+  const prefetched=memo?.roster;
+  const [ra] = datedShiftId
+    ? await tx.select({...rosterRowCols,isRestDay:sql<boolean>`false`}).from(shift).where(eq(shift.id,datedShiftId)).limit(1)
+    : prefetched ? ((r)=>(r?[r]:[]))(prefetched.get(`${employmentId}|${date}`))
+    : await tx.select(rosterRowCols).from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId))
+      .where(and(eq(rosterAssignment.employmentId,employmentId),eq(rosterAssignment.shiftDate,date))).limit(1);
 
   const policyBranch = (dayType: DayType): ResolvedSchedule => ({
     dayType,
@@ -1527,7 +1522,11 @@ function deriveAttendance(
         ? deductionMinutes(earlyOut, s.rule!.earlyAfterMinutes, s.rule!.earlyDeductMinutes)
         : 0;
 
-  const otSplit = splitOtMinutes(otMinutes, s.dayType, s.rule);
+  const calculatedOtMinutes=otMinutes;
+  const effectiveOt=effectiveOvertimeRows(otMinutes,s.dayType,s.rule,s.manualOtRows);
+  otMinutes=effectiveOt.total;
+  if(Object.keys(s.manualOtRows??{}).length&&otMinutes>workedMinutes)throw new Error('Manual overtime exceeds the recorded working minutes. Review the manual rows before recalculating.');
+  const otSplit=effectiveOt.split;
 
   // ── 7c834696 POINT 3 · finish the trace. Reads the finished figures; writes none of them. ───────────
   const trace = baseTrace();
@@ -1583,10 +1582,13 @@ function deriveAttendance(
     // rounding configured is byte-identical to no rule, and the panel should not claim a step ran.
     rounding:
       s.dayType === 'workday' && s.rule
-        ? { applied: otMinutes !== otBeforeRounding, beforeMinutes: otBeforeRounding, afterMinutes: otMinutes }
+        ? { applied: calculatedOtMinutes !== otBeforeRounding, beforeMinutes: otBeforeRounding, afterMinutes: calculatedOtMinutes }
         : null,
     minutes: otMinutes,
     split: otSplit,
+    calculatedMinutes:calculatedOtMinutes,
+    calculatedSplit:effectiveOt.calculatedSplit,
+    rows:effectiveOt.rows,
   };
 
   return {
@@ -1796,8 +1798,11 @@ export async function payableHoursForCycle(
     return p ? (clampByShiftId.get(p.shiftId) ?? null) : cachedClamp;
   };
 
+  const datedOverrides=await attendanceDateOverridesTx(tx,[employmentId],window.from,window.to);
   let payableMinutes = 0;
   for (const row of rows) {
+    const dated=datedOverrides.get(`${employmentId}|${row.date}`);
+    if(dated){payableMinutes+=Math.min(row.workedMinutes??0,dated.shiftId?dated.shiftDisplay.scheduledMinutes??0:0);continue;}
     const ds = clampOn(row.date);
     // b8aa3466 — Full clamps at the shift's net minutes, HALF at half of them, and Rest/Off contribute
     // nothing (they are not an assigned shift), exactly as a pattern rest day does today.
@@ -2773,26 +2778,28 @@ async function attendanceDayRowsTx(
       rows.filter((r) => !r.attendanceId).map((r) => r.employmentId),
     );
 
+    const datedOverrides=await attendanceDateOverridesTx(tx,empIds,date,date);
     return rows.map(({ companyId, ...r }) => {
       const isWorkingDay = (daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow);
       // bbada39c — shift-display subset (code / scheduled minutes / start-end / rostered-rest) for the row.
       const policyScheduled = isWorkingDay ? (policySchedByCompany.get(companyId) ?? scheduledMinutes(DEFAULTS)) : null;
       const roster = rosterByEmp.get(r.employmentId);
       const def = defaultShiftByEmp.get(r.employmentId);
-      const shiftDisplay = resolveShiftDisplay(date, roster, def, policyScheduled);
+      const dated=datedOverrides.get(`${r.employmentId}|${date}`);
+      const shiftDisplay = dated?.shiftDisplay??resolveShiftDisplay(date, roster, def, policyScheduled);
       let context: DayContext = null;
       if (!r.attendanceId) {
         if (leaveSet.has(r.employmentId)) context = 'on_leave';
-        else if (holidayEmp.has(r.employmentId)) context = 'holiday';
+        else if (dated ? dated.dayKind==='holiday' : holidayEmp.has(r.employmentId)) context = 'holiday';
         // e2632276 — the ROSTER WINS, but only once the deduction is switched on for this employment.
         // Off (every company, day one) this is `!isWorkingDay`, byte-identical to before. On, an employee
         // rostered to rest (or whose default-shift pattern excludes the day) on a company working day
         // reads REST instead of a red "Absent", and a rostered SHIFT on a company non-working day becomes
         // a scheduled day that CAN be absent — matching what payroll will charge for.
-        else if (isScheduledOffDay(date, roster, def, isWorkingDay, deductAbsence.has(r.employmentId)))
+        else if (dated ? !dated.working : isScheduledOffDay(date, roster, def, isWorkingDay, deductAbsence.has(r.employmentId)))
           context = 'rest_day';
       }
-      return { ...r, context, ...shiftDisplay };
+      return { ...r, ...(dated?{dayType:dated.dayKind==='holiday'?'holiday' as const:dated.dayKind==='rest_day'?'rest_day' as const:'workday' as const}:{}),context, ...shiftDisplay };
     });
   }
 }
@@ -2924,6 +2931,7 @@ export function attendanceForEmploymentsRange(
       .from(shift).where(inArray(shift.id,shiftIds)) : [];
     const rangeWeek=await weekLookupTx(tx,null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]);
     const rangeRotations = await rotationLookupTx(tx);
+    const datedOverrides=await attendanceDateOverridesTx(tx,ids,from,to);
     const rowsByEmployment=new Map<string,typeof rows>();
     const rosterByEmployment=new Map<string,typeof rosters>();
     for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
@@ -2955,18 +2963,19 @@ export function attendanceForEmploymentsRange(
     // number instead of discovering the cliff as a short array (67268d83).
     for (let i = 0; i < ATTENDANCE_RANGE_MAX_DAYS && d <= to; i++) {
       const row = byDate.get(d);
+      const dated=datedOverrides.get(`${employmentId}|${d}`);
       const isWorkingDay = workDays.includes(isoWeekday(d));
       let context: DayContext = null;
       if (!row) {
         if (leaveSet.has(d)) context = 'on_leave';
-        else if (holidays.has(d)) context = 'holiday';
+        else if (dated ? dated.dayKind==='holiday' : holidays.has(d)) context = 'holiday';
         // e2632276 — the ROSTER WINS once the deduction is on (same gate as attendanceForDate above; see
         // isScheduledOffDay). Off ⇒ `!isWorkingDay`, byte-identical to before.
-        else if (isScheduledOffDay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay, deductAbsence))
+        else if (dated ? !dated.working : isScheduledOffDay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay, deductAbsence))
           context = 'rest_day';
       }
       // bbada39c — per-date shift display (code / scheduled minutes / start-end / rostered-rest).
-      const shiftDisplay = resolveShiftDisplay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay ? policyScheduledMin : null);
+      const shiftDisplay = dated?.shiftDisplay??resolveShiftDisplay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay ? policyScheduledMin : null);
       if(opts.includePunchReviews&&row&&(typeof row.punchReviewFingerprint!=='string'||typeof row.punchReviewed!=='boolean'))
         throw new Error('Attendance punch review snapshot unavailable');
       out.push({
@@ -2976,7 +2985,7 @@ export function attendanceForEmploymentsRange(
         checkInAt: row?.checkInAt ?? null,
         checkOutAt: row?.checkOutAt ?? null,
         status: row?.status ?? null,
-        dayType: row?.dayType ?? null,
+        dayType: dated ? dated.dayKind==='holiday'?'holiday':dated.dayKind==='rest_day'?'rest_day':'workday' : row?.dayType ?? null,
         workedMinutes: row?.workedMinutes ?? null,
         otMinutes: row?.otMinutes ?? null,
         lateMinutes: row?.lateMinutes ?? null,
@@ -3766,10 +3775,12 @@ export class MissingAttendanceRejectReasonError extends Error {
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
   p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; deciderEmploymentId?: string; today?: string },
+  existingTx?: Tx,
 ) {
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
-  return withTenant(ctx, async (tx) => {
-    const cor = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
+  const decide=async (tx:Tx) => {
+    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
+    const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
@@ -3815,6 +3826,7 @@ export async function decideAttendanceCorrection(
       const dayType = sched.dayType;
       const hasClockCorrection = cor.proposedCheckIn != null || cor.clockChanges != null;
       const hasOtRequest = cor.requestedOtMinutes != null;
+      if(hasOtRequest&&Object.keys(sched.manualOtRows??{}).length)throw new Error('Return this day’s manual overtime rows to Auto before deciding an aggregate overtime request.');
       // 1e9145d4 — THE DEFERRED CASE, and the whole point of the item. An OT-only plan for a day that has
       // not happened yet cannot be measured against anything and must not create an attendance row (see the
       // section header above for why a placeholder row would corrupt the month summary and the payroll
@@ -3922,7 +3934,7 @@ export async function decideAttendanceCorrection(
         // punches (d) and are unaffected by the OT override.
         const stage1 = {
           ...stage1Columns(d),
-          ...otSplitColumns(otMinutes == null ? null : splitOtMinutes(otMinutes, dayType, sched.rule)),
+          ...otSplitColumns(otMinutes == null ? null : hasOtRequest ? splitOtMinutes(otMinutes, dayType, sched.rule) : d.otSplit),
         };
         // ADR-0070: a correction always replaces both punches' geo-capture fields with null and leaves
         // method NULL (no 'correction' enum value, per the panel's scope-creep cut) — the disclosed,
@@ -4214,7 +4226,8 @@ export async function decideAttendanceCorrection(
       },
     });
     return { status: p.decision, deferred: deferredApproval };
-  });
+  };
+  return existingTx?decide(existingTx):withTenant(ctx,decide);
 }
 
 /** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager
@@ -4233,6 +4246,7 @@ export function listAttendanceCorrections(
         employee: sql<string>`subject.employee`,
         employeeCode: sql<string | null>`subject.employee_code`,
         attendanceDate: attendanceCorrection.attendanceDate,
+        adminAmendment: attendanceCorrection.adminAmendment,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
@@ -4590,8 +4604,11 @@ export function otPlanCalendarMonth(
     const firstBreak = (ps: BreakPeriod[] | null | undefined): { start: string | null; end: string | null } =>
       ps && ps.length === 1 && ps[0]?.start && ps[0]?.end ? { start: hhmm(ps[0].start), end: hhmm(ps[0].end) } : { start: null, end: null };
 
+    const datedOverrides=await attendanceDateOverridesTx(tx,[employmentId],from,to);
     const out: OtPlanCalendarDay[] = [];
     for (let d = from; d <= to; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) {
+      const dated=datedOverrides.get(`${employmentId}|${d}`);
+      if(dated){out.push({date:d,kind:dated.dayKind,...dated.calendar});continue;}
       const roster = rosterByDate.get(d);
       const def = defaultOn(d);
       const isWorkingDay = workDays.includes(isoWeekday(d));
@@ -5144,20 +5161,23 @@ async function applyApprovedOtPlanTx(
   if (!plan) return null;
 
   const writeOt = async (otMinutes: number) => {
-    await tx
-      .update(attendance)
-      .set({
-        otMinutes,
-        ...otSplitColumns(splitOtMinutes(otMinutes, p.sched.dayType, p.sched.rule)),
-      })
-      .where(eq(attendance.id, p.attendanceId));
+    const effective=effectiveOvertimeRows(otMinutes,p.sched.dayType,p.sched.rule,p.sched.manualOtRows);
+    const [stored]=await tx.select({trace:attendance.calcTrace,worked:attendance.workedMinutes}).from(attendance).where(eq(attendance.id,p.attendanceId)).limit(1);
+    if(Object.keys(p.sched.manualOtRows??{}).length&&effective.total>(stored?.worked??0))throw new Error('Manual overtime exceeds the recorded working minutes. Review the manual rows before recalculating.');
+    const trace=stored?.trace;
+    if(trace?.overtime){
+      const calculated=trace.overtime.rows??overtimeCalculationRows(trace.overtime.calculatedMinutes??trace.overtime.minutes,p.sched.dayType,p.sched.rule);
+      trace.overtime={...trace.overtime,approvedMinutes:otMinutes,minutes:effective.total,split:effective.split,
+        rows:effective.rows.map(row=>({...row,calculatedMinutes:calculated.find(r=>r.key===row.key)?.calculatedMinutes??0}))};
+    }
+    await tx.update(attendance).set({otMinutes:effective.total,...otSplitColumns(effective.split),...(trace?{calcTrace:trace}:{})}).where(eq(attendance.id,p.attendanceId));
+    return effective.total;
   };
 
   // ── 2 · RE-ASSERTION ────────────────────────────────────────────────────────────────────────────────
   if (plan.appliedAt != null) {
     if (plan.approvedOtMinutes == null) return null;
-    await writeOt(plan.approvedOtMinutes);
-    return plan.approvedOtMinutes;
+    return writeOt(plan.approvedOtMinutes);
   }
 
   // ── 1 · LANDING ─────────────────────────────────────────────────────────────────────────────────────
@@ -5190,7 +5210,7 @@ async function applyApprovedOtPlanTx(
   // is the only write to the attendance row on this path, and reading after it makes `before` a copy of
   // `after`. The `claimed` UPDATE above touches attendance_correction, never attendance.
   const beforeFigures = await attendanceFiguresByIdTx(tx, p.attendanceId);
-  await writeOt(otMinutes);
+  const effectiveOtMinutes=await writeOt(otMinutes);
   await tx
     .update(attendanceCorrection)
     .set({ approvedOtMinutes: otMinutes })
@@ -5244,7 +5264,7 @@ async function applyApprovedOtPlanTx(
     requestedOn: todayInKualaLumpur(plan.createdAt),
   });
 
-  return otMinutes;
+  return effectiveOtMinutes;
 }
 
 /**
@@ -5449,6 +5469,7 @@ export function myAttendanceCorrections(
       .select({
         id: attendanceCorrection.id,
         attendanceDate: attendanceCorrection.attendanceDate,
+        adminAmendment: attendanceCorrection.adminAmendment,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
@@ -6111,13 +6132,14 @@ export async function recomputeDayFigures(
   const sched = await scheduleFor(tx, p.employmentId, p.date);
   const d = deriveAttendance(sched, p.checkInAt, p.checkOutAt, p.date);
   const keepOt = p.approvedOtMinutes != null;
-  const otMinutes = keepOt ? p.approvedOtMinutes! : d.otMinutes;
-  // When the approved figure is kept, the buckets are recut FROM IT so they still sum to ot_minutes —
-  // the same reason decideAttendanceCorrection recuts them. The measured lateness / early-out /
-  // short-hours are unaffected by the override and come from `d`.
-  const stage1 = keepOt
-    ? { ...stage1Columns(d), ...otSplitColumns(splitOtMinutes(otMinutes!, sched.dayType, sched.rule)) }
-    : stage1Columns(d);
+  const approvedRows=keepOt?effectiveOvertimeRows(p.approvedOtMinutes!,sched.dayType,sched.rule,sched.manualOtRows):null;
+  const otMinutes=approvedRows?.total??d.otMinutes;
+  if(approvedRows&&d.trace.overtime){
+    d.trace.overtime.approvedMinutes=p.approvedOtMinutes!;
+    d.trace.overtime.minutes=approvedRows.total;d.trace.overtime.split=approvedRows.split;
+    d.trace.overtime.rows=approvedRows.rows.map(row=>({...row,calculatedMinutes:d.trace.overtime!.rows?.find(r=>r.key===row.key)?.calculatedMinutes??0}));
+  }
+  const stage1=approvedRows?{...stage1Columns(d),...otSplitColumns(approvedRows.split)}:stage1Columns(d);
   return {
     dayType: sched.dayType,
     source: sched.source,
@@ -6219,4 +6241,45 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: cor.id, eventType: 'attendance-correction.cancelled', actor: actorOf(ctx), subjectEmploymentId: cor.employmentId, payload: { previousStatus: cor.status, resultingStatus: 'cancelled', cancellationKind: p.kind, reason: p.reason.trim(), reversed, date: cor.attendanceDate, actualPersonId: ctx.personId ?? null } });
         return { status: 'cancelled' as const, reversed };
     });
+}
+
+
+export async function attendanceDayCalculationTx(tx:Tx,employmentId:string,date:string) {
+  const schedule=await scheduleFor(tx,employmentId,date);
+  const [day]=await tx.select().from(attendance).where(and(eq(attendance.employmentId,employmentId),eq(attendance.attendanceDate,date))).limit(1);
+  const [approved]=await tx.select({minutes:attendanceCorrection.approvedOtMinutes}).from(attendanceCorrection)
+    .where(and(eq(attendanceCorrection.employmentId,employmentId),eq(attendanceCorrection.attendanceDate,date),eq(attendanceCorrection.status,'approved'),isNotNull(attendanceCorrection.approvedOtMinutes)))
+    .orderBy(desc(attendanceCorrection.decidedAt),desc(attendanceCorrection.id)).limit(1);
+  const automatic=day?.checkInAt?deriveAttendance({...schedule,manualOtRows:{}},day.checkInAt,day.checkOutAt,date):null;
+  const automaticMinutes=automatic?.otMinutes??0;
+  return {day:day??null,approvedOtMinutes:approved?.minutes??null,automatic,
+    rows:overtimeCalculationRows(automaticMinutes,schedule.dayType,schedule.rule),
+    effectiveBaseRows:overtimeCalculationRows(approved?.minutes??automaticMinutes,schedule.dayType,schedule.rule),
+    schedule:{shiftId:schedule.displayShiftId??null,shiftCode:schedule.displayShiftCode??null,
+      dayKind:schedule.dayType==='holiday'?'holiday' as const:schedule.dayType==='rest_day'?'rest_day' as const:schedule.scheduleDayKind==='off'?'off_day' as const:'workday' as const,
+      scheduledMinutes:schedule.scheduledMinutes,shiftStart:schedule.shiftStart,shiftEnd:schedule.shiftEnd,source:schedule.source},
+  };
+}
+
+/** Only dates with explicit corrections need the canonical per-date resolver beside the batched ladder. */
+export async function attendanceDateOverridesTx(tx:Tx,employmentIds:string[],from:string,to:string) {
+  const result=new Map<string,{dayKind:WorkedDayKind;working:boolean;shiftDisplay:ShiftDisplay;shiftId:string|null;calendar:Omit<OtPlanCalendarDay,'date'|'kind'>}>();
+  if(!employmentIds.length)return result;
+  const rows=await tx.select().from(attendanceDayAdjustment).where(and(inArray(attendanceDayAdjustment.employmentId,employmentIds),gte(attendanceDayAdjustment.attendanceDate,from),lte(attendanceDayAdjustment.attendanceDate,to)));
+  if(!rows.length)return result;
+  const memo=await newScheduleMemo(tx,{employmentIds:[...new Set(rows.map(r=>r.employmentId))],from,to});
+  for(const row of rows){
+    if(!row.shiftId&&!row.dayKind)continue;
+    const schedule=await scheduleFor(tx,row.employmentId,row.attendanceDate,memo);
+    const dayKind:WorkedDayKind=schedule.dayType==='holiday'?'holiday':schedule.dayType==='rest_day'?'rest_day':schedule.scheduleDayKind==='off'?'off_day':'workday';
+    result.set(`${row.employmentId}|${row.attendanceDate}`,{dayKind,working:dayKind==='workday',shiftId:schedule.displayShiftId??null,
+      shiftDisplay:{shiftCode:schedule.displayShiftCode??null,scheduledMinutes:dayKind==='rest_day'||dayKind==='off_day'?null:schedule.scheduledMinutes,
+        shiftStart:dayKind==='rest_day'||dayKind==='off_day'?null:schedule.shiftStart?.slice(0,5)??null,
+        shiftEnd:dayKind==='rest_day'||dayKind==='off_day'?null:schedule.shiftEnd?.slice(0,5)??null,isRosterRest:dayKind==='rest_day'},calendar:{source:schedule.source,shiftCode:schedule.displayShiftCode??null,
+        shiftName:schedule.displayShiftName??null,scheduleStart:dayKind==='off_day'||dayKind==='rest_day'?null:schedule.shiftStart?.slice(0,5)??null,
+        scheduleEnd:dayKind==='off_day'||dayKind==='rest_day'?null:schedule.shiftEnd?.slice(0,5)??null,
+        breakStart:schedule.breakPeriods?.length===1?schedule.breakPeriods[0].start.slice(0,5):null,
+        breakEnd:schedule.breakPeriods?.length===1?schedule.breakPeriods[0].end.slice(0,5):null,breakMinutes:schedule.breakMinutes}});
+  }
+  return result;
 }

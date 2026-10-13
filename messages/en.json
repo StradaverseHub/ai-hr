@@ -3429,12 +3429,66 @@
       "duplicate": "The same time and direction is already in use.",
       "discard": "Discard your unsaved clock changes?",
       "legacy": "Legacy clocking",
-      "summary": "Attendance summary"
+      "summary": "Attendance summary",
+      "administratorAmendment": "Administrator amendment"
     },
     "clockDataChanged": "Clock data changed. Reload this day before submitting or approving the correction.",
     "clockDataPayrollClosed": "This day is included in a closed payroll. Reopen the payroll before correcting it.",
     "clockDataPending": "Saved as a correction request, but not applied. Review the request in Approvals; you cannot approve your own attendance correction.",
-    "clockEvidenceLocationUnavailable": "Location not recorded — unavailable"
+    "clockEvidenceLocationUnavailable": "Location not recorded — unavailable",
+    "dayEdit": {
+      "reason": "Reason for change",
+      "payrollConsent": "I understand that processed payroll covering this date will be marked for recalculation.",
+      "closed": "This date is included in closed payroll. Reopen the payroll before making corrections.",
+      "self": "Another authorised administrator must correct or approve your attendance.",
+      "shift": "Shift for this date",
+      "automaticSchedule": "Auto — use the dated schedule",
+      "currentShift": "Current assigned shift",
+      "dayType": "Day Type",
+      "onLeave": "On Leave",
+      "manageLeave": "Manage leave",
+      "leaveOwner": "Leave, including partial-day leave, owns this date. This editor cannot replace it.",
+      "beforeAfter": "Current: {before} → Proposed: {after}",
+      "saved": "Day correction saved and recalculated.",
+      "dateOnly": "Applies to this employee and date only.",
+      "saveSchedule": "Save day changes",
+      "completeDay": "A complete clock-in and clock-out is needed before setting manual overtime. Existing manual rows may still be returned to Auto.",
+      "approved": "Existing approved overtime: {minutes}. Auto retains this approval; manual rows remain separate.",
+      "otRow": "Configured overtime row",
+      "calculated": "Calculated",
+      "method": "Calculation method",
+      "manualMinutes": "Manual minutes",
+      "effective": "Effective",
+      "flat": "Flat OT",
+      "band": "{from}–{to} minutes",
+      "unlimited": "open",
+      "orphan": "This row is no longer configured. Return it to Auto before recalculating.",
+      "original": "Calculated {minutes} when this manual value was recorded on {date}.",
+      "auto": "Auto",
+      "manual": "Manual Override",
+      "resetAuto": "Return this row to Auto",
+      "manualHelp": "Enter whole minutes. Auto removes only the selected manual value. Original calculations and all changes remain in history.",
+      "saveOvertime": "Save overtime changes",
+      "history": "Day correction history",
+      "administrator": "Administrator",
+      "pendingStage": "The correction is saved; another approval stage is still pending.",
+      "approvedSaved": "The existing application has been approved.",
+      "frozenStage": "Earlier decisions or a staged clock-set request remain intact. This action reviews the existing request without rewriting it.",
+      "requestedIn": "Requested Clock In",
+      "requestedOut": "Requested Clock Out",
+      "administratorReason": "Administrator’s correction / approval reason",
+      "correctApprove": "Correct & approve",
+      "approvalHelp": "Only your authorised approval stage is completed. The actual administrator is recorded.",
+      "application": "Existing application",
+      "amendment": "Administrator amendment",
+      "viewApplication": "View application history",
+      "kind": {
+        "workday": "Normal Day",
+        "off_day": "Off Day",
+        "rest_day": "Rest Day",
+        "holiday": "Public Holiday"
+      }
+    }
   },
   "org": {
     "title": "Org chart",
@@ -17675,9 +17729,11 @@
       "clockRemoved": "Clocking removed from the effective set",
       "clockRestored": "Original clocking restored",
       "clockAdded": "Corrected clocking added",
-      "recorded": "Application action recorded"
+      "recorded": "Application action recorded",
+      "administratorAmended": "Administrator amendment"
     },
-    "hrApprover": "HR administrators"
+    "hrApprover": "HR administrators",
+    "administratorAmendment": "Administrator amendment"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",

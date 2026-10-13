@@ -16,8 +16,8 @@ import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SessionContext } from '../db/client';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
-import { hireEmployee } from '../core/org';
+import { adminCtx, createAppUser, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { hireEmployee, setReportingLine } from '../core/org';
 import { createShift, assignDefaultShift, setEmploymentScheduleGroup } from '../core/roster';
 import { createAttendanceRule, ensureStandardRule } from '../core/attendance-rule';
 import { checkIn, checkOut, attendanceForEmploymentRange } from '../core/attendance';
@@ -37,6 +37,7 @@ vi.mock('next-intl/server', () => ({
   getLocale: async () => 'en',
 }));
 vi.mock('next/navigation', () => ({
+  useRouter:()=>({refresh:()=>{}}),
   redirect: () => {
     throw new Error('NEXT_REDIRECT');
   },
@@ -150,9 +151,18 @@ describe('r433 · Clock date and break time is ONE section', () => {
   });
 });
 
+async function viewAsManager(employmentId:string){
+  const a=adminCtx(b);
+  const manager=await hireEmployee(a,{person:{fullName:'Records manager',primaryEmail:`manager_${uniq()}@t.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+  await setReportingLine(a,{subordinateEmploymentId:employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
+  const userId=await createAppUser(b.tenantId,manager.personId,'manager');
+  SESSION={...a,userId,personId:manager.personId,roles:['manager'],grants:[{role:'manager',companyId:null}]};
+}
+
 describe('r433 · Overtime lists only what applies, with the old columns’ figures', () => {
   it('a zero day says so in one line and lists NO row', async () => {
     const emp = await worker('Zero Zainab', '09:00', '18:00');
+    await viewAsManager(emp);
     const sec = section(await render(emp), 'overtime');
     expect(sec).toContain('data-day-ot-none');
     expect(sec).toContain(EN.attendance.dayOtNone);
@@ -172,6 +182,7 @@ describe('r433 · Overtime lists only what applies, with the old columns’ figu
     expect(row.lateMinutes ?? 0).toBeGreaterThan(0);
     expect(ot.ot15).toBeGreaterThan(0);
 
+    await viewAsManager(emp);
     const sec = section(await render(emp), 'overtime');
     const expected = [
       ...(row.lateMinutes ? ['lateness'] : []),

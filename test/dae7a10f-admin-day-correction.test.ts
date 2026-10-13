@@ -149,17 +149,14 @@ describe('dae7a10f · one action, and the same trail', () => {
 });
 
 describe('dae7a10f · the action composes the services, and writes nothing itself', () => {
-  it('calls request THEN decide, and never touches the attendance row', () => {
-    expect(ACTION).toContain('requestAttendanceCorrection');
-    expect(ACTION).toContain('decideAttendanceCorrection');
-    expect(ACTION.indexOf('requestAttendanceCorrection(')).toBeLessThan(
-      ACTION.indexOf('decideAttendanceCorrection('),
-    );
-    // A DIRECT WRITE is the shape this must never take: approval re-derives the day through the time
-    // engine so corrected OT reaches payroll, and a second write path is how overtime moves with no trail.
-    for (const f of ['.update(attendance', 'db.insert', 'sql`update', 'recordAttendance']) {
-      expect(ACTION, `${f} would bypass the engine`).not.toContain(f);
-    }
+  it('composes the existing-application amendment and decision path without a direct attendance write', () => {
+    const start=ACTION.indexOf('export async function adminCorrectAttendanceDayAction');
+    const end=ACTION.indexOf('function refreshAttendanceDay',start);
+    expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+    const action=ACTION.slice(start,end);expect(action.length).toBeGreaterThan(300);
+    expect(action).toContain('amendExistingAttendanceApplication');
+    expect(action).not.toContain('requestAttendanceCorrection(');
+    for(const f of ['.update(attendance','db.insert','sql`update','recordAttendance'])expect(action).not.toContain(f);
   });
 
   it('goes through the pack facade, as a new file must', () => {
@@ -171,29 +168,35 @@ describe('dae7a10f · the action composes the services, and writes nothing itsel
 
   it('re-guards the employment against the caller’s own scope', () => {
     expect(ACTION).toContain('scopedAdmin');
-    expect(ACTION).toContain('listEmployees(s, scopeIds)');
+    expect(ACTION).toMatch(/listEmployees\(s,\s*scopeIds\)/);
     expect(ACTION).toContain("fail('correctionForbidden')");
   });
 
   it('refuses an unexplained change to a paid figure', () => {
     expect(ACTION).toContain("fail('correctionReasonRequired')");
-    expect(ACTION).toContain("fail('correctionNothingToChange')");
+    const editor=src('packs/attendance/day-adjustment.ts');
+    expect(editor).toContain('const reason=p.reason.trim()');
+    expect(editor).toContain('reason.length>500');
   });
 
   /** The redirect carries a KEY, and the page renders it only from an allowlist — `error` is an untrusted
    *  url value, and `t(anything)` either prints the raw string back or throws MISSING_MESSAGE. */
   it('reports the outcome through an allowlisted message key', () => {
-    expect(ACTION).toContain('correctionPendingAnotherApprover');
+    expect(ACTION).toContain("pending:outcome.status==='pending'");
+    expect(src('components/attendance-day-editor.tsx')).toContain("t('pendingStage')");
     expect(DAY_PAGE).toContain('CORRECTION_MESSAGES.includes(sp.error)');
     for (const k of ['correctionForbidden', 'correctionPendingAnotherApprover', 'correctionRejected']) {
       expect(DAY_PAGE, `${k} must be renderable`).toContain(k);
     }
   });
 
-  it('a non-admin still gets the correction workflow link, not the form', () => {
+  it('the existing-application form is conditional and an empty section has no creation form', () => {
     expect(DAY_PAGE).toContain('isAdmin(s)');
-    expect(DAY_PAGE).toContain("t('dayEditCorrection')");
-    expect(DAY_PAGE).toContain('adminCorrectAttendanceDayAction');
+    expect(DAY_PAGE).toContain('AttendanceDayApplications');
+    const section=src('components/attendance-day-applications.tsx');
+    expect(section).toContain('applications.map');
+    expect(section).toContain("application.status==='pending'");
+    expect(section).not.toContain('requestAttendanceCorrection');
   });
 });
 

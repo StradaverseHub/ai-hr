@@ -3429,12 +3429,66 @@
       "duplicate": "Giờ và hướng này đã được sử dụng.",
       "discard": "Bỏ thay đổi chấm công chưa lưu?",
       "legacy": "Chấm công cũ",
-      "summary": "Tóm tắt chấm công"
+      "summary": "Tóm tắt chấm công",
+      "administratorAmendment": "Chỉnh sửa của quản trị viên"
     },
     "clockDataChanged": "Dữ liệu chấm công đã thay đổi. Tải lại ngày này trước khi gửi hoặc duyệt điều chỉnh.",
     "clockDataPayrollClosed": "Ngày này thuộc kỳ lương đã đóng. Mở lại kỳ lương trước khi điều chỉnh.",
     "clockDataPending": "Đã lưu yêu cầu điều chỉnh nhưng chưa áp dụng. Xem trong Phê duyệt; bạn không thể tự duyệt điều chỉnh chấm công của mình.",
-    "clockEvidenceLocationUnavailable": "Không ghi nhận vị trí — không có thông tin"
+    "clockEvidenceLocationUnavailable": "Không ghi nhận vị trí — không có thông tin",
+    "dayEdit": {
+      "reason": "Lý do thay đổi",
+      "payrollConsent": "Tôi hiểu bảng lương đã xử lý cho ngày này sẽ được đánh dấu cần tính lại.",
+      "closed": "Ngày này thuộc bảng lương đã đóng. Mở lại bảng lương trước khi sửa.",
+      "self": "Một quản trị viên được ủy quyền khác phải sửa hoặc duyệt chấm công của bạn.",
+      "shift": "Ca cho ngày này",
+      "automaticSchedule": "Tự động — dùng lịch theo ngày",
+      "currentShift": "Ca đang được phân công",
+      "dayType": "Loại ngày",
+      "onLeave": "Đang nghỉ phép",
+      "manageLeave": "Quản lý nghỉ phép",
+      "leaveOwner": "Nghỉ phép, kể cả nghỉ một phần ngày, quản lý ngày này. Trình sửa này không thể thay thế.",
+      "beforeAfter": "Hiện tại: {before} → Đề xuất: {after}",
+      "saved": "Đã lưu và tính lại chỉnh sửa ngày.",
+      "dateOnly": "Chỉ áp dụng cho nhân viên và ngày này.",
+      "saveSchedule": "Lưu thay đổi ngày",
+      "completeDay": "Cần đầy đủ giờ vào và ra để đặt tăng ca thủ công. Các dòng thủ công hiện có vẫn có thể trở về Tự động.",
+      "approved": "Tăng ca đã duyệt hiện tại: {minutes}. Tự động giữ phê duyệt này; các dòng thủ công được lưu riêng.",
+      "otRow": "Dòng tăng ca đã cấu hình",
+      "calculated": "Đã tính",
+      "method": "Cách tính",
+      "manualMinutes": "Số phút thủ công",
+      "effective": "Có hiệu lực",
+      "flat": "Tăng ca cố định",
+      "band": "{from}–{to} phút",
+      "unlimited": "không giới hạn",
+      "orphan": "Dòng này không còn trong cấu hình. Đưa về Tự động trước khi tính lại.",
+      "original": "Đã tính {minutes} khi giá trị thủ công này được ghi ngày {date}.",
+      "auto": "Tự động",
+      "manual": "Ghi đè thủ công",
+      "resetAuto": "Đưa dòng này về Tự động",
+      "manualHelp": "Nhập số phút nguyên. Tự động chỉ xóa giá trị thủ công được chọn. Phép tính gốc và mọi thay đổi được giữ trong lịch sử.",
+      "saveOvertime": "Lưu thay đổi tăng ca",
+      "history": "Lịch sử sửa ngày",
+      "administrator": "Quản trị viên",
+      "pendingStage": "Đã lưu chỉnh sửa; còn một bước phê duyệt đang chờ.",
+      "approvedSaved": "Đơn hiện có đã được phê duyệt.",
+      "frozenStage": "Giữ nguyên quyết định trước đó hoặc yêu cầu sửa bộ giờ theo giai đoạn. Thao tác này xem xét đơn hiện có mà không viết lại.",
+      "requestedIn": "Giờ vào yêu cầu",
+      "requestedOut": "Giờ ra yêu cầu",
+      "administratorReason": "Lý do sửa / phê duyệt của quản trị viên",
+      "correctApprove": "Sửa và duyệt",
+      "approvalHelp": "Chỉ hoàn tất bước phê duyệt bạn được phép thực hiện. Quản trị viên thực tế được ghi lại.",
+      "application": "Đơn hiện có",
+      "amendment": "Chỉnh sửa của quản trị viên",
+      "viewApplication": "Xem lịch sử đơn",
+      "kind": {
+        "workday": "Ngày thường",
+        "off_day": "Ngày không làm việc",
+        "rest_day": "Ngày nghỉ",
+        "holiday": "Ngày lễ"
+      }
+    }
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -17675,9 +17729,11 @@
       "clockRemoved": "Đã loại lần chấm công khỏi tập có hiệu lực",
       "clockRestored": "Đã khôi phục lần chấm công gốc",
       "clockAdded": "Đã thêm lần chấm công điều chỉnh",
-      "recorded": "Đã ghi nhận thao tác của đơn"
+      "recorded": "Đã ghi nhận thao tác của đơn",
+      "administratorAmended": "Chỉnh sửa của quản trị viên"
     },
-    "hrApprover": "Quản trị viên nhân sự"
+    "hrApprover": "Quản trị viên nhân sự",
+    "administratorAmendment": "Chỉnh sửa của quản trị viên"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",

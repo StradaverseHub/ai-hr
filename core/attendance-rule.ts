@@ -41,6 +41,7 @@ const timeToMin = (t: string): number => {
 
 // ── Resolved shapes consumed by the time engine (core/attendance.ts) ──────────────────────────────────
 export type ResolvedOtRow = {
+  id?: string;
   fromMinutes: number;
   toMinutes: number; // ≤ fromMinutes ⇒ open-ended upper bound
   ratePattern: AttendanceOtRatePattern;
@@ -173,6 +174,7 @@ const toResolved = (
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((r) => ({
+      id: r.id,
       fromMinutes: r.fromMinutes,
       toMinutes: r.toMinutes,
       ratePattern: r.ratePattern,

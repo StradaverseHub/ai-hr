@@ -3429,12 +3429,66 @@
       "duplicate": "Masa dan arah yang sama sudah digunakan.",
       "discard": "Buang perubahan waktu yang belum disimpan?",
       "legacy": "Rekod waktu lama",
-      "summary": "Ringkasan kehadiran"
+      "summary": "Ringkasan kehadiran",
+      "administratorAmendment": "Pindaan pentadbir"
     },
     "clockDataChanged": "Data waktu berubah. Muat semula hari ini sebelum menghantar atau meluluskan pembetulan.",
     "clockDataPayrollClosed": "Hari ini termasuk dalam penggajian yang ditutup. Buka semula penggajian sebelum membetulkannya.",
     "clockDataPending": "Disimpan sebagai permohonan pembetulan tetapi belum digunakan. Semak dalam Kelulusan; anda tidak boleh meluluskan pembetulan kehadiran sendiri.",
-    "clockEvidenceLocationUnavailable": "Lokasi tidak direkodkan — tidak tersedia"
+    "clockEvidenceLocationUnavailable": "Lokasi tidak direkodkan — tidak tersedia",
+    "dayEdit": {
+      "reason": "Sebab perubahan",
+      "payrollConsent": "Saya faham bahawa gaji diproses yang meliputi tarikh ini akan ditandakan untuk pengiraan semula.",
+      "closed": "Tarikh ini termasuk dalam gaji ditutup. Buka semula gaji sebelum membuat pembetulan.",
+      "self": "Pentadbir lain yang dibenarkan mesti membetulkan atau meluluskan kehadiran anda.",
+      "shift": "Syif untuk tarikh ini",
+      "automaticSchedule": "Auto — gunakan jadual bertarikh",
+      "currentShift": "Syif semasa",
+      "dayType": "Jenis Hari",
+      "onLeave": "Bercuti",
+      "manageLeave": "Urus cuti",
+      "leaveOwner": "Cuti, termasuk cuti separa hari, mengawal tarikh ini. Editor ini tidak boleh menggantikannya.",
+      "beforeAfter": "Semasa: {before} → Cadangan: {after}",
+      "saved": "Pembetulan hari disimpan dan dikira semula.",
+      "dateOnly": "Terpakai kepada pekerja dan tarikh ini sahaja.",
+      "saveSchedule": "Simpan perubahan hari",
+      "completeDay": "Masa masuk dan keluar lengkap diperlukan untuk menetapkan kerja lebih masa manual. Nilai manual sedia ada masih boleh dikembalikan kepada Auto.",
+      "approved": "Kerja lebih masa diluluskan: {minutes}. Auto mengekalkan kelulusan ini; baris manual kekal berasingan.",
+      "otRow": "Baris kerja lebih masa dikonfigurasi",
+      "calculated": "Dikira",
+      "method": "Kaedah pengiraan",
+      "manualMinutes": "Minit manual",
+      "effective": "Berkuat kuasa",
+      "flat": "OT tetap",
+      "band": "{from}–{to} minit",
+      "unlimited": "terbuka",
+      "orphan": "Baris ini tidak lagi dikonfigurasi. Kembalikan kepada Auto sebelum mengira semula.",
+      "original": "Dikira {minutes} semasa nilai manual ini direkodkan pada {date}.",
+      "auto": "Auto",
+      "manual": "Gantian Manual",
+      "resetAuto": "Kembalikan baris ini kepada Auto",
+      "manualHelp": "Masukkan minit bulat. Auto membuang nilai manual yang dipilih sahaja. Pengiraan asal dan semua perubahan kekal dalam sejarah.",
+      "saveOvertime": "Simpan perubahan kerja lebih masa",
+      "history": "Sejarah pembetulan hari",
+      "administrator": "Pentadbir",
+      "pendingStage": "Pembetulan disimpan; satu lagi peringkat kelulusan masih menunggu.",
+      "approvedSaved": "Permohonan sedia ada telah diluluskan.",
+      "frozenStage": "Keputusan terdahulu atau permintaan set masa berperingkat dikekalkan. Tindakan ini menyemak permintaan sedia ada tanpa menulis semula.",
+      "requestedIn": "Masa Masuk Diminta",
+      "requestedOut": "Masa Keluar Diminta",
+      "administratorReason": "Sebab pembetulan / kelulusan pentadbir",
+      "correctApprove": "Betulkan & luluskan",
+      "approvalHelp": "Hanya peringkat kelulusan anda yang dibenarkan dilengkapkan. Pentadbir sebenar direkodkan.",
+      "application": "Permohonan sedia ada",
+      "amendment": "Pindaan pentadbir",
+      "viewApplication": "Lihat sejarah permohonan",
+      "kind": {
+        "workday": "Hari Biasa",
+        "off_day": "Hari Tidak Bekerja",
+        "rest_day": "Hari Rehat",
+        "holiday": "Cuti Umum"
+      }
+    }
   },
   "org": {
     "title": "Carta organisasi",
@@ -17675,9 +17729,11 @@
       "clockRemoved": "Rekod waktu dialih keluar daripada set berkuat kuasa",
       "clockRestored": "Rekod waktu asal dipulihkan",
       "clockAdded": "Rekod waktu dibetulkan ditambah",
-      "recorded": "Tindakan permohonan direkodkan"
+      "recorded": "Tindakan permohonan direkodkan",
+      "administratorAmended": "Pindaan pentadbir"
     },
-    "hrApprover": "Pentadbir HR"
+    "hrApprover": "Pentadbir HR",
+    "administratorAmendment": "Pindaan pentadbir"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",

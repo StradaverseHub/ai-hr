@@ -3109,6 +3109,13 @@
       "when": 1791900000016,
       "tag": "0536_web_clock_optional_location",
       "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1791900000017,
+      "tag": "0537_attendance_day_adjustments",
+      "breakpoints": true
     }
   ]
 }

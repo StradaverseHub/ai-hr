@@ -43,6 +43,7 @@ vi.mock('next-intl/server', () => ({
   getLocale: async () => 'en',
 }));
 vi.mock('next/navigation', () => ({
+  useRouter:()=>({refresh:()=>{}}),
   redirect: () => {
     throw new Error('NEXT_REDIRECT');
   },

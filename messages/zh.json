@@ -3429,12 +3429,66 @@
       "duplicate": "相同时间和方向的打卡已在使用中。",
       "discard": "放弃未保存的打卡更改？",
       "legacy": "历史打卡",
-      "summary": "考勤汇总"
+      "summary": "考勤汇总",
+      "administratorAmendment": "管理员修订"
     },
     "clockDataChanged": "打卡数据已更改。提交或批准更正前请重新加载此日期。",
     "clockDataPayrollClosed": "此日期已纳入已关闭的薪资批次。请先重新开启薪资批次再进行更正。",
     "clockDataPending": "已保存为更正申请，但尚未生效。请在审批中查看；您不能批准自己的考勤更正。",
-    "clockEvidenceLocationUnavailable": "未记录位置 — 位置信息不可用"
+    "clockEvidenceLocationUnavailable": "未记录位置 — 位置信息不可用",
+    "dayEdit": {
+      "reason": "变更原因",
+      "payrollConsent": "我理解涵盖此日期的已处理工资将被标记为需要重新计算。",
+      "closed": "此日期已纳入已关闭的工资批次。请先重新打开工资批次再进行更正。",
+      "self": "您的出勤必须由另一位获授权管理员更正或批准。",
+      "shift": "此日期的班次",
+      "automaticSchedule": "自动 — 使用该日期的排班",
+      "currentShift": "当前分配班次",
+      "dayType": "日期类型",
+      "onLeave": "休假中",
+      "manageLeave": "管理休假",
+      "leaveOwner": "休假（包括部分日休假）控制此日期，此编辑器不能替代休假记录。",
+      "beforeAfter": "当前：{before} → 拟议：{after}",
+      "saved": "当日更正已保存并重新计算。",
+      "dateOnly": "仅适用于此员工和此日期。",
+      "saveSchedule": "保存当日变更",
+      "completeDay": "设置手动加班前需有完整的上班和下班时间。现有手动行仍可恢复为自动。",
+      "approved": "现有已批准加班：{minutes}。自动模式保留此批准，手动行单独保留。",
+      "otRow": "已配置加班行",
+      "calculated": "计算结果",
+      "method": "计算方式",
+      "manualMinutes": "手动分钟数",
+      "effective": "生效结果",
+      "flat": "固定加班",
+      "band": "{from}–{to} 分钟",
+      "unlimited": "无上限",
+      "orphan": "此行已不在配置中。请先恢复为自动，再重新计算。",
+      "original": "此手动值于 {date} 记录，当时计算为 {minutes}。",
+      "auto": "自动",
+      "manual": "手动覆盖",
+      "resetAuto": "将此行恢复为自动",
+      "manualHelp": "请输入整数分钟。自动仅移除所选手动值。原始计算与所有变更保留在历史中。",
+      "saveOvertime": "保存加班变更",
+      "history": "当日更正历史",
+      "administrator": "管理员",
+      "pendingStage": "更正已保存，仍有其他审批阶段待完成。",
+      "approvedSaved": "现有申请已获批准。",
+      "frozenStage": "先前决定或分阶段时钟记录请求保持不变。此操作审核现有申请，不重写请求。",
+      "requestedIn": "申请上班时间",
+      "requestedOut": "申请下班时间",
+      "administratorReason": "管理员更正 / 审批原因",
+      "correctApprove": "更正并批准",
+      "approvalHelp": "仅完成您获授权的审批阶段，并记录实际管理员。",
+      "application": "现有申请",
+      "amendment": "管理员修订",
+      "viewApplication": "查看申请历史",
+      "kind": {
+        "workday": "正常工作日",
+        "off_day": "非工作日",
+        "rest_day": "休息日",
+        "holiday": "公共假日"
+      }
+    }
   },
   "org": {
     "title": "组织架构图",
@@ -17675,9 +17729,11 @@
       "clockRemoved": "打卡记录已从生效记录中移除",
       "clockRestored": "原始打卡记录已恢复",
       "clockAdded": "已添加更正的打卡记录",
-      "recorded": "已记录申请操作"
+      "recorded": "已记录申请操作",
+      "administratorAmended": "管理员修订"
     },
-    "hrApprover": "人事管理员"
+    "hrApprover": "人事管理员",
+    "administratorAmendment": "管理员修订"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

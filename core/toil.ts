@@ -3745,3 +3745,10 @@ export async function closeReplacementLeaveYear(
     return { ...agg, alreadyClosed: false, carriedForward };
   });
 }
+
+
+/** Attendance cannot rewrite the evidence of a credit still owned by Leave Credits. */
+export async function assertNoDependentAttendanceCreditTx(tx:Tx,employmentId:string,date:string){
+  const [credit]=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,employmentId),eq(toilAccrual.workedDate,date),ne(toilAccrual.status,'reversed'))).limit(1);
+  if(credit)throw new Error('This day has a dependent Leave Credit. Review and reverse that credit through Leave Credits before correcting this attendance day.');
+}
