@@ -34,7 +34,7 @@ export const policySchema = z.object({
   windows:z.partialRecord(z.enum(windowCells),z.object({opensAt:z.iso.datetime({offset:true}).nullable(),closesAt:z.iso.datetime({offset:true}).nullable()}).refine(w=>!w.opensAt||!w.closesAt||Date.parse(w.opensAt)<Date.parse(w.closesAt),'The window must close after it opens.')),
   aBands:z.tuple([finite,finite,finite,finite,finite]),
   bBands:z.array(z.object({companyId:z.uuid(),variant:z.enum(['base','excellence']).optional(),minima:z.tuple([finite,finite,finite,finite,finite])})).max(200),
-  lowMaxPct:finite.min(0).max(100),midMaxPct:finite.min(0).max(100),minValid:z.number().int().min(1).max(30),
+  lowMaxPct:finite.min(0).max(100),midMaxPct:finite.min(0).max(100),panelTarget:z.number().int().min(1).max(20).default(5),minValid:z.number().int().min(1).max(30),
   weights:z.record(z.string().min(1).max(30),z.number().int().min(0).max(10000)), // 360 basis points; rest is competency
   framework:z.array(z.object({gradeMin:z.number().int(),gradeMax:z.number().int(),letters:z.array(z.string().min(1).max(30)),statements:z.array(statementSchema).min(1).max(200)})).min(1).max(30),
   profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),jobTitle:z.string().max(300).optional(),department:z.string().max(300).optional(),track:z.string().max(300).optional(),sector:z.string().max(300).optional(),active:z.boolean().optional(),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).max(200)})).max(1000),
@@ -45,6 +45,7 @@ export const policySchema = z.object({
   curveToleranceMode:z.enum(['people','percent']).default('people'),
   curveTolerancePct:finite.min(0).max(100),curveTolerancePeople:z.number().int().min(1).max(100),curveStrict:z.boolean(),
 }).superRefine((v,c)=>{
+  if(v.minValid>v.panelTarget)c.addIssue({code:'custom',message:'The valid response minimum cannot exceed the assessor panel size.'});
   if(v.lowMaxPct>=v.midMaxPct)c.addIssue({code:'custom',message:'Potential cutoffs must increase.'});
   for(const minima of [v.aBands,...v.bBands.map(b=>b.minima)])if(minima.some((n,i)=>i>0&&n<=minima[i-1]))c.addIssue({code:'custom',message:'Performance band cutoffs must increase.'});
   if(new Set(v.bBands.map(b=>b.companyId)).size!==v.bBands.length)c.addIssue({code:'custom',message:'Configure one achievement scale per company.'});
@@ -56,7 +57,7 @@ export const policySchema = z.object({
 });
 export type Policy = z.infer<typeof policySchema>;
 export function defaultPolicy(framework: Policy['framework']):Policy {
-  return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpMaxGoals:6,idpRequireAllActions:false,curveToleranceMode:'people',curveTolerancePct:10,curveTolerancePeople:1,curveStrict:true};
+  return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,panelTarget:5,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpMaxGoals:6,idpRequireAllActions:false,curveToleranceMode:'people',curveTolerancePct:10,curveTolerancePeople:1,curveStrict:true};
 }
 export function ratedPerformance(policy:Policy):boolean {return policy.modules.pm&&policy.kind!=='quarterly';}
 export function assertWindow(policy:Policy,cell:WindowCell,now=new Date()):void {

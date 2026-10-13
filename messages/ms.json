@@ -17569,7 +17569,14 @@
       "edit": "Edit draf",
       "link": "Pautkan bukti",
       "unlink": "Nyahpaut"
-    }
+    },
+    "panelTarget": "Penilai maksimum setiap panel",
+    "panelControls": "Urus panel maklum balas",
+    "feedbackArchived": "Maklum balas diarkibkan",
+    "restoreFeedback": "Pulihkan maklum balas",
+    "archiveFeedback": "Arkibkan maklum balas",
+    "resetFeedback": "Buka semula penghantaran",
+    "feedbackResubmission": "Penghantaran anda dibuka semula. Jawapan terdahulu disimpan sebagai draf; semak dan hantar semula."
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

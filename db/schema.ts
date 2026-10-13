@@ -10029,6 +10029,7 @@ export const onehrPanel = pgTable('performance_onehr_panel', {
   reviewId: uuid('review_id').notNull().references(() => performanceReview.id), subjectEmploymentId: uuid('subject_employment_id').notNull().references(() => employment.id),
   peerEmploymentId: uuid('peer_employment_id').notNull().references(() => employment.id), relationship: text('relationship').notNull(),
   principleComments:jsonb('principle_comments').$type<Record<string,string>>().notNull().default({}),
+  resetAt:timestamp('reset_at',{withTimezone:true}),archiveReason:text('archive_reason'),
   answers: jsonb('answers'), remark: text('remark').notNull().default(''), submittedAt: timestamp('submitted_at',{withTimezone:true}), archivedAt: timestamp('archived_at',{withTimezone:true}),
 },t=>[index('performance_onehr_panel_review_idx').on(t.reviewId)]);
 export const onehrCalibration = pgTable('performance_onehr_calibration', {

@@ -17569,7 +17569,14 @@
       "edit": "Sửa bản nháp",
       "link": "Liên kết bằng chứng",
       "unlink": "Bỏ liên kết"
-    }
+    },
+    "panelTarget": "Số người đánh giá tối đa mỗi nhóm",
+    "panelControls": "Quản lý nhóm phản hồi",
+    "feedbackArchived": "Phản hồi đã lưu trữ",
+    "restoreFeedback": "Khôi phục phản hồi",
+    "archiveFeedback": "Lưu trữ phản hồi",
+    "resetFeedback": "Mở lại bài nộp",
+    "feedbackResubmission": "Bài nộp của bạn đã được mở lại. Câu trả lời trước được giữ dưới dạng nháp; hãy xem lại và nộp lần nữa."
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

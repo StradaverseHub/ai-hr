@@ -2,6 +2,7 @@
 -- Reserved when 1791900000016; journal only after the coordinated handoff.
 -- Apply strictly after 0531–0535. Historical assessment identifiers remain stable.
 ALTER TABLE performance_onehr_review ADD COLUMN profile_id uuid, ADD COLUMN profile_match text, ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
+ALTER TABLE performance_onehr_panel ADD COLUMN reset_at timestamptz, ADD COLUMN archive_reason text;
 ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(principle_comments)='object');
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
 ALTER TABLE performance_onehr_evidence ADD COLUMN details jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(details)='object' AND octet_length(details::text)<=5000), ADD COLUMN citations jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(citations)='array'), ADD COLUMN revision integer NOT NULL DEFAULT 1;
@@ -197,7 +198,14 @@ BEGIN
   END IF;
   IF TG_TABLE_NAME='performance_onehr_result' AND n-ARRAY['performance_released_at','potential_released_at','talent_released_at','feedback_released_at'] IS DISTINCT FROM o-ARRAY['performance_released_at','potential_released_at','talent_released_at','feedback_released_at'] THEN RAISE EXCEPTION 'A frozen assessment result is immutable'; END IF;
   IF TG_TABLE_NAME IN ('performance_onehr_panel','performance_onehr_calibration_entry') AND EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=rid) AND n IS DISTINCT FROM o THEN RAISE EXCEPTION 'Finalized assessment inputs are immutable'; END IF;
-  IF TG_TABLE_NAME='performance_onehr_panel' AND (o->>'submitted_at') IS NOT NULL AND n IS DISTINCT FROM o THEN RAISE EXCEPTION 'Submitted feedback is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_panel' THEN
+   IF (o->>'submitted_at') IS NOT NULL AND n IS DISTINCT FROM o AND (
+    NOT app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND app.is_self_person(e.person_id))
+    OR n-ARRAY['submitted_at','reset_at','archived_at','archive_reason'] IS DISTINCT FROM o-ARRAY['submitted_at','reset_at','archived_at','archive_reason']
+    OR n->'submitted_at' IS DISTINCT FROM o->'submitted_at' AND (n->>'submitted_at' IS NOT NULL OR n->>'reset_at' IS NULL OR o->>'archived_at' IS NOT NULL)
+   ) THEN RAISE EXCEPTION 'Submitted feedback is immutable except scoped HR archive, restore or reset-to-draft'; END IF;
+   IF (n->'reset_at' IS DISTINCT FROM o->'reset_at' OR n->'archive_reason' IS DISTINCT FROM o->'archive_reason') AND (NOT app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND app.is_self_person(e.person_id))) THEN RAISE EXCEPTION 'Only scoped HR may reset or archive feedback'; END IF;
+  END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=rid) THEN RAISE EXCEPTION 'A finalized assessment review is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_evidence' THEN
    IF n->'author_user_id' IS DISTINCT FROM o->'author_user_id' THEN RAISE EXCEPTION 'Evidence authorship is immutable'; END IF;
@@ -280,7 +288,7 @@ GRANT EXECUTE ON FUNCTION app.assessment_skill_history(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_feedback_card(wanted_request uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
+ SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
  FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
  WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL
 $$;
@@ -657,9 +665,9 @@ BEGIN
   ELSE RETURN NEW; END IF;
   PERFORM app.assessment_rating_record_capture(NEW.review_id,event);
  ELSIF TG_TABLE_NAME='performance_onehr_panel' THEN
-  IF NEW.submitted_at IS DISTINCT FROM OLD.submitted_at OR NEW.archived_at IS DISTINCT FROM OLD.archived_at THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'f360_submit'); END IF;
+  IF NEW.submitted_at IS NOT NULL AND NEW.submitted_at IS DISTINCT FROM OLD.submitted_at THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'f360_submit'); END IF;
  ELSIF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
-  IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at OR NEW.performance IS DISTINCT FROM OLD.performance OR NEW.potential IS DISTINCT FROM OLD.potential THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'calibration_lock_or_reopen'); END IF;
+  IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'calibration_lock_or_reopen'); END IF;
  ELSIF TG_TABLE_NAME='performance_onehr_calibration' THEN
   IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at OR NEW.locked_at IS DISTINCT FROM OLD.locked_at THEN
    FOR id IN SELECT review_id FROM performance_onehr_calibration_entry WHERE session_id=NEW.id AND tenant_id=NEW.tenant_id LOOP PERFORM app.assessment_rating_record_capture(id,'calibration_lock_or_reopen'); END LOOP;
@@ -743,3 +751,25 @@ CREATE FUNCTION app.assessment_evidence_people(wanted_evidence uuid[]) RETURNS j
 $$;
 REVOKE ALL ON FUNCTION app.assessment_evidence_people(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_evidence_people(uuid[]) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Changing a released panel's membership or resetting a submission revokes its anonymous report.
+-- A normal later submission remains live, matching the source release behavior.
+CREATE FUNCTION app.assessment_panel_release_changed() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE subject uuid; changed boolean; affected integer;
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RETURN NEW; END IF;
+ IF TG_OP='INSERT' THEN changed:=true; ELSE changed:=NEW.archived_at IS DISTINCT FROM OLD.archived_at OR OLD.submitted_at IS NOT NULL AND NEW.submitted_at IS NULL; END IF;
+ IF NOT changed THEN RETURN NEW; END IF;
+ UPDATE performance_assessment_release SET feedback_released_at=NULL,updated_by=app.current_user_id(),updated_at=now() WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id AND feedback_released_at IS NOT NULL;
+ GET DIAGNOSTICS affected=ROW_COUNT;
+ IF affected>0 THEN
+  UPDATE performance_onehr_result SET feedback_released_at=NULL WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id;
+  SELECT employment_id INTO subject FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id;
+  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+   VALUES(NEW.tenant_id,'onehr',NEW.review_id,'onehr.result-revoked','user',app.current_user_id(),subject,jsonb_build_object('component','feedback','reason','panel_changed'));
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_panel_release_changed() FROM PUBLIC;
+CREATE TRIGGER assessment_panel_release_changed AFTER INSERT OR UPDATE ON performance_onehr_panel FOR EACH ROW EXECUTE FUNCTION app.assessment_panel_release_changed();

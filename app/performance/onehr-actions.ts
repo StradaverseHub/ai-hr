@@ -32,7 +32,7 @@ export async function onehrCycleAction(f:FormData){
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,variant:str(f,`b.${c.id}.variant`)||'base',minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
-      await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
+      await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),panelTarget:num(f,'panelTarget'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
     }else if(str(f,'action')==='windows'){
       await perf.updateOnehrWindows(s,id,num(f,'revision'),readWindows(f),str(f,'reason'));
     }else if(str(f,'action')==='participation'){
@@ -71,6 +71,7 @@ export async function onehrReviewAction(f:FormData){
         break;
       case 'profile':await perf.assignAssessmentProfile(s,id,expected,str(f,'profileId'));break;
       case 'panel':await perf.assignOnehrPanel(s,id,expected,ids(f,'peerIds').map(employmentId=>({employmentId,relationship:str(f,`relationship.${employmentId}`)||'peer'})));break;
+      case 'panel-state':await perf.changeAssessmentPanelState(s,id,expected,str(f,'requestId'),z.enum(['archive','restore','reset']).parse(str(f,'operation')),str(f,'reason'));break;
       case 'reassign':await perf.reassignOnehrReviewer(s,id,expected,str(f,'reviewerEmploymentId'));break;
       case 'freeze':await perf.freezeOnehrReview(s,id,expected);break;
       case 'release':await perf.releaseOnehrResult(s,id,str(f,'component') as 'performance'|'potential'|'talent'|'feedback',str(f,'release')==='true');break;

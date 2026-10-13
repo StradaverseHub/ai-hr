@@ -189,6 +189,33 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     for(const row of rows)expect(Number(row.score)).toBeCloseTo(sourceGolden.scoring[row.id].expected,10);
     await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_kpi_score(1::numeric,'{}'::jsonb)`))).rejects.toThrow();
   });
+  it('preserves archived feedback, reopens submitted answers as a draft, and revokes changed reports',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    const [original]=await owner.db.select().from(schema.onehrPanel).where(and(eq(schema.onehrPanel.reviewId,reviewId),eq(schema.onehrPanel.peerEmploymentId,peers[0].employmentId)));
+    const before=(await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)!;
+    await expect(perf.changeAssessmentPanelState(mgr,reviewId,(await view(mgr)).revision,original.requestId,'archive')).rejects.toThrow(/administrator/);
+    await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'archive','Outside the intended assessment scope');
+    expect((await view(self)).anonymousFeedback).toBeNull();expect((await view(self)).peers).toEqual([]);
+    let [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,original.requestId));
+    expect(stored.answers).toEqual(original.answers);expect(stored.submittedAt).toEqual(original.submittedAt);expect(stored.archivedAt).not.toBeNull();
+    expect((await perf.onehrAssignments(peers[0].ctx)).feedback.some(f=>f.id===original.requestId)).toBe(false);
+    expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)).toEqual(before); // A stored sign-off is not recomputed on a panel edit.
+    await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'restore');
+    expect((await perf.getOnehrFeedback(peers[0].ctx,original.requestId)).submitted).toBe(true);
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'reset');
+    const draft=await perf.getOnehrFeedback(peers[0].ctx,original.requestId);
+    expect(draft).toMatchObject({submitted:false,answers:original.answers});expect(draft.resetAt).toBeTruthy();
+    expect((await view(self)).anonymousFeedback).toBeNull();
+    await perf.submitOnehrFeedback(peers[0].ctx,original.requestId,draft.answers!,'Reviewed the prior answers.');
+    [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,original.requestId));expect(stored.submittedAt).not.toBeNull();
+    expect((await view(self)).anonymousFeedback).toBeNull(); // Resubmission does not silently re-release.
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);expect((await view(self)).anonymousFeedback).not.toBeNull();
+    const notices=await withTenant(self,tx=>tx.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.result-revoked'))));
+    expect(notices).toHaveLength(2);expect(JSON.stringify(notices.map(n=>n.payload))).not.toMatch(/requestId|peerEmploymentId|answers/);
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    await expect(perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'reset')).rejects.toThrow(/finalized/);
+  });
   it('preserves the opening company and grade after the native employment changes company',async()=>{
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Original company cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
     const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination company'}).returning();

@@ -17569,7 +17569,14 @@
       "edit": "Edit draft",
       "link": "Link evidence",
       "unlink": "Unlink"
-    }
+    },
+    "panelTarget": "Maximum assessors per panel",
+    "panelControls": "Manage feedback panel",
+    "feedbackArchived": "Archived feedback",
+    "restoreFeedback": "Restore feedback",
+    "archiveFeedback": "Archive feedback",
+    "resetFeedback": "Reopen submission",
+    "feedbackResubmission": "Your submission was reopened. Your previous answers are kept as a draft; review them and submit again."
   },
   "allowanceV2": {
     "title": "Attendance Allowance",
