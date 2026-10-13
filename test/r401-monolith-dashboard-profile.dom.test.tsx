@@ -159,6 +159,8 @@ vi.mock('../app/me/actions', () => ({
   myWithdrawResignation: vi.fn(),
 }));
 vi.mock('../app/me/request-change-card', () => ({ RequestChangeCard: () => null, pendingProposedByKey: () => new Map() }));
+// This layout fixture replaces async server slots; correction behavior is tested separately.
+vi.mock('../app/me/readiness-work', () => ({ MyReadinessWork: () => null }));
 vi.mock('@/components/attendance-clock-button', () => ({
   AttendanceClockButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   LocationNotice: () => null,
