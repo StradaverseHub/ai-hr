@@ -87,19 +87,37 @@ function inspect(path:string,text:string,files:Map<string,string>):Module{
 
 /** Diagnostic strings cannot change module initialization. Only this proven case may bypass the
  * all-to-all edges introduced by pure re-export facades; namespace/dynamic consumers remain broad. */
-function initializationFree(path:string,text:string):boolean{
+function initializationFree(path:string,text:string,source=syntax(path,text)):boolean{
  let safe=true;
- const walk=(node:ts.Node)=>{if(ts.isFunctionLike(node))return;if(ts.isCallExpression(node)||ts.isNewExpression(node))safe=false;ts.forEachChild(node,walk);};
- walk(syntax(path,text));return safe;
+ const decorated=(node:ts.Node)=>ts.canHaveDecorators(node)&&!!ts.getDecorators(node)?.length;
+ const walk=(node:ts.Node)=>{
+  if(decorated(node))safe=false;
+  if(ts.isFunctionLike(node)){
+   if('name' in node&&node.name&&ts.isComputedPropertyName(node.name))safe=false;
+   if(node.parameters.some(decorated))safe=false;
+   return;
+  }
+  // These constructs can execute user code directly, through getters/coercion/iteration,
+  // or through transpiled JSX/decorator helpers while the module is being evaluated.
+  if(ts.isCallExpression(node)||ts.isNewExpression(node)||ts.isTaggedTemplateExpression(node)||ts.isAwaitExpression(node)
+   ||ts.isPropertyAccessExpression(node)||ts.isElementAccessExpression(node)||ts.isBinaryExpression(node)
+   ||ts.isPrefixUnaryExpression(node)||ts.isPostfixUnaryExpression(node)||ts.isDeleteExpression(node)
+   ||ts.isTemplateExpression(node)||ts.isComputedPropertyName(node)||ts.isObjectBindingPattern(node)||ts.isArrayBindingPattern(node)
+   ||ts.isSpreadElement(node)||ts.isSpreadAssignment(node)||ts.isForOfStatement(node)||ts.isForInStatement(node)||ts.isThrowStatement(node)
+   ||ts.isJsxElement(node)||ts.isJsxSelfClosingElement(node)||ts.isJsxFragment(node))safe=false;
+  ts.forEachChild(node,walk);
+ };
+ walk(source);return safe;
 }
 function diagnosticEdges(files:Map<string,string>,raw:Map<string,Module>):Map<string,Set<string>>{
  type Meta={pure:boolean;names:Set<string>;exports:{target:string;name:string|null;original:string|null}[];requests:Map<string,string[]|null>};
- const meta=new Map<string,Meta>();
+ const meta=new Map<string,Meta>(),initialization=new Map<string,boolean>();
  for(const [path,text]of files){
   if(!code(path)){meta.set(path,{pure:false,names:new Set(),exports:[],requests:new Map()});continue;}
   const sf=syntax(path,text),m:Meta={pure:false,names:new Set(),exports:[],requests:new Map()};
   const resolved=(spec:string)=>resolveSpecifier(spec,path,p=>files.get(p)??null);
   const request=(target:string,names:string[]|null)=>{const before=m.requests.get(target);m.requests.set(target,before===null||names===null?null:[...new Set([...(before??[]),...names])]);};
+  initialization.set(path,!initializationFree(path,text,sf));
   m.pure=sf.statements.length>0&&sf.statements.every(st=>ts.isEmptyStatement(st)||ts.isInterfaceDeclaration(st)||ts.isTypeAliasDeclaration(st)
     ||(ts.isImportDeclaration(st)&&!!st.importClause?.isTypeOnly)||(ts.isExportDeclaration(st)&&!!st.moduleSpecifier));
   for(const st of sf.statements){
@@ -163,9 +181,16 @@ function diagnosticEdges(files:Map<string,string>,raw:Map<string,Module>):Map<st
   for(const e of m.exports)if(e.name===null||e.name===name){const providers=named(e.target,e.original??name,new Set(seen));if(providers.size){result.add(path);for(const p of providers)result.add(p);}}
   return result;
  };
+ const initializers=(path:string)=>{
+  const effects=new Set<string>(),seen=new Set<string>();
+  const visit=(p:string)=>{if(seen.has(p))return;seen.add(p);if(initialization.get(p))effects.add(p);for(const dep of raw.get(p)?.deps??[])visit(dep);};
+  visit(path);effects.delete(path);return effects;
+ };
  const result=new Map<string,Set<string>>();
  for(const [path,module]of raw){
-  const m=meta.get(path);if(m?.pure){result.set(path,new Set());continue;}
+  // A facade evaluates every exported module, including setup in its transitive imports.
+  // Keep those actual initialization owners even when unused named exports are bypassed.
+  const m=meta.get(path);if(m?.pure){result.set(path,initializers(path));continue;}
   const deps=new Set(module.deps);
   for(const target of module.deps)if(meta.get(target)?.pure){
    const names=m?.requests.get(target);

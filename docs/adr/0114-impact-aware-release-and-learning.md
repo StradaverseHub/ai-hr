@@ -17,8 +17,11 @@ A real-repository shadow measurement exposed all-to-all facade edges: a clock-me
 799 of 803 DB files. Diagnostic-only edits with unchanged initialization now resolve named exports
 through pure re-export facades. Explicit destructuring of literal dynamic loads is resolved the same way as named imports.
 Namespace/non-destructured consumers, uncertain readers and functional edits
-retain broad module reach. The c728-based shadow check selected 363 of 803 DB files and retained the historically failing
-clock accuracy test. Source-reading uncertainty remains a deliberately broad fallback.
+retain broad module reach. The current shadow check selects 364 of 804 DB files and retains the historically failing
+clock accuracy test. Facades retain every transitive initialization owner; computed names, decorators,
+tagged expressions, getters/coercion/iteration and other setup effects prevent unsafe narrowing.
+Five initialization regressions failed on the old selector before passing with this rule.
+Source-reading uncertainty remains a deliberately broad fallback.
 
 The deterministic selector parses static imports, re-exports, literal dynamic loads, mocks and the
 server-only test alias. It follows old and new edges so removals retain their consumers. It adds

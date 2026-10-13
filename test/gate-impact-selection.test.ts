@@ -98,3 +98,30 @@ describe('diagnostic-only edits through pure facades',()=>{
   const functional={...c,headText:"export function clock(){return false;}"};files.set(c.path,functional.headText);expect(planImpact([functional],files).run).toContain('test/other.test.ts');
  });
 });
+
+
+describe('module evaluation is retained when narrowing diagnostic-only edits',()=>{
+ const fixture=()=>{
+  const files=new Map([
+   ['lib/clock.ts',"export function clock(){throw new Error('accuracy');}"],
+   ['lib/other.ts','export const other=1;'],
+   ['lib/service.ts',"export * from './clock';export * from './other';"],
+   ['test/clock.test.ts',"import {clock} from '../lib/service';"],
+   ['test/other.test.ts',"import {other} from '../lib/service';"],
+  ]);return {files,c:change('lib/clock.ts',"export function clock(){throw new Error('location');}",files.get('lib/clock.ts')!)};
+ };
+ it.each([false,true])('retains a facade provider initialization effect, including a transitive dependency (%s)',transitive=>{
+  const {files,c}=fixture();files.set('lib/setup.ts',"import {clock} from './clock';try{clock();}catch{}");
+  files.set('lib/init.ts',transitive?"import './setup';export const started=true;":"import {clock} from './clock';try{clock();}catch{}export const started=true;");
+  files.set('lib/service.ts',files.get('lib/service.ts')+"export * from './init';");
+  expect(planImpact([c],files).run).toContain('test/other.test.ts');
+ });
+ it.each([
+  'export class Boot { [clock()](){} }',
+  'function decorate(c:any){clock();return c;} @decorate export class Boot {}',
+  'function tag(){return clock();} export const boot=tag`start`;',
+ ])('keeps broad reach for computed names, decorators and tagged initialization: %s',initialization=>{
+  const {files,c}=fixture();c.baseText+='\n'+initialization;c.headText+='\n'+initialization;files.set(c.path,c.headText!);
+  const plan=planImpact([c],files);expect(plan.barrelMode).toBe('module');expect(plan.run).toContain('test/other.test.ts');
+ });
+});
