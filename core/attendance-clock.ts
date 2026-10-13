@@ -31,7 +31,7 @@ function clockLocation(p: Pick<ClockIntent, 'lat' | 'lng' | 'accuracy'>) {
   if (p.lat === null && p.lng === null && p.accuracy === null) return null;
   if (p.lat == null || p.lng == null || p.accuracy == null ||
       ![p.lat, p.lng, p.accuracy].every(Number.isFinite) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180 || p.accuracy < 0) {
-    throw new ClockLocationError('Supply a complete valid location or explicitly leave it unavailable');
+    throw new ClockLocationError('Supply a complete valid location and accuracy, or explicitly leave them unavailable');
   }
   return { lat: p.lat, lng: p.lng, accuracy: p.accuracy };
 }
