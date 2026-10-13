@@ -17334,7 +17334,8 @@
       "modules": {
         "pm": "Performance Management",
         "tm": "Talent Management",
-        "idp": "Individual Development Plan"
+        "idp": "Individual Development Plan",
+        "cal": "Calibration"
       },
       "views": {
         "mine": "Mine",
@@ -17358,8 +17359,12 @@
         "competency": "Competency assessment",
         "career": "Career plan",
         "feedback": "360 feedback",
-        "department_review": "Department review",
-        "calibration": "Calibration"
+        "department_review": "Performance review",
+        "calibration": "Performance calibration",
+        "department_potential_review": "Potential review",
+        "potential_calibration": "Potential calibration",
+        "talent_box": "Talent Box",
+        "group_calibration": "Group calibration"
       },
       "parts": "Assessment part",
       "toDo": "To do",
@@ -17370,7 +17375,8 @@
         "justification": "Justification",
         "confirm": "Confirm"
       },
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "departmentReview": "Department Review"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17742,7 +17748,60 @@
         "add": "New assessors",
         "short": "No eligible additions"
       }
-    }
+    },
+    "progressAdmin": {
+      "title": "Review progress",
+      "help": "Track completion across the cycle. Private draft wording, conversations and rater answers remain private. CSV exports follow the selected filters.",
+      "export": "Export CSV",
+      "assessments": "Employee reviews",
+      "assessors": "360 assessors",
+      "module": "Review part",
+      "search": "Search employee",
+      "state": "Status",
+      "businessGroup": "Business group",
+      "company": "Company",
+      "department": "Department",
+      "assigned": "Completed / assigned",
+      "completed": "Completed / total",
+      "lastLogin": "Last recorded login (MYT)",
+      "noLogin": "No recorded login",
+      "empty": "No people match these filters.",
+      "page": "Page {page} of {pages} · {total} people",
+      "states": {
+        "all": "All",
+        "pending": "Not started",
+        "active": "In progress",
+        "done": "Done"
+      },
+      "modules": {
+        "pm": "Performance",
+        "competency": "Competency",
+        "feedback": "360 feedback",
+        "calibration": "Calibration",
+        "career": "Career plan"
+      },
+      "labels": {
+        "checked_in": "Checked in",
+        "checkin_pending": "Check-in pending",
+        "approved": "Approved",
+        "awaiting_approval": "Awaiting approval",
+        "not_submitted": "Not submitted",
+        "not_set": "No KPIs set",
+        "reviewed": "Reviewed",
+        "awaiting_review": "Awaiting manager review",
+        "not_assigned": "No competencies assigned",
+        "feedback_complete": "All feedback submitted",
+        "feedback_pending": "Feedback pending",
+        "panel_missing": "No panel assigned",
+        "calibrated": "Calibrated",
+        "under_review": "Under review",
+        "not_started": "Not started",
+        "plan_closed": "Plan closed",
+        "plan_shared": "Shared with manager",
+        "not_shared": "Not shared"
+      }
+    },
+    "potentialReference": "Potential reference distribution"
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

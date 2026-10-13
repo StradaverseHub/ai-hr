@@ -1,21 +1,24 @@
 import { getTranslations } from 'next-intl/server';
 import type { getOnehrCalibration } from '@/packs/performance/service';
-import { pmBands, potentialBands, talentCategory, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
+import { pmBands, potentialBands, potentialReferenceCurve, talentCategory, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { onehrCalibrationAction } from '../onehr-actions';
+import type { WorkspaceAxis } from '@/packs/performance/onehr/workspace-model';
 import { TalentGrid } from './talent-grid';
-export async function AssessmentCalibrationView({v,error,embedded=false,returnTo}:{v:Awaited<ReturnType<typeof getOnehrCalibration>>;error?:string;embedded?:boolean;returnTo?:string}){
+export async function AssessmentCalibrationView({v,error,embedded=false,returnTo,axis='both'}:{v:Awaited<ReturnType<typeof getOnehrCalibration>>;error?:string;embedded?:boolean;returnTo?:string;axis?:WorkspaceAxis}){
   const sessionId=v.session.id,t=await getTranslations('onehr');
   const fields=<><input type="hidden" name="sessionId" value={sessionId}/><input type="hidden" name="revision" value={v.session.revision}/>{returnTo&&<input type="hidden" name="returnTo" value={returnTo}/>}</>;
   const axisSelect=(pm:boolean,pot:boolean)=><Field label={t('assessmentAxis')}><select name="axis" defaultValue={pm&&pot?'both':pm?'performance':'potential'} className={inputCls}>{pm&&pot&&<option value="both">{t('bothAxes')}</option>}{pm&&<option value="performance">{t('performance')}</option>}{pot&&<option value="potential">{t('potential')}</option>}</select></Field>;
   const groupPerformance=embedded&&v.session.tier==='group';
-  const pmOpen=v.axes.pm&&!v.session.performanceLockedAt,potOpen=v.axes.pot&&!groupPerformance&&!v.session.potentialLockedAt;
+  const axes={pm:v.axes.pm&&axis!=='potential',pot:v.axes.pot&&axis!=='performance'};
+  const pmOpen=axes.pm&&!v.session.performanceLockedAt,potOpen=axes.pot&&!groupPerformance&&!v.session.potentialLockedAt;
   return <div className={embedded?"space-y-5":"mx-auto max-w-5xl space-y-5"}>
     {!embedded&&<PageHeader back={{href:'/me/performance',label:t('back')}} title={`${v.session.name} · ${v.cycle.name}`} description={t(`tiers.${v.session.tier}`)}/>}
     <ErrorBanner message={error}/><p className="text-sm text-muted-foreground">{t('calibrationHelp')}</p>
-    {v.reference&&<Card className="space-y-2 p-5"><h2 className="font-semibold">{t('referenceCurve')}</h2><div className="flex flex-wrap gap-5">{pmBands.map(b=><p key={b}>{b}: {v.reference![b]}%</p>)}</div></Card>}
-    {!groupPerformance&&v.modules.pm&&v.modules.tm&&<TalentGrid rows={v.rows.map(r=>({id:r.entry.reviewId,name:r.name,performance:(r.entry.performance??r.currentPerformance) as PMBand|null,potential:(r.entry.potential??r.currentPotential) as PotentialBand|null}))} labels={{title:t('talentGrid'),layout:t('gridLayout'),performance:t('performance'),potential:t('potential'),low:t('gridLow'),mid:t('gridMid'),high:t('gridHigh'),unrated:t('gridUnrated')}}/>}
+    {axes.pm&&v.reference&&<Card className="space-y-2 p-5"><h2 className="font-semibold">{t('referenceCurve')}</h2><div className="flex flex-wrap gap-5">{pmBands.map(b=><p key={b}>{b}: {v.reference![b]}%</p>)}</div></Card>}
+    {axes.pot&&!groupPerformance&&<Card className="space-y-2 p-5"><h2 className="font-semibold">{t('potentialReference')}</h2><div className="flex flex-wrap gap-5">{potentialBands.map(b=><p key={b}>{b}: {potentialReferenceCurve[b]}%</p>)}</div></Card>}
+    {!groupPerformance&&axis==='both'&&v.modules.pm&&v.modules.tm&&<TalentGrid rows={v.rows.map(r=>({id:r.entry.reviewId,name:r.name,performance:(r.entry.performance??r.currentPerformance) as PMBand|null,potential:(r.entry.potential??r.currentPotential) as PotentialBand|null}))} labels={{title:t('talentGrid'),layout:t('gridLayout'),performance:t('performance'),potential:t('potential'),low:t('gridLow'),mid:t('gridMid'),high:t('gridHigh'),unrated:t('gridUnrated')}}/>}
     {v.rows.map(r=>{
       const pm=pmOpen&&(!r.entry.performanceLockedAt||v.session.tier==='final'),pot=potOpen&&(!r.entry.potentialLockedAt||v.session.tier==='final');
       const editable=!r.finalized&&!v.session.lockedAt&&(pm||pot);
@@ -24,7 +27,7 @@ export async function AssessmentCalibrationView({v,error,embedded=false,returnTo
       const ownNomination=r.entry.nominations.find(n=>n.userId===v.actorUserId);
       return <Card id={`assessment-${r.entry.reviewId}`} key={r.entry.id} className="space-y-4 p-5">
         <h2 className="font-semibold">{r.name} · {r.grade}</h2>
-        {v.canReopen&&!r.finalized&&(v.axes.pm&&(v.session.performanceLockedAt||r.entry.performanceLockedAt)||v.axes.pot&&(v.session.potentialLockedAt||r.entry.potentialLockedAt))&&<details><summary className="cursor-pointer text-sm font-medium">{t('reopenCalibration')}</summary><form action={onehrCalibrationAction} className="mt-3 space-y-3">{fields}<input type="hidden" name="action" value="unlock"/><input type="hidden" name="reviewId" value={r.entry.reviewId}/>{axisSelect(v.axes.pm&&!!(v.session.performanceLockedAt||r.entry.performanceLockedAt),v.axes.pot&&!!(v.session.potentialLockedAt||r.entry.potentialLockedAt))}<p className="text-sm text-muted-foreground">{t('reopenCalibrationHelp')}</p><Field label={t('reason')}><textarea required name="reason" maxLength={4000} className={inputCls}/></Field><ConfirmSubmit description={t('reopenCalibrationHelp')} variant="secondary">{t('reopenCalibration')}</ConfirmSubmit></form></details>}
+        {v.canReopen&&!r.finalized&&(axes.pm&&(v.session.performanceLockedAt||r.entry.performanceLockedAt)||axes.pot&&(v.session.potentialLockedAt||r.entry.potentialLockedAt))&&<details><summary className="cursor-pointer text-sm font-medium">{t('reopenCalibration')}</summary><form action={onehrCalibrationAction} className="mt-3 space-y-3">{fields}<input type="hidden" name="action" value="unlock"/><input type="hidden" name="reviewId" value={r.entry.reviewId}/>{axisSelect(axes.pm&&!!(v.session.performanceLockedAt||r.entry.performanceLockedAt),axes.pot&&!!(v.session.potentialLockedAt||r.entry.potentialLockedAt))}<p className="text-sm text-muted-foreground">{t('reopenCalibrationHelp')}</p><Field label={t('reason')}><textarea required name="reason" maxLength={4000} className={inputCls}/></Field><ConfirmSubmit description={t('reopenCalibrationHelp')} variant="secondary">{t('reopenCalibration')}</ConfirmSubmit></form></details>}
         <p className="text-sm">{t('managerAssessment')}: {r.managerPerformance??'—'} · {t('managerPotential')}: {r.managerPotential??'—'}</p>
         <p className="text-sm">{t('effectiveAssessment')}: {r.currentPerformance??'—'} · {r.currentPotential??'—'}</p>
         {pinsOpen&&['bu','bg','group','final'].includes(v.session.tier)&&<form action={onehrCalibrationAction} className="flex flex-wrap items-end gap-3">{fields}<input type="hidden" name="action" value="talent-save"/><input type="hidden" name="kind" value="specialReward"/><input type="hidden" name="talentRevision" value={r.talent.revision}/><input type="hidden" name="reviewId" value={r.entry.reviewId}/><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="selected" defaultChecked={r.entry.specialReward}/>{t('specialReward')}</label><Field label={t('reason')}><textarea name="reason" defaultValue={r.entry.specialRewardReason} maxLength={2000} className={inputCls}/></Field><Button type="submit" variant="secondary">{t('save')}</Button></form>}

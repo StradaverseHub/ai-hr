@@ -17334,7 +17334,8 @@
       "modules": {
         "pm": "Performance Management",
         "tm": "Talent Management",
-        "idp": "Individual Development Plan"
+        "idp": "Individual Development Plan",
+        "cal": "அளவுத்திருத்தம்"
       },
       "views": {
         "mine": "Mine",
@@ -17358,8 +17359,12 @@
         "competency": "Competency assessment",
         "career": "Career plan",
         "feedback": "360 feedback",
-        "department_review": "Department review",
-        "calibration": "Calibration"
+        "department_review": "செயல்திறன் மதிப்பாய்வு",
+        "calibration": "செயல்திறன் அளவுத்திருத்தம்",
+        "department_potential_review": "திறன் மதிப்பாய்வு",
+        "potential_calibration": "திறன் அளவுத்திருத்தம்",
+        "talent_box": "திறமையாளர் பெட்டி",
+        "group_calibration": "குழு அளவுத்திருத்தம்"
       },
       "parts": "Assessment part",
       "toDo": "To do",
@@ -17370,7 +17375,8 @@
         "justification": "Justification",
         "confirm": "Confirm"
       },
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "departmentReview": "துறை மதிப்பாய்வு"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17742,7 +17748,60 @@
         "add": "புதிய மதிப்பீட்டாளர்கள்",
         "short": "தகுதியான கூடுதல் நபர்கள் இல்லை"
       }
-    }
+    },
+    "progressAdmin": {
+      "title": "மதிப்பாய்வு முன்னேற்றம்",
+      "help": "இந்தச் சுழற்சியின் நிறைவைப் பார்வையிடுங்கள். தனிப்பட்ட வரைவு உரை, உரையாடல்கள் மற்றும் மதிப்பீட்டாளர் பதில்கள் தனிப்பட்டவையாக இருக்கும். CSV ஏற்றுமதி தேர்ந்தெடுத்த வடிகட்டிகளைப் பின்பற்றும்.",
+      "export": "CSV ஏற்றுமதி",
+      "assessments": "பணியாளர் மதிப்பாய்வுகள்",
+      "assessors": "360 மதிப்பீட்டாளர்கள்",
+      "module": "மதிப்பாய்வுப் பகுதி",
+      "search": "பணியாளரைத் தேடு",
+      "state": "நிலை",
+      "businessGroup": "வணிகக் குழு",
+      "company": "நிறுவனம்",
+      "department": "துறை",
+      "assigned": "முடிந்தவை / ஒதுக்கப்பட்டவை",
+      "completed": "முடிந்தவை / மொத்தம்",
+      "lastLogin": "கடைசியாகப் பதிவான உள்நுழைவு (MYT)",
+      "noLogin": "உள்நுழைவு பதிவு இல்லை",
+      "empty": "இந்த வடிகட்டிகளுக்குப் பொருந்தும் நபர்கள் இல்லை.",
+      "page": "பக்கம் {page} / {pages} · {total} நபர்கள்",
+      "states": {
+        "all": "அனைத்தும்",
+        "pending": "தொடங்கவில்லை",
+        "active": "செயல்பாட்டில்",
+        "done": "முடிந்தது"
+      },
+      "modules": {
+        "pm": "செயல்திறன்",
+        "competency": "திறன்",
+        "feedback": "360 கருத்து",
+        "calibration": "அளவுத்திருத்தம்",
+        "career": "தொழில் திட்டம்"
+      },
+      "labels": {
+        "checked_in": "புதுப்பிக்கப்பட்டது",
+        "checkin_pending": "புதுப்பிப்பு நிலுவையில்",
+        "approved": "அங்கீகரிக்கப்பட்டது",
+        "awaiting_approval": "அங்கீகாரத்திற்காகக் காத்திருக்கிறது",
+        "not_submitted": "சமர்ப்பிக்கவில்லை",
+        "not_set": "KPI அமைக்கப்படவில்லை",
+        "reviewed": "மதிப்பாய்வு செய்யப்பட்டது",
+        "awaiting_review": "மேலாளர் மதிப்பாய்விற்காகக் காத்திருக்கிறது",
+        "not_assigned": "திறன்கள் ஒதுக்கப்படவில்லை",
+        "feedback_complete": "அனைத்துக் கருத்துகளும் சமர்ப்பிக்கப்பட்டன",
+        "feedback_pending": "கருத்து நிலுவையில்",
+        "panel_missing": "குழு ஒதுக்கப்படவில்லை",
+        "calibrated": "அளவுத்திருத்தப்பட்டது",
+        "under_review": "மதிப்பாய்வில்",
+        "not_started": "தொடங்கவில்லை",
+        "plan_closed": "திட்டம் மூடப்பட்டது",
+        "plan_shared": "மேலாளருடன் பகிரப்பட்டது",
+        "not_shared": "பகிரப்படவில்லை"
+      }
+    },
+    "potentialReference": "திறன் குறிப்பு விநியோகம்"
   },
   "allowanceV2": {
     "title": "வருகைப் படி",

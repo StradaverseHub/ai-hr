@@ -17334,7 +17334,8 @@
       "modules": {
         "pm": "Performance Management",
         "tm": "Talent Management",
-        "idp": "Individual Development Plan"
+        "idp": "Individual Development Plan",
+        "cal": "การปรับเทียบ"
       },
       "views": {
         "mine": "Mine",
@@ -17358,8 +17359,12 @@
         "competency": "Competency assessment",
         "career": "Career plan",
         "feedback": "360 feedback",
-        "department_review": "Department review",
-        "calibration": "Calibration"
+        "department_review": "การทบทวนผลงาน",
+        "calibration": "การปรับเทียบผลงาน",
+        "department_potential_review": "การทบทวนศักยภาพ",
+        "potential_calibration": "การปรับเทียบศักยภาพ",
+        "talent_box": "ตารางบุคลากร",
+        "group_calibration": "การปรับเทียบกลุ่ม"
       },
       "parts": "Assessment part",
       "toDo": "To do",
@@ -17370,7 +17375,8 @@
         "justification": "Justification",
         "confirm": "Confirm"
       },
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "departmentReview": "การทบทวนแผนก"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17742,7 +17748,60 @@
         "add": "ผู้ประเมินใหม่",
         "short": "ไม่มีผู้มีสิทธิ์เพิ่มเติม"
       }
-    }
+    },
+    "progressAdmin": {
+      "title": "ความคืบหน้าการทบทวน",
+      "help": "ติดตามการดำเนินการในรอบนี้ ข้อความร่างส่วนตัว บทสนทนา และคำตอบของผู้ประเมินยังคงเป็นส่วนตัว ไฟล์ CSV ใช้ตัวกรองที่เลือก",
+      "export": "ส่งออก CSV",
+      "assessments": "การทบทวนพนักงาน",
+      "assessors": "ผู้ประเมิน 360",
+      "module": "ส่วนการทบทวน",
+      "search": "ค้นหาพนักงาน",
+      "state": "สถานะ",
+      "businessGroup": "กลุ่มธุรกิจ",
+      "company": "บริษัท",
+      "department": "แผนก",
+      "assigned": "เสร็จแล้ว / มอบหมาย",
+      "completed": "เสร็จแล้ว / ทั้งหมด",
+      "lastLogin": "การเข้าสู่ระบบที่บันทึกล่าสุด (MYT)",
+      "noLogin": "ไม่มีบันทึกการเข้าสู่ระบบ",
+      "empty": "ไม่มีบุคคลที่ตรงกับตัวกรอง",
+      "page": "หน้า {page} จาก {pages} · {total} คน",
+      "states": {
+        "all": "ทั้งหมด",
+        "pending": "ยังไม่เริ่ม",
+        "active": "กำลังดำเนินการ",
+        "done": "เสร็จแล้ว"
+      },
+      "modules": {
+        "pm": "ผลงาน",
+        "competency": "สมรรถนะ",
+        "feedback": "ข้อเสนอแนะ 360",
+        "calibration": "การปรับเทียบ",
+        "career": "แผนอาชีพ"
+      },
+      "labels": {
+        "checked_in": "อัปเดตแล้ว",
+        "checkin_pending": "รอการอัปเดต",
+        "approved": "อนุมัติแล้ว",
+        "awaiting_approval": "รออนุมัติ",
+        "not_submitted": "ยังไม่ส่ง",
+        "not_set": "ยังไม่ได้กำหนด KPI",
+        "reviewed": "ทบทวนแล้ว",
+        "awaiting_review": "รอผู้จัดการทบทวน",
+        "not_assigned": "ยังไม่มอบหมายสมรรถนะ",
+        "feedback_complete": "ส่งข้อเสนอแนะทั้งหมดแล้ว",
+        "feedback_pending": "รอข้อเสนอแนะ",
+        "panel_missing": "ยังไม่มอบหมายคณะผู้ประเมิน",
+        "calibrated": "ปรับเทียบแล้ว",
+        "under_review": "กำลังทบทวน",
+        "not_started": "ยังไม่เริ่ม",
+        "plan_closed": "ปิดแผนแล้ว",
+        "plan_shared": "แชร์กับผู้จัดการแล้ว",
+        "not_shared": "ยังไม่แชร์"
+      }
+    },
+    "potentialReference": "การกระจายอ้างอิงศักยภาพ"
   },
   "allowanceV2": {
     "title": "เบี้ยขยันตามการเข้างาน",

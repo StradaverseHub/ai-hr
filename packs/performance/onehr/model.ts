@@ -6,6 +6,7 @@ export const pmBands = ['UA', 'BE', 'ME', 'AE', 'OU'] as const;
 export const potentialBands = ['Low', 'Mid', 'High'] as const;
 export type PMBand = typeof pmBands[number];
 export type PotentialBand = typeof potentialBands[number];
+export const potentialReferenceCurve:Record<PotentialBand,number>={Low:15,Mid:70,High:15};
 export type Talent = 'PIP/Improvement' | 'Solid Core' | 'Star' | 'Super Star';
 export const assessmentModuleKeys=['pm','tm','idp','evidence','calibration','review'] as const;
 export const windowCells = ['pm_setting','pm_setting_approve','pm_results','pm_approve','tc_self','tc_approve','f360','idp_self','idp_review','pm_hod','pot_hod','pm_buceo','pot_buceo','tb_bgceo'] as const;

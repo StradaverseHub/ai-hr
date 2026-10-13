@@ -1,5 +1,6 @@
 import { architectureHeaders } from '../packs/performance/onehr/architecture-model';
-import { toCsv } from '../lib/csv';
+import { recordLoginSucceeded } from '../core/auth';
+import { parseCsv,toCsv } from '../lib/csv';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
@@ -326,6 +327,42 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.updateAssessmentModules(a,cycleId,(await perf.getOnehrCycle(a,cycleId))!.revision,original)).rejects.toThrow(/active cycle/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({selfRemark:'Changed after archive'}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/archived assessment/)})});
   });
+  it('reports scoped HR completion and source-shaped assessor CSV without private drafts or rater answers',async()=>{
+    await expect(perf.getAssessmentProgress(self,cycleId)).rejects.toThrow(/administrator/);
+    const privateWords='Keep this draft conversation private.';await perf.sendReviewMessage(self,reviewId,'career',null,randomUUID(),privateWords);
+    let report=await perf.getAssessmentProgress(a,cycleId,{q:'Assessment subject'});expect(report.rows).toHaveLength(1);expect(report.rows[0].cells.pm).toMatchObject({state:'pending',label:'not_set'});expect(JSON.stringify(report)).not.toContain(privateWords);
+    expect((await perf.getAssessmentProgress(a,cycleId,{companyId:randomUUID()})).rows).toEqual([]);
+    await complete();report=await perf.getAssessmentProgress(a,cycleId,{q:'Assessment subject'});
+    expect(report.rows[0].cells).toMatchObject({pm:{state:'done'},competency:{state:'done'},feedback:{state:'done',completed:4,count:4},calibration:{state:'pending'}});
+    expect(JSON.stringify(report)).not.toMatch(/Consistently observed|Observed delivery|Completed outcomes/);
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Progress department',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.saveOnehrCalibration(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:''});
+    expect((await perf.getAssessmentProgress(a,cycleId,{q:'Assessment subject',module:'calibration'})).rows[0].cells.calibration?.state).toBe('done');
+    await recordLoginSucceeded({tenantId:b.tenantId,userId:peers[0].ctx.userId!});
+    const assessors=await perf.getAssessmentAssessorProgress(a,cycleId);expect(assessors).toHaveLength(4);expect(assessors.find(r=>r.employmentId===peers[0].employmentId)).toMatchObject({assigned:1,done:1,remaining:0,state:'done',lastLogin:expect.any(String)});
+    const csv=parseCsv(await perf.exportAssessmentAssessorProgress(a,cycleId,{q:'Peer 0',state:'done'}));expect(csv).toHaveLength(2);expect(csv[0]).toEqual(['Employee ID','Name','Email','Business Group','Company','Department','Assigned','Done','Remaining','Status','Last login (MYT)']);expect(csv[1][1]).toBe('Peer 0');expect(csv[1].slice(6,10)).toEqual(['1','1','0','Done']);
+    expect((await perf.exportAssessmentProgress(a,cycleId,{q:'Assessment subject',module:'competency',state:'done'}))).not.toMatch(/Observed delivery|Consistently observed|Keep this draft/);
+    expect((await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'onehr.assessor-progress-exported')))).toHaveLength(1);
+  });
+
+  it('maps leader parts to CAL, keeps axis states independent and gives BG leaders Mine only for pending colleague feedback',async()=>{
+    const make=(tier:'hod'|'bu'|'bg'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} cohort`,companyId:b.companyId,tier,reviewerUserIds:[mgr.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const hod=await make('hod'),bu=await make('bu'),group=await make('group');
+    let items=await perf.performanceWorkspace(mgr);
+    expect(items.filter(i=>i.id===hod)).toHaveLength(2);expect(items.filter(i=>i.id===hod)).toEqual(expect.arrayContaining([expect.objectContaining({module:'cal',axis:'performance',stage:'department_review'}),expect.objectContaining({module:'cal',axis:'potential',stage:'department_potential_review'})]));
+    expect(items.filter(i=>i.id===bu).map(i=>i.axis).sort()).toEqual(['performance','potential']);
+    expect(items.filter(i=>i.id===group)).toMatchObject([{module:'cal',axis:'performance',stage:'group_calibration'}]);
+    expect(items.some(i=>i.view==='mine'&&i.kind==='review')).toBe(true);
+    const bg=await make('bg');items=await perf.performanceWorkspace(mgr);
+    expect(items.filter(i=>i.id===bg)).toMatchObject([{module:'cal',axis:'both',stage:'talent_box'}]);expect(items.some(i=>i.view==='mine')).toBe(false);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'}]);
+    const pending=(await perf.performanceWorkspace(mgr)).filter(i=>i.view==='mine');expect(pending).toHaveLength(1);expect(pending[0]).toMatchObject({kind:'feedback',state:'open'});
+    const card=await perf.getOnehrFeedback(mgr,pending[0].id);await perf.submitOnehrFeedback(mgr,pending[0].id,Object.fromEntries(card.statements.map(s=>[s.id,'no'])),'');
+    expect((await perf.performanceWorkspace(mgr)).some(i=>i.view==='mine')).toBe(false);
+    // HR's administrative view is not mistaken for a BG CEO designation.
+    expect((await perf.performanceWorkspace(a)).filter(i=>i.id===bg)).toHaveLength(1);
+  });
+
   it('switches calibration and guided review independently while retaining confirmed bands and private conversations',async()=>{
     await complete();
     const id=await perf.createOnehrCalibration(a,cycleId,{name:'Department review',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});

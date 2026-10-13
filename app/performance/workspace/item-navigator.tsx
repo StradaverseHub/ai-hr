@@ -22,7 +22,7 @@ export function ItemNavigator({title,items}:{title:string;items:NavigatorItem[]}
   document.addEventListener('input',update);document.addEventListener('change',update);
   return()=>{document.removeEventListener('input',update);document.removeEventListener('change',update);};
  },[]);
- const progress=entries.filter(entry=>!entry.id.startsWith('assessment-'));
+ const progress=entries.filter(entry=>!['assessment-overall-remark','assessment-submit-results'].includes(entry.id));
  return <><div className="border-b border-border px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><p className="mt-1 text-xs text-muted-foreground">{t('workspace.progress',{done:progress.filter(n=>n.done).length,total:progress.length})}</p></div>{[false,true].map(complete=><details key={String(complete)} open={!complete} className="border-b border-border"><summary className="cursor-pointer px-4 py-3 text-xs font-semibold text-muted-foreground">{t(complete?'workspace.states.done':'workspace.toDo')} <span className="float-right">{entries.filter(n=>n.done===complete).length}</span></summary><ul className="space-y-1 p-2">{entries.filter(n=>n.done===complete).map(n=><li key={n.id}><a href={`#${n.id}`} onClick={event=>{
   const target=document.getElementById(n.id);if(!target)return;
   event.preventDefault();const viewport=target.closest<HTMLElement>('[data-review-scroll]');if(viewport)viewport.scrollTo({top:viewport.scrollTop+target.getBoundingClientRect().top-viewport.getBoundingClientRect().top});else target.scrollIntoView({block:'start'});target.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>('input:not([type="hidden"]),textarea,select')?.focus({preventScroll:true});

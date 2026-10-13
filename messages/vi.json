@@ -17334,7 +17334,8 @@
       "modules": {
         "pm": "Performance Management",
         "tm": "Talent Management",
-        "idp": "Individual Development Plan"
+        "idp": "Individual Development Plan",
+        "cal": "Hiệu chỉnh"
       },
       "views": {
         "mine": "Mine",
@@ -17358,8 +17359,12 @@
         "competency": "Competency assessment",
         "career": "Career plan",
         "feedback": "360 feedback",
-        "department_review": "Department review",
-        "calibration": "Calibration"
+        "department_review": "Đánh giá hiệu suất",
+        "calibration": "Hiệu chỉnh hiệu suất",
+        "department_potential_review": "Đánh giá tiềm năng",
+        "potential_calibration": "Hiệu chỉnh tiềm năng",
+        "talent_box": "Ma trận nhân tài",
+        "group_calibration": "Hiệu chỉnh tập đoàn"
       },
       "parts": "Assessment part",
       "toDo": "To do",
@@ -17370,7 +17375,8 @@
         "justification": "Justification",
         "confirm": "Confirm"
       },
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "departmentReview": "Đánh giá phòng ban"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17742,7 +17748,60 @@
         "add": "Người đánh giá mới",
         "short": "Không có người đủ điều kiện để thêm"
       }
-    }
+    },
+    "progressAdmin": {
+      "title": "Tiến độ đánh giá",
+      "help": "Theo dõi mức độ hoàn thành trong chu kỳ. Nội dung bản nháp riêng tư, hội thoại và câu trả lời của người đánh giá được giữ riêng tư. Bản xuất CSV áp dụng bộ lọc đã chọn.",
+      "export": "Xuất CSV",
+      "assessments": "Đánh giá nhân viên",
+      "assessors": "Người đánh giá 360",
+      "module": "Phần đánh giá",
+      "search": "Tìm nhân viên",
+      "state": "Trạng thái",
+      "businessGroup": "Nhóm kinh doanh",
+      "company": "Công ty",
+      "department": "Phòng ban",
+      "assigned": "Hoàn thành / được giao",
+      "completed": "Hoàn thành / tổng số",
+      "lastLogin": "Lần đăng nhập được ghi nhận gần nhất (MYT)",
+      "noLogin": "Chưa ghi nhận đăng nhập",
+      "empty": "Không có người phù hợp với bộ lọc.",
+      "page": "Trang {page} / {pages} · {total} người",
+      "states": {
+        "all": "Tất cả",
+        "pending": "Chưa bắt đầu",
+        "active": "Đang thực hiện",
+        "done": "Hoàn thành"
+      },
+      "modules": {
+        "pm": "Hiệu suất",
+        "competency": "Năng lực",
+        "feedback": "Phản hồi 360",
+        "calibration": "Hiệu chỉnh",
+        "career": "Kế hoạch nghề nghiệp"
+      },
+      "labels": {
+        "checked_in": "Đã cập nhật",
+        "checkin_pending": "Chờ cập nhật",
+        "approved": "Đã phê duyệt",
+        "awaiting_approval": "Chờ phê duyệt",
+        "not_submitted": "Chưa gửi",
+        "not_set": "Chưa đặt KPI",
+        "reviewed": "Đã đánh giá",
+        "awaiting_review": "Chờ quản lý đánh giá",
+        "not_assigned": "Chưa giao năng lực",
+        "feedback_complete": "Đã gửi mọi phản hồi",
+        "feedback_pending": "Chờ phản hồi",
+        "panel_missing": "Chưa giao nhóm đánh giá",
+        "calibrated": "Đã hiệu chỉnh",
+        "under_review": "Đang đánh giá",
+        "not_started": "Chưa bắt đầu",
+        "plan_closed": "Đã đóng kế hoạch",
+        "plan_shared": "Đã chia sẻ với quản lý",
+        "not_shared": "Chưa chia sẻ"
+      }
+    },
+    "potentialReference": "Phân bố tham chiếu tiềm năng"
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

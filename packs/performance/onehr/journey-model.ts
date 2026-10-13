@@ -1,7 +1,7 @@
 import { sourceRound } from './source-numeric';
 export { sourceRound } from './source-numeric';
 import { z } from 'zod';
-import { pmBands, potentialBands, type KPI, type Policy } from './model';
+import { pmBands, potentialBands,potentialReferenceCurve, type KPI, type Policy } from './model';
 
 export const draftKinds = ['results', 'moderation', 'competency_self', 'competency_manager', 'feedback'] as const;
 export type DraftKind = typeof draftKinds[number];
@@ -41,7 +41,7 @@ export function assertCurveLock(policy:Policy,tier:string,rows:{performance:type
   const tolerance=curveTolerance(policy,rows.length);
   const gaps:number[]=[];
   if(axes.pm&&reference)gaps.push(...Object.values(curveGaps(pmBands,Object.fromEntries(pmBands.map(b=>[b,rows.filter(r=>r.performance===b).length])) as Record<typeof pmBands[number],number>,reference)));
-  if(axes.pot)gaps.push(...Object.values(curveGaps(potentialBands,Object.fromEntries(potentialBands.map(b=>[b,rows.filter(r=>r.potential===b).length])) as Record<typeof potentialBands[number],number>,{Low:15,Mid:70,High:15})));
+  if(axes.pot)gaps.push(...Object.values(curveGaps(potentialBands,Object.fromEntries(potentialBands.map(b=>[b,rows.filter(r=>r.potential===b).length])) as Record<typeof potentialBands[number],number>,potentialReferenceCurve)));
   if(!gaps.some(g=>Math.abs(g)>tolerance))return;
   if(policy.curveStrict)throw Error('Adjust the bands toward the reference curve before locking. Strict calibration does not allow an override.');
   if(!reason.trim())throw Error('The reference distribution needs an override reason.');

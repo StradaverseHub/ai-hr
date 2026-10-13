@@ -28,3 +28,5 @@ export { importAssessmentArchitecture, generateAssessmentProfiles, saveAssessmen
 export { getFeedbackConversation, sendFeedbackMessage } from './onehr/feedback-conversation';
 
 export { buildAssessmentPanels, importAssessmentPanels } from './onehr/panel-admin-service';
+
+export { getAssessmentProgress, exportAssessmentProgress, getAssessmentAssessorProgress, exportAssessmentAssessorProgress } from './onehr/progress-service';

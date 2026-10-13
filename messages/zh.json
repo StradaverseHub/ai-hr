@@ -17334,7 +17334,8 @@
       "modules": {
         "pm": "Performance Management",
         "tm": "Talent Management",
-        "idp": "Individual Development Plan"
+        "idp": "Individual Development Plan",
+        "cal": "校准"
       },
       "views": {
         "mine": "Mine",
@@ -17358,8 +17359,12 @@
         "competency": "Competency assessment",
         "career": "Career plan",
         "feedback": "360 feedback",
-        "department_review": "Department review",
-        "calibration": "Calibration"
+        "department_review": "绩效评审",
+        "calibration": "绩效校准",
+        "department_potential_review": "潜力评审",
+        "potential_calibration": "潜力校准",
+        "talent_box": "人才九宫格",
+        "group_calibration": "集团校准"
       },
       "parts": "Assessment part",
       "toDo": "To do",
@@ -17370,7 +17375,8 @@
         "justification": "Justification",
         "confirm": "Confirm"
       },
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "departmentReview": "部门评审"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17742,7 +17748,60 @@
         "add": "新增评估者",
         "short": "无符合条件的新增人员"
       }
-    }
+    },
+    "progressAdmin": {
+      "title": "评审进度",
+      "help": "跟踪本周期的完成情况。私人草稿内容、对话和评分者答案保持私密。CSV 导出遵循所选筛选条件。",
+      "export": "导出 CSV",
+      "assessments": "员工评审",
+      "assessors": "360 评分者",
+      "module": "评审部分",
+      "search": "搜索员工",
+      "state": "状态",
+      "businessGroup": "业务集团",
+      "company": "公司",
+      "department": "部门",
+      "assigned": "已完成 / 已分配",
+      "completed": "已完成 / 总数",
+      "lastLogin": "最近记录的登录时间（马来西亚时间）",
+      "noLogin": "没有登录记录",
+      "empty": "没有符合筛选条件的人员。",
+      "page": "第 {page} 页，共 {pages} 页 · {total} 人",
+      "states": {
+        "all": "全部",
+        "pending": "未开始",
+        "active": "进行中",
+        "done": "已完成"
+      },
+      "modules": {
+        "pm": "绩效",
+        "competency": "胜任力",
+        "feedback": "360 反馈",
+        "calibration": "校准",
+        "career": "职业计划"
+      },
+      "labels": {
+        "checked_in": "已完成跟进",
+        "checkin_pending": "待跟进",
+        "approved": "已批准",
+        "awaiting_approval": "待批准",
+        "not_submitted": "未提交",
+        "not_set": "未设置 KPI",
+        "reviewed": "已评审",
+        "awaiting_review": "等待经理评审",
+        "not_assigned": "未分配胜任力",
+        "feedback_complete": "已提交全部反馈",
+        "feedback_pending": "待提交反馈",
+        "panel_missing": "未分配评审组",
+        "calibrated": "已校准",
+        "under_review": "评审中",
+        "not_started": "未开始",
+        "plan_closed": "计划已关闭",
+        "plan_shared": "已与经理分享",
+        "not_shared": "未分享"
+      }
+    },
+    "potentialReference": "潜力参考分布"
   },
   "allowanceV2": {
     "title": "考勤津贴",

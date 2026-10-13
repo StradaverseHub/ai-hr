@@ -1,3 +1,4 @@
+import { leaderWorkspaceParts, type WorkspaceAxis } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
@@ -950,7 +951,7 @@ export async function linkAssessmentAttachmentTx(tx:Tx,ctx:SessionContext,review
   await audit(tx,ctx,reviewId,'kpi-evidence-linked',{attachmentId,kpiId});
 }
 
-export type PerformanceWorkspaceItem={key:string;id:string;kind:'review'|'feedback'|'calibration';cycleId:string;cycle:string;periodEnd:string;view:'mine'|'team'|'dept'|'bu'|'bg'|'group';module:'pm'|'tm'|'idp';state:'open'|'waiting'|'done'|'later';title:string;stage:string;locked:boolean};
+export type PerformanceWorkspaceItem={key:string;id:string;kind:'review'|'feedback'|'calibration';cycleId:string;cycle:string;periodEnd:string;view:'mine'|'team'|'dept'|'bu'|'bg'|'group';module:'pm'|'tm'|'idp'|'cal';axis?:WorkspaceAxis;state:'open'|'waiting'|'done'|'later';title:string;stage:string;locked:boolean};
 /** A worklist projection, not a second workflow state store. Every card derives from current assignments. */
 export async function performanceWorkspace(ctx:SessionContext) {
  return withPerformanceTenant(ctx,async tx=>{
@@ -982,12 +983,15 @@ export async function performanceWorkspace(ctx:SessionContext) {
   }
   const feedback=await tx.select({panel:onehrPanel,subject:peerFeedbackRequest.subjectName,cycle:reviewCycle}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).innerJoin(reviewCycle,eq(reviewCycle.id,sql`(app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId')::uuid`)).where(and(isNull(onehrPanel.archivedAt),sql`${reviewCycle.status}<>'closed' and app.onehr_feedback_card(${onehrPanel.requestId}) is not null`));
   for(const {panel,subject,cycle} of feedback)items.push({key:panel.requestId,id:panel.requestId,kind:'feedback',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:'mine',module:'tm',state:panel.submittedAt?'done':'open',title:subject,stage:'feedback',locked:false});
-  const sessions=await tx.select({session:onehrCalibration,cycle:reviewCycle}).from(onehrCalibration).innerJoin(reviewCycle,eq(reviewCycle.id,onehrCalibration.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrCalibration.cycleId)).where(sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true) and ${reviewCycle.status}<>'closed'`).orderBy(desc(reviewCycle.periodEnd),asc(onehrCalibration.id));
-  for(const {session,cycle} of sessions){
+  const sessions=await tx.select({session:onehrCalibration,cycle:reviewCycle,policy:onehrCycle.policy}).from(onehrCalibration).innerJoin(reviewCycle,eq(reviewCycle.id,onehrCalibration.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrCalibration.cycleId)).where(sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true) and ${reviewCycle.status}<>'closed'`).orderBy(desc(reviewCycle.periodEnd),asc(onehrCalibration.id));
+  for(const {session,cycle,policy:raw} of sessions){
    const view=session.tier==='hod'?'dept':session.tier==='final'?'group':session.tier as 'bu'|'bg'|'group';
-   items.push({key:session.id,id:session.id,kind:'calibration',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view,module:'pm',state:session.lockedAt?'done':'open',title:session.name,stage:session.tier==='hod'?'department_review':'calibration',locked:false});
+   for(const part of leaderWorkspaceParts(policySchema.parse(raw),session.tier as Tier,session))items.push({key:`${session.id}.${part.stage}`,id:session.id,kind:'calibration',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view,title:session.name,locked:false,...part});
   }
-  return items.sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd)||a.title.localeCompare(b.title)||a.key.localeCompare(b.key));
+  const bgLeaderCycles=new Set<string>();
+  for(const {session} of sessions)if(session.tier==='bg'&&session.reviewerUserIds.includes(ctx.userId!)&&!await isAdmin(tx,session.cycleId))bgLeaderCycles.add(session.cycleId);
+  // A BG leader's own assessment is not requested. Mine remains only while they owe a colleague feedback.
+  return items.filter(i=>!bgLeaderCycles.has(i.cycleId)||i.view!=='mine'||i.kind==='feedback'&&i.state==='open').sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd)||a.title.localeCompare(b.title)||a.key.localeCompare(b.key));
  });
 }
 

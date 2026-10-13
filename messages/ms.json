@@ -17334,7 +17334,8 @@
       "modules": {
         "pm": "Performance Management",
         "tm": "Talent Management",
-        "idp": "Individual Development Plan"
+        "idp": "Individual Development Plan",
+        "cal": "Kalibrasi"
       },
       "views": {
         "mine": "Mine",
@@ -17358,8 +17359,12 @@
         "competency": "Competency assessment",
         "career": "Career plan",
         "feedback": "360 feedback",
-        "department_review": "Department review",
-        "calibration": "Calibration"
+        "department_review": "Semakan prestasi",
+        "calibration": "Kalibrasi prestasi",
+        "department_potential_review": "Semakan potensi",
+        "potential_calibration": "Kalibrasi potensi",
+        "talent_box": "Kotak Bakat",
+        "group_calibration": "Kalibrasi Kumpulan"
       },
       "parts": "Assessment part",
       "toDo": "To do",
@@ -17370,7 +17375,8 @@
         "justification": "Justification",
         "confirm": "Confirm"
       },
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "departmentReview": "Semakan Jabatan"
     },
     "curveToleranceMode": "Curve tolerance",
     "curvePeople": "Fixed number of people per band",
@@ -17742,7 +17748,60 @@
         "add": "Penilai baharu",
         "short": "Tiada tambahan layak"
       }
-    }
+    },
+    "progressAdmin": {
+      "title": "Kemajuan semakan",
+      "help": "Jejak penyelesaian sepanjang kitaran. Teks draf peribadi, perbualan dan jawapan penilai kekal peribadi. Eksport CSV mengikut penapis yang dipilih.",
+      "export": "Eksport CSV",
+      "assessments": "Semakan pekerja",
+      "assessors": "Penilai 360",
+      "module": "Bahagian semakan",
+      "search": "Cari pekerja",
+      "state": "Status",
+      "businessGroup": "Kumpulan perniagaan",
+      "company": "Syarikat",
+      "department": "Jabatan",
+      "assigned": "Selesai / ditugaskan",
+      "completed": "Selesai / jumlah",
+      "lastLogin": "Log masuk terakhir direkodkan (MYT)",
+      "noLogin": "Tiada log masuk direkodkan",
+      "empty": "Tiada orang sepadan dengan penapis ini.",
+      "page": "Halaman {page} daripada {pages} · {total} orang",
+      "states": {
+        "all": "Semua",
+        "pending": "Belum bermula",
+        "active": "Sedang berjalan",
+        "done": "Selesai"
+      },
+      "modules": {
+        "pm": "Prestasi",
+        "competency": "Kompetensi",
+        "feedback": "Maklum balas 360",
+        "calibration": "Kalibrasi",
+        "career": "Pelan kerjaya"
+      },
+      "labels": {
+        "checked_in": "Daftar masuk selesai",
+        "checkin_pending": "Daftar masuk belum selesai",
+        "approved": "Diluluskan",
+        "awaiting_approval": "Menunggu kelulusan",
+        "not_submitted": "Belum dihantar",
+        "not_set": "Tiada KPI ditetapkan",
+        "reviewed": "Disemak",
+        "awaiting_review": "Menunggu semakan pengurus",
+        "not_assigned": "Tiada kompetensi ditugaskan",
+        "feedback_complete": "Semua maklum balas dihantar",
+        "feedback_pending": "Maklum balas belum selesai",
+        "panel_missing": "Tiada panel ditugaskan",
+        "calibrated": "Dikalibrasi",
+        "under_review": "Sedang disemak",
+        "not_started": "Belum bermula",
+        "plan_closed": "Pelan ditutup",
+        "plan_shared": "Dikongsi dengan pengurus",
+        "not_shared": "Belum dikongsi"
+      }
+    },
+    "potentialReference": "Taburan rujukan potensi"
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",
