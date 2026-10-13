@@ -523,3 +523,166 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.onehr_result_card(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_result_card(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE TABLE performance_assessment_rating_record (
+ review_id uuid PRIMARY KEY REFERENCES performance_onehr_review(review_id),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ snapshot jsonb NOT NULL CHECK(jsonb_typeof(snapshot)='object'),last_event text NOT NULL,
+ recorded_by uuid REFERENCES app_user(id),recorded_at timestamptz NOT NULL DEFAULT now(),frozen_at timestamptz
+);
+ALTER TABLE performance_assessment_rating_record ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_rating_record FORCE ROW LEVEL SECURITY;
+-- Snapshots may only be written by the internal capture; a scoped HR reader cannot forge a record.
+GRANT SELECT ON performance_assessment_rating_record TO ai_hr_app;
+CREATE POLICY assessment_rating_record_read ON performance_assessment_rating_record FOR SELECT USING(
+ tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.review_id=performance_assessment_rating_record.review_id AND r.tenant_id=performance_assessment_rating_record.tenant_id
+ AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(r.company_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id)));
+
+--> statement-breakpoint
+-- Deterministic counterpart of scoreKPI, kept internal and checked against the source golden cases.
+CREATE FUNCTION app.assessment_kpi_score(actual numeric,scoring jsonb) RETURNS numeric LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $$
+DECLARE result numeric:=1; rate record; raw numeric; ceiling numeric;
+BEGIN
+ IF actual IS NULL THEN RETURN NULL; END IF;
+ IF scoring->>'mechanism'='A' THEN
+  FOR rate IN SELECT v::numeric threshold,i FROM jsonb_array_elements_text(scoring->'rates') WITH ORDINALITY q(v,i) LOOP
+   IF scoring->>'method'='more' AND actual>=rate.threshold OR scoring->>'method'='less' AND actual<=rate.threshold THEN result:=rate.i; END IF;
+  END LOOP;
+  RETURN result;
+ END IF;
+ IF scoring->>'method'='more' AND actual<=(scoring->>'threshold')::numeric OR scoring->>'method'='less' AND actual>=(scoring->>'threshold')::numeric THEN RETURN 0; END IF;
+ raw:=CASE WHEN scoring->>'method'='more' THEN actual/(scoring->>'target')::numeric*100 ELSE (2-actual/(scoring->>'target')::numeric)*100 END;
+ IF scoring->>'variant'='excellence' THEN
+  ceiling:=CASE WHEN scoring->>'method'='more' THEN (scoring->>'excellence')::numeric/(scoring->>'target')::numeric*100 ELSE (2-(scoring->>'excellence')::numeric/(scoring->>'target')::numeric)*100 END;
+  RETURN least(raw,ceiling);
+ END IF;
+ RETURN CASE WHEN raw<=100 THEN raw ELSE 100+(raw-100)*(scoring->>'multiple')::numeric/100 END;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_kpi_score(numeric,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Captures an observation only. It cannot change the assessment or any Rewards decision.
+CREATE FUNCTION app.assessment_rating_record_capture(wanted_review uuid,event text) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r performance_onehr_review; cfg jsonb; snapshot jsonb; identity jsonb; effective jsonb; tiers jsonb;
+ self_score numeric; covered numeric; total numeric; self_band text; mech text; minima jsonb; threshold record;
+ submitted integer; maximum numeric; average_score numeric; tc_self numeric; tc_reviewed numeric; tc_max numeric;
+ w numeric; pct360 numeric; pcttech numeric; pct numeric; combined_max numeric; combined_score numeric; computed_pot text; minimum integer; closed boolean;
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended(wanted_review::text,0));
+ SELECT * INTO r FROM performance_onehr_review WHERE review_id=wanted_review AND tenant_id=app.current_tenant_id();
+ IF r.review_id IS NULL OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=r.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) OR EXISTS(SELECT 1 FROM performance_assessment_rating_record rr WHERE rr.review_id=r.review_id AND rr.frozen_at IS NOT NULL) THEN RETURN false; END IF;
+ SELECT c.policy,rc.status='closed' INTO cfg,closed FROM performance_onehr_cycle c JOIN review_cycle rc ON rc.id=c.cycle_id AND rc.tenant_id=c.tenant_id WHERE c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id;
+ SELECT jsonb_build_object('employeeId',coalesce(e.employee_code,e.id::text),'name',p.full_name,'businessGroup',coalesce(bg.legal_name,co.legal_name),'company',co.legal_name,'department',d.name,'grade',r.grade,'title',pos.title) INTO identity
+ FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id JOIN company co ON co.id=e.company_id AND co.tenant_id=e.tenant_id LEFT JOIN company bg ON bg.id=co.parent_company_id AND bg.tenant_id=e.tenant_id
+ LEFT JOIN LATERAL (SELECT a.* FROM assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id LIMIT 1) a ON true
+ LEFT JOIN department d ON d.id=a.department_id AND d.tenant_id=e.tenant_id LEFT JOIN position pos ON pos.id=a.position_id AND pos.tenant_id=e.tenant_id WHERE e.id=r.employment_id AND e.tenant_id=r.tenant_id;
+ mech:=r.kpis->0->'scoring'->>'mechanism';
+ SELECT sum((k->>'weightBp')::numeric),sum((k->>'weightBp')::numeric) FILTER(WHERE k->>'actual' IS NOT NULL),
+ sum((k->>'weightBp')::numeric*app.assessment_kpi_score((k->>'actual')::numeric,k->'scoring'))/nullif(sum((k->>'weightBp')::numeric) FILTER(WHERE k->>'actual' IS NOT NULL),0)
+ INTO total,covered,self_score FROM jsonb_array_elements(r.kpis) k;
+ minima:=CASE WHEN mech='A' THEN cfg->'aBands' ELSE (SELECT b->'minima' FROM jsonb_array_elements(cfg->'bBands') b WHERE b->>'companyId'=r.company_id::text) END;
+ IF self_score IS NOT NULL THEN
+  FOR threshold IN SELECT v::numeric value,i FROM jsonb_array_elements_text(minima) WITH ORDINALITY q(v,i) LOOP
+   IF self_score>=threshold.value THEN self_band:=(ARRAY['UA','BE','ME','AE','OU'])[threshold.i]; END IF;
+  END LOOP;
+ END IF;
+ SELECT coalesce(sum(CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END),0) INTO maximum FROM jsonb_array_elements(r.statements) s;
+ SELECT count(*),avg(app.onehr_adjusted_score(a.request_id,(SELECT sum(CASE WHEN a.answers->>(s->>'id')='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END) FROM jsonb_array_elements(r.statements) s),maximum))
+ INTO submitted,average_score FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL;
+ SELECT sum(CASE WHEN s->>'self'='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END),
+ sum(CASE WHEN coalesce(s->>'manager',s->>'self')='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END),
+ sum(CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END) INTO tc_self,tc_reviewed,tc_max FROM jsonb_array_elements(r.competencies) s;
+ IF r.competency_status<>'reviewed' THEN tc_reviewed:=NULL; END IF;
+ w:=coalesce((cfg->'weights'->>r.grade)::numeric,10000);
+ pct360:=100*average_score/nullif(maximum,0);pcttech:=100*tc_reviewed/nullif(tc_max,0);
+ pct:=CASE WHEN pcttech IS NOT NULL AND w<10000 THEN (pct360*w+pcttech*(10000-w))/10000 ELSE pct360 END;
+ combined_max:=CASE WHEN pcttech IS NOT NULL AND w<10000 THEN maximum+tc_max ELSE maximum END;
+ combined_score:=pct*combined_max/100;
+ computed_pot:=CASE WHEN pct IS NULL THEN NULL WHEN pct<=(cfg->>'lowMaxPct')::numeric THEN 'Low' WHEN pct<=(cfg->>'midMaxPct')::numeric THEN 'Mid' ELSE 'High' END;
+ minimum:=CASE WHEN r.grade ~ '^\d+$' THEN (cfg->>'minValid')::integer ELSE 1 END;
+ effective:=app.assessment_working_result(r.review_id);
+ SELECT coalesce(jsonb_object_agg(q.tier,q.value),'{}'::jsonb) INTO tiers FROM (
+  SELECT cs.tier,jsonb_build_object('performance',CASE WHEN ce.performance_locked_at IS NOT NULL OR cs.performance_locked_at IS NOT NULL OR cs.tier='final' THEN ce.performance END,
+   'potential',CASE WHEN ce.potential_locked_at IS NOT NULL OR cs.potential_locked_at IS NOT NULL OR cs.tier='final' THEN ce.potential END) value
+  FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND NOT(cs.tier='group' AND cs.mode='blend')
+ ) q;
+ snapshot:=identity||jsonb_build_object('mechanism',mech,'selfScore',self_score,'selfBand',self_band,'weightCovered',covered,'weightTotal',total,'managerScore',r.manager_score,'managerBand',r.manager_performance,
+ 'performance',effective->'performance','performanceSource',effective->'performanceSource','leadershipScore',average_score,'leadershipMax',nullif(maximum,0),'submitted',submitted,'valid',submitted>=minimum,
+ 'competencyStatus',CASE WHEN jsonb_array_length(r.competencies)>0 THEN r.competency_status END,'competencySelf',tc_self,'competencyReviewed',tc_reviewed,'competencyMax',tc_max,
+ 'potentialScore',combined_score,'potentialMax',nullif(combined_max,0),'potential360Pct',pct360,'potentialCompetencyPct',pcttech,'potentialBasis',CASE WHEN average_score IS NULL THEN 'none' WHEN pcttech IS NOT NULL AND w<10000 THEN 'combined' ELSE '360_only' END,
+ 'computedPotential',computed_pot,'potential',effective->'potential','potentialSource',effective->'potentialSource','tiers',tiers,
+ 'configuration',jsonb_build_object('lowMaxPct',cfg->'lowMaxPct','midMaxPct',cfg->'midMaxPct','weight360',w));
+ INSERT INTO performance_assessment_rating_record(review_id,tenant_id,snapshot,last_event,recorded_by,frozen_at)
+ VALUES(r.review_id,r.tenant_id,snapshot,event,app.current_user_id(),CASE WHEN closed THEN now() END)
+ ON CONFLICT(review_id) DO UPDATE SET snapshot=excluded.snapshot,last_event=excluded.last_event,recorded_by=excluded.recorded_by,recorded_at=now(),frozen_at=excluded.frozen_at WHERE performance_assessment_rating_record.frozen_at IS NULL;
+ RETURN FOUND;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_rating_record_capture(uuid,text) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_rating_record_changed() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE id uuid; event text;
+BEGIN
+ IF TG_TABLE_NAME='performance_onehr_review' THEN
+  IF NEW.results_submitted_at IS DISTINCT FROM OLD.results_submitted_at THEN event:='pm_self_submit';
+  ELSIF NEW.competency_status IS DISTINCT FROM OLD.competency_status THEN event:=CASE WHEN NEW.competency_status='reviewed' THEN 'tc_review' ELSE 'tc_submit' END;
+  ELSIF NEW.kpis IS DISTINCT FROM OLD.kpis OR NEW.manager_performance IS DISTINCT FROM OLD.manager_performance OR NEW.manager_score IS DISTINCT FROM OLD.manager_score THEN
+   IF NEW.results_submitted_at IS NULL AND NEW.manager_performance IS NULL AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.kpis) k WHERE (k->>'hrOwned')::boolean AND (k->>'locked')::boolean) THEN RETURN NEW; END IF;
+   event:='pm_manager_lock';
+  ELSE RETURN NEW; END IF;
+  PERFORM app.assessment_rating_record_capture(NEW.review_id,event);
+ ELSIF TG_TABLE_NAME='performance_onehr_panel' THEN
+  IF NEW.submitted_at IS DISTINCT FROM OLD.submitted_at OR NEW.archived_at IS DISTINCT FROM OLD.archived_at THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'f360_submit'); END IF;
+ ELSIF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
+  IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at OR NEW.performance IS DISTINCT FROM OLD.performance OR NEW.potential IS DISTINCT FROM OLD.potential THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'calibration_lock_or_reopen'); END IF;
+ ELSIF TG_TABLE_NAME='performance_onehr_calibration' THEN
+  IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at OR NEW.locked_at IS DISTINCT FROM OLD.locked_at THEN
+   FOR id IN SELECT review_id FROM performance_onehr_calibration_entry WHERE session_id=NEW.id AND tenant_id=NEW.tenant_id LOOP PERFORM app.assessment_rating_record_capture(id,'calibration_lock_or_reopen'); END LOOP;
+  END IF;
+ ELSIF TG_TABLE_NAME='review_cycle' THEN
+  IF NEW.status='closed' AND OLD.status<>'closed' THEN UPDATE performance_assessment_rating_record rr SET frozen_at=now() FROM performance_onehr_review r WHERE rr.review_id=r.review_id AND rr.tenant_id=r.tenant_id AND r.cycle_id=NEW.id AND r.tenant_id=NEW.tenant_id AND rr.frozen_at IS NULL; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_rating_record_changed() FROM PUBLIC;
+CREATE TRIGGER assessment_rating_record_changed AFTER UPDATE ON performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_changed();
+CREATE TRIGGER assessment_rating_record_changed AFTER UPDATE ON performance_onehr_panel FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_changed();
+CREATE TRIGGER assessment_rating_record_changed AFTER UPDATE ON performance_onehr_calibration_entry FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_changed();
+CREATE TRIGGER assessment_rating_record_changed AFTER UPDATE ON performance_onehr_calibration FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_changed();
+CREATE TRIGGER assessment_rating_record_changed AFTER UPDATE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_changed();
+-- The same projection is used from write triggers, which must observe the just-written row.
+ALTER FUNCTION app.assessment_working_result(uuid) VOLATILE;
+
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_rating_records_capture(wanted_cycle uuid,company_name text DEFAULT NULL,department_name text DEFAULT NULL,bg_name text DEFAULT NULL) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE id uuid; captured integer:=0;
+BEGIN
+ IF NOT app.onehr_cycle_admin(wanted_cycle) THEN RAISE EXCEPTION 'Performance administrator access is required'; END IF;
+ FOR id IN
+  SELECT r.review_id FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN company co ON co.id=e.company_id AND co.tenant_id=e.tenant_id LEFT JOIN company bg ON bg.id=co.parent_company_id AND bg.tenant_id=e.tenant_id
+  LEFT JOIN performance_assessment_rating_record rr ON rr.review_id=r.review_id AND rr.tenant_id=r.tenant_id
+  LEFT JOIN LATERAL (SELECT d.name FROM assignment a JOIN department d ON d.id=a.department_id AND d.tenant_id=a.tenant_id WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id LIMIT 1) dept ON true
+  WHERE r.cycle_id=wanted_cycle AND r.tenant_id=app.current_tenant_id() AND app.onehr_admin(r.company_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id) AND rr.frozen_at IS NULL
+   AND (jsonb_array_length(r.kpis)>0 OR jsonb_array_length(r.competencies)>0 OR EXISTS(SELECT 1 FROM performance_onehr_panel p WHERE p.review_id=r.review_id AND p.tenant_id=r.tenant_id AND p.archived_at IS NULL))
+   AND (company_name IS NULL OR co.legal_name=company_name) AND (bg_name IS NULL OR coalesce(bg.legal_name,co.legal_name)=bg_name) AND (department_name IS NULL OR dept.name=department_name)
+  ORDER BY rr.recorded_at NULLS FIRST,r.review_id LIMIT 300 FOR UPDATE OF r
+ LOOP
+  IF app.assessment_rating_record_capture(id,'admin_capture') THEN captured:=captured+1; END IF;
+ END LOOP;
+ RETURN captured;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_rating_records_capture(uuid,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_rating_records_capture(uuid,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_rating_record_validate() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NEW.review_id<>OLD.review_id OR NEW.tenant_id<>OLD.tenant_id THEN RAISE EXCEPTION 'Rating record identity is immutable'; END IF;
+ IF OLD.frozen_at IS NOT NULL AND NEW IS DISTINCT FROM OLD THEN RAISE EXCEPTION 'Archived rating records are immutable'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_rating_record_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_rating_record_validate BEFORE UPDATE ON performance_assessment_rating_record FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_validate();

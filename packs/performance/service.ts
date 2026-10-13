@@ -18,3 +18,7 @@ export { draftOnehrNarrative } from './onehr/ai';
 export { getReviewConversation, sendReviewMessage, type ConversationStage, type ReviewMessage } from './onehr/conversation';
 
 export { previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx, assessmentParticipantsTx, setAssessmentParticipation } from './onehr/participation-service';
+
+export * from './onehr/rating-record-service';
+export type { RatingRecordSnapshot } from './onehr/rating-record-model';
+export { buildRatingRecordWorkbook } from './onehr/rating-record-xlsx';

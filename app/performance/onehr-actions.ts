@@ -145,3 +145,11 @@ export async function assessmentCompanyKpiAction(cycleId:string,input:{companyId
   return {result};
  } catch(error){return {error:publicErrorMessage(error)};}
 }
+
+export async function captureRatingRecordsAction(f:FormData){
+ const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));
+ const filters={company:str(f,'company'),department:str(f,'department'),businessGroup:str(f,'businessGroup')};
+ const q=new URLSearchParams(Object.entries(filters).filter(([,v])=>!!v)),url=`/performance/${id}/records?${q}`;
+ try{await perf.captureAssessmentRatingRecords(s,id,filters);}catch(e){redirect(withError(url,e));}
+ revalidatePath(`/performance/${id}/records`);redirect(url);
+}

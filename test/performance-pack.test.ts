@@ -61,6 +61,7 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_assessment_talent',
       'performance_assessment_talent_history',
       'performance_assessment_career_profile',
+      'performance_assessment_rating_record',
       'performance_assessment_release',
 
     ]);
