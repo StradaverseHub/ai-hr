@@ -14,7 +14,10 @@ absence/payroll counts, the hourly schedule clamp, allowance facts and worked-da
 the same corrected date. Resetting the shift or day kind to Auto removes that selection while keeping
 other date decisions. No shift definition, recurring arrangement or calendar holiday is changed.
 
-An overtime decision identifies a configured band by its stable row ID. The no-band calculation has
+An overtime decision identifies a configured band by its stable row ID. Rule saves retain unchanged
+band definitions and their creation history, including when another attendance setting is edited.
+Changed or removed definitions require the dated decision to be reviewed explicitly. The editor
+shows an unavailable band and calculation as unavailable, rather than inventing a zero-rate band. The no-band calculation has
 one stable default row. Each manual row retains its exact integer minutes, the calculated value at the
 decision, actor and time. Calculation traces preserve automatic results alongside effective results.
 Other manual rows survive a save or recomputation. Auto removes only the selected row. A configuration

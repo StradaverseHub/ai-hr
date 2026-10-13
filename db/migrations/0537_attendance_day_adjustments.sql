@@ -11,7 +11,7 @@ CREATE TABLE attendance_day_adjustment (
 GRANT SELECT,INSERT,UPDATE ON attendance_day_adjustment TO ai_hr_app;--> statement-breakpoint
 ALTER TABLE attendance_day_adjustment ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY tenant_isolation ON attendance_day_adjustment USING (
- tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id)
+ tenant_id=app.current_tenant_id() AND employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
 ) WITH CHECK (
  tenant_id=app.current_tenant_id() AND app.can_admin_employment(employment_id)
  AND NOT EXISTS(SELECT 1 FROM employment e JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id

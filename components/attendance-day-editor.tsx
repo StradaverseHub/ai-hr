@@ -54,10 +54,9 @@ export function AttendanceDateOvertime({data,employmentId,date}:Props){
     {data.approvedOtMinutes!=null&&<p className="text-sm text-muted-foreground">{t('approved',{minutes:fmtMin(data.approvedOtMinutes)})}</p>}
     <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['otRow','calculated','method','manualMinutes','effective'].map(k=><th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
       <tbody className={tbodyCls}>{data.rows.map(row=><tr key={row.key}>
-        <td className="max-w-72 px-3 py-3 align-top"><p>{row.ratePattern==='flat'?t('flat'):`OT ${row.rate}×`} · {t('band',{from:row.fromMinutes,to:row.toMinutes??t('unlimited')})}</p>
-          {row.orphan&&<p className="mt-1 text-xs text-destructive">{t('orphan')}</p>}
+        <td className="max-w-72 px-3 py-3 align-top">{row.orphan?<p className="text-xs text-destructive">{t('orphan')}</p>:<p>{row.ratePattern==='flat'?t('flat'):`OT ${row.rate}×`} · {t('band',{from:row.fromMinutes,to:row.toMinutes??t('unlimited')})}</p>}
           {row.manual&&<p className="mt-1 text-xs text-muted-foreground">{t('original',{minutes:fmtMin(row.manual.calculatedMinutes),date:new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium'}).format(new Date(row.manual.recordedAt))})}</p>}</td>
-        <td className="px-3 py-3 align-top tabular-nums">{data.complete?fmtMin(row.calculatedMinutes):'—'}</td>
+        <td className="px-3 py-3 align-top tabular-nums">{data.complete&&!row.orphan?fmtMin(row.calculatedMinutes):'—'}</td>
         <td className="px-3 py-3 align-top"><select aria-label={t('method')} className={inputCls} value={modes[row.key]} disabled={disabled} onChange={e=>change(row.key,e.target.value as 'auto'|'manual')}>
           <option value="auto">{t('auto')}</option><option value="manual" disabled={!data.complete||row.orphan}>{t('manual')}</option></select>
           {row.manual&&<button type="button" className="mt-1 text-xs text-primary underline" disabled={disabled} onClick={()=>change(row.key,'auto')}>{t('resetAuto')}</button>}</td>

@@ -870,11 +870,30 @@ async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: 
     if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists.`);
     throw e;
   }
-  // Replace the OT rows wholesale (small, admin-authored set).
-  await tx.delete(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, p.ruleId));
-  if (n.otRows.length > 0) {
-    await tx.insert(attendanceRuleOtRow).values(n.otRows.map((r) => ({ tenantId: ctx.tenantId, ruleId: p.ruleId, ...r })));
+  // Dated manual decisions identify a band by ID. An unrelated settings save must keep unchanged
+  // definitions (and their creation history) in place. Changed/removed definitions deliberately lose
+  // their identity: the dated editor requires explicit review rather than moving a decision to a new band.
+  // The parent rule is locked above, serialising both full-form and section saves.
+  const existingRows = await tx.select().from(attendanceRuleOtRow)
+    .where(eq(attendanceRuleOtRow.ruleId, p.ruleId)).orderBy(asc(attendanceRuleOtRow.sortOrder),asc(attendanceRuleOtRow.id));
+  const retained = new Set<string>();
+  for (const row of n.otRows) {
+    const existing = existingRows.find(old => !retained.has(old.id)
+      && old.fromMinutes === row.fromMinutes && old.toMinutes === row.toMinutes
+      && old.ratePattern === row.ratePattern && Number(old.rate).toFixed(2) === row.rate
+      && (old.phRate == null ? null : Number(old.phRate).toFixed(2)) === row.phRate
+      && old.roundingMode === row.roundingMode
+      && (old.roundingMode === 'none' ? null : old.roundToMinutes) === row.roundToMinutes);
+    if (existing) {
+      retained.add(existing.id);
+      if (existing.sortOrder !== row.sortOrder) await tx.update(attendanceRuleOtRow)
+        .set({sortOrder:row.sortOrder}).where(eq(attendanceRuleOtRow.id,existing.id));
+    } else {
+      await tx.insert(attendanceRuleOtRow).values({tenantId:ctx.tenantId,ruleId:p.ruleId,...row});
+    }
   }
+  const removed = existingRows.filter(row => !retained.has(row.id)).map(row => row.id);
+  if (removed.length) await tx.delete(attendanceRuleOtRow).where(inArray(attendanceRuleOtRow.id,removed));
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'attendance-rule',
