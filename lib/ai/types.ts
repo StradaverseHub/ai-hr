@@ -16,6 +16,9 @@ export type GenerateArgs = {
   system: string;
   prompt: string;
   maxTokens?: number;
+  /** Optional bounded operation; legacy callers retain their existing transport behaviour. */
+  timeoutMs?: number;
+  signal?: AbortSignal;
 };
 export type AiImageMime='image/png'|'image/jpeg'|'image/gif'|'image/webp';
 export type ImageReadArgs={data:Uint8Array;mimeType:AiImageMime;signal:AbortSignal;timeoutMs:number};

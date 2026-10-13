@@ -31,3 +31,5 @@ export { buildAssessmentPanels, importAssessmentPanels } from './onehr/panel-adm
 
 export { getAssessmentProgress, exportAssessmentProgress, getAssessmentAssessorProgress, exportAssessmentAssessorProgress } from './onehr/progress-service';
 export { getAssessmentFileTexts,readAssessmentFileTexts } from './onehr/evidence-reading';
+export { getAssessmentInsightSource } from './onehr/insight-source';
+export { getAssessmentPerformanceInsight } from './onehr/insight-service';

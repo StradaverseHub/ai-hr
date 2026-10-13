@@ -51,13 +51,13 @@ export const anthropicAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const message = await client(cfg.apiKey).messages.create({
+      const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
         thinking: { type: 'adaptive' },
         system: args.system,
         messages: [{ role: 'user', content: args.prompt }],
-      });
+      },args.signal?{signal:args.signal}:undefined);
       return message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)

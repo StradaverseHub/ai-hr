@@ -17819,7 +17819,31 @@
     "generateTargetsFailed": "生成阈值前，请输入正数基础目标并为每个 KPI 填写标题。",
     "ratingScale": "评分标准",
     "totalKpiScore": "KPI 总分",
-    "kpiFiles": "文件"
+    "kpiFiles": "文件",
+    "insight": {
+      "title": "绩效分析",
+      "help": "决定前，请查看已提交的结果、支持文件和已确认的评审意见。",
+      "working": "正在准备分析…",
+      "none": "员工尚未提交结果。",
+      "generate": "生成分析",
+      "unavailable": "暂时无法提供分析，请重试。",
+      "kpiReview": "KPI 证据审查",
+      "kpi": "KPI",
+      "result": "结果",
+      "backing": "证据与说明",
+      "files": "文件",
+      "nextSteps": "决定前",
+      "verdict": {
+        "well_justified": "依据充分",
+        "partly_justified": "依据部分充分",
+        "not_justified": "依据不足"
+      },
+      "justified": {
+        "yes": "有支持或说明",
+        "partly": "部分支持或说明",
+        "no": "缺少支持"
+      }
+    }
   },
   "allowanceV2": {
     "title": "考勤津贴",

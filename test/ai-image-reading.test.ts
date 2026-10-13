@@ -1,5 +1,5 @@
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { AiImageReadError,readImage,supportsImageReading,type AiProvider } from '../lib/ai';
+import { AiImageReadError,readImage,generateDraft,supportsImageReading,type AiProvider } from '../lib/ai';
 const png=new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8R0AAAAASUVORK5CYII=','base64'));
 const providers:AiProvider[]=['openai','anthropic','google'];
 let transport:ReturnType<typeof vi.fn>;
@@ -9,6 +9,15 @@ function response(provider:AiProvider,text:string){return provider==='openai'?{i
 const body=(input:RequestInfo|URL,init?:RequestInit)=>init?.body?JSON.parse(String(init.body)):input instanceof Request?input.clone().json():null;
 describe('shared image-reading gateway with real provider transports',()=>{
  for(const provider of providers){
+  it(`${provider} bounds an explicit text assessment without changing the prompt or retrying a failed request`,async()=>{
+   let request:unknown;transport.mockImplementation(async(input:RequestInfo|URL,init?:RequestInit)=>{request=await body(input,init);return new Response(JSON.stringify(response(provider,'A grounded assessment.')),{status:200,headers:{'content-type':'application/json'}});});
+   const cfg={provider,model:'fixture',apiKey:'fixture-local-only'};expect(await generateDraft(cfg,{system:'Assess supplied facts.',prompt:'Authorized case.',timeoutMs:2000})).toBe('A grounded assessment.');expect(JSON.stringify(request)).toContain('Authorized case.');expect(transport).toHaveBeenCalledOnce();
+   transport.mockReset().mockResolvedValue(new Response(JSON.stringify({error:{message:'secret-provider-body'}}),{status:503,headers:{'content-type':'application/json'}}));await expect(generateDraft(cfg,{system:'Assess supplied facts.',prompt:'Authorized case.',timeoutMs:2000})).rejects.toThrow();expect(transport).toHaveBeenCalledOnce();
+  });
+  it(`${provider} propagates a bounded text deadline to the real transport`,async()=>{
+   let aborted=false;transport.mockImplementation((input:RequestInfo|URL,init?:RequestInit)=>new Promise((_resolve,reject)=>{const signal=init?.signal??(input instanceof Request?input.signal:null);if(!signal)throw Error('Missing transport cancellation.');const abort=()=>{aborted=true;reject(new DOMException('fixture aborted','AbortError'));};if(signal.aborted)abort();else signal.addEventListener('abort',abort,{once:true});}));
+   await expect(generateDraft({provider,model:'fixture',apiKey:'fixture-local-only'},{system:'Assess supplied facts.',prompt:'Authorized case.',timeoutMs:30})).rejects.toThrow();expect(aborted).toBe(true);expect(transport).toHaveBeenCalledOnce();
+  });
   it(`${provider} sends only image bytes and the fixed transcription instruction through its adapter`,async()=>{
    let request:unknown;transport.mockImplementation(async(input:RequestInfo|URL,init?:RequestInit)=>{request=await body(input,init);return new Response(JSON.stringify(response(provider,'Verified 15.9 units.')),{status:200,headers:{'content-type':'application/json'}});});
    expect(supportsImageReading(provider)).toBe(true);expect(await readImage({provider,model:'fixture',apiKey:'fixture-local-only'},{data:png,mimeType:'image/png'})).toBe('Verified 15.9 units.');expect(transport).toHaveBeenCalledOnce();

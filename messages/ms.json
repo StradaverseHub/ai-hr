@@ -17819,7 +17819,31 @@
     "generateTargetsFailed": "Masukkan sasaran asas positif dan tajuk bagi setiap KPI sebelum menjana ambang.",
     "ratingScale": "Skala penilaian",
     "totalKpiScore": "Jumlah skor KPI",
-    "kpiFiles": "Fail"
+    "kpiFiles": "Fail",
+    "insight": {
+      "title": "Pandangan prestasi",
+      "help": "Semak hasil yang dihantar, fail sokongan dan ulasan penyemak yang disahkan sebelum membuat keputusan.",
+      "working": "Menyediakan pandangan…",
+      "none": "Tiada hasil pekerja dihantar lagi.",
+      "generate": "Jana pandangan",
+      "unavailable": "Pandangan tidak tersedia. Cuba lagi.",
+      "kpiReview": "Semakan bukti KPI",
+      "kpi": "KPI",
+      "result": "Hasil",
+      "backing": "Bukti dan penjelasan",
+      "files": "Fail",
+      "nextSteps": "Sebelum membuat keputusan",
+      "verdict": {
+        "well_justified": "Disokong dengan baik",
+        "partly_justified": "Disokong sebahagian",
+        "not_justified": "Tidak disokong"
+      },
+      "justified": {
+        "yes": "Disokong atau dijelaskan",
+        "partly": "Disokong atau dijelaskan sebahagian",
+        "no": "Tidak disokong"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

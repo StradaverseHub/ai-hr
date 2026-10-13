@@ -62,9 +62,13 @@ function adapterFor(provider: AiProvider): AiAdapter {
  *  the provider returns no text (e.g. the whole budget was spent on thinking, or a safety block) so a
  *  caller never silently receives an empty draft. */
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
-  const text = await adapterFor(cfg.provider).generate(cfg, args);
-  if (!text) throw new AiGatewayError('No draft was produced — please try again.');
-  return text;
+  const adapter=adapterFor(cfg.provider);
+  if(args.timeoutMs==null&&!args.signal){const text=await adapter.generate(cfg,args);if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
+  const controller=new AbortController(),abort=()=>controller.abort(),timeoutMs=Math.min(22000,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:22000));
+  if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
+  args.signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
+  try{const text=await adapter.generate(cfg,{...args,signal:controller.signal,timeoutMs});if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
+  finally{clearTimeout(timer);args.signal?.removeEventListener('abort',abort);}
 }
 
 export function supportsImageReading(provider:AiProvider){return typeof ADAPTERS[provider]?.readImage==='function';}

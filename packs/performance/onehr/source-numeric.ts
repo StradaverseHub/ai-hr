@@ -18,3 +18,10 @@ export function sourceFigure(value:number|null,digits=2):number|null{
  const text=whole.toString().padStart(digits+1,'0'),decimal=digits?`${text.slice(0,-digits)}.${text.slice(-digits)}`:text;
  return Number(`${value<0?'-':''}${decimal}`);
 }
+/** The source `_commas` display retains fractional results instead of rounding them to a score. */
+export function sourceGroupedFigure(value:number):string{
+ if(!Number.isFinite(value))return String(value);
+ if(Number.isInteger(value))return BigInt(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g,',');
+ if(Math.abs(value)<.0001)return value.toExponential().replace(/e([+-])(\d)$/,(_match,sign:string,digit:string)=>`e${sign}0${digit}`);
+ const [whole,fraction]=String(value).split('.');return whole.replace(/\B(?=(\d{3})+(?!\d))/g,',')+(fraction?'.'+fraction:'');
+}

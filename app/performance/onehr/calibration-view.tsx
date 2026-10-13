@@ -1,3 +1,4 @@
+import { PerformanceInsight } from './performance-insight';
 import { getTranslations } from 'next-intl/server';
 import type { getOnehrCalibration } from '@/packs/performance/service';
 import { pmBands, potentialBands, potentialReferenceCurve, talentCategory, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
@@ -27,6 +28,7 @@ export async function AssessmentCalibrationView({v,error,embedded=false,returnTo
       const ownNomination=r.entry.nominations.find(n=>n.userId===v.actorUserId);
       return <Card id={`assessment-${r.entry.reviewId}`} key={r.entry.id} className="space-y-4 p-5">
         <h2 className="font-semibold">{r.name} · {r.grade}</h2>
+        {axes.pm&&<PerformanceInsight reviewId={r.entry.reviewId} contextId={sessionId}/>}
         {v.canReopen&&!r.finalized&&(axes.pm&&(v.session.performanceLockedAt||r.entry.performanceLockedAt)||axes.pot&&(v.session.potentialLockedAt||r.entry.potentialLockedAt))&&<details><summary className="cursor-pointer text-sm font-medium">{t('reopenCalibration')}</summary><form action={onehrCalibrationAction} className="mt-3 space-y-3">{fields}<input type="hidden" name="action" value="unlock"/><input type="hidden" name="reviewId" value={r.entry.reviewId}/>{axisSelect(axes.pm&&!!(v.session.performanceLockedAt||r.entry.performanceLockedAt),axes.pot&&!!(v.session.potentialLockedAt||r.entry.potentialLockedAt))}<p className="text-sm text-muted-foreground">{t('reopenCalibrationHelp')}</p><Field label={t('reason')}><textarea required name="reason" maxLength={4000} className={inputCls}/></Field><ConfirmSubmit description={t('reopenCalibrationHelp')} variant="secondary">{t('reopenCalibration')}</ConfirmSubmit></form></details>}
         <p className="text-sm">{t('managerAssessment')}: {r.managerPerformance??'—'} · {t('managerPotential')}: {r.managerPotential??'—'}</p>
         <p className="text-sm">{t('effectiveAssessment')}: {r.currentPerformance??'—'} · {r.currentPotential??'—'}</p>

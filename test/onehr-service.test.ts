@@ -45,6 +45,48 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+  it('generates adjudicated insights explicitly, reuses current cache and discards a provider reply after reviewer access is revoked',async()=>{
+    await complete();const source=await perf.getAssessmentInsightSource(mgr,reviewId),title=source.facts.rows[0].kpi;
+    const raw=JSON.stringify({paragraph:'Their result met target, and their note explains the period.',overall:'Their note explains the result.',verdict:'well_justified',verdict_why:'Their note explains the result.',kpis:[{kpi:title,read:'The result met target.',evidence:'none',evidence_note:'',justified:'yes',why:'Their note explains the result.'}],discuss:[]});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockClear().mockResolvedValue(raw);
+    expect(await perf.getAssessmentPerformanceInsight(mgr,reviewId)).toMatchObject({pending:true,data:null});expect(generateDraft).not.toHaveBeenCalled();expect(readImage).not.toHaveBeenCalled();
+    const result=await perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true});expect(result).toMatchObject({pending:false,source:'ai',data:{verdict:'well_justified'}});expect(generateDraft).toHaveBeenCalledOnce();expect(vi.mocked(generateDraft).mock.calls[0][1].timeoutMs).toBe(22000);
+    expect(await perf.getAssessmentPerformanceInsight(mgr,reviewId)).toMatchObject({pending:false,source:'ai'});expect(generateDraft).toHaveBeenCalledOnce();
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.assessmentInsight))).toEqual([]);
+    await owner.db.update(schema.onehrReview).set({selfRemark:'New submitted delivery context.'}).where(eq(schema.onehrReview.reviewId,reviewId));
+    expect(await perf.getAssessmentPerformanceInsight(mgr,reviewId)).toMatchObject({pending:true});
+    vi.mocked(generateDraft).mockRejectedValueOnce(Error('fixture unavailable'));
+    expect(await perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true})).toMatchObject({source:'plain',data:{verdict:'well_justified'}});
+    const [cache]=await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.actorUserId,mgr.userId!));expect(cache.retry).toBe(true);
+    vi.mocked(generateDraft).mockClear();await perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true});expect(generateDraft).not.toHaveBeenCalled();
+    const clock=vi.spyOn(Date,'now').mockReturnValue(Date.now()+11*60000);try{await perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true});expect(generateDraft).toHaveBeenCalledOnce();}finally{clock.mockRestore();}
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Insight revocation',companyId:b.companyId,tier:'hod',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));return raw;});
+    await expect(perf.getAssessmentPerformanceInsight(peers[0].ctx,reviewId,sid,{generate:true})).rejects.toThrow(/not assigned/);
+    expect(await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.contextId,sid))).toEqual([]);
+  });
+  it('projects insight facts and file text only for the assigned reviewer, retaining decimals and excluding private drafts',async()=>{
+    const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'Verified delivery',weightBp:10000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed objectives');
+    const file=await perf.addPerformanceAttachment(self,{reviewId,kpiId:id,stageKind:null,fileName:'delivery.txt',mimeType:'text/plain',content:Buffer.from('Verified delivery: 100.12345 units.')});
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'results',lines:[{id,actual:999,note:'Private employee explanation'}],remark:'Private employee remark'});
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Insight department',companyId:b.companyId,tier:'hod',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'}),calibrator=peers[0].ctx;
+    const before=await perf.getAssessmentInsightSource(mgr,reviewId);expect(before.facts.rows).toEqual([]);expect(before.attachments).toEqual([]);expect(before.facts.remark).toBe('');
+    expect((await perf.getAssessmentInsightSource(calibrator,reviewId,sid)).facts.rows).toEqual([]);
+    await expect(perf.getAssessmentInsightSource(self,reviewId,sid)).rejects.toThrow(/not assigned/);await expect(perf.getAssessmentInsightSource(peers[1].ctx,reviewId,sid)).rejects.toThrow(/not assigned/);
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100.12345,note:'Submitted delivery explanation'}],'Submitted delivery remark.');
+    let source=await perf.getAssessmentInsightSource(calibrator,reviewId,sid);expect(source.facts.rows[0]).toMatchObject({result:'100.12345 units',target:'100',note:'Submitted delivery explanation',moderation:[]});expect(source.facts.remark).toBe('Submitted delivery remark.');
+    expect((await perf.readAssessmentFileTexts(calibrator,reviewId,{contextId:sid})).get(file.id)).toMatchObject({status:'ok',text:'Verified delivery: 100.12345 units.'});expect(readImage).not.toHaveBeenCalled();
+    expect(await perf.getAssessmentPerformanceInsight(calibrator,reviewId,sid,{generate:true})).toMatchObject({source:'plain',pending:false,data:{verdict:'well_justified'}});expect(await perf.getAssessmentPerformanceInsight(calibrator,reviewId,sid)).toMatchObject({source:'plain',pending:false});
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:50,note:'Private manager explanation'}],remark:'Private manager remark'});
+    source=await perf.getAssessmentInsightSource(calibrator,reviewId,sid);expect(source.facts.rows[0].moderation).toEqual([]);expect(JSON.stringify(source)).not.toContain('Private manager');
+    await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,50,'Confirmed manager explanation');
+    expect((await perf.getAssessmentInsightSource(mgr,reviewId)).facts.rows[0].approvers).toEqual([]);
+    source=await perf.getAssessmentInsightSource(calibrator,reviewId,sid);expect(source.facts.rows[0].moderation).toEqual([expect.objectContaining({by:'Assessment manager',from:100.12345,to:50,why:'Confirmed manager explanation'})]);
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));
+    await expect(perf.getAssessmentInsightSource(calibrator,reviewId,sid)).rejects.toThrow(/not assigned/);await expect(perf.getAssessmentFileTexts(calibrator,reviewId,sid)).rejects.toThrow(/not assigned/);
+  });
   it('keeps excluded staff available as raters and preserves inputs across HR roster changes',async()=>{
     const newcomer=await hireEmployee(a,{person:{fullName:'Unconfirmed rater',primaryEmail:`${randomUUID()}@assessment.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
     const [numericGrade]=await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId,b.tenantId),eq(schema.jobGrade.code,'12')));

@@ -41,7 +41,7 @@ export const googleAdapter: AiAdapter = {
       const response = await client(cfg.apiKey).models.generateContent({
         model: cfg.model,
         contents: args.prompt,
-        config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048 },
+        config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:{}) },
       });
       return (response.text ?? '').trim();
     } catch (e) {

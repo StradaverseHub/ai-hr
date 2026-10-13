@@ -1033,3 +1033,60 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_file_text_validate() FROM PUBLIC;
 CREATE TRIGGER assessment_file_text_guard BEFORE INSERT OR UPDATE ON performance_assessment_file_text FOR EACH ROW EXECUTE FUNCTION app.assessment_file_text_validate();
+
+--> statement-breakpoint
+-- A scoped reviewer projection. It exposes submitted facts, never private drafts, peer answers or another scope.
+CREATE FUNCTION app.assessment_insight_source(wanted_review uuid,wanted_context uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH authorized AS (
+  SELECT r.*,p.full_name,c.policy,s.tier,s.id AS calibration_id,
+   CASE WHEN wanted_context<>wanted_review THEN 'calibrator' ELSE 'manager' END AS reviewer_kind
+  FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+   JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+   LEFT JOIN performance_onehr_calibration s ON s.id=wanted_context AND s.cycle_id=r.cycle_id AND s.tenant_id=r.tenant_id AND wanted_context<>wanted_review
+  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
+   AND coalesce((c.policy->'modules'->>'pm')::boolean,false) AND c.policy->>'kind'<>'quarterly'
+   AND CASE WHEN wanted_context=wanted_review THEN app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)
+    ELSE s.id IS NOT NULL AND coalesce((c.policy->'modules'->>'calibration')::boolean,true) AND app.onehr_calibration_access(s.id)
+     AND EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.session_id=s.id AND ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id) END
+ ), scoped AS (
+  SELECT a.*,CASE WHEN a.results_submitted_at IS NULL THEN '[]'::jsonb ELSE coalesce((SELECT jsonb_agg(k ORDER BY ord) FROM jsonb_array_elements(a.kpis) WITH ORDINALITY q(k,ord)
+   WHERE a.reviewer_kind='calibrator' OR coalesce((k->>'hrOwned')::boolean,false) OR EXISTS(
+    SELECT 1 FROM employment m JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id
+     WHERE u.id=app.current_user_id() AND m.tenant_id=a.tenant_id AND (k->>'moderatorEmploymentId'=m.id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) ap WHERE ap->>'employmentId'=m.id::text))
+   )),'[]'::jsonb) END AS visible_kpis FROM authorized a
+ )
+ SELECT jsonb_build_object('reviewId',a.review_id,'cycleId',a.cycle_id,'companyId',a.company_id,'name',a.full_name,'revision',a.revision,'reviewerKind',a.reviewer_kind,
+  'kpis',a.visible_kpis,'submitted',a.results_submitted_at IS NOT NULL,'selfRemark',CASE WHEN a.results_submitted_at IS NOT NULL AND (a.reviewer_kind='calibrator' OR app.onehr_manager(a.review_id)) THEN a.self_remark ELSE '' END,
+  'managerRemark',CASE WHEN a.reviewer_kind='calibrator' AND a.manager_performance IS NOT NULL THEN a.manager_remark ELSE '' END,
+  'bands',jsonb_build_object('aBands',a.policy->'aBands','bBands',a.policy->'bBands'),'evidenceEnabled',coalesce((a.policy->'modules'->>'evidence')::boolean,false),
+  'names',coalesce((SELECT jsonb_object_agg(m.id::text,p.full_name) FROM employment m JOIN person p ON p.id=m.person_id AND p.tenant_id=m.tenant_id WHERE m.tenant_id=a.tenant_id AND EXISTS(SELECT 1 FROM jsonb_array_elements(a.visible_kpis) k WHERE k->>'moderatorEmploymentId'=m.id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) ap WHERE ap->>'employmentId'=m.id::text))),'{}'::jsonb),
+  'managerName',coalesce((SELECT p.full_name FROM performance_review pr JOIN employment m ON m.id=pr.reviewer_employment_id AND m.tenant_id=pr.tenant_id JOIN person p ON p.id=m.person_id AND p.tenant_id=m.tenant_id WHERE pr.id=a.review_id),''),
+  'fileLinks',CASE WHEN a.results_submitted_at IS NOT NULL THEN coalesce((SELECT jsonb_agg(link ORDER BY link->>'attachmentId',link->>'kpiId') FROM jsonb_array_elements(app.assessment_kpi_file_links(a.review_id)) link WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(a.visible_kpis) k WHERE k->>'id'=link->>'kpiId' AND NOT coalesce((k->>'hrOwned')::boolean,false))),'[]'::jsonb) ELSE '[]'::jsonb END,
+  'trail',CASE WHEN a.reviewer_kind='calibrator' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('tier',s.tier,'label',CASE s.tier WHEN 'hod' THEN 'HOD' WHEN 'bu' THEN 'BU CEO' WHEN 'bg' THEN 'BG CEO' ELSE 'Group' END,'by',coalesce((SELECT p.full_name FROM domain_event d JOIN app_user u ON u.id=d.actor_id AND u.tenant_id=d.tenant_id JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE d.tenant_id=a.tenant_id AND d.aggregate_id=s.id AND d.event_type='onehr.calibration-recorded' AND d.payload->>'reviewId'=a.review_id::text ORDER BY d.occurred_at DESC,d.id DESC LIMIT 1),''),'from',ce.seen_performance,'band',ce.performance,'note',ce.performance_note) ORDER BY array_position(ARRAY['hod','bu','bg','group','final'],s.tier))
+   FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration s ON s.id=ce.session_id AND s.tenant_id=ce.tenant_id
+   WHERE ce.review_id=a.review_id AND ce.tenant_id=a.tenant_id AND (ce.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL) AND array_position(ARRAY['hod','bu','bg','group','final'],s.tier)<array_position(ARRAY['hod','bu','bg','group','final'],a.tier)),'[]'::jsonb) ELSE '[]'::jsonb END
+ ) FROM scoped a
+$$;
+REVOKE ALL ON FUNCTION app.assessment_insight_source(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_insight_source(uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- A reviewer-owned, disposable cache. Every read also rechecks live assignment and the source fingerprint.
+CREATE TABLE performance_assessment_insight (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=120000),
+ retry boolean NOT NULL DEFAULT false,updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,context_id)
+);
+ALTER TABLE performance_assessment_insight ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_insight FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_insight TO ai_hr_app;
+CREATE POLICY assessment_insight_access ON performance_assessment_insight FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_insight_source(review_id,context_id) IS NOT NULL) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_insight_source(review_id,context_id) IS NOT NULL);
+CREATE FUNCTION app.assessment_insight_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR app.assessment_insight_source(NEW.review_id,NEW.context_id) IS NULL THEN RAISE EXCEPTION 'Invalid assessment insight actor or scope'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.context_id IS DISTINCT FROM OLD.context_id) THEN RAISE EXCEPTION 'Assessment insight identity is immutable'; END IF;
+ NEW.updated_at:=now();RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_insight_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_insight_guard BEFORE INSERT OR UPDATE ON performance_assessment_insight FOR EACH ROW EXECUTE FUNCTION app.assessment_insight_validate();

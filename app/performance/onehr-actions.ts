@@ -18,6 +18,11 @@ const readWindows=(f:FormData)=>Object.fromEntries(windowCells.map(cell=>[cell,{
 
 const destination=(f:FormData,fallback:string)=>assessmentReturnPath(f.get('returnTo'),fallback);
 const withError=(url:string,error:unknown)=>`${url}${url.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(error))}`;
+export async function assessmentInsightAction(reviewId:string,contextId:string,generate=false){
+ const s=await getSession();
+ try{return await perf.getAssessmentPerformanceInsight(s,z.uuid().parse(reviewId),z.uuid().parse(contextId),{generate:z.boolean().parse(generate)});}
+ catch(error){return {error:publicErrorMessage(error)};}
+}
 
 
 

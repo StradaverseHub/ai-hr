@@ -17819,7 +17819,31 @@
     "generateTargetsFailed": "Nhập mục tiêu cơ sở dương và tên cho mỗi KPI trước khi tạo ngưỡng.",
     "ratingScale": "Thang đánh giá",
     "totalKpiScore": "Tổng điểm KPI",
-    "kpiFiles": "Tệp"
+    "kpiFiles": "Tệp",
+    "insight": {
+      "title": "Nhận định hiệu suất",
+      "help": "Xem kết quả đã gửi, tệp minh chứng và nhận xét đã xác nhận trước khi quyết định.",
+      "working": "Đang chuẩn bị nhận định…",
+      "none": "Nhân viên chưa gửi kết quả.",
+      "generate": "Tạo nhận định",
+      "unavailable": "Chưa thể cung cấp nhận định. Vui lòng thử lại.",
+      "kpiReview": "Xem minh chứng KPI",
+      "kpi": "KPI",
+      "result": "Kết quả",
+      "backing": "Minh chứng và giải thích",
+      "files": "Tệp",
+      "nextSteps": "Trước khi quyết định",
+      "verdict": {
+        "well_justified": "Có căn cứ đầy đủ",
+        "partly_justified": "Có căn cứ một phần",
+        "not_justified": "Chưa có căn cứ"
+      },
+      "justified": {
+        "yes": "Có minh chứng hoặc giải thích",
+        "partly": "Có minh chứng hoặc giải thích một phần",
+        "no": "Chưa có minh chứng"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

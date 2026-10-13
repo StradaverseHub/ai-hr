@@ -45,14 +45,14 @@ export const openaiAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const completion = await client(cfg.apiKey).chat.completions.create({
+      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
           { role: 'developer', content: args.system },
           { role: 'user', content: args.prompt },
         ],
-      });
+      },args.signal?{signal:args.signal}:undefined);
       return (completion.choices[0]?.message?.content ?? '').trim();
     } catch (e) {
       throw mapError(e);

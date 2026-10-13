@@ -17819,7 +17819,31 @@
     "generateTargetsFailed": "Enter a positive base target and a title for every KPI before generating thresholds.",
     "ratingScale": "Rating scale",
     "totalKpiScore": "Total KPI score",
-    "kpiFiles": "Files"
+    "kpiFiles": "Files",
+    "insight": {
+      "title": "Performance insight",
+      "help": "Review submitted results, supporting files and confirmed reviewer comments before deciding.",
+      "working": "Preparing the insight…",
+      "none": "No employee results have been submitted yet.",
+      "generate": "Generate insight",
+      "unavailable": "The insight is unavailable. Try again.",
+      "kpiReview": "KPI evidence review",
+      "kpi": "KPI",
+      "result": "Result",
+      "backing": "Evidence and explanation",
+      "files": "Files",
+      "nextSteps": "Before deciding",
+      "verdict": {
+        "well_justified": "Well justified",
+        "partly_justified": "Partly justified",
+        "not_justified": "Not justified"
+      },
+      "justified": {
+        "yes": "Backed or explained",
+        "partly": "Partly backed or explained",
+        "no": "Not backed"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Attendance Allowance",
