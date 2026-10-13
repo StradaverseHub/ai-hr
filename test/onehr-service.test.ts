@@ -489,18 +489,41 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},...peers.slice(1).map(p=>({employmentId:p.employmentId,relationship:'peer'}))]);
     expect((await perf.onehrAssignments(mgr)).feedback.some(r=>r.subject==='Assessment subject')).toBe(true);
   });
-  it('keeps endorsements append-only and snapshots evidence provenance at finalization',async()=>{
+  it('keeps a standing reviewer verdict with an audit trail and protects shared evidence words',async()=>{
     const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered the release.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});
     await expect(perf.respondOnehrEvidence(self,id,'endorse','Own endorsement')).rejects.toThrow(/another author/);
     await perf.respondOnehrEvidence(mgr,id,'endorse','Verified delivery');await perf.respondOnehrEvidence(mgr,id,'dispute','A correction is needed');
-    expect((await view(self)).evidence[0].responses.map(r=>r.stance)).toEqual(['endorse','dispute']);
-    await expect(withTenant(self,tx=>tx.update(schema.onehrEvidence).set({responses:[]}).where(eq(schema.onehrEvidence.id,id)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/append-only/)})});
+    expect((await view(self)).evidence[0].responses.map(r=>r.stance)).toEqual(['dispute']);
+    await expect(withTenant(self,tx=>tx.update(schema.onehrEvidence).set({responses:[]}).where(eq(schema.onehrEvidence.id,id)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/standing evidence response/)})});
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
-    const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect((f.result as {provenance:{evidence:unknown[]}}).provenance.evidence).toHaveLength(1);
+    const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect((f.result as {provenance:{evidence:unknown[]}}).provenance.evidence).toHaveLength(0);
     const [panel]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId,reviewId));
     await expect(withTenant(a,tx=>tx.update(schema.onehrPanel).set({remark:'Restate frozen evidence'}).where(eq(schema.onehrPanel.requestId,panel.requestId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
   });
 
+  it('edits evidence drafts without clearing absent slots and updates links and citations without rewriting shared words',async()=>{
+    const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered the programme.',occurredOn:todayInKualaLumpur(),title:'Programme',impact:'Reduced manual steps',who:'Operations',precision:'month',metricValue:25,metricUnit:'hours',state:'draft',supersedesId:null,links:[]});
+    let entry=(await view(self)).evidence.find(e=>e.id===id)!;
+    await perf.editAssessmentEvidence(self,id,entry.revision,{body:'Delivered the improved programme.'});
+    entry=(await view(self)).evidence.find(e=>e.id===id)!;expect(entry).toMatchObject({body:'Delivered the improved programme.',details:{title:'Programme',impact:'Reduced manual steps',precision:'month',metricValue:25,metricUnit:'hours'}});
+    await expect(perf.editAssessmentEvidence(mgr,id,entry.revision,{body:'Manager rewrite'})).rejects.toThrow();
+    await expect(perf.editAssessmentEvidence(self,id,entry.revision-1,{body:'Stale edit'})).rejects.toThrow(/changed/);
+    await perf.changeOnehrEvidenceState(self,id,'shared');entry=(await view(self)).evidence.find(e=>e.id===id)!;
+    await expect(perf.editAssessmentEvidence(self,id,entry.revision,{body:'Rewrite shared words'})).rejects.toThrow(/Shared evidence/);
+    expect((await view(a)).evidence.some(e=>e.id===id)).toBe(false); // HR is not an audience for unlinked personal evidence.
+    await complete();const kpi=(await view(self)).kpis[0];
+    await perf.linkAssessmentEvidence(self,reviewId,id,entry.revision,{kind:'kpi',id:kpi.id});entry=(await view(self)).evidence.find(e=>e.id===id)!;
+    expect((await view(a)).evidence.some(e=>e.id===id)).toBe(true);
+    await perf.citeAssessmentEvidence(mgr,reviewId,id,entry.revision,'supports','moderation');entry=(await view(self)).evidence.find(e=>e.id===id)!;
+    await perf.citeAssessmentEvidence(mgr,reviewId,id,entry.revision,'qualifies','moderation');entry=(await view(self)).evidence.find(e=>e.id===id)!;
+    expect(entry.citations).toHaveLength(1);expect(entry.citations[0]).toMatchObject({stance:'qualifies',decisionKind:'moderation',userId:mgr.userId});
+    await perf.linkAssessmentEvidence(self,reviewId,id,entry.revision,{kind:'kpi',id:kpi.id},false);
+    expect((await view(self)).evidence.find(e=>e.id===id)?.body).toBe('Delivered the improved programme.');
+    expect((await view(a)).evidence.some(e=>e.id===id)).toBe(false);
+    const managerId=await perf.addOnehrEvidence(mgr,reviewId,{kind:'learning',body:'Observed the employee coaching a colleague.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
+    expect((await view(self)).evidence.find(e=>e.id===managerId)?.state).toBe('shared');
+    await expect(perf.addOnehrEvidence(self,reviewId,{kind:'learning',body:'Rewrite a manager observation.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:managerId,links:[]})).rejects.toThrow(/own shared evidence/);
+  });
   it('routes native feedback tasks and released-result updates without disclosing assessment content',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));

@@ -11,6 +11,7 @@ import { goalSchema, windowCells, type PMBand, type PotentialBand } from '@/pack
 const str=(f:FormData,k:string)=>String(f.get(k)??'').trim();
 const num=(f:FormData,k:string)=>{const s=str(f,k);if(!s||!Number.isFinite(Number(s)))throw Error('Enter a number in every required numeric field.');return Number(s);};
 const nullableNumber=(f:FormData,k:string)=>str(f,k)?num(f,k):null;
+const evidenceFields=(f:FormData)=>({...Object.fromEntries(['kind','body','occurredOn','title','impact','who','precision','metricUnit'].filter(k=>f.has(k)).map(k=>[k,str(f,k)])),...(f.has('metricValue')?{metricValue:nullableNumber(f,'metricValue')}:{}),...(f.has('raisedWithSubject')?{raisedWithSubject:str(f,'raisedWithSubject')||null}:{})});
 const ids=(f:FormData,k:string)=>f.getAll(k).map(v=>z.uuid().parse(String(v)));
 const readWindows=(f:FormData)=>Object.fromEntries(windowCells.map(cell=>[cell,{opensAt:str(f,`${cell}.opens`)?`${str(f,`${cell}.opens`)}:00+08:00`:null,closesAt:str(f,`${cell}.closes`)?`${str(f,`${cell}.closes`)}:00+08:00`:null}]));
 
@@ -87,7 +88,10 @@ export async function onehrReviewAction(f:FormData){
       case 'reopen-plan':await perf.reopenAssessmentPlan(s,str(f,'planId'),num(f,'planRevision'));break;
       case 'plan-ack':await perf.acknowledgeOnehrPlan(s,str(f,'planId'),num(f,'planRevision'));break;
       case 'goal-progress':await perf.updateOnehrGoalProgress(s,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),str(f,'status') as z.infer<typeof goalSchema>['status']);break;
-      case 'evidence':await perf.addOnehrEvidence(s,id,{kind:str(f,'kind'),body:str(f,'body'),occurredOn:str(f,'occurredOn'),state:f.has('share')?'shared':'draft',supersedesId:str(f,'supersedesId')||null,links:f.getAll('evidenceLink').map(v=>JSON.parse(String(v)))});break;
+      case 'evidence':await perf.addOnehrEvidence(s,id,{...evidenceFields(f),state:f.has('share')?'shared':'draft',supersedesId:str(f,'supersedesId')||null,links:f.getAll('evidenceLink').map(v=>JSON.parse(String(v)))});break;
+      case 'evidence-edit':await perf.editAssessmentEvidence(s,str(f,'evidenceId'),num(f,'evidenceRevision'),evidenceFields(f));break;
+      case 'evidence-link':await perf.linkAssessmentEvidence(s,id,str(f,'evidenceId'),num(f,'evidenceRevision'),JSON.parse(str(f,'evidenceLink')),str(f,'linked')!=='false');break;
+      case 'evidence-cite':await perf.citeAssessmentEvidence(s,id,str(f,'evidenceId'),num(f,'evidenceRevision'),z.enum(['supports','qualifies','contradicts']).parse(str(f,'citationStance')),z.enum(['kpi_result','moderation','band_change']).parse(str(f,'decisionKind')));break;
       case 'evidence-response':await perf.respondOnehrEvidence(s,str(f,'evidenceId'),str(f,'stance') as 'endorse'|'dispute',str(f,'note'),id);break;
       case 'evidence-state':await perf.changeOnehrEvidenceState(s,str(f,'evidenceId'),str(f,'state') as 'shared'|'retracted');break;
       default:throw Error('Unknown assessment action.');

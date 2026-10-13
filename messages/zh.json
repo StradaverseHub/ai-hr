@@ -17508,6 +17508,33 @@
         "capture": "人力资源采集",
         "updated": "记录更新"
       }
+    },
+    "evidenceDetails": {
+      "title": "简短标题",
+      "impact": "影响",
+      "who": "相关人员",
+      "precision": "日期精度",
+      "day": "日",
+      "week": "周",
+      "month": "月",
+      "quarter": "季度",
+      "metricValue": "衡量数值",
+      "metricUnit": "单位",
+      "raisedWithSubject": "是否已向员工提出",
+      "written": "书面提出",
+      "discussed": "已讨论",
+      "no": "尚未提出",
+      "cite": "引用立场",
+      "decisionKind": "决策",
+      "kpi_result": "KPI 结果",
+      "moderation": "审核调整",
+      "band_change": "等级变更",
+      "supports": "支持",
+      "qualifies": "有限支持",
+      "contradicts": "相矛盾",
+      "edit": "编辑草稿",
+      "link": "关联证据",
+      "unlink": "取消关联"
     }
   },
   "allowanceV2": {

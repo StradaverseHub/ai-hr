@@ -17508,6 +17508,33 @@
         "capture": "Pengambilan HR",
         "updated": "Rekod dikemas kini"
       }
+    },
+    "evidenceDetails": {
+      "title": "Tajuk ringkas",
+      "impact": "Impak",
+      "who": "Siapa yang terlibat",
+      "precision": "Ketepatan tarikh",
+      "day": "Hari",
+      "week": "Minggu",
+      "month": "Bulan",
+      "quarter": "Suku tahun",
+      "metricValue": "Ukuran",
+      "metricUnit": "Unit",
+      "raisedWithSubject": "Dibangkitkan dengan pekerja",
+      "written": "Secara bertulis",
+      "discussed": "Dibincangkan",
+      "no": "Belum dibangkitkan",
+      "cite": "Pendirian petikan",
+      "decisionKind": "Keputusan",
+      "kpi_result": "Keputusan KPI",
+      "moderation": "Moderasi",
+      "band_change": "Perubahan jalur",
+      "supports": "Menyokong",
+      "qualifies": "Mengehadkan",
+      "contradicts": "Bercanggah",
+      "edit": "Edit draf",
+      "link": "Pautkan bukti",
+      "unlink": "Nyahpaut"
     }
   },
   "allowanceV2": {

@@ -17508,6 +17508,33 @@
         "capture": "HR ghi nhận",
         "updated": "Cập nhật hồ sơ"
       }
+    },
+    "evidenceDetails": {
+      "title": "Tiêu đề ngắn",
+      "impact": "Tác động",
+      "who": "Người liên quan",
+      "precision": "Độ chính xác ngày",
+      "day": "Ngày",
+      "week": "Tuần",
+      "month": "Tháng",
+      "quarter": "Quý",
+      "metricValue": "Số đo",
+      "metricUnit": "Đơn vị",
+      "raisedWithSubject": "Đã trao đổi với nhân viên",
+      "written": "Bằng văn bản",
+      "discussed": "Đã thảo luận",
+      "no": "Chưa trao đổi",
+      "cite": "Lập trường trích dẫn",
+      "decisionKind": "Quyết định",
+      "kpi_result": "Kết quả KPI",
+      "moderation": "Điều chỉnh đánh giá",
+      "band_change": "Thay đổi mức",
+      "supports": "Ủng hộ",
+      "qualifies": "Có điều kiện",
+      "contradicts": "Mâu thuẫn",
+      "edit": "Sửa bản nháp",
+      "link": "Liên kết bằng chứng",
+      "unlink": "Bỏ liên kết"
     }
   },
   "allowanceV2": {

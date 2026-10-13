@@ -17508,6 +17508,33 @@
         "capture": "HR capture",
         "updated": "Record updated"
       }
+    },
+    "evidenceDetails": {
+      "title": "Short title",
+      "impact": "Impact",
+      "who": "Who was involved",
+      "precision": "Date precision",
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "quarter": "Quarter",
+      "metricValue": "Measure",
+      "metricUnit": "Unit",
+      "raisedWithSubject": "Raised with the employee",
+      "written": "In writing",
+      "discussed": "Discussed",
+      "no": "Not raised",
+      "cite": "Citation stance",
+      "decisionKind": "Decision",
+      "kpi_result": "KPI result",
+      "moderation": "Moderation",
+      "band_change": "Band change",
+      "supports": "Supports",
+      "qualifies": "Qualifies",
+      "contradicts": "Contradicts",
+      "edit": "Edit draft",
+      "link": "Link evidence",
+      "unlink": "Unlink"
     }
   },
   "allowanceV2": {

@@ -4,6 +4,7 @@
 ALTER TABLE performance_onehr_review ADD COLUMN profile_id uuid, ADD COLUMN profile_match text, ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
 ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(principle_comments)='object');
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
+ALTER TABLE performance_onehr_evidence ADD COLUMN details jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(details)='object' AND octet_length(details::text)<=5000), ADD COLUMN citations jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(citations)='array'), ADD COLUMN revision integer NOT NULL DEFAULT 1;
 ALTER TABLE performance_onehr_calibration ADD COLUMN pip_locked_at timestamptz, ADD COLUMN promotion_locked_at timestamptz;
 ALTER TABLE performance_onehr_calibration_entry ADD COLUMN performance_pinned boolean NOT NULL DEFAULT false, ADD COLUMN potential_pinned boolean NOT NULL DEFAULT false, ADD COLUMN pip_reason text NOT NULL DEFAULT '', ADD COLUMN promotion_reason text NOT NULL DEFAULT '', ADD COLUMN special_reward_reason text NOT NULL DEFAULT '';
 ALTER TABLE performance_onehr_cycle ADD COLUMN participation_opened_on date;
@@ -198,8 +199,22 @@ BEGIN
   IF TG_TABLE_NAME IN ('performance_onehr_panel','performance_onehr_calibration_entry') AND EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=rid) AND n IS DISTINCT FROM o THEN RAISE EXCEPTION 'Finalized assessment inputs are immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_panel' AND (o->>'submitted_at') IS NOT NULL AND n IS DISTINCT FROM o THEN RAISE EXCEPTION 'Submitted feedback is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=rid) THEN RAISE EXCEPTION 'A finalized assessment review is immutable'; END IF;
-  IF TG_TABLE_NAME='performance_onehr_evidence' AND n->'responses' IS DISTINCT FROM o->'responses' AND (o->>'state'<>'shared' OR jsonb_array_length(n->'responses')<>jsonb_array_length(o->'responses')+1 OR EXISTS(SELECT 1 FROM jsonb_array_elements(o->'responses') WITH ORDINALITY prev(v,idx) WHERE n->'responses'->((prev.idx-1)::integer) IS DISTINCT FROM prev.v) OR n->'responses'->(jsonb_array_length(o->'responses'))->>'userId' IS DISTINCT FROM app.current_user_id()::text) THEN RAISE EXCEPTION 'Evidence responses are append-only'; END IF;
-  IF TG_TABLE_NAME='performance_onehr_evidence' AND o->>'state'<>'draft' AND n-ARRAY['state','responses'] IS DISTINCT FROM o-ARRAY['state','responses'] THEN RAISE EXCEPTION 'Correct shared evidence with a new entry'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_evidence' THEN
+   IF n->'author_user_id' IS DISTINCT FROM o->'author_user_id' THEN RAISE EXCEPTION 'Evidence authorship is immutable'; END IF;
+   IF n->'responses' IS DISTINCT FROM o->'responses' AND (o->>'state'<>'shared' OR
+    (SELECT count(*) FROM jsonb_array_elements(n->'responses') v WHERE v->>'userId'=app.current_user_id()::text)<>1 OR
+    (SELECT coalesce(jsonb_agg(v ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(n->'responses') WITH ORDINALITY q(v,i) WHERE v->>'userId' IS DISTINCT FROM app.current_user_id()::text) IS DISTINCT FROM
+    (SELECT coalesce(jsonb_agg(v ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(o->'responses') WITH ORDINALITY q(v,i) WHERE v->>'userId' IS DISTINCT FROM app.current_user_id()::text)) THEN RAISE EXCEPTION 'Change only your own standing evidence response'; END IF;
+   IF n->'citations' IS DISTINCT FROM o->'citations' AND (o->>'state'<>'shared' OR
+    EXISTS(SELECT 1 FROM jsonb_array_elements(n->'citations') v WHERE v->>'userId'=app.current_user_id()::text AND v->>'decisionKind' NOT IN ('kpi_result','moderation','band_change')) OR
+    (SELECT count(*) FROM jsonb_array_elements(n->'citations') v WHERE v->>'userId'=app.current_user_id()::text)<>(SELECT count(DISTINCT v->>'decisionKind') FROM jsonb_array_elements(n->'citations') v WHERE v->>'userId'=app.current_user_id()::text) OR
+    (SELECT coalesce(jsonb_agg(v ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(n->'citations') WITH ORDINALITY q(v,i) WHERE v->>'userId' IS DISTINCT FROM app.current_user_id()::text) IS DISTINCT FROM
+    (SELECT coalesce(jsonb_agg(v ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(o->'citations') WITH ORDINALITY q(v,i) WHERE v->>'userId' IS DISTINCT FROM app.current_user_id()::text)) THEN RAISE EXCEPTION 'Change only your own evidence citation'; END IF;
+   IF n->'links' IS DISTINCT FROM o->'links' AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=eid AND e.tenant_id=tid AND app.is_self_person(e.person_id)) THEN RAISE EXCEPTION 'Only the subject may change evidence links'; END IF;
+   IF n->'state' IS DISTINCT FROM o->'state' AND n->>'author_user_id' IS DISTINCT FROM app.current_user_id()::text THEN RAISE EXCEPTION 'Only the author may share or retract evidence'; END IF;
+   IF n-ARRAY['state','responses','links','citations','revision'] IS DISTINCT FROM o-ARRAY['state','responses','links','citations','revision'] AND n->>'author_user_id' IS DISTINCT FROM app.current_user_id()::text THEN RAISE EXCEPTION 'Only the author may edit evidence words'; END IF;
+  END IF;
+  IF TG_TABLE_NAME='performance_onehr_evidence' AND o->>'state'<>'draft' AND n-ARRAY['state','responses','links','citations','revision'] IS DISTINCT FROM o-ARRAY['state','responses','links','citations','revision'] THEN RAISE EXCEPTION 'Correct shared evidence with a new entry'; END IF;
  END IF;
  RETURN NEW;
 END $$;
@@ -695,3 +710,36 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_rating_record_validate() FROM PUBLIC;
 CREATE TRIGGER assessment_rating_record_validate BEFORE UPDATE ON performance_assessment_rating_record FOR EACH ROW EXECUTE FUNCTION app.assessment_rating_record_validate();
+
+--> statement-breakpoint
+-- An assigned KPI approver keeps read access after approving, but only to the assigned line.
+CREATE FUNCTION app.assessment_kpi_reader(wanted_review uuid,wanted_kpi uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id JOIN employment sub ON sub.id=r.employment_id AND sub.tenant_id=r.tenant_id JOIN app_user u ON u.id=app.current_user_id() AND u.tenant_id=r.tenant_id
+ CROSS JOIN LATERAL jsonb_array_elements(r.kpis) k CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(k->'approvalChain','[]'::jsonb))>0 THEN k->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',k->>'moderatorEmploymentId')) END) step
+ JOIN employment m ON m.id=(step->>'employmentId')::uuid AND m.tenant_id=r.tenant_id AND m.person_id=u.person_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND k->>'id'=wanted_kpi::text AND sub.person_id<>m.person_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND (k->>'moderatorSource'='matrix' OR m.id=pr.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL)))
+$$;
+CREATE FUNCTION app.assessment_evidence_access(wanted_evidence uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_evidence e JOIN employment sub ON sub.id=e.employment_id AND sub.tenant_id=e.tenant_id JOIN performance_onehr_cycle c ON c.cycle_id=(SELECT cycle_id FROM performance_onehr_review WHERE review_id=e.review_id AND tenant_id=e.tenant_id) AND c.tenant_id=e.tenant_id
+ JOIN app_user u ON u.id=app.current_user_id() AND u.tenant_id=e.tenant_id
+ WHERE e.id=wanted_evidence AND e.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND coalesce((c.policy->'modules'->>'evidence')::boolean,false)
+ AND (e.author_user_id=u.id OR e.state<>'draft' AND (app.is_self_person(sub.person_id) OR EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.employment_id=sub.id AND r.tenant_id=e.tenant_id AND app.onehr_manager(r.review_id)) OR e.state='shared' AND EXISTS(
+  SELECT 1 FROM jsonb_array_elements(e.links) link JOIN performance_onehr_review r ON r.employment_id=e.employment_id AND r.tenant_id=e.tenant_id CROSS JOIN LATERAL jsonb_array_elements(r.kpis) k
+  WHERE link->>'kind'='kpi' AND link->>'id'=k->>'id' AND (app.assessment_kpi_reader(r.review_id,(k->>'id')::uuid) OR app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id)))))))
+$$;
+REVOKE ALL ON FUNCTION app.assessment_kpi_reader(uuid,uuid),app.assessment_evidence_access(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_kpi_reader(uuid,uuid),app.assessment_evidence_access(uuid) TO ai_hr_app;
+ALTER POLICY onehr_evidence_read ON performance_onehr_evidence USING(tenant_id=app.current_tenant_id() AND (author_user_id=app.current_user_id() OR app.assessment_evidence_access(id)));
+ALTER POLICY onehr_evidence_insert ON performance_onehr_evidence WITH CHECK(tenant_id=app.current_tenant_id() AND author_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id WHERE r.review_id=performance_onehr_evidence.review_id AND r.tenant_id=performance_onehr_evidence.tenant_id AND r.employment_id=performance_onehr_evidence.employment_id AND (app.is_self_person(e.person_id) OR app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id))));
+ALTER POLICY onehr_evidence_update ON performance_onehr_evidence USING(tenant_id=app.current_tenant_id() AND app.assessment_evidence_access(id) AND (author_user_id=app.current_user_id() OR state='shared' AND EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=performance_onehr_evidence.tenant_id AND (app.is_self_person(e.person_id) OR EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.employment_id=e.id AND r.tenant_id=e.tenant_id AND (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)))))))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.assessment_evidence_access(id));
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_evidence_people(wanted_evidence uuid[]) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH visible AS(SELECT e.* FROM performance_onehr_evidence e WHERE e.tenant_id=app.current_tenant_id() AND e.id=ANY(wanted_evidence) AND app.assessment_evidence_access(e.id)),
+ actors AS(SELECT author_user_id id FROM visible UNION SELECT CASE WHEN v->>'userId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN (v->>'userId')::uuid END FROM visible CROSS JOIN LATERAL jsonb_array_elements(responses) v UNION SELECT CASE WHEN v->>'userId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN (v->>'userId')::uuid END FROM visible CROSS JOIN LATERAL jsonb_array_elements(citations) v)
+ SELECT coalesce(jsonb_object_agg(u.id::text,p.full_name),'{}'::jsonb) FROM actors a JOIN app_user u ON u.id=a.id AND u.tenant_id=app.current_tenant_id() JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+$$;
+REVOKE ALL ON FUNCTION app.assessment_evidence_people(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_evidence_people(uuid[]) TO ai_hr_app;

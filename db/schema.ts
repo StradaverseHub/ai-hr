@@ -10056,6 +10056,7 @@ export const onehrPlan = pgTable('performance_onehr_plan', {
 export const onehrEvidence = pgTable('performance_onehr_evidence', {
   id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),
   authorUserId:uuid('author_user_id').notNull().references(()=>appUser.id),kind:text('kind').notNull(),body:text('body').notNull(),occurredOn:date('occurred_on').notNull(),
+  details:jsonb('details').notNull().default({}),citations:jsonb('citations').notNull().default([]),revision:integer('revision').notNull().default(1),
   state:text('state').notNull().default('draft'),supersedesId:uuid('supersedes_id'),links:jsonb('links').notNull().default([]),responses:jsonb('responses').notNull().default([]),createdAt:createdAt(),
 },t=>[index('performance_onehr_evidence_subject_idx').on(t.employmentId)]);
 export const onehrResult = pgTable('performance_onehr_result', {
