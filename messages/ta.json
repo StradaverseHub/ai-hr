@@ -16961,7 +16961,9 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "This conversation is private. Draft suggestions do not submit, approve or change your assessment."
+      "help": "அரட்டை உங்கள் தனிப்பட்ட வரைவைப் புதுப்பிக்கலாம். உள்ளீடுகளைச் சரிபார்த்து, சமர்ப்பிக்க அல்லது ஒப்புதல் அளிக்க படிவத்தைப் பயன்படுத்தவும்.",
+      "updated": "தனிப்பட்ட வரைவு புதுப்பிக்கப்பட்டது. படிவத்தைச் சரிபார்த்து, தயாரானதும் சமர்ப்பிப்பை உறுதிசெய்யவும்.",
+      "send": "அனுப்பு"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

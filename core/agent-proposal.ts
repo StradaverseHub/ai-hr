@@ -98,7 +98,8 @@ export type ProposalTypeId =
    */
   | 'readiness_fix'
   /** Native OneHR: selected evidence references, resolved into verbatim authorized passages. */
-  | 'onehr_narrative';
+  | 'onehr_narrative'
+  | 'performance_draft_command';
 
 /** The adjudication contract (§2.4). Every proposal type supplies one; the reason is stored on failure. */
 export type Adjudication = { ok: true } | { ok: false; reason: string };

@@ -16961,7 +16961,9 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "This conversation is private. Draft suggestions do not submit, approve or change your assessment."
+      "help": "Trò chuyện có thể cập nhật bản nháp riêng tư. Kiểm tra nội dung và dùng biểu mẫu để gửi hoặc phê duyệt.",
+      "updated": "Đã cập nhật bản nháp riêng tư. Kiểm tra biểu mẫu rồi xác nhận gửi khi sẵn sàng.",
+      "send": "Gửi"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

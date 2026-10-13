@@ -16961,7 +16961,9 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "This conversation is private. Draft suggestions do not submit, approve or change your assessment."
+      "help": "聊天可更新您的私人草稿。请检查内容，并使用表单提交或批准。",
+      "updated": "私人草稿已更新。请检查表单，准备好后再确认提交。",
+      "send": "发送"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

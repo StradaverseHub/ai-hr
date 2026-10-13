@@ -16961,7 +16961,9 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "This conversation is private. Draft suggestions do not submit, approve or change your assessment."
+      "help": "แชตอัปเดตฉบับร่างส่วนตัวของคุณได้ ตรวจสอบข้อมูลแล้วใช้แบบฟอร์มเพื่อส่งหรืออนุมัติ",
+      "updated": "อัปเดตฉบับร่างส่วนตัวแล้ว ตรวจสอบแบบฟอร์ม แล้วจึงยืนยันการส่งเมื่อพร้อม",
+      "send": "ส่ง"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

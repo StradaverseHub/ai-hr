@@ -401,6 +401,29 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await owner.db.select().from(schema.agentProposal)).toEqual([]);
   });
 
+  it('lets chat update only an actor-private draft, atomically and idempotently',async()=>{
+    const id=randomUUID();
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const text='Record Delivery at 100',request=randomUUID(),proposal=JSON.stringify({commands:[{action:'kpi_result',id,target:{start:7,end:15},actual:{start:19,end:22}}]});
+    vi.mocked(generateDraft).mockResolvedValue(proposal);
+    const result=await perf.sendReviewMessage(self,reviewId,'results',null,request,text);
+    expect(result).toMatchObject({draftUpdated:true,messages:[{role:'user',text},{role:'assistant',kind:'update'}]});
+    const current=await view(self);expect(current.drafts.find(d=>d.kind==='results')?.payload).toMatchObject({lines:[{id,actual:100}]});
+    expect(current.resultsSubmitted).toBe(false);expect(current.kpis[0].actual).toBeNull();expect(current.managerPerformance).toBeNull();
+    expect((await view(mgr)).drafts).toEqual([]);expect(await owner.db.select().from(schema.payrollInput)).toHaveLength(0);
+    expect(await perf.sendReviewMessage(self,reviewId,'results',null,request,text)).toEqual(result);expect(generateDraft).toHaveBeenCalledOnce();
+    const [ledger]=await owner.db.select().from(schema.agentProposal);expect(ledger.proposalType).toBe('performance_draft_command');expect(JSON.stringify(ledger.proposal)).not.toContain(text);
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'kpi_result',id,target:{start:7,end:15},actual:{start:19,end:22},approved:true}]}));
+    const rejected=await perf.sendReviewMessage(self,reviewId,'results',result.revision,randomUUID(),text);expect(rejected.draftUpdated).toBe(false);expect((await view(self)).drafts.find(d=>d.kind==='results')?.revision).toBe(1);
+    const conversation=await perf.getReviewConversation(self,reviewId,'results');
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'overall_remark',text:{start:0,end:5}}]}));
+    await expect(perf.sendReviewMessage(self,reviewId,'results',0,randomUUID(),'Ready to review.')).rejects.toThrow(/conversation changed/);
+    expect((await view(self)).drafts.find(d=>d.kind==='results')?.revision).toBe(1);expect(await perf.getReviewConversation(self,reviewId,'results')).toEqual(conversation);
+    await expect(perf.sendReviewMessage(peers[0].ctx,reviewId,'results',null,randomUUID(),text)).rejects.toThrow();
+  });
+
   it('drafts only from authorized current evidence and records indices without evidence text',async()=>{
     vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
     await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Private evidence must stay private.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});

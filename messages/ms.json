@@ -16961,7 +16961,9 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "This conversation is private. Draft suggestions do not submit, approve or change your assessment."
+      "help": "Sembang boleh mengemas kini draf peribadi anda. Semak catatan dan gunakan borang untuk menghantar atau meluluskan.",
+      "updated": "Draf peribadi dikemas kini. Semak borang, kemudian sahkan penghantaran apabila bersedia.",
+      "send": "Hantar"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

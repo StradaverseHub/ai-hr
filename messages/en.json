@@ -16961,7 +16961,9 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "This conversation is private. Draft suggestions do not submit, approve or change your assessment."
+      "help": "Chat can update your private draft. Check the entries and use the form to submit or approve.",
+      "updated": "Private draft updated. Review the form, then confirm submission when ready.",
+      "send": "Send"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

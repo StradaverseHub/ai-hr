@@ -717,45 +717,47 @@ async function clearAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,k
 
 /** Private autosave. It cannot publish results, approve a rating, or become another actor's AI context. */
 export async function saveAssessmentDraft(ctx:SessionContext,reviewId:string,expectedReview:number,expectedDraft:number|null,raw:unknown,contextId=reviewId) {
+  return withPerformanceTenant(ctx,tx=>saveAssessmentDraftTx(tx,ctx,reviewId,expectedReview,expectedDraft,raw,contextId));
+}
+
+export async function saveAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,expectedReview:number,expectedDraft:number|null,raw:unknown,contextId=reviewId) {
   uuid.parse(reviewId);uuid.parse(contextId);const payload=assessmentDraftSchema.parse(raw);assertOverallRemark(payload.remark);
   if(!ctx.userId)throw Error('Sign in to save your draft.');
-  return withPerformanceTenant(ctx,async tx=>{
-    let reviewRevision=expectedReview;
-    if(payload.kind==='feedback'){
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
-      const card=await feedbackCard(tx,contextId);if(card.reviewId!==reviewId)throw Error('Feedback belongs to another assessment.');
-      if(card.submitted||card.frozen)throw Error('Feedback is already submitted or finalized.');
-      const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
-      if(Object.keys(payload.comments??{}).some(key=>!card.statements.some(s=>s.principle===key)))throw Error('Use only the assigned leadership principles.');
-      if(Object.keys(payload.answers).some(id=>!card.statements.some(st=>st.id===id)))throw Error('Use only the assigned feedback statements.');
-      reviewRevision=0;
-    }else{
-      if(contextId!==reviewId)throw Error('Invalid assessment draft context.');
-      const r=await loadReview(tx,reviewId,true);
-      const cells={results:'pm_results',moderation:'pm_approve',competency_self:'tc_self',competency_manager:'tc_approve'} as const;
-      await writable(tx,r,cells[payload.kind],expectedReview,payload.kind==='moderation'?'moderator':payload.kind==='competency_manager'?'manager':'self');
-      if(payload.kind==='results'||payload.kind==='moderation'){
-        if(!ratedPerformance(r.cycle.policy))throw Error('This cycle does not collect numeric results.');
-        if(payload.kind==='results'&&(r.row.resultsSubmittedAt||r.kpis.some(k=>k.setting!=='approved')))throw Error('An approved scorecard awaiting your results is required.');
-        if(payload.kind==='moderation'&&(!r.row.resultsSubmittedAt||r.row.managerPerformance))throw Error('Submitted results awaiting moderation are required.');
-        if(new Set(payload.lines.map(l=>l.id)).size!==payload.lines.length)throw Error('Duplicate KPI.');
-        for(const line of payload.lines){
-          const k=r.kpis.find(k=>k.id===line.id);if(!k)throw Error('KPI not found.');
-          if(k.hrOwned)throw Error('Company KPI results are filled by HR.');
-          if(payload.kind==='moderation'&&(k.locked||!await isModerator(tx,reviewId,k.id)))throw Error('This KPI is not awaiting your moderation.');
-        }
-      }else{
-        if(!r.cycle.policy.modules.tm||!r.competencies.length)throw Error('No competency assessment is assigned.');
-        if(payload.kind==='competency_self'?r.row.competencyStatus!=='pending':r.row.competencyStatus!=='submitted')throw Error('Competencies are not awaiting this step.');
-        if(Object.keys(payload.answers).some(id=>!r.competencies.some(c=>c.id===id)))throw Error('Use only the assigned competencies.');
+  let reviewRevision=expectedReview;
+  if(payload.kind==='feedback'){
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
+    const card=await feedbackCard(tx,contextId);if(card.reviewId!==reviewId)throw Error('Feedback belongs to another assessment.');
+    if(card.submitted||card.frozen)throw Error('Feedback is already submitted or finalized.');
+    const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
+    if(Object.keys(payload.comments??{}).some(key=>!card.statements.some(s=>s.principle===key)))throw Error('Use only the assigned leadership principles.');
+    if(Object.keys(payload.answers).some(id=>!card.statements.some(st=>st.id===id)))throw Error('Use only the assigned feedback statements.');
+    reviewRevision=0;
+  }else{
+    if(contextId!==reviewId)throw Error('Invalid assessment draft context.');
+    const r=await loadReview(tx,reviewId,true);
+    const cells={results:'pm_results',moderation:'pm_approve',competency_self:'tc_self',competency_manager:'tc_approve'} as const;
+    await writable(tx,r,cells[payload.kind],expectedReview,payload.kind==='moderation'?'moderator':payload.kind==='competency_manager'?'manager':'self');
+    if(payload.kind==='results'||payload.kind==='moderation'){
+      if(!ratedPerformance(r.cycle.policy))throw Error('This cycle does not collect numeric results.');
+      if(payload.kind==='results'&&(r.row.resultsSubmittedAt||r.kpis.some(k=>k.setting!=='approved')))throw Error('An approved scorecard awaiting your results is required.');
+      if(payload.kind==='moderation'&&(!r.row.resultsSubmittedAt||r.row.managerPerformance))throw Error('Submitted results awaiting moderation are required.');
+      if(new Set(payload.lines.map(l=>l.id)).size!==payload.lines.length)throw Error('Duplicate KPI.');
+      for(const line of payload.lines){
+        const k=r.kpis.find(k=>k.id===line.id);if(!k)throw Error('KPI not found.');
+        if(k.hrOwned)throw Error('Company KPI results are filled by HR.');
+        if(payload.kind==='moderation'&&(k.locked||!await isModerator(tx,reviewId,k.id)))throw Error('This KPI is not awaiting your moderation.');
       }
+    }else{
+      if(!r.cycle.policy.modules.tm||!r.competencies.length)throw Error('No competency assessment is assigned.');
+      if(payload.kind==='competency_self'?r.row.competencyStatus!=='pending':r.row.competencyStatus!=='submitted')throw Error('Competencies are not awaiting this step.');
+      if(Object.keys(payload.answers).some(id=>!r.competencies.some(c=>c.id===id)))throw Error('Use only the assigned competencies.');
     }
-    const [prior]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!),eq(assessmentDraft.kind,payload.kind),eq(assessmentDraft.contextId,contextId))).for('update');
-    if(prior)revision(prior.revision,expectedDraft!);else if(expectedDraft!=null)throw Error('This draft changed. Reload before saving.');
-    const data={payload,reviewRevision,updatedAt:new Date()};
-    const [saved]=prior?await tx.update(assessmentDraft).set({...data,revision:prior.revision+1}).where(eq(assessmentDraft.id,prior.id)).returning():await tx.insert(assessmentDraft).values({...data,tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,contextId,kind:payload.kind}).returning();
-    return {revision:saved.revision,updatedAt:saved.updatedAt};
-  });
+  }
+  const [prior]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!),eq(assessmentDraft.kind,payload.kind),eq(assessmentDraft.contextId,contextId))).for('update');
+  if(prior)revision(prior.revision,expectedDraft!);else if(expectedDraft!=null)throw Error('This draft changed. Reload before saving.');
+  const data={payload,reviewRevision,updatedAt:new Date()};
+  const [saved]=prior?await tx.update(assessmentDraft).set({...data,revision:prior.revision+1}).where(eq(assessmentDraft.id,prior.id)).returning():await tx.insert(assessmentDraft).values({...data,tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,contextId,kind:payload.kind}).returning();
+  return {revision:saved.revision,updatedAt:saved.updatedAt};
 }
 
 /** Attachments retain the kernel's storage and authorization; this link supplies KPI-level provenance. */
