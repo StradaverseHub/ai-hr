@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listLocations } from '@/core/location';
@@ -41,7 +42,8 @@ export default async function NewClockingLocationPage({
   if (!groupAdmin) {
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('newClockingTitle')} back={{ href: CLOCKING_LIST, label: t('backToLocations') }} />
+        <AttendanceSettingsNavigation />
+      <PageHeader title={t('newClockingTitle')} back={{ href: CLOCKING_LIST, label: t('backToLocations') }} />
         <Card>
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('sharedManagedByGroupAdmin')}</p>
         </Card>

@@ -514,17 +514,21 @@ describe('r294 — the audit is pinned in source, on both sides', () => {
     }
   });
 
-  it('core/attendance-allowance.ts is a SECOND reason core/pay-components.ts cannot be payroll-bound', () => {
-    // Not a core surface but a different PACK: a tenant holding Attendance and not Payroll transfers an
-    // allowance into a draft run through `setPayrollBatchComponent`. Binding pay-components to `payroll`
-    // would refuse that tenant a feature it actually bought — the cross-pack version of the same defect.
-    const src = fs.readFileSync(path.join(ROOT, 'core/attendance-allowance.ts'), 'utf8');
-    expect(src).toContain("from './pay-components'");
-    expect(src).toContain('setPayrollBatchComponent');
-    const attendance = MODULE_CATALOG.find((m) => m.code === 'attendance');
-    const payroll = MODULE_CATALOG.find((m) => m.code === 'payroll');
-    expect(attendance?.isCore).toBe(false);
-    expect(payroll?.isCore).toBe(false);
+  it('Attendance setup reads compatible pay codes through the facade, while its money projection requires Payroll', () => {
+    // ADR-0106: configuration remains available to Attendance-only tenants. Posting money now crosses
+    // the Payroll-owned source projection explicitly; direct implementation imports no longer remain.
+    const allowance = fs.readFileSync(path.join(ROOT, 'core/attendance-allowance.ts'), 'utf8');
+    expect(allowance).toContain("from '../packs/payroll/service'");
+    expect(allowance).not.toContain("from './pay-components'");
+    expect(allowance).toContain('projectAttendanceAllowanceTx');
+    const bridge = fs.readFileSync(path.join(ROOT, 'core/payroll-attendance-allowance.ts'), 'utf8');
+    expect(bridge).toContain("assertModuleEnabled(ctx,'payroll')");
+    expect(bridge).toContain('export function listAttendanceAllowancePayCodes');
+    const catalogBody = bridge.slice(bridge.indexOf('export function listAttendanceAllowancePayCodes'));
+    expect(catalogBody).toContain('return withTenant(ctx');
+    expect(catalogBody).not.toContain('assertModuleEnabled');
+    expect(MODULE_CATALOG.find(m => m.code === 'attendance')?.isCore).toBe(false);
+    expect(MODULE_CATALOG.find(m => m.code === 'payroll')?.isCore).toBe(false);
   });
 
   it('core/admin.ts reaches core/payroll-cycle.ts through the FACADE — the edge a direct grep misses', () => {

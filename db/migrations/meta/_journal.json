@@ -3067,6 +3067,34 @@
       "when": 1791900000010,
       "tag": "0530_attendance_payroll_entity_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1791900000011,
+      "tag": "0531_attendance_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1791900000012,
+      "tag": "0532_attendance_allowance_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1791900000013,
+      "tag": "0533_attendance_approval_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 534,
+      "version": "7",
+      "when": 1791900000014,
+      "tag": "0534_persisted_audit_chain",
+      "breakpoints": true
     }
   ]
 }

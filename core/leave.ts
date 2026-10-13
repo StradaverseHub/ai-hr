@@ -68,6 +68,9 @@ import {
   type HolidayCompletenessWarning,
 } from './holidays';
 import { isoWeekday } from './attendance';
+import { rotationLookupTx } from '../packs/attendance/service';
+import { arrangementsForEmploymentTx, pickArrangementOn } from './shift-arrangement-resolve';
+import type { WeekDayKind } from './week-pattern';
 import { packFor } from '../localization/registry';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer. No import cycle: core/entitlement-template.ts
@@ -208,6 +211,7 @@ export {
 import {
   assignment,
   attendancePolicy,
+  attendanceRotation,
   businessUnit,
   company,
   department,
@@ -235,6 +239,8 @@ import {
   payslip,
   person,
   reportingLine,
+  rosterAssignment,
+  shift,
   leaveSharedGroup,
   leaveSharedGroupMember,
 } from '../db/schema';
@@ -1475,6 +1481,7 @@ export function noticeDaysGiven(
   dayType: AdvanceNoticeDayType,
   workingDaysIso?: number[],
   holidays?: Set<string>,
+  rotationKindOn?: (date: string) => WeekDayKind | null,
 ): number {
   if (dayType !== 'working_days') return daysBetween(today, startDate);
   const roster = workingDaysIso ?? DEFAULT_WORKING_DAYS_ISO;
@@ -1482,7 +1489,9 @@ export function noticeDaysGiven(
   const end = Date.parse(`${startDate}T00:00:00Z`);
   let n = 0;
   for (let t = Date.parse(`${today}T00:00:00Z`); t < end; t += 86_400_000) {
-    if (isWorkingDay(new Date(t).toISOString().slice(0, 10), roster, hols)) n++;
+    const date = new Date(t).toISOString().slice(0, 10);
+    const rotated = rotationKindOn?.(date);
+    if (!hols.has(date) && (rotated ? rotated === 'full' || rotated === 'half' : roster.includes(isoWeekday(date)))) n++;
   }
   return n;
 }
@@ -2748,26 +2757,67 @@ export async function resolveWorkingDaysIso(tx: Tx, employmentId: string): Promi
   return [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
 }
 
+/** Working-day membership counter for dated calendars. Half days count as a
+ * working date here, as in the legacy weekday union; leave deduction weights
+ * stay owned by dayWeight. Callers supply their already-resolved holiday set. */
+export async function leaveWorkingDaysCounterTx(tx:Tx,employmentId:string) {
+  const schedule=await resolveSchedule(tx,employmentId);
+  const weekdays=new Set([...schedule.workingDaysIso,...schedule.halfDaysIso]);
+  return Object.assign((start:string,end:string,holidays:Set<string>):number => eachDate(start,end).filter(date=>{
+    if(holidays.has(date))return false;
+    const rotated=schedule.rotationKindOn?.(date);
+    return rotated ? rotated==='full'||rotated==='half' : weekdays.has(isoWeekday(date));
+  }).length,{hasWorkingDates:weekdays.size>0||!!schedule.rotationKindOn});
+}
+
 /** Feedback 31474452 (4a): one query resolving an employment's full schedule — the company's configured
  *  Full working days, Half working days, and the company's half-day-deduction toggle. Falls back to
  *  Mon-Fri / no-half-days / toggle-off so existing single-company behaviour is byte-identical when no policy
  *  row or half-day marker exists (D2/back-compat). */
+type LeaveResolvedSchedule = { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean;
+  rotationKindOn?: (date: string) => WeekDayKind | null };
 async function resolveSchedule(
   tx: Tx,
   employmentId: string,
-): Promise<{ workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean }> {
+): Promise<LeaveResolvedSchedule> {
   const [row] = await tx
     .select({
       workingDays: attendancePolicy.workingDays,
       halfWorkingDays: attendancePolicy.halfWorkingDays,
       halfCountsFull: company.leaveHalfDayFullDeduction,
+      ruleId: employment.attendanceRuleId, defaultShiftId: employment.defaultShiftId,
+      // Keep the legacy no-rotation path at one round trip; this tenant-scoped probe shares its read.
+      hasRotations: sql<boolean>`exists(select 1 from ${attendanceRotation})`,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
     .where(eq(employment.id, employmentId))
     .limit(1);
+  let rotationKindOn: LeaveResolvedSchedule['rotationKindOn'];
+  if (row?.hasRotations) {
+    const rotationLookup = await rotationLookupTx(tx);
+    const periods = await arrangementsForEmploymentTx(tx, employmentId);
+    const ids = [...new Set([...periods.map(p=>p.shiftId), ...(row.defaultShiftId?[row.defaultShiftId]:[])])];
+    const shifts = ids.length ? await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,ids)) : [];
+    const byShift = new Map(shifts.map(sh=>[sh.id,sh.ruleId]));
+    // Only explicitly opted-in rotation dates use the new schedule. Legacy leave
+    // weekdays remain unchanged; on rotation dates explicit roster and holidays win.
+    const first = rotationLookup.versions.reduce((a,v)=>v.effectiveFrom<a?v.effectiveFrom:a,'9999-12-31');
+    const roster = await tx.select({date:rosterAssignment.shiftDate,isRestDay:rosterAssignment.isRestDay,
+      shiftId:rosterAssignment.shiftId}).from(rosterAssignment)
+      .where(and(eq(rosterAssignment.employmentId,employmentId),gte(rosterAssignment.shiftDate,first)));
+    const byDate = new Map(roster.map(r=>[r.date,r]));
+    if(rotationLookup.versions.some(v=>row.ruleId ? v.ruleId===row.ruleId : [...byShift.values()].includes(v.ruleId))) rotationKindOn = date => {
+      const period = pickArrangementOn(periods,date);
+      const rotated = rotationLookup(row.ruleId ?? byShift.get(period?.shiftId ?? row.defaultShiftId ?? ''),date);
+      if (!rotated) return null;
+      const override = byDate.get(date);
+      return override ? override.isRestDay ? 'rest' : 'full' : rotated.day.kind;
+    };
+  }
   return {
+    rotationKindOn,
     workingDaysIso: row?.workingDays ?? DEFAULT_WORKING_DAYS_ISO,
     halfDaysIso: row?.halfWorkingDays ?? [],
     halfCountsFull: row?.halfCountsFull ?? false,
@@ -2780,7 +2830,7 @@ async function resolveSchedule(
  *  (rounding is only ever applied on the pre-existing hourly path). */
 function dayWeight(
   date: string,
-  sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+  sched: LeaveResolvedSchedule,
   holidays: Set<string>,
   // Day Type Inclusion (feedback ef6d7146): optional per-leave-type re-inclusion vector. When ABSENT
   // (undefined — every existing type / an all-off config, via normalizeDayTypeInclusion) this takes the
@@ -2789,6 +2839,13 @@ function dayWeight(
   // non-roster weekday (rest/off day) counts 1 if inclusion.restDay OR inclusion.offDay.
   inclusion?: DayTypeInclusion,
 ): number {
+  const rotated = sched.rotationKindOn?.(date);
+  if (rotated && !holidays.has(date)) {
+    if (rotated === 'full') return 1;
+    if (rotated === 'half') return sched.halfCountsFull ? 1 : 0.5;
+    if (rotated === 'off') return inclusion?.offDay ? 1 : 0;
+    return inclusion?.restDay ? 1 : 0;
+  }
   if (inclusion === undefined) {
     // ── Legacy path (unchanged) — the golden-test guarantee. ──
     if (holidays.has(date)) return 0;
@@ -2820,7 +2877,7 @@ function dayWeight(
  *  weighted total (workingDaysWeighted) so submission, per-date, preview and cancellation never drift. */
 function isDeductibleDay(
   date: string,
-  sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+  sched: LeaveResolvedSchedule,
   holidays: Set<string>,
   inclusion?: DayTypeInclusion,
 ): boolean {
@@ -2834,7 +2891,7 @@ function workingDaysWeighted(
   start: string,
   end: string,
   holidays: Set<string>,
-  sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+  sched: LeaveResolvedSchedule,
   // Day Type Inclusion (feedback ef6d7146): threaded straight into dayWeight — undefined ⇒ byte-identical.
   inclusion?: DayTypeInclusion,
 ): number {
@@ -3413,18 +3470,21 @@ export async function requestLeave(
     // question whose answer cannot matter.
     const minAdvance = lt?.minAdvanceDays ?? null;
     const minAdvanceDayType = resolveAdvanceNoticeDayType(lt?.minAdvanceDayType);
+    let noticeRotation: LeaveResolvedSchedule['rotationKindOn'];
     let noticeRoster: number[] | undefined;
     let noticeHolidays: Set<string> | undefined;
     if (minAdvance != null && minAdvanceDayType === 'working_days' && p.startDate > today) {
       // The SAME sources the deduction engine uses — attendance_policy.working_days (Full ∪ Half) and the
       // business-group → state → national holiday resolution — so "working day" means one thing in this
       // product, not two.
-      noticeRoster = await resolveWorkingDaysIso(tx, p.employmentId);
+      const noticeSchedule = await resolveSchedule(tx, p.employmentId);
+      noticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
+      noticeRotation = noticeSchedule.rotationKindOn;
       noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
     }
     // Computed ONCE and reused: the gate below, the HR-override audit stamp, and the Override-rule
     // conversion payload must all quote the same figure, in the same unit.
-    const noticeGiven = noticeDaysGiven(today, p.startDate, minAdvanceDayType, noticeRoster, noticeHolidays);
+    const noticeGiven = noticeDaysGiven(today, p.startDate, minAdvanceDayType, noticeRoster, noticeHolidays, noticeRotation);
     const lacksNotice = minAdvance != null && noticeGiven < minAdvance;
     const advanceOverride = isAdmin(ctx) && lacksNotice;
     const consent = parseLeaveOverrideConsent(p.overrideConsent);
@@ -3616,6 +3676,7 @@ export async function requestLeave(
     // company's leaveHalfDayFullDeduction toggle apply (D2/Feedback 31474452).
     let workingDayCount: number | null = null;
     let workingDayWeight: number | null = null;
+    let creditDateWeights: {date: string; days: number}[] | undefined;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
       // national (state null) ∪ those states, resolved holiday_group → work_state →
@@ -3631,11 +3692,15 @@ export async function requestLeave(
       // day types when a vector is set.
       workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
       workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      if (leaveTypeIs(lt, 'replacement') && durationType === 'full_day' && dayCount(p.startDate, p.endDate) <= 400)
+        creditDateWeights = eachDate(p.startDate, p.endDate).map(date => ({date, days: dayWeight(date, sched, hols, incl)})).filter(row => row.days > 0);
     }
 
     let days: number;
     if (durationType === 'full_day') {
       days = lt?.counting === 'working_days' ? workingDayWeight! : dayCount(p.startDate, p.endDate);
+      if (leaveTypeIs(lt, 'replacement') && lt?.counting !== 'working_days' && dayCount(p.startDate, p.endDate) <= 400)
+        creditDateWeights = eachDate(p.startDate, p.endDate).map(date => ({date, days: 1}));
     } else {
       // Single day already enforced. Working-day guard: reject a half/hourly request that falls on a
       // weekend/holiday for working_days types (workingDayCount === 0) — same error as an empty range.
@@ -3971,6 +4036,15 @@ export async function requestLeave(
       overrideAudit,
     });
 
+    // Replacement Leave deliberately has no per-date approval rows. Retain the canonical weights
+    // computed by THIS submission so the earned-credit reader never guesses from a later calendar.
+    // This provenance does not allocate or consume credits; the approval command remains their owner.
+    if (creditDateWeights) await appendEvent(tx, {
+      tenantId: ctx.tenantId, aggregateType: 'leave-request', aggregateId: id,
+      eventType: 'leave-request.credit-dates.frozen', actor: actorOf(ctx), subjectEmploymentId: p.employmentId,
+      payload: {creditDates: {version: 1, totalDays: days, dates: creditDateWeights}},
+    });
+
     // Partial Leave Approval — single-request model (ADR-0068 §4B). When the type is opted-in (§4C gate above)
     // and the span has >1 working date, insert one leave_request_date sub-row per working date (status
     // 'pending') IN THE SAME TRANSACTION as the single request. These are the per-date decision handles the
@@ -4133,7 +4207,7 @@ export async function previewLeaveDeduction(
     if (lt?.counting === 'working_days') {
       hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
       sched = await resolveSchedule(tx, p.employmentId);
-      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => sched!.halfDaysIso.includes(isoWeekday(d)));
+      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => {const rotated=sched!.rotationKindOn?.(d);return rotated ? rotated==='half' : sched!.halfDaysIso.includes(isoWeekday(d));});
       if (durationType === 'full_day' || isEmergencySplit) {
         const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
         days = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
@@ -4194,13 +4268,16 @@ export async function previewLeaveDeduction(
         // `sched` resolved further up CANNOT be reused — they cover the LEAVE span [startDate, endDate],
         // and the notice window is [today, startDate), a different range entirely.
         const noticeDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
+        let noticeRotation: LeaveResolvedSchedule['rotationKindOn'];
         let noticeRoster: number[] | undefined;
         let noticeHolidays: Set<string> | undefined;
         if (noticeDayType === 'working_days' && p.startDate > today) {
-          noticeRoster = await resolveWorkingDaysIso(tx, p.employmentId);
+          const noticeSchedule = await resolveSchedule(tx, p.employmentId);
+          noticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
+          noticeRotation = noticeSchedule.rotationKindOn;
           noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
         }
-        const noticeGiven = noticeDaysGiven(today, p.startDate, noticeDayType, noticeRoster, noticeHolidays);
+        const noticeGiven = noticeDaysGiven(today, p.startDate, noticeDayType, noticeRoster, noticeHolidays, noticeRotation);
         if (noticeGiven < noticeMin) {
           let toTypeName: string | null = null;
           if (advance.action === 'convert_to_emergency') {
@@ -4318,11 +4395,12 @@ async function resolveApplyDayRows(
   const sched = p.sched ?? (await resolveSchedule(tx, p.employmentId));
   return eachDate(p.startDate, p.endDate).map((date) => {
     const dow = isoWeekday(date);
+    const rotated = sched.rotationKindOn?.(date);
     const status: LeaveApplyDayStatus = hols.has(date)
       ? 'public_holiday'
-      : sched.workingDaysIso.includes(dow)
+      : (rotated ? rotated === 'full' : sched.workingDaysIso.includes(dow))
         ? 'working_day'
-        : sched.halfDaysIso.includes(dow)
+        : (rotated ? rotated === 'half' : sched.halfDaysIso.includes(dow))
           ? 'half_working_day'
           : 'rest_day';
     // A calendar_days type deducts every date in the span, whatever the schedule says — the label still
@@ -4433,7 +4511,7 @@ async function requestEmergencyLeave(
 
   // The span's working-day dates in order — paid segments cut at boundary working-days off the front. Rest
   // days come from the SAME configured roster as the count above (audit H#3), not a hardcoded Sat/Sun.
-  const workingDates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+  const workingDates = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols));
 
   // Build the ordered list of PAID segments and the unpaid remainder. SICK is prepended only for an illness
   // emergency with a real SICK type + positive balance; ANNUAL always follows. Each segment's `cover` is its
@@ -6065,10 +6143,6 @@ export async function workingDatesForSpan(
   inclusion?: DayTypeInclusion,
 ): Promise<string[]> {
   const hols = await resolveHolidaySet(tx, employmentId, start, end);
-  if (inclusion === undefined) {
-    const workingDaysIso = await resolveWorkingDaysIso(tx, employmentId);
-    return eachDate(start, end).filter((d) => isWorkingDay(d, workingDaysIso, hols));
-  }
   const sched = await resolveSchedule(tx, employmentId);
   return eachDate(start, end).filter((d) => isDeductibleDay(d, sched, hols, inclusion));
 }
@@ -6097,9 +6171,9 @@ export async function workingDatesForSpans(
     if (s.end > maxEnd) maxEnd = s.end;
   }
   const hols = await resolveHolidaySet(tx, employmentId, minStart, maxEnd);
-  const workingDaysIso = await resolveWorkingDaysIso(tx, employmentId);
+  const sched = await resolveSchedule(tx, employmentId);
   for (const s of spans) {
-    out.set(`${s.start}|${s.end}`, eachDate(s.start, s.end).filter((d) => isWorkingDay(d, workingDaysIso, hols)));
+    out.set(`${s.start}|${s.end}`, eachDate(s.start, s.end).filter((d) => isDeductibleDay(d, sched, hols)));
   }
   return out;
 }
@@ -7413,15 +7487,18 @@ export async function editLeaveRequest(
     // is empty either way.
     const editMinAdvance = lt.minAdvanceDays ?? null;
     const editDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
+    let editNoticeRotation: LeaveResolvedSchedule['rotationKindOn'];
     let editNoticeRoster: number[] | undefined;
     let editNoticeHolidays: Set<string> | undefined;
     if (!isAdmin(ctx) && editMinAdvance != null && editDayType === 'working_days' && p.startDate > today) {
-      editNoticeRoster = await resolveWorkingDaysIso(tx, req.employmentId);
+      const noticeSchedule = await resolveSchedule(tx, req.employmentId);
+      editNoticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
+      editNoticeRotation = noticeSchedule.rotationKindOn;
       editNoticeHolidays = await resolveHolidaySet(tx, req.employmentId, today, p.startDate);
     }
     if (
       !isAdmin(ctx) &&
-      lacksMinAdvanceNoticeIn(p.startDate, today, editMinAdvance, editDayType, editNoticeRoster, editNoticeHolidays)
+      editMinAdvance != null && noticeDaysGiven(today,p.startDate,editDayType,editNoticeRoster,editNoticeHolidays,editNoticeRotation) < editMinAdvance
     ) {
       throw new LeaveAdvanceNoticeRequiredError(
         lt.minAdvanceDays!,

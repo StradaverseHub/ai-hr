@@ -6,6 +6,8 @@ import { getSession } from '@/lib/session';
 import {
   getAttendanceRule,
   updateAttendanceRule,
+  updateAttendanceRuleSection,
+  type AttendanceSectionFields,
   type AttendanceRuleInput,
   type AttendanceRuleView,
   type OtRowInput,
@@ -35,14 +37,14 @@ import { SCHEDULE_GROUPS, failScheduleGroup, okScheduleGroup } from '../../_redi
  * adds a WRITER" risk, and it is why the layout was never the hard part of this item.
  *
  * ══ HOW THEY WORK: READ, OVERLAY THE SECTION'S OWN FIELDS, WRITE ═══════════════════════════════════
- * Each action re-reads the stored rule and carries EVERY column forward verbatim, then overlays only the
+ * The section service locks the rule, re-reads its current columns/bands, then overlays only the
  * fields its own section renders. Anything the section does not show cannot be changed by posting to it —
  * not by omission, not by a crafted request body, not by a stale page. `applyDeductions` is taken from
  * the STORED ROW and is never read from the form at all (see below), and the overtime bands are rebuilt
  * from the stored rows with only the rounding columns overlaid, matched BY THE BAND'S "FROM" BOUNDARY
  * rather than by position or row id.
  *
- * The write itself goes through the SAME `updateAttendanceRule` the rule editor calls, so the stored row
+ * The write itself uses the same normalization/persistence as `updateAttendanceRule`, so the stored row
  * and the `attendance-rule.updated` audit event are identical in shape to a save from that editor. This
  * is not a second service; it is a narrower caller of the one service.
  *
@@ -164,24 +166,25 @@ async function loadRule(ruleId: string) {
  */
 export async function saveScheduleGroupAttendanceAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
-  const { s, rule } = await loadRule(ruleId);
+  const { s } = await loadRule(ruleId);
   try {
-    const base = carryForward(rule);
-    await updateAttendanceRule(s, {
-      ruleId,
-      ...base,
-      lateGracePeriodMinutes: minutesOr(fd, 'lateGracePeriodMinutes', base.lateGracePeriodMinutes, 'Late in grace'),
-      earlyGracePeriodMinutes: minutesOr(fd, 'earlyGracePeriodMinutes', base.earlyGracePeriodMinutes, 'Early out grace'),
-      lateAfterMinutes: minutesOr(fd, 'lateAfterMinutes', base.lateAfterMinutes, 'Late in — after'),
-      lateDeductMinutes: minutesOr(fd, 'lateDeductMinutes', base.lateDeductMinutes, 'Late in — minutes recorded'),
-      earlyAfterMinutes: minutesOr(fd, 'earlyAfterMinutes', base.earlyAfterMinutes, 'Early out — after'),
-      earlyDeductMinutes: minutesOr(fd, 'earlyDeductMinutes', base.earlyDeductMinutes, 'Early out — minutes recorded'),
-    });
+    const fields: Partial<AttendanceSectionFields> = {};
+    const labels = {lateGracePeriodMinutes:'Late in grace',earlyGracePeriodMinutes:'Early out grace',
+      lateAfterMinutes:'Late in — after',lateDeductMinutes:'Late in — minutes recorded',
+      earlyAfterMinutes:'Early out — after',earlyDeductMinutes:'Early out — minutes recorded'};
+    for(const key of Object.keys(labels) as (keyof typeof labels)[]) {
+      if(fd.get(key)!=null)fields[key]=minutesOr(fd,key,0,labels[key]);
+    }
+    if(fd.get('attendanceFlagsEditor')==='1') {
+      fields.includeGraceInLateness=fd.get('includeGraceInLateness')==='on';
+      fields.includeGraceInEarlyOut=fd.get('includeGraceInEarlyOut')==='on';
+    }
+    await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields});
   } catch (e) {
     failScheduleGroup(e, ruleId, 'attendance');
   }
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'attendance');
+  okScheduleGroup(ruleId, t('savedToast'), 'attendance', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 /**
@@ -209,8 +212,8 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
  *    `fromMinutes` is the band's identity in this table: the ladder validation
  *    (core/attendance-rule.ts validateOtLadder) requires a continuous, non-overlapping sequence, so no
  *    two bands of one rule can share a "From". It survives the delete-and-reinsert, and when a boundary
- *    genuinely HAS moved the stale key matches nothing and that band keeps its stored rounding — which
- *    is the correct outcome for an edit made against a table that has since changed shape.
+ *    genuinely HAS moved the frozen structural snapshot differs and the whole stale submission is
+ *    refused. Unchanged keys must also retain their displayed end, pattern and rates.
  *    "Pin invariants, not positions" (CLAUDE.md §8) — the boundary is the invariant; the id is not.
  *
  * The band boundaries, the rate pattern and both rates are carried forward verbatim and are NOT editable
@@ -219,37 +222,34 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
  */
 export async function saveScheduleGroupOvertimeAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
-  const { s, rule } = await loadRule(ruleId);
+  const { s } = await loadRule(ruleId);
   try {
-    const base = carryForward(rule);
-    // Trap 1 — the marker, as a VALUE.
-    const carriedEarlyOt = fd.get('earlyOtEditor') === '1';
-    const applyToEarlyOt = carriedEarlyOt ? fd.get('applyToEarlyOt') === 'on' : base.applyToEarlyOt;
-    // Trap 2 — overlay rounding onto the STORED bands, matched by the band's "From" boundary.
-    const otRows = rule.otRows.map((row) => {
-      const stored = toOtInput(row);
-      const modeRaw = fd.get(`roundingMode_${row.fromMinutes}`);
-      if (modeRaw == null) return stored; // this submission said nothing about this band
-      const roundingMode =
-        modeRaw === 'down' || modeRaw === 'up' ? (modeRaw as 'down' | 'up') : ('none' as const);
-      const stepRaw = fd.get(`roundToMinutes_${row.fromMinutes}`);
-      const step =
-        roundingMode === 'none'
-          ? null
-          : stepRaw == null || String(stepRaw).trim() === ''
-            ? stored.roundToMinutes
-            : Math.trunc(Number(stepRaw)) || null;
-      if (roundingMode !== 'none' && step != null && step < 0) {
-        throw new Error('Round to must be a non-negative whole number of minutes.');
-      }
-      return { ...stored, roundingMode, roundToMinutes: step };
+    const snapshot: unknown=JSON.parse(String(fd.get('otBandSnapshot')??'null'));
+    if(!Array.isArray(snapshot))throw new Error('The overtime bands changed. Reopen this schedule before saving overtime settings.');
+    const postedKeys=Array.from(fd.keys()).filter(key=>/^roundingMode_\d+$/.test(key));
+    if(postedKeys.length!==snapshot.length)throw new Error('The overtime bands changed. Reopen this schedule before saving overtime settings.');
+    const bands: OtRowInput[] = snapshot.map(identity=>{
+      if(!identity||typeof identity!=='object'||!Number.isInteger(identity.fromMinutes)||!Number.isInteger(identity.toMinutes)
+        ||(identity.ratePattern!=='flat'&&identity.ratePattern!=='variable')||typeof identity.rate!=='number'
+        ||(identity.phRate!==null&&typeof identity.phRate!=='number'))throw new Error('The overtime bands changed. Reopen this schedule before saving overtime settings.');
+      const fromMinutes=identity.fromMinutes;
+      const key=`roundingMode_${fromMinutes}`;
+      if(!postedKeys.includes(key))throw new Error('The overtime bands changed. Reopen this schedule before saving overtime settings.');
+      const raw=fd.get(key);
+      const roundingMode: OtRowInput['roundingMode'] = raw==='down'||raw==='up'?raw:'none';
+      const stepRaw=fd.get(`roundToMinutes_${fromMinutes}`);
+      const step=roundingMode==='none'?null:stepRaw==null||String(stepRaw).trim()===''?null:Math.trunc(Number(stepRaw));
+      if(step!=null&&(!Number.isFinite(step)||step<0))throw new Error('Round to must be a non-negative whole number of minutes.');
+      return {fromMinutes,toMinutes:identity.toMinutes,ratePattern:identity.ratePattern,rate:identity.rate,phRate:identity.phRate,roundingMode,roundToMinutes:step};
     });
-    await updateAttendanceRule(s, { ruleId, ...base, applyToEarlyOt, otRows });
+    await updateAttendanceRuleSection(s,{ruleId,section:'overtime',bands,
+      ...(fd.get('earlyOtEditor')==='1'?{applyToEarlyOt:fd.get('applyToEarlyOt')==='on'}:{}),
+    });
   } catch (e) {
     failScheduleGroup(e, ruleId, 'overtime');
   }
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'overtime');
+  okScheduleGroup(ruleId, t('savedToast'), 'overtime', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 /**

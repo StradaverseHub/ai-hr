@@ -1,14 +1,16 @@
 import Link from 'next/link';
+import { attendanceApplicationType } from '@/lib/attendance-workflow';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment, reportingLinesFor } from '@/core/read';
 import { MY_ATTENDANCE_REQUEST_ROW_CEILING, myAttendanceCorrections } from '@/packs/attendance/service';
 import { Button, Card, ErrorBanner, PageHeader, pageWideCls, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
+import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myCancelAttendanceRequest } from '@/app/me/actions';
-import { KIND_LABEL, Pill, REQUEST_STATUSES, askedFor, statusLabel } from '../request-ui';
+import { KIND_LABEL, Pill, REQUEST_STATUSES, askedFor, requestStatusFilterLabel, statusLabel } from '../request-ui';
 import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from './rows';
 
 /**
@@ -64,12 +66,9 @@ import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from '.
  * overtime plan is withdrawn from Self Overtime under its own condition (see above), so the take-back
  * control appears here only on a NON-overtime request that is still pending.
  *
- * r363 — ONE WORD FOR ONE STATE ON THIS SCREEN, AND ONLY THE WORD CHANGED. The reporter read a filter chip
- * saying "Cancelled" directly above an overtime row saying "Withdrawn". Both kinds of row, the chip and the
- * take-back button now resolve "Withdrawn" / "Withdraw" — Self Overtime's own words, already translated in
- * all six catalogues — because only the employee can ever put one of these requests into `cancelled`
- * (see the comment above `statusLabel` in ../request-ui). The stored value, the URL (`?status=cancelled`),
- * the reads, the two state rules above and every name in this file are untouched.
+ * r363 unified legacy withdrawal labels. The approved workflow now also permits administrative
+ * cancellation, whose persisted cancellationKind distinguishes it from an employee taking a request back.
+ * The shared labeller owns that distinction for both render faces and the export; the filter names both.
  */
 export default async function MyRequestStatusPage({
   searchParams,
@@ -82,7 +81,7 @@ export default async function MyRequestStatusPage({
     size?: string;
   }>;
 }) {
-  const t = await getTranslations('me'), locale = await getLocale();
+  const t = await getTranslations('me'), historyT = await getTranslations('attendanceHistory'), locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
   const me = await myEmployment(s);
@@ -189,7 +188,7 @@ export default async function MyRequestStatusPage({
                   on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
               >
-                {f == null ? t('maFilterAll') : statusLabel(f, t, false)}
+                {requestStatusFilterLabel(f, t, historyT('cancelledFilter'))}
               </Link>
             );
           })}
@@ -259,9 +258,9 @@ export default async function MyRequestStatusPage({
                         )}
                       </td>
                       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{submittedOn(r)}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{approver}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{r.workflow ? <AttendanceWorkflowProgress workflow={r.workflow} status={r.status} /> : r.status === 'pending' ? approver : '—'}</td>
                       <td className="px-3 py-2.5">
-                        <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r))} />
+                        <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r), { kind: r.cancellationKind, cancelledLabel: historyT('statuses.cancelled') })} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         {canCancel(r) ? (
@@ -284,7 +283,7 @@ export default async function MyRequestStatusPage({
                       <span className="font-semibold tabular-nums">{r.attendanceDate}</span>
                       <span className="ml-2 text-muted-foreground">{t(kindKey(r))}</span>
                     </div>
-                    <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r))} />
+                    <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r), { kind: r.cancellationKind, cancelledLabel: historyT('statuses.cancelled') })} />
                   </div>
                   <p className="text-sm">
                     <span className="tabular-nums">{askedFor(r, t)}</span>
@@ -306,7 +305,7 @@ export default async function MyRequestStatusPage({
                         decided rows show nothing rather than a claim we cannot stand behind. */}
                     {r.status === 'pending' ? (
                       <span>
-                        {t('otGoesToColumn')} {approver}
+                        {t('otGoesToColumn')} {r.workflow?.stages[r.workflow.currentStage]?.approvers.map(a => a.name).join(' / ') ?? approver}
                       </span>
                     ) : null}
                     {r.hasAttachment && (
@@ -318,6 +317,7 @@ export default async function MyRequestStatusPage({
                       </a>
                     )}
                   </div>
+                  {r.workflow && <AttendanceWorkflowProgress workflow={r.workflow} status={r.status} />}
                   {canCancel(r) ? (
                     <div className="pt-1">
                       <CancelRequest id={r.id} label={t('otWithdraw')} on={r.attendanceDate} />
@@ -345,7 +345,7 @@ type RequestRow = Awaited<ReturnType<typeof myAttendanceCorrections>>[number];
  * proposed clock-in, and it is the distinction the label and the cancel rule both turn on — so it is
  * written once here rather than inline in each of the two faces.
  */
-const isOvertime = (r: RequestRow) => r.proposedCheckIn == null && r.requestedOtMinutes != null;
+const isOvertime = (r: RequestRow) => attendanceApplicationType(r) === 'self_overtime';
 
 /**
  * THE CANCEL RULE. A clock correction may only be cancelled while PENDING, because approving one rewrites

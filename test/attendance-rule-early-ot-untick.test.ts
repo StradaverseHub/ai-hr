@@ -40,8 +40,9 @@ describe('7c834696: Apply to Early Overtime must be untickable', () => {
     // The old shape: an ALWAYS-rendered hidden input whose value flips. That is the bug.
     expect(code).not.toMatch(/<input[^>]*type="hidden"[^>]*name="applyToEarlyOt"[^>]*value=\{[^}]*\?[^}]*:[^}]*\}/);
 
-    // The fixed shape: rendered only when on, so the field is ABSENT when off — exactly like a real checkbox.
-    expect(code).toMatch(/\{applyEarly\s*&&\s*<input[^>]*type="hidden"[^>]*name="applyToEarlyOt"[^>]*value="on"/);
+    // Attendance owns this flag. The independent OT ladder must omit it even when the saved flag is on;
+    // the Attendance form must omit it when off, exactly like a real checkbox.
+    expect(code).toMatch(/\{!ladderOnly\s*&&\s*applyEarly\s*&&\s*<input[^>]*type="hidden"[^>]*name="applyToEarlyOt"[^>]*value="on"/);
   });
 
   it('the reader treats an empty value as false, not merely as present', () => {

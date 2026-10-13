@@ -12,4 +12,5 @@ export const ATTENDANCE_SETTINGS_CARDS = [
   { key: 'schedule', href: '/admin/attendance/schedule' },
   { key: 'allowance', href: '/admin/attendance-allowance' },
   { key: 'locations', href: '/admin/work-locations/clocking' },
+  { key: 'approvalWorkflow', href: '/admin/attendance/approval-workflow' },
 ] as const;

@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -68,7 +69,8 @@ export default async function ViewScheduleGroupPage({
   if (!rule) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('viewTitle')} back={{ href: SCHEDULE, label: t('backToList') }} />
+        <AttendanceSettingsNavigation />
+      <PageHeader title={t('viewTitle')} back={{ href: SCHEDULE, label: t('backToList') }} />
         <Card>
           <p className="p-4 text-sm text-muted-foreground">{t('groupGone')}</p>
         </Card>

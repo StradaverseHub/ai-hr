@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import type { listShiftOtWindows, listShiftsForTenant } from '@/core/roster';
 import type { listAttendanceRules } from '@/core/attendance-rule';
@@ -129,6 +130,7 @@ export async function ShiftForm({
 
   return (
     <div className={pageWideCls}>
+      <AttendanceSettingsNavigation />
       <PageHeader
         title={editing ? t('shiftFormEditTitle') : t('shiftFormNewTitle')}
         description={t('shiftFormDescription')}

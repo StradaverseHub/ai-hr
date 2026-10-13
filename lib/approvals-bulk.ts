@@ -1,3 +1,4 @@
+import { attendanceApplicationType } from './attendance-workflow';
 /**
  * Bulk-approval shared helpers (feedback fb99474b — "Bulk Approval Function for Managers and HR Admin").
  *
@@ -27,10 +28,10 @@ export type BulkCategory = 'leave' | 'leaveCancellation' | 'attendance' | 'overt
 
 /** A selectable pending row handed from the server page to the client island. `id` is the request id — the
  *  selection is keyed by (type,id) so it is index-independent and survives a re-sort (sort item 09cda965). */
-export type BulkRow = { id: string; type: BulkDecideType; category: BulkCategory };
+export type BulkRow = { id: string; type: BulkDecideType; category: BulkCategory; expectedStageIndex?: number };
 
 /** One item posted back to the bulk server action. */
-export type BulkDecideItem = { type: BulkDecideType; id: string };
+export type BulkDecideItem = { type: BulkDecideType; id: string; expectedStageIndex?: number };
 
 export const BULK_DECIDE_TYPES: readonly BulkDecideType[] = [
   'leave',
@@ -60,8 +61,8 @@ export function bulkRowKey(r: { type: BulkDecideType; id: string }): string {
  * clock-time correction. The approvals page's bulkRows, the category module's row filter and the decided-
  * count service all import THIS predicate, so the rule can never fork.
  */
-export function isOvertimeCorrection(row: { requestedOtMinutes: number | null }): boolean {
-  return row.requestedOtMinutes != null;
+export function isOvertimeCorrection(row: Parameters<typeof attendanceApplicationType>[0]): boolean {
+  return attendanceApplicationType(row) === 'self_overtime';
 }
 
 /** By-type counts for a selection, in BULK_CATEGORY_ORDER, omitting empty buckets. */
@@ -120,7 +121,9 @@ export function parseBulkItems(raw: string): BulkDecideItem[] {
     const key = `${type}:${id}`;
     if (seen.has(key)) continue; // de-dupe: never decide the same request twice in one batch
     seen.add(key);
-    out.push({ type: type as BulkDecideType, id });
+    const stage = (el as { expectedStageIndex?: unknown }).expectedStageIndex;
+    if (stage !== undefined && (!Number.isInteger(stage) || Number(stage) < 0 || Number(stage) > 9)) continue;
+    out.push({ type: type as BulkDecideType, id, ...(type === 'attendance' && typeof stage === 'number' ? { expectedStageIndex: stage } : {}) });
   }
   return out;
 }

@@ -31,6 +31,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const BOUNDARIES = [
   'core/attendance',
   'core/attendance-allowance',
+  'core/attendance-allowance-context',
   // 7c834696 stage 1 — the pure per-day calculation module. Declared as a boundary (not slipped into the
   // debt allowlist) because it IS pack implementation, exactly like attendance-derive beside it.
   'core/attendance-calc',
@@ -40,7 +41,10 @@ const BOUNDARIES = [
   'core/attendance-clock-read',
   'core/attendance-clock-data',
   'core/attendance-punch-change',
+  'core/attendance-workflow',
+  'core/attendance-application-history',
   'core/attendance-rule',
+  'core/attendance-rotation',
   'core/clocking-location',
   // r424 (50ed39e1) — the clocking-file import: mapping library, line decisions, import logs. Pack
   // implementation like attendance-clock beside it, so a BOUNDARY (outside callers use the facade).
@@ -52,6 +56,7 @@ const ALWAYS_ALLOWED = [
   'packs/attendance/', // the pack itself: wiring (index.ts) + service facade
   'core/attendance.ts', // implementation files import each other freely
   'core/attendance-allowance.ts',
+  'core/attendance-allowance-context.ts',
   'core/attendance-calc.ts',
   'core/attendance-derive.ts',
   'core/attendance-device.ts',
@@ -60,7 +65,10 @@ const ALWAYS_ALLOWED = [
   'core/attendance-clock-read.ts',
   'core/attendance-clock-data.ts',
   'core/attendance-punch-change.ts',
+  'core/attendance-workflow.ts',
+  'core/attendance-application-history.ts',
   'core/attendance-rule.ts',
+  'core/attendance-rotation.ts',
   'core/clocking-location.ts',
   'core/attendance-clocking-import.ts', // r424 — pack implementation; imports core/attendance directly
   'app/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal

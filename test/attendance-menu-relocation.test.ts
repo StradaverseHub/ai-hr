@@ -72,6 +72,8 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // because a screen with no menu row at all is the case this file's premise matters MOST for.
     expect(adminRoutes).toEqual([
       '/attendance',
+      // Approved Attendance Application History has its own permission and page guard.
+      '/attendance/application-history',
       // 22d67223 (r311) — Attendance Breakdown. Unlike '/attendance' above it, this one is NOT an
       // exception to this file's premise: its page calls scopedAdmin in its own body and it is in the
       // loop below. See the note there for why it could not be scopedSession like its neighbour.
@@ -142,6 +144,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // calculation audits. The adminOnly nav row hides the link and protects nothing. It refuses now, which
     // is why it belongs in this loop rather than beside '/attendance' in the exception below.
     '/attendance/breakdown',
+    '/attendance/application-history',
     '/admin/attendance',
     '/admin/card-assignment',
     '/admin/attendance/file-mappings',

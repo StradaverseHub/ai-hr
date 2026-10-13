@@ -156,9 +156,17 @@ describe('flagOf — operational irregularities', () => {
   it('late arrival → Late', () => expect(flagOf({ ...base, status: 'late' })).toBe('late'));
   it('single punch → Odd (missing check-out)', () => expect(flagOf({ ...base, checkOutAt: null })).toBe('odd'));
   it('short day from early checkout → Under', () => expect(flagOf({ ...base, workedMinutes: 300 })).toBe('under'));
+  it('uses a stored zero shortfall when a flexi window exceeds the required working hours', () =>
+    expect(flagOf({ ...base, workedMinutes: 570, scheduledMinutes: 720, underMinutes: 0 })).toBeNull());
+  it('preserves a recorded shortfall when the current displayed schedule is shorter', () =>
+    expect(flagOf({ ...base, workedMinutes: 360, scheduledMinutes: 300, underMinutes: 120 })).toBe('under'));
+  it('falls back to the schedule when the legacy shortfall is null', () =>
+    expect(flagOf({ ...base, workedMinutes: 300, underMinutes: null })).toBe('under'));
+  it('does not hide a missing punch behind a stored zero shortfall', () =>
+    expect(flagOf({ ...base, checkOutAt: null, underMinutes: 0 })).toBe('odd'));
   it('no attendance row → no flag', () => expect(flagOf({ ...base, attendanceId: null })).toBeNull());
   it('rest-day short worked does NOT flag Under (no required hours)', () =>
-    expect(flagOf({ ...base, dayType: 'rest_day', workedMinutes: 120, scheduledMinutes: null })).toBeNull());
+    expect(flagOf({ ...base, dayType: 'rest_day', workedMinutes: 120, scheduledMinutes: null, underMinutes: 120 })).toBeNull());
 });
 
 describe('statusOf — the always-present v1 Status', () => {
@@ -182,6 +190,26 @@ describe('statusOf — the always-present v1 Status', () => {
 // ─────────────────────────── B. Loader extensions ───────────────────────────
 
 describe('attendanceForDate — shift code + scheduled minutes + OT split', () => {
+  it('both loaders use the engine shortfall for a completed Semi-Flexi day inside a longer window', async () => {
+    const a = adminCtx(b);
+    const shift = await createShift(a, {
+      name: `Semi ${uniq()}`, code: `SEMI${uniq()}`, type: 'semi_flexi',
+      startTime: '07:00', endTime: '20:00', breakMinutes: 60,
+      normalMinutesOverride: 480, weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const emp = await hire('Semi-Flexi Recorded Shortfall', shift.id);
+    await checkIn(a, { employmentId: emp, date: WORKDAY, time: '08:00' });
+    await checkOut(a, { employmentId: emp, date: WORKDAY, time: '18:30' });
+    const daily = (await attendanceForDate(a, WORKDAY, [b.companyId])).find((row) => row.employmentId === emp)!;
+    const individual = (await attendanceForEmploymentRange(a, emp, WORKDAY, WORKDAY))[0]!;
+    for (const row of [daily, individual]) {
+      expect(row.workedMinutes).toBe(570);
+      expect(row.scheduledMinutes).toBe(720);
+      expect(row.underMinutes).toBe(0);
+      expect(flagOf(row)).toBeNull();
+    }
+  });
+
   it('resolves the fixed default shift code and splits workday OT into the 1.5× bucket', async () => {
     const a = adminCtx(b);
     const shiftId = (await createShift(a, { name: `Office ${uniq()}`, code: `OFC${uniq()}`, startTime: '09:00', endTime: '18:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] })).id;

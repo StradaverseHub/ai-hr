@@ -17,9 +17,10 @@ import type { SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { updateLeaveType } from '../core/admin';
 import { setRestDay } from '../core/roster';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
-import { adminCancelLeave, decideLeave, leaveBalance, leaveTypeApplySummary, requestLeave } from '../core/leave';
+import { adminCancelLeave, decideLeave, decideLeaveCancellation, leaveBalance, leaveTypeApplySummary, requestLeave, requestLeaveCancellation } from '../core/leave';
 import { applyLeaveAdjustmentBatch, LeaveAdjustmentError } from '../core/leave-adjustment';
 import { commitLeaveImport, validateLeaveImport } from '../core/leave-import';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -27,6 +28,7 @@ import {
   EXPIRING_SOON_DAYS,
   grantLeaveCredit,
   listLeaveCreditMovements,
+  listEarnedLeaveCredits,
   reverseLeaveCredit,
   runToilExpiry,
   setToilPolicy,
@@ -155,7 +157,20 @@ describe('Leave Credit history — derived, classified, and the running total is
       today: TODAY,
     });
     await decideLeave(mgrCtx, { leaveRequestId: leave.leaveRequestId, decision: 'approved' });
+    const beforeReturn = await listEarnedLeaveCredits(admin,{companyIds:[b.companyId],employmentId:emp.employmentId,today:TODAY,limit:1});
+    expect(beforeReturn.matched).toBe(4);expect(beforeReturn.rows).toHaveLength(1);
+    expect(beforeReturn.summary).toEqual({earned:4.5,used:1,expired:.5,available:2});
+    const usedCredit=(await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,status:'partially_used',today:TODAY})).rows[0];
+    expect(usedCredit.workedDate).toBe(worked(5));expect(usedCredit.used).toBe(1);
+    expect(usedCredit.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:1}]);
     await adminCancelLeave(admin, { leaveRequestId: leave.leaveRequestId, reason: 'Plans changed' });
+    const afterReturn=await listEarnedLeaveCredits(admin,{companyIds:[b.companyId],employmentId:emp.employmentId,today:TODAY});
+    expect(afterReturn.rows).toHaveLength(4);expect(afterReturn.summary).toEqual({earned:4.5,used:0,expired:.5,available:3});
+    expect(afterReturn.rows.find(row=>row.workedDate===worked(2))).toMatchObject({actorName:'Mahmud Manager',actorIsSystem:false});
+    expect(afterReturn.rows.find(row=>row.accrualId===usedCredit.accrualId)).toMatchObject({used:0,available:2,status:'available',usage:[]});
+    expect(afterReturn.rows.find(row=>row.accrualId===toReverse.accrualId)).toMatchObject({status:'reversed',reversible:false});
+    expect(afterReturn.rows.find(row=>row.accrualId===toExpire.accrualId)).toMatchObject({status:'expired',available:0,expired:.5});
+    expect((await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,status:'available',today:TODAY})).summary.available).toBe(3);
 
     const { rows, matched, truncated } = await listLeaveCreditMovements(admin, { companyIds: [b.companyId], today: TODAY });
     expect(truncated).toBe(false);
@@ -202,6 +217,61 @@ describe('Leave Credit history — derived, classified, and the running total is
     expect((await listLeaveCreditMovements(admin, { from: addDays(TODAY, 400), today: TODAY })).rows).toHaveLength(0);
     expect((await listLeaveCreditMovements(admin, { employmentId: mgr.employmentId, today: TODAY })).rows).toHaveLength(0);
   });
+  it('keeps submitted usage dates after the holiday calendar changes', async () => {
+    const emp=await hire('Frozen credit dates'),manager=await hire('Frozen date manager');
+    await setReportingLine(adminCtx(b),{subordinateEmploymentId:emp.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
+    const employee:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,emp.personId,'employee'),personId:emp.personId,roles:['employee'],entitlements:admin.entitlements};
+    const approver:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],entitlements:admin.entitlements};
+    const workedDate=`${LAST_MONTH}-08`;
+    await setRestDay(adminCtx(b),{employmentId:emp.employmentId,shiftDate:workedDate});
+    const lot=await grantLeaveCredit(admin,{employmentId:emp.employmentId,workedDate,days:2,reason:'Frozen calendar source',expiresOn:addDays(TODAY,100),today:TODAY});
+    const mon=nextMonday(addDays(TODAY,21)),tue=addDays(mon,1),wed=addDays(mon,2),typeId=await replacementTypeId();
+    const [holiday]=await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:tue,name:'Submitted excluded date'}).returning();
+    const leave=await requestLeave(employee,{employmentId:emp.employmentId,leaveTypeId:typeId,startDate:mon,endDate:wed,today:TODAY});
+    await decideLeave(approver,{leaveRequestId:leave.leaveRequestId,decision:'approved'});
+    const [snapshot]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leave.leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.credit-dates.frozen')));
+    expect(snapshot.payload).toMatchObject({creditDates:{totalDays:2,dates:[{date:mon,days:1},{date:wed,days:1}]}});
+    await owner.db.delete(schema.holiday).where(eq(schema.holiday.id,holiday.id));
+    await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,companyId:b.companyId,country:'MY',holidayDate:mon,name:'Later calendar edit'});
+    const register=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(register.rows.find(row=>row.accrualId===lot.accrualId)).toMatchObject({used:2,unattributedUsed:0,usage:[{requestId:leave.leaveRequestId,date:mon,days:1},{requestId:leave.leaveRequestId,date:wed,days:1}]});
+  });
+  it('projects real split consumption over approved dates and returns the original lots after partial cancellation', async () => {
+    const emp = await hire('Split credit employee');
+    const manager = await hire('Split credit manager');
+    await setReportingLine(adminCtx(b), { subordinateEmploymentId:emp.employmentId, managerEmploymentId:manager.employmentId, lineType:'administrative', validFrom:'2024-01-01' });
+    const employee:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,emp.personId,'employee'),personId:emp.personId,roles:['employee'],entitlements:admin.entitlements};
+    const approver:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],entitlements:admin.entitlements};
+    const worked1=`${LAST_MONTH}-08`,worked2=`${LAST_MONTH}-09`;
+    for(const workedDate of [worked1,worked2])await setRestDay(adminCtx(b),{employmentId:emp.employmentId,shiftDate:workedDate});
+    const first=await grantLeaveCredit(admin,{employmentId:emp.employmentId,workedDate:worked1,days:.75,reason:'First lot',expiresOn:addDays(TODAY,90),today:TODAY});
+    const second=await grantLeaveCredit(admin,{employmentId:emp.employmentId,workedDate:worked2,days:1.25,reason:'Second lot',expiresOn:addDays(TODAY,100),today:TODAY});
+    const typeId=await replacementTypeId();
+    await updateLeaveType(admin,{id:typeId,name:'Replacement Leave',employeeCancelApproved:true,cancelNoticeDays:0,cancelAutoApprove:false});
+    const mon=nextMonday(addDays(TODAY,21)),tue=addDays(mon,1);
+    const leave=await requestLeave(employee,{employmentId:emp.employmentId,leaveTypeId:typeId,startDate:mon,endDate:tue,today:TODAY});
+    await decideLeave(approver,{leaveRequestId:leave.leaveRequestId,decision:'approved'});
+    const register=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(register.summary).toEqual({earned:2,used:2,expired:0,available:0});
+    expect(register.rows.find(row=>row.accrualId===first.accrualId)?.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:.75}]);
+    expect(register.rows.find(row=>row.accrualId===second.accrualId)?.usage).toEqual([{requestId:leave.leaveRequestId,date:mon,days:.25},{requestId:leave.leaveRequestId,date:tue,days:1}]);
+    expect(register.rows.every(row=>row.status==='fully_used'&&row.unattributedUsed===0)).toBe(true);
+    await expect(listEarnedLeaveCredits(employee,{employmentId:emp.employmentId,today:TODAY})).rejects.toThrow(/HR administrators/);
+    const cancel=await requestLeaveCancellation(employee,{leaveRequestId:leave.leaveRequestId,cancelDates:[mon],today:TODAY});
+    await decideLeaveCancellation(approver,{cancellationRequestId:cancel.cancellationRequestId,decision:'approved'});
+    const remaining=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(remaining.summary).toEqual({earned:2,used:1,expired:0,available:1});
+    expect(remaining.rows.find(row=>row.accrualId===first.accrualId)).toMatchObject({used:.75,available:0,usage:[{date:tue,days:.75}]});
+    expect(remaining.rows.find(row=>row.accrualId===second.accrualId)).toMatchObject({used:.25,available:1,usage:[{date:tue,days:.25}]});
+    expect(remaining.rows.every(row=>row.unattributedUsed===0)).toBe(true);
+    const survivor=remaining.rows.flatMap(row=>row.usage).find(usage=>usage.date===tue)!;
+    await adminCancelLeave(admin,{leaveRequestId:survivor.requestId,reason:'Cancel remaining date'});
+    const restored=await listEarnedLeaveCredits(admin,{employmentId:emp.employmentId,today:TODAY});
+    expect(restored.summary).toEqual({earned:2,used:0,expired:0,available:2});
+    expect(restored.rows.find(row=>row.accrualId===first.accrualId)).toMatchObject({available:.75,usage:[]});
+    expect(restored.rows.find(row=>row.accrualId===second.accrualId)).toMatchObject({available:1.25,usage:[]});
+  });
+
 });
 
 describe('Leave Adjustments refuses the Replacement Leave type (gap 8)', () => {

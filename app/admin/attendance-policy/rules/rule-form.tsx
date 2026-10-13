@@ -1,9 +1,10 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import { Card, ErrorBanner, Field, btnPrimary, inputCls } from '@/components/ui';
 import { AttendanceRuleOtEditor, type OtEditorRow } from '@/components/attendance-rule-ot-editor';
 import type { AttendanceRuleView } from '@/core/attendance-rule';
-import { createAttendanceRuleAction, updateAttendanceRuleAction } from '../rule-actions';
+import { createAttendanceRuleAction, updateAttendanceRuleAction, saveScheduleGroupGeneralAction } from '../rule-actions';
 
 /**
  * 88e94371 · Add / Edit form for one "Lateness, Early Out & Overtime Settings" rule. Three sections
@@ -45,7 +46,15 @@ export async function RuleForm({
   shifts,
   error,
   cancel,
+  hideAllowedShifts = false,
+  saveScope = false,
+  generalOnly = false,
+  savedReceipt,
 }: {
+  hideAllowedShifts?: boolean;
+  saveScope?: boolean;
+  generalOnly?: boolean;
+  savedReceipt?: string;
   rule: AttendanceRuleView | null;
   shifts: readonly RuleShiftChoice[];
   error?: string;
@@ -112,7 +121,7 @@ export async function RuleForm({
     <div className="space-y-6">
       <ErrorBanner message={error} />
 
-      <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} className="space-y-6">
+      <AttendanceSettingsActionForm submitAction={editing ? generalOnly ? saveScheduleGroupGeneralAction : updateAttendanceRuleAction : createAttendanceRuleAction} preserveDrafts={saveScope} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
         {editing && <input type="hidden" name="ruleId" value={rule!.id} />}
 
         <Card className="space-y-4 p-4">
@@ -139,6 +148,7 @@ export async function RuleForm({
           {isDefault && <p className="text-xs text-muted-foreground">{t('standardNote')}</p>}
         </Card>
 
+        {!generalOnly && <>
         {/* Section 1 — Lateness */}
         <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('latenessSectionTitle')}</h2>
@@ -179,6 +189,7 @@ export async function RuleForm({
           </label>
         </Card>
 
+        </>}
         {/* 7c834696 stage 1 — the deduction switch. The two "after X → deduct Y" pairs above were stored
             and read by nothing until this release, so every rule's effective deduction has always been
             zero. Turning them on for everybody at once would take minutes off people whose employer never
@@ -213,7 +224,7 @@ export async function RuleForm({
             getAll('allowedShiftIds'). Without the marker, clearing the last shift would silently do
             nothing. The marker is read as a VALUE, never by presence — the trap 7c834696 hit on this very
             form (see `bool` in ../rule-actions.ts). */}
-        <Card className="space-y-3 p-4">
+        {!hideAllowedShifts && <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('shiftsAllowedTitle')}</h2>
           <p className="text-xs text-muted-foreground">{t('shiftsAllowedHint')}</p>
           <input type="hidden" name="allowedShiftsEditor" value="1" />
@@ -245,11 +256,11 @@ export async function RuleForm({
               ))}
             </ul>
           )}
-        </Card>
+        </Card>}
 
         {/* Section 3 — Overtime */}
         <Card className="p-4">
-          <AttendanceRuleOtEditor initialRows={initialRows} initialApplyEarlyOt={rule?.applyToEarlyOt ?? false} labels={otLabels} />
+          <AttendanceRuleOtEditor ladderOnly={generalOnly} initialRows={initialRows} initialApplyEarlyOt={rule?.applyToEarlyOt ?? false} labels={otLabels} />
         </Card>
 
         <p className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
@@ -257,14 +268,14 @@ export async function RuleForm({
         </p>
 
         <div className="flex items-center gap-3">
-          <button className={btnPrimary}>{t('save')}</button>
+          <AttendanceSettingsSaveButton className={btnPrimary}>{t('save')}</AttendanceSettingsSaveButton>
           {cancel && (
             <Link href={cancel.href} className="text-sm text-muted-foreground hover:text-foreground">
               {cancel.label}
             </Link>
           )}
         </div>
-      </form>
+      </AttendanceSettingsActionForm>
     </div>
   );
 }

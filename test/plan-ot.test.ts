@@ -975,13 +975,15 @@ describe('7 · the Plan OT list', () => {
 describe('8 · BULK approve reaches the deferred branch', () => {
   it('a bulk decision runs through the SAME service, so a future-dated plan is deferred there too', async () => {
     // The bulk loop dispatches each item to the same core decide* the row-level button calls, so the
-    // property under test is that decideAttendanceCorrection handles a decider id — the one thing the bulk
-    // path supplies and the single-decide form does not. Pinned as source below so the routing itself
-    // cannot be re-pointed at a fork.
+    // property under test is that the deferred path also records the real authenticated approver when
+    // the bulk path supplies an employment id. A caller-supplied id alone is no longer identity evidence.
+    // Pinned as source below so the routing itself cannot be re-pointed at a fork.
     const { a, employmentId } = await hire();
     const decider = await hire();
+    const userId = await createAppUser(b.tenantId, decider.personId, 'hr_admin');
+    const actor = { ...a, userId, personId: decider.personId };
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    const res = await decideAttendanceCorrection(a, {
+    const res = await decideAttendanceCorrection(actor, {
       correctionId,
       decision: 'approved',
       deciderEmploymentId: decider.employmentId,

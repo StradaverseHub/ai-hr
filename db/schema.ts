@@ -4278,6 +4278,18 @@ export const attendanceRule = pgTable(
   ],
 );
 
+/** Immutable future-effective schedule versions; existing groups receive no backfill. */
+export const attendanceRotation = pgTable('attendance_rotation', {
+  id: id(), tenantId: tenantId(),
+  ruleId: uuid('rule_id').notNull().references(() => attendanceRule.id, { onDelete: 'restrict' }),
+  effectiveFrom: date('effective_from').notNull(), anchorDate: date('anchor_date').notNull(),
+  unit: text('unit').notNull().$type<'week' | 'day'>(), length: integer('length').notNull(),
+  allowedShiftIds: uuid('allowed_shift_ids').array().notNull(),
+  days: jsonb('days').notNull().$type<{ kind: 'full' | 'half' | 'off' | 'rest'; shiftId: string | null }[]>(),
+  createdBy: text('created_by').notNull(), createdAt: createdAt(),
+}, t => [uniqueIndex('attendance_rotation_rule_date_uq').on(t.ruleId, t.effectiveFrom),
+  index('attendance_rotation_tenant_rule_idx').on(t.tenantId, t.ruleId)]);
+
 // One overtime time-band row of an attendance_rule (the reporter's "+ Add Row" OT table). fromMinutes..
 // toMinutes bound the OT duration (minutes past normal); ratePattern 'flat' (any numeric multiplier) or
 // 'variable' (a standardized multiplier). `roundingMode` + `roundToMinutes` round the matched OT minutes.
@@ -4423,6 +4435,10 @@ export const attendanceCorrection = pgTable(
     //    above for why it is stored rather than re-derived at read time.
     remark: text('remark'),
     requestKind: text('request_kind').$type<AttendanceRequestKind>(),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelledByUserId: text('cancelled_by_user_id'),
+    cancellationKind: text('cancellation_kind').$type<'cancelled' | 'withdrawn'>(),
+    cancellationReason: text('cancellation_reason'),
     rejectReason: text('reject_reason'),
     clockChanges: jsonb('clock_changes').$type<{ version: 1; baseline: string; entries: { id?: string; punchAt: string; direction: 'in' | 'out' }[] }>(),
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
@@ -7040,7 +7056,7 @@ export const attendanceAllowancePolicy = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
-    // v1 accepts only 'monthly' (app-side check). Text, not pgEnum — low-cardinality tag; Daily later.
+    // Monthly legacy rules remain valid; version-2 definitions additionally support weekly/daily.
     method: text('method').notNull().default('monthly'),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     payComponentId: uuid('pay_component_id')
@@ -7049,6 +7065,10 @@ export const attendanceAllowancePolicy = pgTable(
     effectiveFrom: date('effective_from').notNull(),
     // active | inactive (app-side check). Archive (archivedAt) hides from the active catalog.
     status: text('status').notNull().default('active'),
+    policyType: text('policy_type').notNull().default('earning'),
+    version: integer('version').notNull().default(1),
+    // NULL retains the original monthly criteria/scope semantics until explicitly edited.
+    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rules').AllowanceRules>(),
     criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
     scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -7063,6 +7083,54 @@ export const attendanceAllowancePolicy = pgTable(
     check('attendance_allowance_policy_amount_nonneg', sql`${t.amount} >= 0`),
   ],
 );
+
+// Immutable policy definitions and calculation evidence; monetary rows are company-admin only.
+export const attendanceAllowanceVersion = pgTable('attendance_allowance_version', {
+  id: id(), tenantId: tenantId(),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  policyId: uuid('policy_id').notNull().references(() => attendanceAllowancePolicy.id),
+  version: integer('version').notNull(), snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
+  createdAt: createdAt(),
+}, t => [uniqueIndex('attendance_allowance_version_uq').on(t.tenantId,t.policyId,t.version)]);
+export const attendanceAllowanceResult = pgTable('attendance_allowance_result', {
+  id: id(), tenantId: tenantId(),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  policyId: uuid('policy_id').notNull().references(() => attendanceAllowancePolicy.id),
+  policyVersion: integer('policy_version').notNull(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  payMonth: text('pay_month').notNull(), periodKey: text('period_key').notNull(),
+  periodFrom: date('period_from').notNull(), periodTo: date('period_to').notNull(),
+  amount: numeric('amount',{precision:12,scale:2}).notNull(), qualified: boolean('qualified').notNull(),
+  evidence: jsonb('evidence').$type<Record<string, unknown>>().notNull(),
+  inputDigest: text('input_digest').notNull(), status: text('status').notNull().default('calculated'),
+  calculatedAt: timestamp('calculated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('attendance_allowance_result_uq').on(t.tenantId,t.policyId,t.policyVersion,t.employmentId,t.periodKey),
+  index('attendance_allowance_result_month_idx').on(t.tenantId,t.companyId,t.payMonth)]);
+export const attendanceAllowanceResultRevision = pgTable('attendance_allowance_result_revision', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  resultId:uuid('result_id').notNull().references(()=>attendanceAllowanceResult.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),inputDigest:text('input_digest').notNull(),
+  amount:numeric('amount',{precision:12,scale:2}).notNull(),evidence:jsonb('evidence').$type<Record<string,unknown>>().notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_allowance_result_revision_uq').on(t.resultId,t.inputDigest)]);
+// Payroll owns the contribution identity. One result can belong to only one payroll run; totals of
+// multiple policies sharing a pay code are projected into ONE existing batch-component input.
+export const payrollAttendanceAllowanceSource = pgTable('payroll_attendance_allowance_source', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  batchId:uuid('batch_id').notNull().references(()=>payrollBatch.id,{onDelete:'cascade'}),
+  policyId:uuid('policy_id').notNull().references(()=>attendanceAllowancePolicy.id),
+  resultId:uuid('result_id').notNull().references(()=>attendanceAllowanceResult.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  componentId:uuid('component_id').notNull().references(()=>payComponent.id),
+  payMonth:text('pay_month').notNull(),periodKey:text('period_key').notNull(),
+  amount:numeric('amount',{precision:12,scale:2}).notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('payroll_attendance_allowance_source_uq').on(t.tenantId,t.policyId,t.employmentId,t.periodKey),
+  index('payroll_attendance_allowance_batch_idx').on(t.batchId,t.employmentId,t.componentId)]);
+export const attendanceAllowanceTransfer = pgTable('attendance_allowance_transfer', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  policyId:uuid('policy_id').notNull().references(()=>attendanceAllowancePolicy.id),
+  policyVersion:integer('policy_version').notNull(),batchId:uuid('batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),batchRef:uuid('batch_ref').notNull(),
+  status:text('status').notNull(),errorCode:text('error_code'),inputDigest:text('input_digest'),createdAt:createdAt(),
+});
 
 // ───────────────── 1.2.2 Individual Transaction (ADR-0055) ─────────────────
 // A pure dated one-off transaction ledger: per-employee, non-recurring earnings/deductions/overtime/
@@ -9997,6 +10065,40 @@ export const onehrResult = pgTable('performance_onehr_result', {
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
 },t=>[uniqueIndex('performance_onehr_result_review_uq').on(t.reviewId),index('performance_onehr_result_subject_idx').on(t.employmentId,t.cycleId)]);
+// Attendance approval configuration and immutable resolved stages, independent of Leave.
+export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template', {
+    id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
+    code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
+    applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
+    priority: integer('priority').notNull(), criteria: jsonb('criteria').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowCriteria>(),
+    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[]>(),
+    version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }), createdAt: createdAt(),
+}, t => [uniqueIndex('attendance_workflow_current_code').on(t.tenantId, t.companyId, t.code).where(sql `superseded_at IS NULL`), uniqueIndex('attendance_workflow_lineage_version').on(t.lineageId, t.version)]);
+export const attendanceWorkflowSetting = pgTable('attendance_workflow_setting', {
+    id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
+    applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(), enabled: boolean('enabled').notNull().default(false),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_workflow_setting_company_type').on(t.tenantId, t.companyId, t.applicationType)]);
+export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', {
+    id: id(), tenantId: tenantId(), correctionId: uuid('correction_id').notNull().references(() => attendanceCorrection.id),
+    employmentId: uuid('employment_id').notNull().references(() => employment.id), companyId: uuid('company_id').notNull().references(() => company.id),
+    templateId: uuid('template_id').notNull().references(() => attendanceWorkflowTemplate.id), templateCode: text('template_code').notNull(),
+    templateName: text('template_name').notNull(), templateVersion: integer('template_version').notNull(),
+    applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
+    stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
+}, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
+export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    employmentId: uuid('employment_id').notNull().references(() => employment.id), stageIndex: integer('stage_index').notNull(),
+    decision: text('decision').notNull().$type<'approved' | 'rejected'>(), assignedKind: text('assigned_kind').notNull(),
+    assignedEmploymentId: uuid('assigned_employment_id').references(() => employment.id), actualUserId: text('actual_user_id').notNull(), actualActorName: text('actual_actor_name').notNull(),
+    actualPersonId: uuid('actual_person_id').references(() => person.id), actualEmploymentId: uuid('actual_employment_id').references(() => employment.id),
+    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator'>(), remarks: text('remarks'),
+    previousStatus: text('previous_status').notNull(), resultingStatus: text('resulting_status').notNull(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_workflow_decision_stage').on(t.requestId, t.stageIndex)]);
+
 
 // Private working copies never enter a submitted assessment or another actor's projection.
 export const assessmentDraft = pgTable('performance_assessment_draft', {

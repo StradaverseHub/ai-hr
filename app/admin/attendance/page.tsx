@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
@@ -39,6 +40,7 @@ export default async function ShiftSettingsPage({
   searchParams: Promise<{ error?: string; showArchived?: string }>;
 }) {
   const s = await requireAdmin();
+  const settingsT = await getTranslations('attendanceSettingsHub');
   const t = await getTranslations('admin.attendancePolicy');
   const tr = await getTranslations('admin.attendanceRule');
   const trr = await getTranslations('roster');
@@ -59,7 +61,8 @@ export default async function ShiftSettingsPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader
+      <AttendanceSettingsNavigation />
+      <PageHeader back={{ href: '/admin/attendance/settings', label: settingsT('backToSettings') }}
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
