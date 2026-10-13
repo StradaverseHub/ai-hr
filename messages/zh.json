@@ -17632,11 +17632,62 @@
     "evidenceFiles": {
       "limits": "每条记录最多四个文件，每个不超过2 MB。支持PDF、图片、Word、Excel、CSV和文本文件。",
       "remove": "移除文件",
-      "removeConfirm": "移除{name}？已提交KPI的证明文件无法移除。"
+      "removeConfirm": "移除{name}？已提交KPI的证明文件无法移除。",
+      "fileEntry": "文件证据"
     },
     "archiveHelp": "归档此周期并将其从当前工作中移除？未完成的评估仍会保留。此操作不会将结果定稿或发布到奖励模块。",
     "moduleSwitchHelp": "关闭模块可隐藏其当前工作，不会删除记录、答案、审批或文件。重新开启即可恢复。",
-    "saveModules": "保存模块"
+    "saveModules": "保存模块",
+    "catalogueAdmin": {
+      "title": "岗位能力架构",
+      "help": "维护岗位档案及职业路径。目录变更不会改写已分配的评估；请单独预览能力分配。",
+      "import": "导入人力资源工作簿",
+      "missingSheet": "工作簿需要包含有数据的 Job_Skills 工作表。",
+      "importCount": "{skills} 项能力 · {profiles} 个岗位档案 · {links} 项要求 · 跳过 {skipped} 行",
+      "importConfirm": "应用此目录？现有评估答案和分配将保持原记录。",
+      "profiles": "编辑岗位档案",
+      "profile": "岗位档案",
+      "newProfile": "新建档案",
+      "inactive": "停用",
+      "name": "档案名称",
+      "jobTitle": "职位名称",
+      "department": "部门",
+      "grade": "职级",
+      "sector": "行业",
+      "track": "职业领域",
+      "active": "启用",
+      "skills": "能力要求",
+      "routes": "职业路径",
+      "fromProfileId": "当前岗位档案",
+      "toProfileId": "目标岗位档案",
+      "routeKind": "路径",
+      "automatic": "自动",
+      "pinned": "置顶",
+      "hidden": "隐藏",
+      "generate": "生成能力分配",
+      "generateHelp": "预览各员工将获分配的能力。已开始的评估、HR 指定分配及您自己的评估将保留。请检查未匹配岗位及空档案。",
+      "generateConfirm": "将预览的能力分配至符合条件且尚未开始的评估？",
+      "status": "状态",
+      "knowledge": "知识",
+      "ability": "技能实践",
+      "statuses": {
+        "assign": "将分配",
+        "started": "已开始，保留原记录",
+        "manual": "HR 指定，保留原分配",
+        "empty": "档案无能力要求",
+        "unmapped": "无匹配档案",
+        "not_part": "未参与"
+      },
+      "previewGeneration": "预览能力分配",
+      "applyGeneration": "应用能力分配",
+      "generationDone": "能力分配已应用。"
+    },
+    "evidenceFile": "文件（最多 2 MB）",
+    "competencyScope": {
+      "current": "当前岗位",
+      "future": "未来岗位",
+      "level": "等级 {level}"
+    }
   },
   "allowanceV2": {
     "title": "考勤津贴",

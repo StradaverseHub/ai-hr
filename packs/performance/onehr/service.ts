@@ -146,9 +146,11 @@ export async function updateOnehrWindows(ctx:SessionContext,cycleId:string,expec
 
 /** Whole-scorecard setting. Client state cannot set approval, moderation or results. */
 export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
+ return withPerformanceTenant(ctx,tx=>saveOnehrKpisTx(tx,ctx,reviewId,expected,raw,propose));
+}
+export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
   const inputs=z.array(kpiSchema.pick({id:true,title:true,category:true,libraryId:true,description:true,weightBp:true,unit:true,scoring:true,moderatorEmploymentId:true}).extend({approverEmploymentIds:z.array(uuid).max(1).optional()})).max(100).parse(raw);
   if(new Set(inputs.map(k=>k.id)).size!==inputs.length)throw Error('Duplicate KPI.');
-  return withPerformanceTenant(ctx,async tx=>{
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting',expected,'self');if(!r.cycle.policy.modules.pm)throw Error('Performance assessment is disabled.');
     if(r.kpis.some(k=>k.setting==='approved'||k.setting==='proposed'))throw Error('The scorecard is already proposed or approved.');
     const moderators=await moderatorChoices(tx,reviewId);
@@ -165,7 +167,6 @@ export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:
     if(kpis.some(k=>k.scoring.mechanism==='B'&&k.scoring.variant!==configuredVariant))throw Error('Use the achievement variant configured for this company.');
     if(propose)validateScorecard(kpis);
     await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,propose?'scorecard-proposed':'scorecard-saved');if(propose)await notifyKpiApprovers(tx,ctx,reviewId,kpis,'setting');
-  });
 }
 export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
   note.parse(remark);

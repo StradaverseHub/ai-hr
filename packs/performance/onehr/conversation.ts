@@ -3,9 +3,9 @@ import { z } from 'zod';
 import type { SessionContext } from '../../../db/client';
 import { assessmentConversation } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { getOnehrReview, saveAssessmentDraftTx } from './service';
+import { getOnehrReview, saveAssessmentDraftTx, saveOnehrKpisTx } from './service';
 import { assessmentDraftSchema } from './journey-model';
-import { proposeReviewCommands } from './review-command-ai';
+import { proposeReviewCommands, proposeSettingCommands } from './review-command-ai';
 import { draftOnehrNarrative } from './ai';
 
 export const conversationStage=z.enum(['setting','results','moderation','competency','career','evidence']);
@@ -31,6 +31,10 @@ function commandContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrRevie
  const targets=(kind==='results'||kind==='moderation'?kpis.map(k=>({id:k.id,label:k.title})):view.competencies.map(c=>({id:c.id,label:c.text})));
  return {facts:{text,draft,targets},draftRevision:prior?.revision??null};
 }
+function settingContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>,stage:ConversationStage,text:string){
+ if(stage!=='setting'||!view.self||view.finalized||view.kpis.some(k=>k.hrOwned||['approved','proposed'].includes(k.setting)))return null;
+ return {text,kpis:view.kpis,library:view.kpiLibrary,moderatorEmploymentId:view.reviewerEmploymentId};
+}
 export async function getReviewConversation(ctx:SessionContext,reviewId:string,stage:ConversationStage){
  await authorized(ctx,reviewId,stage);
  return withPerformanceTenant(ctx,async tx=>{
@@ -51,6 +55,8 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  let reply='';
  const commandInput=intent==='guide'&&view.aiEnabled?commandContext(view,stage,words):null;
  const command=commandInput?await proposeReviewCommands(ctx,reviewId,commandInput.facts):null;
+ const settingInput=intent==='guide'&&view.aiEnabled?settingContext(view,stage,words):null;
+ const setting=settingInput?await proposeSettingCommands(ctx,reviewId,settingInput):null;
  if(intent==='draft')reply=await draftOnehrNarrative(ctx,reviewId,words);
  else{
   const guides={
@@ -66,6 +72,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  // Recheck authority and graph state after a provider call, before persisting its answer.
  const fresh=await authorized(ctx,reviewId,stage);
  if(command&&JSON.stringify(commandContext(fresh,stage,words))!==JSON.stringify(commandInput))throw Error('Your private draft changed while preparing this response. Reload before sending again.');
+ if(setting&&JSON.stringify(settingContext(fresh,stage,words))!==JSON.stringify(settingInput))throw Error('Your scorecard or eligible library changed. Reload before sending again.');
  if(fresh.revision!==view.revision)throw Error('The assessment changed while preparing this response. Try again with the current record.');
  return withPerformanceTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:${storedStage(stage)}`},0))`);
@@ -75,9 +82,11 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   if((row?.revision??null)!==expected)throw Error('This conversation changed. Reload before sending another message.');
   if(messages.length>296)throw Error('This conversation has reached its limit. Your saved review and full conversation remain available.');
   if(command&&commandInput){await saveAssessmentDraftTx(tx,ctx,reviewId,view.revision,commandInput.draftRevision,command.draft);reply='Private draft updated. Review the form, then confirm submission when ready.';}
+  if(setting){await saveOnehrKpisTx(tx,ctx,reviewId,view.revision,setting.kpis);reply='Scorecard draft updated. Review the form, then propose it for approval when ready.';}
+  const updated=!!command||!!setting;
   const now=new Date().toISOString();
-  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:command?'update' as const:intent}]:[])];
+  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:updated?'update' as const:intent}]:[])];
   const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage:storedStage(stage),messages:next}).returning();
-  return {revision:saved.revision,messages:next,draftUpdated:!!command};
+  return {revision:saved.revision,messages:next,draftUpdated:updated};
  });
 }

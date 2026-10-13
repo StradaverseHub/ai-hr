@@ -33,6 +33,12 @@ export async function onehrCycleAction(f:FormData){
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,variant:str(f,`b.${c.id}.variant`)||'base',minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
       await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),panelTarget:num(f,'panelTarget'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
+    }else if(str(f,'action')==='catalogue-profile'){
+      const profile=view.policy.profiles.find(p=>p.id===str(f,'profileId')),available=[...new Map([...view.policy.profiles.flatMap(p=>p.competencies),...(view.policy.skills??[])].map(s=>[s.id,s])).values()];
+      const chosen=f.getAll('skillId').map(String);if(chosen.some(id=>!available.some(s=>s.id===id)))throw Error('Choose current catalogue competencies.');
+      await perf.saveAssessmentCatalogueProfile(s,id,num(f,'revision'),str(f,'profileId')||null,{name:str(f,'name'),jobTitle:str(f,'jobTitle'),department:str(f,'department'),grade:str(f,'grade'),companyId:str(f,'companyId')||null,active:f.has('active'),sector:str(f,'sector'),track:str(f,'track'),competencies:available.filter(s=>chosen.includes(s.id)).map(s=>({...s,future:profile?.competencies.find(c=>c.id===s.id)?.future??false}))});
+    }else if(str(f,'action')==='career-route'){
+      await perf.setAssessmentCareerRoute(s,id,num(f,'revision'),str(f,'fromProfileId'),str(f,'toProfileId'),z.enum(['pinned','hidden','automatic']).parse(str(f,'kind')));
     }else if(str(f,'action')==='modules'){
       await perf.updateAssessmentModules(s,id,num(f,'revision'),Object.fromEntries(['pm','tm','idp','evidence'].map(k=>[k,f.has(k)])));
     }else if(str(f,'action')==='windows'){
@@ -161,4 +167,11 @@ export async function captureRatingRecordsAction(f:FormData){
  const q=new URLSearchParams(Object.entries(filters).filter(([,v])=>!!v)),url=`/performance/${id}/records?${q}`;
  try{await perf.captureAssessmentRatingRecords(s,id,filters);}catch(e){redirect(withError(url,e));}
  revalidatePath(`/performance/${id}/records`);redirect(url);
+}
+
+export async function assessmentArchitectureAction(cycleId:string,sheets:{Job_Profile:string;Job_Skills:string},token?:string){
+ const s=await getSession();try{const result=await perf.importAssessmentArchitecture(s,cycleId,sheets,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function assessmentGenerateProfilesAction(cycleId:string,token?:string){
+ const s=await getSession();try{const result=await perf.generateAssessmentProfiles(s,cycleId,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:publicErrorMessage(error)};}
 }

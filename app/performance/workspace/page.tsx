@@ -35,7 +35,8 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  const requested=query.review??query.feedback??query.calibration;
  const selected=cards.find(i=>i.id===requested)??cards[0];
  function href(changes:Record<string,string|undefined>={},item?:PerformanceWorkspaceItem){
-  const params=new URLSearchParams({...(cycle?{cycle}:{}),view,module,...(part?{stage:part}:{}),...Object.fromEntries(Object.entries(changes).filter((entry):entry is [string,string]=>entry[1]!==undefined))});
+  const params=new URLSearchParams({...(cycle?{cycle}:{}),view,module,...(part?{stage:part}:{})});
+  for(const [key,value] of Object.entries(changes)){if(value===undefined)params.delete(key);else params.set(key,value);}
   if(item)params.set(item.kind,item.id);
   return `/performance/workspace?${params}`;
  }
@@ -75,8 +76,8 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
   <ErrorBanner message={query.error}/>
   {!items.length?<section className="rounded-lg border border-border p-8"><h2 className="font-semibold">{t('workspace.empty')}</h2><p className="mt-2 text-sm text-muted-foreground">{t('workspace.emptyHelp')}</p><Link href="/performance" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.manageCycles')}</Link></section>:<>
    <div className="grid gap-3 lg:grid-cols-[224px_minmax(0,1fr)]">
-    <nav aria-label={t('workspace.viewsLabel')} className="flex flex-wrap gap-1 rounded-lg border border-border p-1">{availableViews.map(v=><Link key={v} href={href({view:v,module:undefined})} aria-current={view===v?'page':undefined} className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-3 text-sm ${view===v?'bg-foreground text-background':'hover:bg-muted'}`}>{t(`workspace.views.${v}`)}</Link>)}</nav>
-    <nav aria-label={t('workspace.modulesLabel')} className="flex flex-wrap gap-2">{availableModules.map(m=><Link key={m} href={href({module:m})} aria-current={module===m?'page':undefined} className={`flex min-h-11 items-center gap-3 rounded-lg border px-4 text-sm ${module===m?'flex-1 border-primary bg-primary/5':'border-border hover:bg-muted'}`}><b>{m.toUpperCase()}</b>{module===m&&<span>{t(`workspace.modules.${m}`)}</span>}</Link>)}</nav>
+    <nav aria-label={t('workspace.viewsLabel')} className="flex flex-wrap gap-1 rounded-lg border border-border p-1">{availableViews.map(v=><Link key={v} href={href({view:v,module:undefined,stage:undefined})} aria-current={view===v?'page':undefined} className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-3 text-sm ${view===v?'bg-foreground text-background':'hover:bg-muted'}`}>{t(`workspace.views.${v}`)}</Link>)}</nav>
+    <nav aria-label={t('workspace.modulesLabel')} className="flex flex-wrap gap-2">{availableModules.map(m=><Link key={m} href={href({module:m,stage:undefined})} aria-current={module===m?'page':undefined} className={`flex min-h-11 items-center gap-3 rounded-lg border px-4 text-sm ${module===m?'flex-1 border-primary bg-primary/5':'border-border hover:bg-muted'}`}><b>{m.toUpperCase()}</b>{module===m&&<span>{t(`workspace.modules.${m}`)}</span>}</Link>)}</nav>
    </div>
    <div className="grid items-start gap-4 lg:grid-cols-[224px_minmax(0,1fr)]">
     <WorkspaceRail label={t('workspace.navigator')}>{rail}</WorkspaceRail>

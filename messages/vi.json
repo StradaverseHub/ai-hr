@@ -17632,11 +17632,62 @@
     "evidenceFiles": {
       "limits": "Tối đa bốn tệp mỗi mục, mỗi tệp 2 MB. PDF, ảnh, Word, Excel, CSV và văn bản.",
       "remove": "Xóa tệp",
-      "removeConfirm": "Xóa {name}? Không thể xóa tệp minh chứng KPI đã gửi."
+      "removeConfirm": "Xóa {name}? Không thể xóa tệp minh chứng KPI đã gửi.",
+      "fileEntry": "Minh chứng tệp"
     },
     "archiveHelp": "Lưu trữ kỳ này và bỏ khỏi công việc hiện tại? Các đánh giá chưa xong vẫn được giữ lại. Thao tác này không chốt hay công bố kết quả sang Khen thưởng.",
     "moduleSwitchHelp": "Tắt mô-đun để ẩn công việc hiện tại mà không xóa bản ghi, câu trả lời, phê duyệt hoặc tệp. Bật lại để khôi phục công việc.",
-    "saveModules": "Lưu mô-đun"
+    "saveModules": "Lưu mô-đun",
+    "catalogueAdmin": {
+      "title": "Cơ cấu năng lực",
+      "help": "Quản lý hồ sơ vai trò và lộ trình nghề nghiệp. Đổi danh mục không ghi lại các đánh giá đã phân công. Xem trước việc tạo phân công riêng.",
+      "import": "Nhập sổ tính nhân sự",
+      "missingSheet": "Sổ tính cần trang Job_Skills có dữ liệu.",
+      "importCount": "{skills} kỹ năng · {profiles} hồ sơ · {links} yêu cầu · bỏ qua {skipped} dòng",
+      "importConfirm": "Áp dụng danh mục này? Câu trả lời và phân công hiện có được giữ nguyên.",
+      "profiles": "Sửa hồ sơ vai trò",
+      "profile": "Hồ sơ vai trò",
+      "newProfile": "Hồ sơ mới",
+      "inactive": "Không hoạt động",
+      "name": "Tên hồ sơ",
+      "jobTitle": "Chức danh",
+      "department": "Phòng ban",
+      "grade": "Cấp bậc",
+      "sector": "Ngành",
+      "track": "Hướng nghề",
+      "active": "Hoạt động",
+      "skills": "Năng lực",
+      "routes": "Lộ trình nghề nghiệp",
+      "fromProfileId": "Hồ sơ hiện tại",
+      "toProfileId": "Hồ sơ đích",
+      "routeKind": "Lộ trình",
+      "automatic": "Tự động",
+      "pinned": "Ghim",
+      "hidden": "Ẩn",
+      "generate": "Tạo phân công",
+      "generateHelp": "Xem trước nhân viên nhận năng lực. Giữ nguyên đánh giá đã bắt đầu, phân công do HR chỉ định và đánh giá của chính bạn. Kiểm tra vai trò chưa khớp và hồ sơ trống.",
+      "generateConfirm": "Phân công các năng lực đã xem trước cho đánh giá đủ điều kiện chưa bắt đầu?",
+      "status": "Trạng thái",
+      "knowledge": "Kiến thức",
+      "ability": "Khả năng",
+      "statuses": {
+        "assign": "Sẽ phân công",
+        "started": "Đã bắt đầu — giữ nguyên",
+        "manual": "HR chỉ định — giữ nguyên",
+        "empty": "Hồ sơ chưa có năng lực",
+        "unmapped": "Chưa khớp hồ sơ",
+        "not_part": "Không tham gia"
+      },
+      "previewGeneration": "Xem trước phân công",
+      "applyGeneration": "Áp dụng phân công",
+      "generationDone": "Đã áp dụng phân công."
+    },
+    "evidenceFile": "Tệp (tối đa 2 MB)",
+    "competencyScope": {
+      "current": "Vai trò hiện tại",
+      "future": "Vai trò tương lai",
+      "level": "Cấp {level}"
+    }
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

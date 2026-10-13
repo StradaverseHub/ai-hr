@@ -1,3 +1,5 @@
+import { architectureHeaders } from '../packs/performance/onehr/architecture-model';
+import { toCsv } from '../lib/csv';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
@@ -324,6 +326,33 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.updateAssessmentModules(a,cycleId,(await perf.getOnehrCycle(a,cycleId))!.revision,original)).rejects.toThrow(/active cycle/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({selfRemark:'Changed after archive'}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/archived assessment/)})});
   });
+  it('imports a live architecture and generates only unstarted, unpinned competency snapshots',async()=>{
+    const sheets={Job_Profile:'',Job_Skills:toCsv([architectureHeaders.Job_Skills,['Technical','Analyst','12','','','','','ANA-3','Analysis','Technical','Analysis','3','Analyse a delivery','Understand context','Prepare analysis']])};
+    await expect(perf.importAssessmentArchitecture(self,cycleId,sheets)).rejects.toThrow(/administrator/);
+    const preview=await perf.importAssessmentArchitecture(a,cycleId,sheets);expect(preview).toMatchObject({skills:1,profiles:1,applied:false});
+    expect((await perf.getOnehrCycle(a,cycleId))!.policy.skills??[]).toEqual([]);
+    await perf.importAssessmentArchitecture(a,cycleId,sheets,preview.token);
+    await expect(perf.importAssessmentArchitecture(a,cycleId,sheets,preview.token)).rejects.toThrow(/changed/);
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Keep this private answer'}},remark:''});
+    const [manual]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;const existing=cycle.policy.profiles.find(p=>p.name==='Engineering')!;
+    await perf.assignAssessmentProfile(a,manual.reviewId,manual.revision,existing.id);
+    await perf.saveAssessmentCatalogueProfile(a,cycleId,cycle.revision,existing.id,{name:existing.name,companyId:existing.companyId,grade:existing.grade,competencies:cycle.policy.skills!});
+    const generation=await perf.generateAssessmentProfiles(a,cycleId);
+    expect(generation.rows.find(r=>r.reviewId===reviewId)?.status).toBe('started');expect(generation.rows.find(r=>r.reviewId===manual.reviewId)?.status).toBe('manual');
+    expect(generation.rows.some(r=>r.status==='assign'&&r.count===1)).toBe(true);
+    expect((await view(self)).competencies.map(c=>c.id)).toEqual(['skill-1','skill-2']);
+    await perf.generateAssessmentProfiles(a,cycleId,generation.token);
+    expect((await view(self)).drafts.find(d=>d.kind==='competency_self')?.payload).toMatchObject({answers:{'skill-1':{answer:'yes',remark:'Keep this private answer'}}});
+    const generated=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    expect(generated[0].competencies).toMatchObject([{id:'ANA-3',skillLevel:3,self:null,manager:null}]);
+    expect((await perf.getOnehrReview(a,manual.reviewId))!.competencies.map(c=>c.id)).toEqual(['skill-1','skill-2']);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;const dest=cycle.policy.profiles.find(p=>p.jobTitle==='Analyst')!;
+    await perf.setAssessmentCareerRoute(a,cycleId,cycle.revision,existing.id,dest.id,'pinned');
+    expect((await perf.getOnehrCycle(a,cycleId))!.policy.careerRoutes).toEqual([{fromProfileId:existing.id,toProfileId:dest.id,kind:'pinned'}]);
+    await perf.closeCycle(a,{cycleId});await expect(perf.generateAssessmentProfiles(a,cycleId)).rejects.toThrow(/archived/);
+  });
+
   it('calibrates through live assigned scopes, bans self calibration, and revokes stale reviewer access',async()=>{
     await complete();const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Calibrator',primaryEmail:`${randomUUID()}@onehr.test`}).returning();
     const userId=await createAppUser(b.tenantId,p.id,'employee'),calibrator={...self,userId,personId:p.id};
@@ -668,6 +697,23 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   it('rejects AI access before contacting a provider or recording a proposal',async()=>{
     await expect(perf.draftOnehrNarrative(peers[0].ctx,reviewId,'Invent a pay award')).rejects.toThrow(/Only the employee/);
     expect(await owner.db.select().from(schema.agentProposal)).toEqual([]);
+  });
+
+  it('edits KPI setup from chat through the form writer and rolls back when conversation revision is stale',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}]);
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const text='Set Delivery weight to 35',request=randomUUID();vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'set_weight',id,target:{start:4,end:12},value:{start:23,end:25}}]}));
+    const first=await perf.sendReviewMessage(self,reviewId,'setting',null,request,text);
+    expect(first.draftUpdated).toBe(true);expect((await view(self)).kpis[0]).toMatchObject({weightBp:3500,setting:'draft',actual:null,locked:false});
+    expect(await perf.sendReviewMessage(self,reviewId,'setting',null,request,text)).toEqual(first);expect(generateDraft).toHaveBeenCalledOnce();
+    await expect(perf.sendReviewMessage(self,reviewId,'setting',0,randomUUID(),'Set Delivery weight to 60')).rejects.toThrow(/conversation changed/);
+    expect((await view(self)).kpis[0].weightBp).toBe(3500);
+    await expect(perf.sendReviewMessage(mgr,reviewId,'setting',null,randomUUID(),text)).resolves.toMatchObject({draftUpdated:false});
+    expect((await view(self)).kpis[0].weightBp).toBe(3500);
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{...(await view(self)).kpis[0],weightBp:10000}],true);
+    const calls=vi.mocked(generateDraft).mock.calls.length;
+    expect(await perf.sendReviewMessage(self,reviewId,'setting',first.revision,randomUUID(),text)).toMatchObject({draftUpdated:false});expect(generateDraft).toHaveBeenCalledTimes(calls);
+    expect((await view(self)).kpis[0].setting).toBe('proposed');
   });
 
   it('lets chat update only an actor-private draft, atomically and idempotently',async()=>{

@@ -17632,11 +17632,62 @@
     "evidenceFiles": {
       "limits": "Sehingga empat fail setiap entri, 2 MB setiap fail. PDF, imej, Word, Excel, CSV dan teks.",
       "remove": "Buang fail",
-      "removeConfirm": "Buang {name}? Fail sokongan KPI yang telah dihantar tidak boleh dibuang."
+      "removeConfirm": "Buang {name}? Fail sokongan KPI yang telah dihantar tidak boleh dibuang.",
+      "fileEntry": "Bukti fail"
     },
     "archiveHelp": "Arkibkan kitaran ini dan keluarkannya daripada kerja aktif? Ulasan belum selesai dikekalkan. Ini tidak memuktamadkan atau melepaskan keputusan kepada Ganjaran.",
     "moduleSwitchHelp": "Matikan modul untuk menyembunyikan kerja aktif tanpa memadam catatan, jawapan, kelulusan atau fail. Hidupkan semula untuk memulihkan kerja tersebut.",
-    "saveModules": "Simpan modul"
+    "saveModules": "Simpan modul",
+    "catalogueAdmin": {
+      "title": "Seni bina kompetensi",
+      "help": "Urus profil jawatan dan laluan kerjaya. Perubahan katalog tidak menulis semula penilaian yang ditugaskan. Pratonton penjanaan tugasan secara berasingan.",
+      "import": "Import buku kerja HR",
+      "missingSheet": "Buku kerja memerlukan helaian Job_Skills yang berisi.",
+      "importCount": "{skills} kemahiran · {profiles} profil · {links} keperluan · {skipped} baris dilangkau",
+      "importConfirm": "Gunakan katalog ini? Jawapan dan tugasan penilaian sedia ada akan dikekalkan.",
+      "profiles": "Edit profil jawatan",
+      "profile": "Profil jawatan",
+      "newProfile": "Profil baharu",
+      "inactive": "Tidak aktif",
+      "name": "Nama profil",
+      "jobTitle": "Nama jawatan",
+      "department": "Jabatan",
+      "grade": "Gred jawatan",
+      "sector": "Sektor",
+      "track": "Laluan",
+      "active": "Aktif",
+      "skills": "Kompetensi",
+      "routes": "Laluan kerjaya",
+      "fromProfileId": "Profil semasa",
+      "toProfileId": "Profil destinasi",
+      "routeKind": "Laluan",
+      "automatic": "Automatik",
+      "pinned": "Disematkan",
+      "hidden": "Tersembunyi",
+      "generate": "Jana tugasan",
+      "generateHelp": "Pratonton pekerja yang menerima kompetensi. Penilaian yang telah bermula, tugasan HR dan penilaian anda sendiri dikekalkan. Semak jawatan tanpa padanan dan profil kosong.",
+      "generateConfirm": "Tugaskan kompetensi yang dipratonton kepada penilaian layak yang belum bermula?",
+      "status": "Status",
+      "knowledge": "Pengetahuan",
+      "ability": "Kebolehan",
+      "statuses": {
+        "assign": "Akan ditugaskan",
+        "started": "Telah bermula — dikekalkan",
+        "manual": "Tugasan HR — dikekalkan",
+        "empty": "Profil tiada kompetensi",
+        "unmapped": "Tiada profil sepadan",
+        "not_part": "Tidak mengambil bahagian"
+      },
+      "previewGeneration": "Pratonton tugasan",
+      "applyGeneration": "Gunakan tugasan",
+      "generationDone": "Tugasan digunakan."
+    },
+    "evidenceFile": "Fail (sehingga 2 MB)",
+    "competencyScope": {
+      "current": "Jawatan semasa",
+      "future": "Jawatan masa depan",
+      "level": "Tahap {level}"
+    }
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

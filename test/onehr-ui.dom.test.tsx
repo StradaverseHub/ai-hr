@@ -69,7 +69,7 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.queryByRole('button',{name:en.onehr.submitResults})).toBeNull();expect(screen.queryByLabelText(en.onehr.actual)).toBeNull();
   cleanup();policy.kind='year_end';policy.modules.evidence=true;
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'pm'}));
-  const file=screen.getByLabelText(en.onehr.attachmentFile) as HTMLInputElement;
+  const file=screen.getByLabelText(en.onehr.evidenceFile) as HTMLInputElement;
   const upload=document.getElementById('kpi-file-kpi') as HTMLFormElement,result=document.querySelector('form[data-assessment-draft]') as HTMLFormElement;
   expect(file.form).toBe(upload);expect(result.contains(file)).toBe(true);expect(new FormData(result).has('file')).toBe(false);
   expect(result.querySelector('form')).toBeNull();expect(screen.getByText(en.onehr.evidenceFiles.limits)).toBeTruthy();
@@ -80,7 +80,13 @@ describe('OneHR native workflow controls',()=>{
   const v={careerRoutes:[],profile:null,profileMatch:null,drafts:[],attachmentLinks:[],kpiLibrary:[],companyId:'company',anonymousFeedback:null,selfRemark:'',competencySelfRemark:'',competencyManagerRemark:'',calculatedPerformance:null,planReviewer:false,reviewId:'review',name:'Employee',cycle:{id:'cycle',name:'Annual',status:'open'},policy,grade:'12',revision:1,self:true,manager:false,admin:false,moderator:false,mechanism:'A',viewerUserId:'subject',reviewerEmploymentId:'manager',canApproveSettingIds:[],canModerateIds:[],moderators:[],kpis:[],competencies:[],competencyStatus:'pending',resultsSubmitted:false,managerPerformance:null,managerScore:null,managerRemark:'',potential:null,finalized:false,result:null,plans:[],planYear:Number(todayInKualaLumpur().slice(0,4))+1,feedbackReport:[],peers:[],choices:[],attachments:[],aiEnabled:false,evidence:[{id:'evidence',kind:'delivery',body:'Delivered the release.',occurredOn:todayInKualaLumpur(),state:'shared',authorUserId:'manager',responses:[{userId:'manager',stance:'endorse',note:'Verified delivery',at:new Date().toISOString()}]}]};
   v.evidence.push({...v.evidence[0],id:'own-evidence',kind:'recognition',authorUserId:'subject',body:'Prepared supporting proof.',responses:[]});
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
-  expect(screen.getByText('Delivered the release.')).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceResponse)).toBeTruthy();expect(screen.getByLabelText(en.onehr.correctsEvidence)).toBeTruthy();expect(screen.getByLabelText(en.onehr.attachmentFile)).toBeTruthy();
+  expect(screen.getByText('Delivered the release.')).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceResponse)).toBeTruthy();expect(screen.getByLabelText(en.onehr.correctsEvidence)).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceFile)).toBeTruthy();
   expect(document.querySelector('input[name="overallRating"]')).toBeNull();
+  cleanup();
+  const skillView={...v,policy:{...policy,modules:{...policy.modules,tm:true}},competencies:[{id:'analysis-3',principle:'Analysis',text:'Analyse current work',skillTitle:'Analysis',skillLevel:3,future:false,self:null,manager:null,selfRemark:'',managerRemark:''},{id:'analysis-4',principle:'Analysis',text:'Lead an analysis',skillTitle:'Analysis',skillLevel:4,future:true,self:null,manager:null,selfRemark:'',managerRemark:''}]};
+  show(await OnehrReviewView({v:skillView as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'tm'}));
+  expect(screen.getByRole('group',{name:'Analysis Level 3'})).toBeTruthy();expect(screen.getByRole('group',{name:'Analysis Level 4'})).toBeTruthy();
+  expect(screen.getByText(en.onehr.competencyScope.current)).toBeTruthy();expect(screen.getByText(en.onehr.competencyScope.future)).toBeTruthy();
+
  });
 });

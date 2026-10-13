@@ -12,7 +12,7 @@ export type WindowCell = typeof windowCells[number];
 const finite = z.number().finite();
 const text = z.string().trim().max(4000);
 const answer = z.enum(['yes','no']);
-export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean(), skillTitle:z.string().trim().min(1).max(300).optional(),skillLevel:z.number().int().min(0).max(100).optional() });
+export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean(), skillTitle:z.string().trim().min(1).max(300).optional(),skillLevel:z.number().int().min(0).max(100).optional(),skillCode:z.string().max(100).optional(),skillType:z.string().max(300).optional(),knowledge:z.string().max(10000).optional(),ability:z.string().max(10000).optional() });
 export type Statement = z.infer<typeof statementSchema>;
 export const scoringSchema = z.discriminatedUnion('mechanism', [
   z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
@@ -37,7 +37,7 @@ export const policySchema = z.object({
   lowMaxPct:finite.min(0).max(100),midMaxPct:finite.min(0).max(100),panelTarget:z.number().int().min(1).max(20).default(5),minValid:z.number().int().min(1).max(30),
   weights:z.record(z.string().min(1).max(30),z.number().int().min(0).max(10000)), // 360 basis points; rest is competency
   framework:z.array(z.object({gradeMin:z.number().int(),gradeMax:z.number().int(),letters:z.array(z.string().min(1).max(30)),statements:z.array(statementSchema).min(1).max(200)})).min(1).max(30),
-  profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),jobTitle:z.string().max(300).optional(),department:z.string().max(300).optional(),track:z.string().max(300).optional(),sector:z.string().max(300).optional(),active:z.boolean().optional(),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).max(200)})).max(1000),
+  profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),jobTitle:z.string().max(300).optional(),department:z.string().max(300).optional(),track:z.string().max(300).optional(),sector:z.string().max(300).optional(),ssgJobRole:z.string().max(300).optional(),mappingConfidence:z.string().max(300).optional(),proficiencyLevel:z.number().int().min(1).max(100).nullable().optional(),active:z.boolean().optional(),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).max(200)})).max(1000),
   promotionRules:z.array(z.object({years:z.number().int().min(1).max(100),minimum:z.enum(['PIP/Improvement','Solid Core','Star','Super Star'])})).max(100).optional(),
   skills:z.array(statementSchema).max(10000).optional(),
   careerRoutes:z.array(z.object({fromProfileId:z.uuid(),toProfileId:z.uuid(),kind:z.enum(['pinned','hidden'])})).max(10000).optional(),

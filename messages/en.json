@@ -17632,11 +17632,62 @@
     "evidenceFiles": {
       "limits": "Up to four files per entry, 2 MB each. PDF, images, Word, Excel, CSV and text files.",
       "remove": "Remove file",
-      "removeConfirm": "Remove {name}? Submitted KPI supporting files cannot be removed."
+      "removeConfirm": "Remove {name}? Submitted KPI supporting files cannot be removed.",
+      "fileEntry": "File evidence"
     },
     "archiveHelp": "Archive this cycle and remove it from active work? Unfinished reviews are retained. This does not finalize or release results to Rewards.",
     "moduleSwitchHelp": "Switch a module off to hide its active work without deleting entries, answers, approvals or files. Switching it back on restores that work.",
-    "saveModules": "Save modules"
+    "saveModules": "Save modules",
+    "catalogueAdmin": {
+      "title": "Competency architecture",
+      "help": "Maintain role profiles and career routes. Catalogue changes do not rewrite assigned assessments. Preview assignment generation separately.",
+      "import": "Import HR workbook",
+      "missingSheet": "The workbook needs a populated Job_Skills sheet.",
+      "importCount": "Skills: {skills} · Profiles: {profiles} · Requirements: {links} · Rows skipped: {skipped}",
+      "importConfirm": "Apply this catalogue? Existing assessment answers and assignments will stay as recorded.",
+      "profiles": "Edit role profiles",
+      "profile": "Role profile",
+      "newProfile": "New profile",
+      "inactive": "Inactive",
+      "name": "Profile name",
+      "jobTitle": "Job title",
+      "department": "Department",
+      "grade": "Job grade",
+      "sector": "Sector",
+      "track": "Track",
+      "active": "Active",
+      "skills": "Competencies",
+      "routes": "Career routes",
+      "fromProfileId": "Current profile",
+      "toProfileId": "Destination profile",
+      "routeKind": "Route",
+      "automatic": "Automatic",
+      "pinned": "Pinned",
+      "hidden": "Hidden",
+      "generate": "Generate assignments",
+      "generateHelp": "Preview which employees receive competencies. Started assessments, explicit HR assignments and your own assessment are preserved. Unmapped roles and empty profiles need attention.",
+      "generateConfirm": "Assign the previewed competencies to eligible, unstarted assessments?",
+      "status": "Status",
+      "knowledge": "Knowledge",
+      "ability": "Abilities",
+      "statuses": {
+        "assign": "Will assign",
+        "started": "Started — preserved",
+        "manual": "HR assignment — preserved",
+        "empty": "Profile has no competencies",
+        "unmapped": "No matching profile",
+        "not_part": "Not participating"
+      },
+      "previewGeneration": "Preview assignments",
+      "applyGeneration": "Apply assignments",
+      "generationDone": "Assignments applied."
+    },
+    "evidenceFile": "File (up to 2 MB)",
+    "competencyScope": {
+      "current": "Current role",
+      "future": "Future role",
+      "level": "Level {level}"
+    }
   },
   "allowanceV2": {
     "title": "Attendance Allowance",
