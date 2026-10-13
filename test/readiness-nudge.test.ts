@@ -5,8 +5,8 @@
  *
  *  1. **OFF UNLESS THE TENANT SWITCHED IT ON.** `notifications.readiness_nudge_enabled` defaults to
  *     false. A regression here does not throw or look wrong — it quietly starts mailing employees.
- *  2. **ROUTING FOLLOWS WHAT THE PRODUCT ACTUALLY LETS PEOPLE DO.** The bank account is the only gap with
- *     an ESS path (`app/me/actions.ts`), so it goes to the employee and the other five go to HR. Nudging
+ *  2. **ROUTING FOLLOWS WHAT THE PRODUCT ACTUALLY LETS PEOPLE DO.** Permitted correction fields go to the
+ *     employee; pending corrections wait for HR, and locked fields stay with HR. Nudging
  *     somebody about a screen they do not have trains them to ignore the channel.
  *  3. **A GAP WITH NOBODY TO TELL IS RECORDED, NOT SKIPPED.** "This company has no HR admin" is a real
  *     operational fact that is otherwise invisible.
@@ -24,9 +24,11 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { dispatchNotifications } from '../core/notifications';
 import { proposalRates } from '../core/agent-proposal';
+import { READINESS_CORRECTIONS, readinessActionFor } from '../lib/readiness-correction-actions';
+import { PROFILE_REQUESTABLE_KEYS } from '../lib/profile-requestable-fields';
+import type { ReadinessGapId } from '../core/record-readiness';
 import {
   MAX_NUDGES_PER_RUN,
-  NUDGE_AUDIENCE,
   NUDGE_SETTING_KEY,
   NUDGE_SETTLE_DAYS,
   NUDGE_TEMPLATE,
@@ -121,8 +123,8 @@ describe('ADR-0084 §2.5 — the readiness nudge agent', () => {
     expect(res.sent).toBe(1);
   });
 
-  it('routes the bank gap to the EMPLOYEE and a tax gap to HR', async () => {
-    // Property 2. Only the bank account has an ESS path, so only it addresses the employee.
+  it('routes permitted bank and tax corrections to the employee', async () => {
+    // Property 2. Both fields now have permitted correction forms.
     const employee = await personMissing('bank');
     await personMissing('tax', { hrAdmin: true });
 
@@ -133,19 +135,21 @@ describe('ADR-0084 §2.5 — the readiness nudge agent', () => {
     const byGap = Object.fromEntries(rows.map((r) => [r.gap, r]));
     expect(byGap.no_bank_account).toMatchObject({ audience: 'employee', adjudication: 'accepted' });
     expect(byGap.no_bank_account!.subjectId).toBe(employee.employmentId);
-    expect(byGap.no_tax_number).toMatchObject({ audience: 'hr', adjudication: 'accepted' });
+    expect(byGap.no_tax_number).toMatchObject({ audience: 'employee', adjudication: 'accepted' });
   });
 
-  it('every gap has an audience — the table cannot silently omit one', () => {
-    // A gap missing from NUDGE_AUDIENCE would be `undefined`, route nowhere, and drop out in silence.
-    for (const [gap, audience] of Object.entries(NUDGE_AUDIENCE)) {
-      expect(['employee', 'hr'], `${gap} must route somewhere`).toContain(audience);
+  it('every engine gap has a governed action', () => {
+    expect(Object.keys(READINESS_CORRECTIONS).sort()).toEqual(Object.keys(NUDGE_TEMPLATE).sort());
+    for (const gap of Object.keys(READINESS_CORRECTIONS) as ReadinessGapId[]) {
+      const action = readinessActionFor(gap, { hasStatutoryProfile: true,
+        allowedFields: new Set(PROFILE_REQUESTABLE_KEYS), pending: [], approver: 'admin' });
+      expect(['employee', 'hr']).toContain(action.audience);
     }
-    expect(Object.keys(NUDGE_AUDIENCE).sort()).toEqual(Object.keys(NUDGE_TEMPLATE).sort());
   });
 
   it('RECORDS a gap it has nobody to tell, instead of skipping it in silence', async () => {
-    // Property 3. A tax gap in a company with no HR admin at all.
+    // A locked tax field requires HR; this company has no HR recipient.
+    await setSetting(base.tenantId, 'ess.profile_change_fields', ['bankName', 'bankAccountNo']);
     await personMissing('tax');
     const res = await sweepReadinessNudges(await on());
     expect({ sent: res.sent, orphaned: res.orphaned }).toEqual({ sent: 0, orphaned: 1 });
@@ -251,7 +255,7 @@ describe('ADR-0084 §2.5 — the readiness nudge agent', () => {
       .from(schema.notification)
       .where(eq(schema.notification.kind, 'readiness.nudge'));
     expect(rows, 'the sweep appends an event; dispatch is what makes it a message').toHaveLength(1);
-    expect(rows[0]).toMatchObject({ linkPath: '/me' });
+    expect(rows[0]).toMatchObject({ linkPath: '/me?tab=bankStatutory#section-request-bankStatutory' });
     // No provider is configured in the harness, so the deterministic template is what went out — and it
     // must be the real sentence, never an empty string or "undefined".
     expect(rows[0]!.body).toBe(NUDGE_TEMPLATE.no_bank_account);

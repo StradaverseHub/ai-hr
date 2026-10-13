@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { myEmployments, myPayslips, myTaxRelief, myTaxReliefEmploymentIds, myEmploymentIdsAll, myAttendance, type TaxReliefResult } from '@/core/read';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfileChangeRequests } from '@/core/profile';
+import { MyReadinessWork } from './readiness-work';
 // r261 stage three — the tenant's field-by-field permission for change requests (ess.profile_change_fields).
 // The QUIET reader, and the closed fallback, for the reason spelled out where it is used below.
 import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -1217,6 +1218,7 @@ export default async function MePage({
         </>
       )}
 
+      <MyReadinessWork session={s} employmentId={employmentId} />
       <ClientTabs<MeTabKey>
         monolithTxt
         defaultTab={activeTab}

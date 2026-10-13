@@ -11,6 +11,7 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
   canViewRuns?: boolean;
 }) {
   const t = await getTranslations('controlTower.orchestrator');
+  const corrections = await getTranslations('controlTower.corrections');
   const gaps = await getTranslations('controlTower.readinessScreen.gap');
   const f = await getFormatter();
   return <Card className="overflow-hidden">
@@ -35,8 +36,13 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
         <tbody className="divide-y divide-border">{view.rows.map(row => <tr key={row.id}>
           <td className="px-5 py-3"><Link className="font-medium text-primary hover:underline" href={`/admin/personnel/${row.employmentId}`}>{row.name}</Link><p className="mt-1 text-xs text-muted-foreground">{row.company}</p></td>
           <td className="px-5 py-3">{gaps.has(row.gap) ? gaps(row.gap) : row.gap}{row.reopenCount > 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('reopened', { count: row.reopenCount })}</p>}</td>
-          <td className="px-5 py-3">{t(row.state === 'needs_input' ? 'collect' : 'review')}</td>
-          <td className="px-5 py-3">{t(row.audience === 'employee' ? 'employee' : 'hr')}</td>
+          <td className="px-5 py-3">{view.actionsUnavailable ? corrections('actionUnavailable') : row.action?.type === 'review_submission'
+            ? row.action.mayReview
+              ? <Link href="/approvals" className="font-medium text-primary hover:underline">{corrections('review')}</Link>
+              : corrections(row.action.approver === 'group_admin' ? 'waitingGroup' : 'waiting')
+            : t((row.action?.audience ?? row.audience) === 'employee' ? 'collect' : 'review')}</td>
+          <td className="px-5 py-3">{view.actionsUnavailable ? '—' : row.action?.type === 'review_submission' && row.action.approver === 'group_admin'
+            ? corrections('groupHr') : t((row.action?.audience ?? row.audience) === 'employee' ? 'employee' : 'hr')}</td>
         </tr>)}</tbody>
       </table></div>
       {view.total > view.rows.length && <p className="px-5 py-3 text-xs text-muted-foreground">{t('shown', { shown: view.rows.length, total: view.total })} <Link href="/control-tower/readiness" className="text-primary hover:underline">{t('readiness')}</Link></p>}

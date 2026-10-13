@@ -15586,6 +15586,19 @@
       "shown": "Memaparkan {shown} daripada {total} isu.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
       "quality": "Kualiti gaji dan AI"
+    },
+    "corrections": {
+      "employeeTitle": "Lengkapkan rekod anda",
+      "employeeDescription": "Berikan maklumat yang tiada melalui borang profil sedia ada. HR menyemak setiap pembetulan sebelum rekod dikemas kini.",
+      "waitingHelp": "Anda telah menghantar maklumat ini. Permohonan baharu tidak diperlukan semasa semakan HR.",
+      "submit": "Berikan maklumat yang tiada",
+      "waiting": "Menunggu semakan HR",
+      "waitingGroup": "Menunggu semakan HR kumpulan",
+      "approvalNote": "Pembetulan selesai hanya selepas kelulusan dan rekod dikemas kini.",
+      "unavailable": "Tugasan rekod tidak tersedia buat sementara. Anda masih boleh menggunakan borang profil.",
+      "review": "Semak pembetulan yang dihantar",
+      "groupHr": "HR kumpulan",
+      "actionUnavailable": "Tindakan seterusnya tidak tersedia buat sementara"
     }
   },
   "profileRequestSettings": {
