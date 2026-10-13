@@ -97,3 +97,18 @@ describe('r417 · release.ts runs tsc with a heap it can finish in', () => {
     expect(tscEnv({ NODE_OPTIONS: '--max-old-space-size=8192' } as unknown as NodeJS.ProcessEnv).NODE_OPTIONS).toBe('--max-old-space-size=8192');
   });
 });
+
+
+describe('impact tier requires its own deterministic proof',()=>{
+  const receipt={sha:HEAD,result:'PASS',tier:'impact'};
+  it('refuses an impact receipt when no recomputation is provided',()=>{
+    expect(decideReleaseGate({receipt,head:HEAD,deployedVerdict:never}).ok).toBe(false);
+  });
+  it('requires the exact SHA before calling the impact validator',()=>{
+    expect(decideReleaseGate({receipt:{...receipt,sha:DEPLOYED},head:HEAD,deployedVerdict:never,impactVerdict:()=>{throw Error('must not be called');}}).ok).toBe(false);
+  });
+  it('accepts only a successful recomputed impact proof',()=>{
+    expect(decideReleaseGate({receipt,head:HEAD,deployedVerdict:never,impactVerdict:()=>({ok:true,lines:['verified']})})).toMatchObject({ok:true,tier:'impact'});
+    expect(decideReleaseGate({receipt,head:HEAD,deployedVerdict:never,impactVerdict:()=>({ok:false,lines:['coverage changed']})})).toMatchObject({ok:false,lines:['coverage changed']});
+  });
+});

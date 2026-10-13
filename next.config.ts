@@ -4,6 +4,10 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
 const nextConfig: NextConfig = {
+  // The release checks the complete repository first. Next checks all application code
+  // again, without loading development-only test/CLI programs into the small server build.
+  typescript: { tsconfigPath: process.env.NODE_ENV === 'production' ? 'tsconfig.build.json' : 'tsconfig.json' },
+
   /**
    * 5b2a7f0f — `fontkit` IS REQUIRED AT RUNTIME, NOT BUNDLED, AND THAT IS NOT A PREFERENCE.
    *
