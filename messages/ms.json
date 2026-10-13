@@ -17801,7 +17801,19 @@
         "not_shared": "Belum dikongsi"
       }
     },
-    "potentialReference": "Taburan rujukan potensi"
+    "potentialReference": "Taburan rujukan potensi",
+    "settingDraftSaving": "Menyimpan draf kad skor…",
+    "settingDraftSaved": "Draf kad skor disimpan",
+    "settingDraftHelp": "Kad skor boleh diedit sehingga anda mencadangkannya untuk kelulusan.",
+    "numberSources": {
+      "history": "Sasaran disalin daripada semakan terdahulu",
+      "spread": "Sasaran dijana daripada julat pustaka",
+      "library": "Sasaran daripada pustaka KPI",
+      "manual": "Sasaran dimasukkan atau diubah secara manual",
+      "ai": "Sasaran dicadangkan — semak sebelum mencadangkan"
+    },
+    "generateTargets": "Jana ambang",
+    "generateTargetsFailed": "Masukkan sasaran asas positif dan tajuk bagi setiap KPI sebelum menjana ambang."
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

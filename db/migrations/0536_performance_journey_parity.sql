@@ -145,6 +145,35 @@ REVOKE ALL ON FUNCTION app.performance_kpi_library_company_in_use(uuid) FROM PUB
 GRANT EXECUTE ON FUNCTION app.performance_kpi_library_company_in_use(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Missing numbers are valid only while a scorecard is being built. Promotion into an agreed state is guarded here too.
+CREATE FUNCTION app.assessment_scoring_number(v jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN jsonb_typeof(v)='number' THEN abs((v#>>'{}')::numeric)<=1.7976931348623157e308::numeric ELSE false END
+$$;
+REVOKE ALL ON FUNCTION app.assessment_scoring_number(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_scoring_ready(s jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $$
+DECLARE previous numeric; value numeric; item jsonb; n integer:=0;
+BEGIN
+ IF coalesce(s->>'method','') NOT IN ('more','less') THEN RETURN false; END IF;
+ IF s->>'mechanism'='A' THEN
+  IF jsonb_typeof(s->'rates')<>'array' OR jsonb_array_length(s->'rates')<>5 THEN RETURN false; END IF;
+  FOR item IN SELECT * FROM jsonb_array_elements(s->'rates') LOOP
+   IF NOT app.assessment_scoring_number(item) THEN RETURN false; END IF;
+   value:=(item#>>'{}')::numeric;
+   IF n>0 AND (s->>'method'='more' AND value<previous OR s->>'method'='less' AND value>previous) THEN RETURN false; END IF;
+   previous:=value;n:=n+1;
+  END LOOP;
+  RETURN n=5;
+ ELSIF s->>'mechanism'='B' THEN
+  RETURN coalesce(app.assessment_scoring_number(s->'threshold') AND app.assessment_scoring_number(s->'target') AND (s->>'target')::numeric<>0
+   AND s->>'variant' IN ('base','excellence') AND (s->>'variant'<>'excellence' OR app.assessment_scoring_number(s->'excellence'))
+   AND (s->'multiple' IS NULL OR s->'multiple'='null'::jsonb OR app.assessment_scoring_number(s->'multiple') AND (s->>'multiple')::numeric BETWEEN 0 AND 10000),false);
+ END IF;
+ RETURN false;
+EXCEPTION WHEN others THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_scoring_ready(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_validate_links() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r performance_review; s performance_onehr_calibration; n jsonb:=to_jsonb(NEW); o jsonb; rid uuid:=(n->>'review_id')::uuid; eid uuid:=(n->>'employment_id')::uuid; tid uuid:=(n->>'tenant_id')::uuid;
 BEGIN
@@ -187,6 +216,8 @@ BEGIN
    IF NOT app.onehr_cycle_admin(r.cycle_id) OR app.assessment_competency_started(r.id) THEN RAISE EXCEPTION 'Only HR can replace an unstarted competency assignment'; END IF;
   END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND n->'kpis' IS DISTINCT FROM o->'kpis' THEN
+   IF (SELECT count(DISTINCT k->>'title') FROM jsonb_array_elements(n->'kpis') k)<>jsonb_array_length(n->'kpis') THEN RAISE EXCEPTION 'A KPI title can appear only once on a scorecard'; END IF;
+   IF EXISTS(SELECT 1 FROM jsonb_array_elements(n->'kpis') k WHERE k->>'setting' IN ('proposed','approved') AND NOT app.assessment_scoring_ready(k->'scoring')) THEN RAISE EXCEPTION 'Complete the target numbers and threshold order before proposing or approving a KPI'; END IF;
    IF EXISTS(SELECT 1 FROM jsonb_array_elements(n->'kpis') k WHERE k->>'moderatorEmploymentId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM employment m JOIN employment sub ON sub.id=eid WHERE m.id=(k->>'moderatorEmploymentId')::uuid AND m.tenant_id=tid AND m.person_id<>sub.person_id)) THEN RAISE EXCEPTION 'Invalid KPI moderator'; END IF;
    IF NOT app.onehr_cycle_admin(r.cycle_id) AND EXISTS(
     SELECT 1 FROM jsonb_array_elements(n->'kpis') k LEFT JOIN LATERAL (SELECT prior FROM jsonb_array_elements(o->'kpis') prior WHERE prior->>'id'=k->>'id') old_k ON true
@@ -623,7 +654,7 @@ BEGIN
   ceiling:=CASE WHEN scoring->>'method'='more' THEN (scoring->>'excellence')::numeric/(scoring->>'target')::numeric*100 ELSE (2-(scoring->>'excellence')::numeric/(scoring->>'target')::numeric)*100 END;
   RETURN least(raw,ceiling);
  END IF;
- RETURN CASE WHEN raw<=100 THEN raw ELSE 100+(raw-100)*(scoring->>'multiple')::numeric/100 END;
+ RETURN CASE WHEN raw<=100 THEN raw ELSE 100+(raw-100)*coalesce((scoring->>'multiple')::numeric,0)/100 END;
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_kpi_score(numeric,jsonb) FROM PUBLIC,ai_hr_app;
 

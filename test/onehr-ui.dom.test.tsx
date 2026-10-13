@@ -10,12 +10,13 @@ const ports=vi.hoisted(()=>({calibration:vi.fn(),session:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
-vi.mock('../app/performance/onehr-actions',()=>({onehrReviewAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn()}));
+vi.mock('../app/performance/onehr-actions',()=>({onehrReviewAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
 import { KpiEditor } from '../app/performance/onehr/kpi-editor';
 import { OnehrReviewView } from '../app/performance/onehr/review-view';
+import { ItemNavigator } from '../app/performance/workspace/item-navigator';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
 async function calibrationScreen(){
  const page=await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})});
@@ -26,12 +27,26 @@ beforeEach(()=>{vi.clearAllMocks();ports.session.mockResolvedValue({s:{tenantId:
 afterEach(cleanup);
 
 describe('OneHR native workflow controls',()=>{
+ it('reads edits made before the phone navigator mounts and tracks subsequent target changes',()=>{
+  const items=[{id:'kpi-first',title:'Original',meta:'50%',done:true,fields:[],setting:true}];
+  const widget=<form data-assessment-draft><input name="kpiId" value="first" readOnly/><input name="first.mechanism" value="A" readOnly/><input name="first.method" value="more" readOnly/><label>Title<input name="first.title" defaultValue="Current wording"/></label><label>Weight<input name="first.weight" defaultValue="40"/></label>{[0,1,2,3,4].map(i=><label key={i}>Rate {i}<input name={`first.rate.${i}`} defaultValue={i===4?'':String(i)}/></label>)}</form>;
+  const ui=show(widget);ui.rerender(<NextIntlClientProvider locale="en" messages={en}>{widget}<ItemNavigator title="Setting" items={items}/></NextIntlClientProvider>);
+  expect(screen.getByText('0 of 1 complete')).toBeTruthy();expect(screen.getByText('Current wording')).toBeTruthy();expect(screen.getByText('40%')).toBeTruthy();
+  fireEvent.input(screen.getByLabelText('Rate 4'),{target:{value:'4'}});expect(screen.getByText('1 of 1 complete')).toBeTruthy();
+ });
  it('adds KPIs with the company-configured B mechanism',()=>{
   show(<KpiEditor reviewId="review" revision={1} kpis={[]} moderators={[{id:'manager',name:'Manager'}]} reviewerEmploymentId="manager" mechanism="B" labels={en.onehr as unknown as Record<string,string>}/>);
   fireEvent.click(screen.getByRole('button',{name:en.onehr.addKpi}));
   expect(document.querySelector('input[name$=".mechanism"]')?.getAttribute('value')).toBe('B');
   expect(screen.getByLabelText(en.onehr.target)).toBeTruthy();
   expect(screen.queryByRole('option',{name:en.onehr.mechanismA})).toBeNull();
+ });
+ it('generates library thresholds without losing other unsaved fields and omits the unused excellence multiplier',()=>{
+  const id=crypto.randomUUID(),libraryId=crypto.randomUUID(),managerId=crypto.randomUUID(),k={id,libraryId,title:'Delivery',description:'Original wording',weightBp:10000,unit:'units',moderatorEmploymentId:managerId,scoring:{mechanism:'A' as const,method:'more' as const,target:100,rates:[80,90,100,110,120] as [number,number,number,number,number]},setting:'draft' as const,settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false};
+  show(<KpiEditor reviewId={crypto.randomUUID()} revision={1} kpis={[k]} moderators={[{id:managerId,name:'Manager'}]} reviewerEmploymentId={managerId} mechanism="A" labels={en.onehr as unknown as Record<string,string>} library={[{id:libraryId,revision:1,title:'Delivery',description:'Original wording',category:'',unit:'units',weightBp:10000,scoring:k.scoring,spread:{rate:[80,90,100,110,120]}}]}/>);
+  fireEvent.change(screen.getByLabelText(en.onehr.description),{target:{value:'Retain my unsaved wording'}});fireEvent.change(screen.getByLabelText(en.onehr.target),{target:{value:'250'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.generateTargets}));
+  expect((screen.getByLabelText(`${en.onehr.threshold} 3`) as HTMLInputElement).value).toBe('250');expect((screen.getByLabelText(`${en.onehr.threshold} 1`) as HTMLInputElement).value).toBe('200');expect((screen.getByLabelText(en.onehr.description) as HTMLTextAreaElement).value).toBe('Retain my unsaved wording');
+  cleanup();show(<KpiEditor reviewId={crypto.randomUUID()} revision={1} kpis={[]} moderators={[]} reviewerEmploymentId={null} mechanism="B" variant="excellence" labels={en.onehr as unknown as Record<string,string>}/>);fireEvent.click(screen.getByRole('button',{name:en.onehr.addKpi}));expect(screen.queryByLabelText(en.onehr.multiple)).toBeNull();expect(screen.getByLabelText(en.onehr.excellence)).toBeTruthy();
  });
  it('keeps a locked performance axis visible while leaving only potential editable',async()=>{
   ports.calibration.mockResolvedValue({session:{name:'BU review',tier:'bu',revision:2,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]});

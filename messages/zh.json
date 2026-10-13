@@ -17801,7 +17801,19 @@
         "not_shared": "未分享"
       }
     },
-    "potentialReference": "潜力参考分布"
+    "potentialReference": "潜力参考分布",
+    "settingDraftSaving": "正在保存计分卡草稿…",
+    "settingDraftSaved": "计分卡草稿已保存",
+    "settingDraftHelp": "提交审批前，您可以继续编辑计分卡。",
+    "numberSources": {
+      "history": "目标复制自您的上次评审",
+      "spread": "目标根据库中设定的比例生成",
+      "library": "目标来自 KPI 库",
+      "manual": "目标已手动输入或修改",
+      "ai": "建议目标 — 提交前请检查"
+    },
+    "generateTargets": "生成阈值",
+    "generateTargetsFailed": "生成阈值前，请输入正数基础目标并为每个 KPI 填写标题。"
   },
   "allowanceV2": {
     "title": "考勤津贴",

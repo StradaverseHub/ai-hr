@@ -20,10 +20,18 @@ export const scoringSchema = z.discriminatedUnion('mechanism', [
   z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), target:finite.nullable().optional(), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
   z.object({ mechanism: z.literal('B'), method: z.enum(['more','less']), variant: z.enum(['base','excellence']), threshold: finite, target: finite.refine(n=>n!==0,'Target cannot be zero.'), multiple: finite.min(0).max(10000), excellence: finite.nullable() }).superRefine((v,c)=>{if(v.variant==='excellence'&&v.excellence==null)c.addIssue({code:'custom',message:'An excellence value is required.'});}),
 ]);
-export type Scoring = z.infer<typeof scoringSchema>;
+/** Incomplete numbers belong to the existing draft scorecard; approval uses scoringSchema. */
+export const draftScoringSchema=z.discriminatedUnion('mechanism',[
+ z.object({mechanism:z.literal('A'),method:z.enum(['more','less']),target:finite.nullable().optional(),rates:z.tuple([finite.nullable(),finite.nullable(),finite.nullable(),finite.nullable(),finite.nullable()])}),
+ z.object({mechanism:z.literal('B'),method:z.enum(['more','less']),variant:z.enum(['base','excellence']),threshold:finite.nullable(),target:finite.nullable(),multiple:finite.min(0).max(10000).nullable(),excellence:finite.nullable()}),
+]);
+export type Scoring = z.infer<typeof draftScoringSchema>;
+export function completeScoring(scoring:Scoring){return scoringSchema.parse(scoring.mechanism==='B'?{...scoring,multiple:scoring.multiple??0}:scoring);}
+
 export const checkInAnswers = ['on_track','at_risk','off_track','nothing_yet'] as const;
-export const kpiSchema = z.object({ id:z.uuid(), category:text.optional(), hrOwned:z.boolean().optional(), moderatorSource:z.enum(['line','matrix']).optional(),libraryId:z.uuid().nullable().optional(), title:z.string().trim().min(1).max(300), description:text, weightBp:z.number().int().min(1).max(10000), unit:z.string().max(80), scoring:scoringSchema, moderatorEmploymentId:z.uuid().nullable(), approvalChain:z.array(z.object({employmentId:z.uuid(),actual:finite.nullable(),remark:text,at:z.iso.datetime().nullable()})).max(10).optional(), setting:z.enum(['draft','proposed','approved','returned']), settingApprovals:z.array(z.object({employmentId:z.uuid(),action:z.enum(['approved','returned']),remark:text,at:z.iso.datetime()})).max(10).optional(), settingRemark:text, checkIn:z.object({answer:z.enum(checkInAnswers),note:text,at:z.iso.datetime(),userId:z.uuid()}).optional(), actual:finite.nullable(), note:text, approvedActual:finite.nullable(), moderationRemark:text, locked:z.boolean() });
+export const kpiSchema = z.object({ id:z.uuid(), category:text.optional(), hrOwned:z.boolean().optional(), moderatorSource:z.enum(['line','matrix']).optional(),libraryId:z.uuid().nullable().optional(), title:z.string().trim().min(1).max(300), description:text, weightBp:z.number().int().min(0).max(10000), unit:z.string().max(80), numberSource:z.enum(['history','spread','library','manual','ai']).optional(), scoring:draftScoringSchema, moderatorEmploymentId:z.uuid().nullable(), approvalChain:z.array(z.object({employmentId:z.uuid(),actual:finite.nullable(),remark:text,at:z.iso.datetime().nullable()})).max(10).optional(), setting:z.enum(['draft','proposed','approved','returned']), settingApprovals:z.array(z.object({employmentId:z.uuid(),action:z.enum(['approved','returned']),remark:text,at:z.iso.datetime()})).max(10).optional(), settingRemark:text, checkIn:z.object({answer:z.enum(checkInAnswers),note:text,at:z.iso.datetime(),userId:z.uuid()}).optional(), actual:finite.nullable(), note:text, approvedActual:finite.nullable(), moderationRemark:text, locked:z.boolean() });
 export type KPI = z.infer<typeof kpiSchema>;
+export const kpiSettingInputSchema=kpiSchema.pick({id:true,title:true,category:true,libraryId:true,description:true,weightBp:true,unit:true,numberSource:true,scoring:true,moderatorEmploymentId:true}).extend({approverEmploymentIds:z.array(z.uuid()).max(1).optional()});
 export function pendingKpiApprover(k:KPI):string|null {return k.locked?null:k.approvalChain?.length?k.approvalChain.find(s=>!s.at)?.employmentId??null:k.moderatorEmploymentId;}
 export function pendingSettingApprover(k:KPI):string|null {return k.setting==='proposed'?kpiApprovers(k)[(k.settingApprovals??[]).filter(s=>s.action==='approved').length]??null:null;}
 export function kpiApprovers(k:KPI):string[]{return k.approvalChain?.length?k.approvalChain.map(s=>s.employmentId):k.moderatorEmploymentId?[k.moderatorEmploymentId]:[];}
@@ -73,12 +81,13 @@ export function frameworkFor(policy:Policy,grade:string):Statement[] {
   if(matches.length!==1)throw Error('Assign exactly one leadership framework for this grade.');return matches[0].statements;
 }
 export function scoreKPI(actual:number,s:Scoring):number {
+  const ready=completeScoring(s);
   if(!Number.isFinite(actual))throw Error('A result must be a finite number.');
-  if(s.mechanism==='A'){let rating=1;s.rates.forEach((t,i)=>{if(s.method==='more'?actual>=t:actual<=t)rating=i+1;});return rating;}
-  if(s.method==='more'?actual<=s.threshold:actual>=s.threshold)return 0;
-  const raw=s.method==='more'?actual/s.target*100:(2-actual/s.target)*100;
-  if(s.variant==='excellence'){if(s.excellence==null)throw Error('An excellence value is required.');return Math.min(raw,s.method==='more'?s.excellence/s.target*100:(2-s.excellence/s.target)*100);}
-  return raw<=100?raw:100+(raw-100)*s.multiple/100;
+  if(ready.mechanism==='A'){let rating=1;ready.rates.forEach((t,i)=>{if(ready.method==='more'?actual>=t:actual<=t)rating=i+1;});return rating;}
+  if(ready.method==='more'?actual<=ready.threshold:actual>=ready.threshold)return 0;
+  const raw=ready.method==='more'?actual/ready.target*100:(2-actual/ready.target)*100;
+  if(ready.variant==='excellence'){if(ready.excellence==null)throw Error('An excellence value is required.');return Math.min(raw,ready.method==='more'?ready.excellence/ready.target*100:(2-ready.excellence/ready.target)*100);}
+  return raw<=100?raw:100+(raw-100)*ready.multiple/100;
 }
 export function bandFor(value:number|null,minima:readonly number[]):PMBand|null {if(value==null)return null;let result:PMBand|null=null;minima.forEach((n,i)=>{if(value>=n)result=pmBands[i];});return result;}
 export function scorecard(kpis:KPI[],policy:Policy,companyId:string,manager:boolean):{score:number|null;band:PMBand|null} {
@@ -88,7 +97,7 @@ export function scorecard(kpis:KPI[],policy:Policy,companyId:string,manager:bool
   const minima=kpis[0].scoring.mechanism==='A'?policy.aBands:policy.bBands.find(b=>b.companyId===companyId)?.minima;
   if(!minima)throw Error('Configure achievement bands for this company.');return {score,band:bandFor(score,minima)};
 }
-export function validateScorecard(kpis:KPI[]):void {if(!kpis.length||kpis.reduce((n,k)=>n+k.weightBp,0)!==10000)throw Error('KPI weights must total exactly 100%.');if(new Set(kpis.map(k=>k.scoring.mechanism)).size!==1)throw Error('A scorecard must use one mechanism.');}
+export function validateScorecard(kpis:KPI[]):void {for(const k of kpis)try{completeScoring(k.scoring);}catch{throw Error(`Complete the required target numbers and check the threshold order for ${k.title}.`);}if(!kpis.length||kpis.reduce((n,k)=>n+k.weightBp,0)!==10000)throw Error('KPI weights must total exactly 100%.');if(new Set(kpis.map(k=>k.scoring.mechanism)).size!==1)throw Error('A scorecard must use one mechanism.');}
 export function scoreAnswers(statements:Statement[],answers:Record<string,'yes'|'no'>):{score:number;max:number} {
   if(Object.keys(answers).length!==statements.length||statements.some(s=>!['yes','no'].includes(answers[s.id])))throw Error('Answer every assigned statement exactly once.');
   return statements.reduce((a,s)=>({score:a.score+(answers[s.id]==='yes'?(s.future?1.5:1):0),max:a.max+(s.future?1.5:1)}),{score:0,max:0});

@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { kpiSchema, scoringSchema, type KPI } from './model';
+import { kpiSchema, type KPI } from './model';
 import type { KpiLibraryTemplate } from './import-model';
-import { sourceFigure } from './source-numeric';
+import { spreadScoring,type KpiLibraryChoice } from './setting-default-model';
 
 const span=z.object({start:z.number().int().min(0),end:z.number().int().min(1)}).strict();
 const reference={id:z.uuid(),target:span};
@@ -12,16 +12,12 @@ export const settingCommandsSchema=z.object({commands:z.array(z.discriminatedUni
  z.object({action:z.literal('set_target'),...reference,value:span}).strict(),
  z.object({action:z.literal('set_number'),...reference,field:z.enum(['rate1','rate2','rate3','rate4','rate5','threshold','target','multiple','excellence']),value:span}).strict(),
 ])).max(50)}).strict();
-export type SettingCommandFacts={text:string;kpis:KPI[];library:(KpiLibraryTemplate&{id:string;revision:number})[];moderatorEmploymentId:string|null};
+export type SettingCommandFacts={text:string;kpis:KPI[];library:KpiLibraryChoice[];moderatorEmploymentId:string|null};
 const normal=(s:string)=>s.trim().normalize('NFKC').toLocaleLowerCase('en');
 /** Targets use the administrator's ladder shape. The provider never calculates a target or weight. */
 export function applyLibraryTarget(kpi:KPI,template:KpiLibraryTemplate|undefined,value:number):KPI['scoring'] {
  if(value<=0)throw Error('The base target must be positive.');
- const s=kpi.scoring,spread=template?.spread;
- if(s.mechanism==='A'){
-  return scoringSchema.parse({...s,target:sourceFigure(value,2),...(spread?.rate?{rates:spread.rate.map(pct=>sourceFigure(value*pct/100,2))}:{})});
- }
- return scoringSchema.parse({...s,target:sourceFigure(value,2),...(spread?.threshold!=null?{threshold:sourceFigure(value*spread.threshold/100,2)}:{}),...(s.variant==='excellence'&&spread?.excellence!=null?{excellence:sourceFigure(value*spread.excellence/100,2)}:{})});
+ return spreadScoring(kpi.scoring,template?.spread,value);
 }
 /** Only literal actor values and eligible catalogue definitions may enter the scorecard. */
 export function adjudicateSettingCommands(raw:string,facts:SettingCommandFacts){
@@ -38,8 +34,8 @@ export function adjudicateSettingCommands(raw:string,facts:SettingCommandFacts){
    if(!target||normal(target.title)!==normal(label)||candidates.filter(k=>normal(k.title)===normal(label)).length!==1)throw Error('Name one eligible KPI exactly.');
    if(c.action==='add_kpi'){
     const item=facts.library.find(k=>k.id===c.id)!;
-    if(kpis.some(k=>k.libraryId===item.id))throw Error('This library KPI is already selected.');
-    kpis.push(kpiSchema.parse({id:crypto.randomUUID(),libraryId:item.id,title:item.title,category:item.category,description:item.description,unit:item.unit,weightBp:item.weightBp??1000,scoring:item.scoring,moderatorEmploymentId:facts.moderatorEmploymentId,setting:'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}));
+    if(kpis.some(k=>k.libraryId===item.id||k.title===item.title))throw Error('This library KPI is already selected.');
+    kpis.push(kpiSchema.parse({id:crypto.randomUUID(),libraryId:item.id,title:item.title,category:item.category,description:item.description,unit:item.unit,weightBp:item.weightBp??0,scoring:item.defaultScoring??item.scoring,numberSource:item.numberSource??'library',moderatorEmploymentId:facts.moderatorEmploymentId,setting:'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}));
    }else{
     const k=kpis.find(k=>k.id===c.id)!;
     if(c.action==='remove_kpi'){kpis.splice(kpis.indexOf(k),1);continue;}

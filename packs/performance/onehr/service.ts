@@ -1,3 +1,4 @@
+import { defaultLibraryScoring,settingNumberSource } from './setting-default-model';
 import { leaderWorkspaceParts, type WorkspaceAxis } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
@@ -19,7 +20,7 @@ import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { assessmentImportRecords, importKpiDefinition, importValue, kpiLibraryTemplateSchema } from './import-model';
 import framework from './framework.json';
 import { settingModerator, assertCurveLock, assessmentDraftSchema, type AssessmentDraft, type DraftKind } from './journey-model';
-import { assertWindow, checkInAnswers, ratedPerformance, kpiApprovers, pendingKpiApprover, pendingSettingApprover, bandFor, evidenceResponseSchema, careerSchema, competencySchema, defaultPolicy, frameworkFor, goalSchema, kpiSchema, pmBands, policySchema, potential, potentialBands, referenceCurve, resolveBand, scoreAnswers, scorecard, talentCategory, tiers, validateScorecard, type Competency, type FrozenResult, type KPI, type PMBand, type Policy, type PotentialBand, type Statement, statementSchema, type Tier, type WindowCell } from './model';
+import { assertWindow, checkInAnswers, ratedPerformance, kpiApprovers, pendingKpiApprover, pendingSettingApprover, bandFor, evidenceResponseSchema, careerSchema, competencySchema, defaultPolicy, frameworkFor, goalSchema, kpiSchema,kpiSettingInputSchema, pmBands, policySchema, potential, potentialBands, referenceCurve, resolveBand, scoreAnswers, scorecard, talentCategory, tiers, validateScorecard, type Competency, type FrozenResult, type KPI, type PMBand, type Policy, type PotentialBand, type Statement, statementSchema, type Tier, type WindowCell } from './model';
 
 const uuid = z.uuid();
 const note = z.string().trim().max(4000);
@@ -150,8 +151,9 @@ export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:
  return withPerformanceTenant(ctx,tx=>saveOnehrKpisTx(tx,ctx,reviewId,expected,raw,propose));
 }
 export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
-  const inputs=z.array(kpiSchema.pick({id:true,title:true,category:true,libraryId:true,description:true,weightBp:true,unit:true,scoring:true,moderatorEmploymentId:true}).extend({approverEmploymentIds:z.array(uuid).max(1).optional()})).max(100).parse(raw);
+  const inputs=z.array(kpiSettingInputSchema).max(100).parse(raw);
   if(new Set(inputs.map(k=>k.id)).size!==inputs.length)throw Error('Duplicate KPI.');
+  if(new Set(inputs.map(k=>k.title)).size!==inputs.length)throw Error('A KPI title can appear only once on your scorecard.');
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting',expected,'self');if(!r.cycle.policy.modules.pm)throw Error('Performance assessment is disabled.');
     if(r.kpis.some(k=>k.setting==='approved'||k.setting==='proposed'))throw Error('The scorecard is already proposed or approved.');
     const moderators=await moderatorChoices(tx,reviewId);
@@ -160,7 +162,9 @@ export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,e
     const kpis:KPI[]=inputs.map(k=>{
       const moderatorEmploymentId=settingModerator(r.kpis.find(old=>old.id===k.id),r.native.reviewerEmploymentId,moderators.map(m=>m.id),k.approverEmploymentIds,k.moderatorEmploymentId);
       if(propose&&!moderatorEmploymentId)throw Error('HR must assign an active KPI moderator before this scorecard can be proposed.');
-      return {...k,moderatorSource:r.kpis.find(old=>old.id===k.id)?.moderatorSource??'line',moderatorEmploymentId,approvalChain:moderatorEmploymentId?[{employmentId:moderatorEmploymentId,actual:null,remark:'',at:null}]:[],setting:propose?'proposed':'draft',settingApprovals:[],settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false};
+      const previous=r.kpis.find(old=>old.id===k.id),choice=catalogue.find(l=>l.id===k.libraryId);
+      const numberSource=settingNumberSource(k.scoring,choice,previous);
+      return {...k,numberSource,moderatorSource:r.kpis.find(old=>old.id===k.id)?.moderatorSource??'line',moderatorEmploymentId,approvalChain:moderatorEmploymentId?[{employmentId:moderatorEmploymentId,actual:null,remark:'',at:null}]:[],setting:propose?'proposed':'draft',settingApprovals:[],settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false};
     });
     const mechanism=r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B':'A';
     if(kpis.some(k=>k.scoring.mechanism!==mechanism))throw Error('Use the scoring mechanism configured for this company.');
@@ -168,6 +172,7 @@ export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,e
     if(kpis.some(k=>k.scoring.mechanism==='B'&&k.scoring.variant!==configuredVariant))throw Error('Use the achievement variant configured for this company.');
     if(propose)validateScorecard(kpis);
     await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,propose?'scorecard-proposed':'scorecard-saved');if(propose)await notifyKpiApprovers(tx,ctx,reviewId,kpis,'setting');
+    return r.row.revision+1;
 }
 export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
   note.parse(remark);
@@ -1208,7 +1213,9 @@ async function availableKpiLibraryTx(tx:Tx,r:Awaited<ReturnType<typeof loadRevie
   sql`(cardinality(${performanceKpiLibrary.departmentIds})=0 or exists(select 1 from assignment a where a.employment_id=${r.row.employmentId}::uuid and a.department_id=any(${performanceKpiLibrary.departmentIds}) and a.valid_from<=${todayInKualaLumpur()}::date and (a.valid_to is null or a.valid_to>${todayInKualaLumpur()}::date) and a.superseded_at is null))`,
  )).orderBy(asc(performanceKpiLibrary.name),asc(performanceKpiLibrary.id));
  const mechanism=r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B':'A';
- return rows.map(row=>({id:row.id,revision:row.revision,...kpiLibraryTemplateSchema.parse(row.template)})).filter(row=>row.scoring.mechanism===mechanism);
+ const priorRows=await tx.select({kpis:onehrReview.kpis}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(and(eq(onehrReview.employmentId,r.row.employmentId),sql`${reviewCycle.periodEnd}<${r.cycle.native.periodEnd}::date`)).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId));
+ const previous=new Map<string,KPI['scoring']>();for(const row of priorRows)for(const k of kpiSchema.array().parse(row.kpis))if(!previous.has(k.title))previous.set(k.title,k.scoring);
+ return rows.map(row=>({id:row.id,revision:row.revision,...kpiLibraryTemplateSchema.parse(row.template)})).filter(row=>row.scoring.mechanism===mechanism).map(row=>{const defaults=defaultLibraryScoring(row,previous.get(row.title));return {...row,defaultScoring:defaults.scoring,numberSource:defaults.numberSource};});
 }
 
 /** HR fills one shared company KPI. Acted-on lines are reported and never overwritten. */

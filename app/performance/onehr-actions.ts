@@ -1,4 +1,5 @@
 'use server';
+import { readKpiSettingForm } from '@/packs/performance/onehr/setting-form-model';
 import { assessmentReturnPath } from '@/lib/performance-navigation';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -17,6 +18,8 @@ const readWindows=(f:FormData)=>Object.fromEntries(windowCells.map(cell=>[cell,{
 
 const destination=(f:FormData,fallback:string)=>assessmentReturnPath(f.get('returnTo'),fallback);
 const withError=(url:string,error:unknown)=>`${url}${url.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(error))}`;
+
+
 
 export async function enableOnehrAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));
@@ -58,7 +61,7 @@ export async function onehrReviewAction(f:FormData){
     switch(str(f,'action')){
       case 'kpis':{
         const view=await perf.getOnehrReview(s,id);if(!view)throw Error('Assessment not found.');
-        const rows=ids(f,'kpiId').map(k=>({id:k,title:str(f,`${k}.title`),category:str(f,`${k}.category`),libraryId:str(f,`${k}.libraryId`)||null,description:str(f,`${k}.description`),weightBp:Math.round(num(f,`${k}.weight`)*100),unit:str(f,`${k}.unit`),moderatorEmploymentId:str(f,`${k}.moderator`)||view.reviewerEmploymentId,approverEmploymentIds:ids(f,`${k}.approverIds`),scoring:str(f,`${k}.mechanism`)==='A'?{mechanism:'A',method:str(f,`${k}.method`),target:nullableNumber(f,`${k}.target`),rates:[0,1,2,3,4].map(i=>num(f,`${k}.rate.${i}`))}:{mechanism:'B',method:str(f,`${k}.method`),variant:str(f,`${k}.variant`),threshold:num(f,`${k}.threshold`),target:num(f,`${k}.target`),multiple:num(f,`${k}.multiple`),excellence:nullableNumber(f,`${k}.excellence`)}}));
+        const rows=readKpiSettingForm(f,view.reviewerEmploymentId);
         await perf.saveOnehrKpis(s,id,expected,rows,f.has('propose'));break;
       }
       case 'approve':await perf.approveOnehrScorecard(s,id,expected,str(f,'decision')==='approve',str(f,'remark'));break;
@@ -181,4 +184,14 @@ export async function assessmentPanelsBuildAction(cycleId:string,mode:'missing'|
 }
 export async function assessmentPanelsImportAction(cycleId:string,csv:string,mode:'add'|'replace',token?:string){
  const s=await getSession();try{const result=await perf.importAssessmentPanels(s,cycleId,csv,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:publicErrorMessage(error)};}
+}
+
+export async function saveAssessmentKpiSettingAction(f:FormData){
+ const s=await getSession();
+ try{
+  const id=z.uuid().parse(str(f,'reviewId')),view=await perf.getOnehrReview(s,id);if(!view)throw Error('Assessment not found.');
+  const expected=num(f,'draftRevision');
+  const revision=await perf.saveOnehrKpis(s,id,expected,readKpiSettingForm(f,view.reviewerEmploymentId));
+  return {revision};
+ }catch(e){return {error:publicErrorMessage(e)};}
 }

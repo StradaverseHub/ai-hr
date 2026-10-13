@@ -17801,7 +17801,19 @@
         "not_shared": "Not shared"
       }
     },
-    "potentialReference": "Potential reference distribution"
+    "potentialReference": "Potential reference distribution",
+    "settingDraftSaving": "Saving scorecard draft…",
+    "settingDraftSaved": "Scorecard draft saved",
+    "settingDraftHelp": "Your scorecard stays editable until you propose it for approval.",
+    "numberSources": {
+      "history": "Targets copied from your preceding review",
+      "spread": "Targets generated from the library spread",
+      "library": "Targets from the KPI library",
+      "manual": "Targets entered or changed manually",
+      "ai": "Suggested targets — review before proposing"
+    },
+    "generateTargets": "Generate thresholds",
+    "generateTargetsFailed": "Enter a positive base target and a title for every KPI before generating thresholds."
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

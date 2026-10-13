@@ -17801,7 +17801,19 @@
         "not_shared": "Chưa chia sẻ"
       }
     },
-    "potentialReference": "Phân bố tham chiếu tiềm năng"
+    "potentialReference": "Phân bố tham chiếu tiềm năng",
+    "settingDraftSaving": "Đang lưu bản nháp thẻ điểm…",
+    "settingDraftSaved": "Đã lưu bản nháp thẻ điểm",
+    "settingDraftHelp": "Bạn có thể chỉnh sửa thẻ điểm cho đến khi đề xuất phê duyệt.",
+    "numberSources": {
+      "history": "Mục tiêu sao chép từ kỳ đánh giá trước",
+      "spread": "Mục tiêu tạo từ tỷ lệ của thư viện",
+      "library": "Mục tiêu từ thư viện KPI",
+      "manual": "Mục tiêu được nhập hoặc sửa thủ công",
+      "ai": "Mục tiêu đề xuất — kiểm tra trước khi gửi"
+    },
+    "generateTargets": "Tạo ngưỡng",
+    "generateTargetsFailed": "Nhập mục tiêu cơ sở dương và tên cho mỗi KPI trước khi tạo ngưỡng."
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

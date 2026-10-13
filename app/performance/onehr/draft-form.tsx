@@ -10,7 +10,8 @@ export async function flushAssessmentDrafts(){
 }
 
 /** Serialize autosaves, including their optimistic revisions. Drafts never submit an assessment. */
-export function AssessmentDraftForm({children,action,revision,labels,className='space-y-4'}:{
+export function AssessmentDraftForm({children,action,revision,labels,className='space-y-4',save=saveAssessmentDraftAction,changeKey}:{
+  save?:(data:FormData)=>Promise<{revision:number}|{error:string}>;changeKey?:string;
   children:ReactNode; action:(data:FormData)=>Promise<void>; revision:number|null;
   labels:{saving:string;saved:string;privateDraft:string;failed:string};className?:string;
 }) {
@@ -34,7 +35,7 @@ export function AssessmentDraftForm({children,action,revision,labels,className='
       pending.current=null;pendingSave.current=null;
       queue.current=queue.current.then(async()=>{
         data.set('draftRevision',currentRevision.current==null?'':String(currentRevision.current));
-        const result=await saveAssessmentDraftAction(data);
+        const result=await save(data);
         if('error' in result){saveError.current=result.error;setError(result.error);setState('idle');return;}
         saveError.current='';
         currentRevision.current=result.revision;
@@ -44,6 +45,8 @@ export function AssessmentDraftForm({children,action,revision,labels,className='
     };
     pendingSave.current=commit;pending.current=setTimeout(commit,600);
   }
+  const previousKey=useRef(changeKey);
+  useEffect(()=>{if(previousKey.current!==changeKey){previousKey.current=changeKey;schedule();}},[changeKey]);
   return <form data-assessment-draft ref={form} action={async data=>{await queue.current;data.set('draftRevision',currentRevision.current==null?'':String(currentRevision.current));await action(data);}} className={className} onChange={event=>{const target=event.target;if((target instanceof HTMLInputElement||target instanceof HTMLTextAreaElement||target instanceof HTMLSelectElement)&&target.form===form.current)schedule();}} onSubmit={()=>{if(pending.current)clearTimeout(pending.current);pending.current=null;pendingSave.current=null;}}>
     <input type="hidden" name="draftRevision" defaultValue={revision??''}/>
     <p className="text-xs text-muted-foreground" role="status">{state==='saving'?labels.saving:state==='saved'?labels.saved:labels.privateDraft}</p>

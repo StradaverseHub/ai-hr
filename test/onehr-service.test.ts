@@ -1,3 +1,4 @@
+import { kpiLibraryImportHeaders } from '../packs/performance/onehr/import-model';
 import { architectureHeaders } from '../packs/performance/onehr/architecture-model';
 import { recordLoginSucceeded } from '../core/auth';
 import { parseCsv,toCsv } from '../lib/csv';
@@ -798,6 +799,39 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   it('rejects AI access before contacting a provider or recording a proposal',async()=>{
     await expect(perf.draftOnehrNarrative(peers[0].ctx,reviewId,'Invent a pay award')).rejects.toThrow(/Only the employee/);
     expect(await owner.db.select().from(schema.agentProposal)).toEqual([]);
+  });
+
+  it('retains unfinished KPI numbers and refuses both service and direct SQL proposals until complete',async()=>{
+    const [missingMultiple]=await owner.db.execute<{score:string}>(sql`select app.assessment_kpi_score(150,${JSON.stringify({mechanism:'B',method:'more',variant:'base',threshold:0,target:100,multiple:null,excellence:null})}::jsonb)::text as score`);expect(Number(missingMultiple.score)).toBe(100);
+    const id=randomUUID(),initial=(await view(self)).revision,input={id,title:'Draft quality',description:'',weightBp:0,unit:'units',scoring:{mechanism:'A',method:'more',target:null,rates:[null,50,null,150,null]},moderatorEmploymentId:manager.employmentId};
+    expect(await perf.saveOnehrKpis(self,reviewId,initial,[input])).toBe(initial+1);
+    let current=await view(self);expect(current.kpis[0]).toMatchObject({weightBp:0,setting:'draft',scoring:{rates:[null,50,null,150,null]}});
+    await expect(perf.saveOnehrKpis(self,reviewId,current.revision,[{...input,weightBp:10000}],true)).rejects.toThrow(/target numbers/);
+    await expect(withTenant(self,tx=>tx.update(schema.onehrReview).set({kpis:[{...current.kpis[0],weightBp:10000,setting:'proposed'}]}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:expect.stringMatching(/target numbers/)})});
+    expect((await view(self)).kpis[0].scoring).toEqual(current.kpis[0].scoring);
+    await expect(perf.saveOnehrKpis(self,reviewId,current.revision,[input,{...input,id:randomUUID()}])).rejects.toThrow(/title can appear only once/);
+    await expect(perf.saveOnehrKpis(self,reviewId,initial,[input])).rejects.toThrow(/changed/);
+    await perf.saveOnehrKpis(self,reviewId,current.revision,[{...input,weightBp:10000,scoring:{...input.scoring,rates:[0,50,100,150,200]}}],true);
+    expect((await view(self)).kpis[0].setting).toBe('proposed');
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Ready targets');expect((await view(self)).kpis[0].setting).toBe('approved');
+  });
+
+  it('imports partial library rows and defaults a matching KPI from the employee’s preceding target ladder',async()=>{
+    const {cycleId:old}=await perf.createCycle(a,{name:'Earlier target basis',companyId:b.companyId,periodStart:`${year-1}-01-01`,periodEnd:`${year-1}-12-31`});
+    const policy=defaultPolicy(framework);policy.modules={pm:true,tm:false,idp:false,evidence:false};await perf.configureOnehrCycle(a,old,null,policy);await perf.openCycle(a,{cycleId:old});
+    const [prior]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,old),eq(schema.performanceReview.employmentId,subject.employmentId))),oldView=await perf.getOnehrReview(self,prior.id);
+    const id=randomUUID();await perf.saveOnehrKpis(self,prior.id,oldView!.revision,[{id,title:'Historic service quality',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',target:40,rates:[10,20,30,40,50]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,prior.id,(await perf.getOnehrReview(mgr,prior.id))!.revision,true,'Agreed targets');
+    await perf.submitOnehrResults(self,prior.id,(await perf.getOnehrReview(self,prior.id))!.revision,[{id,actual:999,note:'Actual is not the next target basis'}],'Delivered the observed service outcomes.');
+    const [co]=await owner.db.select().from(schema.company).where(eq(schema.company.id,b.companyId));
+    const definitions=[{'Company':co.legalName,'KPI':'Historic service quality','Method':'more','Target':'200','Weightage Default':'100','Rate 1':'160','Rate 2':'180','Rate 3':'200','Rate 4':'220','Rate 5':'240','Spread Rate 1':'80','Spread Rate 2':'90','Spread Rate 3':'100','Spread Rate 4':'110','Spread Rate 5':'120'},{'Company':co.legalName,'KPI':'Unfinished library target','Method':'more'}];
+    const csv=toCsv([kpiLibraryImportHeaders,...definitions.map(r=>kpiLibraryImportHeaders.map(h=>(r as Record<string,string>)[h]??''))]),preview=await perf.importAssessmentKpis(a,cycleId,csv,'library');
+    expect(await owner.db.select().from(schema.performanceKpiLibrary)).toEqual([]);await perf.importAssessmentKpis(a,cycleId,csv,'library',preview.token);
+    let own=await view(self);const choice=own.kpiLibrary.find(k=>k.title==='Historic service quality')!,unfinished=own.kpiLibrary.find(k=>k.title==='Unfinished library target')!;
+    expect(choice).toMatchObject({numberSource:'history',defaultScoring:{target:40,rates:[10,20,30,40,50]}});expect(unfinished.defaultScoring).toMatchObject({rates:[null,null,null,null,null]});
+    await perf.saveOnehrKpis(self,reviewId,own.revision,[{id:randomUUID(),libraryId:choice.id,title:choice.title,description:choice.description,weightBp:10000,unit:choice.unit,scoring:choice.defaultScoring,moderatorEmploymentId:manager.employmentId}]);
+    own=await view(self);expect(own.kpis[0]).toMatchObject({numberSource:'history',scoring:{target:40,rates:[10,20,30,40,50]}});expect(own.kpis[0].actual).toBeNull();
+    await expect(perf.importAssessmentKpis(a,cycleId,csv,'library',preview.token)).rejects.toThrow(/changed/);
   });
 
   it('edits KPI setup from chat through the form writer and rolls back when conversation revision is stale',async()=>{
