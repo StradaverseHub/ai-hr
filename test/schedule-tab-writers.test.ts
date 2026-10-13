@@ -338,36 +338,28 @@ describe('C. the overtime bands and rates survive a save from either tab', () =>
   });
 });
 
-describe('C2. the rounding form survives the band ids CHURNING, because it is not keyed on them', () => {
+describe('C2. an open rounding form survives an unrelated settings save', () => {
   /**
-   * ⚠️ THIS CASE EXISTS BECAUSE THE FIRST IMPLEMENTATION HAD THE BUG, AND ONLY A LIVE SAVE FOUND IT.
-   *
-   * `updateAttendanceRule` replaces the overtime-band table WHOLESALE — delete, then insert — so every
-   * `attendance_rule_ot_row.id` changes on every save of the rule, from any screen. The rounding form was
-   * first keyed on `row.id`, which reads as the careful choice (ids, not positions) and is wrong here: a
-   * page rendered before any other save would post field names that match nothing, the action would take
-   * every band as "this submission said nothing about it", and the operator's rounding edit would be
-   * discarded in silence behind a 303 back to a screen still showing the old value. tsc, eslint and every
-   * other guard in this file stayed green through it.
-   *
-   * The key is the band's "From" boundary now — unique per rule by the continuous-ladder validation, and
-   * stable across the re-insert. The sequence below is the one that exposed it: save once from the
-   * ATTENDANCE tab (which churns the ids), then post rounding from a form rendered BEFORE that save.
+   * Historically every rule save deleted/reinserted its bands, so rounding forms use the unique From
+   * boundary plus the band-definition snapshot rather than transient row positions. Dated manual OT
+   * decisions now require unchanged bands to retain their IDs and creation history. Pin BOTH contracts:
+   * an unrelated Attendance save preserves that identity, and an already-open rounding form still saves.
+   * Changed band definitions remain subject to the existing stale-snapshot refusal checks.
    */
-  it('a rounding edit still lands after another save has re-created the rows', async () => {
+  it('keeps unchanged band identity and still accepts a previously rendered rounding edit', async () => {
     const rendered = (await getAttendanceRule(actionCtx!, ruleId))!;
     const idsAtRender = rendered.otRows.map((o) => o.id);
 
     // Something else saves the rule — here, the Attendance tab, but the rule editor does the same thing.
     await captureRedirect(() => saveScheduleGroupAttendanceAction(fd({ ruleId, lateGracePeriodMinutes: '5' })));
 
-    const afterChurn = (await getAttendanceRule(actionCtx!, ruleId))!;
+    const afterSave = (await getAttendanceRule(actionCtx!, ruleId))!;
     expect(
-      afterChurn.otRows.map((o) => o.id),
-      'precondition: the band ids really do churn — if this ever stops being true, say so here rather ' +
-        'than deleting the case, because the KEYING decision below was made for this reason',
-    ).not.toEqual(idsAtRender);
-    expect(afterChurn.otRows.map((o) => o.fromMinutes), 'and the boundaries do NOT').toEqual(
+      afterSave.otRows.map((o) => o.id),
+      'unchanged bands retain the identity used by dated manual overtime decisions',
+    ).toEqual(idsAtRender);
+    expect(afterSave.otRows.map(o=>o.createdAt)).toEqual(rendered.otRows.map(o=>o.createdAt));
+    expect(afterSave.otRows.map((o) => o.fromMinutes), 'and the boundaries do NOT').toEqual(
       rendered.otRows.map((o) => o.fromMinutes),
     );
 
@@ -407,8 +399,8 @@ describe('C2. the rounding form survives the band ids CHURNING, because it is no
     );
     expect(page, 'the rounding select is keyed on the band boundary').toContain('roundingMode_${row.fromMinutes}');
     expect(page, 'and so is the step input').toContain('roundToMinutes_${row.fromMinutes}');
-    expect(page, 'never on the row id — it changes on every save of the rule').not.toContain('roundingMode_${row.id}');
-    expect(page, 'never on the row id — it changes on every save of the rule').not.toContain('roundToMinutes_${row.id}');
+    expect(page, 'the form boundary/snapshot contract survives replacement of changed band definitions').not.toContain('roundingMode_${row.id}');
+    expect(page, 'the form boundary/snapshot contract survives replacement of changed band definitions').not.toContain('roundToMinutes_${row.id}');
   });
 });
 
