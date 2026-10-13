@@ -230,8 +230,11 @@ export async function saveOnehrKpiCheckInTx(tx:Tx,ctx:SessionContext,reviewId:st
   await audit(tx,ctx,reviewId,'kpi-checkin-saved',{kpiId,previous:k.checkIn??null,next:checkIn});
 }
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
+ return withPerformanceTenant(ctx,tx=>moderateOnehrKpiTx(tx,ctx,reviewId,expected,kpiId,actual,remark));
+}
+export async function moderateOnehrKpiTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
   uuid.parse(kpiId);z.number().finite().parse(actual);note.parse(remark);
-  return withPerformanceTenant(ctx,async tx=>{
+
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_approve',expected,'moderator');
     if(!await isModerator(tx,reviewId,kpiId))throw Error('This KPI is assigned to another moderator.');
     const k=r.kpis.find(k=>k.id===kpiId);if(!r.row.resultsSubmittedAt||!k||k.locked)throw Error('This KPI is not awaiting moderation.');
@@ -241,11 +244,14 @@ export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expect
     const approvalChain=chain.map((step,i)=>i===next?{...step,actual,remark,at:new Date().toISOString()}:step);
     const kpis=r.kpis.map(k=>k.id===kpiId?{...k,approvalChain,approvedActual:actual,moderationRemark:remark,locked:approvalChain.every(step=>step.at!=null)}:k);
     await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,'kpi-moderated',{kpiId});await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
-  });
 }
+
 export async function confirmOnehrPerformance(ctx:SessionContext,reviewId:string,expected:number,band:PMBand,remark:string) {
+ return withPerformanceTenant(ctx,tx=>confirmOnehrPerformanceTx(tx,ctx,reviewId,expected,band,remark));
+}
+export async function confirmOnehrPerformanceTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,band:PMBand,remark:string) {
   z.enum(pmBands).parse(band);note.parse(remark);
-  return withPerformanceTenant(ctx,async tx=>{
+
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_approve',expected,'manager');
     if(!ratedPerformance(r.cycle.policy))throw Error('This cycle does not produce performance ratings.');
     const calculated=scorecard(r.kpis,r.cycle.policy,r.row.companyId,true);if(calculated.score==null)throw Error('Moderate every KPI before confirming the assessment.');
@@ -254,12 +260,15 @@ export async function confirmOnehrPerformance(ctx:SessionContext,reviewId:string
     if(employee.band!==calculated.band&&!remark.trim())throw Error('Explain why moderation changed the overall performance band.');
     if(r.row.managerPerformance)throw Error('Manager assessment is already confirmed.');
     await touchReview(tx,reviewId,{managerPerformance:band,managerScore:String(calculated.score),managerRemark:remark});await audit(tx,ctx,reviewId,'performance-confirmed');
-  });
 }
+
 export async function submitOnehrCompetencies(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,manager=false,overallRemark='') {
+ return withPerformanceTenant(ctx,tx=>submitOnehrCompetenciesTx(tx,ctx,reviewId,expected,raw,manager,overallRemark));
+}
+export async function submitOnehrCompetenciesTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,manager=false,overallRemark='') {
   note.parse(overallRemark);
   const answers=z.record(z.string(),z.object({answer:z.enum(['yes','no']),remark:note.default('')})).parse(raw);
-  return withPerformanceTenant(ctx,async tx=>{
+
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,manager?'tc_approve':'tc_self',expected,manager?'manager':'self');
     if(!r.cycle.policy.modules.tm||!r.competencies.length)throw Error('No technical competency profile is assigned.');
     assertOverallRemark(overallRemark,!manager);
@@ -268,8 +277,8 @@ export async function submitOnehrCompetencies(ctx:SessionContext,reviewId:string
     const competencies=r.competencies.map(c=>{const a=answers[c.id];if(manager&&a.answer!==c.self&&!a.remark.trim())throw Error('Explain changed competency answers.');return manager?{...c,manager:a.answer,managerRemark:a.remark}:{...c,self:a.answer,selfRemark:a.remark};});
     await clearAssessmentDraftTx(tx,ctx,reviewId,manager?'competency_manager':'competency_self');
     await touchReview(tx,reviewId,{competencies,...(manager?{competencyManagerRemark:overallRemark}:{competencySelfRemark:overallRemark}),competencyStatus:manager?'reviewed':'submitted'});await audit(tx,ctx,reviewId,manager?'competencies-reviewed':'competencies-submitted');
-  });
 }
+
 export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expected:number,raw:unknown) {
  return withPerformanceTenant(ctx,tx=>assignOnehrPanelTx(tx,ctx,reviewId,expected,raw));
 }
@@ -636,8 +645,11 @@ export async function saveAssessmentCareerProfileTx(tx:Tx,ctx:SessionContext,rev
   await saveCareerTx(tx,ctx,r,career,expected);await audit(tx,ctx,reviewId,'career-profile-saved',{byAdmin:admin,previous:previous?.career??null,next:career});
 }
 export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId:string,expected:number|null,comment:string) {
+ return withPerformanceTenant(ctx,tx=>commentAssessmentCareerProfileTx(tx,ctx,reviewId,expected,comment));
+}
+export async function commentAssessmentCareerProfileTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number|null,comment:string) {
  note.parse(comment);
- return withPerformanceTenant(ctx,async tx=>{
+
   const r=await loadReview(tx,reviewId);
   if(await isSelf(tx,r.row.employmentId)||!r.cycle.policy.modules.idp||!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('Only the assigned manager may comment on the career profile.');
   if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_review');
@@ -648,8 +660,8 @@ export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId
   if(profile)await tx.update(assessmentCareerProfile).set(data).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
   else await tx.insert(assessmentCareerProfile).values({...data,tenantId:ctx.tenantId,employmentId:r.row.employmentId,career:{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null,selfProfileId:null}});
   await audit(tx,ctx,reviewId,'career-profile-commented');
- });
 }
+
 
 export async function saveOnehrPlan(ctx:SessionContext,reviewId:string,expected:number|null,raw:unknown,share=false) {
  return withPerformanceTenant(ctx,tx=>saveOnehrPlanTx(tx,ctx,reviewId,expected,raw,share));
@@ -674,14 +686,17 @@ export async function saveOnehrPlanTx(tx:Tx,ctx:SessionContext,reviewId:string,e
     if(existing)await tx.update(onehrPlan).set({...data,revision:existing.revision+1}).where(eq(onehrPlan.id,existing.id));else await tx.insert(onehrPlan).values({...data,tenantId:ctx.tenantId,reviewId,employmentId:r.row.employmentId,planYear:year});await audit(tx,ctx,reviewId,share?'plan-shared':'plan-saved');
 }
 export async function reviewOnehrPlan(ctx:SessionContext,planId:string,expected:number,comment:string,conversation:string,close=false,activeReviewId?:string,heldOn?:string|null) {
+ return withPerformanceTenant(ctx,tx=>reviewOnehrPlanTx(tx,ctx,planId,expected,comment,conversation,close,activeReviewId,heldOn));
+}
+export async function reviewOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,comment:string,conversation:string,close=false,activeReviewId?:string,heldOn?:string|null) {
   uuid.parse(planId);note.parse(comment);note.parse(conversation);assertOverallRemark(comment);if(heldOn)z.iso.date().parse(heldOn);
-  return withPerformanceTenant(ctx,async tx=>{
+
     const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!plan)throw Error('Plan not found.');revision(plan.revision,expected);
     const r=await loadReview(tx,activeReviewId??plan.reviewId);if(!r.cycle.policy.modules.idp)throw Error('Development plans are disabled.');const activeYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);if(r.row.employmentId!==plan.employmentId||activeYear!==plan.planYear)throw Error('This assessment does not own the plan year.');if(await isSelf(tx,plan.employmentId)||!await isManager(tx,activeReviewId??plan.reviewId)&&!await isModerator(tx,activeReviewId??plan.reviewId))throw Error('Only the assigned manager may review this plan.');if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_review');
     if(plan.status!=='shared'&&plan.status!=='closed')throw Error('The employee must share the plan first.');if(plan.status==='closed'&&comment!==plan.managerComment)throw Error('An agreed plan remark cannot change. Record a new conversation or update goal progress instead.');
     await tx.update(onehrPlan).set({managerComment:comment,conversation,conversationHeldOn:heldOn===undefined?plan.conversationHeldOn:heldOn,acknowledgedAt:conversation!==plan.conversation||heldOn!==undefined&&heldOn!==plan.conversationHeldOn?null:plan.acknowledgedAt,status:close||plan.status==='closed'?'closed':'shared',revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,close?'plan-closed':'plan-reviewed',{reviewId:activeReviewId??plan.reviewId,previous:{comment:plan.managerComment,conversation:plan.conversation,heldOn:plan.conversationHeldOn,status:plan.status},next:{comment,conversation,heldOn:heldOn===undefined?plan.conversationHeldOn:heldOn,status:close||plan.status==='closed'?'closed':'shared'}});
-  });
 }
+
 export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,expected:number,goalId:string,status:'not_started'|'in_progress'|'done'|'dropped',progressNote='',activeReviewId?:string) {
   uuid.parse(planId);uuid.parse(goalId);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);
   return withPerformanceTenant(ctx,async tx=>{const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!plan||!await isSelf(tx,plan.employmentId))throw Error('Plan not found.');revision(plan.revision,expected);if(plan.status==='draft')throw Error('Share the plan before updating progress.');
@@ -1059,8 +1074,11 @@ export async function configureAssessmentCycleTx(tx:Tx,ctx:SessionContext,cycleI
 
 /** The journey's single human confirmation publishes every assigned moderation draft atomically. */
 export async function submitAssessmentModeration(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,overallRemark:string) {
+ return withPerformanceTenant(ctx,tx=>submitAssessmentModerationTx(tx,ctx,reviewId,expected,raw,overallRemark));
+}
+export async function submitAssessmentModerationTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,overallRemark:string) {
  const lines=z.array(z.object({id:uuid,actual:z.number().finite(),note})).min(1).max(100).parse(raw);note.parse(overallRemark);
- return withPerformanceTenant(ctx,async tx=>{
+
   const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_approve',expected,'moderator');
   if(!r.row.resultsSubmittedAt||r.row.managerPerformance)throw Error('Submitted results awaiting moderation are required.');
   const assigned:KPI[]=[];for(const k of r.kpis)if(!k.locked&&await isModerator(tx,reviewId,k.id))assigned.push(k);
@@ -1080,8 +1098,8 @@ export async function submitAssessmentModeration(ctx:SessionContext,reviewId:str
   await touchReview(tx,reviewId,{kpis,...(final.score!=null?{managerPerformance:final.band,managerScore:String(final.score),managerRemark:overallRemark}:{})});
   await audit(tx,ctx,reviewId,'moderation-submitted',{kpiIds:lines.map(l=>l.id),complete:final.score!=null});
   await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
- });
 }
+
 
 export async function assignAssessmentKpiModerator(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,moderatorEmploymentId:string) {
  uuid.parse(kpiId);uuid.parse(moderatorEmploymentId);
@@ -1100,9 +1118,12 @@ export async function assignAssessmentKpiModerator(ctx:SessionContext,reviewId:s
  });
 }
 export async function editAssessmentDevelopmentGoal(ctx:SessionContext,reviewId:string,planId:string,expected:number,goalId:string,raw:unknown) {
+ return withPerformanceTenant(ctx,tx=>editAssessmentDevelopmentGoalTx(tx,ctx,reviewId,planId,expected,goalId,raw));
+}
+export async function editAssessmentDevelopmentGoalTx(tx:Tx,ctx:SessionContext,reviewId:string,planId:string,expected:number,goalId:string,raw:unknown) {
  uuid.parse(planId);uuid.parse(goalId);
  const patch=goalSchema.pick({area:true,dueOn:true,onJob:true,fromOthers:true,formalLearning:true,managerComment:true}).parse(raw);if(!patch.area.trim())throw Error('Name the development goal.');
- return withPerformanceTenant(ctx,async tx=>{
+
   const r=await loadReview(tx,reviewId);if(!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId)||await isSelf(tx,r.row.employmentId))throw Error('Only the assigned KPI reviewer may edit a shared development goal.');
   if(!r.cycle.policy.modules.idp||!['open','calibration'].includes(r.cycle.native.status))throw Error('Development review is not open.');assertWindow(r.cycle.policy,'idp_review');
   const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');
@@ -1114,8 +1135,8 @@ export async function editAssessmentDevelopmentGoal(ctx:SessionContext,reviewId:
   const next={...previous,...patch,editedByName:editor?.name??'',editedAt:new Date().toISOString()};
   await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?next:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));
   await audit(tx,ctx,planId,'development-goal-reviewed',{reviewId,goalId,previous,next});
- });
 }
+
 
 type AssessmentImportKind='targets'|'library';
 /** Preview and commit run the same resolution and validation against the current native roster. */
