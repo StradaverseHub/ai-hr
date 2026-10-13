@@ -367,7 +367,7 @@
     "reportClaim": "报销",
     "reportPerformance": "绩效",
     "profileOptions": "档案选项",
-    "delegations": "委托",
+    "delegations": "审批委托",
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
@@ -14557,7 +14557,7 @@
     "retry": "重试"
   },
   "delegations": {
-    "title": "委托管理",
+    "title": "审批委托",
     "subtitle": "在审批人外出期间临时将审批职责交给代理人。",
     "createTitle": "新建委托",
     "listTitle": "委托",

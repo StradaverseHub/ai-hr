@@ -367,7 +367,7 @@
     "reportClaim": "การเบิก",
     "reportPerformance": "ผลงาน",
     "profileOptions": "ตัวเลือกโปรไฟล์",
-    "delegations": "การมอบหมาย",
+    "delegations": "การมอบหมายการอนุมัติ",
     "dashboardCardConfig": "การ์ดแดชบอร์ด",
     "scheduledActions": "งานตามกำหนดเวลา",
     "systemSettings": "การตั้งค่าระบบ",
@@ -14557,7 +14557,7 @@
     "retry": "ลองอีกครั้ง"
   },
   "delegations": {
-    "title": "การจัดการการมอบหมาย",
+    "title": "การมอบหมายการอนุมัติ",
     "subtitle": "มอบหน้าที่อนุมัติให้ผู้ทำแทนชั่วคราวขณะที่ผู้อนุมัติไม่อยู่",
     "createTitle": "การมอบหมายใหม่",
     "listTitle": "การมอบหมาย",

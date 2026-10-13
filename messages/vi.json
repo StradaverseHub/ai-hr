@@ -367,7 +367,7 @@
     "reportClaim": "Yêu cầu chi",
     "reportPerformance": "Hiệu suất",
     "profileOptions": "Tùy chọn hồ sơ",
-    "delegations": "Ủy quyền",
+    "delegations": "Ủy quyền phê duyệt",
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
@@ -14557,7 +14557,7 @@
     "retry": "Thử lại"
   },
   "delegations": {
-    "title": "Quản lý ủy quyền",
+    "title": "Ủy quyền phê duyệt",
     "subtitle": "Tạm thời giao nhiệm vụ phê duyệt cho người thay thế khi người phê duyệt vắng mặt.",
     "createTitle": "Ủy quyền mới",
     "listTitle": "Ủy quyền",

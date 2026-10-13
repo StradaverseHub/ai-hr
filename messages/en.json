@@ -367,7 +367,7 @@
     "reportClaim": "Claim",
     "reportPerformance": "Performance",
     "profileOptions": "Profile Options",
-    "delegations": "Delegations",
+    "delegations": "Approval Delegation",
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
@@ -14557,7 +14557,7 @@
     "retry": "Try again"
   },
   "delegations": {
-    "title": "Delegation Management",
+    "title": "Approval Delegation",
     "subtitle": "Temporarily hand approval duties to a stand-in while an approver is away.",
     "createTitle": "New delegation",
     "listTitle": "Delegations",

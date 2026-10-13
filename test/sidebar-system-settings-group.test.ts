@@ -58,6 +58,7 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   '/admin/settings/employee-id',
   '/admin/settings/dashboard',
   '/admin/settings/system-labels',
+  '/admin/system-settings/approval-delegation',
   '/admin/settings/movement',
   '/admin/settings/hiring-defaults',
   // 4509d2b8 — moved out of the Attendance settings node (packs/attendance/index.ts). It is company-wide

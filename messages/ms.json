@@ -367,7 +367,7 @@
     "reportClaim": "Tuntutan",
     "reportPerformance": "Prestasi",
     "profileOptions": "Pilihan Profil",
-    "delegations": "Perwakilan",
+    "delegations": "Perwakilan Kelulusan",
     "dashboardCardConfig": "Kad papan pemuka",
     "scheduledActions": "Tugas Berjadual",
     "systemSettings": "Tetapan Sistem",
@@ -14557,7 +14557,7 @@
     "retry": "Cuba lagi"
   },
   "delegations": {
-    "title": "Pengurusan Perwakilan",
+    "title": "Perwakilan Kelulusan",
     "subtitle": "Serahkan tugas kelulusan kepada pengganti buat sementara semasa pelulus tiada.",
     "createTitle": "Perwakilan baharu",
     "listTitle": "Perwakilan",

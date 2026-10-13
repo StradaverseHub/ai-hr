@@ -292,6 +292,7 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // admin entries collapse into this single "System Labels" entry (profile options now live at
     // /admin/settings/system-labels/profile-options).
     { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags, adminOnly: true },
+    { href: '/admin/system-settings/approval-delegation', labelKey: 'delegations', icon: ArrowLeftRight, adminOnly: true },
     // 476f23ed: Movement Settings — the configurable catalogue of career event types (rename / switch off /
     // add your own). A system-wide setup screen like its three siblings, so it lands here rather than as a
     // loose row; the types it governs are recorded from Personnel > Employment History > New Event.
