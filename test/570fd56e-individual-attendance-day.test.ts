@@ -119,12 +119,19 @@ describe('570fd56e · the day screen is not a second source of anything', () => 
     }
 
     const action = codeOnly(read(ACTION));
-    expect(action.includes('requestAttendanceCorrection'), 'the request half').toBe(true);
-    expect(action.includes('decideAttendanceCorrection'), 'the decide half').toBe(true);
-    expect(
-      action.indexOf('requestAttendanceCorrection(') < action.indexOf('decideAttendanceCorrection('),
-      'request, then decide — never the other way round',
-    ).toBe(true);
+    // 16c8bf4d deliberately removes create-on-save. The action must use the pack-owned
+    // existing-application amendment, which still delegates the actual decision to the engine.
+    expect(action).toContain('amendExistingAttendanceApplication');
+    expect(action).toContain('saveAttendanceDayEdit');
+    const start=action.indexOf('export async function adminCorrectAttendanceDayAction');
+    const end=action.indexOf('export async function saveAttendanceDayChangesAction',start);
+    expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+    const amendment=action.slice(start,end);expect(amendment.length).toBeGreaterThan(500);
+    expect(amendment).toContain('amendExistingAttendanceApplication(');
+    expect(amendment).not.toContain('requestAttendanceCorrection(');
+    const service=codeOnly(read('packs/attendance/day-adjustment.ts'));
+    expect(service).toContain('decideAttendanceCorrection(');
+    expect(service).toContain('expectedStageIndex');
     for (const forbidden of ['.update(attendance', 'db.insert', 'recordAttendance']) {
       expect(action.includes(forbidden), `${forbidden} in the action would bypass the engine`).toBe(false);
     }

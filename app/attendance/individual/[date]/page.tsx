@@ -181,6 +181,8 @@ export default async function IndividualAttendanceDayPage({
         ← {t('dayBackToList')}
       </Link>
 
+      {!admin&&<Link href="/attendance/requests" className="inline-block text-sm font-medium text-primary hover:underline">{t('dayEditCorrection')}</Link>}
+
       {/* dae7a10f — the correction's outcome. The action redirects with a message KEY, never a sentence,
           so the six locales stay the one place wording lives. An unknown key renders nothing rather than
           printing itself at the operator. */}

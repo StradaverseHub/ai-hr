@@ -276,7 +276,10 @@ export function SystemLabelsGrid({
     for (const k of KINDS) seed[k] = data[k].map((r) => ({ ...r, key: r.id, isNew: false, dirty: false }));
     return seed;
   });
+  const refreshedData = useRef(data);
   useEffect(() => {
+    if (refreshedData.current === data) return;
+    refreshedData.current = data;
     setRowsByKind(current => Object.fromEntries(KINDS.map(k => [k,
       refreshEditableRows(current[k], data[k].map(r => ({ ...r, key: r.id, isNew: false, dirty: false }))),
     ])) as Record<GridKind, RowState[]>);

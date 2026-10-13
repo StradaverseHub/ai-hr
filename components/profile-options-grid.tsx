@@ -108,7 +108,10 @@ export function ProfileOptionsGrid({
     for (const c of categories) seed[c] = (data[c] ?? []).map(toRow);
     return seed;
   });
+  const refreshedData = useRef(data);
   useEffect(() => {
+    if (refreshedData.current === data) return;
+    refreshedData.current = data;
     setRowsByCat(current => Object.fromEntries(Object.entries(data).map(([c, records]) => [c,
       refreshEditableRows(current[c] ?? [], records.map(toRow)),
     ])));

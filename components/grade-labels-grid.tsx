@@ -143,7 +143,12 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
    *  (lib/label-error-token.ts). Anything else is an application error's own sentence. */
   const failureText = useCallback((m: string | undefined) => messageOrToken(m, t, t('saveFailed')), [t]);
   const [rows, setRows] = useState<RowState[]>(() => data.map(toRow));
-  useEffect(() => { setRows(current => refreshEditableRows(current, data.map(toRow))); }, [data]);
+  const refreshedData = useRef(data);
+  useEffect(() => {
+    if (refreshedData.current === data) return;
+    refreshedData.current = data;
+    setRows(current => refreshEditableRows(current, data.map(toRow)));
+  }, [data]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [showFilters, setShowFilters] = useState(false);

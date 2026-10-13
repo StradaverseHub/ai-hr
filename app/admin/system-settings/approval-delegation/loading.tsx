@@ -1,1 +1,1 @@
-export { default } from '@/app/delegations/loading';
+export { default } from '@/components/route-loading';

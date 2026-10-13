@@ -56,9 +56,20 @@ const KEPT_CLAIM: Record<string, string[]> = {
 };
 
 describe('r368 c8282468 · the correction caption stops promising what nothing stored', () => {
-  it('the form renders the NEW key, and no longer the retired one', () => {
-    expect(DAY_PAGE, 'the caption under the admin correction form').toContain("t('dayCorrectAuditNote')");
-    expect(DAY_PAGE, 'the retired key must have no renderer left').not.toContain("t('dayCorrectTrailNote')");
+  // 16c8bf4d: the form now decides an EXISTING application at its authorised stage. The old
+  // immediate-save caption is no longer true when another stage remains; keep the truth guard.
+  it('the current form describes the authorised stage and does not promise an immediate final result', () => {
+    const form=readFileSync(join(ROOT,'components/attendance-day-editor.tsx'),'utf8');
+    expect(form).toContain("t('approvalHelp')");
+    expect(form).not.toContain("t('dayCorrectAuditNote')");
+    expect(DAY_PAGE).not.toContain("t('dayCorrectAuditNote')");
+    expect(DAY_PAGE).not.toContain("t('dayCorrectTrailNote')");
+    expect(messages('en').attendance.dayEdit.approvalHelp).toContain('Only your authorised approval stage');
+    expect(messages('en').attendance.dayEdit.approvalHelp).toContain('actual administrator');
+  });
+  it.each(LOCALES)('%s: the stage-aware replacement caption resolves',loc=>{
+    const value=messages(loc).attendance.dayEdit.approvalHelp;
+    expect(typeof value).toBe('string');expect(value.trim().length).toBeGreaterThan(0);
   });
 
   it.each(LOCALES)('%s: dayCorrectTrailNote is RETIRED IN PLACE, not deleted', (loc) => {
