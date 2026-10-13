@@ -483,11 +483,16 @@ export async function unlockOnehrCalibration(ctx:SessionContext,sessionId:string
  });
 }
 
+async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibrationEntry.$inferSelect,policy:Policy,tier:string){
+ const r=await resolved(tx,entry.reviewId,policy),talent=await talentContext(tx,ctx.tenantId,entry.reviewId,entry.employmentId,policy),bands=boxBands(r,tier);
+ return {entry:{...entry,...talent.actions},talent,companyId:r.input.companyId,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,managerPerformance:r.input.performance,managerPotential:r.input.potential.band,currentPerformance:bands.performance,currentPotential:bands.potential,performanceSource:bands.performanceSource,potentialSource:bands.potentialSource};
+}
 export async function getOnehrCalibration(ctx:SessionContext,sessionId:string) {
   return withPerformanceTenant(ctx,async tx=>{
     const {session,cycle}=await loadCalibration(tx,sessionId);
     const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId));
-    const rows=[];for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;const r=await resolved(tx,entry.reviewId,cycle.policy);const talent=await talentContext(tx,ctx.tenantId,entry.reviewId,entry.employmentId,cycle.policy);rows.push({entry:{...entry,...talent.actions},talent,companyId:r.input.companyId,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,managerPerformance:r.input.performance,managerPotential:r.input.potential.band,currentPerformance:boxBands(r,session.tier).performance,currentPotential:boxBands(r,session.tier).potential,performanceSource:boxBands(r,session.tier).performanceSource,potentialSource:boxBands(r,session.tier).potentialSource});}
+    const rows:Awaited<ReturnType<typeof calibrationRow>>[]=[];
+    for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;rows.push(await calibrationRow(tx,ctx,entry,cycle.policy,session.tier));}
     const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);
     const companyIds=[...new Set(rows.map(r=>r.companyId))];
     const companies=companyIds.length?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,companyIds)):[];
@@ -958,21 +963,21 @@ export async function importAssessmentKpis(ctx:SessionContext,cycleId:string,csv
      const employee=resolveEmployee(importValue(record,'Employee ID','eid','id','staff id'));
      const review=reviews.find(r=>r.row.employmentId===employee.id);
      const title=importValue(record,'KPI','KPI name');
-     if(!review){preview.push({row:index+2,subject:employee.code,title,action:'skip',note:'Not a participant in this cycle.'});continue;}
+     if(!review){preview.push({row:index+2,subject:employee.code??employee.id,title,action:'skip',note:'Not a participant in this cycle.'});continue;}
      if(review.closedAt)throw Error('A finalized assessment cannot be changed.');
      const key=`${review.row.reviewId}:${title}`;if(seen.has(key))throw Error('This employee and KPI occur more than once.');seen.add(key);
      const config=cycle.policy.bBands.find(b=>b.companyId===review.row.companyId);
      const definition=importKpiDefinition(record,config?'B':'A',config?.variant??'base');
      const current=targets.get(review.row.reviewId)??{row:review.row,kpis:kpiSchema.array().parse(review.row.kpis)};
      const previous=current.kpis.find(k=>k.title===definition.title);
-     if(previous?.locked||previous?.approvalChain?.some(a=>a.at)){preview.push({row:index+2,subject:employee.code,title,action:'skip',note:'A moderator has already acted on this KPI.'});continue;}
+     if(previous?.locked||previous?.approvalChain?.some(a=>a.at)){preview.push({row:index+2,subject:employee.code??employee.id,title,action:'skip',note:'A moderator has already acted on this KPI.'});continue;}
      const matrix=importValue(record,'Matrix manager ID','Matrix manager employee id','matrix manager');
      const candidate=matrix?resolveEmployee(matrix):employees.find(e=>e.id===review.reviewerEmploymentId);
      if(matrix&&candidate&&(candidate.personId===employee.personId||candidate.terminatedOn&&candidate.terminatedOn<=todayInKualaLumpur()))throw Error('A matrix manager must be an active person other than the subject.');
      const moderatorEmploymentId=candidate&&candidate.personId!==employee.personId&&(!candidate.terminatedOn||candidate.terminatedOn>todayInKualaLumpur())?candidate.id:null;
      const next=kpiSchema.parse({...previous,id:previous?.id??randomUUID(),title:definition.title,category:definition.category,description:definition.description,weightBp:definition.weightBp,unit:definition.unit,scoring:definition.scoring,moderatorEmploymentId,moderatorSource:matrix?'matrix':'line',approvalChain:moderatorEmploymentId?[{employmentId:moderatorEmploymentId,actual:null,remark:'',at:null}]:[],setting:'approved',settingApprovals:[],settingRemark:'Agreed offline; imported by HR.',actual:previous?.actual??null,note:previous?.note??'',approvedActual:null,moderationRemark:'',locked:false});
      current.kpis=previous?current.kpis.map(k=>k.id===previous.id?next:k):[...current.kpis,next];targets.set(review.row.reviewId,current);
-     preview.push({row:index+2,subject:employee.code,title,action:previous?'update':'create',note:moderatorEmploymentId?'':'No moderator resolved. HR must assign one.'});
+     preview.push({row:index+2,subject:employee.code??employee.id,title,action:previous?'update':'create',note:moderatorEmploymentId?'':'No moderator resolved. HR must assign one.'});
     }else{
      const groupValue=importValue(record,'Business Group','bg');
      const group=groupValue&&groupValue!=='*'?resolveName(companies,groupValue,'Business Group'):null;

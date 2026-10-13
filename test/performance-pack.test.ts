@@ -53,6 +53,15 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_onehr_plan',
       'performance_onehr_evidence',
       'performance_onehr_result',
+      'performance_assessment_participation',
+      'performance_assessment_draft',
+      'performance_assessment_conversation',
+      'performance_kpi_library',
+      'performance_assessment_attachment_link',
+      'performance_assessment_talent',
+      'performance_assessment_talent_history',
+      'performance_assessment_career_profile',
+
     ]);
   });
 

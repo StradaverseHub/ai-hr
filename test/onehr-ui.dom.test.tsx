@@ -13,9 +13,15 @@ vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibrati
 vi.mock('../app/performance/onehr-actions',()=>({onehrReviewAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn()}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
+import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
 import { KpiEditor } from '../app/performance/onehr/kpi-editor';
 import { OnehrReviewView } from '../app/performance/onehr/review-view';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+async function calibrationScreen(){
+ const page=await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})});
+ expect(page.type).toBe(AssessmentCalibrationView);
+ return AssessmentCalibrationView(page.props);
+}
 beforeEach(()=>{vi.clearAllMocks();ports.session.mockResolvedValue({s:{tenantId:'tenant'}});});
 afterEach(cleanup);
 
@@ -29,14 +35,14 @@ describe('OneHR native workflow controls',()=>{
  });
  it('keeps a locked performance axis visible while leaving only potential editable',async()=>{
   ports.calibration.mockResolvedValue({session:{name:'BU review',tier:'bu',revision:2,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:'now',potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]});
-  show(await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})}));
+  show(await calibrationScreen());
   expect(screen.queryByLabelText(en.onehr.performance)).toBeNull();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
   for(const select of screen.getAllByLabelText(en.onehr.assessmentAxis))expect((select as HTMLSelectElement).value).toBe('potential');
   expect(ports.session).toHaveBeenCalledOnce();
  });
  it('keeps talent decisions separate from an open calibration',async()=>{
   ports.calibration.mockResolvedValue({session:{name:'Group review',tier:'group',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:false},units:[],modules:{pm:true,tm:false},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:null,currentPerformance:'ME',currentPotential:null,entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false}}]});
-  show(await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})}));
+  show(await calibrationScreen());
   expect(screen.queryByLabelText(en.onehr.promotion)).toBeNull();expect(screen.queryByLabelText(en.onehr.specialReward)).toBeNull();expect(screen.queryByLabelText(en.onehr.potential)).toBeNull();
   expect(document.querySelector('input[name="confirmTalentDecisions"]')).toBeNull();
  });
