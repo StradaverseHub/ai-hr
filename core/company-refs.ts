@@ -190,6 +190,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  { table: 'attendance_day_adjustment', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'An audited date correction retains its selected shift. Company setup deletion must not erase another employment’s dated attendance basis.' },
   { table: 'attendance_rotation', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable rotation versions retain their Schedule Group. Deleting company-owned legacy setup must not erase saved calendar history.' },
   { table: 'attendance_rotation', column: 'allowed_shift_ids', references: 'shift', referenceKind: 'uuid-array', effect: 'blocks', note: 'Saved allowed pools retain every source shift, including company-owned legacy templates. The shift retention trigger forbids deletion; refuse it before cascading company setup.' },
   { table: 'attendance_allowance_version', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'Immutable definition history retains its policy, even when a company has never transferred an allowance.' },

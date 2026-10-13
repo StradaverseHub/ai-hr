@@ -5,7 +5,7 @@ import * as s from '../db/schema';
 import { withTenant,type SessionContext } from '../db/client';
 import { adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base } from './harness';
 import { hireEmployee,setReportingLine } from '../core/org';
-import { createShift,assignDefaultShift } from '../core/roster';
+import { createShift,assignDefaultShift,deleteShift,archiveShift,ShiftInUseError } from '../core/roster';
 import { createAttendanceRule } from '../core/attendance-rule';
 import { importPunchCsv } from './helpers/punch-import';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -70,6 +70,11 @@ describe('date-only Attendance Detail corrections',()=>{
     await expect(saveSchedule(e.employmentId,null,'holiday')).rejects.toThrow('Leave owns');
     expect((await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.id,leave.id)))[0]).toEqual(leave);
     expect(await owner.db.select().from(s.attendanceDayAdjustment)).toEqual([]);
+  });
+  it('retains the selected shift as dated correction history and offers Archive instead of a raw delete failure',async()=>{
+    const {e}=await fixture(),chosen=await shift('DATE_HISTORY');await saveSchedule(e.employmentId,chosen.id,'workday');
+    await expect(deleteShift(adminCtx(b),{shiftId:chosen.id})).rejects.toBeInstanceOf(ShiftInUseError);
+    await archiveShift(adminCtx(b),{shiftId:chosen.id});expect((await attendanceDayEditor(adminCtx(b),e.employmentId,DATE()))?.schedule.shiftCode).toBe('DATE_HISTORY');
   });
   it('enforces the selected employment’s allowed shifts and company-scoped administrator access',async()=>{
     const {e}=await fixture(),a=adminCtx(b);

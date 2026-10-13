@@ -11,6 +11,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import {
   attendance,
+  attendanceDayAdjustment,
   attendanceRule,
   attendanceRotation,
   employment,
@@ -1178,6 +1179,9 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
     const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation)
       .where(sql`${p.shiftId}::uuid = ANY(${attendanceRotation.allowedShiftIds})`).limit(1);
     if (rotation) throw new ShiftInUseError('This shift is retained by a schedule rotation — archive it instead.');
+    const [correction] = await tx.select({id:attendanceDayAdjustment.id}).from(attendanceDayAdjustment)
+      .where(eq(attendanceDayAdjustment.shiftId,p.shiftId)).limit(1);
+    if (correction) throw new ShiftInUseError('This shift is retained by a dated attendance correction — archive it instead.');
     await tx.delete(shift).where(eq(shift.id, p.shiftId));
     // SUBSTRATE: the row is gone but the append log is independent — record the deletion (aggregateId = the
     // now-deleted shift id; the human key lives in the payload).

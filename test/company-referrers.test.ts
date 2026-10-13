@@ -328,6 +328,12 @@ describe('§1 the declared referrer set is the live schema', () => {
 // ── §2 ─────────────────────────────────────────────────────────────────────────────────────────────
 type Case = { name: string; expected: CompanyDeleteBlock | null; setup: (id: string) => Promise<void> };
 const CASES: Case[] = [
+  {name:'a dated attendance correction retains company-owned shift history',expected:'other',setup:async(id)=>{
+    const personId=await newPerson();
+    const [employment]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId,companyId:b.companyId,hiredOn:'2020-01-01'}).returning();
+    const [shift]=await owner.db.insert(schema.shift).values({tenantId:b.tenantId,companyId:id,name:'Retained date-only shift',startTime:'08:00',endTime:'17:00'}).returning();
+    await owner.db.insert(schema.attendanceDayAdjustment).values({tenantId:b.tenantId,employmentId:employment.id,attendanceDate:todayInKualaLumpur(),shiftId:shift.id,reason:'Retain the correction basis',updatedBy:b.adminUserId});
+  }},
   ...(['rule','shift'] as const).map(source=>({
     name:`retained schedule rotation ${source}`,expected:'other' as const,setup:async(id:string)=>{
       const [rule]=await owner.db.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning();

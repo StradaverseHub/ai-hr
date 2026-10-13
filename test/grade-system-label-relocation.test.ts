@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ORGANISATION_LABEL_KINDS } from '../lib/system-label-definition';
 
 // The new grid actions call requireAdmin() (which resolves getSession() and redirect()s a non-admin away)
 // plus revalidatePath(). redirect() in real Next.js THROWS to abort the request, so the mock must throw
@@ -93,10 +94,9 @@ describe('b1b81a08 · the destination — a fifth rail entry with its own body',
     expect(gridSrc).toContain('{showGrades && gradesSlot !== undefined ? (');
     // GridKind stays the four company-scoped kinds — no synthetic fifth kind, so every existing hook,
     // memo and derived value keeps running unchanged and no hook becomes conditional.
-    expect(gridSrc).toContain(
-      "export type GridKind = 'department' | 'position' | 'cost_center' | 'business_unit'",
-    );
-    expect(gridSrc).toContain("const KINDS: GridKind[] = ['department', 'position', 'cost_center', 'business_unit']");
+    expect(gridSrc).toContain('export type GridKind = OrganisationLabelKind');
+    expect(gridSrc).toContain('const KINDS = ORGANISATION_LABEL_KINDS');
+    expect(ORGANISATION_LABEL_KINDS).toEqual(['department','position','cost_center','business_unit']);
   });
 
   it('the grade body carries NO company / scope / sharing wiring (job_grade is tenant-global)', () => {
