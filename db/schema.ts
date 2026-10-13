@@ -10148,6 +10148,10 @@ export const assessmentConversation = pgTable('performance_assessment_conversati
   messages:jsonb('messages').notNull().default([]),revision:integer('revision').notNull().default(1),
   updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('performance_assessment_conversation_actor_uq').on(t.reviewId,t.actorUserId,t.stage,t.contextId)]);
+export const assessmentAiUse = pgTable('performance_assessment_ai_use', {
+ id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+ actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),fieldKey:text('field_key').notNull(),requestId:uuid('request_id').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('performance_assessment_ai_use_request_uq').on(t.tenantId,t.actorUserId,t.requestId)]);
 export const performanceKpiLibrary = pgTable('performance_kpi_library', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').references(()=>company.id),
   groupCompanyId:uuid('group_company_id').references(()=>company.id),tier:integer('tier').notNull().default(0),

@@ -834,6 +834,33 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.importAssessmentKpis(a,cycleId,csv,'library',preview.token)).rejects.toThrow(/changed/);
   });
 
+  it('creates eligible AI starter drafts with atomic daily quotas and leaves human proposal untouched',async()=>{
+    const [library]=await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,companyId:b.companyId,name:'Starter delivery',template:{title:'Starter delivery',description:'Governed wording',category:'Delivery',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',target:100,rates:[80,90,100,110,120]},spread:{rate:[80,90,100,110,120]}}}).returning();
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{id:library.id,weightage:3,target:250},{id:randomUUID(),weightage:5}]));
+    const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'setting',null,request,'Suggest a starter scorecard','starter');
+    expect(first).toMatchObject({draftUpdated:true,settingQuota:{remaining:4,limit:5}});
+    let own=await view(self);expect(own.kpis).toHaveLength(1);expect(own.kpis[0]).toMatchObject({title:'Starter delivery',description:'Governed wording',weightBp:10000,numberSource:'ai',scoring:{target:250,rates:[200,225,250,275,300]},setting:'draft',actual:null,locked:false});
+    expect(await perf.sendReviewMessage(self,reviewId,'setting',null,request,'Suggest a starter scorecard','starter')).toEqual(first);expect(generateDraft).toHaveBeenCalledOnce();
+    await expect(perf.sendReviewMessage(self,reviewId,'setting',0,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/conversation changed/);
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toHaveLength(1);expect((await view(self)).revision).toBe(own.revision);
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.assessmentAiUse))).toEqual([]);
+    const otherTenant=await seedBase();expect(await withTenant(adminCtx(otherTenant),tx=>tx.select().from(schema.assessmentAiUse))).toEqual([]);
+    await expect(perf.sendReviewMessage(mgr,reviewId,'setting',null,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/unavailable/);
+    vi.mocked(generateDraft).mockRejectedValue(new Error('Provider unavailable'));
+    await expect(perf.sendReviewMessage(self,reviewId,'setting',first.revision,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/usable scorecard/);expect(await owner.db.select().from(schema.assessmentAiUse)).toHaveLength(1);
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{id:library.id,weightage:1,target:100}]));
+    let conversation=first;for(let i=0;i<3;i++)conversation=await perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter');
+    // Two concurrent final-slot requests cannot both consume the last daily use.
+    const results=await Promise.allSettled([0,1].map(()=>perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter')));
+    expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(await owner.db.select().from(schema.assessmentAiUse)).toHaveLength(5);
+    conversation=await perf.getReviewConversation(self,reviewId,'setting') as typeof conversation;
+    expect(conversation).toMatchObject({settingQuota:{remaining:0,limit:5}});
+    const calls=vi.mocked(generateDraft).mock.calls.length;await expect(perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/midnight Malaysia/);expect(generateDraft).toHaveBeenCalledTimes(calls);
+    own=await view(self);await perf.saveOnehrKpis(self,reviewId,own.revision,own.kpis,true);expect((await view(self)).kpis[0].setting).toBe('proposed');
+    await expect(perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/unavailable/);
+  });
+
   it('edits KPI setup from chat through the form writer and rolls back when conversation revision is stale',async()=>{
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}]);
     vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});

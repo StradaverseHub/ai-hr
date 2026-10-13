@@ -141,9 +141,9 @@ export async function saveAssessmentDraftAction(f:FormData) {
   try{return await saveDraftForm(s,f);}catch(e){return {error:publicErrorMessage(e)};}
 }
 
-export async function reviewConversationAction(reviewId:string,stage:perf.ConversationStage,revision:number|null,requestId:string,text:string,intent:'guide'|'draft',contextId?:string) {
+export async function reviewConversationAction(reviewId:string,stage:perf.ConversationStage,revision:number|null,requestId:string,text:string,intent:'guide'|'draft'|'starter',contextId?:string) {
  const s=await getSession();
- try{if(stage==='feedback'){if(!contextId)throw Error('Choose an assigned colleague.');return await perf.sendFeedbackMessage(s,reviewId,contextId,revision,requestId,text,intent);}return await perf.sendReviewMessage(s,reviewId,stage,revision,requestId,text,intent);}catch(e){return {error:publicErrorMessage(e)};}
+ try{if(stage==='feedback'){if(!contextId)throw Error('Choose an assigned colleague.');if(intent==='starter')throw Error('Scorecard suggestions are only available in KPI setting.');return await perf.sendFeedbackMessage(s,reviewId,contextId,revision,requestId,text,intent);}return await perf.sendReviewMessage(s,reviewId,stage,revision,requestId,text,intent);}catch(e){return {error:publicErrorMessage(e)};}
 }
 
 export async function assessmentKpiImportAction(cycleId:string,csv:string,kind:'targets'|'library',previewToken?:string) {

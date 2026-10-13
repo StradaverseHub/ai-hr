@@ -17100,7 +17100,10 @@
       "preparing": "Preparing draft…",
       "help": "Chat can update the entries for this step. Review changes and use the form to submit, share or approve.",
       "updated": "Changes saved. Review the entries and use the form for the next confirmation.",
-      "send": "Send"
+      "send": "Send",
+      "starter": "Suggest a scorecard with AI",
+      "starterQuota": "{remaining} of {limit} suggestions left today · resets at midnight Malaysia time",
+      "starterHelp": "AI suggestions replace your editable selection with up to 8 eligible library KPIs. Review the targets and propose the scorecard yourself."
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

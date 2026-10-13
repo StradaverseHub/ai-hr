@@ -17100,7 +17100,10 @@
       "preparing": "Preparing draft…",
       "help": "Trò chuyện có thể cập nhật mục nhập ở bước này. Kiểm tra thay đổi và dùng biểu mẫu để nộp, chia sẻ hoặc phê duyệt.",
       "updated": "Đã lưu thay đổi. Kiểm tra các mục nhập và dùng biểu mẫu để xác nhận bước tiếp theo.",
-      "send": "Gửi"
+      "send": "Gửi",
+      "starter": "Đề xuất bảng điểm bằng AI",
+      "starterQuota": "Còn {remaining}/{limit} lượt đề xuất hôm nay · đặt lại lúc nửa đêm giờ Malaysia",
+      "starterHelp": "Đề xuất AI thay thế lựa chọn có thể chỉnh sửa bằng tối đa 8 KPI đủ điều kiện từ thư viện. Hãy xem xét mục tiêu và tự đề xuất bảng điểm."
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

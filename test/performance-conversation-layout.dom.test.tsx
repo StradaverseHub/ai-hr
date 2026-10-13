@@ -11,6 +11,13 @@ import { ReviewConversation } from '../app/performance/workspace/review-conversa
 beforeEach(()=>{vi.clearAllMocks();ports.send.mockResolvedValue({revision:1,messages:[{id:'reply',role:'assistant',kind:'update',text:'Private draft updated',at:new Date().toISOString()}],draftUpdated:true});});
 afterEach(cleanup);
 describe('Performance conversation layout',()=>{
+ it('offers an explicit starter draft action and disables it when the daily allowance is used',async()=>{
+  ports.send.mockResolvedValue({revision:1,messages:[],draftUpdated:true,settingQuota:{remaining:0,limit:5}});
+  render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="setting" initial={{revision:null,messages:[],settingQuota:{remaining:1,limit:5}}} aiEnabled labels={en.onehr.conversation}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.starter}));
+  await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());expect(ports.send.mock.calls[0][5]).toBe('starter');expect((screen.getByRole('button',{name:en.onehr.conversation.starter}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText('0 of 5 suggestions left today · resets at midnight Malaysia time')).toBeTruthy();
+ });
  it('places the active widget in the transcript scroll region above a separate composer',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="results" initial={{revision:null,messages:[]}} aiEnabled labels={en.onehr.conversation}><form aria-label="Active assessment"><input aria-label="Actual result"/></form></ReviewConversation></NextIntlClientProvider>);
   const widget=screen.getByRole('form',{name:'Active assessment'}),composer=screen.getByLabelText(en.onehr.conversation.message).closest('form')!;

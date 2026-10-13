@@ -17100,7 +17100,10 @@
       "preparing": "Preparing draft…",
       "help": "Sembang boleh mengemas kini catatan langkah ini. Semak perubahan dan gunakan borang untuk menghantar, berkongsi atau meluluskan.",
       "updated": "Perubahan disimpan. Semak catatan dan gunakan borang untuk pengesahan seterusnya.",
-      "send": "Hantar"
+      "send": "Hantar",
+      "starter": "Cadangkan kad skor dengan AI",
+      "starterQuota": "{remaining} daripada {limit} cadangan berbaki hari ini · ditetapkan semula tengah malam waktu Malaysia",
+      "starterHelp": "Cadangan AI menggantikan pilihan yang boleh diedit dengan sehingga 8 KPI pustaka yang layak. Semak sasaran dan cadangkan kad skor sendiri."
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

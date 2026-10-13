@@ -1,4 +1,5 @@
-import { defaultLibraryScoring,settingNumberSource } from './setting-default-model';
+import { defaultLibraryScoring,settingNumberSource,spreadScoring } from './setting-default-model';
+import { hasLibrarySpread } from './setting-suggestion-model';
 import { leaderWorkspaceParts, type WorkspaceAxis } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
@@ -150,7 +151,7 @@ export async function updateOnehrWindows(ctx:SessionContext,cycleId:string,expec
 export async function saveOnehrKpis(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
  return withPerformanceTenant(ctx,tx=>saveOnehrKpisTx(tx,ctx,reviewId,expected,raw,propose));
 }
-export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false) {
+export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,propose=false,aiBases:ReadonlyMap<string,number>=new Map()) {
   const inputs=z.array(kpiSettingInputSchema).max(100).parse(raw);
   if(new Set(inputs.map(k=>k.id)).size!==inputs.length)throw Error('Duplicate KPI.');
   if(new Set(inputs.map(k=>k.title)).size!==inputs.length)throw Error('A KPI title can appear only once on your scorecard.');
@@ -163,7 +164,9 @@ export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,e
       const moderatorEmploymentId=settingModerator(r.kpis.find(old=>old.id===k.id),r.native.reviewerEmploymentId,moderators.map(m=>m.id),k.approverEmploymentIds,k.moderatorEmploymentId);
       if(propose&&!moderatorEmploymentId)throw Error('HR must assign an active KPI moderator before this scorecard can be proposed.');
       const previous=r.kpis.find(old=>old.id===k.id),choice=catalogue.find(l=>l.id===k.libraryId);
-      const numberSource=settingNumberSource(k.scoring,choice,previous);
+      const aiBase=aiBases.get(k.id);
+      const generated=choice&&aiBase!=null&&Number.isFinite(aiBase)&&aiBase>0&&hasLibrarySpread(choice)&&JSON.stringify(spreadScoring(choice.scoring,choice.spread,aiBase))===JSON.stringify(k.scoring);
+      const numberSource=generated?'ai':settingNumberSource(k.scoring,choice,previous);
       return {...k,numberSource,moderatorSource:r.kpis.find(old=>old.id===k.id)?.moderatorSource??'line',moderatorEmploymentId,approvalChain:moderatorEmploymentId?[{employmentId:moderatorEmploymentId,actual:null,remark:'',at:null}]:[],setting:propose?'proposed':'draft',settingApprovals:[],settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false};
     });
     const mechanism=r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B':'A';

@@ -987,3 +987,27 @@ CREATE FUNCTION app.assessment_peer_load(wanted_cycle uuid) RETURNS jsonb LANGUA
 $$;
 REVOKE ALL ON FUNCTION app.assessment_peer_load(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_peer_load(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Successful AI drafts have their own business counter, independent of best-effort proposal telemetry.
+CREATE TABLE performance_assessment_ai_use (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),actor_user_id uuid NOT NULL REFERENCES app_user(id),
+ field_key text NOT NULL CHECK(length(field_key) BETWEEN 1 AND 200),request_id uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,actor_user_id,request_id)
+);
+CREATE INDEX assessment_ai_use_daily ON performance_assessment_ai_use(tenant_id,actor_user_id,field_key,created_at);
+ALTER TABLE performance_assessment_ai_use ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_ai_use FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT ON performance_assessment_ai_use TO ai_hr_app;
+CREATE POLICY assessment_ai_use_read ON performance_assessment_ai_use FOR SELECT USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id());
+CREATE POLICY assessment_ai_use_insert ON performance_assessment_ai_use FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.onehr_review_header(review_id) IS NOT NULL);
+CREATE FUNCTION app.assessment_ai_use_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT EXISTS(SELECT 1 FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Invalid AI usage actor or assessment'; END IF;
+ NEW.created_at:=now();
+ PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':'||NEW.actor_user_id::text||':'||NEW.field_key||':'||(now() at time zone 'Asia/Kuala_Lumpur')::date::text,0));
+ IF (SELECT count(*) FROM performance_assessment_ai_use WHERE tenant_id=NEW.tenant_id AND actor_user_id=NEW.actor_user_id AND field_key=NEW.field_key AND created_at>=((now() at time zone 'Asia/Kuala_Lumpur')::date::timestamp at time zone 'Asia/Kuala_Lumpur'))>=5 THEN RAISE EXCEPTION 'All 5 AI suggestions for this field have been used today. The limit resets at midnight Malaysia time.'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_ai_use_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_ai_use_guard BEFORE INSERT ON performance_assessment_ai_use FOR EACH ROW EXECUTE FUNCTION app.assessment_ai_use_validate();

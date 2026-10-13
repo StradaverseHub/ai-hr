@@ -5,7 +5,8 @@ import { assessmentConversation } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { getOnehrReview, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx, addOnehrEvidenceTx, saveOnehrKpiCheckInTx } from './service';
 import { assessmentDraftSchema } from './journey-model';
-import { proposeSettingCommands, proposeCareerCommands, proposeJourneyCommands } from './review-command-ai';
+import { proposeSettingCommands, proposeSettingSuggestion, proposeCareerCommands, proposeJourneyCommands } from './review-command-ai';
+import { assessmentAiQuotaTx,recordAssessmentAiUseTx } from './ai-usage';
 import { careerSchema } from './model';
 import { draftOnehrNarrative } from './ai';
 
@@ -50,20 +51,20 @@ function evidenceContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrRevi
 }
 async function proposalOrNull<T>(propose:()=>Promise<T>){try{return await propose();}catch{return null;}}
 export async function getReviewConversation(ctx:SessionContext,reviewId:string,stage:ConversationStage){
- await authorized(ctx,reviewId,stage);
+ const view=await authorized(ctx,reviewId,stage);
  return withPerformanceTenant(ctx,async tx=>{
   const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage)),eq(assessmentConversation.contextId,reviewId)));
-  return {revision:row?.revision??null,messages:row?reviewConversationMessages.parse(row.messages):[]};
+  return {revision:row?.revision??null,messages:row?reviewConversationMessages.parse(row.messages):[],...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${view.cycle.id}`)}:{})};
  });
 }
 /** Conversation messages are private to this actor. A response never submits a form or changes a rating. */
-export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage:ConversationStage,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'='guide'){
- z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);z.enum(['guide','draft']).parse(intent);
+export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage:ConversationStage,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'|'starter'='guide'){
+ z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);z.enum(['guide','draft','starter']).parse(intent);
  const view=await authorized(ctx,reviewId,stage);
  const previous=await withPerformanceTenant(ctx,async tx=>{
   const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage)),eq(assessmentConversation.contextId,reviewId)));
   if(!row)return null;const messages=reviewConversationMessages.parse(row.messages),index=messages.findIndex(m=>m.id===requestId);
-  return index<0?null:{revision:row.revision,messages,draftUpdated:messages[index+1]?.kind==='update'};
+  return index<0?null:{revision:row.revision,messages,draftUpdated:messages[index+1]?.kind==='update',...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${view.cycle.id}`)}:{})};
  });
  if(previous)return previous;
  let reply='';
@@ -71,8 +72,17 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  const evidenceInput=intent==='guide'&&view.aiEnabled?evidenceContext(view,stage,words):null;
  const journey=commandInput||evidenceInput?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
  const command=journey?.review??null,evidence=journey?.evidence??null;
- const settingInput=intent==='guide'&&view.aiEnabled?settingContext(view,stage,words):null;
- const setting=settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput)):null;
+ const settingInput=['guide','starter'].includes(intent)&&view.aiEnabled?settingContext(view,stage,words):null;
+ const settingField=`kpi_set:${view.cycle.id}`;
+ if(intent==='starter'){
+  if(!settingInput)throw Error('AI scorecard suggestions are unavailable for this assessment.');
+  if(!settingInput.library.length)throw Error('There are no eligible library KPIs for your role yet.');
+  const quota=await withPerformanceTenant(ctx,tx=>assessmentAiQuotaTx(tx,ctx,settingField));
+  if(!quota.remaining)throw Error('All 5 AI scorecard suggestions have been used today. The limit resets at midnight Malaysia time.');
+ }
+ const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput)):null;
+ if(intent==='starter'&&!starter)throw Error('Could not prepare a usable scorecard just now. You can add KPIs from the library and try again later.');
+ const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput)):null);
  const careerInput=intent==='guide'&&view.aiEnabled?careerContext(view,stage,words):null;
  const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput)):null;
 
@@ -100,11 +110,15 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:${storedStage(stage)}`},0))`);
   const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage)),eq(assessmentConversation.contextId,reviewId))).for('update');
   const messages=row?reviewConversationMessages.parse(row.messages):[];
-  const duplicate=messages.findIndex(m=>m.id===requestId);if(duplicate>=0)return {revision:row!.revision,messages,draftUpdated:messages[duplicate+1]?.kind==='update'};
+  const duplicate=messages.findIndex(m=>m.id===requestId);if(duplicate>=0)return {revision:row!.revision,messages,draftUpdated:messages[duplicate+1]?.kind==='update',...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,settingField)}:{})};
   if((row?.revision??null)!==expected)throw Error('This conversation changed. Reload before sending another message.');
   if(messages.length>296)throw Error('This conversation has reached its limit. Your saved review and full conversation remain available.');
   if(command&&commandInput){await saveAssessmentDraftTx(tx,ctx,reviewId,view.revision,commandInput.draftRevision,command.draft);reply='Private draft updated. Review the form, then confirm submission when ready.';}
-  if(setting){await saveOnehrKpisTx(tx,ctx,reviewId,view.revision,setting.kpis);reply='Scorecard draft updated. Review the form, then propose it for approval when ready.';}
+  if(setting){
+   if(starter)await recordAssessmentAiUseTx(tx,ctx,reviewId,settingField,requestId);
+   await saveOnehrKpisTx(tx,ctx,reviewId,view.revision,setting.kpis,false,starter?.aiBases);
+   reply='Scorecard draft updated. Review the form, then propose it for approval when ready.';
+  }
   if(career&&careerInput){
    if(career.goalsChanged)await saveOnehrPlanTx(tx,ctx,reviewId,careerInput.planRevision,{career:career.career,careerRevision:careerInput.careerRevision,goals:career.goals});
    else await saveAssessmentCareerProfileTx(tx,ctx,reviewId,careerInput.careerRevision,career.career);
@@ -120,8 +134,8 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   }
   const updated=!!command||!!setting||!!career||!!evidence;
   const now=new Date().toISOString();
-  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:updated?'update' as const:intent}]:[])];
+  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:updated?'update' as const:intent==='starter'?'guide' as const:intent}]:[])];
   const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage:storedStage(stage),contextId:reviewId,messages:next}).returning();
-  return {revision:saved.revision,messages:next,draftUpdated:updated};
+  return {revision:saved.revision,messages:next,draftUpdated:updated,...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,settingField)}:{})};
  });
 }

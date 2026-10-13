@@ -17100,7 +17100,10 @@
       "preparing": "Preparing draft…",
       "help": "对话可更新此步骤的条目。请检查更改，并通过表单提交、共享或审批。",
       "updated": "更改已保存。请检查条目，并通过表单进行下一步确认。",
-      "send": "发送"
+      "send": "发送",
+      "starter": "使用 AI 建议记分卡",
+      "starterQuota": "今日剩余 {remaining}/{limit} 次建议 · 马来西亚时间午夜重置",
+      "starterHelp": "AI 建议会将可编辑的选择替换为最多 8 项符合条件的指标库 KPI。请审查目标，并自行提交记分卡。"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",
