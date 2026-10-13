@@ -17816,7 +17816,10 @@
       "ai": "建议目标 — 提交前请检查"
     },
     "generateTargets": "生成阈值",
-    "generateTargetsFailed": "生成阈值前，请输入正数基础目标并为每个 KPI 填写标题。"
+    "generateTargetsFailed": "生成阈值前，请输入正数基础目标并为每个 KPI 填写标题。",
+    "ratingScale": "评分标准",
+    "totalKpiScore": "KPI 总分",
+    "kpiFiles": "文件"
   },
   "allowanceV2": {
     "title": "考勤津贴",

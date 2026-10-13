@@ -17816,7 +17816,10 @@
       "ai": "Sasaran dicadangkan — semak sebelum mencadangkan"
     },
     "generateTargets": "Jana ambang",
-    "generateTargetsFailed": "Masukkan sasaran asas positif dan tajuk bagi setiap KPI sebelum menjana ambang."
+    "generateTargetsFailed": "Masukkan sasaran asas positif dan tajuk bagi setiap KPI sebelum menjana ambang.",
+    "ratingScale": "Skala penilaian",
+    "totalKpiScore": "Jumlah skor KPI",
+    "kpiFiles": "Fail"
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

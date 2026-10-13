@@ -17816,7 +17816,10 @@
       "ai": "Suggested targets — review before proposing"
     },
     "generateTargets": "Generate thresholds",
-    "generateTargetsFailed": "Enter a positive base target and a title for every KPI before generating thresholds."
+    "generateTargetsFailed": "Enter a positive base target and a title for every KPI before generating thresholds.",
+    "ratingScale": "Rating scale",
+    "totalKpiScore": "Total KPI score",
+    "kpiFiles": "Files"
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

@@ -10152,6 +10152,11 @@ export const assessmentAiUse = pgTable('performance_assessment_ai_use', {
  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
  actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),fieldKey:text('field_key').notNull(),requestId:uuid('request_id').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('performance_assessment_ai_use_request_uq').on(t.tenantId,t.actorUserId,t.requestId)]);
+export const assessmentFileText = pgTable('performance_assessment_file_text', {
+ attachmentId:uuid('attachment_id').primaryKey().references(()=>performanceAttachment.id),tenantId:tenantId(),
+ contentHash:text('content_hash').notNull(),status:text('status').notNull(),method:text('method').notNull(),text:text('text').notNull().default(''),
+ attempts:integer('attempts').notNull().default(1),readAt:timestamp('read_at',{withTimezone:true}).notNull().defaultNow(),
+});
 export const performanceKpiLibrary = pgTable('performance_kpi_library', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').references(()=>company.id),
   groupCompanyId:uuid('group_company_id').references(()=>company.id),tier:integer('tier').notNull().default(0),

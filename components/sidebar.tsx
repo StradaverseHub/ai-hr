@@ -830,6 +830,9 @@ export function Sidebar({
     </>
   );
 
+  // The review journey owns its 224px navigator and floating route back to the dashboard.
+  if (pathname === modulePackById('performance')?.navLinks?.find(link => link.labelKey === 'myPerformance')?.href) return null;
+
   // Current uses the same authorized navigation graph, arranged as workspace tabs.
   // Browsing another workspace never changes scope or grants access to a destination.
   if (current) {

@@ -1011,3 +1011,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_ai_use_validate() FROM PUBLIC;
 CREATE TRIGGER assessment_ai_use_guard BEFORE INSERT ON performance_assessment_ai_use FOR EACH ROW EXECUTE FUNCTION app.assessment_ai_use_validate();
+--> statement-breakpoint
+-- Derived contents are cached by the immutable native attachment; this is not another file store.
+CREATE TABLE performance_assessment_file_text (
+ attachment_id uuid PRIMARY KEY REFERENCES performance_attachment(id),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ content_hash text NOT NULL CHECK(content_hash ~ '^[a-f0-9]{64}$'),
+ status text NOT NULL CHECK(status IN ('ok','no_text','unsupported','too_big','unreadable','retry')),
+ method text NOT NULL CHECK(method IN ('local','vision')),text text NOT NULL DEFAULT '' CHECK(length(text)<=6080),
+ attempts integer NOT NULL DEFAULT 1 CHECK(attempts BETWEEN 1 AND 2),read_at timestamptz NOT NULL DEFAULT now(),
+ CHECK(status='ok' OR text='')
+);
+ALTER TABLE performance_assessment_file_text ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_file_text FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_file_text TO ai_hr_app;
+CREATE POLICY assessment_file_text_access ON performance_assessment_file_text FOR ALL USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_attachment a WHERE a.id=attachment_id AND a.tenant_id=performance_assessment_file_text.tenant_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_attachment a WHERE a.id=attachment_id AND a.tenant_id=performance_assessment_file_text.tenant_id));
+CREATE FUNCTION app.assessment_file_text_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM performance_attachment a JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id WHERE a.id=NEW.attachment_id AND a.tenant_id=NEW.tenant_id AND encode(sha256(a.content),'hex')=NEW.content_hash) THEN RAISE EXCEPTION 'File text must reference the immutable native attachment'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.attachment_id IS DISTINCT FROM OLD.attachment_id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.content_hash IS DISTINCT FROM OLD.content_hash) THEN RAISE EXCEPTION 'File text identity is immutable'; END IF;
+ NEW.read_at:=now();RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_file_text_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_file_text_guard BEFORE INSERT OR UPDATE ON performance_assessment_file_text FOR EACH ROW EXECUTE FUNCTION app.assessment_file_text_validate();

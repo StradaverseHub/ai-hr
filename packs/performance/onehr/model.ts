@@ -90,7 +90,7 @@ export function scoreKPI(actual:number,s:Scoring):number {
   return raw<=100?raw:100+(raw-100)*ready.multiple/100;
 }
 export function bandFor(value:number|null,minima:readonly number[]):PMBand|null {if(value==null)return null;let result:PMBand|null=null;minima.forEach((n,i)=>{if(value>=n)result=pmBands[i];});return result;}
-export function scorecard(kpis:KPI[],policy:Policy,companyId:string,manager:boolean):{score:number|null;band:PMBand|null} {
+export function scorecard(kpis:KPI[],policy:Pick<Policy,'aBands'|'bBands'>,companyId:string,manager:boolean):{score:number|null;band:PMBand|null} {
   if(!kpis.length||kpis.some(k=>manager?!k.locked:k.actual==null))return {score:null,band:null};
   if(new Set(kpis.map(k=>k.scoring.mechanism)).size!==1)throw Error('A scorecard must use one scoring mechanism.');
   const total=kpis.reduce((n,k)=>n+k.weightBp,0);const score=kpis.reduce((n,k)=>n+scoreKPI((manager?k.approvedActual:k.actual)!,k.scoring)*k.weightBp,0)/total;

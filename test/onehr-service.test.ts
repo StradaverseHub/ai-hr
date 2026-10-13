@@ -18,9 +18,9 @@ import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner,
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
-vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('../lib/ai')>(),generateDraft:vi.fn()}));
+vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('../lib/ai')>(),generateDraft:vi.fn(),readImage:vi.fn()}));
 vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
-import { generateDraft } from '../lib/ai';
+import { generateDraft,readImage } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
 
 const year=Number(todayInKualaLumpur().slice(0,4));
@@ -30,7 +30,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   const hire=(name:string)=>hireEmployee(a,{person:{fullName:name,primaryEmail:`${randomUUID()}@onehr.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
   const view=(ctx:SessionContext=mgr)=>perf.getOnehrReview(ctx,reviewId).then(v=>{if(!v)throw Error('Missing view');return v;});
   beforeEach(async()=>{
-    vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
+    vi.mocked(readImage).mockReset().mockResolvedValue('Verified 15.9 units.');vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
     await resetDb();b=await seedBase();a=adminCtx(b);await setModule(b.tenantId,'performance','active');await setModule(b.tenantId,'rewards','active');a=await entitledCtx(b);
     subject=await hire('Assessment subject');manager=await hire('Assessment manager');
     const ctx=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...a,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:undefined});
@@ -717,6 +717,64 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [f]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect((f.result as {provenance:{evidence:unknown[]}}).provenance.evidence).toHaveLength(0);
     const [panel]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId,reviewId));
     await expect(withTenant(a,tx=>tx.update(schema.onehrPanel).set({remark:'Restate frozen evidence'}).where(eq(schema.onehrPanel.requestId,panel.requestId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
+  });
+
+  it('caches file contents under native attachment visibility and never reads images from an ordinary cached chat query',async()=>{
+    const evidenceId=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Prepared the delivery record.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
+    const file=await perf.addPerformanceAttachment(self,{reviewId,evidenceId,stageKind:null,fileName:'delivery.txt',mimeType:'text/plain',content:Buffer.from('Verified delivery 15.9 million units.')});
+    expect((await perf.getAssessmentFileTexts(self,reviewId)).size).toBe(0);
+    expect((await perf.readAssessmentFileTexts(self,reviewId)).get(file.id)).toMatchObject({status:'ok',text:'Verified delivery 15.9 million units.',method:'local'});
+    expect((await perf.getAssessmentFileTexts(self,reviewId)).get(file.id)?.status).toBe('ok');
+    expect((await perf.getAssessmentFileTexts(mgr,reviewId)).size).toBe(0);expect(await withTenant(mgr,tx=>tx.select().from(schema.assessmentFileText))).toEqual([]);
+    const other=await seedBase();expect(await withTenant(adminCtx(other),tx=>tx.select().from(schema.assessmentFileText))).toEqual([]);
+    await perf.changeOnehrEvidenceState(self,evidenceId,'shared');expect((await perf.getAssessmentFileTexts(mgr,reviewId)).get(file.id)?.text).toContain('15.9');
+    await perf.changeOnehrEvidenceState(self,evidenceId,'retracted');expect((await perf.getAssessmentFileTexts(mgr,reviewId)).size).toBe(0);expect((await perf.getAssessmentFileTexts(self,reviewId)).size).toBe(0);expect(await perf.getPerformanceAttachment(mgr,file.id)).not.toBeNull();
+    const imageEvidence=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Prepared image proof.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8R0AAAAASUVORK5CYII=','base64'),image=await perf.addPerformanceAttachment(self,{reviewId,evidenceId:imageEvidence,stageKind:null,fileName:'proof.png',mimeType:'image/png',content:png});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    expect((await perf.readAssessmentFileTexts(self,reviewId)).get(image.id)?.status).toBe('unread');expect(readImage).not.toHaveBeenCalled();
+    expect((await perf.readAssessmentFileTexts(self,reviewId,{allowImages:true})).get(image.id)).toMatchObject({status:'ok',method:'vision',text:'Verified 15.9 units.'});expect(readImage).toHaveBeenCalledOnce();
+    const [transcription]=await owner.db.select().from(schema.agentProposal).where(eq(schema.agentProposal.proposalType,'performance_file_transcription'));expect(transcription.proposal).toMatchObject({status:'ok'});expect(JSON.stringify(transcription)).not.toMatch(/Verified 15.9|iVBORw0|fixture-local-only/);
+    await perf.readAssessmentFileTexts(self,reviewId,{allowImages:true});expect(readImage).toHaveBeenCalledOnce();
+    expect(await owner.db.select().from(schema.assessmentFileText)).toHaveLength(2);
+    await expect(withTenant(self,tx=>tx.update(schema.assessmentFileText).set({contentHash:'0'.repeat(64)}).where(eq(schema.assessmentFileText.attachmentId,file.id)))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001'})});
+  });
+
+  it('bounds image reads to four concurrent and eight per summary, and rechecks retraction after provider work',async()=>{
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8R0AAAAASUVORK5CYII=','base64'),files:string[]=[];
+    for(let entry=0;entry<3;entry++){
+      const evidenceId=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Prepared visible image proof.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
+      for(let file=0;file<4;file++)files.push((await perf.addPerformanceAttachment(self,{reviewId,evidenceId,stageKind:null,fileName:`proof-${entry}-${file}.png`,mimeType:'image/png',content:png})).id);
+    }
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    let active=0,max=0;vi.mocked(readImage).mockImplementation(async()=>{active++;max=Math.max(max,active);await new Promise(resolve=>setTimeout(resolve,10));active--;return 'Verified 15.9 units.';});
+    const texts=await perf.readAssessmentFileTexts(self,reviewId,{allowImages:true});expect(max).toBeLessThanOrEqual(4);expect(max).toBeGreaterThan(1);expect(readImage).toHaveBeenCalledTimes(8);expect([...texts.values()].filter(t=>t.status==='ok')).toHaveLength(8);expect([...texts.values()].filter(t=>t.status==='unread')).toHaveLength(4);
+    const visibleEvidence=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Shared image proof.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]}),file=await perf.addPerformanceAttachment(self,{reviewId,evidenceId:visibleEvidence,stageKind:null,fileName:'shared.png',mimeType:'image/png',content:png});
+    vi.mocked(readImage).mockImplementation(async()=>{await perf.changeOnehrEvidenceState(self,visibleEvidence,'retracted');return 'Retracted confidential file words.';});
+    expect((await perf.readAssessmentFileTexts(mgr,reviewId,{allowImages:true})).has(file.id)).toBe(false);expect(await owner.db.select().from(schema.assessmentFileText).where(eq(schema.assessmentFileText.attachmentId,file.id))).toEqual([]);
+  });
+
+  it('excludes superseded file claims from current AI context while retaining proof captured at confirmation',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Verified delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');
+    const file=await perf.addPerformanceAttachment(self,{reviewId,kpiId:id,stageKind:null,fileName:'proof.txt',mimeType:'text/plain',content:Buffer.from('Verified 100 delivered units.')}),entry=(await view(self)).evidence.find(e=>e.files.some(f=>f.id===file.id))!;
+    await perf.readAssessmentFileTexts(mgr,reviewId);expect((await perf.getAssessmentFileTexts(mgr,reviewId)).has(file.id)).toBe(true);
+    const correction=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Corrected delivery context.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:entry.id,links:[]});
+    expect((await perf.getAssessmentFileTexts(mgr,reviewId)).has(file.id)).toBe(false);expect(await perf.getPerformanceAttachment(mgr,file.id)).not.toBeNull();
+    await perf.changeOnehrEvidenceState(self,correction,'retracted');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'Delivery completed.'}],'Completed the agreed delivery.');await perf.changeOnehrEvidenceState(self,entry.id,'retracted');
+    expect((await perf.getAssessmentFileTexts(mgr,reviewId)).get(file.id)?.text).toContain('100 delivered units');
+  });
+
+  it('grounds draft passages in authorized file contents and drops a selection if its file is retracted during generation',async()=>{
+    const evidenceId=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Delivery record.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});
+    await perf.addPerformanceAttachment(self,{reviewId,evidenceId,stageKind:null,fileName:'claim-9999.txt',mimeType:'text/plain',content:Buffer.from('Verified delivery 15.9 million units. Contact proof@example.test.')});
+    const privateId=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Private record.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});await perf.addPerformanceAttachment(self,{reviewId,evidenceId:privateId,stageKind:null,fileName:'private.txt',mimeType:'text/plain',content:Buffer.from('Private 777777 units.')});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async(_cfg,args)=>{const facts=JSON.parse(args.prompt) as {index:number;text:string}[];expect(args.prompt).not.toContain('Private 777777');expect(args.prompt).not.toContain('claim-9999');expect(args.prompt).not.toContain('proof@example.test');const file=facts.find(f=>f.text==='Verified delivery 15.9 million units.')!;return JSON.stringify({items:[file.index]});});
+    expect(await perf.draftOnehrNarrative(mgr,reviewId,'Prepare a draft.')).toBe('Verified delivery 15.9 million units.');expect(readImage).not.toHaveBeenCalled();
+    vi.mocked(generateDraft).mockImplementationOnce(async(_cfg,args)=>{const facts=JSON.parse(args.prompt) as {index:number;text:string}[],file=facts.find(f=>f.text==='Verified delivery 15.9 million units.')!;await perf.changeOnehrEvidenceState(self,evidenceId,'retracted');return JSON.stringify({items:[file.index]});});
+    expect(await perf.draftOnehrNarrative(mgr,reviewId,'Prepare a draft.')).toBe('');
   });
 
   it('keeps draft evidence files private, serializes the four-file cap, and removes only author-owned proof',async()=>{

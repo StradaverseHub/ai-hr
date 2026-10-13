@@ -4,6 +4,7 @@
  * `config.systemInstruction`; `response.text` is a getter that may be undefined.
  */
 import { ApiError, GoogleGenAI, type Candidate, type Content, type FunctionDeclaration, type GenerateContentResponse, type GenerateContentResponseUsageMetadata, type Part } from '@google/genai';
+import { AiImageReadError,imageReadError,imageReadInstruction } from '../image-protocol';
 import {
   AiGatewayError,
   finiteOrZero,
@@ -27,6 +28,13 @@ function client(apiKey: string): GoogleGenAI {
 
 export const googleAdapter: AiAdapter = {
   provider: 'google',
+  async readImage(cfg,args){
+    try{
+      const result=await new GoogleGenAI({apiKey:cfg.apiKey}).models.generateContent({model:cfg.model,contents:[{role:'user',parts:[{inlineData:{mimeType:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}],config:{systemInstruction:imageReadInstruction,maxOutputTokens:2500,abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}});
+      if(result.promptFeedback?.blockReason||result.candidates?.some(candidate=>['SAFETY','IMAGE_SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??'')))throw new AiImageReadError(false);
+      return result.text??'';
+    }catch(error){throw imageReadError(error);}
+  },
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {

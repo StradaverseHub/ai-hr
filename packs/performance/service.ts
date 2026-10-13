@@ -30,3 +30,4 @@ export { getFeedbackConversation, sendFeedbackMessage } from './onehr/feedback-c
 export { buildAssessmentPanels, importAssessmentPanels } from './onehr/panel-admin-service';
 
 export { getAssessmentProgress, exportAssessmentProgress, getAssessmentAssessorProgress, exportAssessmentAssessorProgress } from './onehr/progress-service';
+export { getAssessmentFileTexts,readAssessmentFileTexts } from './onehr/evidence-reading';

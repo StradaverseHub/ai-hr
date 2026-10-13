@@ -17,6 +17,8 @@ export type GenerateArgs = {
   prompt: string;
   maxTokens?: number;
 };
+export type AiImageMime='image/png'|'image/jpeg'|'image/gif'|'image/webp';
+export type ImageReadArgs={data:Uint8Array;mimeType:AiImageMime;signal:AbortSignal;timeoutMs:number};
 
 /** Result of a credential/model probe. `error` is a GENERIC reason — never raw SDK/provider text. */
 export type ValidateResult = { ok: boolean; error?: string };
@@ -25,6 +27,8 @@ export interface AiAdapter {
   readonly provider: AiProvider;
   /** Single non-streaming generation. Throws `AiGatewayError` (generic) on any provider failure. */
   generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string>;
+  /** Read already-authorized image bytes; transport cancellation and retries are bounded independently of text drafting. */
+  readImage?(cfg:ResolvedAiConfig,args:ImageReadArgs):Promise<string>;
   /** Cheapest check that the key+model are usable. Returns ok/false + a generic reason; never throws. */
   validate(cfg: ResolvedAiConfig): Promise<ValidateResult>;
   /**

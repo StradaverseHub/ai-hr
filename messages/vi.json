@@ -17816,7 +17816,10 @@
       "ai": "Mục tiêu đề xuất — kiểm tra trước khi gửi"
     },
     "generateTargets": "Tạo ngưỡng",
-    "generateTargetsFailed": "Nhập mục tiêu cơ sở dương và tên cho mỗi KPI trước khi tạo ngưỡng."
+    "generateTargetsFailed": "Nhập mục tiêu cơ sở dương và tên cho mỗi KPI trước khi tạo ngưỡng.",
+    "ratingScale": "Thang đánh giá",
+    "totalKpiScore": "Tổng điểm KPI",
+    "kpiFiles": "Tệp"
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",
