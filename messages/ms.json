@@ -17463,7 +17463,9 @@
       "native_rule": "Dikecualikan oleh peraturan kelayakan kitaran",
       "existing_review": "Semakan sedia ada dikekalkan",
       "noReview": "Tiada rekod pembukaan; pilih Sertakan untuk mencipta semakan."
-    }
+    },
+    "interimResult": "Keputusan semasa yang dikeluarkan",
+    "interimReleaseHelp": "Penarafan ini masih boleh berubah semasa kalibrasi. Ganjaran menggunakan penilaian yang dimuktamadkan."
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

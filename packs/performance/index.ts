@@ -123,6 +123,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_talent', note: 'shared human talent decisions across calibration tiers; ADR-0103' },
     { table: 'performance_assessment_talent_history', note: 'locked yearly talent history for standing promotion rules; ADR-0103' },
     { table: 'performance_assessment_career_profile', note: 'current career profile with yearly plan snapshots retained separately; ADR-0103' },
+    { table: 'performance_assessment_release', note: 'component visibility grants independent of finalization; ADR-0103' },
 
 
   ],

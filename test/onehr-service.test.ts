@@ -72,7 +72,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)))).toHaveLength(1);
   });
 
-  async function complete(){
+  async function complete(reviewCompetencies=true){
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver agreed outcomes',description:'Evidence-led delivery',weightBp:10000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed objectives');
@@ -80,7 +80,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,100,'Verified');
     await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','');
     await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work.');
-    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true);
+    if(reviewCompetencies)await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true);
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     for(let i=0;i<peers.length;i++){
       const requests=await perf.onehrAssignments(peers[i].ctx);const request=requests.feedback.find(r=>r.subject==='Assessment subject')!;const card=await perf.getOnehrFeedback(peers[i].ctx,request.id);
@@ -106,6 +106,52 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/finalized/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrResult).set({digest:'tampered'}).where(eq(schema.onehrResult.id,frozenId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
     await expect(perf.configureOnehrCycle(a,cycleId,1,defaultPolicy(framework))).rejects.toThrow(/fixed/);
+  });
+  it('releases live interim components independently, follows locked calibration, and keeps Rewards frozen-only',async()=>{
+    await expect(perf.releaseOnehrResult(a,reviewId,'performance',true)).rejects.toThrow(/no result/);
+    await expect(perf.releaseOnehrResult(a,reviewId,'feedback',true)).rejects.toThrow(/valid feedback/);
+    await complete(false);
+    expect((await view()).potential).toBe('Mid'); // Pending competencies use the 360 alone, never a zero or blocked band.
+    expect((await view(self)).result).toMatchObject({interim:true,performance:null,potential:null,talent:null});
+    await expect(perf.releaseOnehrResult(mgr,reviewId,'performance',true)).rejects.toThrow(/administrator/);
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    expect(await view(self)).toMatchObject({finalized:false,result:{interim:true,performance:'ME',potential:null,talent:null}});
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    const anonymous=(await view(self)).anonymousFeedback!;
+    expect(anonymous.statements.length).toBeGreaterThan(0);
+    expect(anonymous.statements.every(s=>s.agreementPct===50)).toBe(true);
+    expect(JSON.stringify(anonymous)).not.toMatch(/employmentId|requestId|relationship|submittedAt|score|count/);
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentRelease))).toEqual([]);
+    await expect(withTenant(self,tx=>tx.execute(sql`select app.assessment_working_result(${reviewId}::uuid)`))).rejects.toThrow();
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toEqual([]);
+    const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'INTERIM',name:'Interim source test'}).returning();
+    await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
+    const unitId=await createRewardUnit(a,{name:'No interim import',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});
+    const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
+    await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
+    await perf.releaseOnehrResult(a,reviewId,'potential',true);
+    expect((await view(self)).result?.potential).toBe('Mid');
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true);
+    expect((await view(self)).result?.potential).toBe('High');
+    const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Interim department assessment',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
+    let c=await perf.getOnehrCalibration(a,sessionId);
+    await perf.saveOnehrCalibration(a,sessionId,c.session.revision,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Verified wider impact',potentialNote:''});
+    expect((await view(self)).result?.performance).toBe('AE'); // HOD's one-save lock resolves immediately.
+    await perf.releaseOnehrResult(a,reviewId,'potential',true);
+    await perf.releaseOnehrResult(a,reviewId,'talent',true);
+    expect((await view(self)).result).toMatchObject({performance:'AE',potential:'High',talent:'Super Star'});
+    c=await perf.getOnehrCalibration(a,sessionId);
+    await perf.lockOnehrCalibration(a,sessionId,c.session.revision,'','potential');
+    const frozenId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    expect(await view(self)).toMatchObject({finalized:true,result:{id:frozenId,interim:false,performance:'AE',potential:'High',talent:'Super Star'}});
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);
+    await perf.releaseOnehrResult(a,reviewId,'feedback',false);
+    expect((await view(self)).result).toMatchObject({performance:null,potential:'High',talent:'Super Star'});
+    expect((await view(self)).anonymousFeedback).toBeNull();
+    const [frozen]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));
+    expect(frozen.result).toMatchObject({performance:'AE',potential:'High',talent:'Super Star'});
+    expect(frozen.performanceReleasedAt).toBeNull();
   });
   it('preserves the opening company and grade after the native employment changes company',async()=>{
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Original company cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});

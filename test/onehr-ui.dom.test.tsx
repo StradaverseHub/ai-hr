@@ -53,6 +53,14 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.getByRole('button',{name:en.onehr.approve})).toBeTruthy();expect(screen.getByRole('button',{name:en.onehr.return})).toBeTruthy();
   expect(screen.queryByText(en.onehr.developmentPlan)).toBeNull();
  });
+ it('offers each release before finalization and explains the working result',async()=>{
+  const v={policy:defaultPolicy(framework),drafts:[],careerRoutes:[],moderators:[],choices:[],kpis:[],competencies:[],plans:[],peers:[],attachments:[],evidence:[],attachmentLinks:[],kpiLibrary:[],reviewId:'review',revision:1,cycle:{id:'cycle',name:'Annual',status:'open'},admin:true,self:false,manager:false,moderator:false,finalized:false,canApproveSettingIds:[],canModerateIds:[],result:{id:'review',digest:null,interim:true,performance:'ME',potential:null,talent:null,performanceReleased:true,potentialReleased:false,talentReleased:false,feedbackReleased:false}};
+  show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'admin'}));
+  expect(screen.getAllByRole('button',{name:en.onehr.release})).toHaveLength(3);
+  expect(screen.getByRole('button',{name:en.onehr.revoke})).toBeTruthy();
+  expect(screen.getByText(en.onehr.interimReleaseHelp)).toBeTruthy();
+  expect(document.querySelectorAll('input[name="component"]')).toHaveLength(4);
+ });
  it('renders quarterly status choices instead of numeric result submission',async()=>{
   const policy=defaultPolicy(framework);policy.kind='quarterly';policy.modules={pm:true,tm:false,idp:false,evidence:false};
   const v={careerRoutes:[],profile:null,profileMatch:null,drafts:[],attachmentLinks:[],kpiLibrary:[],companyId:'company',anonymousFeedback:null,selfRemark:'',competencySelfRemark:'',competencyManagerRemark:'',calculatedPerformance:null,planReviewer:false,reviewId:'review',name:'Employee',cycle:{id:'cycle',name:'Quarterly',status:'open'},policy,grade:'12',revision:1,self:true,manager:false,admin:false,moderator:false,mechanism:'A',viewerUserId:'subject',reviewerEmploymentId:'manager',canApproveSettingIds:[],canModerateIds:[],moderators:[],kpis:[{id:'kpi',title:'Agreed objective',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},setting:'approved',settingRemark:'',approvalChain:[],actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false}],competencies:[],competencyStatus:'pending',resultsSubmitted:false,managerPerformance:null,managerScore:null,managerRemark:'',potential:null,finalized:false,result:null,plans:[],planYear:Number(todayInKualaLumpur().slice(0,4)),feedbackReport:[],peers:[],choices:[],attachments:[],aiEnabled:false,evidence:[]};

@@ -17463,7 +17463,9 @@
       "native_rule": "Không đáp ứng quy tắc đủ điều kiện của kỳ",
       "existing_review": "Giữ hồ sơ đánh giá hiện có",
       "noReview": "Chưa có ảnh chụp lúc mở kỳ; chọn Thêm vào để tạo hồ sơ đánh giá."
-    }
+    },
+    "interimResult": "Kết quả hiện tại đã công bố",
+    "interimReleaseHelp": "Xếp hạng này vẫn có thể thay đổi trong quá trình hiệu chỉnh. Phần thưởng sử dụng đánh giá đã hoàn tất."
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

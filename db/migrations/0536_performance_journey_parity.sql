@@ -422,3 +422,104 @@ CREATE POLICY assessment_career_profile_access ON performance_assessment_career_
 CREATE TRIGGER assessment_career_validate BEFORE INSERT OR UPDATE ON performance_assessment_career_profile FOR EACH ROW EXECUTE FUNCTION app.assessment_career_validate();
 REVOKE ALL ON FUNCTION app.assessment_career_access(uuid),app.assessment_career_validate() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_career_access(uuid) TO ai_hr_app;
+
+
+--> statement-breakpoint
+-- Release grants are visibility decisions, independent of immutable final results.
+CREATE TABLE performance_assessment_release (
+ review_id uuid PRIMARY KEY REFERENCES performance_onehr_review(review_id),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ performance_released_at timestamptz,potential_released_at timestamptz,talent_released_at timestamptz,feedback_released_at timestamptz,
+ updated_by uuid REFERENCES app_user(id),updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO performance_assessment_release(review_id,tenant_id,performance_released_at,potential_released_at,talent_released_at,feedback_released_at)
+ SELECT review_id,tenant_id,performance_released_at,potential_released_at,talent_released_at,feedback_released_at FROM performance_onehr_result;
+ALTER TABLE performance_assessment_release ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_release FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_release TO ai_hr_app;
+CREATE POLICY assessment_release_admin ON performance_assessment_release FOR ALL
+ USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id WHERE r.review_id=performance_assessment_release.review_id AND r.tenant_id=performance_assessment_release.tenant_id AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id WHERE r.review_id=performance_assessment_release.review_id AND r.tenant_id=performance_assessment_release.tenant_id AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id)));
+CREATE FUNCTION app.assessment_release_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=NEW.review_id AND r.tenant_id=NEW.tenant_id)
+  OR NEW.updated_by IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=NEW.updated_by AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+  THEN RAISE EXCEPTION 'Invalid assessment release scope'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.tenant_id<>OLD.tenant_id OR NEW.review_id<>OLD.review_id) THEN RAISE EXCEPTION 'Assessment release identity is immutable'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER assessment_release_validate BEFORE INSERT OR UPDATE ON performance_assessment_release FOR EACH ROW EXECUTE FUNCTION app.assessment_release_validate();
+REVOKE ALL ON FUNCTION app.assessment_release_validate() FROM PUBLIC;
+
+--> statement-breakpoint
+-- Internal projection, deliberately NOT executable by ai_hr_app. It has no rater identities,
+-- relationships, raw scores, counts, evidence or justifications. The outer card enforces release.
+CREATE FUNCTION app.assessment_working_result(wanted_review uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r performance_onehr_review; cfg jsonb; pm text; pot text; pm_source text:='manager'; pot_source text:='manager';
+ leadership_pct numeric; n integer; minimum integer; tech_score numeric; tech_max numeric; pct numeric; w numeric;
+ d record; found_pm boolean:=false; found_pot boolean:=false; group_replace boolean; report jsonb; legacy_feedback jsonb;
+BEGIN
+ SELECT * INTO r FROM performance_onehr_review WHERE review_id=wanted_review AND tenant_id=app.current_tenant_id();
+ IF r.review_id IS NULL THEN RETURN NULL; END IF;
+ SELECT policy INTO cfg FROM performance_onehr_cycle WHERE cycle_id=r.cycle_id AND tenant_id=r.tenant_id;
+ pm:=CASE WHEN coalesce((cfg->'modules'->>'pm')::boolean,false) AND cfg->>'kind'<>'quarterly' THEN r.manager_performance END;
+ minimum:=CASE WHEN regexp_replace(r.grade,'^JG\s*','','i') ~ '^\d+$' THEN (cfg->>'minValid')::integer ELSE 1 END;
+ SELECT count(*),avg(app.onehr_adjusted_score(a.request_id,v.score,v.maximum)/nullif(v.maximum,0)*100) INTO n,leadership_pct
+ FROM performance_onehr_panel a CROSS JOIN LATERAL (
+  SELECT sum(CASE WHEN a.answers->>(s->>'id')='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END) score,
+   sum(CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END) maximum FROM jsonb_array_elements(r.statements) s
+ ) v WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL;
+ IF coalesce((cfg->'modules'->>'tm')::boolean,false) AND n>=minimum THEN
+  SELECT sum(CASE WHEN coalesce(s->>'manager',s->>'self')='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END),
+   sum(CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END) INTO tech_score,tech_max FROM jsonb_array_elements(CASE WHEN r.competency_status='reviewed' THEN r.competencies ELSE '[]'::jsonb END) s;
+  w:=coalesce((cfg->'weights'->>regexp_replace(r.grade,'^JG\s*','','i'))::numeric,10000);
+  pct:=CASE WHEN tech_max>0 AND w<10000 THEN (leadership_pct*w+100*tech_score/tech_max*(10000-w))/10000 ELSE leadership_pct END;
+  pot:=CASE WHEN pct IS NULL THEN NULL WHEN pct<=(cfg->>'lowMaxPct')::numeric THEN 'Low' WHEN pct<=(cfg->>'midMaxPct')::numeric THEN 'Mid' ELSE 'High' END;
+ END IF;
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND cs.tier='group' AND cs.mode='replace') INTO group_replace;
+ FOR d IN SELECT ce.*,cs.tier,cs.mode,cs.performance_locked_at session_pm_lock,cs.potential_locked_at session_pot_lock
+  FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id
+  WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id
+  ORDER BY CASE cs.tier WHEN 'final' THEN 5 WHEN 'group' THEN 4 WHEN 'bg' THEN 3 WHEN 'bu' THEN 2 ELSE 1 END DESC
+ LOOP
+  IF d.tier='group' AND d.mode='blend' THEN CONTINUE; END IF;
+  IF NOT found_pm AND NOT (d.tier='bg' AND group_replace) AND d.performance IS NOT NULL AND (d.performance_locked_at IS NOT NULL OR d.session_pm_lock IS NOT NULL OR d.tier='final') THEN pm:=d.performance;pm_source:=d.tier;found_pm:=true; END IF;
+  IF NOT found_pot AND d.potential IS NOT NULL AND (d.potential_locked_at IS NOT NULL OR d.session_pot_lock IS NOT NULL OR d.tier='final') THEN pot:=d.potential;pot_source:=d.tier;found_pot:=true; END IF;
+ END LOOP;
+ -- Agreement percentages are unweighted. Weighting belongs only to the potential calculation.
+ SELECT jsonb_build_object('statements',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s->>'id','principle',s->>'principle','text',s->>'text','future',(s->>'future')::boolean,'agreementPct',(
+  SELECT round(100.0*count(*) FILTER(WHERE a.answers->>(s->>'id')='yes')/nullif(count(*) FILTER(WHERE a.answers->>(s->>'id') IN ('yes','no')),0)) FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL)) ORDER BY ord) FROM jsonb_array_elements(r.statements) WITH ORDINALITY q(s,ord)),'[]'::jsonb),
+  'remarks',coalesce((SELECT jsonb_agg(btrim(a.remark) ORDER BY btrim(a.remark) COLLATE "C") FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(a.remark)<>''),'[]'::jsonb),
+  'comments',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',c.key,'text',btrim(c.value)) ORDER BY c.key COLLATE "C",btrim(c.value) COLLATE "C") FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_each_text(a.principle_comments) c WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(c.value)<>'' AND EXISTS(SELECT 1 FROM jsonb_array_elements(r.statements) s WHERE s->>'principle'=c.key)),'[]'::jsonb)) INTO report;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('principle',v.principle,'band',CASE WHEN v.pct<=(cfg->>'lowMaxPct')::numeric THEN 'Low' WHEN v.pct<=(cfg->>'midMaxPct')::numeric THEN 'Mid' ELSE 'High' END) ORDER BY v.principle),'[]'::jsonb) INTO legacy_feedback
+ FROM (SELECT s->>'principle' principle,100*sum(CASE WHEN a.answers->>(s->>'id')='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END)/nullif(sum(CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END),0) pct FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_array_elements(r.statements) s WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL GROUP BY s->>'principle') v;
+ RETURN jsonb_build_object('performance',pm,'potential',pot,'performanceSource',pm_source,'potentialSource',pot_source,
+  'talent',CASE WHEN pm IS NULL OR pot IS NULL THEN NULL WHEN pm IN ('UA','BE') THEN 'PIP/Improvement' WHEN pot='High' AND pm IN ('AE','OU') THEN 'Super Star' WHEN pot='High' AND pm='ME' OR pot='Mid' AND pm IN ('AE','OU') THEN 'Star' ELSE 'Solid Core' END,
+  'anonymousFeedback',report,'feedback',legacy_feedback);
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_working_result(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onehr_result_card(wanted_review uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r performance_onehr_review; f performance_onehr_result; rel performance_assessment_release; value jsonb; own boolean; administrator boolean;
+BEGIN
+ SELECT * INTO r FROM performance_onehr_review WHERE review_id=wanted_review AND tenant_id=app.current_tenant_id();
+ IF r.review_id IS NULL OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=r.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN NULL; END IF;
+ SELECT app.is_self_person(e.person_id) INTO own FROM employment e WHERE e.id=r.employment_id AND e.tenant_id=r.tenant_id;
+ administrator:=NOT own AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(r.company_id);
+ IF NOT own AND NOT administrator THEN RETURN NULL; END IF;
+ SELECT * INTO f FROM performance_onehr_result WHERE review_id=r.review_id AND tenant_id=r.tenant_id;
+ SELECT * INTO rel FROM performance_assessment_release WHERE review_id=r.review_id AND tenant_id=r.tenant_id;
+ IF f.id IS NULL AND NOT app.assessment_review_participates(r.review_id) THEN RETURN NULL; END IF;
+ value:=CASE WHEN f.id IS NOT NULL THEN f.result ELSE app.assessment_working_result(r.review_id) END;
+ RETURN jsonb_build_object('id',coalesce(f.id,r.review_id),'digest',f.digest,'frozen',f.id IS NOT NULL,
+  'performanceReleasedAt',rel.performance_released_at,'potentialReleasedAt',rel.potential_released_at,'talentReleasedAt',rel.talent_released_at,'feedbackReleasedAt',rel.feedback_released_at,
+  'result',jsonb_build_object('performance',CASE WHEN administrator OR rel.performance_released_at IS NOT NULL THEN value->'performance' ELSE 'null'::jsonb END,
+   'potential',CASE WHEN administrator OR rel.potential_released_at IS NOT NULL THEN value->'potential' ELSE 'null'::jsonb END,
+   'talent',CASE WHEN administrator OR rel.talent_released_at IS NOT NULL THEN value->'talent' ELSE 'null'::jsonb END,
+   'performanceSource',CASE WHEN administrator OR rel.performance_released_at IS NOT NULL THEN value->'performanceSource' ELSE 'null'::jsonb END,
+   'potentialSource',CASE WHEN administrator OR rel.potential_released_at IS NOT NULL THEN value->'potentialSource' ELSE 'null'::jsonb END,
+   'anonymousFeedback',CASE WHEN administrator OR rel.feedback_released_at IS NOT NULL THEN value->'anonymousFeedback' ELSE 'null'::jsonb END,
+   'feedback',CASE WHEN administrator OR rel.feedback_released_at IS NOT NULL THEN value->'feedback' ELSE '[]'::jsonb END));
+END $$;
+REVOKE ALL ON FUNCTION app.onehr_result_card(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_result_card(uuid) TO ai_hr_app;

@@ -17463,7 +17463,9 @@
       "native_rule": "不符合周期资格规则",
       "existing_review": "保留现有评估",
       "noReview": "无开放时快照；选择纳入以创建评估。"
-    }
+    },
+    "interimResult": "当前已发布结果",
+    "interimReleaseHelp": "校准期间这些评级仍可能变更。奖励模块使用最终确定的评估结果。"
   },
   "allowanceV2": {
     "title": "考勤津贴",

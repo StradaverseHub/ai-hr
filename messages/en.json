@@ -17463,7 +17463,9 @@
       "native_rule": "Excluded by cycle eligibility rules",
       "existing_review": "Existing review retained",
       "noReview": "No opening snapshot; use Include to create a review."
-    }
+    },
+    "interimResult": "Current released result",
+    "interimReleaseHelp": "These ratings can still change during calibration. Rewards uses the finalized assessment."
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

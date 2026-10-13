@@ -10065,6 +10065,13 @@ export const onehrResult = pgTable('performance_onehr_result', {
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
 },t=>[uniqueIndex('performance_onehr_result_review_uq').on(t.reviewId),index('performance_onehr_result_subject_idx').on(t.employmentId,t.cycleId)]);
+// Visibility is independent of finalization. Working ratings remain derived; Rewards reads only onehrResult.
+export const assessmentRelease = pgTable('performance_assessment_release', {
+  reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
+  performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
+  talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
+  updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
 // Attendance approval configuration and immutable resolved stages, independent of Leave.
 export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template', {
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
