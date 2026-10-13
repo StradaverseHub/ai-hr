@@ -3102,6 +3102,13 @@
       "when": 1791900000015,
       "tag": "0535_hr_orchestrator",
       "breakpoints": true
+    },
+    {
+      "idx": 536,
+      "version": "7",
+      "when": 1791900000016,
+      "tag": "0536_performance_journey_parity",
+      "breakpoints": true
     }
   ]
 }
