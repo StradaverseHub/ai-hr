@@ -1,3 +1,5 @@
+import { sourceRound } from './source-numeric';
+export { sourceRound } from './source-numeric';
 import { z } from 'zod';
 import { pmBands, potentialBands, type KPI, type Policy } from './model';
 
@@ -23,11 +25,6 @@ export function settingModerator(existing:KPI|undefined, reviewer:string|null, a
   return assigned;
 }
 
-/** Python round(), used for the source curve's integer target headcounts (ties to even). */
-export function sourceRound(value:number):number {
-  const floor=Math.floor(value),fraction=value-floor;
-  return fraction===0.5 ? floor%2===0?floor:floor+1 : Math.round(value);
-}
 export function curveTolerance(policy:Policy,count:number):number {
   if(count<=0)return 0;
   return policy.curveToleranceMode==='people'

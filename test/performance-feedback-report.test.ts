@@ -17,6 +17,12 @@ describe('released anonymous feedback projection',()=>{
   expect(anonymousFeedbackReport(statements,[]).statements.map(s=>s.agreementPct)).toEqual([null,null]);
   expect(anonymousFeedbackReport(statements,[{answers:{current:'no',future:'no'},remark:''}]).statements.map(s=>s.agreementPct)).toEqual([0,0]);
  });
+ it('rounds at source boundaries and aggregates principles before rounding',()=>{
+  const submissions=Array.from({length:8},(_,i)=>({answers:{current:i===0?'yes' as const:'no' as const,future:i<7?'yes' as const:'no' as const},remark:''}));
+  const report=anonymousFeedbackReport(statements,submissions);
+  expect(report.statements.map(s=>s.agreementPct)).toEqual([12,88]);
+  expect(report.principles).toEqual([{principle:'Ownership',agreementPct:50}]);
+ });
  it('enforces the source hard ceiling of 220 words and only requires remarks at the applicable step',()=>{
   expect(()=>assertOverallRemark('')).not.toThrow();
   expect(()=>assertOverallRemark('',true)).toThrow();

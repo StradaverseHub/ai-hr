@@ -483,6 +483,11 @@ CREATE TRIGGER assessment_release_validate BEFORE INSERT OR UPDATE ON performanc
 REVOKE ALL ON FUNCTION app.assessment_release_validate() FROM PUBLIC;
 
 --> statement-breakpoint
+CREATE FUNCTION app.assessment_source_round(value numeric) RETURNS numeric LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN value-floor(value)=0.5 THEN CASE WHEN mod(floor(value),2)=0 THEN floor(value) ELSE floor(value)+1 END ELSE floor(value+0.5) END
+$$;
+REVOKE ALL ON FUNCTION app.assessment_source_round(numeric) FROM PUBLIC,ai_hr_app;
+
 -- Internal projection, deliberately NOT executable by ai_hr_app. It has no rater identities,
 -- relationships, raw scores, counts, evidence or justifications. The outer card enforces release.
 CREATE FUNCTION app.assessment_working_result(wanted_review uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -518,8 +523,11 @@ BEGIN
   IF NOT found_pot AND d.potential IS NOT NULL AND (d.potential_locked_at IS NOT NULL OR d.session_pot_lock IS NOT NULL OR d.tier='final') THEN pot:=d.potential;pot_source:=d.tier;found_pot:=true; END IF;
  END LOOP;
  -- Agreement percentages are unweighted. Weighting belongs only to the potential calculation.
- SELECT jsonb_build_object('statements',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s->>'id','principle',s->>'principle','text',s->>'text','future',(s->>'future')::boolean,'agreementPct',(
-  SELECT round(100.0*count(*) FILTER(WHERE a.answers->>(s->>'id')='yes')/nullif(count(*) FILTER(WHERE a.answers->>(s->>'id') IN ('yes','no')),0)) FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL)) ORDER BY ord) FROM jsonb_array_elements(r.statements) WITH ORDINALITY q(s,ord)),'[]'::jsonb),
+ SELECT jsonb_build_object('principles',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',q.principle,'agreementPct',q.pct) ORDER BY q.ord) FROM (
+  SELECT s->>'principle' principle,min(ord) ord,app.assessment_source_round(100.0*count(*) FILTER(WHERE a.answers->>(s->>'id')='yes')/nullif(count(*) FILTER(WHERE a.answers->>(s->>'id') IN ('yes','no')),0)) pct
+  FROM jsonb_array_elements(r.statements) WITH ORDINALITY st(s,ord) LEFT JOIN performance_onehr_panel a ON a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL GROUP BY s->>'principle'
+ ) q),'[]'::jsonb),'statements',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s->>'id','principle',s->>'principle','text',s->>'text','future',(s->>'future')::boolean,'agreementPct',(
+  SELECT app.assessment_source_round(100.0*count(*) FILTER(WHERE a.answers->>(s->>'id')='yes')/nullif(count(*) FILTER(WHERE a.answers->>(s->>'id') IN ('yes','no')),0)) FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL)) ORDER BY ord) FROM jsonb_array_elements(r.statements) WITH ORDINALITY q(s,ord)),'[]'::jsonb),
   'remarks',coalesce((SELECT jsonb_agg(btrim(a.remark) ORDER BY btrim(a.remark) COLLATE "C") FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(a.remark)<>''),'[]'::jsonb),
   'comments',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',c.key,'text',btrim(c.value)) ORDER BY c.key COLLATE "C",btrim(c.value) COLLATE "C") FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_each_text(a.principle_comments) c WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(c.value)<>'' AND EXISTS(SELECT 1 FROM jsonb_array_elements(r.statements) s WHERE s->>'principle'=c.key)),'[]'::jsonb)) INTO report;
  SELECT coalesce(jsonb_agg(jsonb_build_object('principle',v.principle,'band',CASE WHEN v.pct<=(cfg->>'lowMaxPct')::numeric THEN 'Low' WHEN v.pct<=(cfg->>'midMaxPct')::numeric THEN 'Mid' ELSE 'High' END) ORDER BY v.principle),'[]'::jsonb) INTO legacy_feedback

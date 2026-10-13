@@ -1,3 +1,4 @@
+import { sourceFigure } from './source-numeric';
 import { z } from 'zod';
 const value=z.number().finite().nullable();
 const label=z.string().nullable();
@@ -21,7 +22,7 @@ export const ratingRecordHeaders=[
  'Recorded at (UTC)','Last event','Frozen at (UTC)',
 ] as const;
 const sources:Record<string,string>={manager:'Line manager',hod:'HOD',bu:'BU CEO',bg:'BG CEO',group:'Calibration group',final:'Super admin override'};
-const figure=(v:number|null,precision=2)=>v==null?null:Number(v.toFixed(precision));
+const figure=sourceFigure;
 export function ratingRecordExportRow(record:RatingRecord):(string|number|null)[]{
  const s=record.snapshot,pmDigits=s.mechanism==='B'?1:2;
  return [s.employeeId,s.name,s.businessGroup,s.company,s.department,s.grade,s.title,s.mechanism,figure(s.selfScore,pmDigits),s.selfBand,
