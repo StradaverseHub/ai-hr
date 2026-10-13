@@ -53,6 +53,7 @@ export const openaiAdapter: AiAdapter = {
           { role: 'user', content: args.prompt },
         ],
       },args.signal?{signal:args.signal}:undefined);
+      if(args.signal&&(completion.choices[0]?.finish_reason==='length'||completion.choices[0]?.message.refusal))throw new AiGatewayError('No complete assessment was produced.');
       return (completion.choices[0]?.message?.content ?? '').trim();
     } catch (e) {
       throw mapError(e);

@@ -43,6 +43,7 @@ export const googleAdapter: AiAdapter = {
         contents: args.prompt,
         config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:{}) },
       });
+      if(args.signal&&(response.promptFeedback?.blockReason||response.candidates?.some(candidate=>['MAX_TOKENS','SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??''))))throw new AiGatewayError('No complete assessment was produced.');
       return (response.text ?? '').trim();
     } catch (e) {
       throw mapError(e);

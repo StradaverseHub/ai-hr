@@ -58,6 +58,7 @@ export const anthropicAdapter: AiAdapter = {
         system: args.system,
         messages: [{ role: 'user', content: args.prompt }],
       },args.signal?{signal:args.signal}:undefined);
+      if(args.signal&&(message.stop_reason==='max_tokens'||message.stop_reason==='refusal'))throw new AiGatewayError('No complete assessment was produced.');
       return message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)

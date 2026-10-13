@@ -18,6 +18,10 @@ describe('shared image-reading gateway with real provider transports',()=>{
    let aborted=false;transport.mockImplementation((input:RequestInfo|URL,init?:RequestInit)=>new Promise((_resolve,reject)=>{const signal=init?.signal??(input instanceof Request?input.signal:null);if(!signal)throw Error('Missing transport cancellation.');const abort=()=>{aborted=true;reject(new DOMException('fixture aborted','AbortError'));};if(signal.aborted)abort();else signal.addEventListener('abort',abort,{once:true});}));
    await expect(generateDraft({provider,model:'fixture',apiKey:'fixture-local-only'},{system:'Assess supplied facts.',prompt:'Authorized case.',timeoutMs:30})).rejects.toThrow();expect(aborted).toBe(true);expect(transport).toHaveBeenCalledOnce();
   });
+  it(`${provider} rejects a truncated assessment even when its partial content is valid JSON`,async()=>{
+   const content=response(provider,'{"verdict":"well_justified"}');if('choices' in content&&content.choices)content.choices[0].finish_reason='length';else if('stop_reason' in content)content.stop_reason='max_tokens';else content.candidates[0].finishReason='MAX_TOKENS';
+   transport.mockResolvedValue(new Response(JSON.stringify(content),{headers:{'content-type':'application/json'}}));await expect(generateDraft({provider,model:'fixture',apiKey:'fixture-local-only'},{system:'Assess supplied facts.',prompt:'Authorized case.',timeoutMs:1000})).rejects.toThrow();expect(transport).toHaveBeenCalledOnce();
+  });
   it(`${provider} sends only image bytes and the fixed transcription instruction through its adapter`,async()=>{
    let request:unknown;transport.mockImplementation(async(input:RequestInfo|URL,init?:RequestInit)=>{request=await body(input,init);return new Response(JSON.stringify(response(provider,'Verified 15.9 units.')),{status:200,headers:{'content-type':'application/json'}});});
    expect(supportsImageReading(provider)).toBe(true);expect(await readImage({provider,model:'fixture',apiKey:'fixture-local-only'},{data:png,mimeType:'image/png'})).toBe('Verified 15.9 units.');expect(transport).toHaveBeenCalledOnce();
