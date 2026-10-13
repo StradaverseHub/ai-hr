@@ -119,13 +119,49 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)))).toHaveLength(1);
   });
 
-  async function complete(reviewCompetencies=true){
+  it('retains each reviewer’s own overall remark and releases attributed words only when every KPI is locked',async()=>{
+    const matrix=peers[0],ids=[randomUUID(),randomUUID()],scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,ids.map((id,i)=>({id,title:`Delivery ${i+1}`,description:'',weightBp:5000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId})));
+    await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,ids[1],matrix.employmentId);
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,(await view(self)).kpis,true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,ids.map(id=>({id,actual:100,note:'Delivered the agreed work'})),'Both deliverables met target.');
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Attribution scope',companyId:b.companyId,tier:'hod',reviewerUserIds:[peers[1].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const save=async(ctx:SessionContext,id:string,remark:string)=>{const current=await view(ctx);await perf.saveAssessmentDraft(ctx,reviewId,current.revision,current.drafts.find(d=>d.kind==='moderation')?.revision??null,{kind:'moderation',lines:[{id,actual:100,note:'Private numeric explanation'}],remark});};
+    await save(mgr,ids[0],'Verified the line manager deliverable.');await save(matrix.ctx,ids[1],'Verified the matrix deliverable.');
+    expect((await view()).ownReviewerRemark).toBe('Verified the line manager deliverable.');expect((await view(matrix.ctx)).ownReviewerRemark).toBe('Verified the matrix deliverable.');
+    expect((await view()).drafts.find(d=>d.kind==='moderation')?.payload).toMatchObject({remark:'Verified the line manager deliverable.'});
+    expect((await owner.db.select().from(schema.assessmentDraft).where(eq(schema.assessmentDraft.actorUserId,mgr.userId!)))[0].payload).toMatchObject({remark:''});
+    expect((await view(self)).reviewerRemarks).toEqual([]);expect((await view(self)).managerRemark).toBe('');
+    const [pendingSharedRow]=await withTenant(self,tx=>tx.select({managerRemark:schema.onehrReview.managerRemark,managerRemarkByUserId:schema.onehrReview.managerRemarkByUserId}).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)));expect(pendingSharedRow).toEqual({managerRemark:'',managerRemarkByUserId:null});
+    expect((await perf.getAssessmentInsightSource(peers[1].ctx,reviewId,sid)).facts.mgr_remarks).toEqual([]);
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentReviewerRemark))).toEqual([]);
+    await expect(withTenant(matrix.ctx,tx=>tx.insert(schema.assessmentReviewerRemark).values({tenantId:b.tenantId,reviewId,actorUserId:mgr.userId!,actorRole:'line_manager',remark:'Forged author'}))).rejects.toThrow();
+    await expect(withTenant(mgr,tx=>tx.update(schema.onehrReview).set({managerRemark:'Overwrite the cache'}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
+    await perf.submitAssessmentModeration(mgr,reviewId,(await view()).revision,[{id:ids[0],actual:100,note:'Verified delivery'}],'Verified the line manager deliverable.');
+    expect((await view(self)).reviewerRemarks).toEqual([]);expect((await perf.getAssessmentInsightSource(peers[1].ctx,reviewId,sid)).facts.mgr_remarks).toEqual([]);
+    await expect(withTenant(mgr,tx=>tx.update(schema.assessmentReviewerRemark).set({remark:'Rewritten after confirmation'}).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!)))).rejects.toThrow();
+    const [before]=await owner.db.select().from(schema.assessmentReviewerRemark).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!));
+    await withTenant(mgr,tx=>tx.update(schema.assessmentReviewerRemark).set({actorRole:'approver',updatedAt:new Date(0)}).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!)));
+    const [after]=await owner.db.select().from(schema.assessmentReviewerRemark).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!));expect(after).toEqual(before);
+    await perf.submitAssessmentModeration(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,[{id:ids[1],actual:100,note:'Verified matrix delivery'}],'Verified the matrix deliverable.');
+    const publicRemarks=(await view(self)).reviewerRemarks;expect(publicRemarks).toEqual([
+      expect.objectContaining({actorUserId:mgr.userId,author:'Assessment manager',role:'Line manager',remark:'Verified the line manager deliverable.'}),
+      expect.objectContaining({actorUserId:matrix.ctx.userId,author:'Peer 0',role:'Approver',remark:'Verified the matrix deliverable.'}),
+    ]);
+    expect((await perf.getAssessmentInsightSource(peers[1].ctx,reviewId,sid)).facts.mgr_remarks).toEqual(publicRemarks.map(({author,remark,role})=>({author,remark,role})));
+    const [legacy]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(legacy).toMatchObject({managerRemark:'Verified the line manager deliverable.',managerRemarkByUserId:mgr.userId});
+    expect(await withTenant(peers[2].ctx,tx=>tx.select().from(schema.assessmentReviewerRemark))).toEqual([]);
+  });
+
+  async function complete(reviewCompetencies=true,overallRemark=''){
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver agreed outcomes',description:'Evidence-led delivery',weightBp:10000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed objectives');
     await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'Completed outcomes'}],'Completed the agreed outcomes.');
+    if(overallRemark)await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:100,note:'Verified'}],remark:overallRemark});
     await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,100,'Verified');
-    await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','');
+    await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME',overallRemark);
     await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work.');
     if(reviewCompetencies)await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true);
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
@@ -134,6 +170,13 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
       const answer=i<2?'yes':'no';await perf.submitOnehrFeedback(peers[i].ctx,request.id,Object.fromEntries(card.statements.map(s=>[s.id,answer])),answer==='yes'?'Consistently observed these behaviours':'');
     }
   }
+  it('freezes reviewer authorship with the result and rejects changes to the underlying authored record',async()=>{
+    await complete(true,'Verified delivery across the period.');
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [frozen]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));
+    expect(frozen.result).toMatchObject({provenance:{reviewerRemarks:[expect.objectContaining({actorUserId:mgr.userId,author:'Assessment manager',remark:'Verified delivery across the period.'})]}});
+    await expect(withTenant(mgr,tx=>tx.update(schema.assessmentReviewerRemark).set({remark:'Rewrite frozen words'}).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!)))).rejects.toThrow();
+  });
   it('runs the complete assessment and releases only explicitly selected frozen components',async()=>{
     await complete();expect((await view()).potential).toBe('High');
     expect((await view(self)).competencies.map(c=>c.self)).toEqual(['no','no']);

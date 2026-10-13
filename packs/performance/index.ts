@@ -122,6 +122,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_ai_use', note: 'successful draft usage with per-actor field limits at Malaysia midnight' },
     { table: 'performance_assessment_file_text', note: 'derived file text cache; visibility always follows the native attachment' },
     { table: 'performance_assessment_insight', note: 'reviewer insight cache; live assignment and submitted-fact fingerprint are rechecked' },
+    { table: 'performance_assessment_reviewer_remark', note: 'each approver owns their overall remark; confirmed authorship is retained' },
     { table: 'performance_kpi_library', note: 'scoped KPI definitions and scoring templates; ADR-0103' },
     { table: 'performance_assessment_attachment_link', note: 'KPI attachment provenance using the native attachment store; ADR-0103' },
     { table: 'performance_assessment_talent', note: 'shared human talent decisions across calibration tiers; ADR-0103' },

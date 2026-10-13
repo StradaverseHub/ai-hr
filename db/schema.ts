@@ -10023,6 +10023,7 @@ export const onehrReview = pgTable('performance_onehr_review', {
   resultsSubmittedAt: timestamp('results_submitted_at', {withTimezone:true}), competencyStatus: text('competency_status').notNull().default('pending'),
   managerPerformance: text('manager_performance'), managerScore: numeric('manager_score',{precision:20,scale:8}),
   managerRemark: text('manager_remark').notNull().default(''), selfRemark:text('self_remark').notNull().default(''),
+  managerRemarkByUserId:uuid('manager_remark_by_user_id').references(()=>appUser.id),
   competencySelfRemark:text('competency_self_remark').notNull().default(''), competencyManagerRemark:text('competency_manager_remark').notNull().default(''),
   submittedProof:jsonb('submitted_proof').$type<{attachmentId:string;kpiId:string}[]>().notNull().default([]),
   revision: integer('revision').notNull().default(1), createdAt: createdAt(),
@@ -10162,6 +10163,11 @@ export const assessmentInsight = pgTable('performance_assessment_insight', {
  fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/performance-insight-model').PerformanceInsight>().notNull(),
  retry:boolean('retry').notNull().default(false),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('performance_assessment_insight_actor_uq').on(t.reviewId,t.actorUserId,t.contextId)]);
+// Authoritative PM overall remarks. The legacy review column is a guarded derived projection.
+export const assessmentReviewerRemark = pgTable('performance_assessment_reviewer_remark', {
+ id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').references(()=>appUser.id),
+ actorRole:text('actor_role').notNull(),remark:text('remark').notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('assessment_reviewer_remark_actor_uq').on(t.reviewId,t.actorUserId),uniqueIndex('assessment_reviewer_remark_legacy_uq').on(t.reviewId).where(sql`actor_user_id IS NULL`)]);
 export const performanceKpiLibrary = pgTable('performance_kpi_library', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').references(()=>company.id),
   groupCompanyId:uuid('group_company_id').references(()=>company.id),tier:integer('tier').notNull().default(0),

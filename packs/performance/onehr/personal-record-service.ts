@@ -48,7 +48,7 @@ export async function getAssessmentPersonalRecord(ctx:SessionContext,reviewId:st
  const current=v?{
   id:v.reviewId,name:v.cycle.name,
   kpis:v.kpis.map(k=>({id:k.id,title:k.title,weightBp:k.weightBp,unit:k.unit,actual:privateResults?.kind==='results'?privateResults.lines.find(l=>l.id===k.id)?.actual??k.actual:k.actual,note:privateResults?.kind==='results'?privateResults.lines.find(l=>l.id===k.id)?.note??k.note:k.note,locked:k.locked,approvedActual:k.locked?k.approvedActual:null,managerRemark:k.locked?k.moderationRemark:'',band:k.locked&&k.approvedActual!==null?bandFor(scoreKPI(k.approvedActual,k.scoring),k.scoring.mechanism==='A'?v.policy.aBands:v.policy.bBands.find(b=>b.companyId===v.companyId)!.minima):null})),
-  allLocked,performance:allLocked?v.managerPerformance:null,managerRemark:allLocked?v.managerRemark:'',ownRemark:v.selfRemark,
+  allLocked,performance:allLocked?v.managerPerformance:null,managerRemark:allLocked?v.managerRemark:'',reviewerRemarks:allLocked?v.reviewerRemarks:[],ownRemark:v.selfRemark,
   competencyStatus:v.competencyStatus,competencies:v.competencies.map(c=>({id:c.id,text:c.text,principle:c.principle,self:privateCompetencies?.kind==='competency_self'?privateCompetencies.answers[c.id]?.answer??c.self:c.self,manager:v.competencyStatus==='reviewed'?c.manager??c.self:null})),
   competencyOwnRemark:v.competencySelfRemark,competencyManagerRemark:v.competencyStatus==='reviewed'?v.competencyManagerRemark:'',
   report:personalFeedback(v.anonymousFeedback),plan:data.plans.find(p=>p.planYear===v.planYear)??null,

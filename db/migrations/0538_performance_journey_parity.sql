@@ -1035,6 +1035,106 @@ REVOKE ALL ON FUNCTION app.assessment_file_text_validate() FROM PUBLIC;
 CREATE TRIGGER assessment_file_text_guard BEFORE INSERT OR UPDATE ON performance_assessment_file_text FOR EACH ROW EXECUTE FUNCTION app.assessment_file_text_validate();
 
 --> statement-breakpoint
+-- An overall PM remark belongs to its author, including matrix co-approvers.
+-- The legacy manager_remark column below is a derived compatibility projection.
+ALTER TABLE performance_onehr_review ADD COLUMN manager_remark_by_user_id uuid REFERENCES app_user(id);
+CREATE TABLE performance_assessment_reviewer_remark (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
+ actor_user_id uuid REFERENCES app_user(id),actor_role text NOT NULL CHECK(actor_role IN ('line_manager','approver','legacy')),
+ remark text NOT NULL CHECK(length(remark)<=4000),updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id)
+);
+CREATE UNIQUE INDEX assessment_reviewer_remark_legacy_uq ON performance_assessment_reviewer_remark(review_id) WHERE actor_user_id IS NULL;
+-- A historical author is recovered from the actual confirmation event, never guessed from today's org.
+INSERT INTO performance_assessment_reviewer_remark(tenant_id,review_id,actor_user_id,actor_role,remark,updated_at)
+ SELECT r.tenant_id,r.review_id,actor.id,CASE WHEN actor.id IS NULL THEN 'legacy' WHEN actor.person_id=m.person_id THEN 'line_manager' ELSE 'approver' END,r.manager_remark,coalesce(saved.occurred_at,r.created_at)
+ FROM performance_onehr_review r JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id LEFT JOIN employment m ON m.id=pr.reviewer_employment_id AND m.tenant_id=pr.tenant_id
+ LEFT JOIN LATERAL (SELECT d.actor_id,d.occurred_at FROM domain_event d WHERE d.tenant_id=r.tenant_id AND d.aggregate_id=r.review_id AND d.event_type IN ('onehr.performance-confirmed','onehr.moderation-submitted') ORDER BY d.occurred_at DESC,d.id DESC LIMIT 1) saved ON true
+ LEFT JOIN app_user actor ON actor.id=saved.actor_id AND actor.tenant_id=r.tenant_id WHERE trim(r.manager_remark)<>'';
+-- Preserve any already-saved private reviewer words when upgrading the native draft representation.
+INSERT INTO performance_assessment_reviewer_remark(tenant_id,review_id,actor_user_id,actor_role,remark,updated_at)
+ SELECT d.tenant_id,d.review_id,d.actor_user_id,CASE WHEN u.person_id=m.person_id THEN 'line_manager' ELSE 'approver' END,trim(d.payload->>'remark'),d.updated_at
+ FROM performance_assessment_draft d JOIN performance_onehr_review r ON r.review_id=d.review_id AND r.tenant_id=d.tenant_id JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id
+ JOIN app_user u ON u.id=d.actor_user_id AND u.tenant_id=d.tenant_id LEFT JOIN employment m ON m.id=pr.reviewer_employment_id AND m.tenant_id=pr.tenant_id
+ WHERE d.kind='moderation' AND d.context_id=d.review_id AND trim(coalesce(d.payload->>'remark',''))<>'' AND NOT EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id)
+ ON CONFLICT(review_id,actor_user_id) DO NOTHING;
+-- The shared review row must never cache private in-progress words.
+WITH cache AS (
+ SELECT r.review_id,CASE WHEN settled.ok THEN coalesce(n.remark,'') ELSE '' END AS remark,CASE WHEN settled.ok THEN n.actor_user_id ELSE NULL END AS actor_user_id
+ FROM performance_onehr_review r CROSS JOIN LATERAL (SELECT r.results_submitted_at IS NOT NULL AND jsonb_array_length(r.kpis)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.kpis) k WHERE NOT coalesce((k->>'locked')::boolean,false)) AS ok) settled
+ LEFT JOIN LATERAL (SELECT note.remark,note.actor_user_id FROM performance_assessment_reviewer_remark note WHERE note.review_id=r.review_id AND note.tenant_id=r.tenant_id AND note.actor_role IN ('line_manager','legacy') ORDER BY CASE note.actor_role WHEN 'line_manager' THEN 0 ELSE 1 END,note.updated_at DESC,note.id DESC LIMIT 1) n ON true
+ WHERE NOT EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id) AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=r.cycle_id AND c.tenant_id=r.tenant_id AND c.status<>'closed')
+)
+UPDATE performance_onehr_review r SET manager_remark=cache.remark,manager_remark_by_user_id=cache.actor_user_id FROM cache WHERE cache.review_id=r.review_id AND (r.manager_remark IS DISTINCT FROM cache.remark OR r.manager_remark_by_user_id IS DISTINCT FROM cache.actor_user_id);
+CREATE FUNCTION app.assessment_reviewer_remark_pending(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r CROSS JOIN LATERAL jsonb_array_elements(r.kpis) k CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(k->'approvalChain','[]'::jsonb))>0 THEN k->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',k->>'moderatorEmploymentId','at',NULL)) END) step
+  JOIN employment m ON m.id=(step->>'employmentId')::uuid AND m.tenant_id=r.tenant_id JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id
+  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND NOT coalesce((k->>'hrOwned')::boolean,false) AND NOT coalesce((k->>'locked')::boolean,false) AND step->>'at' IS NULL AND app.onehr_moderator(r.review_id))
+$$;
+CREATE FUNCTION app.assessment_reviewer_remarks_settled(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND r.results_submitted_at IS NOT NULL AND jsonb_array_length(r.kpis)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.kpis) k WHERE NOT coalesce((k->>'locked')::boolean,false)))
+$$;
+CREATE FUNCTION app.assessment_reviewer_remarks_reader(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN app_user u ON u.id=app.current_user_id() AND u.tenant_id=r.tenant_id
+  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND (app.is_self_person(e.person_id) OR app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id) OR app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
+$$;
+CREATE FUNCTION app.assessment_locked_reviewer_remarks(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_agg(jsonb_build_object('actorUserId',n.actor_user_id,'author',coalesce(p.full_name,'Historical reviewer'),'remark',n.remark,'role',CASE WHEN u.person_id=manager.person_id THEN 'Line manager' ELSE 'Approver' END,'legacy',n.actor_user_id IS NULL) ORDER BY CASE WHEN u.person_id=manager.person_id THEN 0 ELSE 1 END,n.updated_at,n.id),'[]'::jsonb)
+ FROM performance_assessment_reviewer_remark n JOIN performance_review pr ON pr.id=n.review_id AND pr.tenant_id=n.tenant_id LEFT JOIN employment manager ON manager.id=pr.reviewer_employment_id AND manager.tenant_id=pr.tenant_id
+ LEFT JOIN app_user u ON u.id=n.actor_user_id AND u.tenant_id=n.tenant_id LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE n.review_id=wanted_review AND n.tenant_id=app.current_tenant_id() AND trim(n.remark)<>'' AND app.assessment_reviewer_remarks_settled(wanted_review) AND app.assessment_reviewer_remarks_reader(wanted_review)
+$$;
+REVOKE ALL ON FUNCTION app.assessment_reviewer_remark_pending(uuid),app.assessment_reviewer_remarks_settled(uuid),app.assessment_reviewer_remarks_reader(uuid),app.assessment_locked_reviewer_remarks(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_reviewer_remark_pending(uuid),app.assessment_reviewer_remarks_settled(uuid),app.assessment_reviewer_remarks_reader(uuid),app.assessment_locked_reviewer_remarks(uuid) TO ai_hr_app;
+ALTER TABLE performance_assessment_reviewer_remark ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_reviewer_remark FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_reviewer_remark TO ai_hr_app;
+CREATE POLICY assessment_reviewer_remark_read ON performance_assessment_reviewer_remark FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_reviewer_remarks_reader(review_id) AND (actor_user_id=app.current_user_id() OR app.assessment_reviewer_remarks_settled(review_id)));
+CREATE POLICY assessment_reviewer_remark_insert ON performance_assessment_reviewer_remark FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND (app.onehr_manager(review_id) OR app.onehr_moderator(review_id)));
+CREATE POLICY assessment_reviewer_remark_update ON performance_assessment_reviewer_remark FOR UPDATE USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND (app.onehr_manager(review_id) OR app.onehr_moderator(review_id))) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND (app.onehr_manager(review_id) OR app.onehr_moderator(review_id)));
+CREATE FUNCTION app.assessment_reviewer_remark_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r performance_onehr_review; c performance_onehr_cycle; status text;
+BEGIN
+ SELECT * INTO r FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id;
+ SELECT * INTO c FROM performance_onehr_cycle WHERE cycle_id=r.cycle_id AND tenant_id=r.tenant_id;
+ SELECT review_cycle.status INTO status FROM review_cycle WHERE id=r.cycle_id AND tenant_id=r.tenant_id;
+ IF r.review_id IS NULL OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)) OR NOT app.assessment_review_participates(r.review_id) THEN RAISE EXCEPTION 'Invalid reviewer remark actor or assessment'; END IF;
+ IF EXISTS(SELECT 1 FROM performance_onehr_result WHERE review_id=r.review_id) OR status NOT IN ('open','calibration') OR c.policy->>'kind'='quarterly' OR NOT coalesce((c.policy->'modules'->>'pm')::boolean,false) THEN RAISE EXCEPTION 'Reviewer remarks are read-only'; END IF;
+ IF c.policy->'windows'->'pm_approve'->>'opensAt' IS NOT NULL AND now()<(c.policy->'windows'->'pm_approve'->>'opensAt')::timestamptz OR c.policy->'windows'->'pm_approve'->>'closesAt' IS NOT NULL AND now()>=(c.policy->'windows'->'pm_approve'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'Performance review is not open'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id) THEN RAISE EXCEPTION 'Reviewer remark identity is immutable'; END IF;
+ NEW.remark:=trim(NEW.remark);
+ IF NOT app.assessment_reviewer_remark_pending(r.review_id) AND NOT (TG_OP='INSERT' AND app.onehr_manager(r.review_id) AND r.manager_performance IS NULL) THEN
+  IF TG_OP='UPDATE' AND NEW.remark IS NOT DISTINCT FROM OLD.remark THEN NEW.actor_role:=OLD.actor_role;NEW.updated_at:=OLD.updated_at;RETURN NEW; END IF;
+  RAISE EXCEPTION 'Your completed reviewer remark is immutable';
+ END IF;
+ IF NEW.remark<>'' AND cardinality(regexp_split_to_array(NEW.remark,'\s+'))>220 THEN RAISE EXCEPTION 'Overall review remarks are limited to 220 words'; END IF;
+ NEW.actor_role:=CASE WHEN app.onehr_manager(r.review_id) THEN 'line_manager' ELSE 'approver' END;NEW.updated_at:=now();RETURN NEW;
+END $$;
+CREATE FUNCTION app.assessment_manager_remark_cache_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE expected_text text; expected_actor uuid;
+BEGIN
+ IF NEW.manager_remark IS DISTINCT FROM OLD.manager_remark OR NEW.manager_remark_by_user_id IS DISTINCT FROM OLD.manager_remark_by_user_id THEN
+  IF app.assessment_reviewer_remarks_settled(NEW.review_id) THEN
+  SELECT n.remark,n.actor_user_id INTO expected_text,expected_actor FROM performance_assessment_reviewer_remark n WHERE n.review_id=NEW.review_id AND n.tenant_id=NEW.tenant_id AND n.actor_role IN ('line_manager','legacy') ORDER BY CASE n.actor_role WHEN 'line_manager' THEN 0 ELSE 1 END,n.updated_at DESC,n.id DESC LIMIT 1;
+  END IF;
+  IF NEW.manager_remark IS DISTINCT FROM coalesce(expected_text,'') OR NEW.manager_remark_by_user_id IS DISTINCT FROM expected_actor THEN RAISE EXCEPTION 'The manager remark is derived from its authored reviewer record'; END IF;
+ END IF;RETURN NEW;
+END $$;
+CREATE FUNCTION app.assessment_manager_remark_cache_sync() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE expected_text text; expected_actor uuid;
+BEGIN
+ IF app.assessment_reviewer_remarks_settled(NEW.review_id) THEN
+ SELECT n.remark,n.actor_user_id INTO expected_text,expected_actor FROM performance_assessment_reviewer_remark n WHERE n.review_id=NEW.review_id AND n.tenant_id=NEW.tenant_id AND n.actor_role IN ('line_manager','legacy') ORDER BY CASE n.actor_role WHEN 'line_manager' THEN 0 ELSE 1 END,n.updated_at DESC,n.id DESC LIMIT 1;
+ END IF;
+ UPDATE performance_onehr_review SET manager_remark=coalesce(expected_text,''),manager_remark_by_user_id=expected_actor WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id AND (manager_remark IS DISTINCT FROM coalesce(expected_text,'') OR manager_remark_by_user_id IS DISTINCT FROM expected_actor);RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_reviewer_remark_validate(),app.assessment_manager_remark_cache_validate(),app.assessment_manager_remark_cache_sync() FROM PUBLIC;
+CREATE TRIGGER assessment_reviewer_remark_guard BEFORE INSERT OR UPDATE ON performance_assessment_reviewer_remark FOR EACH ROW EXECUTE FUNCTION app.assessment_reviewer_remark_validate();
+CREATE TRIGGER assessment_manager_remark_cache_guard BEFORE UPDATE ON performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.assessment_manager_remark_cache_validate();
+CREATE TRIGGER assessment_manager_remark_cache_sync AFTER INSERT OR UPDATE ON performance_assessment_reviewer_remark FOR EACH ROW EXECUTE FUNCTION app.assessment_manager_remark_cache_sync();
+CREATE TRIGGER assessment_manager_remark_publish AFTER UPDATE OF kpis,results_submitted_at ON performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.assessment_manager_remark_cache_sync();
+
+--> statement-breakpoint
 -- A scoped reviewer projection. It exposes submitted facts, never private drafts, peer answers or another scope.
 CREATE FUNCTION app.assessment_insight_source(wanted_review uuid,wanted_context uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  WITH authorized AS (
@@ -1057,10 +1157,9 @@ CREATE FUNCTION app.assessment_insight_source(wanted_review uuid,wanted_context 
  )
  SELECT jsonb_build_object('reviewId',a.review_id,'cycleId',a.cycle_id,'companyId',a.company_id,'name',a.full_name,'revision',a.revision,'reviewerKind',a.reviewer_kind,
   'kpis',a.visible_kpis,'submitted',a.results_submitted_at IS NOT NULL,'selfRemark',CASE WHEN a.results_submitted_at IS NOT NULL AND (a.reviewer_kind='calibrator' OR app.onehr_manager(a.review_id)) THEN a.self_remark ELSE '' END,
-  'managerRemark',CASE WHEN a.reviewer_kind='calibrator' AND a.manager_performance IS NOT NULL THEN a.manager_remark ELSE '' END,
+  'reviewerRemarks',CASE WHEN a.reviewer_kind='calibrator' THEN app.assessment_locked_reviewer_remarks(a.review_id) ELSE '[]'::jsonb END,
   'bands',jsonb_build_object('aBands',a.policy->'aBands','bBands',a.policy->'bBands'),'evidenceEnabled',coalesce((a.policy->'modules'->>'evidence')::boolean,false),
   'names',coalesce((SELECT jsonb_object_agg(m.id::text,p.full_name) FROM employment m JOIN person p ON p.id=m.person_id AND p.tenant_id=m.tenant_id WHERE m.tenant_id=a.tenant_id AND EXISTS(SELECT 1 FROM jsonb_array_elements(a.visible_kpis) k WHERE k->>'moderatorEmploymentId'=m.id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) ap WHERE ap->>'employmentId'=m.id::text))),'{}'::jsonb),
-  'managerName',coalesce((SELECT p.full_name FROM performance_review pr JOIN employment m ON m.id=pr.reviewer_employment_id AND m.tenant_id=pr.tenant_id JOIN person p ON p.id=m.person_id AND p.tenant_id=m.tenant_id WHERE pr.id=a.review_id),''),
   'fileLinks',CASE WHEN a.results_submitted_at IS NOT NULL THEN coalesce((SELECT jsonb_agg(link ORDER BY link->>'attachmentId',link->>'kpiId') FROM jsonb_array_elements(app.assessment_kpi_file_links(a.review_id)) link WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(a.visible_kpis) k WHERE k->>'id'=link->>'kpiId' AND NOT coalesce((k->>'hrOwned')::boolean,false))),'[]'::jsonb) ELSE '[]'::jsonb END,
   'trail',CASE WHEN a.reviewer_kind='calibrator' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('tier',s.tier,'label',CASE s.tier WHEN 'hod' THEN 'HOD' WHEN 'bu' THEN 'BU CEO' WHEN 'bg' THEN 'BG CEO' ELSE 'Group' END,'by',coalesce((SELECT p.full_name FROM domain_event d JOIN app_user u ON u.id=d.actor_id AND u.tenant_id=d.tenant_id JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE d.tenant_id=a.tenant_id AND d.aggregate_id=s.id AND d.event_type='onehr.calibration-recorded' AND d.payload->>'reviewId'=a.review_id::text ORDER BY d.occurred_at DESC,d.id DESC LIMIT 1),''),'from',ce.seen_performance,'band',ce.performance,'note',ce.performance_note) ORDER BY array_position(ARRAY['hod','bu','bg','group','final'],s.tier))
    FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration s ON s.id=ce.session_id AND s.tenant_id=ce.tenant_id
