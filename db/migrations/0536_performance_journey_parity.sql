@@ -104,6 +104,7 @@ BEGIN
   IF TG_TABLE_NAME='performance_assessment_attachment_link' THEN
    IF NOT EXISTS(SELECT 1 FROM performance_attachment WHERE id=NEW.attachment_id AND review_id=NEW.review_id AND tenant_id=tid) OR NOT EXISTS(SELECT 1 FROM performance_onehr_review r, jsonb_array_elements(r.kpis) k WHERE r.review_id=NEW.review_id AND k->>'id'=NEW.kpi_id::text) THEN RAISE EXCEPTION 'Attachment must belong to this assessment and KPI'; END IF;
    IF EXISTS(SELECT 1 FROM performance_onehr_result WHERE review_id=NEW.review_id) THEN RAISE EXCEPTION 'Finalized assessment evidence is immutable'; END IF;
+   IF EXISTS(SELECT 1 FROM performance_attachment a WHERE a.id=NEW.attachment_id AND a.tenant_id=tid AND a.evidence_id IS NOT NULL) THEN RAISE EXCEPTION 'Evidence files inherit their KPI links from their entry'; END IF;
   ELSE
    IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.actor_user_id AND tenant_id=tid) THEN RAISE EXCEPTION 'Invalid assessment actor'; END IF;
    IF TG_TABLE_NAME='performance_assessment_draft' THEN
@@ -189,9 +190,14 @@ BEGIN
      AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(n->'kpis') k WHERE k->>'id'=old_k->>'id' AND k=old_k)
    ) THEN RAISE EXCEPTION 'Company-owned KPI results are read-only'; END IF;
   END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND n->'submitted_proof' IS DISTINCT FROM o->'submitted_proof' THEN
+   IF o->>'results_submitted_at' IS NOT NULL THEN RAISE EXCEPTION 'Submitted KPI proof is immutable'; END IF;
+   IF jsonb_typeof(n->'submitted_proof') IS DISTINCT FROM 'array' OR n->>'results_submitted_at' IS NULL THEN RAISE EXCEPTION 'Proof belongs to a confirmed result'; END IF;
+   IF EXISTS(SELECT 1 FROM jsonb_array_elements(n->'submitted_proof') proof WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(app.assessment_kpi_file_links((n->>'review_id')::uuid)) available WHERE available->>'attachmentId'=proof->>'attachmentId' AND available->>'kpiId'=proof->>'kpiId')) THEN RAISE EXCEPTION 'Only available KPI proof can be confirmed'; END IF;
+  END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND (n->'company_id' IS DISTINCT FROM o->'company_id' OR n->'grade' IS DISTINCT FROM o->'grade' OR n->'statements' IS DISTINCT FROM o->'statements') THEN RAISE EXCEPTION 'assessment opening snapshot is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_cycle' AND n->'participation_opened_on' IS DISTINCT FROM o->'participation_opened_on' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') THEN RAISE EXCEPTION 'Participation opening date is immutable'; END IF;
-  IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') AND ((n->'policy')-'windows' IS DISTINCT FROM (o->'policy')-'windows' OR EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status='closed')) THEN RAISE EXCEPTION 'An opened assessment policy is immutable; only active deadlines can change'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') AND ((n->'policy')-ARRAY['windows','modules'] IS DISTINCT FROM (o->'policy')-ARRAY['windows','modules'] OR EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status='closed')) THEN RAISE EXCEPTION 'An opened assessment policy is immutable; only active deadlines and module switches can change'; END IF;
   IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' THEN
    IF (SELECT coalesce(jsonb_agg(g->'id' ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g->'id' ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) THEN RAISE EXCEPTION 'Shared goal identities are immutable'; END IF;
    IF o->>'status'='closed' AND ((SELECT coalesce(jsonb_agg(g-ARRAY['status','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g-ARRAY['status','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) OR n->'manager_comment' IS DISTINCT FROM o->'manager_comment') THEN RAISE EXCEPTION 'Closed plan definitions and remarks are immutable'; END IF;
@@ -216,6 +222,7 @@ BEGIN
    ) THEN RAISE EXCEPTION 'Submitted feedback is immutable except scoped HR archive, restore or reset-to-draft'; END IF;
    IF (n->'reset_at' IS DISTINCT FROM o->'reset_at' OR n->'archive_reason' IS DISTINCT FROM o->'archive_reason') AND (NOT app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND app.is_self_person(e.person_id))) THEN RAISE EXCEPTION 'Only scoped HR may reset or archive feedback'; END IF;
   END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=r.cycle_id AND c.tenant_id=tid AND c.status='closed') THEN RAISE EXCEPTION 'An archived assessment is read-only'; END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=rid) THEN RAISE EXCEPTION 'A finalized assessment review is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_evidence' THEN
    IF n->'author_user_id' IS DISTINCT FROM o->'author_user_id' THEN RAISE EXCEPTION 'Evidence authorship is immutable'; END IF;
@@ -792,3 +799,139 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_panel_release_changed() FROM PUBLIC;
 CREATE TRIGGER assessment_panel_release_changed AFTER INSERT OR UPDATE ON performance_onehr_panel FOR EACH ROW EXECUTE FUNCTION app.assessment_panel_release_changed();
+
+--> statement-breakpoint
+-- Bytes remain in the native file store. An optional evidence edge owns the file's audience.
+ALTER TABLE performance_onehr_evidence DROP CONSTRAINT performance_onehr_evidence_body_check;
+ALTER TABLE performance_onehr_evidence ADD CONSTRAINT performance_onehr_evidence_body_check CHECK(length(body) BETWEEN 1 AND 1200 OR body='' AND kind='recognition' AND coalesce((details->>'fileOnly')::boolean,false));
+ALTER TABLE performance_onehr_review ADD COLUMN submitted_proof jsonb NOT NULL DEFAULT '[]';
+CREATE INDEX assessment_submitted_proof_employment ON performance_onehr_review(employment_id) WHERE results_submitted_at IS NOT NULL;
+ALTER TABLE performance_attachment ADD COLUMN evidence_id uuid REFERENCES performance_onehr_evidence(id) ON DELETE CASCADE;
+ALTER TABLE performance_attachment ADD COLUMN removed_at timestamptz;
+CREATE INDEX assessment_evidence_files ON performance_attachment(evidence_id) WHERE evidence_id IS NOT NULL AND removed_at IS NULL;
+
+CREATE FUNCTION app.assessment_file_read(wanted_review uuid,wanted_evidence uuid,wanted_file uuid,author uuid,removed timestamptz) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN r.review_id IS NULL THEN NULL ELSE removed IS NULL
+  AND coalesce((c.policy->'modules'->>'evidence')::boolean,false)
+  AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=r.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+  AND (CASE WHEN wanted_evidence IS NOT NULL THEN EXISTS(SELECT 1 FROM performance_onehr_evidence e WHERE e.id=wanted_evidence AND e.review_id=r.review_id AND e.employment_id=r.employment_id AND e.tenant_id=r.tenant_id AND e.author_user_id=author AND app.assessment_evidence_access(e.id))
+  ELSE EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND e.tenant_id=r.tenant_id AND app.is_self_person(e.person_id)) OR app.onehr_manager(r.review_id)
+   OR EXISTS(SELECT 1 FROM performance_assessment_attachment_link l WHERE l.attachment_id=wanted_file AND l.review_id=r.review_id AND l.tenant_id=r.tenant_id AND (app.assessment_kpi_reader(r.review_id,l.kpi_id) OR app.onehr_cycle_admin(r.cycle_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id)))) END
+   OR EXISTS(SELECT 1 FROM performance_onehr_review target CROSS JOIN LATERAL jsonb_array_elements(target.submitted_proof) proof WHERE target.tenant_id=r.tenant_id AND target.employment_id=r.employment_id AND target.results_submitted_at IS NOT NULL AND proof->>'attachmentId'=wanted_file::text AND (app.assessment_kpi_reader(target.review_id,(proof->>'kpiId')::uuid) OR app.onehr_cycle_admin(target.cycle_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=target.review_id AND ce.tenant_id=target.tenant_id AND app.onehr_calibration_access(ce.session_id))))) END
+ FROM (SELECT 1) seed LEFT JOIN performance_onehr_review r ON r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() LEFT JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+$$;
+CREATE FUNCTION app.assessment_file_write(wanted_review uuid,wanted_evidence uuid,author uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN r.review_id IS NULL THEN NULL ELSE author=app.current_user_id()
+ AND coalesce((c.policy->'modules'->>'evidence')::boolean,false)
+ AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=r.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+ AND CASE WHEN wanted_evidence IS NOT NULL THEN EXISTS(SELECT 1 FROM performance_onehr_evidence e WHERE e.id=wanted_evidence AND e.review_id=r.review_id AND e.tenant_id=r.tenant_id AND e.author_user_id=author AND app.assessment_evidence_access(e.id))
+ ELSE EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND e.tenant_id=r.tenant_id AND app.is_self_person(e.person_id)) OR app.onehr_manager(r.review_id) END END
+ FROM (SELECT 1) seed LEFT JOIN performance_onehr_review r ON r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() LEFT JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+$$;
+REVOKE ALL ON FUNCTION app.assessment_file_read(uuid,uuid,uuid,uuid,timestamptz),app.assessment_file_write(uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_file_read(uuid,uuid,uuid,uuid,timestamptz),app.assessment_file_write(uuid,uuid,uuid) TO ai_hr_app;
+
+-- Preserve the native audience for classic reviews. Assessment files use their explicit evidence/KPI audience.
+ALTER POLICY performance_attachment_rls ON performance_attachment USING(tenant_id=app.current_tenant_id() AND (employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) OR app.can_admin_perfcomp_employment(employment_id) OR coalesce(app.assessment_file_read(review_id,evidence_id,id,uploaded_by_user_id,removed_at),false)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) OR app.can_admin_perfcomp_employment(employment_id) OR coalesce(app.assessment_file_write(review_id,evidence_id,uploaded_by_user_id),false)));
+DROP POLICY onehr_attachment_scope ON performance_attachment;
+CREATE POLICY assessment_file_read_scope ON performance_attachment AS RESTRICTIVE FOR SELECT USING(coalesce(app.assessment_file_read(review_id,evidence_id,id,uploaded_by_user_id,removed_at),true));
+CREATE POLICY assessment_file_insert_scope ON performance_attachment AS RESTRICTIVE FOR INSERT WITH CHECK(removed_at IS NULL AND coalesce(app.assessment_file_write(review_id,evidence_id,uploaded_by_user_id),true));
+CREATE POLICY assessment_file_update_scope ON performance_attachment AS RESTRICTIVE FOR UPDATE USING(coalesce(app.assessment_file_write(review_id,evidence_id,uploaded_by_user_id),true)) WITH CHECK(coalesce(app.assessment_file_write(review_id,evidence_id,uploaded_by_user_id),true));
+CREATE POLICY assessment_file_delete_scope ON performance_attachment AS RESTRICTIVE FOR DELETE USING(app.assessment_file_write(review_id,evidence_id,uploaded_by_user_id) IS NULL);
+
+CREATE FUNCTION app.assessment_file_removable(wanted_file uuid) RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_attachment a JOIN performance_onehr_evidence e ON e.id=a.evidence_id AND e.tenant_id=a.tenant_id
+ WHERE a.id=wanted_file AND a.tenant_id=app.current_tenant_id() AND a.removed_at IS NULL AND a.uploaded_by_user_id=app.current_user_id() AND e.author_user_id=app.current_user_id()
+  AND (e.state='draft' OR e.state='shared' AND e.kind='recognition') AND app.assessment_file_write(a.review_id,a.evidence_id,a.uploaded_by_user_id)
+  AND NOT EXISTS(SELECT 1 FROM performance_onehr_review target WHERE target.tenant_id=e.tenant_id AND target.employment_id=e.employment_id AND target.results_submitted_at IS NOT NULL AND target.submitted_proof @> jsonb_build_array(jsonb_build_object('attachmentId',a.id::text)))
+  AND NOT EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.tenant_id=e.tenant_id AND f.employment_id=e.employment_id AND f.result->'provenance'->'attachments' @> jsonb_build_array(jsonb_build_object('id',a.id::text)))
+  AND NOT EXISTS(SELECT 1 FROM performance_assessment_attachment_link l JOIN performance_onehr_review target ON target.review_id=l.review_id AND target.tenant_id=l.tenant_id WHERE l.attachment_id=a.id AND (target.results_submitted_at IS NOT NULL OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=target.review_id AND f.tenant_id=target.tenant_id)))
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(e.links) link JOIN performance_onehr_review target ON target.employment_id=e.employment_id AND target.tenant_id=e.tenant_id CROSS JOIN LATERAL jsonb_array_elements(target.kpis) k WHERE link->>'kind'='kpi' AND link->>'id'=k->>'id' AND (target.results_submitted_at IS NOT NULL OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=target.review_id AND f.tenant_id=target.tenant_id))))
+$$;
+CREATE FUNCTION app.assessment_file_lock_targets(wanted_file uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE file performance_attachment%ROWTYPE; entry performance_onehr_evidence%ROWTYPE;
+BEGIN
+ SELECT * INTO file FROM performance_attachment WHERE id=wanted_file AND tenant_id=app.current_tenant_id() AND uploaded_by_user_id=app.current_user_id() AND removed_at IS NULL;
+ SELECT * INTO entry FROM performance_onehr_evidence WHERE id=file.evidence_id AND tenant_id=file.tenant_id AND author_user_id=app.current_user_id();
+ IF file.id IS NULL OR entry.id IS NULL OR NOT app.assessment_evidence_access(entry.id) THEN RAISE EXCEPTION 'Supporting file not found'; END IF;
+ PERFORM 1 FROM performance_onehr_review r WHERE r.tenant_id=file.tenant_id AND (r.review_id=file.review_id OR EXISTS(SELECT 1 FROM performance_assessment_attachment_link l WHERE l.attachment_id=file.id AND l.review_id=r.review_id AND l.tenant_id=r.tenant_id) OR r.employment_id=entry.employment_id AND EXISTS(SELECT 1 FROM jsonb_array_elements(entry.links) link CROSS JOIN jsonb_array_elements(r.kpis) k WHERE link->>'kind'='kpi' AND link->>'id'=k->>'id')) ORDER BY r.review_id FOR UPDATE;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_file_removable(uuid),app.assessment_file_lock_targets(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_file_removable(uuid),app.assessment_file_lock_targets(uuid) TO ai_hr_app;
+
+CREATE FUNCTION app.assessment_file_remove(wanted_file uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ PERFORM app.assessment_file_lock_targets(wanted_file);
+ PERFORM 1 FROM performance_attachment WHERE id=wanted_file AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ PERFORM 1 FROM performance_onehr_evidence e JOIN performance_attachment a ON a.evidence_id=e.id AND a.tenant_id=e.tenant_id WHERE a.id=wanted_file AND a.tenant_id=app.current_tenant_id() FOR UPDATE OF e;
+ IF NOT app.assessment_file_removable(wanted_file) THEN RAISE EXCEPTION 'Submitted KPI supporting files cannot be removed'; END IF;
+ UPDATE performance_attachment SET removed_at=now() WHERE id=wanted_file AND tenant_id=app.current_tenant_id();
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_file_remove(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_file_remove(uuid) TO ai_hr_app;
+
+CREATE FUNCTION app.assessment_file_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE e performance_onehr_evidence%ROWTYPE; r performance_onehr_review%ROWTYPE;
+BEGIN
+ SELECT * INTO r FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id;
+ IF r.review_id IS NULL THEN
+  IF NEW.evidence_id IS NOT NULL THEN RAISE EXCEPTION 'Evidence files require an assessment'; END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.employment_id<>r.employment_id THEN RAISE EXCEPTION 'File subject does not match the assessment'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF to_jsonb(NEW)-'removed_at' IS DISTINCT FROM to_jsonb(OLD)-'removed_at' THEN RAISE EXCEPTION 'Assessment file contents and identity are immutable'; END IF;
+  PERFORM app.assessment_file_lock_targets(OLD.id);
+  IF OLD.removed_at IS NOT NULL OR NEW.removed_at IS NULL OR NOT app.assessment_file_removable(OLD.id) THEN RAISE EXCEPTION 'Submitted KPI supporting files cannot be removed'; END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.uploaded_by_user_id IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'File author must be the current actor'; END IF;
+ IF NEW.size_bytes<>octet_length(NEW.content) OR NEW.size_bytes NOT BETWEEN 1 AND 2097152 OR length(NEW.file_name)>200 OR lower(NEW.file_name) !~ '\.(pdf|png|jpg|jpeg|gif|webp|doc|docx|xls|xlsx|csv|txt)$' THEN RAISE EXCEPTION 'Choose a supported file no larger than 2 MB'; END IF;
+ IF NEW.evidence_id IS NOT NULL THEN
+  SELECT * INTO e FROM performance_onehr_evidence WHERE id=NEW.evidence_id AND tenant_id=NEW.tenant_id FOR UPDATE;
+  IF e.id IS NULL OR e.review_id<>NEW.review_id OR e.employment_id<>NEW.employment_id OR e.author_user_id<>NEW.uploaded_by_user_id OR NOT (e.state='draft' OR e.state='shared' AND e.kind='recognition') THEN RAISE EXCEPTION 'Attach only to your draft or shared review recognition'; END IF;
+  IF (SELECT count(*) FROM performance_attachment a WHERE a.evidence_id=e.id AND a.tenant_id=e.tenant_id AND a.removed_at IS NULL)>=4 THEN RAISE EXCEPTION 'An evidence entry can carry up to four files'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_file_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_file_validate BEFORE INSERT OR UPDATE ON performance_attachment FOR EACH ROW EXECUTE FUNCTION app.assessment_file_validate();
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_kpi_file_links(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_agg(to_jsonb(files) ORDER BY files."createdAt",files."attachmentId",files."kpiId"),'[]'::jsonb) FROM (SELECT DISTINCT ON ("attachmentId","kpiId") * FROM (
+  SELECT l.id,l.tenant_id AS "tenantId",l.review_id AS "reviewId",l.attachment_id AS "attachmentId",l.kpi_id AS "kpiId",l.created_at AS "createdAt"
+  FROM performance_assessment_attachment_link l JOIN performance_attachment a ON a.id=l.attachment_id AND a.tenant_id=l.tenant_id
+  WHERE l.review_id=wanted_review AND l.tenant_id=app.current_tenant_id() AND app.assessment_file_read(a.review_id,a.evidence_id,a.id,a.uploaded_by_user_id,a.removed_at)
+  UNION
+  SELECT a.id,a.tenant_id,r.review_id,a.id,(link->>'id')::uuid,a.created_at
+  FROM performance_onehr_review r JOIN performance_onehr_evidence e ON e.employment_id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN employment sub ON sub.id=e.employment_id AND sub.tenant_id=e.tenant_id JOIN app_user author ON author.id=e.author_user_id AND author.tenant_id=e.tenant_id AND author.person_id=sub.person_id
+  JOIN performance_attachment a ON a.evidence_id=e.id AND a.tenant_id=e.tenant_id
+  CROSS JOIN LATERAL jsonb_array_elements(e.links) link CROSS JOIN LATERAL jsonb_array_elements(r.kpis) k
+  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND e.kind='recognition' AND e.state='shared' AND link->>'kind'='kpi' AND link->>'id'=k->>'id' AND NOT coalesce((k->>'hrOwned')::boolean,false)
+   AND app.assessment_file_read(a.review_id,a.evidence_id,a.id,a.uploaded_by_user_id,a.removed_at)
+ UNION
+ SELECT a.id,a.tenant_id,r.review_id,a.id,(proof->>'kpiId')::uuid,a.created_at
+ FROM performance_onehr_review r CROSS JOIN LATERAL jsonb_array_elements(r.submitted_proof) proof JOIN performance_attachment a ON a.id=(proof->>'attachmentId')::uuid AND a.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND r.results_submitted_at IS NOT NULL AND app.assessment_file_read(a.review_id,a.evidence_id,a.id,a.uploaded_by_user_id,a.removed_at)
+ ) source ORDER BY "attachmentId","kpiId","createdAt",id) files
+$$;
+REVOKE ALL ON FUNCTION app.assessment_kpi_file_links(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_kpi_file_links(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_file_lock_proof(wanted_review uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE wanted performance_onehr_review%ROWTYPE; proof jsonb;
+BEGIN
+ SELECT r.* INTO wanted FROM performance_onehr_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id JOIN performance_onehr_cycle cfg ON cfg.cycle_id=r.cycle_id AND cfg.tenant_id=r.tenant_id JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND r.results_submitted_at IS NULL AND c.status IN ('open','calibration') AND coalesce((cfg.policy->'modules'->>'evidence')::boolean,false) AND app.is_self_person(e.person_id) AND app.onehr_review_header(r.review_id) IS NOT NULL AND app.assessment_review_participates(r.review_id) FOR UPDATE OF r;
+ IF wanted.review_id IS NULL THEN RAISE EXCEPTION 'KPI proof is not assigned to you for confirmation'; END IF;
+ proof:=app.assessment_kpi_file_links(wanted_review);
+ PERFORM 1 FROM performance_attachment a WHERE a.tenant_id=wanted.tenant_id AND a.id IN(SELECT (p->>'attachmentId')::uuid FROM jsonb_array_elements(proof) p) ORDER BY a.id FOR UPDATE;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(proof) p WHERE NOT EXISTS(SELECT 1 FROM performance_attachment a WHERE a.id=(p->>'attachmentId')::uuid AND a.tenant_id=wanted.tenant_id AND a.removed_at IS NULL)) THEN RAISE EXCEPTION 'Supporting proof changed before confirmation; retry with the current files'; END IF;
+ RETURN proof;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_file_lock_proof(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_file_lock_proof(uuid) TO ai_hr_app;

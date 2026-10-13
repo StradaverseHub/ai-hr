@@ -3,7 +3,7 @@
 
 export function humanizeEvent(type: string): string {
   return type
-    .replace(/^onehr(?=\.|$)/i, 'performance')
+    .replace(/(^|[.-])onehr(?=[.-]|$)/gi, '$1performance')
     .split('.')
     .join(' ')
     .replace(/-/g, ' ')

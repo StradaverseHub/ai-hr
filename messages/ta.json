@@ -17105,8 +17105,8 @@
     "cycleActions": "Cycle actions",
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
-    "closeCycle": "Close cycle",
-    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
+    "closeCycle": "சுழற்சியைக் காப்பகப்படுத்து",
+    "cycleHelp": "திறந்தபின் மதிப்பீட்டு விதிகள் மாறாது. தொகுதிகளையும் காலக்கெடுக்களையும் மாற்றலாம். காப்பகம் முடிவுறாத பணியையும் உறுதிசெய்த மதிப்பீட்டுப் பதிவுகளையும் வைத்திருக்கும்.",
     "policy": "Assessment policy",
     "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
@@ -17628,7 +17628,15 @@
         "plan": "தொழில் திட்டம்",
         "plans": "திட்ட வரலாறு"
       }
-    }
+    },
+    "evidenceFiles": {
+      "limits": "ஒவ்வொரு பதிவுக்கும் நான்கு கோப்புகள் வரை, ஒவ்வொன்றும் 2 MB. PDF, படங்கள், Word, Excel, CSV மற்றும் உரைக் கோப்புகள்.",
+      "remove": "கோப்பை அகற்றுக",
+      "removeConfirm": "{name} ஐ அகற்றவா? சமர்ப்பிக்கப்பட்ட KPI ஆதாரக் கோப்புகளை அகற்ற முடியாது."
+    },
+    "archiveHelp": "இச்சுழற்சியைக் காப்பகப்படுத்தி செயலில் உள்ள பணியிலிருந்து நீக்கவா? முடிவுறாத மதிப்பாய்வுகள் பாதுகாக்கப்படும். முடிவுகள் இறுதியாக்கப்படவோ வெகுமதிகளுக்கு வெளியிடப்படவோ மாட்டாது.",
+    "moduleSwitchHelp": "பதிவுகள், பதில்கள், ஒப்புதல்கள் அல்லது கோப்புகளை நீக்காமல் செயலில் உள்ள பணியை மறைக்க தொகுதியை அணைக்கவும். மீண்டும் இயக்கினால் பணி திரும்பும்.",
+    "saveModules": "தொகுதிகளைச் சேமி"
   },
   "allowanceV2": {
     "title": "வருகைப் படி",

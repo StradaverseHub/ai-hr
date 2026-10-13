@@ -17105,8 +17105,8 @@
     "cycleActions": "Cycle actions",
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
-    "closeCycle": "Close cycle",
-    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
+    "closeCycle": "归档周期",
+    "cycleHelp": "周期开始后评分规则保持不变，仍可调整模块开关和截止时间。归档会保留未完成的工作及已签署的评级记录。",
     "policy": "Assessment policy",
     "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
@@ -17628,7 +17628,15 @@
         "plan": "职业计划",
         "plans": "计划历史"
       }
-    }
+    },
+    "evidenceFiles": {
+      "limits": "每条记录最多四个文件，每个不超过2 MB。支持PDF、图片、Word、Excel、CSV和文本文件。",
+      "remove": "移除文件",
+      "removeConfirm": "移除{name}？已提交KPI的证明文件无法移除。"
+    },
+    "archiveHelp": "归档此周期并将其从当前工作中移除？未完成的评估仍会保留。此操作不会将结果定稿或发布到奖励模块。",
+    "moduleSwitchHelp": "关闭模块可隐藏其当前工作，不会删除记录、答案、审批或文件。重新开启即可恢复。",
+    "saveModules": "保存模块"
   },
   "allowanceV2": {
     "title": "考勤津贴",

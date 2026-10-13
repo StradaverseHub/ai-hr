@@ -17105,8 +17105,8 @@
     "cycleActions": "Cycle actions",
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
-    "closeCycle": "Close cycle",
-    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
+    "closeCycle": "เก็บรอบไว้ในคลัง",
+    "cycleHelp": "กฎการให้คะแนนจะคงเดิมหลังเปิดรอบ แต่ยังปรับโมดูลและกำหนดเวลาได้ การเก็บเข้าคลังจะรักษางานที่ยังไม่เสร็จและบันทึกคะแนนที่ลงนามแล้ว",
     "policy": "Assessment policy",
     "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
@@ -17628,7 +17628,15 @@
         "plan": "แผนอาชีพ",
         "plans": "ประวัติแผน"
       }
-    }
+    },
+    "evidenceFiles": {
+      "limits": "ไม่เกินสี่ไฟล์ต่อรายการ ไฟล์ละ 2 MB รองรับ PDF รูปภาพ Word Excel CSV และข้อความ",
+      "remove": "นำไฟล์ออก",
+      "removeConfirm": "นำ {name} ออกหรือไม่? ไฟล์ประกอบ KPI ที่ส่งแล้วไม่สามารถนำออกได้"
+    },
+    "archiveHelp": "เก็บรอบนี้เข้าคลังและนำออกจากงานปัจจุบันหรือไม่? การประเมินที่ยังไม่เสร็จจะถูกเก็บไว้ โดยไม่ถือเป็นการยืนยันหรือเผยแพร่ผลไปยังรางวัล",
+    "moduleSwitchHelp": "ปิดโมดูลเพื่อซ่อนงานปัจจุบันโดยไม่ลบรายการ คำตอบ การอนุมัติ หรือไฟล์ เปิดอีกครั้งเพื่อคืนงานเดิม",
+    "saveModules": "บันทึกโมดูล"
   },
   "allowanceV2": {
     "title": "เบี้ยขยันตามการเข้างาน",

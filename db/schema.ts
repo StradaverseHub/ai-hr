@@ -7756,6 +7756,8 @@ export const performanceAttachment = pgTable(
     mimeType: text('mime_type').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    evidenceId: uuid('evidence_id').references(() => onehrEvidence.id, { onDelete: 'cascade' }),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('performance_attachment_review_idx').on(t.reviewId)],
@@ -10022,6 +10024,7 @@ export const onehrReview = pgTable('performance_onehr_review', {
   managerPerformance: text('manager_performance'), managerScore: numeric('manager_score',{precision:20,scale:8}),
   managerRemark: text('manager_remark').notNull().default(''), selfRemark:text('self_remark').notNull().default(''),
   competencySelfRemark:text('competency_self_remark').notNull().default(''), competencyManagerRemark:text('competency_manager_remark').notNull().default(''),
+  submittedProof:jsonb('submitted_proof').$type<{attachmentId:string;kpiId:string}[]>().notNull().default([]),
   revision: integer('revision').notNull().default(1), createdAt: createdAt(),
 },t=>[index('performance_onehr_review_cycle_idx').on(t.cycleId)]);
 export const onehrPanel = pgTable('performance_onehr_panel', {

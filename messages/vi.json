@@ -17105,8 +17105,8 @@
     "cycleActions": "Cycle actions",
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
-    "closeCycle": "Close cycle",
-    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
+    "closeCycle": "Lưu trữ kỳ",
+    "cycleHelp": "Quy tắc chấm điểm được giữ nguyên sau khi mở. Vẫn có thể đổi mô-đun và hạn chót. Lưu trữ giữ lại công việc chưa xong và hồ sơ đánh giá đã xác nhận.",
     "policy": "Assessment policy",
     "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
@@ -17628,7 +17628,15 @@
         "plan": "Kế hoạch nghề nghiệp",
         "plans": "Lịch sử kế hoạch"
       }
-    }
+    },
+    "evidenceFiles": {
+      "limits": "Tối đa bốn tệp mỗi mục, mỗi tệp 2 MB. PDF, ảnh, Word, Excel, CSV và văn bản.",
+      "remove": "Xóa tệp",
+      "removeConfirm": "Xóa {name}? Không thể xóa tệp minh chứng KPI đã gửi."
+    },
+    "archiveHelp": "Lưu trữ kỳ này và bỏ khỏi công việc hiện tại? Các đánh giá chưa xong vẫn được giữ lại. Thao tác này không chốt hay công bố kết quả sang Khen thưởng.",
+    "moduleSwitchHelp": "Tắt mô-đun để ẩn công việc hiện tại mà không xóa bản ghi, câu trả lời, phê duyệt hoặc tệp. Bật lại để khôi phục công việc.",
+    "saveModules": "Lưu mô-đun"
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

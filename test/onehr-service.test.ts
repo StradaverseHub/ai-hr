@@ -302,7 +302,27 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.submitManagerReview(mgr,{reviewId,managerRating:5,overallRating:5})).rejects.toThrow(/performance and talent/);
     await expect(perf.releaseCycle(a,{cycleId})).rejects.toThrow(/performance and talent/);
     const other=await seedBase();await setModule(other.tenantId,'performance','active');expect(await perf.getOnehrReview(await entitledCtx(other),reviewId)).toBeNull();
-    await expect(perf.closeCycle(a,{cycleId})).rejects.toThrow(/Finalize every/);
+    await expect(perf.closeCycle(self,{cycleId})).rejects.toThrow(/admin|not found/);
+  });
+  it('switches active modules without losing work and archives unfinished reviews without creating reward inputs',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Retain unfinished work',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}]);
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;const original=cycle.policy.modules;
+    await expect(perf.updateAssessmentModules(self,cycleId,cycle.revision,{...original,pm:false})).rejects.toThrow(/administrator/);
+    await perf.updateAssessmentModules(a,cycleId,cycle.revision,{...original,pm:false});
+    expect((await perf.performanceWorkspace(self)).some(i=>i.id===reviewId&&i.module==='pm')).toBe(false);
+    expect((await view(self)).kpis[0].title).toBe('Retain unfinished work');
+    await expect(perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/disabled/);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentModules(a,cycleId,cycle.revision,original);
+    expect((await perf.performanceWorkspace(self)).some(i=>i.id===reviewId&&i.module==='pm')).toBe(true);
+    expect((await view(self)).kpis[0].id).toBe(id);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrCycle).set({policy:{...cycle.policy,aBands:[0,1,2,3,10]}}).where(eq(schema.onehrCycle.cycleId,cycleId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/policy is immutable/)})});
+    await perf.closeCycle(a,{cycleId});
+    expect((await view(self)).finalized).toBe(true);expect((await view(a)).kpis[0].id).toBe(id);
+    expect((await perf.performanceWorkspace(self)).some(i=>i.id===reviewId)).toBe(false);
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toEqual([]);
+    await expect(perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/not open/);
+    await expect(perf.updateAssessmentModules(a,cycleId,(await perf.getOnehrCycle(a,cycleId))!.revision,original)).rejects.toThrow(/active cycle/);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({selfRemark:'Changed after archive'}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/archived assessment/)})});
   });
   it('calibrates through live assigned scopes, bans self calibration, and revokes stale reviewer access',async()=>{
     await complete();const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Calibrator',primaryEmail:`${randomUUID()}@onehr.test`}).returning();
@@ -516,10 +536,14 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const id=randomUUID(),managerId=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Matrix objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId},{id:managerId,title:'Manager-only objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],false);
     await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,id,matrix.employmentId);
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,(await view(self)).kpis,true);
-    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'},{id:managerId,actual:2,note:'Manager-only evidence'}],'Completed the agreed outcomes.');
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'');
+    const matrixProof=await perf.addPerformanceAttachment(self,{reviewId,kpiId:id,stageKind:null,fileName:'matrix-proof.txt',mimeType:'text/plain',content:Buffer.from('Assigned KPI proof')});
+    const managerProof=await perf.addPerformanceAttachment(self,{reviewId,kpiId:managerId,stageKind:null,fileName:'manager-proof.txt',mimeType:'text/plain',content:Buffer.from('Manager KPI proof')});
+    expect(await perf.getPerformanceAttachment(matrix.ctx,matrixProof.id)).not.toBeNull();expect(await perf.getPerformanceAttachment(matrix.ctx,managerProof.id)).toBeNull();
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery'},{id:managerId,actual:2,note:'Manager-only evidence'}],'Completed the agreed outcomes.');
     const attachment=await perf.addPerformanceAttachment(self,{reviewId,stageKind:null,fileName:'private-evidence.txt',mimeType:'text/plain',content:Buffer.from('Evidence for the assigned assessment manager.')});
-    expect(await perf.getPerformanceAttachment(matrix.ctx,attachment.id)).toBeNull();expect(await perf.listAttachmentsForReview(matrix.ctx,reviewId)).toEqual([]);
-    expect(await withTenant(matrix.ctx,tx=>tx.select().from(schema.performanceAttachment).where(eq(schema.performanceAttachment.reviewId,reviewId)))).toEqual([]);
+    expect(await perf.getPerformanceAttachment(matrix.ctx,attachment.id)).toBeNull();expect((await perf.listAttachmentsForReview(matrix.ctx,reviewId)).map(f=>f.id)).toEqual([matrixProof.id]);
+    expect((await withTenant(matrix.ctx,tx=>tx.select().from(schema.performanceAttachment).where(eq(schema.performanceAttachment.reviewId,reviewId)))).map(f=>f.id)).toEqual([matrixProof.id]);
     const matrixView=await view(matrix.ctx);expect(matrixView.moderator).toBe(true);expect(matrixView.policy.modules).toEqual({pm:true,tm:false,idp:true,evidence:false});expect(matrixView.competencies).toEqual([]);expect(matrixView.peers).toEqual([]);
     expect(matrixView.kpis.map(k=>k.id)).toEqual([id]);
     await perf.moderateOnehrKpi(matrix.ctx,reviewId,matrixView.revision,id,2,'');
@@ -564,6 +588,50 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(withTenant(a,tx=>tx.update(schema.onehrPanel).set({remark:'Restate frozen evidence'}).where(eq(schema.onehrPanel.requestId,panel.requestId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
   });
 
+  it('keeps draft evidence files private, serializes the four-file cap, and removes only author-owned proof',async()=>{
+    const evidenceId=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Prepared the delivery record.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});
+    const upload=(name:string,ctx:SessionContext=self)=>perf.addPerformanceAttachment(ctx,{reviewId,evidenceId,stageKind:null,fileName:name,mimeType:'text/plain',content:Buffer.from('Supporting proof')});
+    const first=await upload('first.txt');await upload('second.txt');await upload('third.txt');
+    const concurrent=await Promise.allSettled([upload('fourth.txt'),upload('fifth.txt')]);expect(concurrent.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+    expect((await view(self)).evidence.find(e=>e.id===evidenceId)?.files).toHaveLength(4);
+    expect((await perf.getPerformanceAttachment(self,first.id))?.content.toString()).toBe('Supporting proof');
+    for(const ctx of [mgr,a,peers[0].ctx])expect(await perf.getPerformanceAttachment(ctx,first.id)).toBeNull();
+    await expect(upload('manager.txt',mgr)).rejects.toThrow();
+    await expect(upload('unsupported.svg')).rejects.toThrow(/PDF/);
+    await expect(perf.removeAssessmentEvidenceFile(mgr,reviewId,first.id)).rejects.toThrow();
+    await perf.removeAssessmentEvidenceFile(self,reviewId,first.id);expect(await perf.getPerformanceAttachment(self,first.id)).toBeNull();
+    const replacement=await upload('replacement.txt');
+    await expect(withTenant(self,tx=>tx.update(schema.performanceAttachment).set({content:Buffer.from('Rewritten file')}).where(eq(schema.performanceAttachment.id,replacement.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
+    await perf.changeOnehrEvidenceState(self,evidenceId,'shared');
+    expect(await perf.getPerformanceAttachment(mgr,replacement.id)).not.toBeNull();expect(await perf.getPerformanceAttachment(a,replacement.id)).toBeNull();
+  });
+  it('attaches direct KPI proof through a shared file-only entry and locks removal at result confirmation',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Verified delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');
+    const submit=async()=>perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:150,note:'Delivered above the agreed target.'}],'Verified delivery.');
+    await expect(submit()).rejects.toThrow(/supporting file/);
+    const upload=()=>perf.addPerformanceAttachment(self,{reviewId,kpiId:id,stageKind:null,fileName:'proof.txt',mimeType:'text/plain',content:Buffer.from('Verified outcomes')});
+    const first=await upload();let own=await view(self);const entry=own.evidence.find(e=>e.files.some(f=>f.id===first.id))!;
+    expect(entry).toMatchObject({kind:'recognition',body:'',state:'shared',details:{fileOnly:true}});expect(own.attachmentLinks).toEqual([expect.objectContaining({attachmentId:first.id,kpiId:id})]);
+    expect(await perf.getPerformanceAttachment(a,first.id)).not.toBeNull();expect(await perf.getPerformanceAttachment(peers[0].ctx,first.id)).toBeNull();
+    await perf.removeAssessmentEvidenceFile(self,reviewId,first.id);expect((await view(self)).attachmentLinks).toEqual([]);await expect(submit()).rejects.toThrow(/supporting file/);
+    const kept=await upload();await submit();own=await view(self);expect(own.evidence.find(e=>e.id===entry.id)?.files[0].canRemove).toBe(false);
+    await expect(perf.removeAssessmentEvidenceFile(self,reviewId,kept.id)).rejects.toThrow();expect(await perf.getPerformanceAttachment(mgr,kept.id)).not.toBeNull();
+    await perf.addPerformanceAttachment(self,{reviewId,evidenceId:entry.id,stageKind:null,fileName:'additional.txt',mimeType:'text/plain',content:Buffer.from('Additional proof, words unchanged')});
+    expect((await view(self)).evidence.find(e=>e.id===entry.id)?.files).toHaveLength(2);
+    await perf.linkAssessmentEvidence(self,reviewId,entry.id,(await view(self)).evidence.find(e=>e.id===entry.id)!.revision,{kind:'kpi',id},false);
+    expect((await view(self)).attachmentLinks).toEqual([expect.objectContaining({attachmentId:kept.id,kpiId:id})]);
+    expect(await perf.getPerformanceAttachment(a,kept.id)).not.toBeNull();
+    await expect(perf.removeAssessmentEvidenceFile(self,reviewId,kept.id)).rejects.toThrow();
+    await expect(withTenant(self,tx=>tx.update(schema.onehrReview).set({submittedProof:[]}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/proof is immutable/)})});
+    await expect(upload()).rejects.toThrow(/locked/);
+  });
+  it('retains the native ten-MB file contract for classic reviews',async()=>{
+    const legacy=await perf.createCycle(a,{name:'Classic review',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(a,{cycleId:legacy.cycleId});
+    const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,legacy.cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));
+    const file=await perf.addPerformanceAttachment(self,{reviewId:review.id,stageKind:null,fileName:'native-attachment.bin',mimeType:'application/octet-stream',content:Buffer.alloc(3*1024*1024,1)});
+    expect((await perf.getPerformanceAttachment(a,file.id))?.content.length).toBe(3*1024*1024);
+  });
   it('edits evidence drafts without clearing absent slots and updates links and citations without rewriting shared words',async()=>{
     const id=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Delivered the programme.',occurredOn:todayInKualaLumpur(),title:'Programme',impact:'Reduced manual steps',who:'Operations',precision:'month',metricValue:25,metricUnit:'hours',state:'draft',supersedesId:null,links:[]});
     let entry=(await view(self)).evidence.find(e=>e.id===id)!;

@@ -1,3 +1,4 @@
+import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
 import { assessmentParticipantsTx } from './participation-service';
@@ -98,10 +99,10 @@ export async function assertStandardCycleTx(tx:Tx,cycleId:string) {
   const [r]=await tx.select({id:onehrCycle.cycleId}).from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
   if(r)throw Error('Use the performance and talent review for this cycle.');
 }
-export async function assertOnehrClosureTx(tx:Tx,cycleId:string) {
-  const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));if(!configured)return;
-  const [missing]=await tx.select({id:onehrReview.reviewId}).from(onehrReview).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).where(and(eq(onehrReview.cycleId,cycleId),sql`app.assessment_review_participates(${onehrReview.reviewId})`,isNull(performanceReview.closedAt))).limit(1);
-  if(missing)throw Error('Finalize every assessment before closing this cycle.');
+/** Archiving preserves incomplete work and the last signed rating ledger; it never finalizes results for Rewards. */
+export async function prepareAssessmentClosureTx(tx:Tx,cycleId:string) {
+  const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
+  if(configured)await requireAdmin(tx,cycleId);
 }
 export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expected:number|null,raw?:unknown) {
   return withPerformanceTenant(ctx,async tx=>{
@@ -119,6 +120,17 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
     else {if(expected!=null)throw Error('Reload before configuring this cycle.');await tx.insert(onehrCycle).values({tenantId:ctx.tenantId,cycleId,policy});}
     await audit(tx,ctx,cycleId,'policy-configured',{policyDigest:hash(policy)});
   });
+}
+
+/** Operational module switches preserve all inputs, approvals and historical results. */
+export async function updateAssessmentModules(ctx:SessionContext,cycleId:string,expected:number,raw:unknown) {
+ const modules=policySchema.shape.modules.parse(raw);
+ return withPerformanceTenant(ctx,async tx=>{
+  uuid.parse(cycleId);await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
+  if(!['open','calibration'].includes(cycle.native.status))throw Error('Change modules only in an active cycle.');
+  await tx.update(onehrCycle).set({policy:{...cycle.policy,modules},revision:cycle.config.revision+1}).where(eq(onehrCycle.cycleId,cycleId));
+  await audit(tx,ctx,cycleId,'modules-updated',{previous:cycle.policy.modules,next:modules});
+ });
 }
 
 /** Operational deadlines can change without reopening inputs or changing assessment rules. */
@@ -184,13 +196,15 @@ export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expe
     if(inputs.length!==ownKpis.length||new Set(inputs.map(k=>k.id)).size!==inputs.length||ownKpis.some(k=>!inputs.some(i=>i.id===k.id)))throw Error('Provide every employee-owned KPI result. Company KPI results are filled by HR.');
     const kpis=r.kpis.map(k=>({...k,...inputs.find(i=>i.id===k.id)!}));scorecard(kpis,r.cycle.policy,r.row.companyId,false);
     assertOverallRemark(overallRemark,true);
+    const [lockedProof]=r.cycle.policy.modules.evidence?await tx.execute<{value:{attachmentId:string;kpiId:string}[]}>(sql`select app.assessment_file_lock_proof(${reviewId}::uuid) as value`):[];
+    const submittedProof=(lockedProof?.value??[]).map(({attachmentId,kpiId})=>({attachmentId,kpiId}));
     if(r.cycle.policy.modules.evidence){
-      const linked=await tx.select().from(assessmentAttachmentLink).where(eq(assessmentAttachmentLink.reviewId,reviewId));
+      const linked=submittedProof;
       const standout=kpis.filter(k=>{if(k.hrOwned)return false;const value=scorecard([{...k,weightBp:10000}],r.cycle.policy,r.row.companyId,false);return ['AE','OU'].includes(value.band??'');});
       if(standout.some(k=>!linked.some(a=>a.kpiId===k.id)))throw Error('Attach a supporting file to every Above Expectation or Outstanding KPI before submitting.');
     }
     await clearAssessmentDraftTx(tx,ctx,reviewId,'results');
-    await touchReview(tx,reviewId,{kpis,selfRemark:overallRemark,resultsSubmittedAt:new Date(),...(kpis.every(k=>k.locked)?{managerPerformance:scorecard(kpis,r.cycle.policy,r.row.companyId,true).band,managerScore:String(scorecard(kpis,r.cycle.policy,r.row.companyId,true).score)}:{})});await audit(tx,ctx,reviewId,'results-submitted');await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
+    await touchReview(tx,reviewId,{kpis,submittedProof,selfRemark:overallRemark,resultsSubmittedAt:new Date(),...(kpis.every(k=>k.locked)?{managerPerformance:scorecard(kpis,r.cycle.policy,r.row.companyId,true).band,managerScore:String(scorecard(kpis,r.cycle.policy,r.row.companyId,true).score)}:{})});await audit(tx,ctx,reviewId,'results-submitted');await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
   });
 }
 export async function saveOnehrKpiCheckIn(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,answer:typeof checkInAnswers[number],text:string) {
@@ -551,9 +565,10 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     const talentDecision=[...resolvedResult.rows].reverse().find(d=>['bg','group','final'].includes(d.tier)&&!(d.tier==='group'&&d.mode==='blend')&&d.locked);
     if(talentDecision&&(!talentDecision.pipConfirmed||!talentDecision.promotionConfirmed))throw Error('Confirm the PIP and promotion lists before finalizing talent decisions for Rewards.');
     const evidence=await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),eq(onehrEvidence.state,'shared')));
-    const attachments=await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(eq(performanceAttachment.reviewId,reviewId));
+    const attachmentLinks=(await assessmentKpiFilesTx(tx,reviewId)).map(({attachmentId,kpiId})=>({attachmentId,kpiId}));
+    const proofIds=attachmentLinks.map(l=>l.attachmentId);
+    const attachments=await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(sql`(${performanceAttachment.reviewId}=${reviewId}::uuid ${proofIds.length?sql`or ${inArray(performanceAttachment.id,proofIds)}`:sql``})`).orderBy(asc(performanceAttachment.createdAt),asc(performanceAttachment.id));
     const panel=await tx.select({answers:onehrPanel.answers,remark:onehrPanel.remark,comments:onehrPanel.principleComments}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt),sql`${onehrPanel.submittedAt} is not null`));
-    const attachmentLinks=await tx.select({attachmentId:assessmentAttachmentLink.attachmentId,kpiId:assessmentAttachmentLink.kpiId}).from(assessmentAttachmentLink).where(eq(assessmentAttachmentLink.reviewId,reviewId));
     const anonymousFeedback=anonymousFeedbackReport(z.array(statementSchema).parse(r.row.statements),panel.map(p=>({answers:z.record(z.string(),z.enum(['yes','no'])).parse(p.answers),remark:p.remark,comments:p.comments})));
     const sharedTalent=(await talentContext(tx,ctx.tenantId,reviewId,r.row.employmentId,r.cycle.policy)).actions;
     const result:FrozenResult={version:1,anonymousFeedback,confirmedGrade:sharedTalent.promotion?sharedTalent.confirmedGrade:'',confirmedTitle:sharedTalent.promotion?sharedTalent.confirmedTitle:'',pipReason:sharedTalent.pipReason,promotionReason:sharedTalent.promotionReason,specialRewardReason:sharedTalent.specialRewardReason,provenance:{selfRemark:r.row.selfRemark,managerRemark:r.row.managerRemark,competencySelfRemark:r.row.competencySelfRemark,competencyManagerRemark:r.row.competencyManagerRemark,attachmentLinks,evidence,attachments,kpis:r.kpis,competencies:r.competencies,leadership:resolvedResult.input.leadership,decisions:resolvedResult.rows},performance:resolvedResult.performance.band,potential:resolvedResult.potential.band,performanceSource:resolvedResult.performance.source,potentialSource:resolvedResult.potential.source,talent:talentCategory(resolvedResult.performance.band,resolvedResult.potential.band),selfScore:scorecard(r.kpis,r.cycle.policy,r.row.companyId,false).score,managerScore:r.row.managerScore==null?null:Number(r.row.managerScore),potentialPct:resolvedResult.input.potential.pct,grade:r.row.grade,policyDigest:hash(r.cycle.policy),feedback:resolvedResult.input.principles.map(p=>({principle:p.principle,band:p.pct<=r.cycle.policy.lowMaxPct?'Low':p.pct<=r.cycle.policy.midMaxPct?'Mid':'High'})),pip:sharedTalent.pip,promotion:sharedTalent.promotion,specialReward:sharedTalent.specialReward};
@@ -738,6 +753,47 @@ export async function respondOnehrEvidence(ctx:SessionContext,id:string,stance:'
  });
 }
 
+/** Validate the evidence edge while the native file writer remains the only byte-store writer. */
+export async function prepareAssessmentEvidenceFileTx(tx:Tx,ctx:SessionContext,reviewId:string,evidenceId:string,fileName:string,sizeBytes:number) {
+ uuid.parse(evidenceId);uuid.parse(reviewId);validateEvidenceFile(fileName,sizeBytes);
+ const [e]=await tx.select().from(onehrEvidence).where(eq(onehrEvidence.id,evidenceId)).for('update');
+ if(!e||e.authorUserId!==ctx.userId||!(e.state==='draft'||e.state==='shared'&&e.kind==='recognition'))throw Error('Attach only to your draft or shared review recognition.');
+ const [context]=await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(eq(onehrReview.reviewId,reviewId));
+ // The author can keep proof on a historical entry; an unrelated review cannot be used as its context.
+ if(reviewId!==e.reviewId&&context?.employmentId!==e.employmentId)throw Error('Evidence does not belong to this assessment.');
+ const files=await tx.select({id:performanceAttachment.id}).from(performanceAttachment).where(and(eq(performanceAttachment.evidenceId,evidenceId),isNull(performanceAttachment.removedAt)));
+ if(files.length>=evidenceFileLimit)throw Error('An evidence entry can carry up to four files.');
+ return {id:e.reviewId,employmentId:e.employmentId,evidenceId,auditSubject:e.state==='shared'};
+}
+export async function prepareAssessmentKpiFileTx(tx:Tx,ctx:SessionContext,reviewId:string,kpiId:string,fileName:string,sizeBytes:number) {
+ uuid.parse(kpiId);const r=await loadReview(tx,reviewId,true);validateEvidenceFile(fileName,sizeBytes);
+ if(!r.cycle.policy.modules.evidence||!await isSelf(tx,r.row.employmentId))throw Error('Attach supporting files to your own KPI.');
+ if(!['open','calibration'].includes(r.cycle.native.status)||r.row.resultsSubmittedAt||r.native.closedAt)throw Error('The KPI check-in is locked.');
+ if(!r.kpis.some(k=>k.id===kpiId&&!k.hrOwned))throw Error('Choose an employee-owned KPI.');
+ const [existing]=await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),eq(onehrEvidence.authorUserId,ctx.userId!),eq(onehrEvidence.kind,'recognition'),eq(onehrEvidence.state,'shared'),sql`${onehrEvidence.links} @> ${JSON.stringify([{kind:'kpi',id:kpiId}])}::jsonb`)).orderBy(desc(onehrEvidence.createdAt),desc(onehrEvidence.id)).limit(1);
+ let evidenceId=existing?.id;
+ if(!evidenceId){const [created]=await tx.insert(onehrEvidence).values({tenantId:ctx.tenantId,employmentId:r.row.employmentId,reviewId,authorUserId:ctx.userId!,kind:'recognition',body:'',occurredOn:todayInKualaLumpur(),state:'shared',details:evidenceDetailsSchema.parse({fileOnly:true}),links:[{kind:'kpi',id:kpiId}]}).returning({id:onehrEvidence.id});evidenceId=created.id;await audit(tx,ctx,reviewId,'file-evidence-created',{evidenceId,kpiId});}
+ return prepareAssessmentEvidenceFileTx(tx,ctx,reviewId,evidenceId,fileName,sizeBytes);
+}
+async function assessmentKpiFilesTx(tx:Tx,reviewId:string) {
+ const [row]=await tx.execute<{value:{id:string;tenantId:string;reviewId:string;attachmentId:string;kpiId:string;createdAt:string}[]}>(sql`select app.assessment_kpi_file_links(${reviewId}::uuid) as value`);
+ return row?.value??[];
+}
+export async function removeAssessmentEvidenceFile(ctx:SessionContext,reviewId:string,attachmentId:string) {
+ uuid.parse(attachmentId);uuid.parse(reviewId);
+ return withPerformanceTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.assessment_file_lock_targets(${attachmentId}::uuid)`);
+  const [file]=await tx.select().from(performanceAttachment).where(eq(performanceAttachment.id,attachmentId)).for('update');
+  if(!file||file.uploadedByUserId!==ctx.userId||!file.evidenceId||file.removedAt)throw Error('Supporting file not found.');
+  const [entry]=await tx.select().from(onehrEvidence).where(eq(onehrEvidence.id,file.evidenceId)).for('update');
+  if(!entry||entry.authorUserId!==ctx.userId||!(entry.state==='draft'||entry.state==='shared'&&entry.kind==='recognition'))throw Error('Only the author may remove this supporting file.');
+  const [context]=await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(eq(onehrReview.reviewId,reviewId));
+  if(reviewId!==entry.reviewId&&context?.employmentId!==entry.employmentId)throw Error('Supporting file not found.');
+  await tx.execute(sql`select app.assessment_file_remove(${attachmentId}::uuid)`);
+  await audit(tx,ctx,entry.reviewId,'evidence-file-removed',{attachmentId,evidenceId:entry.id});
+ });
+}
+
 /** The existing native attachment writer remains the owner of file storage. */
 export async function onehrAttachmentSubjectTx(tx:Tx,reviewId:string) {
  const [configured]=await tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));if(!configured)return null;
@@ -768,11 +824,11 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const choices=manager||admin?await tx.select({id:employment.id,name:person.fullName,code:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(sql`not exists(select 1 from employment sub where sub.id=${r.row.employmentId}::uuid and sub.person_id=${person.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`)):[];
     const evidence=r.cycle.policy.modules.evidence?await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),sql`${onehrEvidence.state}<>'retracted'`)).orderBy(desc(onehrEvidence.occurredOn),desc(onehrEvidence.id)):[];
     const [evidencePeople]=evidence.length?await tx.execute<{names:Record<string,string>}>(sql`select app.assessment_evidence_people(array[${sql.join(evidence.map(e=>sql`${e.id}::uuid`),sql`, `)}]::uuid[]) as names`):[];
-    const attachments=r.cycle.policy.modules.evidence&&(!moderator||admin)?await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(eq(performanceAttachment.reviewId,reviewId)):[];
+    const attachmentLinks=await assessmentKpiFilesTx(tx,reviewId);
+    const attachments=r.cycle.policy.modules.evidence?await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes,evidenceId:performanceAttachment.evidenceId,canRemove:sql<boolean>`app.assessment_file_removable(${performanceAttachment.id})`}).from(performanceAttachment).where(and(isNull(performanceAttachment.removedAt),sql`(${performanceAttachment.reviewId}=${reviewId}::uuid ${attachmentLinks.length?sql`or ${inArray(performanceAttachment.id,attachmentLinks.map(l=>l.attachmentId))}`:sql``} or ${performanceAttachment.evidenceId} in (select id from performance_onehr_evidence where employment_id=${r.row.employmentId}::uuid))`)).orderBy(asc(performanceAttachment.createdAt),asc(performanceAttachment.id)):[];
     const peers=manager||admin?await tx.select({requestId:onehrPanel.requestId,employmentId:onehrPanel.peerEmploymentId,name:peerFeedbackRequest.peerName,relationship:onehrPanel.relationship,submittedAt:onehrPanel.submittedAt,archivedAt:onehrPanel.archivedAt,resetAt:onehrPanel.resetAt,archiveReason:onehrPanel.archiveReason}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(eq(onehrPanel.reviewId,reviewId),admin?undefined:isNull(onehrPanel.archivedAt))).orderBy(asc(peerFeedbackRequest.peerName),asc(onehrPanel.requestId)):[];
     let aiEnabled=false;if(self||manager){try{aiEnabled=!!await resolveActiveAiConfig(tx,ctx);}catch{/* Manual assessment remains available when AI configuration is unusable. */}}
     const drafts=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!)));
-    const attachmentLinks=await tx.select().from(assessmentAttachmentLink).where(eq(assessmentAttachmentLink.reviewId,reviewId));
     const kpiLibrary=self&&!r.kpis.some(k=>['proposed','approved'].includes(k.setting))?await availableKpiLibraryTx(tx,r):[];
     const profile=r.cycle.policy.profiles.find(p=>p.id===r.row.profileId)??null;
     const [skillHistory]=self||manager||admin?await tx.execute<{value:{status:string;competencies:Competency[]}[]}>(sql`select app.assessment_skill_history(${reviewId}::uuid) as value`):[];
@@ -785,7 +841,7 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const routes=mapProfile?careerRoutes(mapProfile,r.cycle.policy.profiles,skills,r.cycle.policy.careerRoutes??[]):[];
     return {participating:!!participant?.ok,careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,drafts:drafts.map(d=>({...d,payload:assessmentDraftSchema.parse(d.payload)})),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
       kpis:moderator&&!admin?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:moderator&&!admin?null:r.row.managerPerformance,managerScore:moderator&&!admin||r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:moderator&&!admin?'':r.row.managerRemark,
-      potential:leadership?.potential.band??null,finalized:!!record?.frozen||!!r.native.closedAt||!participant?.ok,result:result?{id:record!.id,digest:record!.digest,interim:!record!.frozen,performance:!self||record!.performanceReleasedAt?result.performance:null,potential:!self||record!.potentialReleasedAt?result.potential:null,talent:!self||record!.talentReleasedAt?result.talent:null,performanceReleased:!!record!.performanceReleasedAt,potentialReleased:!!record!.potentialReleasedAt,talentReleased:!!record!.talentReleasedAt,feedbackReleased:!!record!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&record!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,authorName:evidencePeople?.names[e.authorUserId]??'',details:evidenceDetailsSchema.parse(e.details),links:evidenceLinkSchema.array().parse(e.links),citations:evidenceCitationSchema.array().parse(e.citations).map(c=>({...c,name:evidencePeople?.names[c.userId]??''})),responses:standingResponses(evidenceResponseSchema.array().parse(e.responses)).map(c=>({...c,name:evidencePeople?.names[c.userId]??''}))})),attachments,peers,choices};
+      potential:leadership?.potential.band??null,finalized:!!record?.frozen||!!r.native.closedAt||r.cycle.native.status==='closed'||!participant?.ok,result:result?{id:record!.id,digest:record!.digest,interim:!record!.frozen,performance:!self||record!.performanceReleasedAt?result.performance:null,potential:!self||record!.potentialReleasedAt?result.potential:null,talent:!self||record!.talentReleasedAt?result.talent:null,performanceReleased:!!record!.performanceReleasedAt,potentialReleased:!!record!.potentialReleasedAt,talentReleased:!!record!.talentReleasedAt,feedbackReleased:!!record!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&record!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,authorName:evidencePeople?.names[e.authorUserId]??'',files:attachments.filter(a=>a.evidenceId===e.id),details:evidenceDetailsSchema.parse(e.details),links:evidenceLinkSchema.array().parse(e.links),citations:evidenceCitationSchema.array().parse(e.citations).map(c=>({...c,name:evidencePeople?.names[c.userId]??''})),responses:standingResponses(evidenceResponseSchema.array().parse(e.responses)).map(c=>({...c,name:evidencePeople?.names[c.userId]??''}))})),attachments,peers,choices};
   });
 }
 export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
@@ -893,7 +949,7 @@ export async function performanceWorkspace(ctx:SessionContext) {
   const items:PerformanceWorkspaceItem[]=[];
   const reviews=await tx.select({row:onehrReview,cycle:reviewCycle,policy:onehrCycle.policy,header:sql<{name:string;ownEmploymentIds:string[]}>`app.onehr_review_header(${onehrReview.reviewId})`,self:sql<boolean>`exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,manager:sql<boolean>`app.onehr_manager(${onehrReview.reviewId})`})
    .from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId))
-   .where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId));
+   .where(sql`${reviewCycle.status}<>'closed' and app.assessment_review_participates(${onehrReview.reviewId}) and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId));
   for(const {row,cycle,policy:raw,header,self,manager} of reviews){
    const policy=policySchema.parse(raw),kpis=kpiSchema.array().parse(row.kpis),closed=cycle.status==='closed';
    const base={id:row.reviewId,kind:'review' as const,cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:self?'mine' as const:'team' as const,title:header.name,locked:false};
@@ -916,7 +972,7 @@ export async function performanceWorkspace(ctx:SessionContext) {
     items.push({...base,key:`${row.reviewId}.idp`,module:'idp',stage:'career',state,locked});
    }
   }
-  const feedback=await tx.select({panel:onehrPanel,subject:peerFeedbackRequest.subjectName,cycle:reviewCycle}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).innerJoin(reviewCycle,eq(reviewCycle.id,sql`(app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId')::uuid`)).where(and(isNull(onehrPanel.archivedAt),sql`app.onehr_feedback_card(${onehrPanel.requestId}) is not null`));
+  const feedback=await tx.select({panel:onehrPanel,subject:peerFeedbackRequest.subjectName,cycle:reviewCycle}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).innerJoin(reviewCycle,eq(reviewCycle.id,sql`(app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId')::uuid`)).where(and(isNull(onehrPanel.archivedAt),sql`${reviewCycle.status}<>'closed' and app.onehr_feedback_card(${onehrPanel.requestId}) is not null`));
   for(const {panel,subject,cycle} of feedback)items.push({key:panel.requestId,id:panel.requestId,kind:'feedback',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:'mine',module:'tm',state:panel.submittedAt?'done':'open',title:subject,stage:'feedback',locked:false});
   const sessions=await tx.select({session:onehrCalibration,cycle:reviewCycle}).from(onehrCalibration).innerJoin(reviewCycle,eq(reviewCycle.id,onehrCalibration.cycleId)).orderBy(desc(reviewCycle.periodEnd),asc(onehrCalibration.id));
   for(const {session,cycle} of sessions){

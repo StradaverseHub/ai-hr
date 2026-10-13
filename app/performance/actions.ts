@@ -480,6 +480,7 @@ export async function uploadAttachmentAction(formData: FormData) {
       mimeType: file.type || 'application/octet-stream',
       content: Buffer.from(await file.arrayBuffer()),
       kpiId:str(formData.get('kpiId'))||undefined,
+      evidenceId:str(formData.get('evidenceId'))||undefined,
     });
   } catch (e) {
     redirect(`${returnTo}${returnTo.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(e))}`);

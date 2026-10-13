@@ -67,10 +67,18 @@ describe('OneHR native workflow controls',()=>{
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
   expect(screen.getByLabelText(en.onehr.quarterlyCheckIn)).toBeTruthy();expect(screen.getByRole('option',{name:en.onehr.checkInAnswers.at_risk})).toBeTruthy();
   expect(screen.queryByRole('button',{name:en.onehr.submitResults})).toBeNull();expect(screen.queryByLabelText(en.onehr.actual)).toBeNull();
+  cleanup();policy.kind='year_end';policy.modules.evidence=true;
+  show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'pm'}));
+  const file=screen.getByLabelText(en.onehr.attachmentFile) as HTMLInputElement;
+  const upload=document.getElementById('kpi-file-kpi') as HTMLFormElement,result=document.querySelector('form[data-assessment-draft]') as HTMLFormElement;
+  expect(file.form).toBe(upload);expect(result.contains(file)).toBe(true);expect(new FormData(result).has('file')).toBe(false);
+  expect(result.querySelector('form')).toBeNull();expect(screen.getByText(en.onehr.evidenceFiles.limits)).toBeTruthy();
+
  });
  it('renders evidence and nominations without reviving the generic rating form',async()=>{
   const policy=defaultPolicy(framework);policy.modules={pm:false,tm:false,idp:false,evidence:true};
   const v={careerRoutes:[],profile:null,profileMatch:null,drafts:[],attachmentLinks:[],kpiLibrary:[],companyId:'company',anonymousFeedback:null,selfRemark:'',competencySelfRemark:'',competencyManagerRemark:'',calculatedPerformance:null,planReviewer:false,reviewId:'review',name:'Employee',cycle:{id:'cycle',name:'Annual',status:'open'},policy,grade:'12',revision:1,self:true,manager:false,admin:false,moderator:false,mechanism:'A',viewerUserId:'subject',reviewerEmploymentId:'manager',canApproveSettingIds:[],canModerateIds:[],moderators:[],kpis:[],competencies:[],competencyStatus:'pending',resultsSubmitted:false,managerPerformance:null,managerScore:null,managerRemark:'',potential:null,finalized:false,result:null,plans:[],planYear:Number(todayInKualaLumpur().slice(0,4))+1,feedbackReport:[],peers:[],choices:[],attachments:[],aiEnabled:false,evidence:[{id:'evidence',kind:'delivery',body:'Delivered the release.',occurredOn:todayInKualaLumpur(),state:'shared',authorUserId:'manager',responses:[{userId:'manager',stance:'endorse',note:'Verified delivery',at:new Date().toISOString()}]}]};
+  v.evidence.push({...v.evidence[0],id:'own-evidence',kind:'recognition',authorUserId:'subject',body:'Prepared supporting proof.',responses:[]});
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
   expect(screen.getByText('Delivered the release.')).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceResponse)).toBeTruthy();expect(screen.getByLabelText(en.onehr.correctsEvidence)).toBeTruthy();expect(screen.getByLabelText(en.onehr.attachmentFile)).toBeTruthy();
   expect(document.querySelector('input[name="overallRating"]')).toBeNull();

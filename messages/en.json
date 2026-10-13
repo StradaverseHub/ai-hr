@@ -17105,8 +17105,8 @@
     "cycleActions": "Cycle actions",
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
-    "closeCycle": "Close cycle",
-    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
+    "closeCycle": "Archive cycle",
+    "cycleHelp": "Scoring rules stay fixed after opening. Module switches and deadlines remain editable. Archiving preserves unfinished work and signed rating records.",
     "policy": "Assessment policy",
     "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
@@ -17628,7 +17628,15 @@
         "plan": "Career Plan",
         "plans": "Plan history"
       }
-    }
+    },
+    "evidenceFiles": {
+      "limits": "Up to four files per entry, 2 MB each. PDF, images, Word, Excel, CSV and text files.",
+      "remove": "Remove file",
+      "removeConfirm": "Remove {name}? Submitted KPI supporting files cannot be removed."
+    },
+    "archiveHelp": "Archive this cycle and remove it from active work? Unfinished reviews are retained. This does not finalize or release results to Rewards.",
+    "moduleSwitchHelp": "Switch a module off to hide its active work without deleting entries, answers, approvals or files. Switching it back on restores that work.",
+    "saveModules": "Save modules"
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

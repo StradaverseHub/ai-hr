@@ -16,6 +16,7 @@ import {
 describe('4ec5a940 — audit-format before/after diff renderer', () => {
   it('shows neutral Performance names for retained legacy assessment events',()=>{
     expect(humanizeEvent('onehr.scorecard-approved')).toBe('Performance scorecard approved');
+    expect(humanizeEvent('reward.onehr-results-imported')).toBe('Reward performance results imported');
     expect(aggregateLabel('onehr')).toBe('Performance');
     expect(moduleKeyOf('onehr')).toBe('performance');
   });

@@ -44,7 +44,7 @@ export function AssessmentDraftForm({children,action,revision,labels,className='
     };
     pendingSave.current=commit;pending.current=setTimeout(commit,600);
   }
-  return <form data-assessment-draft ref={form} action={async data=>{await queue.current;data.set('draftRevision',currentRevision.current==null?'':String(currentRevision.current));await action(data);}} className={className} onChange={schedule} onSubmit={()=>{if(pending.current)clearTimeout(pending.current);pending.current=null;pendingSave.current=null;}}>
+  return <form data-assessment-draft ref={form} action={async data=>{await queue.current;data.set('draftRevision',currentRevision.current==null?'':String(currentRevision.current));await action(data);}} className={className} onChange={event=>{const target=event.target;if((target instanceof HTMLInputElement||target instanceof HTMLTextAreaElement||target instanceof HTMLSelectElement)&&target.form===form.current)schedule();}} onSubmit={()=>{if(pending.current)clearTimeout(pending.current);pending.current=null;pendingSave.current=null;}}>
     <input type="hidden" name="draftRevision" defaultValue={revision??''}/>
     <p className="text-xs text-muted-foreground" role="status">{state==='saving'?labels.saving:state==='saved'?labels.saved:labels.privateDraft}</p>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -17105,8 +17105,8 @@
     "cycleActions": "Cycle actions",
     "openCycle": "Open cycle",
     "startCalibration": "Start calibration",
-    "closeCycle": "Close cycle",
-    "cycleHelp": "Assessment rules and catalogues are fixed when the cycle opens. Deadlines remain editable with an audit reason. Close the cycle only after every assessment has been finalized.",
+    "closeCycle": "Arkibkan kitaran",
+    "cycleHelp": "Peraturan pemarkahan kekal selepas dibuka. Modul dan tarikh akhir masih boleh diubah. Pengarkiban mengekalkan kerja belum selesai dan rekod penilaian yang disahkan.",
     "policy": "Assessment policy",
     "policyHelp": "Review the assessment catalogue, scoring rules and deadlines before opening the cycle. Employee, organization and reporting records determine the roster.",
     "cycleKind": "Cycle type",
@@ -17628,7 +17628,15 @@
         "plan": "Pelan Kerjaya",
         "plans": "Sejarah pelan"
       }
-    }
+    },
+    "evidenceFiles": {
+      "limits": "Sehingga empat fail setiap entri, 2 MB setiap fail. PDF, imej, Word, Excel, CSV dan teks.",
+      "remove": "Buang fail",
+      "removeConfirm": "Buang {name}? Fail sokongan KPI yang telah dihantar tidak boleh dibuang."
+    },
+    "archiveHelp": "Arkibkan kitaran ini dan keluarkannya daripada kerja aktif? Ulasan belum selesai dikekalkan. Ini tidak memuktamadkan atau melepaskan keputusan kepada Ganjaran.",
+    "moduleSwitchHelp": "Matikan modul untuk menyembunyikan kerja aktif tanpa memadam catatan, jawapan, kelulusan atau fail. Hidupkan semula untuk memulihkan kerja tersebut.",
+    "saveModules": "Simpan modul"
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

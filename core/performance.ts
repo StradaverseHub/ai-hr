@@ -1,4 +1,4 @@
-import { linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
+import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
 /**
  * Performance & talent — Phase A (ADR-0013). The first config-driven, statute-free module.
  *
@@ -53,7 +53,7 @@ import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { onehrAttachmentSubjectTx, assertStandardCycleTx, assertOnehrClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
+import { onehrAttachmentSubjectTx, assertStandardCycleTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -503,7 +503,7 @@ async function transitionCycle(
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }
-    if (to === 'closed') await assertOnehrClosureTx(tx, cycle.id);
+    if (to === 'closed') await prepareAssessmentClosureTx(tx, cycle.id);
     await tx.update(reviewCycle).set({ status: to }).where(eq(reviewCycle.id, cycle.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1011,13 +1011,15 @@ export async function closeReview(
  *  review's subject, so RLS admits the subject + manager + admin, not peers). */
 export async function addPerformanceAttachment(
   ctx: SessionContext,
-  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer; kpiId?: string },
+  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer; kpiId?: string; evidenceId?: string },
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new PerfError('Empty file');
   if (p.content.byteLength > 10 * 1024 * 1024) throw new PerfError('File exceeds 10 MB');
   if (p.stageKind != null && !ALL_STAGE_KINDS.includes(p.stageKind)) throw new PerfError('Unknown stage');
   return withTenant(ctx, async (tx) => {
-    const review = await onehrAttachmentSubjectTx(tx,p.reviewId) ?? (await loadReview(tx, p.reviewId)).review;
+    if(p.evidenceId&&p.kpiId)throw new PerfError('Choose one place for the supporting file.');
+    const evidence=p.evidenceId?await prepareAssessmentEvidenceFileTx(tx,ctx,p.reviewId,p.evidenceId,p.fileName,p.content.byteLength):p.kpiId?await prepareAssessmentKpiFileTx(tx,ctx,p.reviewId,p.kpiId,p.fileName,p.content.byteLength):null;
+    const review = evidence ?? await onehrAttachmentSubjectTx(tx,p.reviewId) ?? (await loadReview(tx, p.reviewId)).review;
     const [row] = await tx
       .insert(performanceAttachment)
       .values({
@@ -1030,17 +1032,18 @@ export async function addPerformanceAttachment(
         mimeType: p.mimeType,
         sizeBytes: p.content.byteLength,
         uploadedByUserId: ctx.userId ?? null,
+        evidenceId:evidence?.evidenceId??null,
       })
       .returning({ id: performanceAttachment.id });
-    if(p.kpiId)await linkAssessmentAttachmentTx(tx,ctx,p.reviewId,row.id,p.kpiId);
+    if(p.kpiId&&!evidence)await linkAssessmentAttachmentTx(tx,ctx,p.reviewId,row.id,p.kpiId);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'performance-review',
       aggregateId: review.id,
       eventType: 'performance-attachment.added',
       actor: actorOf(ctx),
-      subjectEmploymentId: review.employmentId,
-      payload: { stageKind: p.stageKind, fileName: p.fileName, sizeBytes: p.content.byteLength },
+      subjectEmploymentId: !evidence||evidence.auditSubject?review.employmentId:undefined,
+      payload: evidence?{evidenceId:evidence.evidenceId,sizeBytes:p.content.byteLength}:{ stageKind: p.stageKind, fileName: p.fileName, sizeBytes: p.content.byteLength },
     });
     return { id: row.id };
   });

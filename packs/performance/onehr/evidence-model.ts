@@ -4,6 +4,7 @@ export const evidenceKinds=['delivery','problem','behaviour','learning','recogni
 export const evidenceDetailsSchema=z.object({
  title:z.string().trim().max(120).default(''),impact:z.string().trim().max(1200).default(''),who:z.string().trim().max(300).default(''),
  precision:z.enum(['day','week','month','quarter']).default('day'),metricValue:z.number().finite().nullable().default(null),metricUnit:z.string().trim().max(40).default(''),
+ fileOnly:z.boolean().optional(),
  raisedWithSubject:z.enum(['written','discussed','no']).nullable().default(null),
 });
 const date=z.iso.date().refine(v=>v<=todayInKualaLumpur(),'Evidence cannot be dated in the future.');
