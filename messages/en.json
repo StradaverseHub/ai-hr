@@ -3043,7 +3043,7 @@
       "checkLocation": "Check location",
       "serverTimeLabel": "SERVER TIME",
       "workedToday": "Worked today: {time}",
-      "photoHelper": "A photo and your location are captured with every clock-in and clock-out. Recorded times come from the server.",
+      "photoHelper": "A photo is required. Location is recorded when available. Recorded times come from the server.",
       "photoHeading": "Attendance photo",
       "cameraOff": "Camera is off",
       "cameraHint": "Tap Clock In or Clock Out to take a photo before saving your attendance.",
@@ -3087,7 +3087,8 @@
       "pendingCommand": "A clocking is awaiting confirmation. Check it before starting another.",
       "checkSubmission": "Check submission",
       "signInAgain": "Sign in again",
-      "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking."
+      "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking.",
+      "locationUnavailableAllowed": "Location unavailable — geofencing not required. You can clock in or out."
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",
@@ -3432,7 +3433,8 @@
     },
     "clockDataChanged": "Clock data changed. Reload this day before submitting or approving the correction.",
     "clockDataPayrollClosed": "This day is included in a closed payroll. Reopen the payroll before correcting it.",
-    "clockDataPending": "Saved as a correction request, but not applied. Review the request in Approvals; you cannot approve your own attendance correction."
+    "clockDataPending": "Saved as a correction request, but not applied. Review the request in Approvals; you cannot approve your own attendance correction.",
+    "clockEvidenceLocationUnavailable": "Location not recorded — unavailable"
   },
   "org": {
     "title": "Org chart",

@@ -3043,7 +3043,7 @@
       "checkLocation": "检查位置",
       "serverTimeLabel": "服务器时间",
       "workedToday": "今日工作：{time}",
-      "photoHelper": "每次上班和下班打卡都会记录照片及位置。记录时间来自服务器。",
+      "photoHelper": "必须拍摄照片。可获取时会记录位置信息。记录时间以服务器为准。",
       "photoHeading": "考勤照片",
       "cameraOff": "摄像头已关闭",
       "cameraHint": "点击上班或下班打卡，在保存考勤前拍照。",
@@ -3087,7 +3087,8 @@
       "pendingCommand": "一条打卡记录正在等待确认。开始另一次打卡前请先检查。",
       "checkSubmission": "检查提交结果",
       "signInAgain": "重新登录",
-      "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。"
+      "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。",
+      "locationUnavailableAllowed": "位置信息不可用 — 无需地理围栏。仍可上班或下班打卡。"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",
@@ -3432,7 +3433,8 @@
     },
     "clockDataChanged": "打卡数据已更改。提交或批准更正前请重新加载此日期。",
     "clockDataPayrollClosed": "此日期已纳入已关闭的薪资批次。请先重新开启薪资批次再进行更正。",
-    "clockDataPending": "已保存为更正申请，但尚未生效。请在审批中查看；您不能批准自己的考勤更正。"
+    "clockDataPending": "已保存为更正申请，但尚未生效。请在审批中查看；您不能批准自己的考勤更正。",
+    "clockEvidenceLocationUnavailable": "未记录位置 — 位置信息不可用"
   },
   "org": {
     "title": "组织架构图",

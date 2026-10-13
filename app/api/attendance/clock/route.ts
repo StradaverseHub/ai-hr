@@ -1,4 +1,5 @@
 import { clockApiSession } from '@/lib/attendance-clock-session';
+import { isSameOriginBrowserRequest } from '@/lib/request-origin';
 import { ClockPhotoError } from '@/lib/attendance-photo';
 import { ownClockReceipt, captureEmployeeClock, ClockConflictError, CorrectedClockConflictError, ClockLocationError, ClockContextChangedError, AttendancePhotoRequiredError } from '@/packs/attendance/service';
 import { GeolocationRequiredError, OutsideGeofenceError } from '@/packs/attendance/service';
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   return Response.json(receipt ? {receipt} : {error:'notFound'}, {status:receipt ? 200 : 404, headers:{'Cache-Control':'private, no-store'}});
 }
 export async function POST(request: Request) {
-  if (request.headers.get('origin') !== new URL(request.url).origin) return Response.json({error:'origin'},{status:403});
+  if (!isSameOriginBrowserRequest(request)) return Response.json({error:'origin'},{status:403});
   const session = await clockApiSession();
   if(!session) return Response.json({error:'authentication'},{status:401});
   if (!request.headers.get('content-type')?.startsWith('multipart/form-data')) return Response.json({error:'invalid'},{status:400});
@@ -29,14 +30,20 @@ export async function POST(request: Request) {
     // attendance_photo_setting (core/attendance-clock.ts), never from whether the client sent one.
     const keys=['action','requestId','lat','lng','accuracy','photo','clockContext'];
     if([...data.keys()].some(k=>!keys.includes(k))) throw new InvalidInput('Invalid request');
-    for (const k of keys) { const n=data.getAll(k).length; if (k==='photo'||k==='clockContext' ? n>1 : n!==1) throw new InvalidInput('Invalid request'); }
+    for (const k of keys) { const n=data.getAll(k).length; if (['photo','clockContext','lat','lng','accuracy'].includes(k) ? n>1 : n!==1) throw new InvalidInput('Invalid request'); }
     if (!['in','out'].includes(String(data.get('action'))) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(data.get('requestId')))) throw new InvalidInput('Invalid intent');
     const clockContext=data.get('clockContext');
     if(clockContext!=null && (typeof clockContext!=='string' || !/^[0-9a-f]{64}$/.test(clockContext)))throw new InvalidInput('Invalid employee context');
     const photoField=data.get('photo');
     const photo = photoField instanceof File ? photoField : null;
-    for(const key of ['lat','lng','accuracy']) if(!String(data.get(key)).trim()) throw new InvalidInput('Missing location');
-    const receipt=await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),lat:Number(data.get('lat')),lng:Number(data.get('lng')),accuracy:Number(data.get('accuracy')),clockContext:typeof clockContext==='string'?clockContext:undefined,photo:photo?Buffer.from(await photo.arrayBuffer()):undefined,mime:photo?photo.type:undefined});
+    const locationKeys = ['lat','lng','accuracy'] as const;
+    const suppliedLocation = locationKeys.map(key => data.has(key));
+    if (suppliedLocation.some(Boolean) && !suppliedLocation.every(Boolean)) throw new InvalidInput('Incomplete location');
+    for (const key of locationKeys) if (data.has(key) && (typeof data.get(key) !== 'string' || !String(data.get(key)).trim())) throw new InvalidInput('Invalid location');
+    const location = suppliedLocation.every(Boolean)
+      ? {lat:Number(data.get('lat')),lng:Number(data.get('lng')),accuracy:Number(data.get('accuracy'))}
+      : {lat:null,lng:null,accuracy:null};
+    const receipt=await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),...location,clockContext:typeof clockContext==='string'?clockContext:undefined,photo:photo?Buffer.from(await photo.arrayBuffer()):undefined,mime:photo?photo.type:undefined});
     return Response.json({receipt},{headers:{'Cache-Control':'private, no-store'}});
   } catch(error) {
     const known=error instanceof InvalidInput || error instanceof ClockContextChangedError || error instanceof ClockPhotoError || error instanceof CorrectedClockConflictError || error instanceof ClockConflictError || error instanceof AttendancePhotoRequiredError || error instanceof OutsideGeofenceError || error instanceof GeolocationRequiredError || error instanceof ClockLocationError;

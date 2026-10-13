@@ -3043,7 +3043,7 @@
       "checkLocation": "Semak lokasi",
       "serverTimeLabel": "MASA PELAYAN",
       "workedToday": "Bekerja hari ini: {time}",
-      "photoHelper": "Foto dan lokasi anda direkod pada setiap masuk dan keluar. Masa rekod datang daripada pelayan.",
+      "photoHelper": "Foto diperlukan. Lokasi direkodkan apabila tersedia. Masa yang direkodkan datang daripada pelayan.",
       "photoHeading": "Foto kehadiran",
       "cameraOff": "Kamera dimatikan",
       "cameraHint": "Tekan Masuk atau Keluar untuk mengambil foto sebelum menyimpan kehadiran.",
@@ -3087,7 +3087,8 @@
       "pendingCommand": "Rekod waktu menunggu pengesahan. Semak sebelum memulakan rekod lain.",
       "checkSubmission": "Semak penghantaran",
       "signInAgain": "Log masuk semula",
-      "accountChanged": "Akaun pekerja yang dilog masuk telah berubah. Log masuk ke akaun asal untuk menyemak rekod waktu ini."
+      "accountChanged": "Akaun pekerja yang dilog masuk telah berubah. Log masuk ke akaun asal untuk menyemak rekod waktu ini.",
+      "locationUnavailableAllowed": "Lokasi tidak tersedia — geofencing tidak diperlukan. Anda boleh merekod masuk atau keluar."
     },
     "colOtFlat": "OT Rata",
     "colOt00": "OT 0.0 (tanpa bayaran)",
@@ -3432,7 +3433,8 @@
     },
     "clockDataChanged": "Data waktu berubah. Muat semula hari ini sebelum menghantar atau meluluskan pembetulan.",
     "clockDataPayrollClosed": "Hari ini termasuk dalam penggajian yang ditutup. Buka semula penggajian sebelum membetulkannya.",
-    "clockDataPending": "Disimpan sebagai permohonan pembetulan tetapi belum digunakan. Semak dalam Kelulusan; anda tidak boleh meluluskan pembetulan kehadiran sendiri."
+    "clockDataPending": "Disimpan sebagai permohonan pembetulan tetapi belum digunakan. Semak dalam Kelulusan; anda tidak boleh meluluskan pembetulan kehadiran sendiri.",
+    "clockEvidenceLocationUnavailable": "Lokasi tidak direkodkan — tidak tersedia"
   },
   "org": {
     "title": "Carta organisasi",

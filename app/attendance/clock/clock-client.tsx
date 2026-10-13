@@ -9,9 +9,9 @@ import type { ownClockToday } from '@/core/attendance-clock-read';
 export type PunchEvent = { time:string; direction:'in'|'out' };
 type Today=Awaited<ReturnType<typeof ownClockToday>>;
 type Geo={lat:number;lng:number;accuracy:number};
-const locate=()=>new Promise<Geo>((resolve,reject)=>{
+const locate=(timeout=12000)=>new Promise<Geo>((resolve,reject)=>{
   if (!navigator.geolocation) { reject(new Error('locationUnavailable')); return; }
-  navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),e=>reject(new Error(e.code===1?'locationDenied':'locationUnavailable')),{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+  navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),e=>reject(new Error(e.code===1?'locationDenied':'locationUnavailable')),{enableHighAccuracy:true,timeout,maximumAge:0});
 });
 function newRequestId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -50,9 +50,9 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
   const [pending,setPending]=React.useState(false);
   React.useEffect(()=>{if(!pending)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[pending]);
   const stop=React.useCallback(()=>{stream.current?.getTracks().forEach(track=>track.stop());stream.current=null;},[]);
-  const refresh=React.useCallback(async(nextGeo?:Geo)=>{
+  const refresh=React.useCallback(async(nextGeo?:Geo|null)=>{
     const sequence=++refreshSequence.current;
-    const point=nextGeo??geo;
+    const point=nextGeo===undefined?geo:nextGeo;
     const params=point?'?'+new URLSearchParams({lat:String(point.lat),lng:String(point.lng),accuracy:String(point.accuracy)}):'';
     const response=await fetch('/api/attendance/today'+params,{cache:'no-store'});
     if(!response.ok) throw new Error(response.status===401?'authentication':'sync');
@@ -64,9 +64,10 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     base.current={server:Date.parse(clockValue.serverNow)+(end-clockStart)/2,mono:end};setNow(base.current.server);setToday(value);setSynced(true);return value;
   },[geo]);
   const refreshRef=React.useRef(refresh);refreshRef.current=refresh;
+  const todayRef=React.useRef(today);todayRef.current=today;
   React.useEffect(()=>{
     let live=true;
-    locate().then(point=>{if(live){setGeo(point);return refreshRef.current(point);}}).catch(error=>{if(live)setError(t(['locationDenied','locationUnavailable','authentication'].includes(error.message)?error.message:'syncFailed'));});
+    locate().then(point=>{if(live){setGeo(point);return refreshRef.current(point);}}).catch(error=>{if(!live)return;if(todayRef.current.geofencingRequired || error.message==='authentication')setError(t(['locationDenied','locationUnavailable','authentication'].includes(error.message)?error.message:'syncFailed'));else{setGeo(null);void refreshRef.current(null).catch(()=>setError(t('syncFailed')));}});
     const sync=()=>{setSynced(false);refreshRef.current().catch(error=>setError(t(error.message==='authentication'?'authentication':'syncFailed')));};sync();
     const focus=()=>{if(document.visibilityState==='visible')sync();};
     const hide=()=>{epoch.current++;if(stream.current)setAction(null);stop();setCamera(false);};
@@ -113,12 +114,17 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
       }
       if(!receipt){
         if(!command.current){
-          const point=await locate();setGeo(point);const value=await refresh(point);
+          // Read current policy first. Optional location has a bounded best-effort read and can be
+          // explicitly absent; a retained uncertain command never enters this branch or changes bytes.
+          let value=await refresh(null),point:Geo|null=null;
+          try{point=await locate(value.geofencingRequired?12000:2000);}catch(error){if(value.geofencingRequired)throw error;}
+          setGeo(point);
+          if(point)value=await refresh(point);
           if(!value.locationValid)throw new Error('outsideGeofence');
           if(!value.clockContext)throw new Error('sync');
           const requestId=newRequestId(),body=new FormData();
           body.set('clockContext',value.clockContext);
-          for(const [key,val] of Object.entries({action:direction,requestId,...point}))body.set(key,String(val));
+          for(const [key,val] of Object.entries({action:direction,requestId,...(point??{})}))body.set(key,String(val));
           if(photo)body.set('photo',photo,'attendance.jpg');
           command.current={body,requestId,direction};setPending(true);
         }
@@ -149,7 +155,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
       setError(t(code==='sync'?'syncFailed':known.includes(code)?code:'retryFailed'));
     }finally{inFlight.current=false;setBusy(false);}
   }
-  async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch(error){const code=(error as Error).message;setError(t(['locationDenied','locationUnavailable','authentication'].includes(code)?code:'syncFailed'));}finally{setBusy(false);}}
+  async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch(error){const code=(error as Error).message;if(!todayRef.current.geofencingRequired&&['locationDenied','locationUnavailable'].includes(code)){setGeo(null);try{await refresh(null);setError('');}catch{setError(t('syncFailed'));}}else setError(t(['locationDenied','locationUnavailable','authentication'].includes(code)?code:'syncFailed'));}finally{setBusy(false);}}
   /** r430 — Clock In / Clock Out entry point. BOTH buttons are always enabled (see `blocked`) and route to
    *  one of three flows purely from the employee's own attendancePhotoSetting: required opens the camera
    *  immediately (unchanged); optional sets `action` so the inline Take Photo / Skip Photo choice renders;
@@ -176,7 +182,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     {(error===t('authentication')||error===t('accountChanged'))&&<Link href="/login" target="_blank" rel="noopener noreferrer" className="text-sm underline">{t('signInAgain')}</Link>}
     {error&&<p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-destructive">{error}</p>}
     <div className={`grid gap-5 ${showPhotoCard?'md:grid-cols-2':''}`}>
-      <Card className="space-y-5 p-5"><p>{new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(today.date+'T12:00:00+08:00'))}</p><div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-full px-3 py-1 text-sm ${today.locationValid?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200':'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>{t(today.locationValid?(today.geofencingRequired?'withinLocation':'locationRecordedNoGeofence'):geo?'outsideLocation':'locationCheckNeeded')}</span><Button className="min-h-11" onClick={retryLocation} disabled={busy}>{t('checkLocation')}</Button></div>
+      <Card className="space-y-5 p-5"><p>{new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(today.date+'T12:00:00+08:00'))}</p><div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-full px-3 py-1 text-sm ${today.locationValid?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200':'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>{t(today.locationValid?(today.geofencingRequired?'withinLocation':today.locationAvailable?'locationRecordedNoGeofence':'locationUnavailableAllowed'):geo?'outsideLocation':'locationCheckNeeded')}</span><Button className="min-h-11" onClick={retryLocation} disabled={busy}>{t('checkLocation')}</Button></div>
         {/* r430 — the Switch link and its shiftOptions cycling are GONE: this is always the employee's
             actually-assigned shift, read-only. */}
         <div className="rounded-lg bg-muted/50 p-3"><div className="flex flex-wrap justify-between gap-2"><span className="font-medium">{t('currentShift')}</span><span className="text-sm">{today.clockedIn?'● '+(currentIn?t('clockedInAt',{time:new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(currentIn))}):t('punchIn')):'○ '+t('statusNotClockedIn')}</span></div><p className="mt-1 text-sm">{(today.shift.code===initial.shift.code?shiftName:today.shift.code)??t('noShiftAssigned')} · {today.shift.start??'—'} → {today.shift.end??'—'}</p></div>

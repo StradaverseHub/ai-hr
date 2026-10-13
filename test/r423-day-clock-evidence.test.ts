@@ -127,6 +127,15 @@ describe('r423 — the day detail’s punch trail carries each clocking’s loca
     expect(html).not.toContain('data-clock-evidence="geofenced"');
   });
 
+  it('shows unavailable location without any fabricated map link', async () => {
+    const x = await clocker('Unavailable Umi', false);
+    await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), lat: null, lng: null, accuracy: null });
+    const html = await render(x.h.employmentId);
+    expect(html).toContain('data-clock-evidence="not-enforced"');
+    expect(html).toContain(EN.attendance.clockEvidenceLocationUnavailable);
+    expect(html).not.toContain('openstreetmap.org/?mlat');
+  });
+
   it('(c) a manual (HR-typed) punch shows no evidence line', async () => {
     const x = await clocker('Manual Mei', true);
     await checkIn(adminCtx(b), { employmentId: x.h.employmentId, date: DATE(), time: '09:00', manual: true });

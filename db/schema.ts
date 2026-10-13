@@ -3941,7 +3941,8 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   photoBytes: bytea('photo_bytes'), thumbnailBytes: bytea('thumbnail_bytes'),
   decodedWidth: integer('decoded_width'), decodedHeight: integer('decoded_height'),
   deviceId: uuid('device_id').references(() => employeeDevice.id),
-  lat: doublePrecision('lat').notNull(), lng: doublePrecision('lng').notNull(), accuracyM: doublePrecision('accuracy_m').notNull(),
+  // Web location can be unavailable when geofencing is off; native sampled location remains required.
+  lat: doublePrecision('lat'), lng: doublePrecision('lng'), accuracyM: doublePrecision('accuracy_m'),
   // r423 (0517) — NULL together when the employee's geofencing switch is OFF: the position is recorded, it is
   // simply not compared with a site. Present together for every geofenced capture (core/attendance-clock.ts).
   clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
@@ -3950,6 +3951,7 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
   index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt),
+  check('attendance_clock_capture_location_together', sql`num_nonnulls(${t.lat}, ${t.lng}, ${t.accuracyM}) IN (0, 3) AND (${t.lat} IS NOT NULL OR (${t.clockingLocationId} IS NULL AND ${t.deviceId} IS NULL))`),
   // r430 — the six photo columns (device_id excluded: it is independently nullable, always null going
   // forward) are null together: either every one was captured, or none was.
   check(

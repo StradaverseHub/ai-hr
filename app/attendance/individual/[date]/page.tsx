@@ -284,14 +284,16 @@ export default async function IndividualAttendanceDayPage({
                     return (
                       <span data-clock-evidence="not-enforced" className="text-[11px] text-muted-foreground">
                         {t('clockEvidenceNotRequired')} ·{' '}
-                        <a
-                          href={osmPointHref(ev.lat, ev.lng)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-foreground"
-                        >
-                          {t('clockEvidenceCoordinates', { lat: fmtCoord(ev.lat), lng: fmtCoord(ev.lng), accuracy: Math.round(ev.accuracyM) })}
-                        </a>
+                        {ev.lat != null && ev.lng != null && ev.accuracyM != null ? (
+                          <a
+                            href={osmPointHref(ev.lat, ev.lng)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline underline-offset-2 hover:text-foreground"
+                          >
+                            {t('clockEvidenceCoordinates', { lat: fmtCoord(ev.lat), lng: fmtCoord(ev.lng), accuracy: Math.round(ev.accuracyM) })}
+                          </a>
+                        ) : t('clockEvidenceLocationUnavailable')}
                       </span>
                     );
                   })()}

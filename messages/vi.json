@@ -3043,7 +3043,7 @@
       "checkLocation": "Kiểm tra vị trí",
       "serverTimeLabel": "GIỜ MÁY CHỦ",
       "workedToday": "Đã làm hôm nay: {time}",
-      "photoHelper": "Ảnh và vị trí được ghi lại mỗi lần vào và ra. Thời gian ghi nhận do máy chủ cung cấp.",
+      "photoHelper": "Bắt buộc chụp ảnh. Vị trí được ghi nhận khi có sẵn. Thời gian ghi nhận lấy từ máy chủ.",
       "photoHeading": "Ảnh chấm công",
       "cameraOff": "Camera đang tắt",
       "cameraHint": "Nhấn Vào hoặc Ra để chụp ảnh trước khi lưu chấm công.",
@@ -3087,7 +3087,8 @@
       "pendingCommand": "Có một lần chấm công đang chờ xác nhận. Hãy kiểm tra trước khi tạo lần mới.",
       "checkSubmission": "Kiểm tra kết quả gửi",
       "signInAgain": "Đăng nhập lại",
-      "accountChanged": "Tài khoản nhân viên đang đăng nhập đã thay đổi. Hãy đăng nhập tài khoản ban đầu để kiểm tra lần chấm công này."
+      "accountChanged": "Tài khoản nhân viên đang đăng nhập đã thay đổi. Hãy đăng nhập tài khoản ban đầu để kiểm tra lần chấm công này.",
+      "locationUnavailableAllowed": "Không có vị trí — không yêu cầu hàng rào địa lý. Bạn vẫn có thể chấm công vào hoặc ra."
     },
     "colOtFlat": "Tăng ca cố định",
     "colOt00": "Tăng ca 0.0 (không trả)",
@@ -3432,7 +3433,8 @@
     },
     "clockDataChanged": "Dữ liệu chấm công đã thay đổi. Tải lại ngày này trước khi gửi hoặc duyệt điều chỉnh.",
     "clockDataPayrollClosed": "Ngày này thuộc kỳ lương đã đóng. Mở lại kỳ lương trước khi điều chỉnh.",
-    "clockDataPending": "Đã lưu yêu cầu điều chỉnh nhưng chưa áp dụng. Xem trong Phê duyệt; bạn không thể tự duyệt điều chỉnh chấm công của mình."
+    "clockDataPending": "Đã lưu yêu cầu điều chỉnh nhưng chưa áp dụng. Xem trong Phê duyệt; bạn không thể tự duyệt điều chỉnh chấm công của mình.",
+    "clockEvidenceLocationUnavailable": "Không ghi nhận vị trí — không có thông tin"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
