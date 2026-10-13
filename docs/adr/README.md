@@ -59,3 +59,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0102](0102-attendance-clock-corrections.md) | Audited clock corrections with retained raw evidence, effective-punch readers and payroll protection | Accepted |
 
 | [0103](0103-onehr-native-performance-and-rewards.md) | OneHR workflows in native Performance, immutable assessment provenance and explicit Rewards import | Accepted |
+
+| [0104](0104-outcome-based-verification.md) | Requirement coverage, actual user journeys and design review before the release gate | Accepted |
