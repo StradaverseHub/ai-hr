@@ -75,6 +75,11 @@ selected tests, failures, timings and explained classification transitions. They
 credentials, source contents or raw environment values. The build record explicitly does not claim the
 separately performed service restart was verified.
 
+Release classifications cover the complete production-to-candidate diff, even when verification
+reused an undeployed full candidate and checked only its final repair. The deployed baseline and
+explicit scope uncertainties are saved; unavailable classification never discards a verified build
+record or silently claims complete impact knowledge.
+
 Mirrors preserve the original immutable timestamp, classifications and transitions verbatim.
 Out-of-order retries retain the newest source observation rather than treating receive time as release
 time; duplicate delivery is idempotent, and conflicting bytes for the same record refuse.

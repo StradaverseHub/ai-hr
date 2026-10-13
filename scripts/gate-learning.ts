@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { ImpactPlan,Classification,LearnedFailure } from './gate-impact';
 export type GateObservation={schemaVersion:1;id:string;at:string;sha:string;base:string;environmentHash:string;result:'PASS'|'FAIL';tier:'full'|'impact';plan:ImpactPlan;failed:string[];wallSeconds:number;fullReceipt?:Record<string,unknown>;executed?:string[]};
-export type ReleaseObservation={schemaVersion:1;id:string;at:string;sha:string;buildId:string;deploymentState:'built';activeServiceVerified:false;gate:GateObservation|null;classifications:Classification[];transitions:{path:string;from:string;to:string;reason:string}[];unknowns:Classification[]};
+export type ReleaseObservation={schemaVersion:1;id:string;at:string;sha:string;buildId:string;deploymentState:'built';activeServiceVerified:false;deployedBase?:string;impactUncertainties:string[];gate:GateObservation|null;classifications:Classification[];transitions:{path:string;from:string;to:string;reason:string}[];unknowns:Classification[]};
 export const learningDirectory=()=>process.env.AIHR_IMPACT_STATE_DIR??join(homedir(),'.aihr-gate-state','impact-learning');
 const sha=(s:unknown)=>typeof s==='string'&&/^[0-9a-f]{40}$/.test(s);
 function releaseIdentity(shaValue:string,buildId:string):string{
@@ -43,7 +43,7 @@ export function saveGate(observation:Omit<GateObservation,'id'|'schemaVersion'|'
  if(!sha(observation.sha)||!sha(observation.base))throw Error('Gate evidence requires exact commits');
  const record:GateObservation={...observation,schemaVersion:1,at:new Date().toISOString(),id:observation.sha+'.'+randomUUID()};persist(directory,'gates',record);return record;
 }
-export function saveRelease(input:{sha:string;buildId:string;gate:GateObservation|null;classifications:Classification[]},directory=learningDirectory()):ReleaseObservation{
+export function saveRelease(input:{sha:string;buildId:string;gate:GateObservation|null;classifications:Classification[];deployedBase?:string;impactUncertainties?:string[]},directory=learningDirectory()):ReleaseObservation{
  const id=releaseIdentity(input.sha,input.buildId),existingPath=join(directory,'releases',id+'.json');
  if(existsSync(existingPath)){
   const existing=JSON.parse(readFileSync(existingPath,'utf8')) as ReleaseObservation;
@@ -54,7 +54,7 @@ export function saveRelease(input:{sha:string;buildId:string;gate:GateObservatio
  const classifications=input.classifications;
  const transitions=classifications.flatMap(c=>{const before=prior.get(c.path);return before&&before.risk!==c.risk?[{path:c.path,from:before.risk,to:c.risk,reason:c.reason}]:[];});
  const record:ReleaseObservation={schemaVersion:1,id,at:new Date().toISOString(),...input,
-  deploymentState:'built',activeServiceVerified:false,transitions,unknowns:classifications.filter(c=>c.risk==='unknown')};
+  deploymentState:'built',activeServiceVerified:false,impactUncertainties:input.impactUncertainties??[],transitions,unknowns:classifications.filter(c=>c.risk==='unknown')};
  persist(directory,'releases',record);return record;
 }
 
@@ -65,7 +65,7 @@ export function saveMirroredRelease(record:ReleaseObservation,directory=learning
   ||typeof record.at!=='string'||!Number.isFinite(Date.parse(record.at))||new Date(record.at).toISOString()!==record.at
   ||record.deploymentState!=='built'||record.activeServiceVerified!==false
   ||!Array.isArray(record.classifications)||record.classifications.some(c=>!['low','moderate','high','unknown'].includes(c.risk)||typeof c.path!=='string')
-  ||!Array.isArray(record.unknowns)||!Array.isArray(record.transitions)||record.gate&&record.gate.sha!==record.sha)throw Error('Invalid mirrored release evidence');
+  ||!Array.isArray(record.unknowns)||!Array.isArray(record.transitions)||!Array.isArray(record.impactUncertainties)||record.gate&&record.gate.sha!==record.sha)throw Error('Invalid mirrored release evidence');
  persist(directory,'releases',record);return record;
 }
 
