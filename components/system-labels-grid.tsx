@@ -21,6 +21,7 @@
  * fire immediately (a saved row must exist first), while text edits + new rows batch into Save.
  */
 
+import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -275,6 +276,11 @@ export function SystemLabelsGrid({
     for (const k of KINDS) seed[k] = data[k].map((r) => ({ ...r, key: r.id, isNew: false, dirty: false }));
     return seed;
   });
+  useEffect(() => {
+    setRowsByKind(current => Object.fromEntries(KINDS.map(k => [k,
+      refreshEditableRows(current[k], data[k].map(r => ({ ...r, key: r.id, isNew: false, dirty: false }))),
+    ])) as Record<GridKind, RowState[]>);
+  }, [data]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'company'>('all');

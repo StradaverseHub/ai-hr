@@ -6,7 +6,7 @@ import * as s from '../../db/schema';
 import { withAttendanceTenant } from '../../core/module-gate';
 import { attendanceDayCalculationTx, recomputeDayFigures, decideAttendanceCorrection } from '../../core/attendance';
 import { attendanceWorkflowsForTx } from '../../core/attendance-workflow';
-import { assertShiftsAllowedForEmploymentsTx } from '../../core/roster';
+import { assertShiftsAllowedForEmploymentsTx } from '../../core/schedule-shift-eligibility';
 import { punchesForCorrectionTx, clockFingerprint, lockAttendancePayrollTx, markAttendancePayrollTx } from '../../core/attendance-punch-change';
 import { assertNoDependentAttendanceCreditTx } from '../leave/service';
 import { batchesCoveringAttendanceDates, closedBatchesCoveringAttendanceDates } from '../payroll/service';

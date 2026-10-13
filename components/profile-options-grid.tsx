@@ -21,7 +21,8 @@
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
-import { useCallback, useMemo, useRef, useState, useTransition } from 'react';
+import { refreshEditableRows } from '@/lib/refresh-editable-rows';
+import { useEffect, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
@@ -107,6 +108,11 @@ export function ProfileOptionsGrid({
     for (const c of categories) seed[c] = (data[c] ?? []).map(toRow);
     return seed;
   });
+  useEffect(() => {
+    setRowsByCat(current => Object.fromEntries(Object.entries(data).map(([c, records]) => [c,
+      refreshEditableRows(current[c] ?? [], records.map(toRow)),
+    ])));
+  }, [data]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [showFilters, setShowFilters] = useState(false);

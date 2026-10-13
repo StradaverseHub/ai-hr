@@ -278,6 +278,7 @@ export default async function SystemLabelsPage({
     count: (profileOptions[c] ?? []).filter((r) => r.isActive).length,
     body: (
       <ProfileOptionsGrid
+        key={c}
         hideRail
         categories={[c]}
         data={{ [c]: profileOptions[c] ?? [] }}

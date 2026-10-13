@@ -71,6 +71,20 @@ describe('date-only Attendance Detail corrections',()=>{
     expect((await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.id,leave.id)))[0]).toEqual(leave);
     expect(await owner.db.select().from(s.attendanceDayAdjustment)).toEqual([]);
   });
+  it('enforces the selected employment’s allowed shifts and company-scoped administrator access',async()=>{
+    const {e}=await fixture(),a=adminCtx(b);
+    const rule=await createAttendanceRule(a,{name:'Restricted date group',status:'active',lateGracePeriodMinutes:0,lateAfterMinutes:0,lateDeductMinutes:0,includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:0,earlyDeductMinutes:0,includeGraceInEarlyOut:false,applyToEarlyOt:false,otRows:[]});
+    const allowed=await shift('DATE_ALLOWED','17:00',rule.id),foreign=await shift('DATE_NOT_ALLOWED');
+    await owner.db.update(s.employment).set({attendanceRuleId:rule.id}).where(eq(s.employment.id,e.employmentId));
+    const editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;expect(editor.shifts.map(row=>row.id)).toEqual([allowed.id]);
+    await expect(saveSchedule(e.employmentId,foreign.id,'workday')).rejects.toThrow('not allowed');
+    expect(await owner.db.select().from(s.attendanceDayAdjustment)).toEqual([]);
+    await saveSchedule(e.employmentId,allowed.id,'workday');
+    const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Other company'}).returning();
+    const restricted={...a,grants:[{role:'hr_admin' as const,companyId:otherCompany.id}]};
+    expect(await attendanceDayEditor(restricted,e.employmentId,DATE())).toBeNull();
+    await expect(saveAttendanceDayEdit(restricted,{employmentId:e.employmentId,date:DATE(),baseline:editor.baseline,reason:'Outside company',confirmPayrollRecalculation:false,kind:'schedule',shiftId:allowed.id,dayKind:'holiday'})).rejects.toThrow('scope');
+  });
   it('refuses stale saves, self corrections, non-admins, and a different tenant’s subject',async()=>{
     const {e}=await fixture(),old=(await attendanceDayEditor(adminCtx(b),e.employmentId,DATE()))!;await saveSchedule(e.employmentId,null,'workday');
     const input={employmentId:e.employmentId,date:DATE(),baseline:old.baseline,reason:'Stale',confirmPayrollRecalculation:false,kind:'schedule' as const,shiftId:null,dayKind:'holiday' as const};
@@ -102,6 +116,29 @@ describe('per-configured-row overtime decisions',()=>{
     await expect(save([{key:keys[1],minutes:1.5}])).rejects.toThrow('whole');
     await expect(save([{key:keys[1],minutes:1440}])).rejects.toThrow('exceeds');
     expect((await day(e.employmentId)).otMinutes).toBe(150);
+    await owner.db.delete(s.attendanceRuleOtRow).where(eq(s.attendanceRuleOtRow.id,keys[1]));
+    editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;expect(editor.rows.find(row=>row.key===keys[1])?.orphan).toBe(true);
+    await expect(saveSchedule(e.employmentId,sh.id,'workday')).rejects.toThrow('Return that row to Auto');
+    await save([{key:keys[1],minutes:null}]);expect((await attendanceDayEditor(a,e.employmentId,DATE()))?.rows.some(row=>row.orphan)).toBe(false);
+  });
+});
+
+describe('manual overtime and pre-existing approval/configuration contracts',()=>{
+  it('keeps the approved Auto baseline and restores it after an explicit manual reset',async()=>{
+    const {e}=await fixture(),a=adminCtx(b);
+    await owner.db.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId:e.employmentId,attendanceDate:DATE(),reason:'Existing approved overtime',requestedOtMinutes:120,approvedOtMinutes:120,status:'approved',decidedAt:new Date(),appliedAt:new Date()});
+    let editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;const key=editor.rows[0].key;
+    expect(editor.approvedOtMinutes).toBe(120);expect(editor.rows[0].calculatedMinutes).toBe(180);expect(editor.rows[0].autoEffectiveMinutes).toBe(120);
+    const save=async(minutes:number|null)=>{editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;await saveAttendanceDayEdit(a,{employmentId:e.employmentId,date:DATE(),baseline:editor.baseline,reason:'Reviewed approved baseline',confirmPayrollRecalculation:false,kind:'overtime',rows:[{key,minutes}]});};
+    await save(45);await recomputeAttendance(a,{companyId:b.companyId,employmentIds:[e.employmentId],from:DATE(),to:DATE(),dryRun:false});expect((await day(e.employmentId)).otMinutes).toBe(45);
+    await save(null);expect((await day(e.employmentId)).otMinutes).toBe(120);expect((await attendanceDayEditor(a,e.employmentId,DATE()))?.rows[0].calculatedMinutes).toBe(180);
+  });
+  it('retains manual minutes and original calculation when the dated day type changes its default premium rate',async()=>{
+    const {e}=await fixture(),a=adminCtx(b);let editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;const key=editor.rows[0].key;
+    const save=async(minutes:number|null)=>{editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;await saveAttendanceDayEdit(a,{employmentId:e.employmentId,date:DATE(),baseline:editor.baseline,reason:'Reviewed manual row',confirmPayrollRecalculation:false,kind:'overtime',rows:[{key,minutes}]});};
+    await save(45);await saveSchedule(e.employmentId,null,'holiday');
+    editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;expect(editor.schedule.dayKind).toBe('holiday');expect(editor.rows[0].effectiveMinutes).toBe(45);expect(editor.rows[0].manual?.calculatedMinutes).toBe(180);expect((await day(e.employmentId)).ot30Minutes).toBe(45);
+    await save(null);expect((await day(e.employmentId)).ot30Minutes).toBe(660);
   });
 });
 
