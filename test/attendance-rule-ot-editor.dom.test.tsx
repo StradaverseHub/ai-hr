@@ -96,6 +96,27 @@ const postedRows = (container: HTMLElement) =>
 const renderEditor = (rows: OtEditorRow[], labels: OtEditorLabels = EN) =>
   render(<AttendanceRuleOtEditor initialRows={rows} initialApplyEarlyOt={false} labels={labels} />);
 
+describe('independent Attendance and OT form ownership', () => {
+  it('unticking early OT omits its field, and ticking it again submits on', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<form><AttendanceRuleOtEditor initialRows={[savedRow()]} initialApplyEarlyOt labels={EN} /></form>);
+    const form = container.querySelector('form')!;
+    expect(new FormData(form).get('applyToEarlyOt')).toBe('on');
+    await user.click(screen.getByRole('checkbox'));
+    expect(new FormData(form).has('applyToEarlyOt')).toBe(false);
+    await user.click(screen.getByRole('checkbox'));
+    expect(new FormData(form).get('applyToEarlyOt')).toBe('on');
+  });
+
+  it('the ladder-only form cannot submit or edit Attendance’s saved early OT flag', () => {
+    const { container } = render(<form><AttendanceRuleOtEditor initialRows={[savedRow()]} initialApplyEarlyOt ladderOnly labels={EN} /></form>);
+    const posted = new FormData(container.querySelector('form')!);
+    expect(posted.has('applyToEarlyOt')).toBe(false);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(JSON.parse(String(posted.get('otRows')))).toHaveLength(1);
+  });
+});
+
 describe('7c834696: the rounding control offers a direction', () => {
   it('renders three options — none, down, up — and no Yes/No', async () => {
     renderEditor([savedRow()]);

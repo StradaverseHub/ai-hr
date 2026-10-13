@@ -157,10 +157,21 @@ describe('core/leave.ts: the new read-only exports', () => {
     }
   });
 
-  it('rest and off day stay ONE bucket — no roster_assignment dependency creeps in', () => {
-    expect(core.includes("'rest_day'")).toBe(true);
-    expect(core.includes('off_day')).toBe(false);
-    expect(core.includes('rosterAssignment')).toBe(false);
+  it('rest and off day stay ONE popup bucket, resolved from the same dated schedule as deduction', () => {
+    const start = core.indexOf('export type LeaveApplyDayStatus =');
+    const end = core.indexOf('/** Phase-B #15:', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const popup = core.slice(start, end);
+    expect(popup.length).toBeGreaterThan(1500);
+    expect(popup).toContain("'rest_day'");
+    expect(popup).not.toContain('off_day');
+    // Rotation's explicit roster precedence belongs in resolveSchedule. The popup must consume it,
+    // never query a competing roster or calculate a different weight for its displayed dates.
+    expect(popup).not.toContain('rosterAssignment');
+    expect(popup).toContain('p.sched ?? (await resolveSchedule(tx, p.employmentId))');
+    expect(popup).toContain('sched.rotationKindOn?.(date)');
+    expect(popup).toContain('dayWeight(date, sched, hols, p.inclusion)');
   });
 
   it('the day-rows path guards the span and the RLS-invisible employment', () => {

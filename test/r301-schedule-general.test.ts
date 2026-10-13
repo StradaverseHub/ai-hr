@@ -83,6 +83,8 @@ vi.mock('../lib/session', async (importOriginal) => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/admin/attendance/schedule/group/edit',
   redirect: (p: string) => {
     throw new RedirectError(p);
   },
@@ -524,10 +526,11 @@ describe('E. every writer stays on the record — and the two row actions that h
     expect(createdTo.endsWith('#section-general'), 'and the browser lands on that heading').toBe(true);
 
     const updatedTo = await redirectOf(() =>
-      updateAttendanceRuleAction(fd({ ruleId: created.id, name: 'Warehouse', status: 'active' })),
+      updateAttendanceRuleAction(fd({ ruleId: created.id, name: 'Warehouse', status: 'active', __attendanceSaveNonce: '0123456789abcdef0123456789abcdef' })),
     );
     expect(updatedTo.startsWith(`${SCHEDULE}/${created.id}/edit?toast=`), updatedTo).toBe(true);
     expect(queryOf(updatedTo).get('toast')).toBe(SC.savedToast);
+    expect(queryOf(updatedTo).get('saveAck')).toBe('0123456789abcdef0123456789abcdef');
 
     // ⚠️ EXACTLY ONE `?`. The r287 → r301 defect was a parameter concatenated in FRONT of the query key,
     // which made `?tab=general?toast=…` and lost the toast. `okScheduleGroup` is the only place a
@@ -552,8 +555,9 @@ describe('E. every writer stays on the record — and the two row actions that h
     expect(copyPage).toContain(`value="${esc(copy!.name)}"`);
 
     // A refusal stays on THAT group's Edit page with the message — shown once, in the section it belongs to.
-    const refused = await redirectOf(() => updateAttendanceRuleAction(fd({ ruleId: created.id, name: '', status: 'active' })));
+    const refused = await redirectOf(() => updateAttendanceRuleAction(fd({ ruleId: created.id, name: '', status: 'active', __attendanceSaveNonce: '0123456789abcdef0123456789abcdef' })));
     const q = queryOf(refused);
+    expect(q.get('saveAck'), 'a refused action never acknowledges persistence').toBeNull();
     expect(refused.startsWith(`${SCHEDULE}/${created.id}/edit?error=`), refused).toBe(true);
     expect(q.get('section')).toBe('general');
     const html = await renderEdit(created.id, { error: q.get('error')!, section: q.get('section')! });
@@ -640,8 +644,8 @@ describe('F. THE BUG — a refused Save policy shows its error', () => {
 
 // ── G ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('G. the editors are the same forms, posting the same fields', () => {
-  it('Edit Schedule and Add Schedule are byte-for-byte what the retired rules/[ruleId] and rules/new pages rendered', async () => {
+describe('G. General has scoped ownership; standalone and create forms retain full semantics', () => {
+  it('Edit Schedule scopes General fields and Add Schedule retains the existing complete form', async () => {
     await ensureStandardRule(ADMIN);
     const group = await createAttendanceRule(
       ADMIN,
@@ -664,12 +668,15 @@ describe('G. the editors are the same forms, posting the same fields', () => {
       ruleId: group.id,
     });
 
-    // EXACTLY the retired rules/[ruleId] page body (main@1164f8d1): getAttendanceRule + the two parallel reads.
-    // 665de026 — `cancel` is the ONE prop that changed on RuleForm, and the change is that the page owns
-    // its chrome now: on Edit Schedule the page header's Back is the way out, so the form draws none.
+    // Resolve the real scoped General form with the same rule and choices as the section.
+    // The page owns chrome. Dated rotations now own the shift pool; General retains its own
+    // fields and opts into correlated same-page save acknowledgments.
     const oldEdit = await toMarkup(
       await RuleForm({
         rule: await getAttendanceRule(ADMIN, group.id),
+        hideAllowedShifts: true,
+        generalOnly: true,
+        saveScope: true,
         shifts: ruleShiftChoices(await listShiftsForTenant(ADMIN), await listAttendanceRules(ADMIN), group.id),
         error: undefined,
         cancel: null,
@@ -677,11 +684,24 @@ describe('G. the editors are the same forms, posting the same fields', () => {
     );
     const panel = elementById(await renderEdit(group.id), 'section-general');
     expect(oldEdit.length).toBeGreaterThan(2000);
-    expect(panel, 'the General section renders the old edit page’s form verbatim — same action, same fields, same values').toContain(oldEdit);
-    // Pinned positively too, so "verbatim" cannot be satisfied by two empty renders.
-    for (const name of ['ruleId', 'name', 'status', 'description', 'lateGracePeriodMinutes', 'applyDeductions', 'allowedShiftsEditor', 'allowedShiftIds', 'otRows']) {
+    expect(panel, 'General uses the scoped identity/deduction/ladder form').toContain(oldEdit);
+    // Pin the submitted fields positively; two empty renders cannot satisfy this contract.
+    for (const name of ['ruleId', 'name', 'status', 'description', 'applyDeductions', 'otRows']) {
       expect(panel, `the editor posts ${name}`).toContain(`name="${name}"`);
     }
+
+    for (const name of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt']) {
+      expect(panel, `${name} has one owner outside General`).not.toContain(`name="${name}"`);
+    }
+    expect(panel).not.toContain(`aria-label="${esc(en.admin.attendanceRule.otColRounding)}"`);
+    // Full legacy forms retain all fields; the independent section contract is opt-in.
+    const full = await toMarkup(await RuleForm({rule:await getAttendanceRule(ADMIN,group.id),shifts:[],cancel:null}));
+    expect(full).toContain('name="lateGracePeriodMinutes"');
+    expect(full).toContain('name="applyToEarlyOt"');
+    expect(panel, 'allowed shifts now save atomically with the dated cycle, outside General').not.toContain('name="allowedShiftsEditor"');
+    const workingDay = elementById(await renderEdit(group.id), 'section-workingDay');
+    expect(workingDay).toContain('name="allowedShiftIds"');
+    expect(workingDay).toContain('name="cycle"');
 
     // And Add New: the retired rules/new page body. Here the form DOES draw a Cancel, because Add Schedule
     // has no record to go back to and "Back to Schedule" and "Cancel" are the same destination for it.

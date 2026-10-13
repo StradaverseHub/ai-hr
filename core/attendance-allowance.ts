@@ -1,35 +1,34 @@
-/**
- * Attendance Allowance (ADR-0072, Monthly v1). A company-scoped catalog policy that rewards good
- * attendance with a fixed amount, transferred into a draft payroll run via the existing pay-component
- * prefill path. Evaluation is a PURE READ (no award table); the only persisted output is the
- * payroll_batch_component row created at transfer time (claims / OT precedent).
- *
- * Substrate: every WRITE method appends a DomainEvent (actorOf / appendEvent) before returning. The
- * evaluation READ appends nothing (a pure read). The transfer path appends through
- * setPayrollBatchComponent, exactly as the OT / claims prefill already does.
+/** Attendance allowance policy definitions, pure preview and atomic source-owned payroll transfer.
+ * ADR-0106 extends ADR-0072 without reinterpreting any NULL-rules legacy monthly policy.
  */
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { type SessionContext, type Tx } from '../db/client';
+import { withAttendanceTenant as withTenant } from './module-gate';
+import { createHash } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
   attendanceAllowancePolicy,
   company,
+  attendanceAllowanceVersion, attendanceAllowanceResult, attendanceAllowanceResultRevision, attendanceAllowanceTransfer, shift, businessUnit, position, jobGrade,
   department,
-  employment,
+  employment,person,
   payComponent,
   payrollBatch,
-  payrollBatchComponent,
   type AttendanceAllowanceCriteria,
   type AttendanceAllowanceScope,
 } from '../db/schema';
 import { attendanceMonthSummary, type MonthSummaryRow } from './attendance';
-import { BatchNotDraftError } from './payroll';
-import { setPayrollBatchComponent, UnsupportedBatchComponentError } from './pay-components';
+import { BatchNotDraftError, AllowancePayrollConflictError, UnsupportedBatchComponentError, isUnsupportedTaxableComponent, resolveBatchScopeFilter, projectAttendanceAllowanceTx, type BatchScope } from '../packs/payroll/service';
+import { allowanceInputsTx } from './attendance-allowance-context';
+import { allowanceCents, allowanceMoney, allowanceEmployeeMatches, evaluateAllowancePeriods, validateAllowanceRules, allowancePeriods, type AllowanceRules, type AllowancePeriodMethod, type AllowancePolicyType, type AllowancePeriodEvaluation } from '../lib/attendance-allowance-rules';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { employedByCompanyDuring } from './employment-company';
+export * from '../lib/attendance-allowance-rules';
 import { isModuleEnabled } from './entitlements';
 
-// v1 accepts only the Monthly method. Text tag (app-side check); Daily deferred.
-export const ALLOWANCE_METHODS = ['monthly'] as const;
+// The fixed amount applies once per qualifying period; the leaf engine defines ownership.
+export const ALLOWANCE_METHODS = ['monthly','weekly','daily'] as const;
 export type AllowanceMethod = (typeof ALLOWANCE_METHODS)[number];
 export const ALLOWANCE_STATUSES = ['active', 'inactive'] as const;
 export type AllowanceStatus = (typeof ALLOWANCE_STATUSES)[number];
@@ -70,9 +69,40 @@ function normalizeStatus(v: string | undefined): AllowanceStatus {
 }
 
 function cleanAmount(v: number | string | undefined): string {
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < 0) throw new Error('Amount must be a non-negative number');
-  return n.toFixed(2);
+  if(v===undefined)throw new Error('Amount is required');
+  return allowanceMoney(allowanceCents(v));
+}
+function cleanDate(v:string):string {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)||new Date(`${v}T00:00:00Z`).toISOString().slice(0,10)!==v)throw new Error('Invalid effective date');
+  return v;
+}
+async function assertPolicyAdminTx(tx:Tx,companyId:string){
+  const [row]=await tx.select({allowed:sql<boolean>`app.is_admin_for(${company.id})`}).from(company).where(eq(company.id,companyId)).limit(1);
+  if(!row?.allowed)throw new Error('Only an authorised company administrator may manage attendance allowances');
+}
+type PolicyRow=typeof attendanceAllowancePolicy.$inferSelect;
+async function validateDefinitionTx(tx:Tx,p:{companyId:string;payComponentId:string;policyType:string;rules:AllowanceRules|null}){
+  await assertPolicyAdminTx(tx,p.companyId);
+  const [component]=await tx.select().from(payComponent).where(eq(payComponent.id,p.payComponentId));
+  if(!component)throw new Error('Pay code not found');
+  if(isUnsupportedTaxableComponent(component))throw new UnsupportedBatchComponentError(component.code);
+  if(component.archivedAt||component.isNonPayable||(component.rule&&component.rule.kind!=='fixed')||(p.policyType==='deduction'?component.kind!=='deduction':component.kind!=='allowance'))throw new Error('Choose an active fixed Payroll code compatible with Earning or Deduction');
+  if(!p.rules)return;
+  const selected=p.rules.attendance.shiftIds;
+  if(selected.length){const rows=await tx.select({id:shift.id}).from(shift).where(and(inArray(shift.id,selected),isNull(shift.archivedAt),sql`(${shift.companyId} is null or ${shift.companyId}=${p.companyId})`));if(rows.length!==selected.length)throw new Error('Selected shifts must be active and available to the policy company');}
+  const empIds=p.rules.employee.employmentIds;
+  if(empIds.length){const rows=await tx.select({id:employment.id,allowed:sql<boolean>`app.can_admin_employment(${employment.id})`}).from(employment).where(and(inArray(employment.id,empIds),eq(employment.companyId,p.companyId)));if(rows.length!==empIds.length||rows.some(r=>!r.allowed))throw new Error('Select employees within the policy company and your administrative scope');}
+  for(const c of p.rules.employee.criteria){
+    if(c.field==='companyId'&&c.values.some(id=>id!==p.companyId))throw new Error('A policy belongs to one company; employee company criteria must match that company');
+    if(c.field==='departmentId'){const rows=await tx.select({id:department.id}).from(department).where(and(inArray(department.id,c.values),isNull(department.archivedAt),sql`(${department.companyId}=${p.companyId} or ${department.isGlobal})`));if(rows.length!==c.values.length)throw new Error('Departments must belong to the policy company');}
+    if(c.field==='businessUnitId'){const rows=await tx.select({id:businessUnit.id}).from(businessUnit).where(and(inArray(businessUnit.id,c.values),isNull(businessUnit.archivedAt),sql`(${businessUnit.companyId}=${p.companyId} or ${businessUnit.isGlobal})`));if(rows.length!==c.values.length)throw new Error('Business units must be available to the policy company');}
+    if(c.field==='positionId'){const rows=await tx.select({id:position.id}).from(position).where(and(inArray(position.id,c.values),isNull(position.archivedAt),sql`(${position.companyId}=${p.companyId} or ${position.isGlobal})`));if(rows.length!==c.values.length)throw new Error('Positions must be available to the policy company');}
+    if(c.field==='gradeId'){const rows=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(inArray(jobGrade.id,c.values),isNull(jobGrade.archivedAt)));if(rows.length!==c.values.length)throw new Error('Choose active job grades');}
+    if(c.field==='employmentCategory'){const cats=await tx.selectDistinct({value:employment.employmentCategory}).from(employment).where(eq(employment.companyId,p.companyId));if(c.values.some(v=>!cats.some(r=>r.value===v)))throw new Error('Choose an employee category recorded in the policy company');}
+  }
+}
+async function saveVersionTx(tx:Tx,row:PolicyRow){
+  await tx.insert(attendanceAllowanceVersion).values({tenantId:row.tenantId,companyId:row.companyId,policyId:row.id,version:row.version,snapshot:JSON.parse(JSON.stringify(row))});
 }
 
 /** Coerce a criteria bag: drop unknown keys, clamp numeric thresholds to non-negative integers, keep the
@@ -202,6 +232,8 @@ export type AllowancePolicyInput = {
   companyId: string;
   code: string;
   name: string;
+  policyType?: AllowancePolicyType;
+  rules?: AllowanceRules | null;
   method?: string; // v1: 'monthly'
   amount: number | string;
   payComponentId: string;
@@ -220,10 +252,15 @@ export async function createAllowancePolicy(
   const method = normalizeMethod(p.method);
   const amount = cleanAmount(p.amount);
   const payComponentId = cleanText(p.payComponentId, 'Pay component');
-  const effectiveFrom = cleanText(p.effectiveFrom, 'Effective date');
+  const effectiveFrom = cleanDate(cleanText(p.effectiveFrom, 'Effective date'));
+  const policyType = p.policyType ?? 'earning';
+  if(!['earning','deduction'].includes(policyType))throw new Error('Unknown policy type');
+  const rules = p.rules ? validateAllowanceRules(p.rules) : null;
+  if(method!=='monthly'&&!rules)throw new Error('Daily and weekly policies require the new attendance conditions');
   const criteria = cleanCriteria(p.criteria);
   const scope = cleanScope(p.scope);
   return withTenant(ctx, async (tx) => {
+    await validateDefinitionTx(tx,{companyId,payComponentId,policyType,rules});
     let id: string;
     try {
       const [row] = await tx
@@ -231,6 +268,7 @@ export async function createAllowancePolicy(
         .values({
           tenantId: ctx.tenantId,
           companyId,
+          policyType,rules,
           code,
           name,
           method,
@@ -247,13 +285,15 @@ export async function createAllowancePolicy(
       if (isUniqueViolation(e)) throw new DuplicateAllowancePolicyCodeError();
       throw e;
     }
+    const [definition]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,id));
+    await saveVersionTx(tx,definition);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-allowance-policy',
       aggregateId: id,
       eventType: 'attendance-allowance-policy.created',
       actor: actorOf(ctx),
-      payload: { companyId, code, name, method, amount, payComponentId, effectiveFrom, criteria, scope },
+      payload: { companyId, code, name, method, payComponentId, effectiveFrom, version:definition.version },
     });
     return { id };
   });
@@ -265,6 +305,9 @@ export async function updateAllowancePolicy(
     id: string;
     code?: string;
     name?: string;
+    method?: string;
+    policyType?: AllowancePolicyType;
+    rules?: AllowanceRules | null;
     amount?: number | string;
     payComponentId?: string;
     effectiveFrom?: string;
@@ -277,44 +320,42 @@ export async function updateAllowancePolicy(
       .select()
       .from(attendanceAllowancePolicy)
       .where(eq(attendanceAllowancePolicy.id, p.id))
-      .limit(1);
+      .for('update');
     if (!before) throw new Error('Attendance-allowance policy not found');
+    if(before.archivedAt)throw new Error('An archived policy cannot be edited');
+    const method=p.method===undefined?before.method:normalizeMethod(p.method);
+    const policyType=p.policyType??before.policyType;
+    if(!['earning','deduction'].includes(policyType))throw new Error('Unknown policy type');
+    const rules=p.rules===undefined?before.rules:p.rules?validateAllowanceRules(p.rules):null;
+    if(method!=='monthly'&&!rules)throw new Error('Daily and weekly policies require new conditions');
     const code = p.code !== undefined ? cleanText(p.code, 'Code') : before.code;
     const name = p.name !== undefined ? cleanText(p.name, 'Name') : before.name;
     const amount = p.amount !== undefined ? cleanAmount(p.amount) : before.amount;
     const payComponentId =
       p.payComponentId !== undefined ? cleanText(p.payComponentId, 'Pay component') : before.payComponentId;
     const effectiveFrom =
-      p.effectiveFrom !== undefined ? cleanText(p.effectiveFrom, 'Effective date') : before.effectiveFrom;
+      p.effectiveFrom !== undefined ? cleanDate(cleanText(p.effectiveFrom, 'Effective date')) : before.effectiveFrom;
     const criteria = p.criteria !== undefined ? cleanCriteria(p.criteria) : before.criteria;
     const scope = p.scope !== undefined ? cleanScope(p.scope) : before.scope;
+    await validateDefinitionTx(tx,{companyId:before.companyId,payComponentId,policyType,rules});
     try {
       await tx
         .update(attendanceAllowancePolicy)
-        .set({ code, name, amount, payComponentId, effectiveFrom, criteria, scope })
+        .set({ code, name, amount, payComponentId, effectiveFrom, criteria, scope,method,policyType,rules,version:before.version+1 })
         .where(eq(attendanceAllowancePolicy.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicateAllowancePolicyCodeError();
       throw e;
     }
+    const [definition]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.id));
+    await saveVersionTx(tx,definition);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-allowance-policy',
       aggregateId: p.id,
       eventType: 'attendance-allowance-policy.updated',
       actor: actorOf(ctx),
-      payload: {
-        before: {
-          code: before.code,
-          name: before.name,
-          amount: before.amount,
-          payComponentId: before.payComponentId,
-          effectiveFrom: before.effectiveFrom,
-          criteria: before.criteria,
-          scope: before.scope,
-        },
-        after: { code, name, amount, payComponentId, effectiveFrom, criteria, scope },
-      },
+      payload: { beforeVersion:before.version,afterVersion:definition.version },
     });
     return { id: p.id };
   });
@@ -326,6 +367,10 @@ export async function setAllowancePolicyStatus(
 ): Promise<{ id: string }> {
   const status = normalizeStatus(p.status);
   return withTenant(ctx, async (tx) => {
+    const [before]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.id)).for('update');
+    if(!before||before.archivedAt)throw new Error('Attendance-allowance policy not found');
+    await assertPolicyAdminTx(tx,before.companyId);
+    if(status==='active')await validateDefinitionTx(tx,{companyId:before.companyId,payComponentId:before.payComponentId,policyType:before.policyType,rules:before.rules});
     await tx
       .update(attendanceAllowancePolicy)
       .set({ status })
@@ -344,6 +389,9 @@ export async function setAllowancePolicyStatus(
 
 export async function archiveAllowancePolicy(ctx: SessionContext, p: { id: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    const [before]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.id)).for('update');
+    if(!before||before.archivedAt)throw new Error('Attendance-allowance policy not found');
+    await assertPolicyAdminTx(tx,before.companyId);
     await tx
       .update(attendanceAllowancePolicy)
       .set({ archivedAt: sql`now()`, status: 'inactive' })
@@ -434,6 +482,7 @@ export type AllowanceEvaluationRow = {
   reasons: string[];
   perCriterion: CriterionResult[];
   inScope: boolean;
+  periods: AllowancePeriodEvaluation[];
 };
 
 /**
@@ -443,47 +492,66 @@ export type AllowanceEvaluationRow = {
  * excluded from the returned list (they are not candidates for this policy).
  */
 export async function evaluateAllowancesForPeriod(
-  ctx: SessionContext,
-  p: { policyId: string; month: string; today?: string },
-): Promise<{ policyId: string; month: string; rows: AllowanceEvaluationRow[] }> {
-  return withTenant(ctx, async (tx) => {
-    const [policy] = await tx
-      .select()
-      .from(attendanceAllowancePolicy)
-      .where(eq(attendanceAllowancePolicy.id, p.policyId))
-      .limit(1);
-    if (!policy) throw new Error('Attendance-allowance policy not found');
-    const criteria = policy.criteria ?? {};
-    const scope = policy.scope ?? {};
-
-    // The policy is company-scoped; the monthly summary is scoped to that company.
-    const summary = await attendanceMonthSummary(ctx, {
-      month: p.month,
-      companyIds: [policy.companyId],
-      today: p.today,
-    });
-    const info = await scopeInfoFor(tx, summary.map((s) => s.employmentId));
-
-    const rows: AllowanceEvaluationRow[] = [];
-    for (const s of summary) {
-      const scoped = inScope(scope, info.get(s.employmentId));
-      if (!scoped) continue; // not a candidate for this policy
-      const ev = evaluateMonthly(s, criteria);
-      rows.push({
-        employmentId: s.employmentId,
-        name: s.name,
-        qualified: ev.qualified,
-        amount: ev.qualified ? policy.amount : '0.00',
-        reasons: ev.reasons,
-        perCriterion: ev.perCriterion,
-        inScope: true,
+  ctx: SessionContext,p: { policyId: string; month: string; today?: string; batchId?:string },
+): Promise<{policyId:string;policyVersion:number;month:string;inputDigest:string;rows:AllowanceEvaluationRow[]}> {
+  return withTenant(ctx,tx=>evaluateAllowancesTx(tx,ctx,p));
+}
+export class StaleAllowancePreviewError extends Error { constructor(){super('Attendance or the policy changed. Preview the calculation again before transferring.');this.name='StaleAllowancePreviewError';} }
+async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;month:string;today?:string;batchId?:string}) {
+  const [policy]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.policyId));
+  if(!policy)throw new Error('Attendance-allowance policy not found');
+  await assertPolicyAdminTx(tx,policy.companyId);
+  const periods=allowancePeriods(policy.method as AllowancePeriodMethod,p.month);
+  const rows:AllowanceEvaluationRow[]=[];
+  if(!policy.rules){
+    // Null rules is the compatibility switch. Never re-interpret legacy monthly qualification.
+    const summary=await attendanceMonthSummary(ctx,{month:p.month,companyIds:[policy.companyId],today:p.today});
+    const info=await scopeInfoFor(tx,summary.map(s=>s.employmentId));
+    for(const row of summary){
+      if(!inScope(policy.scope??{},info.get(row.employmentId)))continue;
+      const ev=evaluateMonthly(row,policy.criteria??{});
+      rows.push({employmentId:row.employmentId,name:row.name,qualified:ev.qualified,amount:ev.qualified?policy.amount:'0.00',reasons:ev.reasons,perCriterion:ev.perCriterion,inScope:true,
+        periods:[{...periods[0],qualified:ev.qualified,amount:ev.qualified?policy.amount:'0.00',eligibleDates:[],attendanceIds:[],metrics:{workingMinutes:row.workedMinutes,actualMinutes:null,overtimeMinutes:row.otWorkday+row.otRestDay+row.otHoliday,lateMinutes:null,earlyOutMinutes:null,absentDays:row.absent,attendanceDays:row.present+row.late+row.halfDay,eligibleWorkingDays:null},criteria:[],reasons:ev.reasons,sourceDays:[]}],
       });
     }
-    return { policyId: policy.id, month: p.month, rows };
-  });
+  }else{
+    const rules=validateAllowanceRules(policy.rules);
+    const from=periods[0]?.from,to=periods[periods.length-1]?.to;
+    const today=p.today??todayInKualaLumpur();
+    const inputs=from&&to?await allowanceInputsTx(tx,policy.companyId,from,to,today):[];
+    for(const input of inputs){
+      // Employee selection is resolved on each period's final owned employment date, independently
+      // of the attendance predicate; no today's department is silently substituted for history.
+      const evaluated=evaluateAllowancePeriods({method:policy.method as AllowancePeriodMethod,month:p.month,amount:policy.amount,effectiveFrom:policy.effectiveFrom,today,rules,days:input.days});
+      let candidate=false;
+      for(const period of evaluated){
+        const employeeDates=input.days.filter(d=>d.date>=period.from&&d.date<=period.to).map(d=>d.date).sort();
+        const date=employeeDates[employeeDates.length-1];
+        const facts=date?input.factsByDate.get(date):undefined;
+        const pass=!!facts&&allowanceEmployeeMatches(rules.employee,input.employmentId,facts);
+        period.employeeSelection={asOf:date??null,facts:facts??null,pass,factSources:{companyId:'dated-company-segments',departmentId:'dated-assignment',businessUnitId:'dated-assignment-with-department-fallback',positionId:'dated-assignment',employmentType:'dated-assignment',gradeId:'current-personnel-profile-no-historical-version',employmentCategory:'current-personnel-profile-no-historical-version',status:'employment-tenure'}};
+        if(!pass){
+          period.qualified=false;period.amount='0.00';period.reasons.push('employeeCriteriaFailed');
+        }else candidate=true;
+      }
+      if(!candidate)continue;
+      const amount=allowanceMoney(evaluated.reduce((n,r)=>n+allowanceCents(r.amount),BigInt(0)));
+      rows.push({employmentId:input.employmentId,name:input.name,qualified:evaluated.some(r=>r.qualified),amount,reasons:[...new Set(evaluated.flatMap(r=>r.reasons))],perCriterion:[],inScope:true,periods:evaluated});
+    }
+  }
+  let batchScope:BatchScope|null=null;
+  if(p.batchId){
+    const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId));
+    if(!batch||batch.companyId!==policy.companyId||batch.payPeriod!==p.month)throw new Error('The payroll run does not match this policy and payment month');
+    batchScope=batch.scope as BatchScope|null;
+    const scoped=await resolveBatchScopeFilter(tx,batchScope);
+    if(scoped.employmentIds){const allowed=new Set(scoped.employmentIds);for(let i=rows.length-1;i>=0;i--)if(!allowed.has(rows[i].employmentId))rows.splice(i,1);}
+  }
+  const inputDigest=createHash('sha256').update(JSON.stringify({policy,month:p.month,batchId:p.batchId??null,batchScope,rows})).digest('hex');
+  return {policyId:policy.id,policyVersion:policy.version,month:p.month,inputDigest,rows};
 }
 
-// ─────────────────────── Payroll transfer (reuses setPayrollBatchComponent) ───────────────────────
+// ─────────────────────── Source-owned payroll transfer ───────────────────────
 
 export type TransferResult = {
   applied: number;
@@ -492,149 +560,97 @@ export type TransferResult = {
   gated: boolean;
 };
 
-/**
- * Transfer a Monthly policy's qualified allowances onto a DRAFT payroll batch, reusing the existing
- * pay-component prefill path (setPayrollBatchComponent). Mirrors prefillOvertimeFromAttendance's shape:
- *   1. Load the draft batch; throw BatchNotDraftError if not draft.
- *   2. GATE CHECK FIRST (like prefillShiftDifferentialFromRoster): if TYPED_PAY_COMPONENTS_ENABLED is
- *      not 'true', return { gated: true } and write NOTHING, so the UI can warn the amount won't reach
- *      payslips.
- *   3. SUPPORTED-COMPONENT GUARD: reject a PCB-taxable non-EPF/non-SOCSO/non-payable component up front
- *      with UnsupportedBatchComponentError (setPayrollBatchComponent throws on it mid-loop otherwise).
- *   4. Re-derive qualification at transfer time from CURRENT attendance (evaluation is a live read).
- *      Each qualified in-scope employee gets amount = policy.amount via the idempotent upsert (by
- *      batch+employment+component), so re-running does not double-pay.
- *   5. REVERSAL: if an employee no longer qualifies (attendance corrected downward after a prior
- *      transfer) but has an existing batch component row for THIS pay component, remove it. The batch row
- *      is the single source of truth — no award table to keep in sync.
+/** Recalculate inside employment/run locks and replace only this policy's current sources.
+ * Results, immutable revisions, aggregate payroll inputs and success receipts commit atomically.
+ * A processed run requires explicit reprocess and is marked stale; a closed run always refuses.
+ * The optional digest binds interactive transfers to the preview the administrator reviewed.
  */
 export async function transferAllowancesToBatch(
-  ctx: SessionContext,
-  p: { batchId: string; policyId: string },
+  ctx: SessionContext,p: { batchId: string; policyId: string; expectedDigest?:string; reprocess?:boolean },
 ): Promise<TransferResult> {
-  // 2. Gate check first — no session/DB work when the pipeline is off.
-  if (!isModuleEnabled(ctx, 'typed_pay_components')) {
-    return { applied: 0, ineligible: 0, reversed: 0, gated: true };
+  if(!isModuleEnabled(ctx,'typed_pay_components'))return {applied:0,ineligible:0,reversed:0,gated:true};
+  try{
+    return await withTenant(ctx,async tx=>{
+      const [candidateBatch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId));
+      const [candidatePolicy]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.policyId));
+      if(!candidateBatch||!candidatePolicy)throw new Error('Payroll run or policy not found');
+      await assertPolicyAdminTx(tx,candidatePolicy.companyId);
+      if(candidatePolicy.companyId!==candidateBatch.companyId)throw new Error('Policy and payroll run must belong to the same company');
+      const periods=allowancePeriods(candidatePolicy.method as AllowancePeriodMethod,candidateBatch.payPeriod);
+      const from=periods[0]?.from??`${candidateBatch.payPeriod}-01`,to=periods[periods.length-1]?.to??from;
+      // Correction, clock and import writers lock subjects BEFORE payroll runs. Preserve that order.
+      const subjects=await tx.select({id:employment.id}).from(employment).where(employedByCompanyDuring(candidatePolicy.companyId,from,to)).orderBy(asc(employment.id));
+      for(const subject of subjects)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+subject.id},0))`);
+      const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).for('update');
+      const [policy]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.policyId)).for('update');
+      if(!batch||!policy||policy.version!==candidatePolicy.version)throw new StaleAllowancePreviewError();
+      if(batch.status==='closed'||(batch.status!=='draft'&&!(batch.status==='processed'&&p.reprocess)))throw new BatchNotDraftError();
+      if(policy.companyId!==batch.companyId)throw new Error('Policy and payroll run must belong to the same company');
+      if(policy.status!=='active'||policy.archivedAt)throw new Error('Activate this policy before transferring');
+      await validateDefinitionTx(tx,{companyId:policy.companyId,payComponentId:policy.payComponentId,policyType:policy.policyType,rules:policy.rules});
+      const evaluation=await evaluateAllowancesTx(tx,ctx,{policyId:policy.id,month:batch.payPeriod,batchId:batch.id});
+      if(p.expectedDigest&&p.expectedDigest!==evaluation.inputDigest)throw new StaleAllowancePreviewError();
+      const contributions:Parameters<typeof projectAttendanceAllowanceTx>[2]['contributions']=[];
+      for(const row of evaluation.rows){
+        for(const period of row.periods){
+          const evidence=JSON.parse(JSON.stringify({policyVersion:policy.version,period,policySnapshot:{policyId:policy.id,version:policy.version,method:policy.method,policyType:policy.policyType,payComponentId:policy.payComponentId},legacy:!policy.rules}));
+          const digest=createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
+          const [result]=await tx.insert(attendanceAllowanceResult).values({tenantId:ctx.tenantId,companyId:policy.companyId,policyId:policy.id,policyVersion:policy.version,employmentId:row.employmentId,payMonth:batch.payPeriod,periodKey:period.key,periodFrom:period.from,periodTo:period.to,amount:period.amount,qualified:period.qualified,evidence,inputDigest:digest})
+            .onConflictDoUpdate({target:[attendanceAllowanceResult.tenantId,attendanceAllowanceResult.policyId,attendanceAllowanceResult.policyVersion,attendanceAllowanceResult.employmentId,attendanceAllowanceResult.periodKey],set:{amount:period.amount,qualified:period.qualified,evidence,inputDigest:digest,status:'calculated',calculatedAt:new Date()}}).returning({id:attendanceAllowanceResult.id});
+          await tx.insert(attendanceAllowanceResultRevision).values({tenantId:ctx.tenantId,companyId:policy.companyId,resultId:result.id,employmentId:row.employmentId,inputDigest:digest,amount:period.amount,evidence}).onConflictDoNothing();
+          if(period.qualified)contributions.push({resultId:result.id,employmentId:row.employmentId,componentId:policy.payComponentId,periodKey:period.key,amount:period.amount});
+        }
+      }
+      const projected=await projectAttendanceAllowanceTx(tx,ctx,{batchId:batch.id,policyId:policy.id,companyId:policy.companyId,payMonth:batch.payPeriod,contributions,reprocess:p.reprocess});
+      await tx.insert(attendanceAllowanceTransfer).values({tenantId:ctx.tenantId,companyId:policy.companyId,policyId:policy.id,policyVersion:policy.version,batchId:batch.id,batchRef:batch.id,status:'transferred',inputDigest:evaluation.inputDigest});
+      const result={...projected,ineligible:evaluation.rows.filter(r=>!r.qualified).length,gated:false};
+      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-allowance-policy',aggregateId:policy.id,eventType:'attendance-allowance-policy.transferred',actor:actorOf(ctx),payload:{batchId:batch.id,payPeriod:batch.payPeriod,policyVersion:policy.version,inputDigest:evaluation.inputDigest,...result}});
+      return result;
+    });
+  }catch(error){
+    // A failed atomic transfer rolls back all money and results. Persist a separately authorised,
+    // reference-only failure receipt so an administrator can resolve it and retry safely.
+    await withTenant(ctx,async tx=>{
+      const [policy]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,p.policyId));
+      const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId));
+      if(!policy||!batch||policy.companyId!==batch.companyId)return;
+      await assertPolicyAdminTx(tx,policy.companyId);
+      const errorCode=error instanceof StaleAllowancePreviewError?'stalePreview':error instanceof BatchNotDraftError?'payrollLocked':error instanceof UnsupportedBatchComponentError?'unsupportedCode':error instanceof AllowancePayrollConflictError?'payrollConflict':'validationFailed';
+      const [attempt]=await tx.insert(attendanceAllowanceTransfer).values({tenantId:ctx.tenantId,companyId:policy.companyId,policyId:policy.id,policyVersion:policy.version,batchId:batch.id,batchRef:batch.id,status:'failed',errorCode,inputDigest:p.expectedDigest??null}).returning({id:attendanceAllowanceTransfer.id});
+      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-allowance-policy',aggregateId:policy.id,eventType:'attendance-allowance-policy.transfer-failed',actor:actorOf(ctx),payload:{attemptId:attempt.id,batchId:batch.id,errorCode}});
+    }).catch(()=>undefined); // Preserve the original refusal; never expose a hidden policy through logging.
+    throw error;
   }
-  return withTenant(ctx, async (tx) => {
-    const [batch] = await tx
-      .select({
-        id: payrollBatch.id,
-        companyId: payrollBatch.companyId,
-        payPeriod: payrollBatch.payPeriod,
-        status: payrollBatch.status,
-      })
-      .from(payrollBatch)
-      .where(eq(payrollBatch.id, p.batchId))
-      .limit(1);
-    if (!batch) throw new Error('batch not found');
-    if (batch.status !== 'draft') throw new BatchNotDraftError();
+}
+export function allowanceTransferHistory(ctx:SessionContext,policyId:string){
+  return withTenant(ctx,async tx=>{
+    const [policy]=await tx.select().from(attendanceAllowancePolicy).where(eq(attendanceAllowancePolicy.id,policyId));
+    if(!policy)throw new Error('Attendance-allowance policy not found');
+    await assertPolicyAdminTx(tx,policy.companyId);
+    const [attempts,results,versions,revisions]=await Promise.all([
+      tx.select().from(attendanceAllowanceTransfer).where(eq(attendanceAllowanceTransfer.policyId,policyId)).orderBy(sql`${attendanceAllowanceTransfer.createdAt} desc`,attendanceAllowanceTransfer.id).limit(100),
+      tx.select().from(attendanceAllowanceResult).where(eq(attendanceAllowanceResult.policyId,policyId)).orderBy(sql`${attendanceAllowanceResult.calculatedAt} desc`,attendanceAllowanceResult.id).limit(500),
+      tx.select().from(attendanceAllowanceVersion).where(eq(attendanceAllowanceVersion.policyId,policyId)).orderBy(sql`${attendanceAllowanceVersion.version} desc`),
+      tx.select({id:attendanceAllowanceResultRevision.id,resultId:attendanceAllowanceResultRevision.resultId,createdAt:attendanceAllowanceResultRevision.createdAt,amount:attendanceAllowanceResultRevision.amount,evidence:attendanceAllowanceResultRevision.evidence}).from(attendanceAllowanceResultRevision).innerJoin(attendanceAllowanceResult,eq(attendanceAllowanceResult.id,attendanceAllowanceResultRevision.resultId)).where(eq(attendanceAllowanceResult.policyId,policyId)).orderBy(sql`${attendanceAllowanceResultRevision.createdAt} desc`,attendanceAllowanceResultRevision.id).limit(500),
+    ]);
+    return {attempts,results,versions,revisions};
+  });
+}
 
-    const [policy] = await tx
-      .select()
-      .from(attendanceAllowancePolicy)
-      .where(eq(attendanceAllowancePolicy.id, p.policyId))
-      .limit(1);
-    if (!policy) throw new Error('Attendance-allowance policy not found');
-
-    // 3. Supported-component guard — fail fast, not mid-loop.
-    const [comp] = await tx
-      .select({
-        includedInEpf: payComponent.includedInEpf,
-        includedInSocsoEis: payComponent.includedInSocsoEis,
-        includedInPcb: payComponent.includedInPcb,
-        isNonPayable: payComponent.isNonPayable,
-        code: payComponent.code,
-      })
-      .from(payComponent)
-      .where(eq(payComponent.id, policy.payComponentId))
-      .limit(1);
-    if (!comp) throw new Error('Pay component not found for this policy');
-    if (comp.includedInPcb && (comp.isNonPayable || (!comp.includedInEpf && !comp.includedInSocsoEis))) {
-      throw new UnsupportedBatchComponentError(comp.code);
-    }
-
-    // The company's country is not needed — evaluation is calendar-month based. Match the summary month
-    // to the batch's payPeriod (v1 is Monthly, so ONE component row per employee is correct — no summing).
-    const evaluation = await evaluateAllowancesForPeriod(ctx, {
-      policyId: policy.id,
-      month: batch.payPeriod,
-    });
-
-    const qualifiedIds = new Set(evaluation.rows.filter((r) => r.qualified).map((r) => r.employmentId));
-
-    // Existing rows for this policy's component on this batch — the reversal candidates.
-    const existing = await tx
-      .select({ employmentId: payrollBatchComponent.employmentId })
-      .from(payrollBatchComponent)
-      .where(
-        and(
-          eq(payrollBatchComponent.batchId, batch.id),
-          eq(payrollBatchComponent.componentId, policy.payComponentId),
-        ),
-      );
-
-    let applied = 0;
-    let ineligible = 0;
-    let reversed = 0;
-
-    // 4. Upsert the fixed amount for each qualified employee.
-    for (const row of evaluation.rows) {
-      if (!row.qualified) {
-        ineligible += 1;
-        continue;
-      }
-      await setPayrollBatchComponent(
-        ctx,
-        {
-          batchId: batch.id,
-          employmentId: row.employmentId,
-          componentId: policy.payComponentId,
-          amount: Number(policy.amount),
-          notes: `Attendance allowance (${policy.code})`,
-        },
-        tx,
-      );
-      applied += 1;
-    }
-
-    // 5. Reversal — remove rows for employees who previously qualified but no longer do.
-    for (const ex of existing) {
-      if (!qualifiedIds.has(ex.employmentId)) {
-        await tx
-          .delete(payrollBatchComponent)
-          .where(
-            and(
-              eq(payrollBatchComponent.batchId, batch.id),
-              eq(payrollBatchComponent.employmentId, ex.employmentId),
-              eq(payrollBatchComponent.componentId, policy.payComponentId),
-            ),
-          );
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'payroll-batch-component',
-          aggregateId: batch.id,
-          eventType: 'payroll-batch-component.removed',
-          actor: actorOf(ctx),
-          subjectEmploymentId: ex.employmentId,
-          // ADR-0030 Layer 0: the amount is not carried in the event payload; reference only.
-          payload: { batchId: batch.id, componentId: policy.payComponentId, reason: 'attendance-allowance-disqualified' },
-        });
-        reversed += 1;
-      }
-    }
-
-    // Policy-level command event so the transfer is auditable (per-employee sets already logged by
-    // setPayrollBatchComponent). No monetary value in the payload (ADR-0030 Layer 0).
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'attendance-allowance-policy',
-      aggregateId: policy.id,
-      eventType: 'attendance-allowance-policy.transferred',
-      actor: actorOf(ctx),
-      payload: { batchId: batch.id, payPeriod: batch.payPeriod, applied, ineligible, reversed },
-    });
-
-    return { applied, ineligible, reversed, gated: false };
+/** Company-scoped setup vocabulary. Only actual configured fields are offered; no invented branch/division. */
+export function allowanceSetupOptions(ctx:SessionContext,companyIds:string[]){
+  return withTenant(ctx,async tx=>{
+    for(const id of companyIds)await assertPolicyAdminTx(tx,id);
+    if(!companyIds.length)return {companies:[],departments:[],businessUnits:[],positions:[],grades:[],employees:[],categories:[],shifts:[]};
+    const [companies,departments,businessUnits,positions,grades,employees,shifts]=await Promise.all([
+      tx.select({id:company.id,label:company.legalName,currency:company.currency}).from(company).where(inArray(company.id,companyIds)).orderBy(company.legalName),
+      tx.select({id:department.id,label:department.name,companyId:department.companyId,isGlobal:department.isGlobal}).from(department).where(and(isNull(department.archivedAt),sql`(${inArray(department.companyId,companyIds)} or ${department.isGlobal})`)).orderBy(department.name),
+      tx.select({id:businessUnit.id,label:businessUnit.name,companyId:businessUnit.companyId,isGlobal:businessUnit.isGlobal}).from(businessUnit).where(and(isNull(businessUnit.archivedAt),sql`(${inArray(businessUnit.companyId,companyIds)} or ${businessUnit.isGlobal})`)).orderBy(businessUnit.name),
+      tx.select({id:position.id,label:position.title,companyId:position.companyId,isGlobal:position.isGlobal}).from(position).where(and(isNull(position.archivedAt),sql`(${inArray(position.companyId,companyIds)} or ${position.isGlobal})`)).orderBy(position.title),
+      tx.select({id:jobGrade.id,label:jobGrade.name}).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(jobGrade.rank,jobGrade.name),
+      tx.select({id:employment.id,label:person.fullName,companyId:employment.companyId,category:employment.employmentCategory}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(inArray(employment.companyId,companyIds),sql`app.can_admin_employment(${employment.id})`)).orderBy(person.fullName,employment.id),
+      tx.select({id:shift.id,label:shift.name,companyId:shift.companyId}).from(shift).where(and(isNull(shift.archivedAt),sql`(${shift.companyId} is null or ${inArray(shift.companyId,companyIds)})`)).orderBy(shift.name),
+    ]);
+    return {companies,departments,businessUnits,positions,grades,employees,categories:[...new Set(employees.flatMap(e=>e.category?[e.category]:[]))],shifts};
   });
 }

@@ -1,129 +1,73 @@
 'use server';
-
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { getSession } from '@/lib/session';
-import {
-  archiveAllowancePolicy,
-  createAllowancePolicy,
-  DuplicateAllowancePolicyCodeError,
-  setAllowancePolicyStatus,
-  updateAllowancePolicy,
-} from '@/core/attendance-allowance';
-import type { AttendanceAllowanceCriteria, AttendanceAllowanceScope } from '@/db/schema';
-
-const PAGE = '/admin/attendance-allowance';
-
-const str = (fd: FormData, k: string): string | undefined => {
-  const v = String(fd.get(k) ?? '').trim();
-  return v || undefined;
-};
-
-/** Build the criteria bag from the submitted form. A blank input ⇒ the criterion is not set. */
-function criteriaFromForm(fd: FormData): AttendanceAllowanceCriteria {
-  const num = (k: string): number | undefined => {
-    const v = String(fd.get(k) ?? '').trim();
-    if (!v) return undefined;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : undefined;
-  };
-  const c: AttendanceAllowanceCriteria = {};
-  const min = num('minAttendanceDays');
-  if (min !== undefined) c.minAttendanceDays = min;
-  const abs = num('maxAbsentDays');
-  if (abs !== undefined) c.maxAbsentDays = abs;
-  const late = num('maxLateCount');
-  if (late !== undefined) c.maxLateCount = late;
-  const leave = num('maxTotalLeaveDays');
-  if (leave !== undefined) c.maxTotalLeaveDays = leave;
-  if (fd.get('requirePerfectAttendance') === 'on') c.requirePerfectAttendance = true;
-  return c;
+import { scopedAdmin } from '@/lib/scope';
+import { archiveAllowancePolicy,createAllowancePolicy,DuplicateAllowancePolicyCodeError,getAllowancePolicy,setAllowancePolicyStatus,StaleAllowancePreviewError,transferAllowancesToBatch,updateAllowancePolicy,validateAllowanceRules,type AllowancePolicyType } from '@/packs/attendance/service';
+import { AllowancePayrollConflictError, BatchNotDraftError } from '@/packs/payroll/service';
+import type { AttendanceAllowanceCriteria,AttendanceAllowanceScope } from '@/db/schema';
+const PAGE='/admin/attendance-allowance';
+const uuid=(v:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+const text=(fd:FormData,key:string)=>String(fd.get(key)??'').trim();
+function legacyCriteria(fd:FormData):AttendanceAllowanceCriteria{
+  const out:AttendanceAllowanceCriteria={};
+  for(const key of ['minAttendanceDays','maxAbsentDays','maxLateCount','maxTotalLeaveDays'] as const){const v=text(fd,key);if(v){if(!/^\d+$/.test(v))throw new Error('Legacy thresholds must be non-negative whole days or counts');out[key]=Number(v);}}
+  if(fd.get('requirePerfectAttendance')==='on')out.requirePerfectAttendance=true;
+  return out;
 }
-
-/** Build the scope bag: multi-select checkbox lists for department / business unit / company. */
-function scopeFromForm(fd: FormData): AttendanceAllowanceScope {
-  const list = (k: string): string[] => fd.getAll(k).map((x) => String(x).trim()).filter(Boolean);
-  const s: AttendanceAllowanceScope = {};
-  const dep = list('departmentIds');
-  if (dep.length) s.departmentIds = dep;
-  const bu = list('businessUnitIds');
-  if (bu.length) s.businessUnitIds = bu;
-  const co = list('companyIds');
-  if (co.length) s.companyIds = co;
-  return s;
+function legacyScope(fd:FormData):AttendanceAllowanceScope{
+  const out:AttendanceAllowanceScope={};for(const key of ['departmentIds','businessUnitIds','companyIds'] as const){const values=fd.getAll(key).map(String);if(values.some(v=>!uuid(v)))throw new Error('Invalid policy scope');if(values.length)out[key]=values;}return out;
 }
-
-async function errorMessage(e: unknown): Promise<string> {
-  const t = await getTranslations('attendanceAllowance.errors');
-  if (e instanceof DuplicateAllowancePolicyCodeError) return t('duplicateCode');
-  return publicErrorMessage(e);
+async function message(error:unknown){
+  const t=await getTranslations('allowanceV2.errors');
+  if(error instanceof DuplicateAllowancePolicyCodeError)return t('duplicateCode');
+  if(error instanceof StaleAllowancePreviewError)return t('stalePreview');
+  if(error instanceof BatchNotDraftError)return t('payrollLocked');
+  if(error instanceof AllowancePayrollConflictError)return t('payrollConflict');
+  return publicErrorMessage(error);
 }
-
-async function run(write: () => Promise<void>, toastKey: string) {
-  let errMsg: string | null = null;
-  try {
-    await write();
-    revalidatePath(PAGE);
-  } catch (e) {
-    errMsg = await errorMessage(e);
-  }
-  if (errMsg) redirect(`${PAGE}?error=${encodeURIComponent(errMsg)}`);
-  const t = await getTranslations('attendanceAllowance.toasts');
-  redirect(`${PAGE}?toast=${encodeURIComponent(t(toastKey))}`);
+async function scopedPolicy(id:string){
+  const {s,scopeIds}=await scopedAdmin();
+  if(!uuid(id))throw new Error('Invalid policy');
+  const policy=await getAllowancePolicy(s,id);
+  if(!policy||!scopeIds.includes(policy.companyId))throw new Error('This policy is outside the selected company scope');
+  return {s,policy};
 }
-
-export async function createAllowancePolicyAction(formData: FormData) {
-  const s = await getSession();
-  await run(
-    () =>
-      createAllowancePolicy(s, {
-        companyId: String(formData.get('companyId') ?? ''),
-        code: String(formData.get('code') ?? ''),
-        name: String(formData.get('name') ?? ''),
-        method: 'monthly',
-        amount: String(formData.get('amount') ?? ''),
-        payComponentId: String(formData.get('payComponentId') ?? ''),
-        effectiveFrom: String(formData.get('effectiveFrom') ?? ''),
-        criteria: criteriaFromForm(formData),
-        scope: scopeFromForm(formData),
-      }).then(() => undefined),
-    'saved',
-  );
+export async function saveAllowancePolicyFormAction(_state:{error:string|null},fd:FormData):Promise<{error:string|null}>{
+  try{
+    const {s,scopeIds}=await scopedAdmin();
+    const companyId=text(fd,'companyId'),id=text(fd,'id');
+    if(!scopeIds.includes(companyId))throw new Error('Choose a company in the selected scope');
+    if(id){const existing=await getAllowancePolicy(s,id);if(!existing||existing.companyId!==companyId)throw new Error('Policy does not belong to the selected company');}
+    if(fd.get('reviewed')!=='on')throw new Error('Review and confirm the policy before saving');
+    const raw=text(fd,'rules');if(raw.length>40000)throw new Error('Too many policy conditions');
+    const rules=raw?validateAllowanceRules(JSON.parse(raw)):null;
+    if(!id&&!rules)throw new Error('New policies require the attendance and employee conditions');
+    const policyType=text(fd,'policyType');if(policyType!=='earning'&&policyType!=='deduction')throw new Error('Choose Earning or Deduction');
+    const input={companyId,code:text(fd,'code'),name:text(fd,'name'),policyType:policyType as AllowancePolicyType,method:text(fd,'method'),amount:text(fd,'amount'),payComponentId:text(fd,'payComponentId'),effectiveFrom:text(fd,'effectiveFrom'),rules,...(!rules?{criteria:legacyCriteria(fd),scope:legacyScope(fd)}:{})};
+    if(id)await updateAllowancePolicy(s,{id,...input});else await createAllowancePolicy(s,input);
+    revalidatePath(PAGE);if(id)revalidatePath(`${PAGE}/${id}`);
+  }catch(error){return {error:await message(error)};}
+  redirect(PAGE);
 }
-
-export async function updateAllowancePolicyAction(formData: FormData) {
-  const s = await getSession();
-  await run(
-    () =>
-      updateAllowancePolicy(s, {
-        id: String(formData.get('id') ?? ''),
-        code: str(formData, 'code'),
-        name: String(formData.get('name') ?? ''),
-        amount: String(formData.get('amount') ?? ''),
-        payComponentId: String(formData.get('payComponentId') ?? ''),
-        effectiveFrom: String(formData.get('effectiveFrom') ?? ''),
-        criteria: criteriaFromForm(formData),
-        scope: scopeFromForm(formData),
-      }).then(() => undefined),
-    'saved',
-  );
+async function runStatus(fd:FormData,archive:boolean){
+  let error:string|undefined;
+  try{const id=text(fd,'id');const {s}=await scopedPolicy(id);if(archive)await archiveAllowancePolicy(s,{id});else await setAllowancePolicyStatus(s,{id,status:text(fd,'status')});revalidatePath(PAGE);}catch(e){error=await message(e);}
+  redirect(error?`${PAGE}?error=${encodeURIComponent(error)}`:PAGE);
 }
-
-export async function setAllowanceStatusAction(formData: FormData) {
-  const s = await getSession();
-  await run(
-    () =>
-      setAllowancePolicyStatus(s, {
-        id: String(formData.get('id') ?? ''),
-        status: String(formData.get('status') ?? ''),
-      }).then(() => undefined),
-    'statusChanged',
-  );
-}
-
-export async function archiveAllowancePolicyAction(formData: FormData) {
-  const s = await getSession();
-  await run(() => archiveAllowancePolicy(s, { id: String(formData.get('id') ?? '') }).then(() => undefined), 'archived');
+export async function setAllowanceStatusAction(fd:FormData){return runStatus(fd,false);}
+export async function archiveAllowancePolicyAction(fd:FormData){return runStatus(fd,true);}
+export async function transferAllowanceAction(fd:FormData){
+  const id=text(fd,'id'),batchId=text(fd,'batchId');let error:string|undefined;
+  try{
+    const {s}=await scopedPolicy(id);
+    const expectedDigest=text(fd,'inputDigest');
+    if(!uuid(batchId)||!/^[0-9a-f]{64}$/i.test(expectedDigest))throw new Error('Preview a payroll run before transferring');
+    const result=await transferAllowancesToBatch(s,{policyId:id,batchId,expectedDigest,reprocess:fd.get('reprocess')==='on'});
+    if(result.gated)throw new Error('The typed payroll component module must be enabled before transferring');
+    revalidatePath(PAGE);revalidatePath(`${PAGE}/${id}`);revalidatePath('/payroll');
+  }catch(e){error=await message(e);}
+  const query=new URLSearchParams({batchId,...(error?{error}:{transferred:'1'})});
+  redirect(`${PAGE}/${uuid(id)?id:''}?${query}`);
 }

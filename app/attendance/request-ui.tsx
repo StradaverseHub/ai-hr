@@ -15,7 +15,8 @@ import type { getTranslations } from 'next-intl/server';
  * the danger, wrong about the cure. The wording below did not prevent that confusion, it WAS that
  * confusion: the split it carried put both words on ONE screen — My Attendance Request Status, whose
  * filter chip read "Cancelled" a few centimetres above an overtime row reading "Withdrawn" — which is
- * exactly what the reporter then saw. One module is still the answer; one WORD is now what it holds.
+ * exactly what the reporter then saw. One module owns those legacy withdrawal labels; later administrative cancellation is distinguished
+ * by persisted provenance below.
  * See `statusLabel`.
  *
  * MOVED, NOT REWRITTEN. Every value here is lifted verbatim from the single screen that carried them
@@ -27,39 +28,23 @@ import type { getTranslations } from 'next-intl/server';
  */
 export type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
 
-/**
- * `cancelled` is the STORED status, and on every screen this module serves it reads "Withdrawn" —
- * overtime plan and clock correction alike.
- *
- * r363 — THE SPLIT THIS COMMENT USED TO DEFEND IS RETIRED, AND ITS OWN PREMISE IS WHY. It read:
- * "`cancelled` is the STORED status; on an overtime plan the employee WITHDREW it, and 'Cancelled' would
- * read as somebody else having called it off. That wording shipped with Plan OT and has survived two
- * relocations — it must survive this one." The middle sentence is an argument for unifying, not for
- * splitting: nobody else called a CORRECTION off either. Exactly two writers put this value on
- * `attendance_correction` — `cancelPlannedOvertime` and `cancelOwnAttendanceCorrection`
- * (core/attendance.ts) — and both refuse anybody but the subject, in code rather than by RLS. So on
- * these screens `cancelled` has one meaning: the employee took their own request back.
- *
- * WHAT IS NOT MERGED, AND MUST NOT BE. The STATE rules stay genuinely different, and they live in the
- * service, not here: an overtime plan may be withdrawn after approval while the hours have not landed;
- * a correction only while it is still pending. This round changes the word, never the rule.
- *
- * `isOvertime` IS NOW READ BY NO BRANCH, and that is stated rather than hidden. It is kept because two
- * call sites pin the call shape (test/attendance-screens-layout.test.ts case A2) and dropping a
- * parameter is a decision of its own. Note the cost: A2 exists because a verifier mutated that argument
- * and nothing failed — after this round mutating it SHOULD have no effect, so A2 is a shape check, not a
- * behaviour test. The behaviour A2 was reaching for is pinned instead by the equality case beside it,
- * which compares the two kinds' cancelled labels against EACH OTHER. RECOMMENDED FOR A LATER ROUND, not
- * taken here: drop the parameter and retire A2 in favour of that case.
- */
-export function statusLabel(status: string, t: T, isOvertime: boolean): string {
+/** Legacy withdrawals keep r363's shared Withdrawn wording. Approved administrative cancellation is
+ * distinguished by its persisted cancellationKind, with the same resolved label on screen and in exports.
+ * A missing kind remains a legacy withdrawal; no historical row is rewritten to manufacture a distinction.
+ * The overtime argument remains for existing callers, whose labels were deliberately unified by r363. */
+export function statusLabel(status: string, t: T, isOvertime: boolean, cancellation?: { kind?: string | null; cancelledLabel: string }): string {
   // Deliberately unread — see above. The statement is here so "nothing reads it" is visible in the CODE
   // and not only in a comment, and so the unused-argument lint does not have to be silenced.
   void isOvertime;
-  if (status === 'cancelled') return t('otStatusWithdrawn');
+  if (status === 'cancelled') return cancellation?.kind === 'cancelled' ? cancellation.cancelledLabel : t('otStatusWithdrawn');
   if (status === 'approved') return t('leaveStatus.approved');
   if (status === 'rejected') return t('leaveStatus.rejected');
   return t('leaveStatus.pending');
+}
+
+/** A status filter includes both kinds of cancelled rows; its caption must not assert only one of them. */
+export function requestStatusFilterLabel(status: string | null | undefined, t: T, cancelledFilterLabel: string): string {
+  return status === 'cancelled' ? cancelledFilterLabel : status ? statusLabel(status, t, false) : t('maFilterAll');
 }
 
 /**

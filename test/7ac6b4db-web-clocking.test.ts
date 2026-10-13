@@ -95,7 +95,9 @@ describe('r378/r430 · private camera capture, now CONDITIONAL on attendancePhot
     // r430 — confirm() no longer refuses without a photo (Optional/Not Required both reach it); the
     // REQUIRED setting is enforced server-side (AttendancePhotoRequiredError), never by this early return.
     expect(client).not.toContain('if(!photo||!action||busy)return');
-    expect(client).toContain('if(busy)return');
+    // Synchronous ref closes the interval before React renders busy; retained commands block new intents.
+    expect(client).toContain('if(inFlight.current)return');
+    expect(client).toContain('if(command.current || inFlight.current)return');
     expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");
     expect(client).toContain('stream.current?.getTracks().forEach(track=>track.stop())');
     expect(client).not.toContain('type="file"');

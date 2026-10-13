@@ -319,7 +319,7 @@ describe('ad52212d round 2 — the list wiring (a contract that spans two files)
       'export const scheduleGroupEditPath = (ruleId: string) => `${scheduleGroupViewPath(ruleId)}/edit`;',
     );
     expect(read('app/admin/_redirects.ts'), 'and that helper is the only place a schedule path meets a query').toContain(
-      'export function okScheduleGroup(ruleId: string, msg: string, section = \'\'): never {',
+      'export function okScheduleGroup(ruleId: string, msg: string, section = \'\', saveReceipt = \'\'): never {',
     );
   });
 

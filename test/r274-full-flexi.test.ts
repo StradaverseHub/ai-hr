@@ -181,3 +181,17 @@ describe('§C · the service refuses the trap production is already in', () => {
     expect(shift.id).toBeTruthy();
   });
 });
+
+// 83d615fb: Semi Flexi uses the configured duration too; the fixed-shift control above remains.
+describe('Semi Flexi required duration',()=>{
+  const semi=()=>createShift(adminCtx(b),{name:`Semi_${randomUUID().slice(0,6)}`,code:`SF_${randomUUID().slice(0,6)}`,type:'semi_flexi',startTime:'07:00:00',endTime:'20:00:00',breakMinutes:60,flexibleBreakEnabled:true,flexibleBreakMinutes:60,normalMinutesOverride:480,weeklyPattern:[1,2,3,4,5,6,7]});
+  it('production-shaped 08:00–18:30 records 570 net minutes without fixed-time penalties',async()=>{
+    const shift=await semi();const {row}=await punchDay(shift.id,'08:00:00','18:30:00');
+    expect(row.workedMinutes).toBe(570);expect(row.lateMinutes).toBeNull();expect(row.earlyOutMinutes).toBeNull();expect(row.underMinutes).toBe(0);expect(row.status).toBe('present');
+  });
+  it('retains genuine short hours and incomplete evidence',async()=>{
+    const shift=await semi();const {row}=await punchDay(shift.id,'09:00:00','16:00:00');expect(row.workedMinutes).toBe(360);expect(row.underMinutes).toBe(120);
+    const {a,employmentId}=await employeeOn(shift.id,`semi_open_${randomUUID()}@test.local`);
+    await checkIn(a,{employmentId,date:TUE,time:'09:00:00'});const incomplete=await attendanceOf(employmentId,TUE);expect(incomplete.checkOutAt).toBeNull();expect(incomplete.workedMinutes).toBeNull();expect(incomplete.underMinutes).toBeNull();
+  });
+});

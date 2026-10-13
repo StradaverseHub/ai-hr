@@ -1,3 +1,4 @@
+import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -61,12 +62,9 @@ import { SCHEDULE_PANEL_ANCHOR, resolveSchedulePanel } from '../../attendance-po
  * "no Schedule data is changed, deleted, duplicated or reset" means. So the LIST is the Schedule Group
  * list FIRST, and the four tenant- and company-wide cards follow it.
  *
- * ⚠️ READ THE AUDIT BEFORE ADDING A CONTROL HERE. Three of the six things the General tab was asked to
+ * ⚠️ READ THE AUDIT BEFORE ADDING A CONTROL HERE. Two of the six things the General tab was asked to
  * hold ARE NOT STORED ANYWHERE:
  *
- *   · ROTATION — there is no rotation cycle, anywhere. `core/roster.ts generateRosterFromTemplate` is a
- *     ONE-SHOT action over a date range driven by `shift.weekly_pattern`; nothing persists "advance the
- *     crew one step each week". A "rotation" control would need a table that does not exist.
  *   · DUTY ROSTER CONTROLS — the roster's governing rule is CODE, not configuration:
  *     `core/roster.ts canWriteRosterDate` (today-or-earlier is administrator-only) and RLS
  *     (`app.can_admin_employment`). There is no roster settings row to edit.
@@ -75,9 +73,9 @@ import { SCHEDULE_PANEL_ANCHOR, resolveSchedulePanel } from '../../attendance-po
  *
  * And one is only PARTLY real: the day-type allow-list is a LEAVE-counting vector on `leave_type`, its
  * offDay/restDay keys collapse to one non-working-weekday bucket, and companyHoliday/shutdownDay are
- * STORED-BUT-INERT (their resolver is Phase B). The "Not configured here" card names all four in plain
+ * STORED-BUT-INERT (their resolver is Phase B). The "Not configured here" card names the remaining gaps in plain
  * words instead of drawing a box behind each. A control drawn at a value nothing wires up is worse than an
- * absent one: do not "finish" this screen by adding those four controls; finish it by shipping the storage
+ * absent one: do not "finish" this screen by adding those controls; finish it by shipping the storage
  * first. That is exactly what 07ebd04d did for the seventh section — see ./sections.ts.
  *
  * ══ WHAT EACH ROW ACTION DOES, AND WHERE IT LEAVES YOU ═════════════════════════════════════════════════
@@ -101,6 +99,7 @@ export default async function ScheduleListPage({
   searchParams: Promise<{ error?: string; policy?: string; viewPolicy?: string }>;
 }) {
   const s = await requireAdmin();
+  const settingsT = await getTranslations('attendanceSettingsHub');
   const t = await getTranslations('admin.scheduleConfig');
   const tp = await getTranslations('admin.attendancePolicy');
   const sp = await searchParams;
@@ -168,7 +167,8 @@ export default async function ScheduleListPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('pageTitle')} description={t('listSubtitle')} />
+      <AttendanceSettingsNavigation />
+      <PageHeader back={{ href: '/admin/attendance/settings', label: settingsT('backToSettings') }} title={t('pageTitle')} description={t('listSubtitle')} />
       {/* A refusal from a row action (Duplicate, Activate/Deactivate, Delete) lands here. While a company
           policy panel is open the refusal belongs to the panel and is shown there instead, so the same
           message is never printed twice. */}
@@ -285,10 +285,6 @@ export default async function ScheduleListPage({
           <Card id="not-configured-here" className="scroll-mt-6">
             <SectionHeader title={t('gapsTitle')} subtitle={t('gapsHint')} />
             <dl className="divide-y divide-border">
-              <div className="px-4 py-3">
-                <dt className="text-sm font-medium">{t('gapRotationTitle')}</dt>
-                <dd className="mt-1 text-sm text-muted-foreground">{t('gapRotationBody')}</dd>
-              </div>
               <div className="px-4 py-3">
                 <dt className="text-sm font-medium">{t('gapRosterTitle')}</dt>
                 <dd className="mt-1 text-sm text-muted-foreground">

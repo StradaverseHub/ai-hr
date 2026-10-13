@@ -14,6 +14,19 @@
 # once, here, explicitly, and the version that wrote each archive is recorded in its manifest.
 #
 # Every function is prefixed `blib_`.
+BLIB_CONNECTION_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/backup-connection.py"
+
+# Shell assignments and function arguments do not enter an external process's argv. The helper
+# delegates parsing to libpq and supplies decoded connection options through private PG* state.
+blib_pg_run() {
+  local connection="$1"; shift
+  AIHR_CONNECTION_URL="$connection" python3 "$BLIB_CONNECTION_HELPER" -- "$@"
+}
+blib_pg_run_db() {
+  local connection="$1" database="$2"; shift 2
+  AIHR_CONNECTION_URL="$connection" python3 "$BLIB_CONNECTION_HELPER" --database "$database" -- "$@"
+}
+blib_private_dir() { python3 "$BLIB_CONNECTION_HELPER" --private-dir "$1"; }
 
 # ── small portability helpers ────────────────────────────────────────────────────────────────────
 blib_have() { command -v "$1" >/dev/null 2>&1; }
@@ -48,10 +61,10 @@ blib_cutoff_stamp() {
 # Deliberately small: the database name and the role are all either script needs, and both are read
 # for REPORTING and for guards, never to rebuild a URL.
 blib_url_db() {
-  printf '%s\n' "$1" | sed -E 's#\?.*$##; s#^.*/([^/]*)$#\1#'
+  AIHR_CONNECTION_URL="$1" python3 "$BLIB_CONNECTION_HELPER" --field dbname
 }
 blib_url_user() {
-  printf '%s\n' "$1" | sed -E 's#^[a-zA-Z0-9+.-]+://##; s#@.*$##; s#:.*$##'
+  AIHR_CONNECTION_URL="$1" python3 "$BLIB_CONNECTION_HELPER" --field user
 }
 
 # ── postgres client selection ────────────────────────────────────────────────────────────────────
@@ -90,7 +103,7 @@ blib_any_psql() {
 blib_server_version_num() {
   local psql_bin
   psql_bin=$(blib_any_psql) || return 1
-  "$psql_bin" -X -q -At -d "$1" -c 'show server_version_num' 2>/dev/null | tr -d ' '
+  blib_pg_run "$1" "$psql_bin" -X -q -At -c 'show server_version_num' 2>/dev/null | tr -d ' '
 }
 
 # The bin directory whose client major is >= $1, choosing the LOWEST that qualifies.

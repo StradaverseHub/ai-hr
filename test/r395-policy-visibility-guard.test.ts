@@ -83,7 +83,8 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     await owner.client.begin(async (tx) => {
       await tx.unsafe(`select set_config('app.tenant_id', gen_random_uuid()::text, true), set_config('app.user_id', gen_random_uuid()::text, true)`);
       await tx.unsafe(`set local role ai_hr_app`);
-      for (const t of ['feedback_request', 'leave_request', 'person', 'employment']) {
+      for (const t of ['feedback_request', 'leave_request', 'person', 'employment',
+        'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision']) {
         const rows = (await tx.unsafe(`explain (costs off) select * from "${t}"`)) as unknown as Row[];
         plans.push(rows.map((r) => r['QUERY PLAN']).join('\n'));
       }

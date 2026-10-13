@@ -133,8 +133,8 @@ describe('2166ef79 — the remark and the stored kind', () => {
     });
     const [row] = await myAttendanceCorrections(a, employmentId);
     expect(row.remark).toBeNull();
-    // Not "the kind is missing" either — an omitted kind is NULL and the screen labels it generically.
-    expect(row.requestKind).toBeNull();
+    // Application History requires new clock requests to persist their generic irregularity kind.
+    expect(row.requestKind).toBe('other');
   });
 
   it('THE REASON IS STILL MANDATORY — stage one adds an optional remark, it does not soften the reason', async () => {
@@ -380,7 +380,25 @@ describe('2166ef79 — the status filter, and cancelling your own request', () =
 });
 
 describe('2166ef79 — nothing was widened by accident', () => {
-  it('a request filed the old way stores NULL remark, NULL kind and no attachment row', async () => {
+  it('reading a historical NULL-kind request preserves its stored kind and pending state', async () => {
+    const { a, employmentId } = await hire();
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId, date: DATE, checkIn: '09:00', checkOut: '18:00', reason: 'Historical fixture',
+    });
+    // Model a row written before request kinds were persisted; reading it must never rewrite history.
+    await owner.db.update(schema.attendanceCorrection).set({ requestKind: null })
+      .where(eq(schema.attendanceCorrection.id, correctionId));
+    const [read] = await myAttendanceCorrections(a, employmentId);
+    expect(read.id).toBe(correctionId);
+    expect(read.requestKind).toBeNull();
+    expect(read.status).toBe('pending');
+    const [stored] = await owner.db.select().from(schema.attendanceCorrection)
+      .where(eq(schema.attendanceCorrection.id, correctionId));
+    expect(stored.requestKind).toBeNull();
+    expect(stored.status).toBe('pending');
+  });
+
+  it('a new request using the old payload stores NULL remark, a canonical kind and no attachment row', async () => {
     const { a, employmentId } = await hire();
     const { correctionId } = await requestAttendanceCorrection(a, {
       employmentId,
@@ -394,7 +412,7 @@ describe('2166ef79 — nothing was widened by accident', () => {
       .from(schema.attendanceCorrection)
       .where(eq(schema.attendanceCorrection.id, correctionId));
     expect(stored.remark).toBeNull();
-    expect(stored.requestKind).toBeNull();
+    expect(stored.requestKind).toBe('other');
     expect(stored.status).toBe('pending');
     const files = await owner.db
       .select()

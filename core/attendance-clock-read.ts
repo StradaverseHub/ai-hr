@@ -6,6 +6,7 @@ import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment, myEmployments } from './read';
 import { clockScheduleForTx, resolveGeofence } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { clockCommandContext } from '../lib/clock-command-context';
 
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device).
 export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; lng: number; accuracy: number }, selectedEmploymentId?: string) {
@@ -56,6 +57,6 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
       try { const result = await resolveGeofence(tx,{employmentId:me.employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
-    return { serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
+    return { clockContext:clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId),serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
   });
 }

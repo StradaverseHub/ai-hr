@@ -17,6 +17,11 @@ describe('canonical scheduled full/half clock and normal hours',()=>{
   expect(workingShiftSchedule({start:'22:00',end:'06:00',crosses:true,breakMinutes:45,roundingMinutes:30},'full'))
    .toMatchObject({scheduledMinutes:420,normalMinutes:420,shiftEnd:'06:00',crosses:true});
   expect(workingShiftSchedule({start:'22:00',end:'06:00',crosses:true,breakMinutes:45,roundingMinutes:30},'half'))
-   .toMatchObject({scheduledMinutes:210,normalMinutes:210,shiftEnd:'02:00:00',crosses:false});
+   .toMatchObject({scheduledMinutes:210,normalMinutes:210,shiftEnd:'02:00:00',crosses:true});
+  // The flag describes the effective half window, not merely the full shift's flag.
+  expect(workingShiftSchedule({start:'18:00',end:'02:00',crosses:true,breakMinutes:0},'half'))
+   .toMatchObject({scheduledMinutes:240,shiftEnd:'22:00:00',crosses:false});
+  expect(workingShiftSchedule({start:'20:00',end:'04:00',crosses:true,breakMinutes:0},'half'))
+   .toMatchObject({scheduledMinutes:240,shiftEnd:'00:00:00',crosses:true});
  });
 });

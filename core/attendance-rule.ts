@@ -26,6 +26,7 @@ import {
   ATTENDANCE_OT_ROUNDING_MODES,
   attendancePolicy,
   attendanceRule,
+  attendanceRotation,
   attendanceRuleOtRow,
   employment,
   shift,
@@ -276,6 +277,10 @@ export function setRuleShifts(
     // Only shifts that actually exist in this tenant can be attached; RLS scopes the read, so a posted id
     // from another tenant simply is not in this list and is dropped rather than written.
     const all = await tx.select({ id: shift.id, ruleId: shift.ruleId }).from(shift);
+    const touched = [...new Set([p.ruleId,...all.filter(s=>p.shiftIds.includes(s.id)).map(s=>s.ruleId)].filter((id):id is string=>!!id))];
+    await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,touched)).orderBy(asc(attendanceRule.id)).for('update');
+    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(inArray(attendanceRotation.ruleId,touched)).limit(1);
+    if (rotation) throw new Error('Save allowed shifts together with the dated rotation in the Schedule Group.');
     const known = new Set(all.map((r) => r.id));
     const wanted = new Set([...p.shiftIds].filter((id) => known.has(id)));
     const current = new Set(all.filter((r) => r.ruleId === p.ruleId).map((r) => r.id));
@@ -742,74 +747,149 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
 }
 
 /** Update a rule (name/description/status editable on Standard too) + replace its OT rows. Appends
- *  attendance-rule.updated. is_default is never changed here (Standard stays Standard). */
+ * attendance-rule.updated. is_default is never changed here (Standard stays Standard).
+ * Full legacy forms remain full replacements; every update locks the rule before replacing bands. */
 export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } & AttendanceRuleInput): Promise<{ id: string }> {
-  const n = normalizeInput(p);
-  return withTenant(ctx, async (tx) => {
-    // Read the CURRENT switch state before writing: an already-on rule keeps the date it was stamped with,
-    // so re-saving a rule for an unrelated reason cannot silently move its deductions' start date forward.
-    const [before] = await tx
-      .select({
-        applyDeductions: attendanceRule.applyDeductions,
-        deductionsEffectiveFrom: attendanceRule.deductionsEffectiveFrom,
-      })
-      .from(attendanceRule)
-      .where(eq(attendanceRule.id, p.ruleId))
-      .limit(1);
-    try {
-      await tx
-        .update(attendanceRule)
-        .set({
-          name: n.name,
-          description: n.description,
-          status: n.status,
-          lateGracePeriodMinutes: n.lateGracePeriodMinutes,
-          lateAfterMinutes: n.lateAfterMinutes,
-          lateDeductMinutes: n.lateDeductMinutes,
-          includeGraceInLateness: n.includeGraceInLateness,
-          earlyGracePeriodMinutes: n.earlyGracePeriodMinutes,
-          earlyAfterMinutes: n.earlyAfterMinutes,
-          earlyDeductMinutes: n.earlyDeductMinutes,
-          includeGraceInEarlyOut: n.includeGraceInEarlyOut,
-          applyToEarlyOt: n.applyToEarlyOt,
-          applyDeductions: n.applyDeductions,
-          deductionsEffectiveFrom: resolveDeductionStart(n.applyDeductions, before ?? null),
-          // 07ebd04d — ONLY when the caller actually said something about the week. The Schedule Group
-          // form posts no day fields, and spreading a normalized-from-nothing week here would clear the
-          // working week off every group the migration gave one to, the first time anyone renamed one.
-          ...(n.hasWeekInput
-            ? { weeklyPattern: n.week.weeklyPattern, halfPattern: n.week.halfPattern, offPattern: n.week.offPattern }
-            : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(attendanceRule.id, p.ruleId));
-    } catch (e) {
-      if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists.`);
-      throw e;
+  return withTenant(ctx, tx => updateAttendanceRuleTx(ctx, tx, p));
+}
+
+export type AttendanceSectionFields = Pick<AttendanceRuleInput, 'lateGracePeriodMinutes' | 'lateAfterMinutes' | 'lateDeductMinutes' | 'includeGraceInLateness' | 'earlyGracePeriodMinutes' | 'earlyAfterMinutes' | 'earlyDeductMinutes' | 'includeGraceInEarlyOut'>;
+type GeneralBand = Pick<OtRowInput, 'fromMinutes' | 'toMinutes' | 'ratePattern' | 'rate' | 'phRate'>;
+export type AttendanceRuleSectionUpdate = { ruleId: string } & (
+  | { section: 'general'; name: string; description: string | null; status: 'active' | 'inactive'; applyDeductions: boolean; otRows: GeneralBand[] }
+  | { section: 'attendance'; fields: Partial<AttendanceSectionFields> }
+  | { section: 'overtime'; applyToEarlyOt?: boolean; bands: OtRowInput[] }
+);
+
+/** Section ownership is enforced here, never by a posted marker. Read/merge/write uses one row lock,
+ * including the current bands, so independent requests cannot carry a stale full-rule snapshot.
+ * General: identity/status/deduction switch + ladder boundaries/rates. Attendance: six timing values + two Include Grace flags.
+ * Overtime: early inclusion + rounding only, against the exact displayed ladder boundaries, pattern and rates (not generated row IDs).
+ * No section can write the week, allowed shift pool or immutable rotations. */
+export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRuleSectionUpdate): Promise<{ id: string }> {
+  return withTenant(ctx, async tx => {
+    const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
+    if (!rule) throw new Error('Rule not found.');
+    const rows = await tx.select().from(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId,p.ruleId)).orderBy(asc(attendanceRuleOtRow.sortOrder));
+    const currentRows: OtRowInput[] = rows.map(row => ({fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,
+      ratePattern:row.ratePattern,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate),
+      roundingMode:row.roundingMode,roundToMinutes:row.roundToMinutes}));
+    const merged: AttendanceRuleInput = {
+      name:rule.name,description:rule.description,status:rule.status==='inactive'?'inactive':'active',
+      lateGracePeriodMinutes:rule.lateGracePeriodMinutes,lateAfterMinutes:rule.lateAfterMinutes,
+      lateDeductMinutes:rule.lateDeductMinutes,includeGraceInLateness:rule.includeGraceInLateness,
+      earlyGracePeriodMinutes:rule.earlyGracePeriodMinutes,earlyAfterMinutes:rule.earlyAfterMinutes,
+      earlyDeductMinutes:rule.earlyDeductMinutes,includeGraceInEarlyOut:rule.includeGraceInEarlyOut,
+      applyToEarlyOt:rule.applyToEarlyOt,applyDeductions:rule.applyDeductions,otRows:currentRows,
+    };
+    if (p.section === 'general') {
+      merged.name=p.name;merged.description=p.description;merged.status=p.status;merged.applyDeductions=p.applyDeductions;
+      merged.otRows=p.otRows.map(row=>{
+        const current=currentRows.find(band=>band.fromMinutes===row.fromMinutes);
+        return {fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,ratePattern:row.ratePattern,rate:row.rate,phRate:row.phRate,
+          roundingMode:current?.roundingMode??'none',roundToMinutes:current?.roundToMinutes??null};
+      });
+    } else if (p.section === 'attendance') {
+      // Explicit allowlist also protects callers with an untyped/crafted fields object.
+      for (const key of ['lateGracePeriodMinutes','lateAfterMinutes','lateDeductMinutes','earlyGracePeriodMinutes','earlyAfterMinutes','earlyDeductMinutes'] as const) {
+        const value=p.fields[key];
+        if (value !== undefined) merged[key]=value;
+      }
+      for (const key of ['includeGraceInLateness','includeGraceInEarlyOut'] as const) {
+        const value=p.fields[key];
+        if (value !== undefined) merged[key]=value;
+      }
+    } else if (p.section === 'overtime') {
+      const keys=p.bands.map(band=>band.fromMinutes);
+      if(new Set(keys).size!==keys.length || keys.length!==currentRows.length || currentRows.some(row=>{
+        const submitted=p.bands.find(band=>band.fromMinutes===row.fromMinutes);
+        return !submitted || submitted.toMinutes!==row.toMinutes || submitted.ratePattern!==row.ratePattern || submitted.rate!==row.rate || (submitted.phRate??null)!==(row.phRate??null);
+      })) {
+        throw new Error('The overtime bands changed. Reopen this schedule before saving overtime settings.');
+      }
+      if(p.applyToEarlyOt!==undefined)merged.applyToEarlyOt=p.applyToEarlyOt;
+      merged.otRows=currentRows.map(row=>{
+        const band=p.bands.find(band=>band.fromMinutes===row.fromMinutes)!;
+        return {...row,roundingMode:band.roundingMode,roundToMinutes:band.roundToMinutes};
+      });
+    } else {
+      throw new Error('Unknown attendance settings section.');
     }
-    // Replace the OT rows wholesale (small, admin-authored set).
-    await tx.delete(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, p.ruleId));
-    if (n.otRows.length > 0) {
-      await tx.insert(attendanceRuleOtRow).values(n.otRows.map((r) => ({ tenantId: ctx.tenantId, ruleId: p.ruleId, ...r })));
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'attendance-rule',
-      aggregateId: p.ruleId,
-      eventType: 'attendance-rule.updated',
-      actor: actorOf(ctx),
-      payload: {
-        name: n.name,
-        status: n.status,
-        otRowCount: n.otRows.length,
-        applyToEarlyOt: n.applyToEarlyOt,
-        // 7c834696 — the deduction switch is money-adjacent; its state and its forward start date belong
-        // in the audit trail so "when did this rule start deducting" is answerable without archaeology.
-        applyDeductions: n.applyDeductions,
-      },
-    });
-    return { id: p.ruleId };
+    return updateAttendanceRuleTx(ctx,tx,{ruleId:p.ruleId,...merged});
   });
+}
+
+async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: string } & AttendanceRuleInput): Promise<{ id: string }> {
+  const n = normalizeInput(p);
+
+  // Read the CURRENT switch state before writing: an already-on rule keeps the date it was stamped with,
+  // so re-saving a rule for an unrelated reason cannot silently move its deductions' start date forward.
+  const [before] = await tx
+    .select({
+      applyDeductions: attendanceRule.applyDeductions,
+      deductionsEffectiveFrom: attendanceRule.deductionsEffectiveFrom,
+    })
+    .from(attendanceRule)
+    .where(eq(attendanceRule.id, p.ruleId))
+    .limit(1).for('update');
+  if (!before) throw new Error('Rule not found.');
+  if (p.weeklyPattern !== undefined || p.halfPattern !== undefined || p.offPattern !== undefined) {
+    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).limit(1);
+    if (rotation) throw new Error('This group uses dated rotations. Save a new cycle version instead of changing its legacy week.');
+  }
+  try {
+    await tx
+      .update(attendanceRule)
+      .set({
+        name: n.name,
+        description: n.description,
+        status: n.status,
+        lateGracePeriodMinutes: n.lateGracePeriodMinutes,
+        lateAfterMinutes: n.lateAfterMinutes,
+        lateDeductMinutes: n.lateDeductMinutes,
+        includeGraceInLateness: n.includeGraceInLateness,
+        earlyGracePeriodMinutes: n.earlyGracePeriodMinutes,
+        earlyAfterMinutes: n.earlyAfterMinutes,
+        earlyDeductMinutes: n.earlyDeductMinutes,
+        includeGraceInEarlyOut: n.includeGraceInEarlyOut,
+        applyToEarlyOt: n.applyToEarlyOt,
+        applyDeductions: n.applyDeductions,
+        deductionsEffectiveFrom: resolveDeductionStart(n.applyDeductions, before ?? null),
+        // 07ebd04d — ONLY when the caller actually said something about the week. The Schedule Group
+        // form posts no day fields, and spreading a normalized-from-nothing week here would clear the
+        // working week off every group the migration gave one to, the first time anyone renamed one.
+        ...(n.hasWeekInput
+          ? { weeklyPattern: n.week.weeklyPattern, halfPattern: n.week.halfPattern, offPattern: n.week.offPattern }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(attendanceRule.id, p.ruleId));
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists.`);
+    throw e;
+  }
+  // Replace the OT rows wholesale (small, admin-authored set).
+  await tx.delete(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, p.ruleId));
+  if (n.otRows.length > 0) {
+    await tx.insert(attendanceRuleOtRow).values(n.otRows.map((r) => ({ tenantId: ctx.tenantId, ruleId: p.ruleId, ...r })));
+  }
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'attendance-rule',
+    aggregateId: p.ruleId,
+    eventType: 'attendance-rule.updated',
+    actor: actorOf(ctx),
+    payload: {
+      name: n.name,
+      status: n.status,
+      otRowCount: n.otRows.length,
+      applyToEarlyOt: n.applyToEarlyOt,
+      // 7c834696 — the deduction switch is money-adjacent; its state and its forward start date belong
+      // in the audit trail so "when did this rule start deducting" is answerable without archaeology.
+      applyDeductions: n.applyDeductions,
+    },
+  });
+  return { id: p.ruleId };
 }
 
 /**
@@ -981,6 +1061,8 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
       .limit(1);
     if (!rule) throw new Error('Rule not found.');
     if (rule.isDefault) throw new StandardRuleUndeletableError();
+    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).limit(1);
+    if (rotation) throw new Error('This Schedule Group has saved rotation history. Mark it inactive instead of deleting it.');
     // ad52212d round 2 — the NAMES, not just "is there one". Deliberately UNCAPPED: the message quotes
     // three and counts the rest, and it can only count the rest honestly if the query returned them. The
     // shift library is an admin-authored, tenant-wide template set (tens of rows), and this runs once on a

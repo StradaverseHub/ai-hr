@@ -67,6 +67,9 @@ vi.mock('../lib/authz', async (importOriginal) => ({
 let LAST_REDIRECT = '';
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/navigation', () => ({
+  // Render the real Settings navigation island; its browser effects remain inactive during SSR.
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/admin/work-locations/clocking',
   redirect: (url: string) => {
     LAST_REDIRECT = url;
     throw new Error('NEXT_REDIRECT');

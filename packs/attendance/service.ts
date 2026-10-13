@@ -34,3 +34,7 @@ export * from '../../core/attendance-clocking-import';
 
 export * from '../../core/attendance-clock-data';
 export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/attendance-punch-change';
+
+export * from '../../core/attendance-rotation';
+export * from '../../core/attendance-workflow';
+export * from '../../core/attendance-application-history';

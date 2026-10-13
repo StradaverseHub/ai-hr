@@ -1,4 +1,4 @@
-/** ADR-0104. One coordination layer above the existing governed HR services. */
+/** ADR-0109. One coordination layer above the existing governed HR services. */
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent } from '../db/events';

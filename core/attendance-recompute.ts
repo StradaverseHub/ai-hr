@@ -38,7 +38,7 @@
  * day, plus one `attendance-recompute.run` event carrying the whole per-day before/after array. That run
  * event is what lets the screen re-open a past run, and it is why the history needs no table of its own.
  */
-import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -47,7 +47,7 @@ import { actorOf, appendEvent } from '../db/events';
 // SHRINKS, so a new file reaching into core/attendance or core/payroll directly is a gate failure
 // by design, not an omission to be allowlisted.
 import { recomputeDayFigures, type DayType } from '../packs/attendance/service';
-import { batchesCoveringAttendanceDates, markBatchNeedsRecalc } from '../packs/payroll/service';
+import { batchesCoveringAttendanceDates, markBatchNeedsRecalc, lockPayrollForAttendanceChange } from '../packs/payroll/service';
 import { assignment, attendance, attendanceCorrection, employment, person } from '../db/schema';
 
 /** Why a stored day was left alone. Every value here means "untouched", never "guessed at". */
@@ -267,7 +267,10 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
     };
     if (people.length === 0) return empty;
 
+    const [authority] = await tx.execute(sql`select app.is_admin_for(${p.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
+    if(!authority?.allowed)throw new RecomputeScopeError('Attendance recalculation requires administration of this company.');
     const empIds = people.map((x) => x.employmentId);
+    for(const employmentId of [...empIds].sort())await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + employmentId}, 0))`);
     const who = new Map(people.map((x) => [x.employmentId, x]));
 
     // The stored days. Only rows that EXIST are in scope: a day with no attendance row shows as Absent
@@ -389,16 +392,27 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
     // precisely what recomputing after a holiday is recorded does — moves what an already-processed run
     // paid while raising nothing. MEASURED: rest_day -> holiday with worked 420 and ot 420 both
     // unchanged moves ot20 420->0 and ot30 0->420, and the run was never flagged.
-    // This is the complete set: every payroll-side reader of an attendance row keys off worked minutes,
-    // OT minutes, or the day type.
+    // Allowance rules also consume lateness and early-out penalties. A duration-rule correction must
+    // flag their processed payroll even when worked and OT minutes stay unchanged.
     const payAffecting = changedRows
       .filter(
         (c) =>
           c.before.workedMinutes !== c.after.workedMinutes ||
           c.before.otMinutes !== c.after.otMinutes ||
-          c.before.dayType !== c.after.dayType,
+          c.before.dayType !== c.after.dayType ||
+          c.before.lateMinutes !== c.after.lateMinutes ||
+          c.before.earlyOutMinutes !== c.after.earlyOutMinutes ||
+          c.before.lateDeductMinutes !== c.after.lateDeductMinutes ||
+          c.before.earlyOutDeductMinutes !== c.after.earlyOutDeductMinutes,
       )
       .map((c) => ({ employmentId: c.employmentId, date: c.date }));
+    // Protect every changed result, including late/early penalties used by downstream consumers.
+    // The payroll helper locks existing runs and uses their actual attendance cut-off window.
+    // A closed run refuses the entire preview/apply; no earlier day can be partly rewritten.
+    for (const row of [...changedRows].sort((a,b) => a.employmentId.localeCompare(b.employmentId) || a.date.localeCompare(b.date))) {
+      const covering=await lockPayrollForAttendanceChange(tx, row.employmentId, row.date);
+      if(covering.some(batch=>batch.status==='closed'))throw new RecomputeScopeError(`Attendance on ${row.date} belongs to a closed payroll and cannot be recalculated.`);
+    }
     const batchWarnings = await batchesCoveringAttendanceDates(tx, {
       companyId: p.companyId,
       entries: payAffecting,

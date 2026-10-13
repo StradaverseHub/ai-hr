@@ -17,6 +17,7 @@ export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 const ALL_TABLES = [
   'hr_orchestration_case',
   'performance_onehr_cycle', 'performance_onehr_review', 'performance_onehr_panel', 'performance_onehr_calibration', 'performance_onehr_calibration_entry', 'performance_onehr_plan', 'performance_onehr_evidence', 'performance_onehr_result',
+  'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
   'reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision',
   'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
@@ -100,7 +101,8 @@ const ALL_TABLES = [
   // app_user.workos_user_id would otherwise let a leaked subject collide across test files.
   'app_invitation',
   // ADR-0072 — attendance allowance policy (a leaked row would trip the partial-unique code index).
-  'attendance_allowance_policy',
+  'attendance_allowance_policy', 'attendance_allowance_version', 'attendance_allowance_result',
+  'attendance_allowance_result_revision','attendance_allowance_transfer','payroll_attendance_allowance_source',
   // ADR-0073 — shared system labels junction: a leaked (label_id, company_id) row would trip the unique
   // index (or make a resolver test see a phantom shared label) across test files.
   'label_company_assignment',
@@ -115,7 +117,7 @@ const ALL_TABLES = [
   'employee_document',
   // 88e94371 — attendance-rule library: a leaked rule (or its OT rows) would trip the per-company default /
   // name unique indexes across test files. CASCADE from company already clears them, but list explicitly.
-  'attendance_rule', 'attendance_rule_ot_row',
+  'attendance_rule', 'attendance_rule_ot_row', 'attendance_rotation',
   // 3d0031e6 — Employee ID Auto Running Number Setup: a leaked active config would trip the partial
   // one-active-per-scope unique indexes (or make a later hire auto-generate unexpectedly) across test files.
   'employee_id_config',

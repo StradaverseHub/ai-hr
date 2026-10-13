@@ -78,7 +78,9 @@
 #
 # EXIT CODES: 0 ok · 2 configuration · 3 dump/manifest integrity · 4 client version · 5 roles missing
 #             6 could not create or reach the scratch database · 7 pg_restore failed · 8 verification
+set +x
 set -uo pipefail
+umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/backup-lib.sh
@@ -256,9 +258,8 @@ TARGET_MAJOR=$(( TARGET_VNUM / 10000 ))
 ok "pg_restore $RESTORE_MAJOR reading a pg_dump $NEED_MAJOR archive into a PostgreSQL $TARGET_MAJOR cluster"
 
 PSQL="$PGBIN/psql"
-admin() { "$PSQL" -X -q -At -v ON_ERROR_STOP=1 -d "$ADMIN_URL" "$@"; }
-SCRATCH_URL="$(blib_url_with_db "$ADMIN_URL" "$SCRATCH")"
-scratch() { "$PSQL" -X -q -At -v ON_ERROR_STOP=1 -d "$SCRATCH_URL" "$@"; }
+admin() { blib_pg_run "$ADMIN_URL" "$PSQL" -X -q -At -v ON_ERROR_STOP=1 "$@"; }
+scratch() { blib_pg_run_db "$ADMIN_URL" "$SCRATCH" "$PSQL" -X -q -At -v ON_ERROR_STOP=1 "$@"; }
 
 # ── 4. the roles the ACLs name ───────────────────────────────────────────────────────────────────
 # A GRANT to a role this cluster has never heard of aborts the restore part-way with an error that
@@ -315,7 +316,7 @@ R0="$(blib_now)"
 # which is how you get a "successful" restore that is missing objects. --no-owner, because the roles
 # that own objects on the source need not exist here and ownership is not what is being rehearsed;
 # PRIVILEGES are, so --no-privileges is deliberately NOT passed.
-"$PGBIN/pg_restore" --exit-on-error --no-owner --dbname "$SCRATCH_URL" "$DUMP" > "$WORK/restore.log" 2>&1
+blib_pg_run_db "$ADMIN_URL" "$SCRATCH" "$PGBIN/pg_restore" --exit-on-error --no-owner --dbname "$SCRATCH" "$DUMP" > "$WORK/restore.log" 2>&1
 RESTORE_RC=$?
 RESTORE_SECONDS="$(blib_elapsed "$R0" "$(blib_now)")"
 if [ "$RESTORE_RC" != "0" ]; then
@@ -353,10 +354,9 @@ elif [ -z "$APP_URL_TPL" ]; then
 else
   PROBE_VERDICT=ok
   blib_write_probe_sql_local "$WORK/probe.sql"
-  APP_SCRATCH_URL="$(blib_url_with_db "$APP_URL_TPL" "$SCRATCH")"
   TENANT="$(scratch -c "SELECT coalesce((SELECT id::text FROM public.tenant ORDER BY id LIMIT 1), '')" 2>/dev/null)"
-  if "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap=unused -v tenant="$TENANT" \
-       -d "$APP_SCRATCH_URL" -f "$WORK/probe.sql" > "$WORK/probe.tsv" 2> "$WORK/probe.err"; then
+  if blib_pg_run_db "$APP_URL_TPL" "$SCRATCH" "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap=unused -v tenant="$TENANT" \
+       -f "$WORK/probe.sql" > "$WORK/probe.tsv" 2> "$WORK/probe.err"; then
     sort "$WORK/probe.tsv" > "$WORK/probe.sorted"
     grep -E '^probe_(ctx|noctx)	' "$MANIFEST" | sort > "$WORK/probe.expected"
     if diff -u "$WORK/probe.expected" "$WORK/probe.sorted" > "$WORK/probe.diff"; then

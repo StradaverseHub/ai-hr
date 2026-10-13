@@ -7,7 +7,7 @@ import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { agreementView, controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE, TARGET_AUTO_CLEAR_RATE } from '@/core/control-tower';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 
-/** ADR-0104: shared operations workspace, with payroll and AI quality evidence retained below. */
+/** ADR-0109: shared operations workspace, with payroll and AI quality evidence retained below. */
 export default async function ControlTowerPage({ searchParams }: { searchParams: Promise<{ refresh?: string }> }) {
   const s = await requireAdmin();
   const queue = await orchestrationQueue(s);

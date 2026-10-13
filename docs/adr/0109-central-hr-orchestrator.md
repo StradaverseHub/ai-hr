@@ -1,7 +1,7 @@
-# ADR-0104: Central HR orchestration and the Control Tower
+# ADR-0109: Central HR orchestration and the Control Tower
 
 Date: 2026-10-13
-Status: Initial implementation in review
+Status: Accepted — initial implementation
 
 ## Understanding
 

@@ -71,7 +71,9 @@
 # EXIT CODES — distinct on purpose, so readiness 1.6 can alert on WHAT failed, not just THAT it did.
 #   0 ok · 2 configuration · 3 destination · 4 lock or refusing to overwrite · 5 client version
 #   6 dump · 7 verification · 8 ship · 9 retention
+set +x
 set -uo pipefail
+umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/backup-lib.sh
@@ -83,6 +85,10 @@ STAGING="${BACKUP_STAGING:-${TMPDIR:-/tmp}/ai-hr-backup}"
 STATUS_FILE="${BACKUP_STATUS_FILE:-$STAGING/backup-status.txt}"
 SSH_OPTS="${BACKUP_SSH_OPTS:--o BatchMode=yes}"
 LOCK_DIR="$STAGING/.lock"
+
+# Tighten only the designated staging directory, never a destination tree or unrelated parent.
+# A symlink or directory owned by another user is refused before any dump/status file is written.
+blib_private_dir "$STAGING" || exit 2
 
 STAGE=init
 RESULT=FAIL
@@ -137,7 +143,9 @@ DB_URL="${BACKUP_DATABASE_URL:-${MIGRATION_DATABASE_URL:-}}"
 [ -n "$DB_URL" ] || die 2 config \
   'BACKUP_DATABASE_URL is not set (and neither is MIGRATION_DATABASE_URL). Nothing to back up.'
 APP_URL="${BACKUP_APP_DATABASE_URL:-${DATABASE_URL:-}}"
-DB_NAME="$(blib_url_db "$DB_URL")"
+DB_NAME="$(blib_url_db "$DB_URL")" || die 2 config 'database connection must explicitly name its database.'
+# Names enter filenames/retention scripts; decoded path separators or shell syntax cannot be allowed.
+case "$DB_NAME" in ''|*[!A-Za-z0-9_-]*) die 2 config 'backup database name must contain only letters, digits, underscores or hyphens.' ;; esac
 DUMP_NAME=''
 
 case "$RETAIN_DAYS" in ''|*[!0-9]*) die 2 config "BACKUP_RETAIN_DAYS must be a whole number of days, got '$RETAIN_DAYS'." ;; esac
@@ -219,7 +227,7 @@ echo "$$" > "$LOCK_DIR/pid"
 STAGE=client
 SERVER_VNUM="$(blib_server_version_num "$DB_URL")"
 case "${SERVER_VNUM:-}" in ''|*[!0-9]*)
-  die 2 client "cannot reach the database to read its version. Connection: ${DB_URL%%:*}://…/$DB_NAME" ;;
+  die 2 client "cannot reach database '$DB_NAME' to read its version; check the backup connection configuration." ;;
 esac
 SERVER_MAJOR=$(( SERVER_VNUM / 10000 ))
 if [ -n "${PG_BIN:-}" ]; then
@@ -275,19 +283,19 @@ blib_write_probe_sql "$WORK/probe.sql"
 
 export AIHR_PGBIN="$PGBIN" AIHR_DUMP="$DUMP" AIHR_DUMP_RC="$DUMP_RC" AIHR_DB_URL="$DB_URL"
 export AIHR_APP_URL="${APP_URL:-}" AIHR_PROBE_SQL="$WORK/probe.sql" AIHR_PROBE_OUT="$PROBE_OUT"
-export AIHR_PROBE_ERR="$PROBE_ERR" AIHR_PROBE_RC="$PROBE_RC"
+export AIHR_PROBE_ERR="$PROBE_ERR" AIHR_PROBE_RC="$PROBE_RC" AIHR_CONNECTION_HELPER="$BLIB_CONNECTION_HELPER"
 
 # The owner session opens a repeatable-read transaction, exports its snapshot, shells out to pg_dump
 # AND to the application-role probe with that snapshot, and only then counts. Everything below the
 # BEGIN describes one instant.
-"$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -d "$DB_URL" > "$WORK/psql.log" 2>&1 <<PSQLEOF
+blib_pg_run "$DB_URL" "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 > "$WORK/psql.log" 2>&1 <<PSQLEOF
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 SELECT pg_export_snapshot() AS snap \gset
 SELECT coalesce((SELECT id::text FROM public.tenant ORDER BY id LIMIT 1), '') AS probe_tenant \gset
 \setenv AIHR_SNAP :snap
 \setenv AIHR_TENANT :probe_tenant
-\! "\$AIHR_PGBIN/pg_dump" --format=custom --compress=9 --no-password --snapshot="\$AIHR_SNAP" --file="\$AIHR_DUMP" "\$AIHR_DB_URL"; echo \$? > "\$AIHR_DUMP_RC"
-\! if [ -n "\$AIHR_APP_URL" ]; then "\$AIHR_PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap="\$AIHR_SNAP" -v tenant="\$AIHR_TENANT" -d "\$AIHR_APP_URL" -f "\$AIHR_PROBE_SQL" > "\$AIHR_PROBE_OUT" 2> "\$AIHR_PROBE_ERR"; echo \$? > "\$AIHR_PROBE_RC"; else echo skipped > "\$AIHR_PROBE_RC"; fi
+\! python3 "\$AIHR_CONNECTION_HELPER" --url-env AIHR_DB_URL -- "\$AIHR_PGBIN/pg_dump" --format=custom --compress=9 --no-password --snapshot="\$AIHR_SNAP" --file="\$AIHR_DUMP"; echo \$? > "\$AIHR_DUMP_RC"
+\! if [ -n "\$AIHR_APP_URL" ]; then python3 "\$AIHR_CONNECTION_HELPER" --url-env AIHR_APP_URL -- "\$AIHR_PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap="\$AIHR_SNAP" -v tenant="\$AIHR_TENANT" -f "\$AIHR_PROBE_SQL" > "\$AIHR_PROBE_OUT" 2> "\$AIHR_PROBE_ERR"; echo \$? > "\$AIHR_PROBE_RC"; else echo skipped > "\$AIHR_PROBE_RC"; fi
 \o $TABLES_OUT
 $(blib_tables_sql)
 \o $ROLES_OUT
