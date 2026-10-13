@@ -23,7 +23,7 @@ const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).dige
 function revision(actual: number, expected: number) { if (!Number.isInteger(expected) || actual !== expected) throw Error('This record changed. Reload before saving.'); }
 async function audit(tx: Tx, ctx: SessionContext, id: string, event: string, payload: Record<string, unknown> = {}) {
   // Subject-scoped events are readable by the employee. Panel counts and calibration details stay admin-only.
-  const subjectScoped=['kpi-checkin-saved','scorecard-proposed','scorecard-approved','scorecard-returned','results-submitted','competencies-submitted','plan-shared','plan-reviewed','plan-closed','development-goal-reviewed','result-released','result-revoked'].includes(event);
+  const subjectScoped=['kpi-checkin-saved','scorecard-proposed','scorecard-approved','scorecard-returned','results-submitted','competencies-submitted','plan-shared','plan-reviewed','plan-closed','plan-reopened','development-goal-reviewed','result-released','result-revoked'].includes(event);
   const [review]=subjectScoped?await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(eq(onehrReview.reviewId,id)):[];
   const [plan]=subjectScoped&&!review?await tx.select({employmentId:onehrPlan.employmentId}).from(onehrPlan).where(eq(onehrPlan.id,id)):[];
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onehr', aggregateId: id, eventType: `onehr.${event}`, actor: actorOf(ctx), subjectEmploymentId:review?.employmentId??plan?.employmentId, payload });
@@ -567,20 +567,25 @@ export async function saveAssessmentCareerProfile(ctx:SessionContext,reviewId:st
  const career=careerSchema.parse(raw);
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId);
-  if(!await isSelf(tx,r.row.employmentId)||!r.cycle.policy.modules.idp)throw Error('Only the employee may update their career profile.');
-  if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');
-  await saveCareerTx(tx,ctx,r,career,expected);await audit(tx,ctx,reviewId,'career-profile-saved');
+  const self=await isSelf(tx,r.row.employmentId),admin=!self&&await isAdmin(tx,r.row.cycleId);
+  if(!r.cycle.policy.modules.idp||!self&&!admin)throw Error('Only the employee or a scoped Performance administrator may update the career profile.');
+  if(!admin){if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');}
+  const [previous]=await tx.select({career:assessmentCareerProfile.career}).from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
+  await saveCareerTx(tx,ctx,r,career,expected);await audit(tx,ctx,reviewId,'career-profile-saved',{byAdmin:admin,previous:previous?.career??null,next:career});
  });
 }
-export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId:string,expected:number,comment:string) {
+export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId:string,expected:number|null,comment:string) {
  note.parse(comment);
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId);
   if(await isSelf(tx,r.row.employmentId)||!r.cycle.policy.modules.idp||!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('Only the assigned manager may comment on the career profile.');
   if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_review');
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`career:${r.row.employmentId}`},0))`);
   const [profile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId)).for('update');
-  if(!profile)throw Error('The employee has not saved a career profile.');revision(profile.revision,expected);
-  await tx.update(assessmentCareerProfile).set({reviewId,managerComment:comment,managerUserId:ctx.userId,managerCommentAt:new Date(),revision:profile.revision+1,updatedAt:new Date()}).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
+  if((profile?.revision??null)!==expected)throw Error('The career profile changed. Reload before commenting.');
+  const data={reviewId,managerComment:comment,managerUserId:ctx.userId!,managerCommentAt:new Date(),revision:(profile?.revision??0)+1,updatedAt:new Date()};
+  if(profile)await tx.update(assessmentCareerProfile).set(data).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
+  else await tx.insert(assessmentCareerProfile).values({...data,tenantId:ctx.tenantId,employmentId:r.row.employmentId,career:{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null,selfProfileId:null}});
   await audit(tx,ctx,reviewId,'career-profile-commented');
  });
 }
@@ -626,6 +631,18 @@ export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,e
 }
 export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expected:number) {
   uuid.parse(planId);return withPerformanceTenant(ctx,async tx=>{const [p]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!p||!await isSelf(tx,p.employmentId))throw Error('Plan not found.');revision(p.revision,expected);if(p.status!=='closed')throw Error('A recorded career conversation is required.');await tx.update(onehrPlan).set({acknowledgedAt:new Date(),revision:p.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'plan-acknowledged');});
+}
+export async function reopenAssessmentPlan(ctx:SessionContext,planId:string,expected:number){
+ uuid.parse(planId);
+ return withPerformanceTenant(ctx,async tx=>{
+  const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');
+  if(!plan)throw Error('Plan not found in your scope.');
+  const r=await loadReview(tx,plan.reviewId);await requireAdmin(tx,r.row.cycleId);
+  if(await isSelf(tx,plan.employmentId))throw Error('Ask another administrator to reopen your plan.');revision(plan.revision,expected);
+  if(plan.status==='draft')return;
+  await tx.update(onehrPlan).set({status:'draft',acknowledgedAt:null,revision:plan.revision+1}).where(eq(onehrPlan.id,planId));
+  await audit(tx,ctx,planId,'plan-reopened',{previousStatus:plan.status,planYear:plan.planYear});
+ });
 }
 export async function addOnehrEvidence(ctx:SessionContext,reviewId:string,raw:unknown) {
   const p=z.object({kind:z.enum(['delivery','problem','behaviour','learning','recognition','support','told','other']),body:z.string().trim().min(1).max(1200),occurredOn:z.iso.date(),state:z.enum(['draft','shared']),supersedesId:uuid.nullable(),links:z.array(z.object({kind:z.enum(['kpi','principle','skill']),id:z.string().min(1).max(100)})).max(30)}).parse(raw);

@@ -272,7 +272,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const goalId=randomUUID(),input={career:{aspiration:'Develop leadership',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:goalId,area:'Facilitation',dueOn:`${year+1}-06-01`,onJob:'Facilitate planning',fromOthers:'',formalLearning:'',status:'not_started'}]};
     await perf.saveOnehrPlan(self,reviewId,null,input);
     const draft=(await view(self)).plans[0];expect(draft.status).toBe('draft');
-    expect((await view(mgr)).plans).toEqual([]);expect((await view(a)).plans).toEqual([]);
+    expect((await view(mgr)).plans).toEqual([]);expect((await view(a)).plans.map(p=>p.id)).toEqual([draft.id]);
     expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,draft.id)))).toEqual([]);
     await perf.saveOnehrPlan(self,reviewId,draft.revision,input,true);
     const plan=(await view()).plans[0];expect(plan.planYear).toBe(year+1);
@@ -285,6 +285,39 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.saveOnehrPlan(self,reviewId,(await view(self)).plans[0].revision,input)).rejects.toThrow(/read-only/);
     await expect(perf.reviewOnehrPlan(mgr,plan.id,(await view()).plans[0].revision,'Rewrite','Another conversation',true)).rejects.toThrow(/read-only/);
     await expect(perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'done')).rejects.toThrow(/active assessment/);
+  });
+  it('allows an early manager career comment, audited HR correction, and explicit HR plan reopening',async()=>{
+    await perf.commentAssessmentCareerProfile(mgr,reviewId,null,'Discuss possible learning assignments.');
+    let profile=(await view(self)).careerProfile!;
+    expect(profile.career).toMatchObject({aspiration:'',mobility:null});expect(profile.managerComment).toContain('learning assignments');
+    await expect(perf.commentAssessmentCareerProfile(mgr,reviewId,null,'Stale comment')).rejects.toThrow(/changed/);
+    await expect(perf.commentAssessmentCareerProfile(self,reviewId,profile.revision,'Own manager comment')).rejects.toThrow(/assigned manager/);
+    const career={aspiration:'Develop facilitation',mobility:'stay',mobilityNote:'',targetProfileId:null};
+    await expect(perf.saveAssessmentCareerProfile(mgr,reviewId,profile.revision,career)).rejects.toThrow(/administrator/);
+    await perf.saveAssessmentCareerProfile(self,reviewId,profile.revision,career);
+    profile=(await view(self)).careerProfile!;expect(profile.managerComment).toContain('learning assignments');
+    await perf.saveOnehrPlan(self,reviewId,null,{career,careerRevision:profile.revision,goals:[{id:randomUUID(),area:'Facilitation',dueOn:'',onJob:'Lead a workshop',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    let plan=(await view(self)).plans[0];profile=(await view(self)).careerProfile!;
+    await expect(perf.saveAssessmentCareerProfile(self,reviewId,profile.revision,{...career,aspiration:'Unapproved rewrite'})).rejects.toThrow();
+    await perf.saveAssessmentCareerProfile(a,reviewId,profile.revision,{...career,aspiration:'HR corrected career aspiration'});
+    expect((await view(self)).careerProfile?.career.aspiration).toBe('HR corrected career aspiration');
+    expect((await view(self)).plans[0].career).toMatchObject({aspiration:career.aspiration});
+    const corrections=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-saved')));
+    expect(corrections.some(e=>(e.payload as {byAdmin?:boolean}).byAdmin===true)).toBe(true);
+    await perf.reviewOnehrPlan(mgr,plan.id,plan.revision,'Agreed plan','Recorded career discussion',true,reviewId,null);
+    plan=(await view(self)).plans[0];expect(plan.status).toBe('closed');
+    await expect(perf.reopenAssessmentPlan(mgr,plan.id,plan.revision)).rejects.toThrow(/administrator/);
+    await expect(perf.reopenAssessmentPlan(a,plan.id,plan.revision-1)).rejects.toThrow(/changed/);
+    await perf.reopenAssessmentPlan(a,plan.id,plan.revision);
+    const reopened=(await view(self)).plans[0];expect(reopened).toMatchObject({status:'draft',conversation:'Recorded career discussion',acknowledgedAt:null});
+    expect((await view(mgr)).plans).toEqual([]);expect((await view(a)).plans.some(p=>p.id===plan.id)).toBe(true);
+    await perf.saveOnehrPlan(self,reviewId,reopened.revision,{career:{...career,aspiration:'Revised after HR reopened'},careerRevision:(await view(self)).careerProfile!.revision,goals:[{id:randomUUID(),area:'Teaching',dueOn:'',onJob:'Coach a colleague',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    expect((await view(self)).plans[0].status).toBe('shared');
+    await withTenant(a,tx=>tx.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId)));
+    profile=(await view(self)).careerProfile!;
+    await perf.saveAssessmentCareerProfile(a,reviewId,profile.revision,{...career,aspiration:'Current profile correction after archive'});
+    expect((await view(self)).careerProfile?.career.aspiration).toBe('Current profile correction after archive');
+    expect((await view(self)).plans[0].career).toMatchObject({aspiration:'Revised after HR reopened'});
   });
   it('carries the career profile across periods and separates career comments from yearly goals',async()=>{
     const career={aspiration:'Develop architecture skills',mobility:'stay',mobilityNote:'',targetProfileId:null};

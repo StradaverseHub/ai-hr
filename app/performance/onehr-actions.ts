@@ -80,10 +80,11 @@ export async function onehrReviewAction(f:FormData){
         const goals=ids(f,'goalId').filter(k=>['area','onJob','fromOthers','formalLearning'].some(field=>str(f,`${k}.${field}`))).map(k=>({id:k,area:str(f,`${k}.area`),dueOn:str(f,`${k}.dueOn`),onJob:str(f,`${k}.onJob`),fromOthers:str(f,`${k}.fromOthers`),formalLearning:str(f,`${k}.formalLearning`),status:'not_started'}));
         await perf.saveOnehrPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,{career,careerRevision,goals},f.has('share'));break;
       }
-      case 'career-comment':await perf.commentAssessmentCareerProfile(s,id,num(f,'careerRevision'),str(f,'comment'));break;
+      case 'career-comment':await perf.commentAssessmentCareerProfile(s,id,str(f,'careerRevision')?num(f,'careerRevision'):null,str(f,'comment'));break;
       case 'plan-goal-edit':await perf.editAssessmentDevelopmentGoal(s,id,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),{area:str(f,'area'),dueOn:str(f,'dueOn'),onJob:str(f,'onJob'),fromOthers:str(f,'fromOthers'),formalLearning:str(f,'formalLearning'),managerComment:str(f,'managerComment')});break;
       case 'kpi-moderator':await perf.assignAssessmentKpiModerator(s,id,expected,str(f,'kpiId'),str(f,'moderatorEmploymentId'));break;
       case 'plan-review':await perf.reviewOnehrPlan(s,str(f,'planId'),num(f,'planRevision'),str(f,'comment'),str(f,'conversation'),f.has('close'),id,str(f,'heldOn')||null);break;
+      case 'reopen-plan':await perf.reopenAssessmentPlan(s,str(f,'planId'),num(f,'planRevision'));break;
       case 'plan-ack':await perf.acknowledgeOnehrPlan(s,str(f,'planId'),num(f,'planRevision'));break;
       case 'goal-progress':await perf.updateOnehrGoalProgress(s,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),str(f,'status') as z.infer<typeof goalSchema>['status']);break;
       case 'evidence':await perf.addOnehrEvidence(s,id,{kind:str(f,'kind'),body:str(f,'body'),occurredOn:str(f,'occurredOn'),state:f.has('share')?'shared':'draft',supersedesId:str(f,'supersedesId')||null,links:f.getAll('evidenceLink').map(v=>JSON.parse(String(v)))});break;

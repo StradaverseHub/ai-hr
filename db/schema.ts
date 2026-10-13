@@ -10075,7 +10075,7 @@ export const assessmentRelease = pgTable('performance_assessment_release', {
 // Last sign-off/lock snapshot, sealed at cycle archive. HR reads the record without recomputing it.
 export const assessmentRatingRecord = pgTable('performance_assessment_rating_record', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
-  snapshot:jsonb('snapshot').$type<import('../packs/performance/service').RatingRecordSnapshot>().notNull(),
+  snapshot:jsonb('snapshot').notNull(),
   lastEvent:text('last_event').notNull(),recordedBy:uuid('recorded_by').references(()=>appUser.id),
   recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),frozenAt:timestamp('frozen_at',{withTimezone:true}),
 });

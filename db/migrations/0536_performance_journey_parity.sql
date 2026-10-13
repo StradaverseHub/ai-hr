@@ -155,6 +155,11 @@ BEGIN
  IF TG_OP='UPDATE' THEN
   o:=to_jsonb(OLD);
   IF n->>'tenant_id' IS DISTINCT FROM o->>'tenant_id' OR n->>'review_id' IS DISTINCT FROM o->>'review_id' OR n->>'employment_id' IS DISTINCT FROM o->>'employment_id' OR n->>'cycle_id' IS DISTINCT FROM o->>'cycle_id' THEN RAISE EXCEPTION 'assessment record identity is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_plan' AND n->>'status'='draft' AND o->>'status'<>'draft' THEN
+   IF NOT app.onehr_cycle_admin(r.cycle_id) OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND e.tenant_id=tid AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id))
+    OR n-ARRAY['status','revision','acknowledged_at'] IS DISTINCT FROM o-ARRAY['status','revision','acknowledged_at'] OR n->>'acknowledged_at' IS NOT NULL THEN RAISE EXCEPTION 'Only scoped HR may reopen an unchanged development plan'; END IF;
+   RETURN NEW;
+  END IF;
   IF TG_TABLE_NAME='performance_onehr_review' AND (n->'profile_id' IS DISTINCT FROM o->'profile_id' OR n->'profile_match' IS DISTINCT FROM o->'profile_match' OR
    (SELECT coalesce(jsonb_agg(c-ARRAY['self','selfRemark','manager','managerRemark'] ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(n->'competencies') WITH ORDINALITY q(c,i)) IS DISTINCT FROM
    (SELECT coalesce(jsonb_agg(c-ARRAY['self','selfRemark','manager','managerRemark'] ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(o->'competencies') WITH ORDINALITY q(c,i))) THEN
@@ -229,7 +234,7 @@ CREATE FUNCTION app.assessment_plan_reviewer(wanted_plan uuid) RETURNS boolean L
 $$;
 REVOKE ALL ON FUNCTION app.assessment_plan_reviewer(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_plan_reviewer(uuid) TO ai_hr_app;
-ALTER POLICY onehr_plan_access ON performance_onehr_plan USING(tenant_id=app.current_tenant_id() AND (employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) OR app.assessment_plan_reviewer(id)) AND (status<>'draft' OR EXISTS(SELECT 1 FROM employment e WHERE e.id=performance_onehr_plan.employment_id AND app.is_self_person(e.person_id)))) WITH CHECK(tenant_id=app.current_tenant_id() AND (app.can_see_employment(employment_id) OR app.assessment_plan_reviewer(id)));
+ALTER POLICY onehr_plan_access ON performance_onehr_plan USING(tenant_id=app.current_tenant_id() AND (employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) OR app.assessment_plan_reviewer(id)) AND (status<>'draft' OR EXISTS(SELECT 1 FROM employment e WHERE e.id=performance_onehr_plan.employment_id AND e.tenant_id=performance_onehr_plan.tenant_id AND (app.is_self_person(e.person_id) OR app.onehr_admin(e.company_id) AND EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=performance_onehr_plan.review_id AND r.tenant_id=e.tenant_id AND app.onehr_cycle_admin(r.cycle_id)))))) WITH CHECK(tenant_id=app.current_tenant_id() AND (app.can_see_employment(employment_id) OR app.assessment_plan_reviewer(id)));
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_result_card(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -397,20 +402,24 @@ CREATE FUNCTION app.assessment_career_access(wanted_employment uuid) RETURNS boo
  (app.is_self_person(e.person_id) OR app.onehr_admin(e.company_id) OR EXISTS(SELECT 1 FROM performance_onehr_review r JOIN review_cycle c ON c.id=r.cycle_id WHERE r.employment_id=e.id AND r.tenant_id=e.tenant_id AND c.status IN ('open','calibration') AND (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)))))
 $$;
 CREATE FUNCTION app.assessment_career_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE r performance_onehr_review; c review_cycle; yr integer; own boolean;
+DECLARE r performance_onehr_review; c review_cycle; yr integer; own boolean; administrator boolean; manager_placeholder boolean;
 BEGIN
  SELECT * INTO r FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id AND employment_id=NEW.employment_id;
  IF r.review_id IS NULL THEN RAISE EXCEPTION 'Invalid career profile reference'; END IF;
  IF TG_OP='UPDATE' AND (NEW.employment_id<>OLD.employment_id OR NEW.tenant_id<>OLD.tenant_id) THEN RAISE EXCEPTION 'Career profile identity is immutable'; END IF;
  SELECT * INTO c FROM review_cycle WHERE id=r.cycle_id;
- IF c.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'This career period is read-only'; END IF;
  own:=EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND app.is_self_person(e.person_id));
- IF TG_OP='INSERT' OR NEW.career IS DISTINCT FROM OLD.career THEN
+ administrator:=NOT own AND app.onehr_cycle_admin(r.cycle_id) AND EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND app.onehr_admin(e.company_id));
+ manager_placeholder:=TG_OP='INSERT' AND NOT own AND (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)) AND NEW.career=jsonb_build_object('aspiration','','mobility',NULL,'mobilityNote','','targetProfileId',NULL,'selfProfileId',NULL);
+ IF c.status NOT IN ('open','calibration') AND NOT administrator THEN RAISE EXCEPTION 'This career period is read-only'; END IF;
+ IF (TG_OP='INSERT' OR NEW.career IS DISTINCT FROM OLD.career) AND NOT manager_placeholder AND NOT administrator THEN
   IF NOT own THEN RAISE EXCEPTION 'Only the employee may change their career aspirations'; END IF;
   SELECT extract(year from c.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END INTO yr FROM performance_onehr_cycle WHERE cycle_id=c.id;
-  IF EXISTS(SELECT 1 FROM performance_onehr_plan p WHERE p.employment_id=NEW.employment_id AND p.plan_year=yr AND p.status<>'draft') THEN RAISE EXCEPTION 'The shared career plan is locked'; END IF;
+  IF TG_OP='UPDATE' AND nullif(btrim(OLD.career->>'mobility'),'') IS NOT NULL AND
+   (nullif(btrim(OLD.career->>'aspiration'),'') IS NOT NULL OR nullif(btrim(OLD.career->>'aspirationNow'),'') IS NOT NULL OR nullif(btrim(OLD.career->>'aspirationLong'),'') IS NOT NULL)
+   AND EXISTS(SELECT 1 FROM performance_onehr_plan p WHERE p.employment_id=NEW.employment_id AND p.plan_year=yr AND p.status<>'draft') THEN RAISE EXCEPTION 'The shared career plan is locked'; END IF;
  END IF;
- IF TG_OP='UPDATE' AND (NEW.manager_comment IS DISTINCT FROM OLD.manager_comment OR NEW.manager_user_id IS DISTINCT FROM OLD.manager_user_id OR NEW.manager_comment_at IS DISTINCT FROM OLD.manager_comment_at) OR TG_OP='INSERT' AND NEW.manager_comment<>'' THEN
+ IF TG_OP='UPDATE' AND (NEW.manager_comment IS DISTINCT FROM OLD.manager_comment OR NEW.manager_user_id IS DISTINCT FROM OLD.manager_user_id OR NEW.manager_comment_at IS DISTINCT FROM OLD.manager_comment_at) OR TG_OP='INSERT' AND (NEW.manager_comment<>'' OR NEW.manager_user_id IS NOT NULL OR NEW.manager_comment_at IS NOT NULL) THEN
   IF own OR NOT (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)) OR NEW.manager_user_id IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Only the assigned manager may comment on a career profile'; END IF;
  END IF;
  RETURN NEW;
