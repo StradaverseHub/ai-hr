@@ -19,8 +19,7 @@ export function applyLibraryTarget(kpi:KPI,template:KpiLibraryTemplate|undefined
  if(value<=0)throw Error('The base target must be positive.');
  const s=kpi.scoring,spread=template?.spread;
  if(s.mechanism==='A'){
-  if(!spread?.rate)throw Error('This KPI has no ladder shape. Set the five thresholds explicitly.');
-  return scoringSchema.parse({...s,rates:spread.rate.map(pct=>sourceFigure(value*pct/100,2))});
+  return scoringSchema.parse({...s,target:sourceFigure(value,2),...(spread?.rate?{rates:spread.rate.map(pct=>sourceFigure(value*pct/100,2))}:{})});
  }
  return scoringSchema.parse({...s,target:sourceFigure(value,2),...(spread?.threshold!=null?{threshold:sourceFigure(value*spread.threshold/100,2)}:{}),...(s.variant==='excellence'&&spread?.excellence!=null?{excellence:sourceFigure(value*spread.excellence/100,2)}:{})});
 }
@@ -48,6 +47,7 @@ export function adjudicateSettingCommands(raw:string,facts:SettingCommandFacts){
     if(c.action==='set_weight'){if(value<=0||value>100)throw Error('Weight must be above zero and at most 100%.');k.weightBp=Math.round(value*100);}
     else if(c.action==='set_target')k.scoring=applyLibraryTarget(k,facts.library.find(l=>l.id===k.libraryId),value);
     else if(k.scoring.mechanism==='A'){
+     if(c.field==='target'){k.scoring.target=value;continue;}
      if(!/^rate[1-5]$/.test(c.field))throw Error('Use a threshold supported by this mechanism.');
      k.scoring.rates[Number(c.field.slice(4))-1]=value;
     }else{

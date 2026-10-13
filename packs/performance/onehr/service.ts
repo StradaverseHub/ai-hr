@@ -209,15 +209,16 @@ export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expe
   });
 }
 export async function saveOnehrKpiCheckIn(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,answer:typeof checkInAnswers[number],text:string) {
+ return withPerformanceTenant(ctx,tx=>saveOnehrKpiCheckInTx(tx,ctx,reviewId,expected,kpiId,answer,text));
+}
+export async function saveOnehrKpiCheckInTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,answer:typeof checkInAnswers[number],text:string) {
  uuid.parse(kpiId);z.enum(checkInAnswers).parse(answer);note.parse(text);
- return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_results',expected,'self');
   if(!r.cycle.policy.modules.pm||r.cycle.policy.kind!=='quarterly')throw Error('KPI status check-ins belong to quarterly cycles.');
   const k=r.kpis.find(k=>k.id===kpiId);if(!k||k.setting!=='approved')throw Error('Agree the KPI before checking in.');
   const checkIn={answer,note:text,at:new Date().toISOString(),userId:ctx.userId!};
   await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>k.id===kpiId?{...k,checkIn}:k)});
   await audit(tx,ctx,reviewId,'kpi-checkin-saved',{kpiId,previous:k.checkIn??null,next:checkIn});
- });
 }
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
   uuid.parse(kpiId);z.number().finite().parse(actual);note.parse(remark);
@@ -300,7 +301,7 @@ export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:strin
       await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'peer-feedback-request',aggregateId:request.id,eventType:'peer-feedback-request.created',actor:actorOf(ctx),payload:{reviewId}});
     }
     for(const p of omitted){await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,p.requestId));await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,p.requestId));}
-    await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,'panel-assigned',{count:inputs.length,removed:omitted.length});
+    await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,'panel-assigned',{count:inputs.length,removed:omitted.length,before:prior.map(p=>({requestId:p.requestId,employmentId:p.peerEmploymentId,relationship:p.relationship,archived:!!p.archivedAt,submitted:!!p.submittedAt})),after:inputs.map(p=>({employmentId:p.employmentId,relationship:p.relationship}))});
 }
 export async function changeAssessmentPanelState(ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
  return withPerformanceTenant(ctx,tx=>changeAssessmentPanelStateTx(tx,ctx,reviewId,expected,requestId,operation,reason));
@@ -700,8 +701,10 @@ async function validateEvidenceLinks(r:Awaited<ReturnType<typeof loadReview>>,li
  for(const link of links)if(link.kind==='kpi'?!r.kpis.some(k=>k.id===link.id&&!k.hrOwned):link.kind==='skill'?!r.competencies.some(c=>c.id===link.id):!(r.row.statements as Statement[]).some(s=>s.principle===link.id))throw Error('Choose an employee-owned KPI, assigned competency or leadership principle.');
 }
 export async function addOnehrEvidence(ctx:SessionContext,reviewId:string,raw:unknown) {
+ return withPerformanceTenant(ctx,tx=>addOnehrEvidenceTx(tx,ctx,reviewId,raw));
+}
+export async function addOnehrEvidenceTx(tx:Tx,ctx:SessionContext,reviewId:string,raw:unknown) {
  const p=evidenceFieldsSchema.extend({state:z.enum(['draft','shared']),supersedesId:uuid.nullable(),links:evidenceLinkSchema.array().max(30)}).parse(raw);
- return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId),self=await isSelf(tx,r.row.employmentId);
   if(!r.cycle.policy.modules.evidence)throw Error('Evidence is disabled.');
   if(!self&&!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('Only the employee or assigned manager may add evidence.');
@@ -711,7 +714,6 @@ export async function addOnehrEvidence(ctx:SessionContext,reviewId:string,raw:un
   const {kind,body,occurredOn,state,supersedesId,links,...details}=p;
   const [entry]=await tx.insert(onehrEvidence).values({kind,body,occurredOn,details,state:self?state:'shared',supersedesId,links,tenantId:ctx.tenantId,reviewId,employmentId:r.row.employmentId,authorUserId:ctx.userId!}).returning();
   await audit(tx,ctx,entry.id,'evidence-added');return entry.id;
- });
 }
 export async function editAssessmentEvidence(ctx:SessionContext,id:string,expected:number,raw:unknown){
  uuid.parse(id);
@@ -821,7 +823,7 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
     const leadership=(manager||admin)&&participant?.ok?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
-    const storedPlans=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)));
+    const storedPlans=(await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)))).map(p=>({...p,career:careerSchema.parse(p.career),goals:z.array(goalSchema).parse(p.goals)}));
     const [activePlanCycle]=self?await tx.select({periodEnd:reviewCycle.periodEnd,policy:onehrCycle.policy}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId)).where(and(eq(onehrReview.employmentId,r.row.employmentId),sql`${reviewCycle.status} in ('open','calibration')`)).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId)).limit(1):[];
     const activePlanningYear=activePlanCycle?Number(activePlanCycle.periodEnd.slice(0,4))+(policySchema.parse(activePlanCycle.policy).kind==='year_end'?1:0):null;
     const plans=self?storedPlans.map(p=>personalPlan(p,activePlanningYear)):storedPlans;

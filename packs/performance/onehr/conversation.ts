@@ -3,9 +3,9 @@ import { z } from 'zod';
 import type { SessionContext } from '../../../db/client';
 import { assessmentConversation } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { getOnehrReview, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx } from './service';
+import { getOnehrReview, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx, addOnehrEvidenceTx, saveOnehrKpiCheckInTx } from './service';
 import { assessmentDraftSchema } from './journey-model';
-import { proposeReviewCommands, proposeSettingCommands, proposeCareerCommands } from './review-command-ai';
+import { proposeSettingCommands, proposeCareerCommands, proposeJourneyCommands } from './review-command-ai';
 import { careerSchema } from './model';
 import { draftOnehrNarrative } from './ai';
 
@@ -40,7 +40,13 @@ function settingContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrRevie
 function careerContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>,stage:ConversationStage,text:string){
  if(stage!=='career'||!view.self||view.finalized)return null;
  const plan=view.plans.find(p=>p.planYear===view.planYear);
- return {text,career:careerSchema.parse(view.careerProfile?.career??{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null,selfProfileId:null}),careerRevision:view.careerProfile?.revision??null,planRevision:plan?.revision??null,goals:plan?.goals??[],canEditGoals:view.policy.kind==='year_end'&&(!plan||plan.status==='draft'),roles:view.policy.profiles.filter(p=>p.active!==false).map(p=>({id:p.id,label:`${p.jobTitle??p.name} · ${p.grade}${p.department?` · ${p.department}`:''}`}))};
+ return {text,career:careerSchema.parse(view.careerProfile?.career??{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null,selfProfileId:null}),careerRevision:view.careerProfile?.revision??null,planRevision:plan?.revision??null,goals:plan?.goals??[],canEditCareer:!plan||plan.status==='draft'||!view.careerProfile?.career.mobility||![view.careerProfile.career.aspiration,view.careerProfile.career.aspirationNow,view.careerProfile.career.aspirationLong].some(s=>s?.trim()),canEditGoals:view.policy.kind==='year_end'&&(!plan||plan.status==='draft'),roles:view.policy.profiles.filter(p=>p.active!==false).map(p=>({id:p.id,label:`${p.jobTitle??p.name} · ${p.grade}${p.department?` · ${p.department}`:''}`}))};
+}
+function evidenceContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>,stage:ConversationStage,text:string){
+ if(!view.self||view.finalized||!['results','evidence'].includes(stage))return null;
+ const canLog=view.policy.modules.evidence,canCheckIn=view.policy.modules.pm&&view.policy.kind==='quarterly'&&stage==='results';
+ if(!canLog&&!canCheckIn)return null;
+ return {text,canLog,canCheckIn,kpis:view.kpis.filter(k=>!k.hrOwned).map(k=>({id:k.id,label:k.title,approved:k.setting==='approved',note:k.checkIn?.note??''}))};
 }
 async function proposalOrNull<T>(propose:()=>Promise<T>){try{return await propose();}catch{return null;}}
 export async function getReviewConversation(ctx:SessionContext,reviewId:string,stage:ConversationStage){
@@ -62,11 +68,14 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  if(previous)return previous;
  let reply='';
  const commandInput=intent==='guide'&&view.aiEnabled?commandContext(view,stage,words):null;
- const command=commandInput?await proposalOrNull(()=>proposeReviewCommands(ctx,reviewId,commandInput.facts)):null;
+ const evidenceInput=intent==='guide'&&view.aiEnabled?evidenceContext(view,stage,words):null;
+ const journey=commandInput||evidenceInput?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
+ const command=journey?.review??null,evidence=journey?.evidence??null;
  const settingInput=intent==='guide'&&view.aiEnabled?settingContext(view,stage,words):null;
  const setting=settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput)):null;
  const careerInput=intent==='guide'&&view.aiEnabled?careerContext(view,stage,words):null;
  const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput)):null;
+
  if(intent==='draft')reply=await draftOnehrNarrative(ctx,reviewId,words);
  else{
   const guides={
@@ -85,6 +94,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  if(command&&JSON.stringify(commandContext(fresh,stage,words))!==JSON.stringify(commandInput))throw Error('Your private draft changed while preparing this response. Reload before sending again.');
  if(setting&&JSON.stringify(settingContext(fresh,stage,words))!==JSON.stringify(settingInput))throw Error('Your scorecard or eligible library changed. Reload before sending again.');
  if(career&&JSON.stringify(careerContext(fresh,stage,words))!==JSON.stringify(careerInput))throw Error('Your career profile, plan or role catalogue changed. Reload before sending again.');
+ if(evidence&&JSON.stringify(evidenceContext(fresh,stage,words))!==JSON.stringify(evidenceInput))throw Error('Your check-ins or assigned KPIs changed. Reload before sending again.');
  if(fresh.revision!==view.revision)throw Error('The assessment changed while preparing this response. Try again with the current record.');
  return withPerformanceTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:${storedStage(stage)}`},0))`);
@@ -100,7 +110,15 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
    else await saveAssessmentCareerProfileTx(tx,ctx,reviewId,careerInput.careerRevision,career.career);
    reply='Changes saved. Review your career profile and plan. Sharing and acknowledgment use the form.';
   }
-  const updated=!!command||!!setting||!!career;
+  if(evidence){
+   let revision=view.revision;
+   for(const c of evidence.commands){
+    if(c.action==='log_evidence')await addOnehrEvidenceTx(tx,ctx,reviewId,{...c.fields,state:'shared',supersedesId:null,links:c.links});
+    else {await saveOnehrKpiCheckInTx(tx,ctx,reviewId,revision,c.id,c.answer,c.note);revision++;}
+   }
+   reply='Evidence and check-in changes saved. Review the updated record.';
+  }
+  const updated=!!command||!!setting||!!career||!!evidence;
   const now=new Date().toISOString();
   const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:updated?'update' as const:intent}]:[])];
   const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage:storedStage(stage),contextId:reviewId,messages:next}).returning();

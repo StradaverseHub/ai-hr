@@ -16,7 +16,7 @@ const answer = z.enum(['yes','no']);
 export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean(), skillTitle:z.string().trim().min(1).max(300).optional(),skillLevel:z.number().int().min(0).max(100).optional(),skillCode:z.string().max(100).optional(),skillType:z.string().max(300).optional(),knowledge:z.string().max(10000).optional(),ability:z.string().max(10000).optional() });
 export type Statement = z.infer<typeof statementSchema>;
 export const scoringSchema = z.discriminatedUnion('mechanism', [
-  z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
+  z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), target:finite.nullable().optional(), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
   z.object({ mechanism: z.literal('B'), method: z.enum(['more','less']), variant: z.enum(['base','excellence']), threshold: finite, target: finite.refine(n=>n!==0,'Target cannot be zero.'), multiple: finite.min(0).max(10000), excellence: finite.nullable() }).superRefine((v,c)=>{if(v.variant==='excellence'&&v.excellence==null)c.addIssue({code:'custom',message:'An excellence value is required.'});}),
 ]);
 export type Scoring = z.infer<typeof scoringSchema>;

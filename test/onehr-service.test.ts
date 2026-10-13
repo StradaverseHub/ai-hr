@@ -364,7 +364,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect((await perf.getOnehrReview(a,another.reviewId))!.peers).toEqual(before);
   });
   it('imports panels atomically, preserves submitted answers on relationship edits and restores explicit archived pairings',async()=>{
-    const eids=await owner.db.select({id:schema.employment.id,code:schema.employment.employeeCode}).from(schema.employment),code=(id:string)=>eids.find(e=>e.id===id)!.code;
+    const eids=await owner.db.select({id:schema.employment.id,code:schema.employment.employeeCode}).from(schema.employment),code=(id:string)=>{const value=eids.find(e=>e.id===id)?.code;if(!value)throw Error('Missing fixture employee ID');return value;};
     const file=(rows:string[][])=>toCsv([['Subject Employee ID','Assessor Employee ID','Relationship'],...rows]);
     const source=file(peers.map(p=>[code(subject.employmentId),code(p.employmentId),'Peer / Stakeholder']));
     const preview=await perf.importAssessmentPanels(a,cycleId,source,'add');expect(preview.rows).toMatchObject([{count:4,created:4}]);expect(await owner.db.select().from(schema.onehrPanel)).toEqual([]);
@@ -520,11 +520,16 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.saveOnehrKpiCheckIn(mgr,reviewId,(await view()).revision,id,'on_track','')).rejects.toThrow(/not assigned/);
     await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/every quarterly/);
     await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const label=(await view(self)).kpis[0].title,message=`Set ${label} to off track`;
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'checkin',id,target:{start:4,end:4+label.length},answer:{start:message.indexOf('off track'),end:message.length}}]}));
+    expect((await perf.sendReviewMessage(self,reviewId,'results',null,randomUUID(),message)).draftUpdated).toBe(true);
+    expect((await view(self)).kpis[0].checkIn).toMatchObject({answer:'off_track',note:'Dependency needs support'});
     const first=(await view(self)).revision;await perf.saveOnehrKpiCheckIn(self,reviewId,first,id,'on_track','Dependency resolved');
     await expect(perf.saveOnehrKpiCheckIn(self,reviewId,first,id,'off_track','Stale')).rejects.toThrow(/changed/);
     expect((await view(mgr)).kpis[0].checkIn).toMatchObject({answer:'on_track',note:'Dependency resolved',userId:self.userId});
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result).toMatchObject({performance:null,potential:null,talent:null});
-    const history=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-checkin-saved'))).orderBy(schema.domainEvent.occurredAt,schema.domainEvent.id);expect(history).toHaveLength(2);expect(history.some(e=>(e.payload as {previous?:{answer:string}}).previous?.answer==='at_risk')).toBe(true);
+    const history=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-checkin-saved'))).orderBy(schema.domainEvent.occurredAt,schema.domainEvent.id);expect(history).toHaveLength(3);expect(history.some(e=>(e.payload as {previous?:{answer:string}}).previous?.answer==='at_risk')).toBe(true);
     const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'QUARTER',name:'Quarterly test unit'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
     const unitId=await createRewardUnit(a,{name:'Annual rewards without quarterly ratings',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
@@ -791,13 +796,26 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.saveOnehrPlan(self,reviewId,plan.revision,{career,careerRevision:own.careerProfile!.revision,goals:plan.goals},true);
     own=await view(self);plan=own.plans[0];const changed='Strengths: Patient facilitation.';
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'career_field',field:'strengths',value:span(changed,'Patient facilitation.')}]}));
-    const updated=await perf.sendReviewMessage(self,reviewId,'career',first.revision,randomUUID(),changed);expect(updated.draftUpdated).toBe(true);
-    own=await view(self);expect(own.careerProfile?.career.strengths).toBe('Patient facilitation.');expect(own.plans[0].career).toEqual(plan.career);expect(own.plans[0].status).toBe('shared');
+    const updated=await perf.sendReviewMessage(self,reviewId,'career',first.revision,randomUUID(),changed);expect(updated.draftUpdated).toBe(false);
+    own=await view(self);expect(own.careerProfile?.career.strengths??'').toBe('');expect(own.plans[0].career).toEqual(plan.career);expect(own.plans[0].status).toBe('shared');
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'remove_goal',id:plan.goals[0].id,target:span('Remove Facilitation','Facilitation')}]}));
     const refused=await perf.sendReviewMessage(self,reviewId,'career',updated.revision,randomUUID(),'Remove Facilitation');expect(refused.draftUpdated).toBe(false);expect((await view(self)).plans[0].goals).toEqual(plan.goals);
     vi.mocked(generateDraft).mockRejectedValue(new Error('Provider unavailable'));
     const fallback=await perf.sendReviewMessage(self,reviewId,'career',refused.revision,randomUUID(),'Help with my plan');expect(fallback.draftUpdated).toBe(false);expect(fallback.messages.find(m=>m.role==='assistant'&&m.kind==='guide')?.kind).toBe('guide');
-    expect((await view(self)).careerProfile?.career.strengths).toBe('Patient facilitation.');
+    expect((await view(self)).careerProfile?.career.strengths??'').toBe('');
+  });
+
+  it('logs explicit evidence through chat exactly once and rolls back on a stale conversation',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const text='Log evidence: I resolved the deployment issue with the team.',body='I resolved the deployment issue with the team.';
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'log_evidence',body:{start:text.indexOf(body),end:text.length}}]}));
+    const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'evidence',null,request,text);
+    expect(first.draftUpdated).toBe(true);expect((await view(self)).evidence).toMatchObject([{body,state:'shared',kind:'recognition'}]);
+    expect((await view(mgr)).evidence).toMatchObject([{body}]);
+    expect(await perf.sendReviewMessage(self,reviewId,'evidence',null,request,text)).toEqual(first);expect((await view(self)).evidence).toHaveLength(1);
+    await expect(perf.sendReviewMessage(self,reviewId,'evidence',0,randomUUID(),text)).rejects.toThrow(/conversation changed/);expect((await view(self)).evidence).toHaveLength(1);
+    expect((await perf.sendReviewMessage(mgr,reviewId,'evidence',null,randomUUID(),text)).draftUpdated).toBe(false);expect((await view(self)).evidence).toHaveLength(1);
+    vi.mocked(generateDraft).mockRejectedValue(new Error('Provider unavailable'));expect((await perf.sendReviewMessage(self,reviewId,'evidence',first.revision,randomUUID(),'Help me record evidence')).draftUpdated).toBe(false);
   });
 
   it('keeps colleague feedback conversations private, request-scoped and separate from human submission',async()=>{

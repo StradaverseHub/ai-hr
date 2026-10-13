@@ -703,7 +703,6 @@ BEGIN
  ELSIF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
   IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'calibration_lock_or_reopen'); END IF;
  ELSIF TG_TABLE_NAME='performance_onehr_calibration' THEN
-  IF EXISTS(SELECT 1 FROM performance_onehr_cycle c WHERE c.cycle_id=(n->>'cycle_id')::uuid AND c.tenant_id=tid AND c.policy->'modules'->>'calibration'='false') THEN RAISE EXCEPTION 'Calibration is disabled'; END IF;
   IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at OR NEW.locked_at IS DISTINCT FROM OLD.locked_at THEN
    FOR id IN SELECT review_id FROM performance_onehr_calibration_entry WHERE session_id=NEW.id AND tenant_id=NEW.tenant_id LOOP PERFORM app.assessment_rating_record_capture(id,'calibration_lock_or_reopen'); END LOOP;
   END IF;

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { adjudicateCareerCommands, type CareerCommandFacts } from '../packs/performance/onehr/career-command-model';
 const id=randomUUID(),roleId=randomUUID();
 const span=(text:string,value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
-const facts=(text:string):CareerCommandFacts=>({text,career:{aspiration:'Keep this aspiration',mobility:null,mobilityNote:'',targetProfileId:null},careerRevision:null,planRevision:null,goals:[{id,area:'Facilitation',dueOn:'',onJob:'Run a workshop',fromOthers:'Observe a colleague',formalLearning:'',status:'not_started',managerComment:''}],canEditGoals:true,roles:[{id:roleId,label:'Operations Manager · 15'}]});
+const facts=(text:string):CareerCommandFacts=>({text,career:{aspiration:'Keep this aspiration',mobility:null,mobilityNote:'',targetProfileId:null},careerRevision:null,planRevision:null,goals:[{id,area:'Facilitation',dueOn:'',onJob:'Run a workshop',fromOthers:'Observe a colleague',formalLearning:'',status:'not_started',managerComment:''}],canEditCareer:true,canEditGoals:true,roles:[{id:roleId,label:'Operations Manager · 15'}]});
 describe('career and development conversation adjudication',()=>{
  it('uses literal career wording and mobility choices without rewriting other fields',()=>{
   const text='My next goal is Lead operations, and mobility is role_in_unit.';
@@ -23,9 +23,9 @@ describe('career and development conversation adjudication',()=>{
   for(const commands of [[base],[{...base,dueOn:undefined,id:randomUUID()}],[{action:'career_field',field:'aspiration',value:span(text,'Facilitation')},{action:'share'}],[{action:'career_field',field:'aspiration',value:span(text,'Facilitation'),wording:'Invented'}]])expect(adjudicateCareerCommands(JSON.stringify({commands}),facts(text)).ok).toBe(false);
   expect(facts(text).career.aspiration).toBe('Keep this aspiration');
  });
- it('allows current career wording after a plan is shared but cannot edit, share or sign off that plan',()=>{
-  const text='Facilitation';const context={...facts(text),canEditGoals:false};
-  expect(adjudicateCareerCommands(JSON.stringify({commands:[{action:'career_field',field:'strengths',value:span(text,text)}]}),context)).toMatchObject({ok:true,careerChanged:true,goalsChanged:false});
+ it('locks completed career wording with a shared plan and never shares or signs off',()=>{
+  const text='Facilitation';const context={...facts(text),canEditCareer:false,canEditGoals:false};
+  expect(adjudicateCareerCommands(JSON.stringify({commands:[{action:'career_field',field:'strengths',value:span(text,text)}]}),context)).toMatchObject({ok:false});
   for(const command of [{action:'remove_goal',id,target:span(text,text)},{action:'acknowledge'},{action:'approve'},{action:'share'}])expect(adjudicateCareerCommands(JSON.stringify({commands:[command]}),context).ok).toBe(false);
  });
 });

@@ -19,9 +19,11 @@ export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,chil
   const text=words.trim()||labels.next;
   start(async()=>{
    try{await flushAssessmentDrafts();}catch(e){setError(e instanceof Error?e.message:labels.help);return;}
+   try{
    const result=await reviewConversationAction(reviewId,stage,conversation.revision,crypto.randomUUID(),text,intent,contextId);
    if('error' in result){setError(result.error);return;}
    setConversation(result);setWords('');setError('');if('draftUpdated' in result&&result.draftUpdated)router.refresh();
+   }catch(e){setError(e instanceof Error?e.message:labels.help);}
   });
  }
  return <section ref={frame} style={{height:availableHeight}} className="flex min-h-64 flex-col" aria-label={labels.title}>

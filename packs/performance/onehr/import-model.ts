@@ -18,7 +18,7 @@ function numeric(row:ImportRecord,names:string[],required=true):number|null {
 }
 export function importScoring(row:ImportRecord,mechanism:'A'|'B',variant:'base'|'excellence'='base'):Scoring {
  const method=importValue(row,'method').toLowerCase();
- if(mechanism==='A')return scoringSchema.parse({mechanism,method,rates:[1,2,3,4,5].map(i=>numeric(row,[`Rate ${i}`,`rate${i}`]))});
+ if(mechanism==='A')return scoringSchema.parse({mechanism,method,target:numeric(row,['target'],false),rates:[1,2,3,4,5].map(i=>numeric(row,[`Rate ${i}`,`rate${i}`]))});
  return scoringSchema.parse({mechanism,method,variant,threshold:numeric(row,['threshold']),target:numeric(row,['target']),multiple:Math.trunc(numeric(row,['multiple'],false)??0),excellence:variant==='excellence'?numeric(row,['excellence']):null});
 }
 export function importKpiDefinition(row:ImportRecord,mechanism:'A'|'B',variant:'base'|'excellence'='base',library=false){

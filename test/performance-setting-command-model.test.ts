@@ -25,13 +25,13 @@ describe('guided KPI setup commands',()=>{
  it('uses administrator spread and Python figure rounding for a new base, including descending ladders',()=>{
   expect(applyLibraryTarget(kpi,library,2.675)).toMatchObject({rates:[0,1.34,2.67,4.01,5.35]});
   expect(applyLibraryTarget({...kpi,scoring:{mechanism:'A',method:'less',rates:[200,150,100,50,0]}},{...library,spread:{rate:[200,150,100,50,0]}},100)).toMatchObject({rates:[200,150,100,50,0]});
-  expect(()=>applyLibraryTarget(kpi,undefined,100)).toThrow(/no ladder/);
+  expect(applyLibraryTarget(kpi,undefined,250)).toMatchObject({target:250,rates:[0,50,100,150,200]});
  });
  it('rejects inappropriate mechanisms, formulas, ambiguous names and conflicting edits atomically',()=>{
   const text='Set Delivery weight to 50 + 50',command={action:'set_weight',id,target:span(text,'Delivery'),value:span(text,'50 + 50')};
   expect(adjudicateSettingCommands(JSON.stringify({commands:[command]}),facts(text)).ok).toBe(false);
   expect(adjudicateSettingCommands(JSON.stringify({commands:[{...command,value:span(text,'50')},{action:'remove_kpi',id,target:command.target}]}),facts(text)).ok).toBe(false);
-  expect(adjudicateSettingCommands(JSON.stringify({commands:[{...command,action:'set_number',field:'target',value:span(text,'50')}]}),facts(text)).ok).toBe(false);
+  expect(adjudicateSettingCommands(JSON.stringify({commands:[{...command,action:'set_number',field:'multiple',value:span(text,'50')}]}),facts(text)).ok).toBe(false);
   expect(adjudicateSettingCommands(JSON.stringify({commands:[{...command,value:span(text,'50')}]}),{...facts(text),kpis:[kpi,{...kpi,id:randomUUID()}]}).ok).toBe(false);
  });
  it('never accepts approvals, HR-owned lines, proposed scorecards or unknown actions',()=>{

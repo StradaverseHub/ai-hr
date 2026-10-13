@@ -10,7 +10,7 @@ export const careerCommandsSchema=z.object({commands:z.array(z.discriminatedUnio
  z.object({action:z.literal('edit_goal'),id:z.uuid(),target:span,...goalFields}).strict(),
  z.object({action:z.literal('remove_goal'),id:z.uuid(),target:span}).strict(),
 ])).max(30)}).strict();
-export type CareerCommandFacts={text:string;career:Career;careerRevision:number|null;planRevision:number|null;goals:DevelopmentGoal[];canEditGoals:boolean;roles:{id:string;label:string}[]};
+export type CareerCommandFacts={text:string;career:Career;careerRevision:number|null;planRevision:number|null;goals:DevelopmentGoal[];canEditCareer:boolean;canEditGoals:boolean;roles:{id:string;label:string}[]};
 const normal=(s:string)=>s.trim().normalize('NFKC').toLocaleLowerCase('en');
 /** Employee words and explicit catalogue choices only. Sharing and career sign-off have no command. */
 export function adjudicateCareerCommands(raw:string,facts:CareerCommandFacts){
@@ -18,6 +18,7 @@ export function adjudicateCareerCommands(raw:string,facts:CareerCommandFacts){
   const proposal=careerCommandsSchema.parse(JSON.parse(raw)),career=structuredClone(facts.career),goals=structuredClone(facts.goals),used=new Set<string>();
   const extract=(s:z.infer<typeof span>)=>{if(s.end>facts.text.length||s.start>=s.end)throw Error('Invalid message span.');return facts.text.slice(s.start,s.end).trim();};
   for(const c of proposal.commands){
+   if(['career_field','mobility','role_choice'].includes(c.action)&&!facts.canEditCareer)throw Error('The shared career plan is locked.');
    const key=c.action==='career_field'||c.action==='role_choice'?c.field:c.action==='mobility'?'mobility':c.action==='add_goal'?`new:${extract(c.area)}`:c.id;
    if(used.has(key))throw Error('Conflicting updates.');used.add(key);
    if(c.action==='career_field'){career[c.field]=extract(c.value);continue;}
