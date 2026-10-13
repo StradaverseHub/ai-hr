@@ -17085,8 +17085,8 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "அரட்டை உங்கள் தனிப்பட்ட வரைவைப் புதுப்பிக்கலாம். உள்ளீடுகளைச் சரிபார்த்து, சமர்ப்பிக்க அல்லது ஒப்புதல் அளிக்க படிவத்தைப் பயன்படுத்தவும்.",
-      "updated": "தனிப்பட்ட வரைவு புதுப்பிக்கப்பட்டது. படிவத்தைச் சரிபார்த்து, தயாரானதும் சமர்ப்பிப்பை உறுதிசெய்யவும்.",
+      "help": "இப்படியின் பதிவுகளை அரட்டை மாற்றலாம். மாற்றங்களைச் சரிபார்த்து, சமர்ப்பிக்க, பகிர அல்லது ஒப்புதல் அளிக்க படிவத்தைப் பயன்படுத்தவும்.",
+      "updated": "மாற்றங்கள் சேமிக்கப்பட்டன. பதிவுகளைச் சரிபார்த்து அடுத்த உறுதிப்படுத்தலுக்கு படிவத்தைப் பயன்படுத்தவும்.",
       "send": "அனுப்பு"
     },
     "closePlan": "Close after career conversation",
@@ -17232,7 +17232,9 @@
       "pm": "Performance management",
       "tm": "Talent management",
       "idp": "Development planning",
-      "evidence": "Evidence ledger"
+      "evidence": "Evidence ledger",
+      "calibration": "மதிப்பீட்டு ஒத்திசைவு",
+      "review": "வழிகாட்டிய மதிப்பாய்வு"
     },
     "tiers": {
       "hod": "Head of department",
@@ -17687,7 +17689,12 @@
       "current": "தற்போதைய பணி",
       "future": "எதிர்கால பணி",
       "level": "நிலை {level}"
-    }
+    },
+    "feedbackAnswers": {
+      "yes": "ஆம்",
+      "no": "இன்னும் இல்லை"
+    },
+    "cycleArchived": "இந்த மதிப்பாய்வுச் சுழற்சி காப்பகப்படுத்தப்பட்டுள்ளது."
   },
   "allowanceV2": {
     "title": "வருகைப் படி",

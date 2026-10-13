@@ -34,4 +34,18 @@ describe('assessment chat draft adjudication',()=>{
   expect(adjudicateReviewCommands(JSON.stringify({commands:[{action:'overall_remark',text:{start:0,end:text.length}}]}),{...base,text}).ok).toBe(false);
   expect(adjudicateReviewCommands('{"commands":[]}',base)).toMatchObject({ok:true,changed:false});
  });
+ it('records explicit observed/not-yet feedback and literal principle comments in the assigned colleague draft',()=>{
+  const text='Record Follows through as not yet. Reliability comment: Kept me informed.';
+  const facts:ReviewCommandFacts={text,draft:{kind:'feedback',answers:{existing:'yes'},comments:{Other:'Retain this'},remark:''},targets:[{id:'follow',label:'Follows through'},{id:'principle:Reliability',label:'Reliability'}]};
+  const commands=[{action:'feedback_answer',id:'follow',target:span(text,'Follows through'),answer:span(text,'not yet')},{action:'feedback_comment',id:'principle:Reliability',target:span(text,'Reliability'),text:span(text,'Kept me informed.')}];
+  expect(adjudicateReviewCommands(JSON.stringify({commands}),facts)).toMatchObject({ok:true,draft:{kind:'feedback',answers:{existing:'yes',follow:'no'},comments:{Other:'Retain this',Reliability:'Kept me informed.'}}});
+  expect(facts.draft).toMatchObject({answers:{existing:'yes'},comments:{Other:'Retain this'}});
+  expect(adjudicateReviewCommands(JSON.stringify({commands}),{...facts,targets:[{id:'foreign',label:'Follows through'}]}).ok).toBe(false);
+ });
+ it('cannot use colleague feedback commands on a KPI draft or invent comment words',()=>{
+  const text='Delivery yes',commands=[{action:'feedback_answer',id,target:span(text,'Delivery'),answer:span(text,'yes')}];
+  expect(adjudicateReviewCommands(JSON.stringify({commands}),{...base,text}).ok).toBe(false);
+  expect(adjudicateReviewCommands(JSON.stringify({commands:[{action:'feedback_comment',id:'principle:Reliability',target:span(text,'Delivery'),text:{start:500,end:501}}]}),{text,draft:{kind:'feedback',answers:{},remark:''},targets:[{id:'principle:Reliability',label:'Delivery'}]}).ok).toBe(false);
+ });
+
 });

@@ -326,6 +326,22 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.updateAssessmentModules(a,cycleId,(await perf.getOnehrCycle(a,cycleId))!.revision,original)).rejects.toThrow(/active cycle/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({selfRemark:'Changed after archive'}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/archived assessment/)})});
   });
+  it('switches calibration and guided review independently while retaining confirmed bands and private conversations',async()=>{
+    await complete();
+    const id=await perf.createOnehrCalibration(a,cycleId,{name:'Department review',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.saveOnehrCalibration(a,id,1,{reviewId,performance:'AE',potential:'High',performanceNote:'Verified broader outcomes',potentialNote:''});
+    await perf.lockOnehrCalibration(a,id,(await perf.getOnehrCalibration(a,id)).session.revision,'');
+    const before=(await view(a)).result?.performance;expect(before).toBe('AE');
+    const message=await perf.sendReviewMessage(self,reviewId,'career',null,randomUUID(),'What do I do next?');
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentModules(a,cycleId,cycle.revision,{...cycle.policy.modules,calibration:false,review:false});
+    await expect(perf.getOnehrCalibration(a,id)).rejects.toThrow(/disabled/);expect((await perf.performanceWorkspace(a)).some(i=>i.id===id)).toBe(false);
+    await expect(perf.sendReviewMessage(self,reviewId,'career',message.revision,randomUUID(),'Continue')).rejects.toThrow(/disabled/);
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentConversation).where(eq(schema.assessmentConversation.reviewId,reviewId)))).toEqual([]);
+    expect((await view(a)).result?.performance).toBe(before);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentModules(a,cycleId,cycle.revision,{...cycle.policy.modules,calibration:true,review:true});
+    expect((await perf.getOnehrCalibration(a,id)).rows[0].currentPerformance).toBe('AE');expect(await perf.getReviewConversation(self,reviewId,'career')).toMatchObject({revision:message.revision,messages:message.messages});
+  });
+
   it('imports a live architecture and generates only unstarted, unpinned competency snapshots',async()=>{
     const sheets={Job_Profile:'',Job_Skills:toCsv([architectureHeaders.Job_Skills,['Technical','Analyst','12','','','','','ANA-3','Analysis','Technical','Analysis','3','Analyse a delivery','Understand context','Prepare analysis']])};
     await expect(perf.importAssessmentArchitecture(self,cycleId,sheets)).rejects.toThrow(/administrator/);
@@ -714,6 +730,62 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const calls=vi.mocked(generateDraft).mock.calls.length;
     expect(await perf.sendReviewMessage(self,reviewId,'setting',first.revision,randomUUID(),text)).toMatchObject({draftUpdated:false});expect(generateDraft).toHaveBeenCalledTimes(calls);
     expect((await view(self)).kpis[0].setting).toBe('proposed');
+  });
+
+  it('saves career words and draft goals atomically, preserves the shared plan snapshot and degrades on provider failure',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const span=(text:string,value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
+    const text='Aspiration: Lead operations. Goal: Facilitation. On the job: Run a workshop.';
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'career_field',field:'aspirationNow',value:span(text,'Lead operations.')},{action:'add_goal',area:span(text,'Facilitation'),onJob:span(text,'Run a workshop.')}]}));
+    const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'career',null,request,text);
+    expect(first.draftUpdated).toBe(true);let own=await view(self),plan=own.plans[0];
+    expect(own.careerProfile?.career.aspirationNow).toBe('Lead operations.');expect(plan).toMatchObject({status:'draft',goals:[{area:'Facilitation',onJob:'Run a workshop.',dueOn:''}]});
+    expect((await view(mgr)).plans).toEqual([]);expect((await perf.getReviewConversation(mgr,reviewId,'career')).messages).toEqual([]);
+    expect(await perf.sendReviewMessage(self,reviewId,'career',null,request,text)).toEqual(first);expect(generateDraft).toHaveBeenCalledOnce();
+    await expect(perf.sendReviewMessage(self,reviewId,'career',0,randomUUID(),text)).rejects.toThrow(/conversation changed/);
+    expect((await view(self)).plans[0].revision).toBe(plan.revision);
+    const career={...own.careerProfile!.career,mobility:'role_in_unit'};
+    await perf.saveOnehrPlan(self,reviewId,plan.revision,{career,careerRevision:own.careerProfile!.revision,goals:plan.goals},true);
+    own=await view(self);plan=own.plans[0];const changed='Strengths: Patient facilitation.';
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'career_field',field:'strengths',value:span(changed,'Patient facilitation.')}]}));
+    const updated=await perf.sendReviewMessage(self,reviewId,'career',first.revision,randomUUID(),changed);expect(updated.draftUpdated).toBe(true);
+    own=await view(self);expect(own.careerProfile?.career.strengths).toBe('Patient facilitation.');expect(own.plans[0].career).toEqual(plan.career);expect(own.plans[0].status).toBe('shared');
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'remove_goal',id:plan.goals[0].id,target:span('Remove Facilitation','Facilitation')}]}));
+    const refused=await perf.sendReviewMessage(self,reviewId,'career',updated.revision,randomUUID(),'Remove Facilitation');expect(refused.draftUpdated).toBe(false);expect((await view(self)).plans[0].goals).toEqual(plan.goals);
+    vi.mocked(generateDraft).mockRejectedValue(new Error('Provider unavailable'));
+    const fallback=await perf.sendReviewMessage(self,reviewId,'career',refused.revision,randomUUID(),'Help with my plan');expect(fallback.draftUpdated).toBe(false);expect(fallback.messages.find(m=>m.role==='assistant'&&m.kind==='guide')?.kind).toBe('guide');
+    expect((await view(self)).careerProfile?.career.strengths).toBe('Patient facilitation.');
+  });
+
+  it('keeps colleague feedback conversations private, request-scoped and separate from human submission',async()=>{
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(peers[0].ctx,request.id),statement=card.statements[0],principle=statement.principle;
+    const text=`Record ${statement.text} as yes. ${principle} comment: Clear follow-through.`,span=(value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'feedback_answer',id:statement.id,target:span(statement.text),answer:span('yes')},{action:'feedback_comment',id:`principle:${principle}`,target:span(principle),text:span('Clear follow-through.')}]}));
+    const messageId=randomUUID(),reply=await perf.sendFeedbackMessage(peers[0].ctx,reviewId,request.id,null,messageId,text);
+    expect(reply.draftUpdated).toBe(true);let saved=await perf.getOnehrFeedback(peers[0].ctx,request.id);
+    expect(saved).toMatchObject({submitted:false,answers:null,draft:{payload:{kind:'feedback',answers:{[statement.id]:'yes'},comments:{[principle]:'Clear follow-through.'}}}});
+    expect(await perf.sendFeedbackMessage(peers[0].ctx,reviewId,request.id,null,messageId,text)).toEqual(reply);expect(generateDraft).toHaveBeenCalledOnce();
+    await expect(perf.sendFeedbackMessage(peers[0].ctx,reviewId,request.id,0,randomUUID(),text)).rejects.toThrow(/conversation changed/);
+    expect((await perf.getOnehrFeedback(peers[0].ctx,request.id)).draft?.revision).toBe(1);
+    for(const ctx of [self,mgr,a,peers[1].ctx]){
+      await expect(perf.getFeedbackConversation(ctx,reviewId,request.id)).rejects.toThrow();
+      expect(await withTenant(ctx,tx=>tx.select().from(schema.assessmentConversation).where(eq(schema.assessmentConversation.contextId,request.id)))).toEqual([]);
+    }
+    const [another]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    await perf.assignOnehrPanel(a,another.reviewId,another.revision,[peers[0],peers[2],peers[3],{employmentId:manager.employmentId}].map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    const other=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Peer 1')!;
+    await expect(perf.sendFeedbackMessage(peers[0].ctx,reviewId,other.id,null,randomUUID(),text)).rejects.toThrow(/another assessment/);
+    expect((await perf.getFeedbackConversation(peers[0].ctx,another.reviewId,other.id)).messages).toEqual([]);
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentModules(a,cycleId,cycle.revision,{...cycle.policy.modules,review:false});
+    expect((await perf.getOnehrFeedback(peers[0].ctx,request.id)).guidedReview).toBe(false);
+    await expect(perf.getFeedbackConversation(peers[0].ctx,reviewId,request.id)).rejects.toThrow(/disabled/);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentModules(a,cycleId,cycle.revision,{...cycle.policy.modules,review:true,tm:false});
+    expect((await perf.onehrAssignments(peers[0].ctx)).feedback).toEqual([]);await expect(perf.getOnehrFeedback(peers[0].ctx,request.id)).rejects.toThrow(/not found/);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentModules(a,cycleId,cycle.revision,{...cycle.policy.modules,tm:true});
+    saved=await perf.getOnehrFeedback(peers[0].ctx,request.id);expect(saved.draft?.payload).toMatchObject({answers:{[statement.id]:'yes'}});
+    expect(await perf.getFeedbackConversation(peers[0].ctx,reviewId,request.id)).toMatchObject({revision:reply.revision,messages:reply.messages});
   });
 
   it('lets chat update only an actor-private draft, atomically and idempotently',async()=>{

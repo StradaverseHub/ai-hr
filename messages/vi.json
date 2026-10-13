@@ -17085,8 +17085,8 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "Trò chuyện có thể cập nhật bản nháp riêng tư. Kiểm tra nội dung và dùng biểu mẫu để gửi hoặc phê duyệt.",
-      "updated": "Đã cập nhật bản nháp riêng tư. Kiểm tra biểu mẫu rồi xác nhận gửi khi sẵn sàng.",
+      "help": "Trò chuyện có thể cập nhật mục nhập ở bước này. Kiểm tra thay đổi và dùng biểu mẫu để nộp, chia sẻ hoặc phê duyệt.",
+      "updated": "Đã lưu thay đổi. Kiểm tra các mục nhập và dùng biểu mẫu để xác nhận bước tiếp theo.",
       "send": "Gửi"
     },
     "closePlan": "Close after career conversation",
@@ -17232,7 +17232,9 @@
       "pm": "Performance management",
       "tm": "Talent management",
       "idp": "Development planning",
-      "evidence": "Evidence ledger"
+      "evidence": "Evidence ledger",
+      "calibration": "Hiệu chuẩn",
+      "review": "Đánh giá có hướng dẫn"
     },
     "tiers": {
       "hod": "Head of department",
@@ -17687,7 +17689,12 @@
       "current": "Vai trò hiện tại",
       "future": "Vai trò tương lai",
       "level": "Cấp {level}"
-    }
+    },
+    "feedbackAnswers": {
+      "yes": "Có",
+      "no": "Chưa quan sát thấy"
+    },
+    "cycleArchived": "Kỳ đánh giá này đã được lưu trữ."
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

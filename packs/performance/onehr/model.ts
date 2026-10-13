@@ -7,6 +7,7 @@ export const potentialBands = ['Low', 'Mid', 'High'] as const;
 export type PMBand = typeof pmBands[number];
 export type PotentialBand = typeof potentialBands[number];
 export type Talent = 'PIP/Improvement' | 'Solid Core' | 'Star' | 'Super Star';
+export const assessmentModuleKeys=['pm','tm','idp','evidence','calibration','review'] as const;
 export const windowCells = ['pm_setting','pm_setting_approve','pm_results','pm_approve','tc_self','tc_approve','f360','idp_self','idp_review','pm_hod','pot_hod','pm_buceo','pot_buceo','tb_bgceo'] as const;
 export type WindowCell = typeof windowCells[number];
 const finite = z.number().finite();
@@ -30,7 +31,7 @@ export type Competency = z.infer<typeof competencySchema>;
 export const policySchema = z.object({
   extremes:z.object({enabled:z.boolean(),bonus:z.number().finite().min(0).max(1000),penalty:z.number().finite().min(0).max(1000)}).default({enabled:false,bonus:5,penalty:5}),
   version:z.literal(1), kind:z.enum(['mid_year','year_end','quarterly']),
-  modules:z.object({pm:z.boolean(),tm:z.boolean(),idp:z.boolean(),evidence:z.boolean()}),
+  modules:z.object({pm:z.boolean(),tm:z.boolean(),idp:z.boolean(),evidence:z.boolean(),calibration:z.boolean().optional(),review:z.boolean().optional()}),
   windows:z.partialRecord(z.enum(windowCells),z.object({opensAt:z.iso.datetime({offset:true}).nullable(),closesAt:z.iso.datetime({offset:true}).nullable()}).refine(w=>!w.opensAt||!w.closesAt||Date.parse(w.opensAt)<Date.parse(w.closesAt),'The window must close after it opens.')),
   aBands:z.tuple([finite,finite,finite,finite,finite]),
   bBands:z.array(z.object({companyId:z.uuid(),variant:z.enum(['base','excellence']).optional(),minima:z.tuple([finite,finite,finite,finite,finite])})).max(200),

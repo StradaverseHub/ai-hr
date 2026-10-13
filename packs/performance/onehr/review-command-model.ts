@@ -4,6 +4,8 @@ const span=z.object({start:z.number().int().min(0),end:z.number().int().min(1)})
 const commandSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('kpi_result'),id:z.uuid(),target:span,actual:span,note:span.optional()}).strict(),
  z.object({action:z.literal('competency_answer'),id:z.string().min(1).max(100),target:span,answer:span,remark:span.optional()}).strict(),
+ z.object({action:z.literal('feedback_answer'),id:z.string().min(1).max(100),target:span,answer:span}).strict(),
+ z.object({action:z.literal('feedback_comment'),id:z.string().min(1).max(300),target:span,text:span}).strict(),
  z.object({action:z.literal('overall_remark'),text:span}).strict(),
 ]);
 export const reviewCommandsSchema=z.object({commands:z.array(commandSchema).max(50)}).strict();
@@ -27,6 +29,12 @@ export function adjudicateReviewCommands(raw:string,facts:ReviewCommandFacts):{o
     const value=extract(command.actual);
     if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)||!Number.isFinite(Number(value)))throw Error('Use an actual number from the message, without calculations.');
     line.actual=Number(value);if(command.note)line.note=extract(command.note);
+   }else if(command.action==='feedback_answer'){
+    if(draft.kind!=='feedback')throw Error('This part does not accept colleague feedback.');
+    const answer=normal(extract(command.answer));if(!['yes','no','not yet'].includes(answer))throw Error('Use an explicit yes or not yet answer from the message.');draft.answers[command.id]=answer==='yes'?'yes':'no';
+   }else if(command.action==='feedback_comment'){
+    if(draft.kind!=='feedback'||!command.id.startsWith('principle:'))throw Error('Choose an assigned feedback principle.');
+    draft.comments??={};draft.comments[command.id.slice('principle:'.length)]=extract(command.text);
    }else{
     if(draft.kind!=='competency_self'&&draft.kind!=='competency_manager')throw Error('This part does not accept competency answers.');
     const line=draft.answers[command.id];if(!line)throw Error('Competency outside the editable draft.');

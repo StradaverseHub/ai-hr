@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { flushAssessmentDrafts } from '../onehr/draft-form';
 import { Button, inputCls } from '@/components/ui';
 import { reviewConversationAction } from '../onehr-actions';
-export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,children}:{children?:ReactNode;reviewId:string;stage:ConversationStage;initial:{revision:number|null;messages:ReviewMessage[]};aiEnabled:boolean;labels:Record<string,string>}){
+export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,children,contextId}:{contextId?:string;children?:ReactNode;reviewId:string;stage:ConversationStage;initial:{revision:number|null;messages:ReviewMessage[]};aiEnabled:boolean;labels:Record<string,string>}){
  const router=useRouter(),frame=useRef<HTMLElement>(null);
  const [availableHeight,setAvailableHeight]=useState<number>();
  useEffect(()=>{
@@ -19,7 +19,7 @@ export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,chil
   const text=words.trim()||labels.next;
   start(async()=>{
    try{await flushAssessmentDrafts();}catch(e){setError(e instanceof Error?e.message:labels.help);return;}
-   const result=await reviewConversationAction(reviewId,stage,conversation.revision,crypto.randomUUID(),text,intent);
+   const result=await reviewConversationAction(reviewId,stage,conversation.revision,crypto.randomUUID(),text,intent,contextId);
    if('error' in result){setError(result.error);return;}
    setConversation(result);setWords('');setError('');if('draftUpdated' in result&&result.draftUpdated)router.refresh();
   });

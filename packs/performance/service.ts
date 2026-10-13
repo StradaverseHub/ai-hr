@@ -24,3 +24,5 @@ export type { RatingRecordSnapshot } from './onehr/rating-record-model';
 export { buildRatingRecordWorkbook } from './onehr/rating-record-xlsx';
 export { getAssessmentPersonalRecord } from './onehr/personal-record-service';
 export { importAssessmentArchitecture, generateAssessmentProfiles, saveAssessmentCatalogueProfile, setAssessmentCareerRoute } from './onehr/architecture-service';
+
+export { getFeedbackConversation, sendFeedbackMessage } from './onehr/feedback-conversation';

@@ -17085,8 +17085,8 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "聊天可更新您的私人草稿。请检查内容，并使用表单提交或批准。",
-      "updated": "私人草稿已更新。请检查表单，准备好后再确认提交。",
+      "help": "对话可更新此步骤的条目。请检查更改，并通过表单提交、共享或审批。",
+      "updated": "更改已保存。请检查条目，并通过表单进行下一步确认。",
       "send": "发送"
     },
     "closePlan": "Close after career conversation",
@@ -17232,7 +17232,9 @@
       "pm": "Performance management",
       "tm": "Talent management",
       "idp": "Development planning",
-      "evidence": "Evidence ledger"
+      "evidence": "Evidence ledger",
+      "calibration": "校准",
+      "review": "引导式评估"
     },
     "tiers": {
       "hod": "Head of department",
@@ -17687,7 +17689,12 @@
       "current": "当前岗位",
       "future": "未来岗位",
       "level": "等级 {level}"
-    }
+    },
+    "feedbackAnswers": {
+      "yes": "是",
+      "no": "尚未观察到"
+    },
+    "cycleArchived": "此评估周期已归档。"
   },
   "allowanceV2": {
     "title": "考勤津贴",

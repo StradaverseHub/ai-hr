@@ -71,9 +71,10 @@ CREATE TABLE performance_assessment_draft (
 CREATE TABLE performance_assessment_conversation (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
  review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id), actor_user_id uuid NOT NULL REFERENCES app_user(id),
- stage text NOT NULL CHECK(stage IN ('setting','results','moderation','competency','career','evidence','journey')),
+ stage text NOT NULL CHECK(stage IN ('setting','results','moderation','competency','career','evidence','journey','feedback')),
+ context_id uuid NOT NULL,
  messages jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(messages)='array' AND octet_length(messages::text)<=1000000),
- revision integer NOT NULL DEFAULT 1, updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(review_id,actor_user_id,stage)
+ revision integer NOT NULL DEFAULT 1, updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(review_id,actor_user_id,stage,context_id)
 );
 CREATE TABLE performance_kpi_library (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid REFERENCES company(id),group_company_id uuid REFERENCES company(id),tier integer NOT NULL DEFAULT 0 CHECK(tier BETWEEN 0 AND 4),
@@ -89,7 +90,8 @@ CREATE TABLE performance_assessment_attachment_link (
 --> statement-breakpoint
 CREATE FUNCTION app.assessment_private_access(wanted_review uuid, wanted_kind text, wanted_context uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id())
- AND CASE WHEN wanted_kind='feedback' THEN (app.onehr_feedback_card(wanted_context)->>'reviewId')::uuid=wanted_review
+ AND (wanted_kind NOT IN ('conversation','feedback_conversation') OR EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND coalesce((c.policy->'modules'->>'review')::boolean,true)))
+ AND CASE WHEN wanted_kind IN ('feedback','feedback_conversation') THEN (app.onehr_feedback_card(wanted_context)->>'reviewId')::uuid=wanted_review
  ELSE wanted_context=wanted_review AND app.onehr_review_header(wanted_review) IS NOT NULL END
 $$;
 CREATE FUNCTION app.assessment_journey_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -101,6 +103,10 @@ BEGIN
   IF NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=tid) OR EXISTS(SELECT 1 FROM unnest(NEW.department_ids) d WHERE NOT EXISTS(SELECT 1 FROM department WHERE id=d AND tenant_id=tid AND (NEW.company_id IS NULL OR company_id=NEW.company_id) AND (NEW.group_company_id IS NULL OR app.is_company_descendant(company_id,NEW.group_company_id)))) THEN RAISE EXCEPTION 'Invalid KPI library scope'; END IF;
  ELSE
   IF NOT EXISTS(SELECT 1 FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=tid) THEN RAISE EXCEPTION 'Invalid assessment reference'; END IF;
+  IF TG_TABLE_NAME='performance_assessment_conversation' THEN
+   IF (NEW.stage='feedback' AND NOT EXISTS(SELECT 1 FROM performance_onehr_panel p WHERE p.request_id=NEW.context_id AND p.review_id=NEW.review_id AND p.tenant_id=tid) OR NEW.stage<>'feedback' AND NEW.context_id<>NEW.review_id) THEN RAISE EXCEPTION 'Invalid conversation context'; END IF;
+   IF EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id WHERE r.review_id=NEW.review_id AND r.tenant_id=tid AND c.policy->'modules'->>'review'='false') THEN RAISE EXCEPTION 'Guided review is disabled'; END IF;
+  END IF;
   IF TG_TABLE_NAME='performance_assessment_attachment_link' THEN
    IF NOT EXISTS(SELECT 1 FROM performance_attachment WHERE id=NEW.attachment_id AND review_id=NEW.review_id AND tenant_id=tid) OR NOT EXISTS(SELECT 1 FROM performance_onehr_review r, jsonb_array_elements(r.kpis) k WHERE r.review_id=NEW.review_id AND k->>'id'=NEW.kpi_id::text) THEN RAISE EXCEPTION 'Attachment must belong to this assessment and KPI'; END IF;
    IF EXISTS(SELECT 1 FROM performance_onehr_result WHERE review_id=NEW.review_id) THEN RAISE EXCEPTION 'Finalized assessment evidence is immutable'; END IF;
@@ -130,7 +136,7 @@ DO $$ DECLARE t text; BEGIN FOREACH t IN ARRAY ARRAY['performance_assessment_dra
  EXECUTE format('CREATE TRIGGER assessment_journey_links BEFORE INSERT OR UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION app.assessment_journey_validate()',t);
 END LOOP; END $$;
 CREATE POLICY assessment_draft_private ON performance_assessment_draft FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,kind,context_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,kind,context_id));
-CREATE POLICY assessment_conversation_private ON performance_assessment_conversation FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,'conversation',review_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,'conversation',review_id));
+CREATE POLICY assessment_conversation_private ON performance_assessment_conversation FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,CASE WHEN stage='feedback' THEN 'feedback_conversation' ELSE 'conversation' END,context_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,CASE WHEN stage='feedback' THEN 'feedback_conversation' ELSE 'conversation' END,context_id));
 CREATE POLICY kpi_library_read ON performance_kpi_library FOR SELECT USING(tenant_id=app.current_tenant_id() AND (company_id IS NULL AND group_company_id IS NULL OR app.onehr_admin(coalesce(company_id,group_company_id)) OR EXISTS(SELECT 1 FROM employment e WHERE (performance_kpi_library.company_id IS NULL OR e.company_id=performance_kpi_library.company_id) AND (performance_kpi_library.group_company_id IS NULL OR app.is_company_descendant(e.company_id,performance_kpi_library.group_company_id)) AND app.can_see_employment(e.id))));
 CREATE POLICY kpi_library_write ON performance_kpi_library FOR ALL USING(tenant_id=app.current_tenant_id() AND app.onehr_admin(coalesce(company_id,group_company_id))) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_admin(coalesce(company_id,group_company_id)));
 CREATE POLICY assessment_attachment_link_access ON performance_assessment_attachment_link FOR ALL USING(tenant_id=app.current_tenant_id() AND app.onehr_attachment_access(review_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_attachment_access(review_id));
@@ -145,10 +151,12 @@ BEGIN
  IF TG_TABLE_NAME='performance_onehr_cycle' THEN
   IF NOT EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.tenant_id=tid) THEN RAISE EXCEPTION 'Invalid assessment cycle'; END IF;
  ELSIF TG_TABLE_NAME='performance_onehr_calibration' THEN
+  IF EXISTS(SELECT 1 FROM performance_onehr_cycle c WHERE c.cycle_id=(n->>'cycle_id')::uuid AND c.tenant_id=tid AND c.policy->'modules'->>'calibration'='false') THEN RAISE EXCEPTION 'Calibration is disabled'; END IF;
   IF NOT EXISTS(SELECT 1 FROM performance_onehr_cycle c WHERE c.cycle_id=(n->>'cycle_id')::uuid AND c.tenant_id=tid) OR (n->>'company_id') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company c WHERE c.id=(n->>'company_id')::uuid AND c.tenant_id=tid) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(n->'reviewer_user_ids') uid WHERE NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=uid::uuid AND u.tenant_id=tid AND u.archived_at IS NULL)) THEN RAISE EXCEPTION 'Invalid assessment calibration scope or reviewer'; END IF;
  ELSE
   SELECT * INTO r FROM performance_review WHERE id=rid AND tenant_id=tid;
   IF r.id IS NULL THEN RAISE EXCEPTION 'Invalid assessment review'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_calibration_entry' AND EXISTS(SELECT 1 FROM performance_onehr_cycle c WHERE c.cycle_id=r.cycle_id AND c.tenant_id=tid AND c.policy->'modules'->>'calibration'='false') THEN RAISE EXCEPTION 'Calibration is disabled'; END IF;
   IF TG_TABLE_NAME='performance_onehr_panel' THEN
    IF NOT EXISTS(SELECT 1 FROM peer_feedback_request f JOIN employment e ON e.id=f.peer_employment_id AND e.tenant_id=f.tenant_id JOIN employment sub ON sub.id=f.subject_employment_id AND sub.tenant_id=f.tenant_id WHERE f.id=(n->>'request_id')::uuid AND f.tenant_id=tid AND f.review_id=r.id AND f.subject_employment_id=(n->>'subject_employment_id')::uuid AND f.peer_employment_id=(n->>'peer_employment_id')::uuid AND e.person_id<>sub.person_id) OR (n->>'subject_employment_id')::uuid<>r.employment_id THEN RAISE EXCEPTION 'Invalid assessment panel'; END IF;
   ELSE
@@ -305,9 +313,9 @@ GRANT EXECUTE ON FUNCTION app.assessment_skill_history(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_feedback_card(wanted_request uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
- FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
- WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL
+ SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'guidedReview',coalesce((cfg.policy->'modules'->>'review')::boolean,true),'closed',cyc.status='closed','subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
+ FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN performance_onehr_cycle cfg ON cfg.cycle_id=r.cycle_id AND cfg.tenant_id=r.tenant_id JOIN review_cycle cyc ON cyc.id=r.cycle_id AND cyc.tenant_id=r.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL AND (cfg.policy->'modules'->>'tm')::boolean=true
 $$;
 
 --> statement-breakpoint
@@ -695,6 +703,7 @@ BEGIN
  ELSIF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
   IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at THEN PERFORM app.assessment_rating_record_capture(NEW.review_id,'calibration_lock_or_reopen'); END IF;
  ELSIF TG_TABLE_NAME='performance_onehr_calibration' THEN
+  IF EXISTS(SELECT 1 FROM performance_onehr_cycle c WHERE c.cycle_id=(n->>'cycle_id')::uuid AND c.tenant_id=tid AND c.policy->'modules'->>'calibration'='false') THEN RAISE EXCEPTION 'Calibration is disabled'; END IF;
   IF NEW.performance_locked_at IS DISTINCT FROM OLD.performance_locked_at OR NEW.potential_locked_at IS DISTINCT FROM OLD.potential_locked_at OR NEW.locked_at IS DISTINCT FROM OLD.locked_at THEN
    FOR id IN SELECT review_id FROM performance_onehr_calibration_entry WHERE session_id=NEW.id AND tenant_id=NEW.tenant_id LOOP PERFORM app.assessment_rating_record_capture(id,'calibration_lock_or_reopen'); END LOOP;
   END IF;

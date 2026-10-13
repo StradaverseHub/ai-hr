@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import * as perf from '@/packs/performance/service';
-import { goalSchema, windowCells, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
+import { goalSchema, windowCells, assessmentModuleKeys, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
 
 const str=(f:FormData,k:string)=>String(f.get(k)??'').trim();
 const num=(f:FormData,k:string)=>{const s=str(f,k);if(!s||!Number.isFinite(Number(s)))throw Error('Enter a number in every required numeric field.');return Number(s);};
@@ -32,7 +32,7 @@ export async function onehrCycleAction(f:FormData){
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,variant:str(f,`b.${c.id}.variant`)||'base',minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
-      await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:{pm:f.has('pm'),tm:f.has('tm'),idp:f.has('idp'),evidence:f.has('evidence')},windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),panelTarget:num(f,'panelTarget'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
+      await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:Object.fromEntries(assessmentModuleKeys.map(k=>[k,f.has(k)])),windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),panelTarget:num(f,'panelTarget'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
     }else if(str(f,'action')==='catalogue-profile'){
       const profile=view.policy.profiles.find(p=>p.id===str(f,'profileId')),available=[...new Map([...view.policy.profiles.flatMap(p=>p.competencies),...(view.policy.skills??[])].map(s=>[s.id,s])).values()];
       const chosen=f.getAll('skillId').map(String);if(chosen.some(id=>!available.some(s=>s.id===id)))throw Error('Choose current catalogue competencies.');
@@ -40,7 +40,7 @@ export async function onehrCycleAction(f:FormData){
     }else if(str(f,'action')==='career-route'){
       await perf.setAssessmentCareerRoute(s,id,num(f,'revision'),str(f,'fromProfileId'),str(f,'toProfileId'),z.enum(['pinned','hidden','automatic']).parse(str(f,'kind')));
     }else if(str(f,'action')==='modules'){
-      await perf.updateAssessmentModules(s,id,num(f,'revision'),Object.fromEntries(['pm','tm','idp','evidence'].map(k=>[k,f.has(k)])));
+      await perf.updateAssessmentModules(s,id,num(f,'revision'),Object.fromEntries(assessmentModuleKeys.map(k=>[k,f.has(k)])));
     }else if(str(f,'action')==='windows'){
       await perf.updateOnehrWindows(s,id,num(f,'revision'),readWindows(f),str(f,'reason'));
     }else if(str(f,'action')==='participation'){
@@ -138,9 +138,9 @@ export async function saveAssessmentDraftAction(f:FormData) {
   try{return await saveDraftForm(s,f);}catch(e){return {error:publicErrorMessage(e)};}
 }
 
-export async function reviewConversationAction(reviewId:string,stage:perf.ConversationStage,revision:number|null,requestId:string,text:string,intent:'guide'|'draft') {
+export async function reviewConversationAction(reviewId:string,stage:perf.ConversationStage,revision:number|null,requestId:string,text:string,intent:'guide'|'draft',contextId?:string) {
  const s=await getSession();
- try{return await perf.sendReviewMessage(s,reviewId,stage,revision,requestId,text,intent);}catch(e){return {error:publicErrorMessage(e)};}
+ try{if(stage==='feedback'){if(!contextId)throw Error('Choose an assigned colleague.');return await perf.sendFeedbackMessage(s,reviewId,contextId,revision,requestId,text,intent);}return await perf.sendReviewMessage(s,reviewId,stage,revision,requestId,text,intent);}catch(e){return {error:publicErrorMessage(e)};}
 }
 
 export async function assessmentKpiImportAction(cycleId:string,csv:string,kind:'targets'|'library',previewToken?:string) {

@@ -10144,10 +10144,10 @@ export const assessmentDraft = pgTable('performance_assessment_draft', {
 },t=>[uniqueIndex('performance_assessment_draft_actor_uq').on(t.reviewId,t.actorUserId,t.kind,t.contextId)]);
 export const assessmentConversation = pgTable('performance_assessment_conversation', {
   id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
-  actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),stage:text('stage').notNull(),
+  actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),stage:text('stage').notNull(),contextId:uuid('context_id').notNull(),
   messages:jsonb('messages').notNull().default([]),revision:integer('revision').notNull().default(1),
   updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
-},t=>[uniqueIndex('performance_assessment_conversation_actor_uq').on(t.reviewId,t.actorUserId,t.stage)]);
+},t=>[uniqueIndex('performance_assessment_conversation_actor_uq').on(t.reviewId,t.actorUserId,t.stage,t.contextId)]);
 export const performanceKpiLibrary = pgTable('performance_kpi_library', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').references(()=>company.id),
   groupCompanyId:uuid('group_company_id').references(()=>company.id),tier:integer('tier').notNull().default(0),

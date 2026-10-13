@@ -17085,8 +17085,8 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "Sembang boleh mengemas kini draf peribadi anda. Semak catatan dan gunakan borang untuk menghantar atau meluluskan.",
-      "updated": "Draf peribadi dikemas kini. Semak borang, kemudian sahkan penghantaran apabila bersedia.",
+      "help": "Sembang boleh mengemas kini catatan langkah ini. Semak perubahan dan gunakan borang untuk menghantar, berkongsi atau meluluskan.",
+      "updated": "Perubahan disimpan. Semak catatan dan gunakan borang untuk pengesahan seterusnya.",
       "send": "Hantar"
     },
     "closePlan": "Close after career conversation",
@@ -17232,7 +17232,9 @@
       "pm": "Performance management",
       "tm": "Talent management",
       "idp": "Development planning",
-      "evidence": "Evidence ledger"
+      "evidence": "Evidence ledger",
+      "calibration": "Kalibrasi",
+      "review": "Ulasan berpandu"
     },
     "tiers": {
       "hod": "Head of department",
@@ -17687,7 +17689,12 @@
       "current": "Jawatan semasa",
       "future": "Jawatan masa depan",
       "level": "Tahap {level}"
-    }
+    },
+    "feedbackAnswers": {
+      "yes": "Ya",
+      "no": "Belum lagi"
+    },
+    "cycleArchived": "Kitaran ulasan ini telah diarkibkan."
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

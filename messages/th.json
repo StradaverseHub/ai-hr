@@ -17085,8 +17085,8 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "แชตอัปเดตฉบับร่างส่วนตัวของคุณได้ ตรวจสอบข้อมูลแล้วใช้แบบฟอร์มเพื่อส่งหรืออนุมัติ",
-      "updated": "อัปเดตฉบับร่างส่วนตัวแล้ว ตรวจสอบแบบฟอร์ม แล้วจึงยืนยันการส่งเมื่อพร้อม",
+      "help": "แชตสามารถอัปเดตรายการในขั้นตอนนี้ได้ ตรวจสอบการเปลี่ยนแปลงแล้วใช้แบบฟอร์มเพื่อส่ง แชร์ หรืออนุมัติ",
+      "updated": "บันทึกการเปลี่ยนแปลงแล้ว ตรวจสอบรายการและใช้แบบฟอร์มเพื่อยืนยันขั้นตอนถัดไป",
       "send": "ส่ง"
     },
     "closePlan": "Close after career conversation",
@@ -17232,7 +17232,9 @@
       "pm": "Performance management",
       "tm": "Talent management",
       "idp": "Development planning",
-      "evidence": "Evidence ledger"
+      "evidence": "Evidence ledger",
+      "calibration": "การปรับเทียบ",
+      "review": "การประเมินแบบมีคำแนะนำ"
     },
     "tiers": {
       "hod": "Head of department",
@@ -17687,7 +17689,12 @@
       "current": "ตำแหน่งปัจจุบัน",
       "future": "ตำแหน่งในอนาคต",
       "level": "ระดับ {level}"
-    }
+    },
+    "feedbackAnswers": {
+      "yes": "ใช่",
+      "no": "ยังไม่พบ"
+    },
+    "cycleArchived": "รอบการประเมินนี้ถูกเก็บเข้าคลังแล้ว"
   },
   "allowanceV2": {
     "title": "เบี้ยขยันตามการเข้างาน",

@@ -17085,8 +17085,8 @@
       "message": "Add the facts and examples you want to use…",
       "next": "What do I do next?",
       "preparing": "Preparing draft…",
-      "help": "Chat can update your private draft. Check the entries and use the form to submit or approve.",
-      "updated": "Private draft updated. Review the form, then confirm submission when ready.",
+      "help": "Chat can update the entries for this step. Review changes and use the form to submit, share or approve.",
+      "updated": "Changes saved. Review the entries and use the form for the next confirmation.",
       "send": "Send"
     },
     "closePlan": "Close after career conversation",
@@ -17232,7 +17232,9 @@
       "pm": "Performance management",
       "tm": "Talent management",
       "idp": "Development planning",
-      "evidence": "Evidence ledger"
+      "evidence": "Evidence ledger",
+      "calibration": "Calibration",
+      "review": "Guided review"
     },
     "tiers": {
       "hod": "Head of department",
@@ -17687,7 +17689,12 @@
       "current": "Current role",
       "future": "Future role",
       "level": "Level {level}"
-    }
+    },
+    "feedbackAnswers": {
+      "yes": "Yes",
+      "no": "Not yet"
+    },
+    "cycleArchived": "This review cycle is archived."
   },
   "allowanceV2": {
     "title": "Attendance Allowance",
