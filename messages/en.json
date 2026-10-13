@@ -408,7 +408,8 @@
     "identityEmail": "Email delivery",
     "workflowEmail": "Workflow notifications",
     "applicationHistory": "Application History",
-    "attendanceApprovalWorkflow": "Approval Workflow"
+    "attendanceApprovalWorkflow": "Approval Workflow",
+    "myPerformance": "My Performance"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -17576,7 +17577,58 @@
     "restoreFeedback": "Restore feedback",
     "archiveFeedback": "Archive feedback",
     "resetFeedback": "Reopen submission",
-    "feedbackResubmission": "Your submission was reopened. Your previous answers are kept as a draft; review them and submit again."
+    "feedbackResubmission": "Your submission was reopened. Your previous answers are kept as a draft; review them and submit again.",
+    "reopenPlan": "Reopen plan",
+    "personalRecord": {
+      "chooseRecord": "Choose a review record",
+      "current": "This cycle in detail",
+      "emptyHistory": "No review history yet",
+      "currentHelp": "Current details show your results and the manager’s approved review.",
+      "historyHelp": "History shows released final bands, talent status, feedback and development plans.",
+      "yourResult": "Your result",
+      "approvedResult": "Approved result",
+      "waitingManager": "Waiting for manager approval",
+      "managerOverall": "Manager-approved overall",
+      "selfAnswer": "Your answer",
+      "managerAnswer": "Manager’s answer",
+      "unreleasedReport": "HR has not released this cycle’s 360 report.",
+      "strengths": "Strengths seen by colleagues",
+      "grow": "Where colleagues would like to see more",
+      "even": "Agreement is even across these principles.",
+      "cyclePlan": "This cycle’s development plan",
+      "allPlans": "Development plan history",
+      "choosePlan": "Choose a plan year",
+      "noPlan": "No development plan for this year.",
+      "remarksPending": "Manager remarks appear when the plan closes or the next planning year begins.",
+      "checkins": "Progress check-ins",
+      "trend": "Across your reviews",
+      "trendHeld": "Your final performance band held at {firstBand} from {firstCycle} to {lastCycle}.",
+      "trendChanged": "Your final performance band went from {firstBand} in {firstCycle} to {lastBand} in {lastCycle}.",
+      "close": "Close record",
+      "words": {
+        "consistent": "Seen consistently",
+        "most": "Seen by most",
+        "some": "Seen by some",
+        "few": "Seen by few"
+      },
+      "status": {
+        "draft": "Draft",
+        "shared": "Shared with your manager",
+        "closed": "Closed"
+      },
+      "sections": "Record sections",
+      "summaryTitle": "This cycle from your figures",
+      "summaryFigures": "Your manager has approved {approved} of {total} KPI lines. You have answered {answered} of {competencies} competency statements.",
+      "openReport": "Open the 360 report",
+      "tabs": {
+        "summary": "Summary",
+        "kpi": "KPI",
+        "feedback": "360",
+        "competency": "Competency",
+        "plan": "Career Plan",
+        "plans": "Plan history"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

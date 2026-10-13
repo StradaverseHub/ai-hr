@@ -1,3 +1,4 @@
+import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
 import { assessmentParticipantsTx } from './participation-service';
 import { talentContext, writeTalentAction } from './talent-service';
@@ -383,7 +384,7 @@ export async function createOnehrCalibration(ctx:SessionContext,cycleId:string,r
     const cycle=await loadCycle(tx,cycleId,true);await requireAdmin(tx,cycleId);if(cycle.policy.kind!=='year_end')throw Error('Calibration is available only in year-end cycles.');if(!ratedPerformance(cycle.policy)&&!cycle.policy.modules.tm)throw Error('This cycle has no rating axes to calibrate.');if(!['open','calibration'].includes(cycle.native.status))throw Error('Open the cycle before assigning calibration.');
     if(new Set(p.reviewIds).size!==p.reviewIds.length)throw Error('Duplicate assessment.');
     const reviews=await tx.select().from(onehrReview).where(and(eq(onehrReview.cycleId,cycleId),inArray(onehrReview.reviewId,p.reviewIds)));
-    if(reviews.length!==p.reviewIds.length||!(await tx.execute<{ok:boolean}>(sql`select bool_and(app.assessment_review_participates(r)) as ok from unnest(${p.reviewIds}::uuid[]) r`))[0]?.ok)throw Error('Every assessment must belong to this cycle and your scope.');
+    if(reviews.length!==p.reviewIds.length||!(await tx.execute<{ok:boolean}>(sql`select bool_and(app.assessment_review_participates(r)) as ok from unnest(array[${sql.join(p.reviewIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) r`))[0]?.ok)throw Error('Every assessment must belong to this cycle and your scope.');
     if(p.companyId!=null){const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_admin(${p.companyId}::uuid) as ok`);if(!scope?.ok)throw Error('Company outside your scope.');}
     const [session]=await tx.insert(onehrCalibration).values({tenantId:ctx.tenantId,cycleId,companyId:p.companyId,name:p.name,tier:p.tier,reviewerUserIds:[...new Set(p.reviewerUserIds)],pbtAchievement:p.pbtAchievement==null?null:String(p.pbtAchievement),mode:p.mode}).returning();
     for(const r of reviews)await tx.insert(onehrCalibrationEntry).values({tenantId:ctx.tenantId,sessionId:session.id,reviewId:r.reviewId,employmentId:r.employmentId});
@@ -488,7 +489,6 @@ export async function unlockOnehrCalibration(ctx:SessionContext,sessionId:string
  return withPerformanceTenant(ctx,async tx=>{
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);await requireAdmin(tx,session.cycleId);
   if(!['open','calibration'].includes(cycle.native.status))throw Error('Closed calibration periods are read-only.');
-  if(session.pipLockedAt||session.promotionLockedAt)throw Error('Reopen the confirmed talent decision lists before reopening calibration.');
   const {pm,pot}=needsAxes(cycle.policy,axis,session.tier);if(!pm&&!pot)throw Error('This assessment axis is disabled.');
   const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);if(!reviewId&&own?.present)throw Error('Ask another administrator to reopen a cohort containing your assessment.');
   const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId)).orderBy(asc(onehrCalibrationEntry.reviewId));
@@ -499,6 +499,7 @@ export async function unlockOnehrCalibration(ctx:SessionContext,sessionId:string
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.reviewId},0))`);
    const current=await resolved(tx,e.reviewId,cycle.policy);
    if(current.input.finalized){if(reviewId)throw Error('Finalized assessments cannot reopen.');continue;}
+   if(session.pipLockedAt||session.promotionLockedAt)throw Error('Reopen the confirmed talent decision lists before reopening calibration.');
    if(current.rows.some(d=>tiers.indexOf(d.tier)>tiers.indexOf(session.tier as Tier)&&(pm&&d.performanceLocked||pot&&d.potentialLocked)))throw Error('Reopen later calibration tiers first.');
    if(!(pm&&(session.performanceLockedAt||e.performanceLockedAt)||pot&&(session.potentialLockedAt||e.potentialLockedAt)))continue;
    changed.push({reviewId:e.reviewId,previous:e});
@@ -758,12 +759,15 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
     const leadership=(manager||admin)&&participant?.ok?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
-    const plans=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)));
+    const storedPlans=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)));
+    const [activePlanCycle]=self?await tx.select({periodEnd:reviewCycle.periodEnd,policy:onehrCycle.policy}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId)).where(and(eq(onehrReview.employmentId,r.row.employmentId),sql`${reviewCycle.status} in ('open','calibration')`)).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId)).limit(1):[];
+    const activePlanningYear=activePlanCycle?Number(activePlanCycle.periodEnd.slice(0,4))+(policySchema.parse(activePlanCycle.policy).kind==='year_end'?1:0):null;
+    const plans=self?storedPlans.map(p=>personalPlan(p,activePlanningYear)):storedPlans;
     const [careerProfile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
     const feedbackReport=result&&(!self||record!.feedbackReleasedAt)?result.feedback:[];
     const choices=manager||admin?await tx.select({id:employment.id,name:person.fullName,code:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(sql`not exists(select 1 from employment sub where sub.id=${r.row.employmentId}::uuid and sub.person_id=${person.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`)):[];
     const evidence=r.cycle.policy.modules.evidence?await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),sql`${onehrEvidence.state}<>'retracted'`)).orderBy(desc(onehrEvidence.occurredOn),desc(onehrEvidence.id)):[];
-    const [evidencePeople]=evidence.length?await tx.execute<{names:Record<string,string>}>(sql`select app.assessment_evidence_people(${evidence.map(e=>e.id)}::uuid[]) as names`):[];
+    const [evidencePeople]=evidence.length?await tx.execute<{names:Record<string,string>}>(sql`select app.assessment_evidence_people(array[${sql.join(evidence.map(e=>sql`${e.id}::uuid`),sql`, `)}]::uuid[]) as names`):[];
     const attachments=r.cycle.policy.modules.evidence&&(!moderator||admin)?await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes}).from(performanceAttachment).where(eq(performanceAttachment.reviewId,reviewId)):[];
     const peers=manager||admin?await tx.select({requestId:onehrPanel.requestId,employmentId:onehrPanel.peerEmploymentId,name:peerFeedbackRequest.peerName,relationship:onehrPanel.relationship,submittedAt:onehrPanel.submittedAt,archivedAt:onehrPanel.archivedAt,resetAt:onehrPanel.resetAt,archiveReason:onehrPanel.archiveReason}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(eq(onehrPanel.reviewId,reviewId),admin?undefined:isNull(onehrPanel.archivedAt))).orderBy(asc(peerFeedbackRequest.peerName),asc(onehrPanel.requestId)):[];
     let aiEnabled=false;if(self||manager){try{aiEnabled=!!await resolveActiveAiConfig(tx,ctx);}catch{/* Manual assessment remains available when AI configuration is unusable. */}}

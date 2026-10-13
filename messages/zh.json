@@ -408,7 +408,8 @@
     "identityEmail": "邮件发送",
     "workflowEmail": "工作流程通知",
     "applicationHistory": "申请历史",
-    "attendanceApprovalWorkflow": "审批流程"
+    "attendanceApprovalWorkflow": "审批流程",
+    "myPerformance": "我的绩效"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -17576,7 +17577,58 @@
     "restoreFeedback": "恢复反馈",
     "archiveFeedback": "归档反馈",
     "resetFeedback": "重新开放提交",
-    "feedbackResubmission": "您的提交已重新开放。之前的答案保留为草稿，请检查后再次提交。"
+    "feedbackResubmission": "您的提交已重新开放。之前的答案保留为草稿，请检查后再次提交。",
+    "reopenPlan": "重新开放计划",
+    "personalRecord": {
+      "chooseRecord": "选择评估记录",
+      "current": "本周期详情",
+      "emptyHistory": "暂无评估历史",
+      "currentHelp": "当前详情显示您的成果及经理已批准的评估。",
+      "historyHelp": "历史记录显示已发布的最终等级、人才状态、反馈及发展计划。",
+      "yourResult": "您的成果",
+      "approvedResult": "已批准成果",
+      "waitingManager": "等待经理批准",
+      "managerOverall": "经理批准的总体等级",
+      "selfAnswer": "您的回答",
+      "managerAnswer": "经理的回答",
+      "unreleasedReport": "人力资源部尚未发布本周期的360反馈报告。",
+      "strengths": "同事认可的优势",
+      "grow": "同事期望进一步提升的方面",
+      "even": "这些原则的认同程度一致。",
+      "cyclePlan": "本周期的发展计划",
+      "allPlans": "发展计划历史",
+      "choosePlan": "选择计划年份",
+      "noPlan": "本年度暂无发展计划。",
+      "remarksPending": "计划关闭或进入下一计划年度后显示经理意见。",
+      "checkins": "进度更新",
+      "trend": "历次评估趋势",
+      "trendHeld": "您的最终绩效等级从{firstCycle}到{lastCycle}保持为{firstBand}。",
+      "trendChanged": "您的最终绩效等级从{firstCycle}的{firstBand}变为{lastCycle}的{lastBand}。",
+      "close": "关闭记录",
+      "words": {
+        "consistent": "始终被认可",
+        "most": "多数人认可",
+        "some": "部分人认可",
+        "few": "少数人认可"
+      },
+      "status": {
+        "draft": "草稿",
+        "shared": "已与经理分享",
+        "closed": "已关闭"
+      },
+      "sections": "记录栏目",
+      "summaryTitle": "基于您的数据的本周期概览",
+      "summaryFigures": "经理已批准{total}项KPI中的{approved}项。您已回答{competencies}项能力陈述中的{answered}项。",
+      "openReport": "打开360报告",
+      "tabs": {
+        "summary": "概览",
+        "kpi": "KPI",
+        "feedback": "360",
+        "competency": "能力",
+        "plan": "职业计划",
+        "plans": "计划历史"
+      }
+    }
   },
   "allowanceV2": {
     "title": "考勤津贴",

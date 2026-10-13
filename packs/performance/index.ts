@@ -81,10 +81,11 @@ import { registerPack, type ModulePack, type NavLinkDescriptor } from '../regist
 // Manage group (which is why rung 4 added 'manage' to NavLinkDescriptor's group union):
 //   - the row sat in the Manage group after Approvals (1b35f17b: the group's whole-group gate was
 //     dropped when Personnel became every-employee, so the row carries its own managerUp flag —
-//     managers/admins see Manage → Performance; employees reach their own reviews via /me).
+//     managers/admins see Manage → Performance; employees use My Performance in Home).
 // href, labelKey, the Target icon ref and the managerUp flag are the sidebar's verbatim; only the
 // mounting moved (the sidebar places the row via the registry).
 const PERFORMANCE_NAV_LINKS: NavLinkDescriptor[] = [
+  { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
   { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
 ];
 

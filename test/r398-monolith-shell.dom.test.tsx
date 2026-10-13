@@ -89,6 +89,15 @@ afterEach(() => {
   pathname = '/';
 });
 
+describe('Performance workspace shell',()=>{
+ it('keeps the global palette available while avoiding a second composer above the review',()=>{
+  setTheme('monolith');pathname='/performance/workspace';wrap(<><IntentBar/><CommandBar/></>);
+  expect(screen.queryByRole('search')).toBeNull();
+  fireEvent.keyDown(window,{key:'k',metaKey:true});
+  expect(screen.getByRole('dialog')).toBeTruthy();
+ });
+});
+
 describe('Monolith rail', () => {
   it('rows are mono, carry no icons, and the current row is aria-current', () => {
     setTheme('monolith');

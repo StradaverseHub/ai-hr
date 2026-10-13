@@ -1,4 +1,4 @@
-import { sourceFigure } from './source-numeric';
+import { sourceFigure, sourceRound } from './source-numeric';
 import { z } from 'zod';
 const value=z.number().finite().nullable();
 const label=z.string().nullable();
@@ -26,7 +26,7 @@ const figure=sourceFigure;
 export function ratingRecordExportRow(record:RatingRecord):(string|number|null)[]{
  const s=record.snapshot,pmDigits=s.mechanism==='B'?1:2;
  return [s.employeeId,s.name,s.businessGroup,s.company,s.department,s.grade,s.title,s.mechanism,figure(s.selfScore,pmDigits),s.selfBand,
- s.weightTotal&&s.weightCovered!=null?Math.round(100*s.weightCovered/s.weightTotal):null,figure(s.managerScore,pmDigits),s.managerBand,
+ s.weightTotal&&s.weightCovered!=null?sourceRound(100*s.weightCovered/s.weightTotal):null,figure(s.managerScore,pmDigits),s.managerBand,
  s.tiers.hod?.performance??null,s.tiers.bu?.performance??null,s.tiers.bg?.performance??null,s.tiers.group?.performance??null,s.tiers.final?.performance??null,s.performance,s.performanceSource?sources[s.performanceSource]??s.performanceSource:null,
  figure(s.leadershipScore),figure(s.leadershipMax),s.submitted,s.valid?'Yes':'No',s.competencyStatus,figure(s.competencySelf),figure(s.competencyReviewed),figure(s.competencyMax),figure(s.potentialScore),figure(s.potentialMax),figure(s.potential360Pct),figure(s.potentialCompetencyPct),s.potentialBasis,s.computedPotential,
  s.tiers.hod?.potential??null,s.tiers.bu?.potential??null,s.tiers.bg?.potential??null,s.tiers.group?.potential??null,s.potential,s.potentialSource==='manager'?'Computed (360 + competency)':s.potentialSource?sources[s.potentialSource]??s.potentialSource:null,

@@ -408,7 +408,8 @@
     "identityEmail": "Penghantaran e-mel",
     "workflowEmail": "Pemberitahuan aliran kerja",
     "applicationHistory": "Sejarah Permohonan",
-    "attendanceApprovalWorkflow": "Aliran Kerja Kelulusan"
+    "attendanceApprovalWorkflow": "Aliran Kerja Kelulusan",
+    "myPerformance": "Prestasi Saya"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -17576,7 +17577,58 @@
     "restoreFeedback": "Pulihkan maklum balas",
     "archiveFeedback": "Arkibkan maklum balas",
     "resetFeedback": "Buka semula penghantaran",
-    "feedbackResubmission": "Penghantaran anda dibuka semula. Jawapan terdahulu disimpan sebagai draf; semak dan hantar semula."
+    "feedbackResubmission": "Penghantaran anda dibuka semula. Jawapan terdahulu disimpan sebagai draf; semak dan hantar semula.",
+    "reopenPlan": "Buka semula pelan",
+    "personalRecord": {
+      "chooseRecord": "Pilih rekod penilaian",
+      "current": "Butiran kitaran ini",
+      "emptyHistory": "Belum ada sejarah penilaian",
+      "currentHelp": "Butiran semasa menunjukkan hasil anda dan penilaian yang diluluskan pengurus.",
+      "historyHelp": "Sejarah menunjukkan tahap akhir yang dikeluarkan, status bakat, maklum balas dan pelan pembangunan.",
+      "yourResult": "Hasil anda",
+      "approvedResult": "Hasil diluluskan",
+      "waitingManager": "Menunggu kelulusan pengurus",
+      "managerOverall": "Keseluruhan diluluskan pengurus",
+      "selfAnswer": "Jawapan anda",
+      "managerAnswer": "Jawapan pengurus",
+      "unreleasedReport": "HR belum mengeluarkan laporan 360 kitaran ini.",
+      "strengths": "Kekuatan yang dilihat rakan sekerja",
+      "grow": "Bidang yang ingin dilihat lebih oleh rakan sekerja",
+      "even": "Persetujuan adalah sama bagi prinsip ini.",
+      "cyclePlan": "Pelan pembangunan kitaran ini",
+      "allPlans": "Sejarah pelan pembangunan",
+      "choosePlan": "Pilih tahun pelan",
+      "noPlan": "Tiada pelan pembangunan untuk tahun ini.",
+      "remarksPending": "Ulasan pengurus dipaparkan apabila pelan ditutup atau tahun perancangan seterusnya bermula.",
+      "checkins": "Kemas kini kemajuan",
+      "trend": "Sepanjang penilaian anda",
+      "trendHeld": "Tahap prestasi akhir anda kekal pada {firstBand} dari {firstCycle} hingga {lastCycle}.",
+      "trendChanged": "Tahap prestasi akhir anda berubah daripada {firstBand} pada {firstCycle} kepada {lastBand} pada {lastCycle}.",
+      "close": "Tutup rekod",
+      "words": {
+        "consistent": "Dilihat secara konsisten",
+        "most": "Dilihat oleh kebanyakan",
+        "some": "Dilihat oleh sebahagian",
+        "few": "Dilihat oleh sedikit"
+      },
+      "status": {
+        "draft": "Draf",
+        "shared": "Dikongsi dengan pengurus",
+        "closed": "Ditutup"
+      },
+      "sections": "Bahagian rekod",
+      "summaryTitle": "Kitaran ini berdasarkan angka anda",
+      "summaryFigures": "Pengurus anda telah meluluskan {approved} daripada {total} baris KPI. Anda telah menjawab {answered} daripada {competencies} pernyataan kompetensi.",
+      "openReport": "Buka laporan 360",
+      "tabs": {
+        "summary": "Ringkasan",
+        "kpi": "KPI",
+        "feedback": "360",
+        "competency": "Kompetensi",
+        "plan": "Pelan Kerjaya",
+        "plans": "Sejarah pelan"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

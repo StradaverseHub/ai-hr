@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import {
   describePayload,
+  humanizeEvent,
+  aggregateLabel,
   actionOf,
   aggregateHref,
   canOpenAggregate,
@@ -12,6 +14,11 @@ import {
 } from '../lib/audit-format';
 
 describe('4ec5a940 — audit-format before/after diff renderer', () => {
+  it('shows neutral Performance names for retained legacy assessment events',()=>{
+    expect(humanizeEvent('onehr.scorecard-approved')).toBe('Performance scorecard approved');
+    expect(aggregateLabel('onehr')).toBe('Performance');
+    expect(moduleKeyOf('onehr')).toBe('performance');
+  });
   it('renders only the changed keys as "old → new"', () => {
     const lines = describePayload({
       before: { annualDays: 12, carryForwardMax: 5, method: 'grant_on_hire_prorated' },

@@ -49,10 +49,16 @@ CREATE TRIGGER assessment_participation_links BEFORE INSERT OR UPDATE ON perform
 REVOKE ALL ON FUNCTION app.assessment_review_participates(uuid),app.assessment_participation_validate() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_review_participates(uuid) TO ai_hr_app;
 -- Excluded staff retain their inputs. They disappear from active calibration cohorts, including direct SQL.
-DROP POLICY onehr_calibration_entry_access ON performance_onehr_calibration_entry;
-CREATE POLICY onehr_calibration_entry_access ON performance_onehr_calibration_entry FOR ALL
- USING(tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND (app.assessment_review_participates(review_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN review_cycle c ON c.id=s.cycle_id WHERE s.id=session_id AND c.status='closed')))
- WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND app.assessment_review_participates(review_id));
+-- 0529 finished with separate read/insert/update policies; retain their distinct authorities.
+ALTER POLICY onehr_calibration_entry_read ON performance_onehr_calibration_entry USING(
+ tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND app.assessment_review_participates(review_id)
+ AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=performance_onehr_calibration_entry.tenant_id AND app.is_self_person(e.person_id)));
+ALTER POLICY onehr_calibration_entry_insert ON performance_onehr_calibration_entry WITH CHECK(
+ tenant_id=app.current_tenant_id() AND app.assessment_review_participates(review_id) AND EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN review_cycle c ON c.id=s.cycle_id AND c.tenant_id=s.tenant_id WHERE s.id=session_id AND s.tenant_id=performance_onehr_calibration_entry.tenant_id AND app.onehr_cycle_admin(s.cycle_id) AND c.status IN ('open','calibration')));
+ALTER POLICY onehr_calibration_entry_update ON performance_onehr_calibration_entry USING(
+ tenant_id=app.current_tenant_id() AND app.onehr_calibration_access(session_id) AND app.assessment_review_participates(review_id)
+ AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=performance_onehr_calibration_entry.tenant_id AND app.is_self_person(e.person_id))
+ AND EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN review_cycle c ON c.id=s.cycle_id AND c.tenant_id=s.tenant_id WHERE s.id=session_id AND s.tenant_id=performance_onehr_calibration_entry.tenant_id AND c.status IN ('open','calibration')));
 --> statement-breakpoint
 CREATE TABLE performance_assessment_draft (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
@@ -100,13 +106,17 @@ BEGIN
    IF EXISTS(SELECT 1 FROM performance_onehr_result WHERE review_id=NEW.review_id) THEN RAISE EXCEPTION 'Finalized assessment evidence is immutable'; END IF;
   ELSE
    IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.actor_user_id AND tenant_id=tid) THEN RAISE EXCEPTION 'Invalid assessment actor'; END IF;
-   IF TG_TABLE_NAME='performance_assessment_draft' AND (NEW.kind='feedback' AND NOT EXISTS(SELECT 1 FROM performance_onehr_panel WHERE request_id=NEW.context_id AND review_id=NEW.review_id AND tenant_id=tid) OR NEW.kind<>'feedback' AND NEW.context_id<>NEW.review_id) THEN RAISE EXCEPTION 'Invalid draft context'; END IF;
+   IF TG_TABLE_NAME='performance_assessment_draft' THEN
+    IF (NEW.kind='feedback' AND NOT EXISTS(SELECT 1 FROM performance_onehr_panel WHERE request_id=NEW.context_id AND review_id=NEW.review_id AND tenant_id=tid) OR NEW.kind<>'feedback' AND NEW.context_id<>NEW.review_id) THEN RAISE EXCEPTION 'Invalid draft context'; END IF;
+   END IF;
   END IF;
  END IF;
  IF TG_OP='UPDATE' THEN
   o:=to_jsonb(OLD);
   IF n->'tenant_id' IS DISTINCT FROM o->'tenant_id' OR n->'review_id' IS DISTINCT FROM o->'review_id' OR n->'actor_user_id' IS DISTINCT FROM o->'actor_user_id' OR n->'kind' IS DISTINCT FROM o->'kind' OR n->'context_id' IS DISTINCT FROM o->'context_id' OR n->'stage' IS DISTINCT FROM o->'stage' THEN RAISE EXCEPTION 'Assessment workspace identity is immutable'; END IF;
-  IF TG_TABLE_NAME='performance_assessment_conversation' AND (jsonb_array_length(NEW.messages)<jsonb_array_length(OLD.messages) OR EXISTS(SELECT 1 FROM jsonb_array_elements(OLD.messages) WITH ORDINALITY p(v,i) WHERE NEW.messages->((p.i-1)::integer) IS DISTINCT FROM p.v)) THEN RAISE EXCEPTION 'Assessment conversation is append-only'; END IF;
+  IF TG_TABLE_NAME='performance_assessment_conversation' THEN
+   IF (jsonb_array_length(NEW.messages)<jsonb_array_length(OLD.messages) OR EXISTS(SELECT 1 FROM jsonb_array_elements(OLD.messages) WITH ORDINALITY p(v,i) WHERE NEW.messages->((p.i-1)::integer) IS DISTINCT FROM p.v)) THEN RAISE EXCEPTION 'Assessment conversation is append-only'; END IF;
+  END IF;
  END IF;
  RETURN NEW;
 END $$;
@@ -187,7 +197,7 @@ BEGIN
    IF o->>'status'='closed' AND ((SELECT coalesce(jsonb_agg(g-ARRAY['status','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g-ARRAY['status','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) OR n->'manager_comment' IS DISTINCT FROM o->'manager_comment') THEN RAISE EXCEPTION 'Closed plan definitions and remarks are immutable'; END IF;
   END IF;
   IF TG_TABLE_NAME='performance_onehr_plan' AND n->'plan_year' IS DISTINCT FROM o->'plan_year' THEN RAISE EXCEPTION 'The development plan year is immutable'; END IF;
-  IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' AND (n->'career' IS DISTINCT FROM o->'career' OR n->>'status'='draft' OR o->>'status'='closed' AND n->>'status'<>'closed' OR ((SELECT coalesce(jsonb_agg(g-ARRAY['status','managerComment'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g-ARRAY['status','managerComment'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) AND NOT (o->>'status'='shared' AND app.assessment_plan_reviewer((n->>'id')::uuid)))) THEN RAISE EXCEPTION 'Shared development plan definitions are immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' AND (n->'career' IS DISTINCT FROM o->'career' OR n->>'status'='draft' OR o->>'status'='closed' AND n->>'status'<>'closed' OR ((SELECT coalesce(jsonb_agg(g-ARRAY['status','managerComment','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g-ARRAY['status','managerComment','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) AND NOT (o->>'status'='shared' AND app.assessment_plan_reviewer((n->>'id')::uuid)))) THEN RAISE EXCEPTION 'Shared development plan definitions are immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
    IF n->'pip' IS DISTINCT FROM o->'pip' OR n->'pip_reason' IS DISTINCT FROM o->'pip_reason' THEN
     IF s.locked_at IS NULL OR s.pip_locked_at IS NOT NULL OR s.tier NOT IN ('bg','group','final') THEN RAISE EXCEPTION 'PIP decisions require a locked calibration and an open PIP list'; END IF;
@@ -573,6 +583,7 @@ CREATE TABLE performance_assessment_rating_record (
 ALTER TABLE performance_assessment_rating_record ENABLE ROW LEVEL SECURITY;
 ALTER TABLE performance_assessment_rating_record FORCE ROW LEVEL SECURITY;
 -- Snapshots may only be written by the internal capture; a scoped HR reader cannot forge a record.
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER ON performance_assessment_rating_record FROM ai_hr_app;
 GRANT SELECT ON performance_assessment_rating_record TO ai_hr_app;
 CREATE POLICY assessment_rating_record_read ON performance_assessment_rating_record FOR SELECT USING(
  tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id

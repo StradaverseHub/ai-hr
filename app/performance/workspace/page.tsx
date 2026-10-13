@@ -1,3 +1,6 @@
+import { ItemNavigator } from './item-navigator';
+import { PersonalRecord } from './personal-record';
+import { RecordDrawer } from './record-drawer';
 import { JourneyPanel } from './journey-panel';
 import { AssessmentCalibrationView } from '../onehr/calibration-view';
 import { ReviewConversation } from './review-conversation';
@@ -6,13 +9,13 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { performanceWorkspace, getOnehrReview, getOnehrFeedback, getOnehrCalibration, getReviewConversation, type ConversationStage, type PerformanceWorkspaceItem } from '@/packs/performance/service';
-import { ErrorBanner, PageHeader, inputCls } from '@/components/ui';
+import { performanceWorkspace, getAssessmentPersonalRecord, getOnehrReview, getOnehrFeedback, getOnehrCalibration, getReviewConversation, type ConversationStage, type PerformanceWorkspaceItem } from '@/packs/performance/service';
+import { ErrorBanner, inputCls } from '@/components/ui';
 import { OnehrReviewView } from '../onehr/review-view';
 import { FeedbackView } from '../onehr/feedback-view';
 import { WorkspaceRail } from './workspace-rail';
 
-type Query={cycle?:string;view?:string;module?:string;review?:string;feedback?:string;calibration?:string;stage?:string;error?:string};
+type Query={cycle?:string;view?:string;module?:string;review?:string;feedback?:string;calibration?:string;stage?:string;record?:string;recordTab?:string;planYear?:string;error?:string};
 const views=['mine','team','dept','bu','bg','group'] as const;
 const modules=['pm','tm','idp'] as const;
 export default async function PerformanceWorkspacePage({searchParams}:{searchParams:Promise<Query>}) {
@@ -42,6 +45,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  const feedback=selected?.kind==='feedback'?await getOnehrFeedback(s,selected.id):null;
  if(selected?.kind==='review'&&!review)notFound();
  const stage=query.stage==='record'?'record':query.stage==='evidence'&&review?.policy.modules.evidence?'evidence':module;
+ const personalRecord=stage==='record'&&review?.self?await getAssessmentPersonalRecord(s,review.reviewId,query.record,query.planYear?Number(query.planYear):undefined):null;
  const conversationStage:ConversationStage=stage==='evidence'?'evidence':module==='tm'?'competency':module==='idp'?'career':selected?.stage==='setting'?'setting':selected?.stage==='moderation'?'moderation':'results';
  const conversation=review&&(review.self||review.manager||review.moderator)&&stage!=='record'&&!selected?.locked?await getReviewConversation(s,review.reviewId,conversationStage):null;
  const conversationLabels=Object.fromEntries(['title','you','draft','guide','message','next','preparing','help','updated','send'].map(key=>[key,t(`conversation.${key}`)]));
@@ -53,6 +57,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  const privateResults=review?.drafts.find(d=>d.kind==='results')?.payload;
  const privateCompetencies=review?.drafts.find(d=>d.kind==='competency_self')?.payload;
  const navigation=review?.self?(module==='pm'?review.kpis.map(k=>({id:`kpi-${k.id}`,title:k.title,meta:`${k.weightBp/100}%`,done:!!k.hrOwned||review.resultsSubmitted||!!k.checkIn||(privateResults?.kind==='results'&&privateResults.lines.some(l=>l.id===k.id&&l.actual!=null))})):module==='tm'?[...new Set(review.competencies.map(c=>c.principle))].map((p,i)=>({id:`competency-category-${i}`,title:p,meta:'',done:review.competencies.filter(c=>c.principle===p).every(c=>!!c.self||privateCompetencies?.kind==='competency_self'&&!!privateCompetencies.answers[c.id]?.answer)})):[{id:'career-aspiration',title:t('aspiration'),meta:'',done:!!review.plans[0]?.career},{id:'career-mobility',title:t('mobility'),meta:'',done:!!review.plans[0]?.career},...review.plans.flatMap(p=>(p.goals as {id:string;area:string}[]).map(g=>({id:`goal-${g.id}`,title:g.area,meta:'',done:p.status!=='draft'})))]):[];
+ if(review?.self&&module==='pm'&&selected?.stage!=='setting'&&review.policy.kind!=='quarterly')navigation.push({id:'assessment-overall-remark',title:t('overallRemark'),meta:'',done:!!(privateResults?.remark??review.selfRemark)},{id:'assessment-submit-results',title:t('submitResults'),meta:'',done:review.resultsSubmitted});
  const partSwitcher=module==='tm'&&parts.length>1?<nav aria-label={t('workspace.parts')} className="flex gap-1 border-b border-border p-2">{parts.map(p=><Link key={p} href={href({stage:p})} className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-2 text-xs ${part===p?'bg-primary/10 font-semibold text-primary':'hover:bg-muted'}`}>{t(`workspace.stages.${p}`)}</Link>)}</nav>:null;
  const activeDraft=review?.drafts.find(d=>d.kind===(module==='tm'?(review.manager?'competency_manager':'competency_self'):review.manager||review.moderator?'moderation':'results'))?.payload??feedback?.draft?.payload;
  const activeStatements=feedback?.statements??review?.competencies??[];
@@ -60,13 +65,14 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  const total=module==='tm'?activeStatements.length:activeKpis.length;
  const answered=module==='tm'?activeStatements.filter(s=>activeDraft&&'answers' in activeDraft?(activeDraft.kind==='feedback'?!!activeDraft.answers[s.id]:!!activeDraft.answers[s.id]?.answer):feedback?!!feedback.answers?.[s.id]:review?.competencyStatus!=='pending').length:activeKpis.filter(k=>activeDraft&&'lines' in activeDraft?activeDraft.lines.some(l=>l.id===k.id&&l.actual!=null):k.actual!=null).length;
  const stepProgress={answered,total,remark:!!(activeDraft?.remark??(feedback?.remark??(module==='tm'?review?.competencySelfRemark:review?.selfRemark))),submitted:feedback?.submitted??(module==='tm'?review?.competencyStatus!=='pending':review?.self?!!review.resultsSubmitted:!!review?.managerPerformance)};
- const widget=selected?.locked?<p className="p-6 text-sm text-muted-foreground">{t('workspace.planLocked')}</p>:review?<OnehrReviewView key={`${review.reviewId}.${module}.${stage}.${review.revision}.${review.drafts.map(d=>`${d.kind}:${d.revision}`).join(".")}`} v={review} section={stage} returnTo={returnTo}/>:feedback?<FeedbackView key={feedback.requestId} v={feedback} returnTo={returnTo}/>:calibration?<AssessmentCalibrationView v={calibration} embedded returnTo={returnTo}/>:null;
+ const widget=selected?.locked?<p className="p-6 text-sm text-muted-foreground">{t('workspace.planLocked')}</p>:review?<OnehrReviewView key={`${review.reviewId}.${module}.${stage}.${review.revision}.${review.drafts.map(d=>`${d.kind}:${d.revision}`).join(".")}`} v={review} section={personalRecord?module:stage} returnTo={returnTo}/>:feedback?<FeedbackView key={feedback.requestId} v={feedback} returnTo={returnTo}/>:calibration?<AssessmentCalibrationView v={calibration} embedded returnTo={returnTo}/>:null;
  const journeyWidget=(review?.self||feedback)&&['pm','tm'].includes(stage)&&selected?.stage!=='setting'&&review?.policy.kind!=='quarterly'?<JourneyPanel key={`${selected?.key}.${stage}.${review?.drafts.map(d=>`${d.kind}:${d.revision}`).join(".")}`} initial={stepProgress} labels={[t(module==='tm'?'workspace.steps.rate':'workspace.steps.results'),t(module==='tm'?'workspace.steps.remark':'workspace.steps.justification'),t('workspace.steps.confirm')]}>{widget}</JourneyPanel>:widget;
- const rail=<>{partSwitcher}{navigation.length>0?<><div className="border-b border-border px-4 py-3"><h2 className="text-sm font-semibold">{selected&&t(`workspace.stages.${selected.stage}`)}</h2><p className="mt-1 text-xs text-muted-foreground">{t('workspace.progress',{done:navigation.filter(n=>n.done).length,total:navigation.length})}</p></div>{[false,true].map(complete=><details key={String(complete)} open={!complete} className="border-b border-border"><summary className="cursor-pointer px-4 py-3 text-xs font-semibold text-muted-foreground">{t(complete?'workspace.states.done':'workspace.toDo')} <span className="float-right">{navigation.filter(n=>n.done===complete).length}</span></summary><ul className="space-y-1 p-2">{navigation.filter(n=>n.done===complete).map(n=><li key={n.id}><a href={`#${n.id}`} className="block min-h-11 rounded-md px-3 py-2 text-sm hover:bg-muted"><span className="line-clamp-2">{n.title}</span>{n.meta&&<span className="mt-1 block text-xs text-muted-foreground">{n.meta}</span>}</a></li>)}</ul></details>)}</>:listRail}</>;
- return <div className="mx-auto max-w-[100rem] space-y-4">
-  <PageHeader title={t('workspace.title')} description={t('workspace.description')} back={{href:'/me/performance',label:t('back')}}/>
+ const navigatorItems=navigation.map(n=>({...n,fields:module==='pm'?(n.id.startsWith('kpi-')?review?.kpis.find(k=>`kpi-${k.id}`===n.id)?.hrOwned?[]:[`${n.id.slice(4)}.actual`]:n.id==='assessment-overall-remark'?['overallRemark']:[]):module==='tm'&&review?review.competencies.filter(c=>c.principle===n.title).map(c=>`answer.${c.id}`):[]}));
+ const rail=<>{partSwitcher}{navigation.length>0?<ItemNavigator key={`${review?.reviewId}.${module}`} title={selected?t(`workspace.stages.${selected.stage}`):''} items={navigatorItems}/>:listRail}</>;
+
+ return <div className="mx-auto max-w-[100rem] space-y-3">
+  <div className="flex min-h-11 flex-wrap items-center justify-between gap-3"><h1 className="text-lg font-semibold">{t('workspace.title')}</h1>{cycleIds.length>0&&<form className="flex items-center gap-2" action="/performance/workspace"><label className="sr-only" htmlFor="workspace-cycle">{t('workspace.cycle')}</label><select id="workspace-cycle" name="cycle" defaultValue={cycle} className={`${inputCls} w-auto`}>{cycleIds.map(id=>{const first=items.find(i=>i.cycleId===id)!;return <option key={id} value={id}>{first.cycle}</option>;})}</select><button type="submit" className="min-h-11 rounded-md border border-border px-3 text-sm hover:bg-muted">{t('workspace.openCycle')}</button></form>}</div>
   <ErrorBanner message={query.error}/>
-  {cycleIds.length>0&&<form className="flex flex-wrap items-end justify-between gap-3" action="/performance/workspace"><label className="text-sm">{t('workspace.cycle')}<select name="cycle" defaultValue={cycle} className={`${inputCls} ml-3 w-auto`}>{cycleIds.map(id=>{const first=items.find(i=>i.cycleId===id)!;return <option key={id} value={id}>{first.cycle}</option>;})}</select></label><button type="submit" className="min-h-11 rounded-md border border-border px-4 text-sm hover:bg-muted">{t('workspace.openCycle')}</button></form>}
   {!items.length?<section className="rounded-lg border border-border p-8"><h2 className="font-semibold">{t('workspace.empty')}</h2><p className="mt-2 text-sm text-muted-foreground">{t('workspace.emptyHelp')}</p><Link href="/performance" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.manageCycles')}</Link></section>:<>
    <div className="grid gap-3 lg:grid-cols-[224px_minmax(0,1fr)]">
     <nav aria-label={t('workspace.viewsLabel')} className="flex flex-wrap gap-1 rounded-lg border border-border p-1">{availableViews.map(v=><Link key={v} href={href({view:v,module:undefined})} aria-current={view===v?'page':undefined} className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-3 text-sm ${view===v?'bg-foreground text-background':'hover:bg-muted'}`}>{t(`workspace.views.${v}`)}</Link>)}</nav>
@@ -75,11 +81,12 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
    <div className="grid items-start gap-4 lg:grid-cols-[224px_minmax(0,1fr)]">
     <WorkspaceRail label={t('workspace.navigator')}>{rail}</WorkspaceRail>
     <main className="min-w-0 rounded-lg border border-border bg-card lg:overflow-hidden">
-     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4"><div><h2 className="font-semibold">{selected?.title}</h2><p className="text-xs text-muted-foreground">{selected&&t(`workspace.stages.${selected.stage}`)}</p></div>{review&&<nav aria-label={t('workspace.recordsLabel')} className="flex gap-4 text-sm"><Link href={href({stage:'record'},selected)} className="text-primary hover:underline">{t('workspace.record')}</Link>{review.policy.modules.evidence&&<Link href={href({stage:'evidence'},selected)} className="text-primary hover:underline">{t('evidence')}</Link>}<Link href={`/performance/review/${review.reviewId}`} className="text-muted-foreground hover:underline">{t('workspace.fullView')}</Link></nav>}</header>
+     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4"><div><h2 className="font-semibold">{selected?.title}</h2><p className="text-xs text-muted-foreground">{selected&&t(`workspace.stages.${selected.stage}`)}</p></div>{review&&<nav aria-label={t('workspace.recordsLabel')} className="flex gap-4 text-sm"><Link href={href({stage:'record'},selected)} className="text-primary hover:underline">{t('workspace.record')}</Link>{review.policy.modules.evidence&&<Link href={href({stage:'evidence'},selected)} className="text-primary hover:underline">{t('evidence')}</Link>}{!review.self&&<Link href={`/performance/review/${review.reviewId}`} className="text-muted-foreground hover:underline">{t('workspace.fullView')}</Link>}</nav>}</header>
      {review&&conversation?<ReviewConversation key={`${review.reviewId}.${conversationStage}`} reviewId={review.reviewId} stage={conversationStage} initial={conversation} aiEnabled={review.aiEnabled} labels={conversationLabels}>{journeyWidget}</ReviewConversation>:journeyWidget}
     </main>
    </div>
   </>}
+  {personalRecord&&<RecordDrawer title={t('workspace.record')} closeLabel={t('personalRecord.close')} returnTo={href({stage:module},selected)}><PersonalRecord v={personalRecord} tab={query.recordTab} baseHref={href({stage:'record'},selected)}/></RecordDrawer>}
   <Link href="/" className="fixed bottom-5 left-5 z-20 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm shadow-sm"><span aria-hidden="true">←</span>{t('workspace.dashboard')}</Link>
  </div>;
 }

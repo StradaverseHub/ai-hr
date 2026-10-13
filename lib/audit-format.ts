@@ -3,6 +3,7 @@
 
 export function humanizeEvent(type: string): string {
   return type
+    .replace(/^onehr(?=\.|$)/i, 'performance')
     .split('.')
     .join(' ')
     .replace(/-/g, ' ')
@@ -192,6 +193,7 @@ const AGGREGATE_MODULE: Record<string, string> = {
   'statutory-report': 'payroll',
   'review-cycle': 'performance',
   'performance-review': 'performance',
+  onehr: 'performance',
 };
 
 export const MODULE_KEYS = ['leave', 'organization', 'payroll', 'attendance', 'performance', 'other'] as const;

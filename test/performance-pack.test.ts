@@ -85,12 +85,13 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
   // whole-group flag was dropped):
   //   manage group: { href: '/performance', labelKey: 'performance', icon: Target, managerUp: true }
   const EXPECTED = [
+    { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
     { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
   ] as const;
 
   const links = performancePack.navLinks!;
 
-  it('carries exactly the pre-retrofit row, with identical icon ref and gate', () => {
+  it('exposes the employee workspace and the manager administration row with their own gates', () => {
     expect(links).toHaveLength(EXPECTED.length);
     EXPECTED.forEach((want, i) => {
       const got = links[i];
@@ -98,9 +99,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
       expect(got.href, `row ${i} href`).toBe(want.href);
       expect(got.labelKey, `${want.href} labelKey`).toBe(want.labelKey);
       expect(got.icon, `${want.href} icon ref`).toBe(want.icon);
-      // The pre-rung-4 row was manager-up (managers/admins see Manage → Performance) and never
-      // adminOnly — employees reach their own reviews via /me, not this row.
-      expect(got.managerUp, `${want.href} managerUp`).toBe(true);
+      expect(got.managerUp, `${want.href} managerUp`).toBe('managerUp' in want?want.managerUp:undefined);
       expect(got.adminOnly, `${want.href} adminOnly`).toBeUndefined();
     });
   });

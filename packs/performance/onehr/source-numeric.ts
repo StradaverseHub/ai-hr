@@ -9,12 +9,12 @@ export function sourceFigure(value:number|null,digits=2):number|null{
  if(!Number.isFinite(value)||!Number.isInteger(digits)||digits<0||digits>6)throw Error('Invalid source figure.');
  if(value===0)return value;
  const bytes=new DataView(new ArrayBuffer(8));bytes.setFloat64(0,Math.abs(value),false);const bits=bytes.getBigUint64(0,false);
- const exponentBits=Number((bits>>52n)&2047n),fraction=bits&((1n<<52n)-1n);
- const mantissa=exponentBits===0?fraction:fraction+(1n<<52n),exponent=(exponentBits||1)-1023-52;
- let numerator=mantissa*(10n**BigInt(digits)),denominator=1n;
+ const exponentBits=Number((bits>>BigInt(52))&BigInt(2047)),fraction=bits&((BigInt(1)<<BigInt(52))-BigInt(1));
+ const mantissa=exponentBits===0?fraction:fraction+(BigInt(1)<<BigInt(52)),exponent=(exponentBits||1)-1023-52;
+ let numerator=mantissa*(BigInt(10)**BigInt(digits)),denominator=BigInt(1);
  if(exponent>=0)numerator<<=BigInt(exponent);else denominator<<=BigInt(-exponent);
  let whole=numerator/denominator;const remainder=numerator%denominator;
- if(remainder*2n>denominator||remainder*2n===denominator&&whole%2n!==0n)whole++;
+ if(remainder*BigInt(2)>denominator||remainder*BigInt(2)===denominator&&whole%BigInt(2)!==BigInt(0))whole++;
  const text=whole.toString().padStart(digits+1,'0'),decimal=digits?`${text.slice(0,-digits)}.${text.slice(-digits)}`:text;
  return Number(`${value<0?'-':''}${decimal}`);
 }

@@ -154,6 +154,25 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(frozen.result).toMatchObject({performance:'AE',potential:'High',talent:'Super Star'});
     expect(frozen.performanceReleasedAt).toBeNull();
   });
+  it('separates current manager details from released history and refuses another person’s personal record',async()=>{
+    await complete();
+    let record=await perf.getAssessmentPersonalRecord(self,reviewId);
+    expect(record.history).toEqual([]);expect(record.current).toMatchObject({performance:'ME',allLocked:true});
+    expect(record.current).not.toHaveProperty('potential');expect(record.current).not.toHaveProperty('talent');
+    await expect(perf.getAssessmentPersonalRecord(mgr,reviewId)).rejects.toThrow(/not assigned/);
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    record=await perf.getAssessmentPersonalRecord(self,reviewId);expect(record.history).toEqual([]);expect(record.current?.report).not.toBeNull();
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    record=await perf.getAssessmentPersonalRecord(self,reviewId,reviewId);
+    expect(record.selected).toMatchObject({performance:'ME',potential:null,talent:null});
+    expect(record.selected).not.toHaveProperty('kpis');expect(record.selected).not.toHaveProperty('competencies');
+    await expect(perf.getAssessmentPersonalRecord(self,reviewId,randomUUID())).rejects.toThrow(/not available/);
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);
+    await expect(perf.getAssessmentPersonalRecord(self,reviewId,reviewId)).rejects.toThrow(/not available/);
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
+    record=await perf.getAssessmentPersonalRecord(self,reviewId);
+    expect(record.current).toBeNull();expect(record.history).toHaveLength(1);expect(record.selected?.performance).toBeNull();
+  });
   it('records sign-offs and locked bands, exports only the scoped record, and freezes it at archive',async()=>{
     expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows).toEqual([]);
     await complete();
@@ -481,16 +500,17 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(privateContext.value).toBeNull();
     await expect(withTenant(self,tx=>tx.execute(sql`select app.assessment_talent_write(${bg}::uuid,${reviewId}::uuid,'promotion',true,'','','',0)`))).rejects.toThrow();
   });
-  it('uses individually locked Group replacements without requiring an unused BG tier',async()=>{
+  it('releases individually locked Group replacements while keeping Rewards frozen until talent confirmation',async()=>{
     await complete();
     const [pending]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
     const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Group replacement',companyId:b.companyId,tier:'group',reviewerUserIds:[a.userId!],reviewIds:[reviewId,pending.reviewId],pbtAchievement:null,mode:'replace'});
     let c=await perf.getOnehrCalibration(a,sid);await perf.saveOnehrCalibration(a,sid,c.session.revision,{reviewId,performance:'AE',potential:'High',performanceNote:'Cross-company evidence reviewed',potentialNote:''});
     c=await perf.getOnehrCalibration(a,sid);await perf.lockOnehrCalibration(a,sid,c.session.revision,'','both',reviewId);
     expect((await perf.getOnehrCalibration(a,sid)).session.lockedAt).toBeNull();
-    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('AE');
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);expect((await view(self)).result).toMatchObject({performance:'AE',interim:true});
+    await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/Confirm the PIP and promotion lists/);
   });
-  it('gives matrix moderators only their assigned KPI lines and revokes access with the edge',async()=>{
+  it('gives HR-assigned matrix moderators only their KPI lines independently of a reporting edge',async()=>{
     const matrix=peers[0];
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
     const id=randomUUID(),managerId=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Matrix objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId},{id:managerId,title:'Manager-only objective',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],false);
@@ -507,6 +527,22 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.confirmOnehrPerformance(mgr,reviewId,(await view(mgr)).revision,'ME','Private overall assessment');
     expect(await view(matrix.ctx)).toMatchObject({managerPerformance:null,managerScore:null,managerRemark:''});
     await owner.db.update(schema.reportingLine).set({validTo:`${year}-01-01`}).where(and(eq(schema.reportingLine.managerEmploymentId,matrix.employmentId),eq(schema.reportingLine.lineType,'functional')));
+    expect((await view(matrix.ctx)).kpis.map(k=>k.id)).toEqual([id]);
+  });
+  it('revokes relationship-based matrix access with the edge and explicit access with HR reassignment',async()=>{
+    const matrix=peers[0];
+    await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
+    const id=randomUUID();
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Relationship-based objective',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],false);
+    // Persisted relationship-based assignments predate explicit HR matrix pins.
+    const legacy=(await view(a)).kpis.map(k=>({...k,moderatorEmploymentId:matrix.employmentId,moderatorSource:'line' as const,approvalChain:[{employmentId:matrix.employmentId,actual:null,remark:'',at:null}]}));
+    await owner.db.update(schema.onehrReview).set({kpis:legacy}).where(eq(schema.onehrReview.reviewId,reviewId));
+    expect((await view(matrix.ctx)).kpis.map(k=>k.id)).toEqual([id]);
+    await owner.db.update(schema.reportingLine).set({validTo:`${year}-01-01`}).where(and(eq(schema.reportingLine.managerEmploymentId,matrix.employmentId),eq(schema.reportingLine.lineType,'functional')));
+    expect(await perf.getOnehrReview(matrix.ctx,reviewId)).toBeNull();
+    await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,id,matrix.employmentId);
+    expect((await view(matrix.ctx)).kpis.map(k=>k.id)).toEqual([id]);
+    await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,id,manager.employmentId);
     expect(await perf.getOnehrReview(matrix.ctx,reviewId)).toBeNull();
   });
   it('allows a reviewer to decline and a manager to replace an unsubmitted panel member',async()=>{
@@ -576,6 +612,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const result=await perf.sendReviewMessage(self,reviewId,'results',null,request,text);
     expect(result).toMatchObject({draftUpdated:true,messages:[{role:'user',text},{role:'assistant',kind:'update'}]});
     const current=await view(self);expect(current.drafts.find(d=>d.kind==='results')?.payload).toMatchObject({lines:[{id,actual:100}]});
+    expect((await perf.getAssessmentPersonalRecord(self,reviewId)).current?.kpis.find(k=>k.id===id)).toMatchObject({actual:100,approvedActual:null,band:null});
     expect(current.resultsSubmitted).toBe(false);expect(current.kpis[0].actual).toBeNull();expect(current.managerPerformance).toBeNull();
     expect((await view(mgr)).drafts).toEqual([]);expect(await owner.db.select().from(schema.payrollInput)).toHaveLength(0);
     expect(await perf.sendReviewMessage(self,reviewId,'results',null,request,text)).toEqual(result);expect(generateDraft).toHaveBeenCalledOnce();

@@ -22,3 +22,4 @@ export { previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx, asse
 export * from './onehr/rating-record-service';
 export type { RatingRecordSnapshot } from './onehr/rating-record-model';
 export { buildRatingRecordWorkbook } from './onehr/rating-record-xlsx';
+export { getAssessmentPersonalRecord } from './onehr/personal-record-service';

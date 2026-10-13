@@ -9,6 +9,7 @@ describe('Source rating record Excel contract',()=>{
  it('preserves all43 source headers and partial PM coverage beside its score',()=>{
   expect(ratingRecordHeaders).toEqual(golden.ratingExportHeaders);expect(ratingRecordHeaders).toHaveLength(43);
   const row=ratingRecordExportRow(record);expect(row).toHaveLength(43);
+  expect(ratingRecordExportRow({...record,snapshot:{...record.snapshot,weightCovered:7450}})[10]).toBe(74);
   expect(row[8]).toBe(125.6);expect(row[10]).toBe(75);expect(row[11]).toBe(121.4);
   expect(row[28]).toBe(30);expect(row[29]).toBe(37.5);expect(row[40]).toBe(recordedAt.toISOString());
  });

@@ -408,7 +408,8 @@
     "identityEmail": "Gửi email",
     "workflowEmail": "Thông báo quy trình",
     "applicationHistory": "Lịch sử đơn",
-    "attendanceApprovalWorkflow": "Quy trình phê duyệt"
+    "attendanceApprovalWorkflow": "Quy trình phê duyệt",
+    "myPerformance": "Hiệu suất của tôi"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -17576,7 +17577,58 @@
     "restoreFeedback": "Khôi phục phản hồi",
     "archiveFeedback": "Lưu trữ phản hồi",
     "resetFeedback": "Mở lại bài nộp",
-    "feedbackResubmission": "Bài nộp của bạn đã được mở lại. Câu trả lời trước được giữ dưới dạng nháp; hãy xem lại và nộp lần nữa."
+    "feedbackResubmission": "Bài nộp của bạn đã được mở lại. Câu trả lời trước được giữ dưới dạng nháp; hãy xem lại và nộp lần nữa.",
+    "reopenPlan": "Mở lại kế hoạch",
+    "personalRecord": {
+      "chooseRecord": "Chọn hồ sơ đánh giá",
+      "current": "Chi tiết kỳ hiện tại",
+      "emptyHistory": "Chưa có lịch sử đánh giá",
+      "currentHelp": "Chi tiết hiện tại hiển thị kết quả của bạn và đánh giá đã được quản lý duyệt.",
+      "historyHelp": "Lịch sử hiển thị mức cuối cùng đã công bố, trạng thái nhân tài, phản hồi và kế hoạch phát triển.",
+      "yourResult": "Kết quả của bạn",
+      "approvedResult": "Kết quả đã duyệt",
+      "waitingManager": "Đang chờ quản lý duyệt",
+      "managerOverall": "Mức tổng thể được quản lý duyệt",
+      "selfAnswer": "Câu trả lời của bạn",
+      "managerAnswer": "Câu trả lời của quản lý",
+      "unreleasedReport": "Nhân sự chưa công bố báo cáo 360 của kỳ này.",
+      "strengths": "Điểm mạnh đồng nghiệp ghi nhận",
+      "grow": "Điểm đồng nghiệp mong muốn cải thiện",
+      "even": "Mức đồng thuận giữa các nguyên tắc này như nhau.",
+      "cyclePlan": "Kế hoạch phát triển của kỳ này",
+      "allPlans": "Lịch sử kế hoạch phát triển",
+      "choosePlan": "Chọn năm kế hoạch",
+      "noPlan": "Chưa có kế hoạch phát triển cho năm này.",
+      "remarksPending": "Nhận xét của quản lý hiển thị khi kế hoạch đóng hoặc năm lập kế hoạch tiếp theo bắt đầu.",
+      "checkins": "Cập nhật tiến độ",
+      "trend": "Qua các kỳ đánh giá",
+      "trendHeld": "Mức hiệu suất cuối cùng của bạn giữ ở {firstBand} từ {firstCycle} đến {lastCycle}.",
+      "trendChanged": "Mức hiệu suất cuối cùng của bạn chuyển từ {firstBand} trong {firstCycle} sang {lastBand} trong {lastCycle}.",
+      "close": "Đóng hồ sơ",
+      "words": {
+        "consistent": "Được ghi nhận nhất quán",
+        "most": "Được đa số ghi nhận",
+        "some": "Được một số ghi nhận",
+        "few": "Được ít người ghi nhận"
+      },
+      "status": {
+        "draft": "Bản nháp",
+        "shared": "Đã chia sẻ với quản lý",
+        "closed": "Đã đóng"
+      },
+      "sections": "Các phần hồ sơ",
+      "summaryTitle": "Kỳ này theo số liệu của bạn",
+      "summaryFigures": "Quản lý đã duyệt {approved} trên {total} dòng KPI. Bạn đã trả lời {answered} trên {competencies} phát biểu năng lực.",
+      "openReport": "Mở báo cáo 360",
+      "tabs": {
+        "summary": "Tóm tắt",
+        "kpi": "KPI",
+        "feedback": "360",
+        "competency": "Năng lực",
+        "plan": "Kế hoạch nghề nghiệp",
+        "plans": "Lịch sử kế hoạch"
+      }
+    }
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

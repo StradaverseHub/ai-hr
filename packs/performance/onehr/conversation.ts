@@ -58,7 +58,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
    results:'Enter each actual result, add supporting notes, and write your overall remark. When evidence is enabled, every Above Expectation or Outstanding KPI needs a linked file. Drafts stay private until you confirm submission.',
    moderation:'Review the employee’s submitted results. Explain changes to actual results; the overall band is calculated from the moderated KPIs. Confirm only after checking the evidence.',
    competency:'Rate every assigned statement using observed examples. Draft answers and remarks remain private. A manager must explain any answer changed from the self-assessment.',
-   career:'Complete your career aspiration and mobility preference, then add development goals with dates and actions. Share the plan when ready; your manager records the conversation and you acknowledge it.',
+   career:'Complete your career aspiration and mobility preference, then add development goals with practical actions. Target dates are optional. Share the plan when ready; your manager records the conversation and you acknowledge it.',
    evidence:'Record what happened and when, then link the evidence to an objective or competency. Shared evidence can be endorsed or disputed. Correct a shared entry with a new entry to preserve its history.',
   };
   reply=guides[stage];
