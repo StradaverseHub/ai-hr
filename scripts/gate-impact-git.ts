@@ -14,7 +14,7 @@ export function readyProductionBaseline(status:Record<string,string>):string{
 }
 export function sourceFiles(cwd=process.cwd()):Map<string,string>{
  const files=git(['ls-files','-z'],cwd).split('\0').filter(Boolean),map=new Map<string,string>();
- for(const p of files){if(!/\.(?:[cm]?[jt]sx?|json|css|md)$/.test(p))continue;try{const text=readFileSync(join(cwd,p),'utf8');if(!text.includes('\0'))map.set(p,text);}catch{/* deletion is supplied by collectChanges */}}
+ for(const p of files){if(!/\.(?:[cm]?[jt]sx?|json|css|md)$/.test(p))continue;try{const text=readFileSync(join(cwd,p),'utf8');map.set(p,text);}catch{/* deletion is supplied by collectChanges */}}
  return map;
 }
 export function environmentHash(cwd=process.cwd()):string{

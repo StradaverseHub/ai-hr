@@ -1,9 +1,9 @@
 import { beforeEach,afterEach,describe,expect,it } from 'vitest';
-import { mkdtempSync,mkdirSync,writeFileSync,rmSync } from 'node:fs';
+import { mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { impactFor,environmentHash,readyProductionBaseline } from '../scripts/gate-impact-git';
+import { impactFor,environmentHash,readyProductionBaseline,sourceFiles } from '../scripts/gate-impact-git';
 import { saveGate } from '../scripts/gate-learning';
 import { validateImpactReceipt,type ImpactReceipt } from '../scripts/improve/release-impact-gate';
 let root:string,base:string,head:string,receipt:ImpactReceipt,prior:string|undefined;
@@ -53,5 +53,18 @@ describe('production baseline readiness',()=>{
   const status={state:'ok',stale_build:'0',ref:'a'.repeat(40),built_ref:'a'.repeat(40)};
   expect(readyProductionBaseline(status)).toBe(status.built_ref);
   for(const changed of [{state:'running'},{stale_build:'1'},{ref:'b'.repeat(40)},{built_ref:'short'}])expect(()=>readyProductionBaseline({...status,...changed})).toThrow('stable deployed baseline');
+ });
+});
+
+
+describe('source collection preserves the complete tracked test/program input',()=>{
+ it('retains valid source containing an embedded null character and its test dependency',()=>{
+  const path='test/raw-null.test.ts';writeFileSync(join(root,path),"import '../lib/value';const value='"+String.fromCharCode(0)+"';");commit();
+  expect(sourceFiles(root).has(path)).toBe(true);expect(impactFor(base,'HEAD',root).run).toContain(path);
+ });
+ it('retains every actual tracked code file byte-for-byte, including the real null-character fixture',()=>{
+  const repository=process.cwd(),files=sourceFiles(repository);
+  const tracked=execFileSync('git',['ls-files','-z'],{cwd:repository,encoding:'utf8'}).split(String.fromCharCode(0)).filter(p=>/\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(p));
+  for(const path of tracked){expect(files.has(path),path).toBe(true);expect(files.get(path)===readFileSync(join(repository,path),'utf8'),path).toBe(true);}
  });
 });

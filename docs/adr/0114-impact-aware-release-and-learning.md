@@ -29,6 +29,11 @@ source-reading and uncertain-load consumers, changed tests, repository guards, t
 and tests associated with earlier failures. An uncertainty broadens coverage; a changed module with
 unresolved reach or no executable consumer requires full verification. This is deliberately conservative.
 
+The collector retains UTF-8 source containing null characters; a raw null in a valid test fixture
+is not evidence that the file is binary. An independent contract compares every tracked code file
+with the collected input. This caught the real people-filter test omission after the full runner had
+correctly counted all 1,349 files. The embedded-null CLI fixture verifies both full and selected runs.
+
 Risk categories are:
 
 - Low: established presentation/doc changes, or an AST-equivalent edit limited to comments, formatting
