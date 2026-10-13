@@ -3077,7 +3077,7 @@
       "photoOptionalPrompt": "Bạn có thể chụp ảnh hoặc bỏ qua — dù chọn cách nào, lần chấm công này vẫn được lưu.",
       "photoRequired": "Cần có ảnh trước khi có thể lưu lần chấm công này.",
       "cameraContext": "Quyền dùng máy ảnh cần HTTPS hoặc localhost. Bạn có thể bỏ qua ảnh không bắt buộc.",
-      "cameraDenied": "Quyền dùng máy ảnh bị từ chối. Hãy cho phép hoặc bỏ qua ảnh không bắt buộc.",
+      "cameraDenied": "Quyền truy cập camera bị từ chối. Mở quyền của trang này trong trình duyệt, cho phép Camera rồi chọn Thử lại camera. Bạn vẫn có thể bỏ qua ảnh tùy chọn.",
       "cameraUnavailable": "Không tìm thấy máy ảnh dùng được. Hãy kết nối máy ảnh hoặc bỏ qua ảnh không bắt buộc.",
       "locationDenied": "Quyền vị trí bị từ chối. Hãy cho phép vị trí rồi thử lại.",
       "locationUnavailable": "Không đọc được vị trí. Hãy kiểm tra cài đặt vị trí thiết bị rồi thử lại.",
@@ -3088,7 +3088,9 @@
       "checkSubmission": "Kiểm tra kết quả gửi",
       "signInAgain": "Đăng nhập lại",
       "accountChanged": "Tài khoản nhân viên đang đăng nhập đã thay đổi. Hãy đăng nhập tài khoản ban đầu để kiểm tra lần chấm công này.",
-      "locationUnavailableAllowed": "Không có vị trí — không yêu cầu hàng rào địa lý. Bạn vẫn có thể chấm công vào hoặc ra."
+      "locationUnavailableAllowed": "Không có vị trí — không yêu cầu hàng rào địa lý. Bạn vẫn có thể chấm công vào hoặc ra.",
+      "retryCamera": "Thử lại camera",
+      "cameraBusy": "Camera đang được sử dụng hoặc không khởi động được. Đóng các ứng dụng khác đang dùng camera rồi chọn Thử lại camera. Bạn vẫn có thể bỏ qua ảnh tùy chọn."
     },
     "colOtFlat": "Tăng ca cố định",
     "colOt00": "Tăng ca 0.0 (không trả)",

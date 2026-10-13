@@ -3077,7 +3077,7 @@
       "photoOptionalPrompt": "You may take a photo or skip it — either way this clocking is saved.",
       "photoRequired": "A photo is required before this clocking can be saved.",
       "cameraContext": "Camera access needs HTTPS or localhost. You can skip an optional photo.",
-      "cameraDenied": "Camera permission was denied. Allow access or skip an optional photo.",
+      "cameraDenied": "Camera access was denied. Open this site’s browser permissions, allow Camera, then select Try camera again. You may still skip an optional photo.",
       "cameraUnavailable": "No usable camera was found. Connect a camera or skip an optional photo.",
       "locationDenied": "Location permission was denied. Allow location access, then try again.",
       "locationUnavailable": "Location could not be read. Check your device location settings and retry.",
@@ -3088,7 +3088,9 @@
       "checkSubmission": "Check submission",
       "signInAgain": "Sign in again",
       "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking.",
-      "locationUnavailableAllowed": "Location unavailable — geofencing not required. You can clock in or out."
+      "locationUnavailableAllowed": "Location unavailable — geofencing not required. You can clock in or out.",
+      "retryCamera": "Try camera again",
+      "cameraBusy": "The camera is in use or could not start. Close other apps using it, then select Try camera again. You may still skip an optional photo."
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",

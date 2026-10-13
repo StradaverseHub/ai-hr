@@ -97,6 +97,17 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Clocked in at 09:00:00'));
     expect(screen.getByRole('status')).not.toHaveTextContent('photo saved');
   });
+  it('retries a denied camera after permission changes and keeps Skip Photo available',async()=>{
+    mount();await begin();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.takePhoto}));
+    await screen.findByText(en.attendance.clock.cameraDenied);expect(screen.getByRole('button',{name:en.attendance.clock.skipPhoto})).toBeEnabled();
+    allowCamera();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.retryCamera}));
+    await waitFor(()=>expect(document.querySelector('video')).not.toBeNull());expect(post).not.toHaveBeenCalled();
+  });
+  it('distinguishes an in-use camera and still allows an optional skip',async()=>{
+    getUserMedia.mockRejectedValue(new DOMException('Busy','NotReadableError'));mount();await begin();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.takePhoto}));
+    await screen.findByText(en.attendance.clock.cameraBusy);expect(screen.getByRole('button',{name:en.attendance.clock.retryCamera})).toBeEnabled();
+    fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));await waitFor(()=>expect(post).toHaveBeenCalledOnce());
+  });
   it('never opens a camera for Not Required',async()=>{
     mount('not_required');await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));expect(getUserMedia).not.toHaveBeenCalled();
   });

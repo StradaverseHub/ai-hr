@@ -3077,7 +3077,7 @@
       "photoOptionalPrompt": "您可以拍照或跳过——无论哪种方式，这次打卡都会被保存。",
       "photoRequired": "必须先拍照才能保存此次打卡。",
       "cameraContext": "相机访问需要 HTTPS 或 localhost。可跳过非必需的照片。",
-      "cameraDenied": "相机权限被拒绝。请允许访问，或跳过非必需的照片。",
+      "cameraDenied": "相机访问被拒绝。请打开浏览器对此网站的权限，允许相机，然后选择“重试相机”。可选照片仍可跳过。",
       "cameraUnavailable": "未找到可用相机。请连接相机，或跳过非必需的照片。",
       "locationDenied": "定位权限被拒绝。请允许定位后重试。",
       "locationUnavailable": "无法读取位置。请检查设备定位设置后重试。",
@@ -3088,7 +3088,9 @@
       "checkSubmission": "检查提交结果",
       "signInAgain": "重新登录",
       "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。",
-      "locationUnavailableAllowed": "位置信息不可用 — 无需地理围栏。仍可上班或下班打卡。"
+      "locationUnavailableAllowed": "位置信息不可用 — 无需地理围栏。仍可上班或下班打卡。",
+      "retryCamera": "重试相机",
+      "cameraBusy": "相机正在被使用或无法启动。请关闭其他使用相机的应用，然后选择“重试相机”。可选照片仍可跳过。"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",

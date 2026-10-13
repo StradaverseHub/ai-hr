@@ -3077,7 +3077,7 @@
       "photoOptionalPrompt": "Anda boleh ambil gambar atau langkau sahaja — rekod daftar masuk/keluar ini tetap disimpan.",
       "photoRequired": "Gambar diperlukan sebelum rekod ini boleh disimpan.",
       "cameraContext": "Akses kamera memerlukan HTTPS atau localhost. Foto pilihan boleh dilangkau.",
-      "cameraDenied": "Kebenaran kamera ditolak. Benarkan akses atau langkau foto pilihan.",
+      "cameraDenied": "Akses kamera ditolak. Buka kebenaran laman ini dalam pelayar, benarkan Kamera, kemudian pilih Cuba kamera semula. Foto pilihan masih boleh dilangkau.",
       "cameraUnavailable": "Tiada kamera yang boleh digunakan. Sambungkan kamera atau langkau foto pilihan.",
       "locationDenied": "Kebenaran lokasi ditolak. Benarkan akses lokasi dan cuba lagi.",
       "locationUnavailable": "Lokasi tidak dapat dibaca. Semak tetapan lokasi peranti dan cuba lagi.",
@@ -3088,7 +3088,9 @@
       "checkSubmission": "Semak penghantaran",
       "signInAgain": "Log masuk semula",
       "accountChanged": "Akaun pekerja yang dilog masuk telah berubah. Log masuk ke akaun asal untuk menyemak rekod waktu ini.",
-      "locationUnavailableAllowed": "Lokasi tidak tersedia — geofencing tidak diperlukan. Anda boleh merekod masuk atau keluar."
+      "locationUnavailableAllowed": "Lokasi tidak tersedia — geofencing tidak diperlukan. Anda boleh merekod masuk atau keluar.",
+      "retryCamera": "Cuba kamera semula",
+      "cameraBusy": "Kamera sedang digunakan atau tidak dapat dimulakan. Tutup aplikasi lain yang menggunakannya, kemudian pilih Cuba kamera semula. Foto pilihan masih boleh dilangkau."
     },
     "colOtFlat": "OT Rata",
     "colOt00": "OT 0.0 (tanpa bayaran)",
