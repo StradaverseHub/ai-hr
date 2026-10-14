@@ -29,3 +29,10 @@ it('shows tenant-wide settings read-only to company HR', async () => {
   expect(screen.getByText(en.admin.ai.assessment.readOnly)).toBeTruthy();
   expect(screen.queryByText(en.admin.ai.assessment.providerMissing)).toBeNull();
 });
+
+it('keeps the configured switch distinct from unavailable module access',async()=>{
+  ports.state.mockResolvedValue({switches,providerConfigured:true,moduleHeld:false,mayWrite:false});
+  render(await AssessmentAiSettings({session:{tenantId:'fixture'}}));
+  expect(screen.getAllByText(en.admin.ai.assessment.moduleMissing)).toHaveLength(5);
+  expect(screen.getByText(en.admin.ai.assessment.off)).toBeTruthy();
+});

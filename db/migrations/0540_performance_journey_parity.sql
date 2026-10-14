@@ -30,6 +30,12 @@ GRANT SELECT,INSERT,UPDATE ON performance_assessment_participation TO ai_hr_app;
 CREATE POLICY assessment_participation_admin ON performance_assessment_participation FOR ALL
  USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.tenant_id=performance_assessment_participation.tenant_id AND app.onehr_admin(e.company_id)))
  WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND EXISTS(SELECT 1 FROM employment e JOIN review_cycle c ON c.id=cycle_id WHERE e.id=employment_id AND e.tenant_id=performance_assessment_participation.tenant_id AND app.onehr_admin(e.company_id) AND (c.company_id IS NULL OR c.company_id=e.company_id)));
+-- The kernel dispatcher has its own group HR scope and never borrows a human user ID.
+CREATE FUNCTION app.assessment_dispatcher_scope() RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT app.current_user_id() IS NULL AND app.is_group_admin()
+$$;
+REVOKE ALL ON FUNCTION app.assessment_dispatcher_scope() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_dispatcher_scope() TO ai_hr_app;
 CREATE FUNCTION app.assessment_review_participates(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id
   JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
@@ -37,7 +43,7 @@ CREATE FUNCTION app.assessment_review_participates(wanted_review uuid) RETURNS b
   WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id()
    AND (c.status='closed' OR e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END
-   AND (app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR app.onehr_moderator(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
+   AND (app.assessment_dispatcher_scope() OR app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR app.onehr_moderator(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
 $$;
 CREATE FUNCTION app.assessment_participation_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE c review_cycle;
@@ -319,7 +325,7 @@ $$;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_moderator_choices(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce(jsonb_agg(jsonb_build_object('id',m.id,'name',p.full_name,'personId',m.person_id)),'[]'::jsonb) FROM performance_review r JOIN employment sub ON sub.id=r.employment_id AND sub.tenant_id=r.tenant_id JOIN employment m ON m.tenant_id=r.tenant_id JOIN person p ON p.id=m.person_id WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND (app.onehr_review_header(r.id) IS NOT NULL OR app.onehr_cycle_admin(r.cycle_id)) AND sub.person_id<>m.person_id AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (EXISTS(SELECT 1 FROM performance_onehr_review rr, jsonb_array_elements(rr.kpis) k WHERE rr.review_id=r.id AND k->>'moderatorSource'='matrix' AND k->>'moderatorEmploymentId'=m.id::text) OR m.id=r.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL))
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',m.id,'name',p.full_name,'personId',m.person_id)),'[]'::jsonb) FROM performance_review r JOIN employment sub ON sub.id=r.employment_id AND sub.tenant_id=r.tenant_id JOIN employment m ON m.tenant_id=r.tenant_id JOIN person p ON p.id=m.person_id WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND (app.onehr_review_header(r.id) IS NOT NULL OR app.onehr_cycle_admin(r.cycle_id) OR app.assessment_dispatcher_scope()) AND sub.person_id<>m.person_id AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (EXISTS(SELECT 1 FROM performance_onehr_review rr, jsonb_array_elements(rr.kpis) k WHERE rr.review_id=r.id AND k->>'moderatorSource'='matrix' AND k->>'moderatorEmploymentId'=m.id::text) OR m.id=r.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL))
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.assessment_plan_reviewer(wanted_plan uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -1371,4 +1377,6 @@ ON CONFLICT (key) DO NOTHING;
 
 --> statement-breakpoint
 -- A real scheduled dispatcher has no human user ID. Read-only access retains cycle/company admin scope.
-CREATE POLICY assessment_review_dispatch_read ON performance_onehr_review FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id));
+CREATE POLICY assessment_review_dispatch_read ON performance_onehr_review FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_dispatcher_scope());
+CREATE POLICY assessment_plan_dispatch_read ON performance_onehr_plan FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_dispatcher_scope());
+CREATE POLICY assessment_result_dispatch_read ON performance_onehr_result FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_dispatcher_scope());

@@ -9907,7 +9907,8 @@
           "review": "Guided review",
           "idp": "Career Plan",
           "calib": "Calibration assistant"
-        }
+        },
+        "moduleMissing": "On · Performance access required"
       }
     },
     "attendancePolicy": {

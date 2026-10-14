@@ -1,4 +1,4 @@
-import { assessmentAiSettingsTx } from './ai-settings';
+import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext,Tx } from '../../../db/client';
@@ -146,6 +146,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  }
  // Recheck authority and graph state after a provider call, before persisting its answer.
  const fresh=await authorized(ctx,reviewId,stage);
+ if((command||setting||career||evidence)&&!fresh.aiEnabled)throw Error('AI assistance or module access changed. Reload before sending again.');
  if(starter&&!fresh.aiFeatures.pm)throw Error('AI scorecard suggestions were switched off.');
  if(humanInput&&JSON.stringify(humanManagerContext(fresh,stage,words))!==JSON.stringify(humanInput))throw Error('The review entries or your assignment changed. Reload before confirming.');
  if(command&&JSON.stringify(commandContext(fresh,stage,words))!==JSON.stringify(commandInput))throw Error('Your private draft changed while preparing this response. Reload before sending again.');
@@ -160,11 +161,12 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   const duplicate=messages.findIndex(m=>m.id===requestId);if(duplicate>=0)return {revision:row!.revision,messages,draftUpdated:['update','action'].includes(messages[duplicate+1]?.kind),...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,settingField)}:{})};
   if((row?.revision??null)!==expected)throw Error('This conversation changed. Reload before sending another message.');
   if(messages.length>296)throw Error('This conversation has reached its limit. Your saved review and full conversation remain available.');
-  if(intent==='draft'&&!(await assessmentAiSettingsTx(tx,ctx))[stage==='competency'?'tc':stage==='career'?'idp':'pm'])throw Error('AI drafting was switched off.');
+  if((command||setting||career||evidence)&&!await assessmentAiConfigTx(tx,ctx))throw Error('AI assistance or module access changed.');
+  if(intent==='draft'&&!(await assessmentAiFeatureEnabledTx(tx,ctx,stage==='competency'?'tc':stage==='career'?'idp':'pm')))throw Error('AI drafting was switched off.');
   if(humanInput)reply=await applyHumanManagerCommand(tx,ctx,view,humanInput);
   if(command&&commandInput){await saveAssessmentDraftTx(tx,ctx,reviewId,view.revision,commandInput.draftRevision,command.draft);reply='Private draft updated. Review the form, then confirm submission when ready.';}
   if(setting){
-   if(starter&&!(await assessmentAiSettingsTx(tx,ctx)).pm)throw Error('AI scorecard suggestions were switched off.');
+   if(starter&&!(await assessmentAiFeatureEnabledTx(tx,ctx,'pm')))throw Error('AI scorecard suggestions were switched off.');
    if(starter)await recordAssessmentAiUseTx(tx,ctx,reviewId,settingField,requestId);
    await saveOnehrKpisTx(tx,ctx,reviewId,view.revision,setting.kpis,false,starter?.aiBases);
    reply='Scorecard draft updated. Review the form, then propose it for approval when ready.';

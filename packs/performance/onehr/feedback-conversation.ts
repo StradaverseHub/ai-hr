@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { SessionContext } from '../../../db/client';
 import { assessmentConversation } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { assessmentAiConfigTx,assessmentAiSettingsTx } from './ai-settings';
+import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
 import { recordProposal } from '../../../core/agent-proposal';
 import { generateDraft, redactPII } from '../../../lib/ai';
 import { getOnehrFeedback, saveAssessmentDraftTx } from './service';
@@ -57,10 +57,12 @@ export async function sendFeedbackMessage(ctx:SessionContext,reviewId:string,con
   }catch{/* Provider failure leaves the current widget and entries untouched. */}
  }
  const fresh=await authorized(ctx,reviewId,contextId);
+ if(command&&!fresh.commandAiEnabled)throw Error('AI assistance or module access changed. Reload before sending again.');
  if(JSON.stringify(context(fresh,words))!==JSON.stringify(facts)||fresh.submitted!==card.submitted||fresh.frozen!==card.frozen||fresh.closed!==card.closed)throw Error('Your colleague feedback changed. Reload before sending again.');
  return withPerformanceTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:feedback:${contextId}`},0))`);
-  if(intent==='draft'&&!(await assessmentAiSettingsTx(tx,ctx))['360'])throw Error('AI feedback drafting is switched off.');
+  if(command&&!await assessmentAiConfigTx(tx,ctx))throw Error('AI assistance or module access changed.');
+  if(intent==='draft'&&!(await assessmentAiFeatureEnabledTx(tx,ctx,'360')))throw Error('AI feedback drafting is switched off.');
   const [row]=await tx.select().from(assessmentConversation).where(where(reviewId,ctx.userId!,contextId)).for('update');
   const messages=row?reviewConversationMessages.parse(row.messages):[],duplicate=messages.findIndex(m=>m.id===requestId);
   if(duplicate>=0)return {revision:row!.revision,messages,draftUpdated:messages[duplicate+1]?.kind==='update'};

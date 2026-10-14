@@ -1,5 +1,5 @@
 import type { SessionContext, Tx } from '../../../db/client';
-import { assertModuleEnabled, resolveEntitlementsTx, settingEnabled } from '../../../core/entitlements';
+import { assertModuleEnabled, isModuleEnabled, resolveEntitlementsTx, settingEnabled } from '../../../core/entitlements';
 import { resolveActiveAiConfig } from '../../../core/ai-config';
 import { setTenantSetting } from '../../../core/tenant-settings';
 import { withPerformanceTenant } from '../../../core/module-gate';
@@ -9,9 +9,9 @@ export const ASSESSMENT_AI_FEATURES = ['360', 'tc', 'pm', 'review', 'idp', 'cali
 export type AssessmentAiFeature = typeof ASSESSMENT_AI_FEATURES[number];
 
 /** Resolve again after provider work: the request's entitlement snapshot may predate an HR switch. */
-export async function assessmentAiSettingsTx(tx: Tx, ctx: SessionContext) {
+async function assessmentAiAccessTx(tx: Tx, ctx: SessionContext) {
   const fresh: SessionContext = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId), entitlementsExempt: undefined, entitlementsError: undefined };
-  return {
+  const switches = {
     '360': settingEnabled(fresh, 'performance.ai_360_enabled'),
     tc: settingEnabled(fresh, 'performance.ai_tc_enabled'),
     pm: settingEnabled(fresh, 'performance.ai_pm_enabled'),
@@ -19,20 +19,28 @@ export async function assessmentAiSettingsTx(tx: Tx, ctx: SessionContext) {
     idp: settingEnabled(fresh, 'performance.ai_idp_enabled'),
     calib: settingEnabled(fresh, 'performance.ai_calib_enabled'),
   };
+  return { switches, moduleHeld: isModuleEnabled(fresh, 'performance') };
 }
 
-export async function assessmentAiConfigTx(tx: Tx, ctx: SessionContext, feature: AssessmentAiFeature) {
-  if (!(await assessmentAiSettingsTx(tx, ctx))[feature]) return null;
+export async function assessmentAiSettingsTx(tx: Tx, ctx: SessionContext) { return (await assessmentAiAccessTx(tx, ctx)).switches; }
+export async function assessmentAiFeatureEnabledTx(tx: Tx, ctx: SessionContext, feature: AssessmentAiFeature) {
+  const state = await assessmentAiAccessTx(tx, ctx);
+  return state.moduleHeld && state.switches[feature];
+}
+
+export async function assessmentAiConfigTx(tx: Tx, ctx: SessionContext, feature?: AssessmentAiFeature) {
+  const state = await assessmentAiAccessTx(tx, ctx);
+  if (!state.moduleHeld || feature && !state.switches[feature]) return null;
   return resolveActiveAiConfig(tx, ctx);
 }
 
 export async function assessmentAiStateTx(tx: Tx, ctx: SessionContext) {
-  const switches = await assessmentAiSettingsTx(tx, ctx);
+  const { switches, moduleHeld } = await assessmentAiAccessTx(tx, ctx);
   let providerConfigured = false;
   try { providerConfigured = !!await resolveActiveAiConfig(tx, ctx); } catch { /* Manual forms remain available. */ }
   const features = { ...switches };
-  for (const feature of ASSESSMENT_AI_FEATURES) features[feature] = switches[feature] && providerConfigured;
-  return { switches, features, providerConfigured };
+  for (const feature of ASSESSMENT_AI_FEATURES) features[feature] = moduleHeld && switches[feature] && providerConfigured;
+  return { switches, features, providerConfigured, moduleHeld };
 }
 
 export async function getAssessmentAiSwitches(ctx: SessionContext) {

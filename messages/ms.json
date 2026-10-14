@@ -9907,7 +9907,8 @@
           "review": "Semakan berpandu",
           "idp": "Pelan kerjaya",
           "calib": "Pembantu kalibrasi"
-        }
+        },
+        "moduleMissing": "Dihidupkan · Akses Prestasi diperlukan"
       }
     },
     "attendancePolicy": {

@@ -135,6 +135,14 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
     expect((await view(self)).kpis[0].note).toBe('');
   });
+  it('discards a field rewrite when module access is revoked during generation while preserving its configured switch',async()=>{
+    const id=await editableDraftKpi(),words='I completed the delivery.';
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await setModule(b.tenantId,'performance','disabled');return words;});
+    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'kpi_note',id},words,'Polish.',randomUUID())).rejects.toThrow(/changed/);
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    const staleView=await view(self);expect(staleView.aiFeatures.pm).toBe(false);
+    const state=await perf.getAssessmentAiSwitches({...a,grants:[{role:'hr_admin',companyId:null}]});expect(state.switches.pm).toBe(true);expect(state.moduleHeld).toBe(false);
+  });
   it('uses one company achievement for every calibration tier, preserving curve boundaries and concurrent edits',async()=>{
     await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:null,achievementPct:69.999999999});
     const make=(tier:'bu'|'bg')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} shared curve`,companyId:b.companyId,tier,reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
@@ -1577,6 +1585,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const read=(task:'setting'|'results'|'competencies'|'plan')=>withTenant(a,tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,task));
     expect(await read('setting')).toEqual([matrix.employmentId]);expect(await read('results')).toEqual([]);
     const system={...a,userId:undefined,personId:undefined};expect(await withTenant(system,tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,'setting'))).toEqual([matrix.employmentId]);
+    expect(await withTenant(system,tx=>tx.update(schema.onehrReview).set({selfRemark:'No human decision may come from this dispatcher.'}).where(eq(schema.onehrReview.reviewId,reviewId)).returning())).toEqual([]);
     await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onehr',aggregateId:reviewId,eventType:'onehr.kpi-approval-needed',actor:actorOf(a),payload:{phase:'setting',employmentIds:[outsider.employmentId]}}));
     await dispatchNotifications(a);
     const notices=await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'performance.review-task'));

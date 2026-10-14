@@ -9907,7 +9907,8 @@
           "review": "引导式评估",
           "idp": "职业发展计划",
           "calib": "校准助手"
-        }
+        },
+        "moduleMissing": "已开启 · 需要绩效访问权限"
       }
     },
     "attendancePolicy": {

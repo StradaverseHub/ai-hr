@@ -3,7 +3,7 @@ import { and,asc,eq,inArray,sql } from 'drizzle-orm';
 import type { SessionContext } from '../../../db/client';
 import { assessmentFileText,performanceAttachment,onehrReview } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { assessmentAiConfigTx,assessmentAiSettingsTx } from './ai-settings';
+import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
 import { recordProposal } from '../../../core/agent-proposal';
 import { AiImageReadError,readImage,supportsImageReading,type AiImageMime,type ResolvedAiConfig } from '../../../lib/ai';
 import { getOnehrReview } from './service';
@@ -65,7 +65,7 @@ export async function readAssessmentFileTexts(ctx:SessionContext,reviewId:string
  const fresh=await context(ctx,reviewId,contextId),freshIds=new Set(fresh.attachments.map(a=>a.id));
  for(const id of out.keys())if(!freshIds.has(id)||!idSet.has(id))out.delete(id);
  await withPerformanceTenant(ctx,async tx=>{
-  const aiAllowed=(await assessmentAiSettingsTx(tx,ctx))['pm'];
+  const aiAllowed=(await assessmentAiFeatureEnabledTx(tx,ctx,'pm'));
   for(const write of writes.sort((a,b)=>a.id.localeCompare(b.id))){
    if(!freshIds.has(write.id)||!write.value.method)continue;
    if(write.value.method==='vision'&&!aiAllowed){out.set(write.id,unread());continue;}

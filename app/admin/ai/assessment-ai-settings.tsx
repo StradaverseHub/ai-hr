@@ -13,7 +13,7 @@ export async function AssessmentAiSettings({ session }: { session: SessionContex
     {!state.mayWrite && <p className="mt-3 text-sm text-muted-foreground">{t('readOnly')}</p>}
     <ul className="mt-3 divide-y divide-border">
       {ASSESSMENT_AI_FEATURES.map(feature => <li key={feature} className="flex items-center justify-between gap-4 py-3">
-        <div className="min-w-0"><p className="text-sm font-medium">{t(`features.${feature}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(!state.switches[feature] ? 'off' : state.providerConfigured ? 'on' : 'providerMissing')}</p></div>
+        <div className="min-w-0"><p className="text-sm font-medium">{t(`features.${feature}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(!state.switches[feature] ? 'off' : state.moduleHeld===false ? 'moduleMissing' : state.providerConfigured ? 'on' : 'providerMissing')}</p></div>
         {state.mayWrite && <form action={setAssessmentAiSwitchAction}>
           <input type="hidden" name="feature" value={feature}/>
           <input type="hidden" name="on" value={String(!state.switches[feature])}/>

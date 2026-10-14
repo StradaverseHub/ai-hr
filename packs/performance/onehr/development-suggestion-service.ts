@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext } from '../../../db/client';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { assessmentAiConfigTx,assessmentAiSettingsTx } from './ai-settings';
+import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
 import { generateDraft } from '../../../lib/ai';
 import { recordProposal } from '../../../core/agent-proposal';
 import { actorOf,appendEvent } from '../../../db/events';
@@ -39,7 +39,7 @@ export async function suggestAssessmentDevelopmentGoals(ctx:SessionContext,revie
  if(!unchanged)throw Error('Your assessment or plan changed while preparing suggestions. Reload before trying again.');
  if(!goals.length)throw Error('No usable goal suggestions were returned. You can add your own goals or try again.');
  return withPerformanceTenant(ctx,async tx=>{
-  if(!(await assessmentAiSettingsTx(tx,ctx)).idp)throw Error('AI goal suggestions were switched off.');
+  if(!(await assessmentAiFeatureEnabledTx(tx,ctx,'idp')))throw Error('AI goal suggestions were switched off.');
   await recordAssessmentAiUseTx(tx,ctx,reviewId,fieldKey,requestId);
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:reviewId,eventType:'onehr.development-goals-suggested',actor:actorOf(ctx),payload:{count:goals.length,items:fresh.gaps.pool.length}});
   return {goals,pool:fresh.gaps.pool,sourceDigest:sourceDigest(fresh.gaps.pool),empty:false,stretchOnly:fresh.gaps.stretchOnly,...await assessmentAiQuotaTx(tx,ctx,fieldKey)};

@@ -9907,7 +9907,8 @@
           "review": "Đánh giá có hướng dẫn",
           "idp": "Kế hoạch nghề nghiệp",
           "calib": "Trợ lý hiệu chỉnh"
-        }
+        },
+        "moduleMissing": "Bật · Cần quyền truy cập Hiệu suất"
       }
     },
     "attendancePolicy": {
