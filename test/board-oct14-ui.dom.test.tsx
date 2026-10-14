@@ -48,3 +48,13 @@ it('selects only eligible page rows, confirms, reports mixed outcomes, and prese
 it('requires rejection remarks and does not submit when cancelled',()=>{
   render(wrap(<AttendanceHistoryTable rows={[row('a')]} returnTo="/attendance/application-history"/>));fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.rejectSelected}));expect(screen.getByRole('textbox')).toBeRequired();fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(calls.bulk).not.toHaveBeenCalled();
 });
+
+it('submits the stage observed when selected even if a refreshed row has advanced',async()=>{
+  const ui=render(wrap(<AttendanceHistoryTable rows={[row('a')]} returnTo="/attendance/application-history"/>));
+  fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));
+  ui.rerender(wrap(<AttendanceHistoryTable rows={[{...row('a'),currentStage:1}]} returnTo="/attendance/application-history"/>));
+  fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.approveSelected}));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Employee a · 01-Oct-2026');
+  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
+  await waitFor(()=>expect(calls.bulk).toHaveBeenCalledWith({items:[{id:'a',stage:0}],decision:'approved',reason:''}));
+});
