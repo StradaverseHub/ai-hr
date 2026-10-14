@@ -17271,7 +17271,9 @@
       "starterHelp": "Cadangan AI menggantikan pilihan yang boleh diedit dengan sehingga 8 KPI pustaka yang layak. Semak sasaran dan cadangkan kad skor sendiri.",
       "action": "Selesai",
       "managerHelp": "Sembang boleh menyimpan ulasan penyemak. Pengesahan jelas mengunci keputusan yang anda semak. Anda juga boleh menggunakan borang.",
-      "calibrationHelp": "Sembang boleh menyediakan keputusan jabatan atau menyimpan perubahan kalibrasi yang boleh disemak semula. Gunakan kawalan semakan untuk mengesahkan penguncian."
+      "calibrationHelp": "Sembang boleh menyediakan keputusan jabatan atau menyimpan perubahan kalibrasi yang boleh disemak semula. Gunakan kawalan semakan untuk mengesahkan penguncian.",
+      "saveReflection": "Simpan refleksi",
+      "reflectionSaved": "Refleksi disimpan"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

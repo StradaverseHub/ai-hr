@@ -1,3 +1,5 @@
+import { competencyGuidance } from './competency-guide-model';
+import { competencyReflectionSchema,literalCompetencyReflection } from './review-command-model';
 import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -15,7 +17,7 @@ import { draftOnehrNarrative } from './ai';
 export const conversationStage=z.enum(['setting','results','moderation','competency','career','evidence','feedback']);
 export type ConversationStage=z.infer<typeof conversationStage>;
 const storedStage=(stage:ConversationStage)=>stage==='setting'||stage==='evidence'?stage:'journey';
-const messageSchema=z.object({id:z.uuid(),role:z.enum(['user','assistant']),text:z.string().max(6000),at:z.iso.datetime(),kind:z.enum(['guide','draft','message','update','action'])});
+const messageSchema=z.object({id:z.uuid(),role:z.enum(['user','assistant']),text:z.string().max(6000),at:z.iso.datetime(),kind:z.enum(['guide','draft','message','update','action']),reflection:competencyReflectionSchema.optional(),keptReflectionId:z.uuid().optional(),guidance:z.boolean().optional()});
 export type ReviewMessage=z.infer<typeof messageSchema>;
 export const reviewConversationMessages=z.array(messageSchema).max(300);
 async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationStage){
@@ -112,10 +114,11 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  if(previous)return previous;
  let reply='';
  const humanInput=intent==='guide'?humanManagerContext(view,stage,words):null;
- const commandInput=intent==='guide'&&!humanInput&&view.aiEnabled?commandContext(view,stage,words):null;
+ const commandInput=intent==='guide'&&!humanInput?commandContext(view,stage,words):null;
+ const reflection=intent==='guide'&&stage==='competency'&&commandInput?literalCompetencyReflection(words,commandInput.facts):null;
  const evidenceInput=intent==='guide'&&!humanInput&&view.aiEnabled?evidenceContext(view,stage,words):null;
- const journey=commandInput||evidenceInput?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
- const command=journey?.review??null,evidence=journey?.evidence??null;
+ const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
+ const command=reflection??journey?.review??null,evidence=journey?.evidence??null;
  const settingInput=['guide','starter'].includes(intent)&&!humanInput&&view.aiEnabled?settingContext(view,stage,words):null;
  const settingField=`kpi_set:${view.cycle.id}`;
  if(intent==='starter'){
@@ -146,7 +149,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  }
  // Recheck authority and graph state after a provider call, before persisting its answer.
  const fresh=await authorized(ctx,reviewId,stage);
- if((command||setting||career||evidence)&&!fresh.aiEnabled)throw Error('AI assistance or module access changed. Reload before sending again.');
+ if((command&&!reflection||setting||career||evidence)&&!fresh.aiEnabled)throw Error('AI assistance or module access changed. Reload before sending again.');
  if(starter&&!fresh.aiFeatures.pm)throw Error('AI scorecard suggestions were switched off.');
  if(humanInput&&JSON.stringify(humanManagerContext(fresh,stage,words))!==JSON.stringify(humanInput))throw Error('The review entries or your assignment changed. Reload before confirming.');
  if(command&&JSON.stringify(commandContext(fresh,stage,words))!==JSON.stringify(commandInput))throw Error('Your private draft changed while preparing this response. Reload before sending again.');
@@ -161,10 +164,10 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   const duplicate=messages.findIndex(m=>m.id===requestId);if(duplicate>=0)return {revision:row!.revision,messages,draftUpdated:['update','action'].includes(messages[duplicate+1]?.kind),...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,settingField)}:{})};
   if((row?.revision??null)!==expected)throw Error('This conversation changed. Reload before sending another message.');
   if(messages.length>296)throw Error('This conversation has reached its limit. Your saved review and full conversation remain available.');
-  if((command||setting||career||evidence)&&!await assessmentAiConfigTx(tx,ctx))throw Error('AI assistance or module access changed.');
+  if((command&&!reflection||setting||career||evidence)&&!await assessmentAiConfigTx(tx,ctx))throw Error('AI assistance or module access changed.');
   if(intent==='draft'&&!(await assessmentAiFeatureEnabledTx(tx,ctx,stage==='competency'?'tc':stage==='career'?'idp':'pm')))throw Error('AI drafting was switched off.');
   if(humanInput)reply=await applyHumanManagerCommand(tx,ctx,view,humanInput);
-  if(command&&commandInput){await saveAssessmentDraftTx(tx,ctx,reviewId,view.revision,commandInput.draftRevision,command.draft);reply='Private draft updated. Review the form, then confirm submission when ready.';}
+  if(command?.changed&&commandInput){await saveAssessmentDraftTx(tx,ctx,reviewId,view.revision,commandInput.draftRevision,command.draft);reply='Private draft updated. Review the form, then confirm submission when ready.';}
   if(setting){
    if(starter&&!(await assessmentAiFeatureEnabledTx(tx,ctx,'pm')))throw Error('AI scorecard suggestions were switched off.');
    if(starter)await recordAssessmentAiUseTx(tx,ctx,reviewId,settingField,requestId);
@@ -184,10 +187,35 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
    }
    reply='Evidence and check-in changes saved. Review the updated record.';
   }
-  const updated=!!humanInput||!!command||!!setting||!!career||!!evidence;
+  const guided=stage==='competency'&&view.self&&intent==='guide'&&!command?.reflection;
+  if(guided){const draft=command?.draft??commandContext(fresh,stage,words)?.facts.draft;reply=(command?.changed?'Your private draft is updated. ':'')+competencyGuidance(fresh.competencies,draft?.kind==='competency_self'?draft:null,messages.some(m=>m.role==='assistant'&&m.text.includes('in 50-100 words, tell me your strengths')));}
+  if(command?.reflection)reply=command.reflection.isDraft?'Review this proposed reflection. It is kept only when you choose Save reflection.':'This is your saved reflection.';
+  const updated=!!humanInput||!!command?.changed||!!setting||!!career||!!evidence;
   const now=new Date().toISOString();
-  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,kind:humanInput?'action' as const:updated?'update' as const:intent==='starter'?'guide' as const:intent}]:[])];
+  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,...(command?.reflection?{reflection:command.reflection}:{}),...(guided?{guidance:true}:{}),kind:command?.reflection?'draft' as const:humanInput?'action' as const:updated?'update' as const:intent==='starter'?'guide' as const:intent}]:[])];
   const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage:storedStage(stage),contextId:reviewId,messages:next}).returning();
   return {revision:saved.revision,messages:next,draftUpdated:updated,...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,settingField)}:{})};
+ });
+}
+
+/** Explicit human keep of a server-stored card, merged through the ordinary private draft writer. */
+export async function keepCompetencyReflection(ctx:SessionContext,reviewId:string,messageId:string){
+ z.uuid().parse(messageId);const view=await authorized(ctx,reviewId,'competency'),input=commandContext(view,'competency','');
+ if(!view.self||input?.facts.draft.kind!=='competency_self')throw Error('This competency reflection is no longer editable.');
+ return withPerformanceTenant(ctx,async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${reviewId}:${ctx.userId}:journey`},0))`);
+  const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,'journey'),eq(assessmentConversation.contextId,reviewId))).for('update');
+  if(!row)throw Error('Reflection card not found.');const messages=reviewConversationMessages.parse(row.messages),card=messages.find(m=>m.id===messageId&&m.role==='assistant')?.reflection;
+  if(!card?.isDraft)throw Error('Choose a proposed reflection from your own conversation.');
+  if(messages.some(m=>m.keptReflectionId===messageId))return {revision:row.revision,messages,draftUpdated:false};
+  const draft=input.facts.draft;if(draft.kind!=='competency_self')throw Error('Choose your own competency.');
+  const line=draft.answers[card.id];if(!line?.answer||!view.competencies.some(c=>c.id===card.id))throw Error('This competency is no longer assigned and answered.');
+  if(line.remark!==card.originalNote)throw Error('This reflection changed after the card was prepared. Review your current words before drafting again.');
+  if(messages.length>=300)throw Error('This conversation has reached its limit. Use the reflection field on the review form.');
+  line.remark=card.text;
+  await saveAssessmentDraftTx(tx,ctx,reviewId,view.revision,input.draftRevision,draft);
+  const next:ReviewMessage[]=[...messages,{id:crypto.randomUUID(),role:'assistant',kind:'update',text:'Reflection saved in your private draft.',at:new Date().toISOString(),keptReflectionId:messageId}];
+  const [saved]=await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning();
+  return {revision:saved.revision,messages:next,draftUpdated:true};
  });
 }

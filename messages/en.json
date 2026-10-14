@@ -17271,7 +17271,9 @@
       "starterHelp": "AI suggestions replace your editable selection with up to 8 eligible library KPIs. Review the targets and propose the scorecard yourself.",
       "action": "Completed",
       "managerHelp": "Chat can save reviewer comments. Explicit confirmation locks your reviewed results. You can also use the form.",
-      "calibrationHelp": "Chat can prepare department decisions or save reversible calibration moves. Use the review controls to confirm locks."
+      "calibrationHelp": "Chat can prepare department decisions or save reversible calibration moves. Use the review controls to confirm locks.",
+      "saveReflection": "Save reflection",
+      "reflectionSaved": "Saved reflection"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

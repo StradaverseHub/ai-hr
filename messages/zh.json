@@ -17271,7 +17271,9 @@
       "starterHelp": "AI 建议会将可编辑的选择替换为最多 8 项符合条件的指标库 KPI。请审查目标，并自行提交记分卡。",
       "action": "已完成",
       "managerHelp": "对话可保存评审意见。明确确认会锁定您已评审的结果。您也可以使用表单。",
-      "calibrationHelp": "聊天可准备部门评审决定或保存可修改的校准调整。请使用评审控件确认锁定。"
+      "calibrationHelp": "聊天可准备部门评审决定或保存可修改的校准调整。请使用评审控件确认锁定。",
+      "saveReflection": "保存自评说明",
+      "reflectionSaved": "已保存自评说明"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",

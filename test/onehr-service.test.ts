@@ -142,6 +142,29 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.draftOnehrNarrative(self,reviewId,'I completed the delivery.')).rejects.toThrow(/changed/);
     expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
   });
+  it('keeps competency reflection cards private and requires an explicit save through the ordinary draft writer',async()=>{
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Existing observed work.'},'skill-2':{answer:'no',remark:'Keep the other reflection.'}},remark:'Keep my overall reflection.'});
+    const before=(await view(self)).drafts.find(d=>d.kind==='competency_self')!,words='Draft reflection: Current skill: I completed the agreed service work.';
+    const proposed=await perf.sendReviewMessage(self,reviewId,'competency',null,randomUUID(),words),card=proposed.messages.find(m=>m.reflection)!;
+    expect(card.reflection).toMatchObject({text:'I completed the agreed service work.',isDraft:true});expect(proposed.draftUpdated).toBe(false);
+    expect((await view(self)).drafts.find(d=>d.kind==='competency_self')).toEqual(before);expect((await perf.getReviewConversation(mgr,reviewId,'competency')).messages).toEqual([]);
+    await expect(perf.keepCompetencyReflection(mgr,reviewId,card.id)).rejects.toThrow(/no longer editable/);
+    const kept=await perf.keepCompetencyReflection(self,reviewId,card.id);expect(kept.messages.some(m=>m.keptReflectionId===card.id)).toBe(true);
+    const v=await view(self);expect(v.drafts.find(d=>d.kind==='competency_self')?.payload).toMatchObject({answers:{'skill-1':{answer:'yes',remark:'I completed the agreed service work.'},'skill-2':{answer:'no',remark:'Keep the other reflection.'}},remark:'Keep my overall reflection.'});expect(v.competencyStatus).toBe('pending');expect(v.competencies[0].selfRemark).toBe('');
+    expect(await perf.keepCompetencyReflection(self,reviewId,card.id)).toMatchObject({revision:kept.revision,draftUpdated:false});
+    const read=await perf.sendReviewMessage(self,reviewId,'competency',kept.revision,randomUUID(),'Read saved reflection: Current skill');expect(read.messages.filter(m=>m.reflection).at(-1)?.reflection).toMatchObject({isDraft:false,text:'I completed the agreed service work.'});expect(generateDraft).not.toHaveBeenCalled();
+  });
+  it('refuses stale reflection cards and guides only the actual unfinished competency step',async()=>{
+    let response=await perf.sendReviewMessage(self,reviewId,'competency',null,randomUUID(),'What do I do next?');expect(response.messages.at(-1)?.text).toContain('2 competencies are still to answer');
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:''},'skill-2':{answer:'no',remark:''}},remark:''});
+    response=await perf.sendReviewMessage(self,reviewId,'competency',response.revision,randomUUID(),'What do I do next?');expect(response.messages.at(-1)?.text).toContain('in 50-100 words');
+    response=await perf.sendReviewMessage(self,reviewId,'competency',response.revision,randomUUID(),'What do I do next?');expect(response.messages.at(-1)?.text).not.toContain('Last step');
+    response=await perf.sendReviewMessage(self,reviewId,'competency',response.revision,randomUUID(),'Draft reflection: Current skill: I supported the agreed team delivery.');const card=response.messages.find(m=>m.reflection)!;
+    const current=await view(self),draft=current.drafts.find(d=>d.kind==='competency_self')!;
+    await perf.saveAssessmentDraft(self,reviewId,current.revision,draft.revision,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'New words entered directly in the form.'},'skill-2':{answer:'no',remark:''}},remark:''});
+    await expect(perf.keepCompetencyReflection(self,reviewId,card.id)).rejects.toThrow(/changed after/);
+    expect((await view(self)).drafts.find(d=>d.kind==='competency_self')?.payload).toMatchObject({answers:{'skill-1':{remark:'New words entered directly in the form.'}}});expect((await view(self)).competencyStatus).toBe('pending');expect(generateDraft).not.toHaveBeenCalled();
+  });
   it('allows only the assigned feedback rater to use their own field quota without granting access to the subject review',async()=>{
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     const rater=peers[0].ctx,request=(await perf.onehrAssignments(rater)).feedback.find(r=>r.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(rater,request.id),words='They supported our agreed delivery.';

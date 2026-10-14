@@ -17271,7 +17271,9 @@
       "starterHelp": "Đề xuất AI thay thế lựa chọn có thể chỉnh sửa bằng tối đa 8 KPI đủ điều kiện từ thư viện. Hãy xem xét mục tiêu và tự đề xuất bảng điểm.",
       "action": "Hoàn tất",
       "managerHelp": "Trò chuyện có thể lưu nhận xét của người đánh giá. Xác nhận rõ ràng sẽ khóa các kết quả bạn đã đánh giá. Bạn cũng có thể dùng biểu mẫu.",
-      "calibrationHelp": "Trò chuyện có thể chuẩn bị quyết định của phòng ban hoặc lưu điều chỉnh có thể sửa. Dùng các nút đánh giá để xác nhận khóa."
+      "calibrationHelp": "Trò chuyện có thể chuẩn bị quyết định của phòng ban hoặc lưu điều chỉnh có thể sửa. Dùng các nút đánh giá để xác nhận khóa.",
+      "saveReflection": "Lưu tự nhận xét",
+      "reflectionSaved": "Đã lưu tự nhận xét"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",
