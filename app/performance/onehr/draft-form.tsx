@@ -10,7 +10,7 @@ export async function flushAssessmentDrafts(){
 }
 
 /** Serialize autosaves, including their optimistic revisions. Drafts never submit an assessment. */
-export function AssessmentDraftForm({children,action,revision,labels,className='space-y-4',save=saveAssessmentDraftAction,changeKey}:{
+function EditableAssessmentDraftForm({children,action,revision,labels,className='space-y-4',save=saveAssessmentDraftAction,changeKey}:{
   save?:(data:FormData)=>Promise<{revision:number}|{error:string}>;changeKey?:string;
   children:ReactNode; action:(data:FormData)=>Promise<void>; revision:number|null;
   labels:{saving:string;saved:string;privateDraft:string;failed:string};className?:string;
@@ -53,4 +53,9 @@ export function AssessmentDraftForm({children,action,revision,labels,className='
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     {children}
   </form>;
+}
+
+/** Submitted/read-only assessments do not mount a private-draft form or its autosave listener. */
+export function AssessmentDraftForm({readOnly=false,...props}:Parameters<typeof EditableAssessmentDraftForm>[0]&{readOnly?:boolean}){
+ return readOnly?<div className={props.className??'space-y-4'}>{props.children}</div>:<EditableAssessmentDraftForm {...props}/>;
 }

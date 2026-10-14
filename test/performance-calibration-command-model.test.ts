@@ -6,6 +6,15 @@ describe('human calibration commands',()=>{
   expect(calibrationCommand('Set performance: Alice Tan: AE: Verified delivery: operational records. ',targets,'performance','hod')).toEqual({reviewId:'alice',axis:'performance',band:'AE',reason:'Verified delivery: operational records.',submit:false});
   expect(calibrationCommand('Save department potential: Bob Lim: high: Demonstrated the agreed skills.',targets,'potential','hod')).toMatchObject({axis:'potential',band:'High',submit:true});
  });
+ it('understands natural explicit moves and retains the current saved reason without confirming a department',()=>{
+  expect(calibrationCommand('Please move Alice Tan to Outstanding because Verified exceptional delivery.',targets,'performance','hod')).toEqual({reviewId:'alice',axis:'performance',band:'OU',reason:'Verified exceptional delivery.',submit:false});
+  expect(calibrationCommand('Rate Bob Lim potential as High with my reason: Ready for wider responsibility.',targets,'both','bg')).toMatchObject({axis:'potential',band:'High',reason:'Ready for wider responsibility.',submit:false});
+  expect(calibrationCommand('Mark Alice Tan as Above Expectation with this remark',[{...targets[0],performanceNote:'Previously refined and saved words.'}],'performance','hod')).toMatchObject({band:'AE',reason:'Previously refined and saved words.',submit:false});
+  expect(()=>calibrationCommand('Move Alice Tan to Outstanding with this remark',targets,'performance','bu')).toThrow(/explanation/);
+  expect(()=>calibrationCommand('Move Alice Tan to High because Supporting work.',targets,'performance','bu')).toThrow(/axis/);
+  expect(()=>calibrationCommand('Move Alice Tan to Outstanding',targets,'performance','bu')).toThrow(/explanation/);
+  expect(calibrationCommand('Should I move Alice Tan to Outstanding because of delivery?',targets,'performance','bu')).toBeNull();
+ });
  it('refuses an unknown or ambiguous person, wrong axis, unknown band and empty justification',()=>{
   expect(()=>calibrationCommand('Set performance: Stranger: AE: Words',targets,'performance','bu')).toThrow(/cohort/);
   expect(()=>calibrationCommand('Set performance: Alice Tan: AE: Words',[...targets,targets[0]],'performance','bu')).toThrow(/unambiguous/);

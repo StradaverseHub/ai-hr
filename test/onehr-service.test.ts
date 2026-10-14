@@ -154,6 +154,13 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await perf.keepCompetencyReflection(self,reviewId,card.id)).toMatchObject({revision:kept.revision,draftUpdated:false});
     const read=await perf.sendReviewMessage(self,reviewId,'competency',kept.revision,randomUUID(),'Read saved reflection: Current skill');expect(read.messages.filter(m=>m.reflection).at(-1)?.reflection).toMatchObject({isDraft:false,text:'I completed the agreed service work.'});expect(generateDraft).not.toHaveBeenCalled();
   });
+  it('reads submitted reflections without recreating an editable draft',async()=>{
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'yes',remark:'I completed the agreed delivery.'},'skill-2':{answer:'no',remark:'I am practising the future skill.'}},false,'I completed my work and will practise the future skill.');
+    const before=await view(self),response=await perf.sendReviewMessage(self,reviewId,'competency',null,randomUUID(),'Read saved reflection: Current skill');
+    expect(response.messages.at(-1)?.reflection).toMatchObject({isDraft:false,text:'I completed the agreed delivery.'});expect(response.draftUpdated).toBe(false);expect(response.messages.at(-1)?.kind).toBe('guide');
+    await expect(perf.keepCompetencyReflection(self,reviewId,response.messages.at(-1)!.id)).rejects.toThrow(/no longer editable/);
+    expect((await view(self)).drafts).toEqual(before.drafts);expect((await view(self)).competencyStatus).toBe('submitted');expect(generateDraft).not.toHaveBeenCalled();
+  });
   it('refuses stale reflection cards and guides only the actual unfinished competency step',async()=>{
     let response=await perf.sendReviewMessage(self,reviewId,'competency',null,randomUUID(),'What do I do next?');expect(response.messages.at(-1)?.text).toContain('2 competencies are still to answer');
     await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:''},'skill-2':{answer:'no',remark:''}},remark:''});
@@ -1160,6 +1167,22 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry).toMatchObject({performance:'AE',performanceNote:'Verified additional operational delivery.',performanceLockedAt:expect.any(Date)});expect(v.held.performance?.lines).toEqual([]);expect(final.messages.filter(m=>m.kind==='action')).toHaveLength(1);
     await expect(perf.sendCalibrationMessage(reviewer,id,'performance',final.revision,randomUUID(),'Set performance: Assessment subject: ME: Rewrite a confirmed decision.')).rejects.toThrow(/locked/);
     expect((await perf.getCalibrationConversation(reviewer,id,'performance')).revision).toBe(final.revision);expect(generateDraft).not.toHaveBeenCalled();
+  });
+  it('keeps natural calibration moves as department drafts and reuses only the actor’s saved wording',async()=>{
+    await complete();const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Natural department chat',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!,reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const first=await perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'Move Assessment subject to Above Expectation because Verified extra service delivery.');
+    const next=await perf.sendCalibrationMessage(reviewer,id,'performance',first.revision,randomUUID(),'Mark Assessment subject as Outstanding with this remark');
+    const v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry.performance).toBeNull();expect(v.held.performance?.lines).toMatchObject([{band:'OU',reason:'Verified extra service delivery.'}]);
+    await expect(perf.sendCalibrationMessage(mgr,id,'performance',null,randomUUID(),'Mark Assessment subject as Outstanding with this remark')).rejects.toThrow(/explanation/);
+    expect((await perf.getCalibrationConversation(mgr,id,'performance')).messages).toEqual([]);expect(next.messages.at(-1)?.kind).toBe('draft');expect(generateDraft).not.toHaveBeenCalled();
+  });
+  it('answers Performance help from the native knowledge base without exposing restricted or archived articles',async()=>{
+    const {seedGuides}=await import('../db/seed-guides');await seedGuides(owner.db,b.tenantId);
+    await owner.db.insert(schema.kbDocument).values([{tenantId:b.tenantId,kind:'article',title:'Calibration HR secret',body:'Calibration restricted private words.',category:'performance-faq',audience:'hr_admin'},{tenantId:b.tenantId,kind:'article',title:'Calibration archived',body:'Calibration archived private words.',category:'performance-faq',audience:'employee',archivedAt:new Date()}]);
+    const response=await perf.sendReviewMessage(self,reviewId,'competency',null,randomUUID(),'Help: calibration restricted archived private');
+    expect(response.messages.at(-1)?.text).toContain('From the Knowledge Base:');expect(response.messages.at(-1)?.text).not.toMatch(/restricted private|archived private/);expect(response.draftUpdated).toBe(false);expect((await view(self)).drafts).toEqual([]);
+    await complete();const id=await perf.createOnehrCalibration(a,cycleId,{name:'Help scope',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const answer=await perf.sendCalibrationMessage(mgr,id,'performance',null,randomUUID(),'Help: calibration harsher');expect(answer.messages.at(-1)?.text).toContain('What calibration is');expect((await perf.getOnehrCalibration(mgr,id)).rows[0].entry.performance).toBeNull();expect(generateDraft).not.toHaveBeenCalled();
   });
   it('agrees selected department rows atomically and labels an unfinished manager review provisional without storing a rating',async()=>{
     await complete();const [pending]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));

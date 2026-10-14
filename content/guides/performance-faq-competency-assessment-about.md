@@ -1,0 +1,1 @@
+Rate your assigned technical competencies as Demonstrate (you can do it today) or Developing (still growing). Add concrete examples and your overall reflection. Your manager reviews the submitted assessment and explains changed answers. Reviewed gaps can guide your development plan. The form shows the justification required by the cycle rules.

@@ -1,3 +1,4 @@
+import {assessmentHelp} from './help';
 import { adjudicateCalibrationQuery,literalCalibrationQuery,type CalibrationQuery } from './calibration-query-model';
 import { calibrationDistribution } from './calibration-curve-model';
 import { assessmentAiConfigTx } from './ai-settings';
@@ -52,9 +53,10 @@ export async function sendCalibrationMessage(ctx:SessionContext,id:string,axis:'
  z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);let view=await authorized(ctx,id,axis);
  const existing=await getCalibrationConversation(ctx,id,axis);if(existing.messages.some(m=>m.id===requestId))return {...existing,draftUpdated:true};
  if(existing.revision!==expected)throw Error('This conversation changed. Reload before sending another message.');
- const command=calibrationCommand(words,view.rows.map(r=>({id:r.entry.reviewId,name:r.name})),axis,view.session.tier);
+ const help=await assessmentHelp(ctx,words);
+ const command=help?null:calibrationCommand(words,view.rows.map(r=>({id:r.entry.reviewId,name:r.name,performanceNote:view.held[axis]?.lines.find(l=>l.reviewId===r.entry.reviewId&&l.axis==='performance')?.reason??r.entry.performanceNote,potentialNote:view.held[axis]?.lines.find(l=>l.reviewId===r.entry.reviewId&&l.axis==='potential')?.reason??r.entry.potentialNote})),axis,view.session.tier);
  let query=command?null:literalCalibrationQuery(words,queryScope(view,axis)),aiConfig:Awaited<ReturnType<typeof assessmentAiConfigTx>>=null;
- if(!command&&!query){
+ if(!command&&!query&&!help){
   aiConfig=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx,'calib'));
   if(aiConfig){
    const scope=queryScope(view,axis);let raw='';
@@ -90,7 +92,8 @@ export async function sendCalibrationMessage(ctx:SessionContext,id:string,axis:'
   }else if(query){
    reply=queryReply(view,axis,query);
    if(query.action==='person'&&!['group','final'].includes(view.session.tier))held={...held,focus:query.reviewId,requestId,navigation:true};
-  }else reply=['Use the cohort filters and band distribution to review your scope. Open a person for evidence and the review controls.',view.session.tier==='group'||view.session.tier==='final'?'This conversation explains the current bands. Record decisions and locks with the review controls.':`To ${view.session.tier==='hod'?'prepare':'save'} a change, type “Set performance: exact name: ME: your explanation” or “Set potential: exact name: Mid: your explanation”.`,view.session.tier==='hod'?'Set prepares a private edit on the review sheet. “Save department performance: exact name: ME: your explanation” explicitly confirms that department decision.':'', '“Show distribution” lists the current bands. “Explain: exact name” shows the band journey. Locking calibration remains a separate confirmation.'].filter(Boolean).join('\n\n');
+  }else if(help)reply=help;
+  else reply=['Use the cohort filters and band distribution to review your scope. Open a person for evidence and the review controls.',view.session.tier==='group'||view.session.tier==='final'?'This conversation explains the current bands. Record decisions and locks with the review controls.':`To ${view.session.tier==='hod'?'prepare':'save'} a change, type “Set performance: exact name: ME: your explanation” or “Set potential: exact name: Mid: your explanation”.`,view.session.tier==='hod'?'Set prepares a private edit on the review sheet. “Save department performance: exact name: ME: your explanation” explicitly confirms that department decision.':'', '“Show distribution” lists the current bands. “Explain: exact name” shows the band journey. Locking calibration remains a separate confirmation.'].filter(Boolean).join('\n\n');
   reply=reply.length>5900?reply.slice(0,5800)+'\n\nChoose a specific business unit for the remaining details.':reply;
   const at=new Date().toISOString(),next:ReviewMessage[]=[...messages,{id:requestId,role:'user',kind:'message',text:words,at},{id:randomUUID(),role:'assistant',kind,text:reply,at}];
   const data={messages:next,held,updatedAt:new Date()};

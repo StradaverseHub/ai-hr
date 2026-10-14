@@ -1,0 +1,1 @@
+Your development plan is a small set of growth goals for the year, each anchored to a real gap -- a competency your manager left as Developing, or a leadership behaviour your 360 scored low. Good goals follow 70:20:10: most growth on the job, some from others, some from courses. You share the plan with your manager.

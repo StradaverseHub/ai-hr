@@ -1,0 +1,1 @@
+Each KPI is rated on a five-point scale from 1 (well below target) to 5 (well above), based on your actual result against the target. Your overall performance reflects those ratings weighted by how important each KPI is. You never have to work the numbers out yourself -- enter your real results and the scorecard shows the rating.

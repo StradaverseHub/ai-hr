@@ -1,0 +1,1 @@
+For an assigned colleague, rate each leadership behaviour as Demonstrate or Developing, add the required supporting comments and overall remark, then submit and confirm. High ratings need concrete evidence. Released feedback does not identify respondents and must meet the minimum-response rule. Be candid and fair, and avoid details that identify you.

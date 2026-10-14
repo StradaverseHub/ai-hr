@@ -1,0 +1,1 @@
+State the actual number first, then one concrete driver. Say what YOU did, not what happened -- 'renegotiated three supplier contracts, cutting materials cost 4%' beats 'costs came down'. Name the period and any one-off effects. Two or three sentences is enough; the number carries the claim, the sentence explains it.

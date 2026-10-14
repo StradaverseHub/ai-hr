@@ -1,3 +1,4 @@
+import {assessmentHelp} from './help';
 import { competencyGuidance } from './competency-guide-model';
 import { competencyReflectionSchema,literalCompetencyReflection } from './review-command-model';
 import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx } from './ai-settings';
@@ -29,10 +30,11 @@ async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationS
  return v;
 }
 function commandContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>,stage:ConversationStage,text:string){
- if(view.finalized||view.policy.kind==='quarterly')return null;
+ const reading=stage==='competency'&&view.self&&/^read saved reflection:/i.test(text.trim());
+ if(!reading&&(view.finalized||view.policy.kind==='quarterly'))return null;
  const kind=stage==='results'&&view.self?'results':stage==='moderation'&&(view.manager||view.moderator)?'moderation':stage==='competency'&&view.self?'competency_self':stage==='competency'&&view.manager?'competency_manager':null;
- if(!kind||kind==='results'&&view.resultsSubmitted||kind==='moderation'&&!view.canModerateIds.length||kind==='competency_self'&&view.competencyStatus!=='pending'||kind==='competency_manager'&&view.competencyStatus!=='submitted')return null;
- const prior=view.drafts.find(d=>d.kind===kind);
+ if(!kind||kind==='results'&&view.resultsSubmitted||kind==='moderation'&&!view.canModerateIds.length||kind==='competency_self'&&!reading&&view.competencyStatus!=='pending'||kind==='competency_manager'&&view.competencyStatus!=='submitted')return null;
+ const prior=reading&&view.competencyStatus!=='pending'?undefined:view.drafts.find(d=>d.kind===kind);
  const kpis=view.kpis.filter(k=>!k.hrOwned&&(kind==='results'||view.canModerateIds.includes(k.id)));
  const draft=assessmentDraftSchema.parse(prior?.payload??(kind==='results'||kind==='moderation'?{kind,lines:kpis.map(k=>({id:k.id,actual:kind==='results'?k.actual:k.approvedActual??k.actual,note:kind==='results'?k.note:k.moderationRemark})),remark:kind==='results'?view.selfRemark:view.ownReviewerRemark}:{kind,sections:kind==='competency_self'?view.competencySelfSections:view.competencyManagerSections,answers:Object.fromEntries(view.competencies.map(c=>[c.id,{answer:kind==='competency_self'?c.self:c.manager??c.self,remark:kind==='competency_self'?c.selfRemark??'':c.managerRemark}])),remark:kind==='competency_self'?view.competencySelfRemark:view.competencyManagerRemark}));
  const targets=(kind==='results'||kind==='moderation'?kpis.map(k=>({id:k.id,label:k.title})):view.competencies.map(c=>({id:c.id,label:c.text,...(c.skillTitle?{competency:{title:c.skillTitle,category:c.principle,future:c.future}}:{})})));
@@ -113,13 +115,14 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  });
  if(previous)return previous;
  let reply='';
- const humanInput=intent==='guide'?humanManagerContext(view,stage,words):null;
- const commandInput=intent==='guide'&&!humanInput?commandContext(view,stage,words):null;
+ const help=intent==='guide'?await assessmentHelp(ctx,words):null;
+ const humanInput=intent==='guide'&&!help?humanManagerContext(view,stage,words):null;
+ const commandInput=intent==='guide'&&!help&&!humanInput?commandContext(view,stage,words):null;
  const reflection=intent==='guide'&&stage==='competency'&&commandInput?literalCompetencyReflection(words,commandInput.facts):null;
- const evidenceInput=intent==='guide'&&!humanInput&&view.aiEnabled?evidenceContext(view,stage,words):null;
+ const evidenceInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?evidenceContext(view,stage,words):null;
  const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
  const command=reflection??journey?.review??null,evidence=journey?.evidence??null;
- const settingInput=['guide','starter'].includes(intent)&&!humanInput&&view.aiEnabled?settingContext(view,stage,words):null;
+ const settingInput=['guide','starter'].includes(intent)&&!help&&!humanInput&&view.aiEnabled?settingContext(view,stage,words):null;
  const settingField=`kpi_set:${view.cycle.id}`;
  if(intent==='starter'){
   if(!settingInput||!view.aiFeatures.pm)throw Error('AI scorecard suggestions are unavailable for this assessment.');
@@ -130,7 +133,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput)):null;
  if(intent==='starter'&&!starter)throw Error('Could not prepare a usable scorecard just now. You can add KPIs from the library and try again later.');
  const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput)):null);
- const careerInput=intent==='guide'&&!humanInput&&view.aiEnabled?careerContext(view,stage,words):null;
+ const careerInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?careerContext(view,stage,words):null;
  const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput)):null;
 
  if(intent==='draft')reply=await draftOnehrNarrative(ctx,reviewId,words,stage==='competency'?'tc':stage==='career'?'idp':'pm');
@@ -187,12 +190,13 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
    }
    reply='Evidence and check-in changes saved. Review the updated record.';
   }
-  const guided=stage==='competency'&&view.self&&intent==='guide'&&!command?.reflection;
+  if(help)reply=help;
+ const guided=stage==='competency'&&view.self&&intent==='guide'&&!help&&!command?.reflection;
   if(guided){const draft=command?.draft??commandContext(fresh,stage,words)?.facts.draft;reply=(command?.changed?'Your private draft is updated. ':'')+competencyGuidance(fresh.competencies,draft?.kind==='competency_self'?draft:null,messages.some(m=>m.role==='assistant'&&m.text.includes('in 50-100 words, tell me your strengths')));}
   if(command?.reflection)reply=command.reflection.isDraft?'Review this proposed reflection. It is kept only when you choose Save reflection.':'This is your saved reflection.';
   const updated=!!humanInput||!!command?.changed||!!setting||!!career||!!evidence;
   const now=new Date().toISOString();
-  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,...(command?.reflection?{reflection:command.reflection}:{}),...(guided?{guidance:true}:{}),kind:command?.reflection?'draft' as const:humanInput?'action' as const:updated?'update' as const:intent==='starter'?'guide' as const:intent}]:[])];
+  const next:ReviewMessage[]=[...messages,{id:requestId,role:'user',text:words,at:now,kind:'message'},...(reply?[{id:crypto.randomUUID(),role:'assistant' as const,text:reply,at:now,...(command?.reflection?{reflection:command.reflection}:{}),...(guided?{guidance:true}:{}),kind:command?.reflection?(command.reflection.isDraft?'draft' as const:'guide' as const):humanInput?'action' as const:updated?'update' as const:intent==='starter'?'guide' as const:intent}]:[])];
   const [saved]=row?await tx.update(assessmentConversation).set({messages:next,revision:row.revision+1,updatedAt:new Date()}).where(eq(assessmentConversation.id,row.id)).returning():await tx.insert(assessmentConversation).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,stage:storedStage(stage),contextId:reviewId,messages:next}).returning();
   return {revision:saved.revision,messages:next,draftUpdated:updated,...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,settingField)}:{})};
  });
