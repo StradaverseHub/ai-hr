@@ -1,5 +1,5 @@
 'use client';
-import { useRef,useState,useTransition } from 'react';
+import { useEffect,useRef,useState,useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui';
@@ -7,13 +7,15 @@ import { assessmentInsightAction } from '../onehr-actions';
 import type { PerformanceInsight as Insight } from '@/packs/performance/onehr/performance-insight-model';
 type State={pending:boolean;source:'plain'|'ai'|null;data:Insight|null;status:string};
 /** Opening reads an existing insight only. The explicit generation button is the provider/file-reading action. */
-export function PerformanceInsight({reviewId,contextId=reviewId,onResult}:{reviewId:string;contextId?:string;onResult?:(data:Insight|null)=>void}){
- return <InsightContent key={`${reviewId}.${contextId}`} reviewId={reviewId} contextId={contextId} onResult={onResult}/>;
+export function PerformanceInsight({reviewId,contextId=reviewId,onResult,initialOpen=false}:{reviewId:string;contextId?:string;onResult?:(data:Insight|null)=>void;initialOpen?:boolean}){
+ return <InsightContent key={`${reviewId}.${contextId}`} reviewId={reviewId} contextId={contextId} onResult={onResult} initialOpen={initialOpen}/>;
 }
-function InsightContent({reviewId,contextId,onResult}:{reviewId:string;contextId:string;onResult?:(data:Insight|null)=>void}){
+function InsightContent({reviewId,contextId,onResult,initialOpen}:{reviewId:string;contextId:string;onResult?:(data:Insight|null)=>void;initialOpen:boolean}){
  const t=useTranslations('onehr.insight'),[result,setResult]=useState<State|null>(null),[error,setError]=useState(''),[busy,start]=useTransition(),sequence=useRef(0);
  const load=(generate:boolean)=>{const request=++sequence.current;setError('');setResult(null);onResult?.(null);start(async()=>{try{const r=await assessmentInsightAction(reviewId,contextId,generate);if(request!==sequence.current)return;if('error' in r)setError(r.error);else {setResult(r);onResult?.(r.data);}}catch{if(request===sequence.current)setError(t('unavailable'));}});};
- return <details className="rounded-lg border border-border" onToggle={event=>{if(event.currentTarget.open)load(false);else{sequence.current++;setResult(null);setError('');}}}>
+ const details=useRef<HTMLDetailsElement>(null);
+ useEffect(()=>{if(initialOpen&&details.current)details.current.open=true;},[initialOpen]);
+ return <details ref={details} className="rounded-lg border border-border" onToggle={event=>{if(event.currentTarget.open)load(false);else{sequence.current++;setResult(null);setError('');}}}>
   <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Sparkles size={16} aria-hidden/>{t('title')}</summary>
   <div className="space-y-4 border-t border-border p-4">
    <p className="text-xs text-muted-foreground">{t('help')}</p>

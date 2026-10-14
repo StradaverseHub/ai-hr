@@ -11,7 +11,7 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>create
 vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
-vi.mock('../app/performance/onehr-actions',()=>({assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
+vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';

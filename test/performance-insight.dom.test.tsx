@@ -32,3 +32,10 @@ it('clears a previously displayed insight and reports the access failure when re
  fireEvent.click(screen.getByText(en.onehr.insight.title));fireEvent.click(screen.getByText(en.onehr.insight.title));
  expect(await screen.findByRole('alert')).toHaveProperty('textContent','Assessment is no longer assigned.');expect(screen.queryByText('Previously authorized view.')).toBeNull();
 });
+it('opens a requested list insight with a cache-only read and still lets the person close it',async()=>{
+ ports.load.mockResolvedValue({status:'submitted',pending:true,source:null,data:null});
+ render(<NextIntlClientProvider locale="en" messages={en}><PerformanceInsight reviewId="review" contextId="calibration" initialOpen/></NextIntlClientProvider>);
+ await waitFor(()=>expect(ports.load).toHaveBeenCalledExactlyOnceWith('review','calibration',false));expect(await screen.findByRole('button',{name:en.onehr.insight.generate})).toBeTruthy();
+ const summary=screen.getByText(en.onehr.insight.title),details=summary.closest('details')!;expect(details.open).toBe(true);
+ fireEvent.click(summary);await waitFor(()=>expect(details.open).toBe(false));expect(ports.load).toHaveBeenCalledOnce();
+});

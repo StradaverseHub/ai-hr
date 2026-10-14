@@ -47,8 +47,22 @@ it('reads a person beside the same Talent Box, returns with a last-viewed marker
  expect(screen.getByRole('region',{name:en.onehr.talentGrid})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.backToBox}));
  expect(screen.queryByText('Cara Lee supporting review')).toBeNull();
- expect(screen.getByText(/Last viewed/)).toBeTruthy();
+ expect(within(screen.getByRole('complementary',{name:en.onehr.calibrationRoster.boxPeople})).getByText(/Last viewed/)).toBeTruthy();
  expect(screen.getByRole('button',{name:'Unit Y'}).getAttribute('aria-pressed')).toBe('true');
+});
+it('retains List column filters when reading a person and changing views, then clears them for another unit',()=>{
+ show(true);fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.list}));
+ fireEvent.click(screen.getByRole('button',{name:'Name: sort and filter'}));let menu=screen.getByRole('dialog',{name:'Name: sort and filter'});
+ fireEvent.change(within(menu).getByRole('textbox',{name:'Search Name values'}),{target:{value:'Alice'}});fireEvent.click(within(menu).getByRole('button',{name:'Done'}));
+ expect(screen.getByText('1 of 2 people')).toBeTruthy();expect(screen.queryByRole('button',{name:'Bob Lim'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Alice Tan'}));
+ expect(screen.getByText('Alice Tan supporting review')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.backToBox}));expect(screen.getByText('1 of 2 people')).toBeTruthy();expect(screen.queryByRole('button',{name:'Bob Lim'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.grid}));fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.list}));expect(screen.getByText('1 of 2 people')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Unit Y'}));expect(screen.getByText('1 of 1 people')).toBeTruthy();expect(screen.getByRole('button',{name:'Cara Lee'})).toBeTruthy();expect(screen.queryByRole('button',{name:'Clear filters'})).toBeNull();
+});
+it('opens a review navigator target in another unit and keeps that unit selected on returning to List',()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><nav><a href="#assessment-cara">Review Cara Lee</a></nav><CalibrationRoster sessionId="session" revision={1} rows={rows} cards={rows.map(r=>({id:r.id,content:<p>{r.name} supporting review</p>}))} axes={{pm:true,pot:true}} grid reference={{}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.list}));fireEvent.click(screen.getByRole('link',{name:'Review Cara Lee'}));expect(screen.getByText('Cara Lee supporting review')).toBeTruthy();expect(screen.getByRole('button',{name:'Unit Y'}).getAttribute('aria-pressed')).toBe('true');
+ fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.backToBox}));expect(screen.getByText('1 of 1 people')).toBeTruthy();expect(screen.getByRole('button',{name:'Cara Lee'})).toBeTruthy();
 });
 it('returns to the viewed person’s cell rather than the originally selected cell',()=>{
  show(true);fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Alice Tan'}));

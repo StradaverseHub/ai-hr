@@ -18075,6 +18075,39 @@
         "halfway": "Exactly halfway. Choose a band and give a reason.",
         "blend": "The weighted blend of the two calls."
       }
+    },
+    "talentList": {
+      "title": "Talent Box list",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "grade": "Grade",
+        "performance": "Performance",
+        "potential": "Potential",
+        "box": "Box"
+      },
+      "filterColumn": "{column}: sort and filter",
+      "smallest": "smallest → largest",
+      "largest": "largest → smallest",
+      "sort": "Sort {direction}",
+      "searchValues": "Search {column} values",
+      "search": "Search values…",
+      "selectAll": "Select all",
+      "blank": "(blank)",
+      "noValues": "No values",
+      "clearFilter": "Clear filter",
+      "done": "Done",
+      "clearFilters": "Clear filters",
+      "count": "{count} of {total} people",
+      "actions": "Actions",
+      "review": "Review",
+      "readFor": "Read assessment for {name}",
+      "trailFor": "{axis} history for {name}",
+      "empty": "No one matches the filters.",
+      "showMore": "Show {count} more",
+      "movedFrom": "Moved from {box}",
+      "saved": "Draft calibration saved.",
+      "saveError": "Could not save this calibration. Your changes are still here."
     }
   },
   "allowanceV2": {
