@@ -53,3 +53,5 @@ export {getAssessmentIdpFit} from './onehr/idp-fit-service';
 export {getAssessmentPotentialInsight} from './onehr/potential-insight-service';
 
 export {getAssessmentWrittenRemarks} from './onehr/written-remarks-service';
+
+export {getAssessmentRecordInsight} from './onehr/record-insight-service';

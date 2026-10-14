@@ -559,6 +559,49 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(frozen.result).toMatchObject({performance:'AE',potential:'High',talent:'Super Star'});
     expect(frozen.performanceReleasedAt).toBeNull();
   });
+  it('summarizes personal records from current manager facts and released history only',async()=>{
+    await complete(true,'Private reviewer wording.');vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockResolvedValue('{"snapshot":"Your line manager has approved one of your one KPI lines."}');
+    expect(await perf.getAssessmentRecordInsight(self,reviewId,'present')).toMatchObject({pending:true});expect(generateDraft).not.toHaveBeenCalled();
+    const current=await perf.getAssessmentRecordInsight(self,reviewId,'present',{generate:true});expect(current).toMatchObject({source:'ai',pending:false});
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).toContain('The overall your line manager approved: Meet Expectation.');expect(prompt).not.toMatch(/Private reviewer|final potential|talent status|Consistently observed|Peer 0/);
+    expect(await perf.getAssessmentRecordInsight(self,reviewId,'present')).toEqual(current);expect(generateDraft).toHaveBeenCalledOnce();
+    for(const denied of [mgr,a,peers[0].ctx]){await expect(perf.getAssessmentRecordInsight(denied,reviewId,'present')).rejects.toThrow(/not assigned/);expect((await withTenant(denied,tx=>tx.select().from(schema.assessmentSummary))).filter(r=>r.kind.startsWith('record_'))).toEqual([]);}
+    await expect(perf.getAssessmentRecordInsight(self,reviewId,'cycle')).rejects.toThrow(/not available/);
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);vi.mocked(generateDraft).mockResolvedValue('{"snapshot":"Your final performance band was Meet Expectation."}');
+    const history=await perf.getAssessmentRecordInsight(self,reviewId,'cycle',{generate:true});expect(history).toMatchObject({source:'ai'});const pastPrompt=vi.mocked(generateDraft).mock.calls.at(-1)![1].prompt;
+    expect(pastPrompt).toContain('final performance band after calibration');expect(pastPrompt).not.toMatch(/Deliver agreed|Completed outcomes|Observed delivery|potential band|talent status|Private reviewer/);
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);
+    // The raw actor-owned cache cannot expose a summary of the now withdrawn release either.
+    expect((await withTenant(self,tx=>tx.select().from(schema.assessmentSummary))).filter(r=>r.kind==='record_cycle')).toEqual([]);
+    await expect(perf.getAssessmentRecordInsight(self,reviewId,'cycle')).rejects.toThrow(/not available/);
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    expect(await perf.getAssessmentRecordInsight(self,reviewId,'cycle',{generate:true})).toMatchObject({source:'ai'});
+    const [stored]=await owner.db.select().from(schema.assessmentSummary).where(and(eq(schema.assessmentSummary.reviewId,reviewId),eq(schema.assessmentSummary.kind,'record_cycle')));expect(stored.visibilityKey).toMatch(/^[a-f0-9]{32}$/);
+    await expect(withTenant(mgr,tx=>tx.execute(sql`select app.assessment_record_summary_store(${reviewId}::uuid,'record_cycle',${stored.visibilityKey},${stored.fingerprint},'plain','{"paragraph":"forged"}'::jsonb)`))).rejects.toThrow();
+  });
+  it('rechecks personal releases and the review assistance switch after generating and uses plain fallbacks',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'performance',true);const group={...a,grants:[{role:'hr_admin',companyId:null}]};vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockResolvedValue('{"snapshot":"Your potential band is High and you deserve a promotion."}');expect(await perf.getAssessmentRecordInsight(self,reviewId,'cycle',{generate:true})).toMatchObject({source:'plain',data:{paragraph:'After calibration your final performance band was Meet Expectation.'}});
+    await perf.setAssessmentAiSwitch(group,'review',false);expect(await perf.getAssessmentRecordInsight(self,reviewId,'present',{generate:true})).toMatchObject({source:'plain'});expect(generateDraft).toHaveBeenCalledOnce();
+    await perf.setAssessmentAiSwitch(group,'review',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(group,'review',false);return '{"snapshot":"Your line manager has approved one KPI line."}';});await expect(perf.getAssessmentRecordInsight(self,reviewId,'present',{generate:true})).rejects.toThrow(/record or released information changed/);
+    await perf.setAssessmentAiSwitch(group,'review',true);await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.releaseOnehrResult(a,reviewId,'performance',false);return '{"snapshot":"Your final performance band was Meet Expectation."}';});await expect(perf.getAssessmentRecordInsight(self,reviewId,'cycle',{generate:true})).rejects.toThrow(/not available|record or released information changed/);
+    expect((await withTenant(self,tx=>tx.select().from(schema.assessmentSummary))).filter(r=>r.kind==='record_cycle')).toEqual([]);
+    const foreign=await seedBase();await setModule(foreign.tenantId,'performance','active');await expect(perf.getAssessmentRecordInsight(await entitledCtx(foreign),reviewId,'cycle')).rejects.toThrow(/not assigned/);
+  });
+  it('summarizes the released personal trend and invalidates it when an earlier release is withdrawn',async()=>{
+    await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'performance',true);const prior=reviewId,priorCycle=cycleId,policy=(await perf.getOnehrCycle(a,cycleId))!.policy;
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,priorCycle));
+    ({cycleId}=await perf.createCycle(a,{name:'Next annual assessment',companyId:b.companyId,periodStart:`${year+1}-01-01`,periodEnd:`${year+1}-12-31`}));await perf.configureOnehrCycle(a,cycleId,null,policy);await perf.openCycle(a,{cycleId});
+    const [r]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,subject.employmentId)));reviewId=r.reviewId;await complete();await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockResolvedValue('{"trend":"Your final performance band has held at Meet Expectation."}');
+    const trend=await perf.getAssessmentRecordInsight(self,reviewId,'trend',{generate:true});expect(trend).toMatchObject({source:'ai'});const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;
+    expect(prompt.indexOf('Native annual assessment')).toBeLessThan(prompt.indexOf('Next annual assessment'));expect(prompt).not.toMatch(/Deliver agreed|potential band|talent status|KPI|Observed delivery/);
+    expect(await perf.getAssessmentRecordInsight(self,reviewId,'trend')).toEqual(trend);expect(generateDraft).toHaveBeenCalledOnce();
+    await perf.releaseOnehrResult(a,prior,'performance',false);expect(await perf.getAssessmentRecordInsight(self,reviewId,'trend',{generate:true})).toMatchObject({pending:false,data:null});expect(generateDraft).toHaveBeenCalledOnce();
+    expect((await withTenant(self,tx=>tx.select().from(schema.assessmentSummary))).filter(r=>r.kind==='record_trend')).toEqual([]);
+    await perf.releaseOnehrResult(a,prior,'performance',true);expect(await perf.getAssessmentRecordInsight(self,reviewId,'trend',{generate:true})).toMatchObject({source:'ai'});
+  });
   it('separates current manager details from released history and refuses another person’s personal record',async()=>{
     await complete();
     let record=await perf.getAssessmentPersonalRecord(self,reviewId);

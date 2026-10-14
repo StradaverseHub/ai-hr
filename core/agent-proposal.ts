@@ -106,6 +106,7 @@ export type ProposalTypeId =
   | 'competency_insight'
   | 'potential_insight'
   | 'written_remarks'
+  | 'personal_record_insight'
   | 'development_plan_insight';
 
 /** The adjudication contract (§2.4). Every proposal type supplies one; the reason is stored on failure. */

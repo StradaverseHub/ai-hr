@@ -43,6 +43,9 @@ export async function assessmentIdpFitAction(reviewId:string,generate=false){
  try{return await perf.getAssessmentIdpFit(s,z.uuid().parse(reviewId),{generate:z.boolean().parse(generate)});}
  catch(error){return {error:publicErrorMessage(error)};}
 }
+export async function assessmentRecordInsightAction(reviewId:string,kind:'present'|'cycle'|'trend',generate=false){
+ const s=await getSession();try{return await perf.getAssessmentRecordInsight(s,z.uuid().parse(reviewId),z.enum(['present','cycle','trend']).parse(kind),{generate:z.boolean().parse(generate)});}catch(error){return {error:publicErrorMessage(error)};}
+}
 export async function assessmentWrittenRemarksAction(reviewId:string,sessionId:string,axis:'pm'|'pot',generate=false){
  const s=await getSession();try{return await perf.getAssessmentWrittenRemarks(s,z.uuid().parse(reviewId),z.uuid().parse(sessionId),z.enum(['pm','pot']).parse(axis),{generate:z.boolean().parse(generate)});}catch(error){return {error:publicErrorMessage(error)};}
 }

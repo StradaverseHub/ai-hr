@@ -1730,27 +1730,37 @@ CREATE FUNCTION app.assessment_written_source(wanted_review uuid,wanted_session 
 $$;
 REVOKE ALL ON FUNCTION app.assessment_written_source(uuid,uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_written_source(uuid,uuid,text) TO ai_hr_app;
-CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text,wanted_context uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT CASE WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
+CREATE FUNCTION app.assessment_record_visibility(wanted_review uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT md5(coalesce(jsonb_agg(jsonb_build_object('review',r.review_id,'status',c.status,'card',app.onehr_result_card(r.review_id)) ORDER BY r.review_id)::text,''))
+ FROM performance_onehr_review anchor JOIN employment e ON e.id=anchor.employment_id AND e.tenant_id=anchor.tenant_id
+ JOIN performance_onehr_review r ON r.employment_id=anchor.employment_id AND r.tenant_id=anchor.tenant_id
+ JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id
+ WHERE anchor.review_id=wanted_review AND anchor.tenant_id=app.current_tenant_id() AND app.is_self_person(e.person_id) AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=anchor.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+ HAVING count(*)>0
+$$;
+REVOKE ALL ON FUNCTION app.assessment_record_visibility(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_record_visibility(uuid) TO ai_hr_app;
+CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text,wanted_context uuid,wanted_visibility text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN wanted_kind IN ('record_present','record_cycle','record_trend') THEN wanted_context=wanted_review AND wanted_visibility=app.assessment_record_visibility(wanted_review) WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
  WHEN wanted_kind='pot' THEN coalesce((app.assessment_potential_source(wanted_review,NULL)->>'valid')::boolean,false)
  WHEN wanted_kind='idp' THEN coalesce((s.value->>'mine')::boolean,false) AND coalesce(s.value->>'status','') IN ('shared','closed') ELSE false END FROM (SELECT CASE WHEN wanted_kind='idp' THEN app.assessment_idp_source(wanted_review) END AS value) s
 $$;
-REVOKE ALL ON FUNCTION app.assessment_summary_access(uuid,text,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text,uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.assessment_summary_access(uuid,text,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text,uuid,text) TO ai_hr_app;
 
 CREATE TABLE performance_assessment_summary (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
- actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,kind text NOT NULL CHECK(kind IN ('tc','idp','pot','pm_remarks','pot_remarks')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,visibility_key text,kind text NOT NULL CHECK(kind IN ('tc','idp','pot','pm_remarks','pot_remarks','record_present','record_cycle','record_trend')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
  source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
  updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind,context_id)
 );
 ALTER TABLE performance_assessment_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE performance_assessment_summary FORCE ROW LEVEL SECURITY;
 GRANT SELECT,INSERT,UPDATE ON performance_assessment_summary TO ai_hr_app;
-CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind,context_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind,context_id));
+CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind,context_id,visibility_key)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind,context_id,visibility_key));
 CREATE FUNCTION app.assessment_summary_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.assessment_summary_access(NEW.review_id,NEW.kind,NEW.context_id) THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.assessment_summary_access(NEW.review_id,NEW.kind,NEW.context_id,NEW.visibility_key) THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
  IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.kind IS DISTINCT FROM OLD.kind OR NEW.context_id IS DISTINCT FROM OLD.context_id) THEN RAISE EXCEPTION 'Assessment summary identity is immutable'; END IF;
  NEW.updated_at:=now();RETURN NEW;
 END $$;
@@ -1778,3 +1788,14 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_competency_sections_validate() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER assessment_competency_sections_guard BEFORE INSERT OR UPDATE OF competency_self_sections,competency_manager_sections ON performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.assessment_competency_sections_validate();
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_record_summary_store(wanted_review uuid,wanted_kind text,wanted_visibility text,wanted_fingerprint text,wanted_source text,wanted_data jsonb) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF wanted_kind NOT IN ('record_present','record_cycle','record_trend') OR NOT coalesce(app.assessment_summary_access(wanted_review,wanted_kind,wanted_review,wanted_visibility),false) THEN RAISE EXCEPTION 'This personal record is not assigned to you'; END IF;
+ INSERT INTO performance_assessment_summary(tenant_id,review_id,context_id,actor_user_id,kind,visibility_key,fingerprint,source,data)
+ VALUES(app.current_tenant_id(),wanted_review,wanted_review,app.current_user_id(),wanted_kind,wanted_visibility,wanted_fingerprint,wanted_source,wanted_data)
+ ON CONFLICT(review_id,actor_user_id,kind,context_id) DO UPDATE SET visibility_key=EXCLUDED.visibility_key,fingerprint=EXCLUDED.fingerprint,source=EXCLUDED.source,data=EXCLUDED.data,updated_at=now();
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_record_summary_store(uuid,text,text,text,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_record_summary_store(uuid,text,text,text,text,jsonb) TO ai_hr_app;

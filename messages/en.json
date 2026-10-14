@@ -18367,6 +18367,11 @@
       "help": "Read the submitted remarks and a summary of where reviewers agree or differ.",
       "read": "Read remarks",
       "full": "View full written remarks"
+    },
+    "recordInsight": {
+      "present": "This cycle at a glance",
+      "cycle": "Your cycle snapshot",
+      "trend": "Your review trend"
     }
   },
   "allowanceV2": {

@@ -18367,6 +18367,11 @@
       "help": "Baca ulasan yang dihantar dan ringkasan persamaan atau perbezaan pandangan penilai.",
       "read": "Baca ulasan",
       "full": "Lihat ulasan bertulis penuh"
+    },
+    "recordInsight": {
+      "present": "Kitaran ini sepintas lalu",
+      "cycle": "Ringkasan kitaran anda",
+      "trend": "Trend penilaian anda"
     }
   },
   "allowanceV2": {

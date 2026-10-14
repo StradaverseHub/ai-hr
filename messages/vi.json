@@ -18367,6 +18367,11 @@
       "help": "Đọc các nhận xét đã gửi và bản tóm tắt những điểm người đánh giá đồng ý hoặc khác biệt.",
       "read": "Đọc nhận xét",
       "full": "Xem toàn bộ nhận xét bằng văn bản"
+    },
+    "recordInsight": {
+      "present": "Tổng quan chu kỳ này",
+      "cycle": "Tóm tắt chu kỳ của bạn",
+      "trend": "Xu hướng đánh giá của bạn"
     }
   },
   "allowanceV2": {
