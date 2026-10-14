@@ -18341,6 +18341,16 @@
       "help": "Berdasarkan jawapan kompetensi sahaja. Semakan anda dikemas kini apabila anda mengubah jawapan.",
       "employeeReason": "Penjelasan pekerja",
       "employeeReflection": "Refleksi pekerja"
+    },
+    "idpFit": {
+      "title": "Kesesuaian pelan pembangunan",
+      "help": "Bandingkan pelan yang dikongsi dengan hasil semasa, keperluan kompetensi dan hala tuju kerjaya.",
+      "none": "Belum ada pelan pembangunan yang dikongsi.",
+      "verdict": {
+        "fits": "Sesuai",
+        "partly_fits": "Sebahagiannya sesuai",
+        "not_yet": "Belum sesuai"
+      }
     }
   },
   "allowanceV2": {

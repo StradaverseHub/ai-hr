@@ -18341,6 +18341,16 @@
       "help": "Chỉ dựa trên câu trả lời về năng lực. Mức đánh giá cập nhật khi bạn thay đổi câu trả lời.",
       "employeeReason": "Giải thích của nhân viên",
       "employeeReflection": "Tự nhận xét của nhân viên"
+    },
+    "idpFit": {
+      "title": "Mức độ phù hợp của kế hoạch phát triển",
+      "help": "So sánh kế hoạch đã chia sẻ với kết quả hiện tại, nhu cầu năng lực và định hướng nghề nghiệp.",
+      "none": "Chưa có kế hoạch phát triển được chia sẻ.",
+      "verdict": {
+        "fits": "Phù hợp tốt",
+        "partly_fits": "Phù hợp một phần",
+        "not_yet": "Chưa phù hợp"
+      }
     }
   },
   "allowanceV2": {

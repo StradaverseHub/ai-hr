@@ -18341,6 +18341,16 @@
       "help": "仅根据能力评估答案计算。更改答案时，您的评审等级会同步更新。",
       "employeeReason": "员工说明",
       "employeeReflection": "员工总结"
+    },
+    "idpFit": {
+      "title": "发展计划匹配度",
+      "help": "将已分享的计划与当前业绩、能力需求和职业方向进行比较。",
+      "none": "尚未分享发展计划。",
+      "verdict": {
+        "fits": "匹配良好",
+        "partly_fits": "部分匹配",
+        "not_yet": "尚未匹配"
+      }
     }
   },
   "allowanceV2": {

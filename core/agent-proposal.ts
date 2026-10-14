@@ -103,7 +103,8 @@ export type ProposalTypeId =
   /** Bounded image transcription status only; neither image pixels nor transcribed words enter telemetry. */
   | 'performance_file_transcription'
   | 'performance_insight'
-  | 'competency_insight';
+  | 'competency_insight'
+  | 'development_plan_insight';
 
 /** The adjudication contract (§2.4). Every proposal type supplies one; the reason is stored on failure. */
 export type Adjudication = { ok: true } | { ok: false; reason: string };

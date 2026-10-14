@@ -1632,19 +1632,56 @@ CREATE FUNCTION app.assessment_competency_source(wanted_review uuid) RETURNS jso
 $$;
 REVOKE ALL ON FUNCTION app.assessment_competency_source(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_competency_source(uuid) TO ai_hr_app;
+-- IDP fit reads shared plans only. The remark owner sees only their own drafts; another approver receives saved facts.
+CREATE FUNCTION app.assessment_idp_source(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH scope AS (
+ SELECT r.*,c.policy,pr.reviewer_employment_id,p.full_name,
+  app.assessment_plan_remark_writer(r.review_id) AS mine,app.onehr_manager(r.review_id) AS manager,
+  extract(year from rc.period_end)::integer+CASE WHEN c.policy->>'kind'='year_end' THEN 1 ELSE 0 END AS plan_year
+ FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+ JOIN review_cycle rc ON rc.id=r.cycle_id AND rc.tenant_id=r.tenant_id JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id
+ JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
+ AND (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)) AND app.assessment_review_participates(r.review_id) AND coalesce((c.policy->'modules'->>'idp')::boolean,false))
+ SELECT jsonb_build_object('name',r.full_name,'status',coalesce(plan.status,'none'),'mine',r.mine,'companyId',r.company_id,
+  'goals',coalesce((SELECT jsonb_agg(g-ARRAY['managerComment','editedByName','editedAt'] ORDER BY ord) FROM jsonb_array_elements(plan.goals) WITH ORDINALITY a(g,ord)),'[]'::jsonb),
+  'career',CASE WHEN plan.id IS NOT NULL THEN coalesce(profile.career,plan.career) ELSE NULL END,
+  'bands',jsonb_build_object('aBands',r.policy->'aBands','bBands',r.policy->'bBands','lowMaxPct',r.policy->'lowMaxPct','midMaxPct',r.policy->'midMaxPct'),
+  'hasFramework',jsonb_array_length(r.statements)>0,'hasKpis',coalesce((r.policy->'modules'->>'pm')::boolean,false) AND jsonb_array_length(r.kpis)>0,
+  'kpis',CASE WHEN plan.id IS NOT NULL AND r.results_submitted_at IS NOT NULL AND coalesce((r.policy->'modules'->>'pm')::boolean,false) THEN coalesce((SELECT jsonb_agg(k ORDER BY ord) FROM jsonb_array_elements(r.kpis) WITH ORDINALITY a(k,ord)
+   WHERE coalesce((k->>'hrOwned')::boolean,false) OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(k->'approvalChain','[]'::jsonb))>0 THEN k->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',k->>'moderatorEmploymentId')) END) step
+    WHERE CASE WHEN r.mine THEN (step->>'employmentId')::uuid IN (SELECT own.id FROM employment own WHERE own.tenant_id=app.current_tenant_id() AND app.is_self_person(own.person_id) AND own.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (own.terminated_on IS NULL OR own.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) ELSE step->>'employmentId'=r.reviewer_employment_id::text END)),'[]'::jsonb) ELSE '[]'::jsonb END,
+  'editableKpiIds',CASE WHEN r.mine AND plan.id IS NOT NULL THEN coalesce((SELECT jsonb_agg(k->>'id') FROM jsonb_array_elements(r.kpis) k WHERE NOT coalesce((k->>'locked')::boolean,false) AND NOT coalesce((k->>'hrOwned')::boolean,false) AND
+    CASE WHEN jsonb_array_length(coalesce(k->'approvalChain','[]'::jsonb))>0 THEN (SELECT (step->>'employmentId')::uuid FROM jsonb_array_elements(k->'approvalChain') WITH ORDINALITY a(step,ord) WHERE step->>'at' IS NULL ORDER BY ord LIMIT 1) ELSE (k->>'moderatorEmploymentId')::uuid END IN (SELECT own.id FROM employment own WHERE own.tenant_id=app.current_tenant_id() AND app.is_self_person(own.person_id) AND own.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (own.terminated_on IS NULL OR own.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))),'[]'::jsonb) ELSE '[]'::jsonb END,
+  'competencyStatus',r.competency_status,
+  'competencies',CASE WHEN plan.id IS NOT NULL AND coalesce((r.policy->'modules'->>'tm')::boolean,false) AND (r.competency_status='reviewed' OR r.mine AND r.manager AND r.competency_status='submitted') THEN r.competencies ELSE '[]'::jsonb END,
+  'competencyRemark',CASE WHEN plan.id IS NOT NULL AND coalesce((r.policy->'modules'->>'tm')::boolean,false) AND (r.competency_status='reviewed' OR r.mine AND r.manager AND r.competency_status='submitted') THEN r.competency_self_remark ELSE '' END,
+  'drafts',CASE WHEN plan.id IS NOT NULL AND r.mine THEN coalesce((SELECT jsonb_agg(d.payload ORDER BY d.kind) FROM performance_assessment_draft d WHERE d.review_id=r.review_id AND d.context_id=r.review_id AND d.tenant_id=r.tenant_id AND d.actor_user_id=app.current_user_id() AND (d.kind='moderation' OR d.kind='competency_manager' AND r.manager AND r.competency_status='submitted') AND app.assessment_private_access(r.review_id,d.kind,d.context_id)),'[]'::jsonb) ELSE '[]'::jsonb END)
+ FROM scope r LEFT JOIN performance_onehr_plan plan ON plan.tenant_id=r.tenant_id AND plan.employment_id=r.employment_id AND plan.plan_year=r.plan_year AND plan.status IN ('shared','closed')
+ LEFT JOIN performance_assessment_career_profile profile ON profile.employment_id=r.employment_id AND profile.tenant_id=r.tenant_id
+$$;
+REVOKE ALL ON FUNCTION app.assessment_idp_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_idp_source(uuid) TO ai_hr_app;
+CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
+ WHEN wanted_kind='idp' THEN coalesce((s.value->>'mine')::boolean,false) AND coalesce(s.value->>'status','') IN ('shared','closed') ELSE false END FROM (SELECT CASE WHEN wanted_kind='idp' THEN app.assessment_idp_source(wanted_review) END AS value) s
+$$;
+REVOKE ALL ON FUNCTION app.assessment_summary_access(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text) TO ai_hr_app;
+
 CREATE TABLE performance_assessment_summary (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
- actor_user_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind='tc'),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind IN ('tc','idp')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
  source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
  updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind)
 );
 ALTER TABLE performance_assessment_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE performance_assessment_summary FORCE ROW LEVEL SECURITY;
 GRANT SELECT,INSERT,UPDATE ON performance_assessment_summary TO ai_hr_app;
-CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND kind='tc' AND (app.assessment_competency_source(review_id)->>'status') IN ('submitted','reviewed')) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND kind='tc' AND (app.assessment_competency_source(review_id)->>'status') IN ('submitted','reviewed'));
+CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind));
 CREATE FUNCTION app.assessment_summary_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NEW.kind<>'tc' OR coalesce(app.assessment_competency_source(NEW.review_id)->>'status','') NOT IN ('submitted','reviewed') THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.assessment_summary_access(NEW.review_id,NEW.kind) THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
  IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.kind IS DISTINCT FROM OLD.kind) THEN RAISE EXCEPTION 'Assessment summary identity is immutable'; END IF;
  NEW.updated_at:=now();RETURN NEW;
 END $$;

@@ -8,7 +8,7 @@ import {recordProposal} from '../../../core/agent-proposal';
 import {generateDraft,redactPII,type ResolvedAiConfig} from '../../../lib/ai';
 import {assessmentAiConfigTx} from './ai-settings';
 import {competencySchema} from './model';
-import {adjudicateCompetencyInsight,competencyInsightFacts,plainCompetencyInsight} from './competency-insight-model';
+import {adjudicateCompetencyInsight,competencyInsightFacts,plainCompetencyInsight,type CompetencyInsight} from './competency-insight-model';
 import prompts from './competency-insight-source.json';
 const sourceSchema=z.object({name:z.string(),status:z.string(),remark:z.string(),competencies:z.array(competencySchema.pick({text:true,skillTitle:true,principle:true,future:true,self:true,selfRemark:true}))});
 async function sourceTx(tx:Tx,reviewId:string){
@@ -28,7 +28,7 @@ export async function getAssessmentCompetencyInsight(ctx:SessionContext,reviewId
  const {source,cfg,cached}=initial,status=source.status;
  if(!['submitted','reviewed'].includes(status))return {status,pending:false,source:null,data:null};
  const fp=fingerprint(source,cfg),retry=!!cached&&cached.source==='plain'&&!!cfg&&Date.now()-cached.updatedAt.getTime()>=600000;
- if(cached?.fingerprint===fp&&!retry)return {status,pending:false,source:cached.source as 'plain'|'ai',data:cached.data};
+ if(cached?.fingerprint===fp&&!retry)return {status,pending:false,source:cached.source as 'plain'|'ai',data:cached.data as CompetencyInsight};
  if(!generate)return {status,pending:true,source:null,data:null};
  const first=redactPII(source.name.trim().split(/\s+/)[0]||'They');
  const rows=source.competencies.map(c=>({...c,text:redactPII(c.text),skillTitle:c.skillTitle?redactPII(c.skillTitle):undefined,principle:redactPII(c.principle),selfRemark:redactPII(c.selfRemark??'')}));

@@ -18341,6 +18341,16 @@
       "help": "Based on competency answers only. Your review updates as you change answers.",
       "employeeReason": "Employee explanation",
       "employeeReflection": "Employee reflection"
+    },
+    "idpFit": {
+      "title": "Development plan fit",
+      "help": "Compare the shared plan with current results, competency needs and career direction.",
+      "none": "No development plan has been shared yet.",
+      "verdict": {
+        "fits": "Fits well",
+        "partly_fits": "Partly fits",
+        "not_yet": "Not yet a fit"
+      }
     }
   },
   "allowanceV2": {

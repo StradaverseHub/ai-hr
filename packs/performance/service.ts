@@ -47,3 +47,5 @@ export { getAssessmentReminders,saveAssessmentReminderRules,queueAssessmentRemin
 export { updateAssessmentFramework } from './onehr/service';
 
 export {getAssessmentCompetencyInsight} from './onehr/competency-insight-service';
+
+export {getAssessmentIdpFit} from './onehr/idp-fit-service';

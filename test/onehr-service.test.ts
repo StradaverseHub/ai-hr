@@ -1890,4 +1890,37 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect((await view()).managerPerformance).toBe('AE');
   });
 
+  it('grounds IDP fit in shared plans and the owners private competency and KPI drafts only',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Service delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Completed delivery.'}],'Completed delivery.');
+    const input={career:{aspiration:'Become a regional manager',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Current skill',dueOn:'',onJob:'Practise current skill in service work',fromOthers:'',formalLearning:'',status:'not_started'}]};
+    await perf.saveOnehrPlan(self,reviewId,null,input);
+    expect(await perf.getAssessmentIdpFit(mgr,reviewId,{generate:true})).toMatchObject({status:'none',data:null});expect(generateDraft).not.toHaveBeenCalled();
+    await perf.saveOnehrPlan(self,reviewId,(await view(self)).plans[0].revision,{...input,careerRevision:(await view(self)).careerProfile!.revision},true);
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'yes',remark:'Observed actual delivery every week.'},'skill-2':{answer:'yes',remark:''}},false,'Delivered the service work.');
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers:{'skill-1':{answer:'no',remark:'PRIVATE_ITEM_CANARY'},'skill-2':{answer:'no',remark:''}},remark:'PRIVATE_REFLECTION_CANARY'});
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:1,note:'PRIVATE_MODERATION_CANARY'}],remark:'PRIVATE_PM_REMARK_CANARY'});
+    expect(await perf.getAssessmentIdpFit(mgr,reviewId)).toMatchObject({pending:true,data:null});
+    const result=await perf.getAssessmentIdpFit(mgr,reviewId,{generate:true});expect(result).toMatchObject({source:'plain',data:{verdict:'not_yet'}});expect(result.data?.scores).toContain('Below Expectation');expect(result.data?.scores).toContain('your review Low');
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_');expect((await perf.getAssessmentIdpFit(mgr,reviewId)).data).toEqual(result.data);expect((await view()).competencyStatus).toBe('submitted');expect((await view()).kpis[0].locked).toBe(false);
+    for(const other of [self,peers[1].ctx,{...mgr,tenantId:randomUUID()}])await expect(perf.getAssessmentIdpFit(other,reviewId,{generate:true})).rejects.toThrow();
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);
+  });
+
+  it('keeps another IDP approver on saved facts and refuses stale owner access during generation',async()=>{
+    const matrix=peers[0],id=randomUUID(),second=randomUUID();
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[id,second].map((key,i)=>({id:key,title:i?'Matrix delivery':'Service delivery',description:'',weightBp:5000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId})));
+    await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,second,matrix.employmentId);await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,(await view(self)).kpis,true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:''},{id:second,actual:2,note:''}],'Completed work.');
+    await perf.saveOnehrPlan(self,reviewId,null,{career:{aspiration:'Become a regional manager',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Current skill',dueOn:'',onJob:'Practise the current skill',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:1,note:'PRIVATE_DRAFT_CANARY'}],remark:'PRIVATE_REMARK_CANARY'});
+    const own=await perf.getAssessmentIdpFit(mgr,reviewId,{generate:true}),other=await perf.getAssessmentIdpFit(matrix.ctx,reviewId,{generate:true});
+    expect(own.data?.verdict).toBe('not_yet');expect(other).toMatchObject({canGenerate:false,source:'plain',pending:false});expect(other.data?.scores).toContain("line manager's moderation Meet Expectation");expect(JSON.stringify(other)).not.toContain('PRIVATE_');expect(other.data?.scores).not.toContain('Competency');
+    expect(await withTenant(matrix.ctx,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);expect(generateDraft).not.toHaveBeenCalled();
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'idp',false);return '{}';});
+    await expect(perf.getAssessmentIdpFit(mgr,reviewId,{generate:true})).rejects.toThrow(/facts or access changed/);
+    expect((await owner.db.select().from(schema.assessmentSummary)).filter(r=>r.kind==='idp')).toHaveLength(1);
+  });
+
 });
