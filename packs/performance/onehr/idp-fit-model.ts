@@ -39,3 +39,8 @@ export function adjudicateIdpFit(first:string,facts:IdpFitFacts,caseText:string,
  if(rank.indexOf(verdict)<0||rank.indexOf(verdict)>rank.indexOf(base.verdict)||bad(paragraph,120)||why&&bad(why,70)||steps.some(s=>bad(s,28)))return null;
  return {...base,paragraph,verdict:verdict as IdpFitInsight['verdict'],verdict_why:why||base.verdict_why,discuss:[...new Set([...base.discuss,...steps])].slice(0,3)};
 }
+
+/** The same fit read from the BG seat: instructions remain addressed to the line manager. */
+export function talentIdpFit(data:IdpFitInsight):IdpFitInsight {
+ return {...data,scores:data.scores.replace(/\byour (moderation|review)\b/g,"their line manager's $1"),verdict_why:data.verdict_why.replace(/\byour moderation\b/g,"their line manager's moderation"),discuss:data.discuss.map(step=>step.replace(/^Agree the support you'll give and check progress/,"Their line manager agrees the support they'll give and checks progress").replace(/^Talk through where your view and (.+?)'s differ\./,"Their line manager talks through where their view and $1's differ.")).filter(step=>! /\byou(?:r|'ll|'re|'ve)?\b/i.test(step))};
+}

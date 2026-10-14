@@ -18376,6 +18376,26 @@
     "talentInsight": {
       "title": "Thông tin tổng hợp về nhân tài",
       "decision": "Trước khi quyết định:"
+    },
+    "talentPerson": {
+      "summary": "Tóm tắt",
+      "tabs": "Đánh giá cá nhân",
+      "kpis": "{n} KPI · {above} vượt mục tiêu · {on} đạt mục tiêu · {below} dưới mục tiêu",
+      "noFeedback": "Chưa đủ phản hồi 360 để nhận định.",
+      "even": "Tương tự giữa các nguyên tắc lãnh đạo: {label}",
+      "strengths": "Điểm mạnh nhất",
+      "developing": "Đang phát triển",
+      "competencies": "Năng lực",
+      "demonstrated": "Đã thể hiện",
+      "read": "Đọc {section}",
+      "remark": "Nhận xét tổng thể của bạn · tùy chọn",
+      "remarkHelp": "Tự lưu khi nhập. Người đánh giá Talent Box BG này có thể xem. Tối đa 220 từ.",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu nhận xét.",
+      "failed": "Không thể lưu nhận xét. Hãy thử lại trước khi rời trang.",
+      "noRemark": "Chưa có nhận xét. Đánh giá này đã khóa.",
+      "longerTerm": "Dài hạn",
+      "noPlanRemark": "Chưa có nhận xét về kế hoạch của họ."
     }
   },
   "allowanceV2": {

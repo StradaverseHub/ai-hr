@@ -21,3 +21,9 @@ it('keeps plan context in user-facing mobility words and excludes manager commen
  const value=idpFitSourceSchema.parse({name:'Nadia',status:'shared',mine:true,companyId:'00000000-0000-4000-8000-000000000001',goals:[{id:'00000000-0000-4000-8000-000000000002',area:'Service recovery',dueOn:'',onJob:'Practise service recovery',fromOthers:'',formalLearning:'',status:'not_started',managerComment:'PRIVATE_GOAL_COMMENT'}],career:{aspiration:'Grow service skills',mobility:'company_in_group',mobilityNote:'',targetProfileId:null},bands:{aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:75},hasFramework:true,hasKpis:false,kpis:[],editableKpiIds:[],competencyStatus:'pending',competencies:[],competencyRemark:'',drafts:[]});
  const result=idpFitContext(value);expect(result.text).toContain('Open to another company in my BG');expect(result.text).not.toContain('company_in_group');expect(result.text).not.toContain('PRIVATE_GOAL_COMMENT');
 });
+
+it('matches source BG wording without telling that reviewer to act as the line manager',async()=>{
+ const {talentIdpFit}=await import('../packs/performance/onehr/idp-fit-model');const {default:cases}=await import('./fixtures/onehr/talent-idp-steps-golden.json');
+ const base=plainIdpFit('Nadia',golden[0].facts as IdpFitFacts);expect(cases).toHaveLength(4);
+ for(const example of cases){const result=talentIdpFit({...base,discuss:example.steps,scores:'KPIs: your moderation; Competency: your review',verdict_why:'Ahead of your moderation.'});expect(result.discuss).toEqual(example.expected);expect(result.scores).toBe("KPIs: their line manager's moderation; Competency: their line manager's review");expect(result.verdict_why).toBe("Ahead of their line manager's moderation.");expect(result.verdict).toBe(base.verdict);}
+});

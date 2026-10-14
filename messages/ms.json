@@ -18376,6 +18376,26 @@
     "talentInsight": {
       "title": "Cerapan bakat",
       "decision": "Sebelum membuat keputusan:"
+    },
+    "talentPerson": {
+      "summary": "Ringkasan",
+      "tabs": "Semakan individu",
+      "kpis": "{n} KPI · {above} melebihi sasaran · {on} menepati sasaran · {below} di bawah sasaran",
+      "noFeedback": "Maklum balas 360 belum mencukupi.",
+      "even": "Serupa merentas prinsip kepimpinan: {label}",
+      "strengths": "Paling kukuh",
+      "developing": "Sedang dibangunkan",
+      "competencies": "Kompetensi",
+      "demonstrated": "Ditunjukkan",
+      "read": "Baca {section}",
+      "remark": "Ulasan keseluruhan anda · pilihan",
+      "remarkHelp": "Disimpan semasa menaip. Terlihat kepada penyemak Talent Box BG ini. Maksimum 220 perkataan.",
+      "saving": "Menyimpan…",
+      "saved": "Ulasan disimpan.",
+      "failed": "Ulasan tidak dapat disimpan. Cuba lagi sebelum keluar.",
+      "noRemark": "Tiada ulasan. Semakan ini dikunci.",
+      "longerTerm": "Jangka panjang",
+      "noPlanRemark": "Belum ada ulasan tentang pelan mereka."
     }
   },
   "allowanceV2": {

@@ -12,7 +12,7 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>create
 vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
-vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
+vi.mock('../app/performance/onehr-actions',()=>({assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
@@ -69,7 +69,7 @@ describe('OneHR native workflow controls',()=>{
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
   expect(screen.queryByRole('button',{name:en.onehr.lockCalibration})).toBeNull();
   expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
-  expect(screen.getByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
+  expect(await screen.findByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Summary'})).toBeTruthy();expect(screen.getByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
  });
  it('passes the current development allowance to the actual editable-plan suggestion control',async()=>{
   const v={policy:defaultPolicy(framework),drafts:[],careerRoutes:[],moderators:[],choices:[],kpis:[],competencies:[],peers:[],attachments:[],evidence:[],attachmentLinks:[],kpiLibrary:[],reviewId:'review',revision:1,cycle:{id:'cycle',name:'Annual',status:'open'},admin:false,self:true,manager:false,moderator:false,planReviewer:false,planRemarkWriter:false,finalized:false,canApproveSettingIds:[],canModerateIds:[],careerProfile:null,planYear:Number(todayInKualaLumpur().slice(0,4))+1,plans:[],aiEnabled:true,aiFeatures:{pm:true,tc:true,idp:true,review:true,calib:true,"360":true},developmentQuota:{remaining:0,limit:5}};
@@ -127,7 +127,7 @@ describe('OneHR native workflow controls',()=>{
   expect(screen.getByText('Delivered the release.')).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceResponse)).toBeTruthy();expect(screen.getByLabelText(en.onehr.correctsEvidence)).toBeTruthy();expect(screen.getByLabelText(en.onehr.evidenceFile)).toBeTruthy();
   expect(document.querySelector('input[name="overallRating"]')).toBeNull();
   cleanup();
-  const skillView={...v,policy:{...policy,modules:{...policy.modules,tm:true}},competencies:[{id:'analysis-3',principle:'Analysis',text:'Analyse current work',skillTitle:'Analysis',skillLevel:3,future:false,self:null,manager:null,selfRemark:'',managerRemark:''},{id:'analysis-4',principle:'Analysis',text:'Lead an analysis',skillTitle:'Analysis',skillLevel:4,future:true,self:null,manager:null,selfRemark:'',managerRemark:''}]};
+  const skillView={...v,competencySelfSections:{},competencyManagerSections:{},policy:{...policy,modules:{...policy.modules,tm:true}},competencies:[{id:'analysis-3',principle:'Analysis',text:'Analyse current work',skillTitle:'Analysis',skillLevel:3,future:false,self:null,manager:null,selfRemark:'',managerRemark:''},{id:'analysis-4',principle:'Analysis',text:'Lead an analysis',skillTitle:'Analysis',skillLevel:4,future:true,self:null,manager:null,selfRemark:'',managerRemark:''}]};
   show(await OnehrReviewView({v:skillView as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'tm'}));
   expect(screen.getByRole('group',{name:'Analysis Level 3'})).toBeTruthy();expect(screen.getByRole('group',{name:'Analysis Level 4'})).toBeTruthy();
   expect(screen.getByText(en.onehr.competencyScope.current)).toBeTruthy();expect(screen.getByText(en.onehr.competencyScope.future)).toBeTruthy();

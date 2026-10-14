@@ -38,9 +38,9 @@ export async function applyDevelopmentSuggestionsAction(f:FormData,selected:impo
 
 const destination=(f:FormData,fallback:string)=>assessmentReturnPath(f.get('returnTo'),fallback);
 const withError=(url:string,error:unknown)=>`${url}${url.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(error))}`;
-export async function assessmentIdpFitAction(reviewId:string,generate=false){
+export async function assessmentIdpFitAction(reviewId:string,generate=false,sessionId?:string){
  const s=await getSession();
- try{return await perf.getAssessmentIdpFit(s,z.uuid().parse(reviewId),{generate:z.boolean().parse(generate)});}
+ try{return await perf.getAssessmentIdpFit(s,z.uuid().parse(reviewId),{generate:z.boolean().parse(generate),sessionId:sessionId?z.uuid().parse(sessionId):undefined});}
  catch(error){return {error:publicErrorMessage(error)};}
 }
 export async function assessmentRecordInsightAction(reviewId:string,kind:'present'|'cycle'|'trend',generate=false){
@@ -280,4 +280,10 @@ export async function saveAssessmentKpiSettingAction(f:FormData){
 
 export async function assessmentTalentInsightAction(reviewId:string,sessionId:string,generate=false){
  const s=await getSession();try{return await perf.getAssessmentTalentInsight(s,z.uuid().parse(reviewId),z.uuid().parse(sessionId),{generate:z.boolean().parse(generate)});}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function assessmentTalentPersonAction(reviewId:string,sessionId:string){
+ const s=await getSession();try{return await perf.getAssessmentTalentPerson(s,z.uuid().parse(reviewId),z.uuid().parse(sessionId));}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function saveAssessmentTalentRemarkAction(f:FormData){
+ const s=await getSession();try{return {revision:await perf.saveAssessmentTalentRemark(s,z.uuid().parse(str(f,'sessionId')),z.uuid().parse(str(f,'reviewId')),num(f,'draftRevision'),str(f,'remark'))};}catch(error){return {error:publicErrorMessage(error)};}
 }

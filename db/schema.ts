@@ -10094,6 +10094,11 @@ export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entr
   pip:boolean('pip').notNull().default(false),promotion:boolean('promotion').notNull().default(false),specialReward:boolean('special_reward').notNull().default(false),
   pipReason:text('pip_reason').notNull().default(''),promotionReason:text('promotion_reason').notNull().default(''),specialRewardReason:text('special_reward_reason').notNull().default(''),
 },t=>[uniqueIndex('performance_onehr_calibration_entry_uq').on(t.sessionId,t.reviewId)]);
+// One shared optional BG remark per person/cohort; never part of employee or higher-tier projections.
+export const assessmentTalentRemark = pgTable('performance_assessment_talent_remark', {
+ tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+ remark:text('remark').notNull().default(''),revision:integer('revision').notNull().default(1),updatedBy:uuid('updated_by').notNull().references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_talent_remark_uq').on(t.sessionId,t.reviewId)]);
 export const onehrPlan = pgTable('performance_onehr_plan', {
   id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),
   planYear:integer('plan_year').notNull(),status:text('status').notNull().default('draft'),career:jsonb('career'),goals:jsonb('goals').notNull().default([]),

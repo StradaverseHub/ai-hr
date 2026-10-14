@@ -18376,6 +18376,26 @@
     "talentInsight": {
       "title": "人才洞察",
       "decision": "作出决定前："
+    },
+    "talentPerson": {
+      "summary": "摘要",
+      "tabs": "个人评审",
+      "kpis": "{n} 项 KPI · {above} 项超出目标 · {on} 项达到目标 · {below} 项低于目标",
+      "noFeedback": "360 反馈尚不足以形成解读。",
+      "even": "各领导力原则表现相近：{label}",
+      "strengths": "最强项",
+      "developing": "待发展",
+      "competencies": "能力",
+      "demonstrated": "已展现",
+      "read": "查看{section}",
+      "remark": "您的总体评语 · 选填",
+      "remarkHelp": "输入时自动保存。仅此 BG 人才九宫格的评审者可见。最多 220 词。",
+      "saving": "保存中…",
+      "saved": "评语已保存。",
+      "failed": "评语未能保存。请在离开前重试。",
+      "noRemark": "暂无评语。此评审已锁定。",
+      "longerTerm": "长期",
+      "noPlanRemark": "尚无关于其发展计划的评语。"
     }
   },
   "allowanceV2": {

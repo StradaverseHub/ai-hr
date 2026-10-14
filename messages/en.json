@@ -18376,6 +18376,26 @@
     "talentInsight": {
       "title": "Talent insight",
       "decision": "Before deciding:"
+    },
+    "talentPerson": {
+      "summary": "Summary",
+      "tabs": "Person review",
+      "kpis": "{n, plural, one {# KPI} other {# KPIs}} · {above} above target · {on} on target · {below} below target",
+      "noFeedback": "Not enough 360 feedback yet for a reading.",
+      "even": "Similar across leadership principles: {label}",
+      "strengths": "Strongest",
+      "developing": "Developing",
+      "competencies": "Competencies",
+      "demonstrated": "Demonstrated",
+      "read": "Read {section}",
+      "remark": "Your overall remark · optional",
+      "remarkHelp": "Saved as you type. Visible to reviewers of this BG Talent Box. Maximum 220 words.",
+      "saving": "Saving…",
+      "saved": "Remark saved.",
+      "failed": "The remark could not be saved. Try again before leaving.",
+      "noRemark": "No remark. This review is locked.",
+      "longerTerm": "Longer term",
+      "noPlanRemark": "No remark on their plan yet."
     }
   },
   "allowanceV2": {

@@ -124,6 +124,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_file_text', note: 'derived file text cache; visibility always follows the native attachment' },
     { table: 'performance_assessment_summary', note: 'reviewer-owned summary cache of submitted competency evidence' },
     { table: 'performance_assessment_insight', note: 'reviewer insight cache; live assignment and submitted-fact fingerprint are rechecked' },
+    { table: 'performance_assessment_talent_remark', note: 'shared optional BG overall remark, independently revised and locked with its person/cohort' },
     { table: 'performance_assessment_reviewer_remark', note: 'each approver owns their overall remark; confirmed authorship is retained' },
     { table: 'performance_kpi_library', note: 'scoped KPI definitions and scoring templates; ADR-0103' },
     { table: 'performance_assessment_attachment_link', note: 'KPI attachment provenance using the native attachment store; ADR-0103' },

@@ -24,7 +24,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
-import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark } from '../../../db/schema';
+import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark, assessmentTalentRemark } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { assessmentAiStateTx } from './ai-settings';
 import { isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
@@ -774,6 +774,28 @@ export async function getAssessmentTalentPositionTx(tx:Tx,ctx:SessionContext,rev
  return {performance:r.entry.performance??r.currentPerformance,potential:r.entry.potential??r.currentPotential,
   performanceSource:r.entry.performancePinned?r.entry.performancePinSource:r.entry.performance!=null?'reviewer':r.performanceSource,
   potentialSource:r.entry.potentialPinned?r.entry.potentialPinSource:r.entry.potential!=null?'reviewer':r.potentialSource,movedFrom:r.movement?.moved?r.movement.fromCategory:null};
+}
+/** A shared BG comment is not a rating and cannot alter the calibration revision. */
+export async function getAssessmentTalentRemarkTx(tx:Tx,sessionId:string,reviewId:string){
+ const {session,cycle}=await loadCalibration(tx,sessionId),[allowed]=await tx.execute<{ok:boolean}>(sql`select app.assessment_talent_remark_access(${reviewId}::uuid,${sessionId}::uuid) as ok`);
+ if(!allowed?.ok)throw Error('This person is not in your Talent Box.');
+ const [entry]=await tx.select().from(onehrCalibrationEntry).where(and(eq(onehrCalibrationEntry.sessionId,sessionId),eq(onehrCalibrationEntry.reviewId,reviewId)));
+ const [stored]=await tx.select().from(assessmentTalentRemark).where(and(eq(assessmentTalentRemark.sessionId,sessionId),eq(assessmentTalentRemark.reviewId,reviewId)));
+ const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+ const [review]=await tx.select({closedAt:performanceReview.closedAt}).from(performanceReview).where(eq(performanceReview.id,reviewId));
+ let locked=!!(!entry||frozen||review?.closedAt||!['open','calibration'].includes(cycle.native.status)||entry.lockedAt||session.lockedAt||entry.performanceLockedAt&&entry.potentialLockedAt||session.performanceLockedAt&&session.potentialLockedAt);
+ try{assertWindow(cycle.policy,'tb_bgceo');}catch{locked=true;}
+ return {remark:stored?.remark??'',revision:stored?.revision??0,locked};
+}
+export async function saveAssessmentTalentRemark(ctx:SessionContext,sessionId:string,reviewId:string,expected:number,text:string){
+ uuid.parse(sessionId);uuid.parse(reviewId);const remark=note.parse(text);assertOverallRemark(remark);
+ return withPerformanceTenant(ctx,async tx=>{
+  const prior=await getAssessmentTalentRemarkTx(tx,sessionId,reviewId);revision(prior.revision,expected);if(prior.locked)throw Error('This Talent Box remark is locked.');
+  const next=prior.revision+1;
+  if(prior.revision)await tx.update(assessmentTalentRemark).set({remark,revision:next,updatedBy:ctx.userId!}).where(and(eq(assessmentTalentRemark.sessionId,sessionId),eq(assessmentTalentRemark.reviewId,reviewId)));
+  else await tx.insert(assessmentTalentRemark).values({tenantId:ctx.tenantId,sessionId,reviewId,remark,revision:next,updatedBy:ctx.userId!});
+  await audit(tx,ctx,sessionId,'talent-overall-remark-saved',{reviewId,previous:prior.remark,next:remark});return next;
+ });
 }
 export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,viewAxis:Axis='both') {
   z.enum(['performance','potential','both']).parse(viewAxis);

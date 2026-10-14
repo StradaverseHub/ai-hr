@@ -267,6 +267,54 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,panel.requestId,'restore','Feedback confirmed valid.');expect(await perf.getAssessmentTalentInsight(actor,reviewId,sid)).toMatchObject({pending:true});await perf.getAssessmentTalentInsight(actor,reviewId,sid,{generate:true});
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);
   });
+  it('keeps Talent Box IDP readings on saved facts, then caches only the BG actors own final reading',async()=>{
+    const id=await editableDraftKpi();await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Saved delivery.'}],'Delivered service.');
+    const input={career:{aspiration:'Become a regional manager',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Current skill',dueOn:'',onJob:'Practise current skill',fromOthers:'Observe weekly',formalLearning:'Workshop',status:'not_started'}]};
+    await perf.saveOnehrPlan(self,reviewId,null,input,true);
+    const actor=peers[0].ctx,sid=await perf.createOnehrCalibration(a,cycleId,{name:'BG plan reading',companyId:b.companyId,tier:'bg',reviewerUserIds:[actor.userId!,mgr.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:1,note:'PRIVATE_BG_DRAFT_CANARY'}],remark:'PRIVATE_BG_REMARK_CANARY'});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);
+    const own=await perf.getAssessmentIdpFit(mgr,reviewId,{generate:true});expect(own.data?.verdict).toBe('not_yet');
+    for(const ctx of [actor,mgr]){const bg=await perf.getAssessmentIdpFit(ctx,reviewId,{sessionId:sid,generate:true});expect(bg).toMatchObject({canGenerate:false,source:'plain',pending:false});expect(bg.data?.scores).toContain("line manager's moderation Meet Expectation");expect(JSON.stringify(bg)).not.toContain('PRIVATE_BG');expect(bg.data?.discuss.join(' ')).not.toMatch(/\byou(?:r|'ll|'re|'ve)?\b/i);}
+    expect(generateDraft).not.toHaveBeenCalled();expect((await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary)))).toEqual([]);
+    const frame=await perf.getAssessmentTalentPerson(actor,reviewId,sid);expect(frame.plan?.goals[0]).toMatchObject({area:'Current skill',fromOthers:'Observe weekly',formalLearning:'Workshop'});expect(JSON.stringify(frame)).not.toMatch(/PRIVATE_BG|"yes":|"total":|"drafts":|peerEmploymentId/);
+    await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,2,'Verified service.');
+    expect(await perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid})).toMatchObject({pending:true,canGenerate:true});
+    const bg=await perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid,generate:true});expect(bg).toMatchObject({source:'plain',data:{verdict:'fits'}});expect(bg.data?.discuss).toContain("Their line manager agrees the support they'll give and checks progress mid-year.");
+    expect(await perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid})).toEqual(bg);expect(await perf.getAssessmentIdpFit(mgr,reviewId,{sessionId:sid})).toMatchObject({pending:true});
+    const combined=await perf.getAssessmentTalentInsight(actor,reviewId,sid,{generate:true});expect(combined.data?.insight).toContain('Development plan: fits well.');
+    const cached=await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary));expect(cached.map(c=>c.kind).sort()).toEqual(['talent','talent_idp']);
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);await expect(perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid})).rejects.toThrow(/not assigned/);
+  });
+  it('rechecks Talent Box IDP settings and cohort after generation without accepting optimistic fit',async()=>{
+    const id=await editableDraftKpi();await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivery outcome.'}],'Delivered service.');await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,1,'Verified saved result.');const actor=peers[0].ctx,group={...a,grants:[{role:'hr_admin',companyId:null}]},sid=await perf.createOnehrCalibration(a,cycleId,{name:'BG IDP freshness',companyId:b.companyId,tier:'bg',reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.saveOnehrPlan(self,reviewId,null,{career:{aspiration:'Grow service skills',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Service',dueOn:'',onJob:'Practise service delivery',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({paragraph:'Their plan develops service skills.',verdict:'fits'}));
+    const final=await perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid,generate:true});expect(final).toMatchObject({source:'plain',data:{verdict:'partly_fits'}});expect(final.data?.discuss).toContain("Their line manager talks through where their view and Assessment's differ.");expect(final.data?.scores).toContain("their line manager's moderation");
+    await perf.setAssessmentAiSwitch(group,'idp',false);vi.mocked(generateDraft).mockClear();expect(await perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid,generate:true})).toMatchObject({source:'plain'});expect(generateDraft).not.toHaveBeenCalled();
+    await perf.setAssessmentAiSwitch(group,'idp',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(group,'idp',false);return '{}';});await expect(perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid,generate:true})).rejects.toThrow(/facts or access changed/);
+    await perf.setAssessmentAiSwitch(group,'idp',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));return '{}';});await expect(perf.getAssessmentIdpFit(actor,reviewId,{sessionId:sid,generate:true})).rejects.toThrow(/not assigned/);
+  });
+  it('saves one optional BG overall remark with independent revision, exact cohort privacy and final unit locks',async()=>{
+    await complete();const actor=peers[0].ctx,other=peers[1].ctx,sid=await perf.createOnehrCalibration(a,cycleId,{name:'BG shared remark',companyId:b.companyId,tier:'bg',reviewerUserIds:[actor.userId!,other.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const before=await perf.getOnehrCalibration(actor,sid);expect((await perf.getAssessmentTalentPerson(actor,reviewId,sid)).remark).toEqual({remark:'',revision:0,locked:false});
+    expect(await perf.saveAssessmentTalentRemark(actor,sid,reviewId,0,'Shared BG observation.')).toBe(1);
+    expect((await perf.getAssessmentTalentPerson(other,reviewId,sid)).remark).toMatchObject({remark:'Shared BG observation.',revision:1});
+    await expect(perf.saveAssessmentTalentRemark(other,sid,reviewId,0,'Stale note')).rejects.toThrow(/changed/);
+    await expect(perf.saveAssessmentTalentRemark(actor,sid,reviewId,1,'word '.repeat(221))).rejects.toThrow(/220/);
+    const after=await perf.getOnehrCalibration(actor,sid);expect(after.session.revision).toBe(before.session.revision);expect(after.rows[0].entry).toEqual(before.rows[0].entry);
+    for(const ctx of [self,mgr,peers[2].ctx]){expect(await withTenant(ctx,tx=>tx.select().from(schema.assessmentTalentRemark))).toEqual([]);await expect(perf.saveAssessmentTalentRemark(ctx,sid,reviewId,1,'Forbidden')).rejects.toThrow();}
+    await expect(withTenant(actor,tx=>tx.update(schema.assessmentTalentRemark).set({remark:'Bypassed revision'}))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/revision/)})});
+    expect(await perf.saveAssessmentTalentRemark(other,sid,reviewId,1,'')).toBe(2);expect((await perf.getAssessmentTalentPerson(actor,reviewId,sid)).remark.remark).toBe('');
+    const cycle=(await perf.getOnehrCycle(a,cycleId))!;await owner.db.update(schema.onehrCycle).set({policy:{...cycle.policy,windows:{...cycle.policy.windows,tb_bgceo:{opensAt:null,closesAt:new Date(Date.now()-60000).toISOString()}}}}).where(eq(schema.onehrCycle.cycleId,cycleId));
+    expect((await perf.getAssessmentTalentPerson(actor,reviewId,sid)).remark.locked).toBe(true);await expect(withTenant(actor,tx=>tx.update(schema.assessmentTalentRemark).set({remark:'After deadline',revision:3,updatedBy:actor.userId!}))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/not open/)})});
+    await owner.db.update(schema.onehrCycle).set({policy:cycle.policy}).where(eq(schema.onehrCycle.cycleId,cycleId));
+    await perf.saveAssessmentTalentRemark(actor,sid,reviewId,2,'Preserved BG remark.');
+    await owner.db.update(schema.onehrCalibrationEntry).set({performanceLockedAt:new Date(),potentialLockedAt:new Date(),lockedAt:new Date()}).where(eq(schema.onehrCalibrationEntry.sessionId,sid));
+    expect((await perf.getAssessmentTalentPerson(actor,reviewId,sid)).remark).toMatchObject({remark:'Preserved BG remark.',locked:true});await expect(perf.saveAssessmentTalentRemark(actor,sid,reviewId,3,'After lock')).rejects.toThrow(/locked/);
+    await expect(withTenant(actor,tx=>tx.update(schema.assessmentTalentRemark).set({remark:'After lock',revision:4,updatedBy:actor.userId!}))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/locked/)})});
+    expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);expect(generateDraft).not.toHaveBeenCalled();
+  });
   it('refuses Talent Box recommendations and rechecks review settings and exact cohort during generation',async()=>{
     await complete();const actor=peers[0].ctx,group={...a,grants:[{role:'hr_admin',companyId:null}]};
     const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Talent summary safety',companyId:b.companyId,tier:'bg',reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});

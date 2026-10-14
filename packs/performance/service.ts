@@ -57,3 +57,5 @@ export {getAssessmentWrittenRemarks} from './onehr/written-remarks-service';
 export {getAssessmentRecordInsight} from './onehr/record-insight-service';
 
 export {getAssessmentTalentInsight} from './onehr/talent-insight-service';
+export {getAssessmentTalentPerson} from './onehr/talent-person-service';
+export {saveAssessmentTalentRemark} from './onehr/service';

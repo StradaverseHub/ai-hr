@@ -1634,16 +1634,16 @@ $$;
 REVOKE ALL ON FUNCTION app.assessment_competency_source(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_competency_source(uuid) TO ai_hr_app;
 -- IDP fit reads shared plans only. The remark owner sees only their own drafts; another approver receives saved facts.
-CREATE FUNCTION app.assessment_idp_source(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+CREATE FUNCTION app.assessment_idp_source(wanted_review uuid,wanted_session uuid DEFAULT NULL) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  WITH scope AS (
  SELECT r.*,c.policy,pr.reviewer_employment_id,p.full_name,
-  app.assessment_plan_remark_writer(r.review_id) AS mine,app.onehr_manager(r.review_id) AS manager,
+  (wanted_session IS NULL AND app.assessment_plan_remark_writer(r.review_id)) AS mine,app.onehr_manager(r.review_id) AS manager,
   extract(year from rc.period_end)::integer+CASE WHEN c.policy->>'kind'='year_end' THEN 1 ELSE 0 END AS plan_year
  FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
  JOIN review_cycle rc ON rc.id=r.cycle_id AND rc.tenant_id=r.tenant_id JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id
  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
- AND (app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id)) AND app.assessment_review_participates(r.review_id) AND coalesce((c.policy->'modules'->>'idp')::boolean,false))
+ AND CASE WHEN wanted_session IS NULL THEN app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id) ELSE coalesce((c.policy->'modules'->>'calibration')::boolean,true) AND EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN performance_onehr_calibration_entry ce ON ce.session_id=s.id AND ce.tenant_id=s.tenant_id WHERE s.id=wanted_session AND s.cycle_id=r.cycle_id AND s.tenant_id=r.tenant_id AND s.tier='bg' AND ce.review_id=r.review_id AND app.onehr_calibration_access(s.id)) END AND app.assessment_review_participates(r.review_id) AND coalesce((c.policy->'modules'->>'idp')::boolean,false))
  SELECT jsonb_build_object('name',r.full_name,'status',coalesce(plan.status,'none'),'mine',r.mine,'companyId',r.company_id,
   'goals',coalesce((SELECT jsonb_agg(g-ARRAY['managerComment','editedByName','editedAt'] ORDER BY ord) FROM jsonb_array_elements(plan.goals) WITH ORDINALITY a(g,ord)),'[]'::jsonb),
   'career',CASE WHEN plan.id IS NOT NULL THEN coalesce(profile.career,plan.career) ELSE NULL END,
@@ -1661,8 +1661,8 @@ CREATE FUNCTION app.assessment_idp_source(wanted_review uuid) RETURNS jsonb LANG
  FROM scope r LEFT JOIN performance_onehr_plan plan ON plan.tenant_id=r.tenant_id AND plan.employment_id=r.employment_id AND plan.plan_year=r.plan_year AND plan.status IN ('shared','closed')
  LEFT JOIN performance_assessment_career_profile profile ON profile.employment_id=r.employment_id AND profile.tenant_id=r.tenant_id
 $$;
-REVOKE ALL ON FUNCTION app.assessment_idp_source(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.assessment_idp_source(uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.assessment_idp_source(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_idp_source(uuid,uuid) TO ai_hr_app;
 -- Anonymous leadership themes and finalized competency calls for a currently authorized calibrator.
 -- A null session is used only to recheck viewer-independent cache access in any current permitted cohort.
 CREATE FUNCTION app.assessment_potential_source(wanted_review uuid,wanted_session uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -1751,7 +1751,7 @@ CREATE FUNCTION app.assessment_talent_source(wanted_review uuid,wanted_session u
  'leadership',CASE WHEN coalesce((a.pot->>'valid')::boolean,false) THEN coalesce((SELECT jsonb_agg(jsonb_build_object('name',st->>'principle','description',coalesce(st->>'principleDescription',''),'future',coalesce((st->>'future')::boolean,false),
  'yes',(SELECT count(*) FROM performance_onehr_panel p WHERE p.review_id=a.review_id AND p.tenant_id=a.tenant_id AND p.submitted_at IS NOT NULL AND p.archived_at IS NULL AND p.answers->>(st->>'id')='yes'),
  'total',(SELECT count(*) FROM performance_onehr_panel p WHERE p.review_id=a.review_id AND p.tenant_id=a.tenant_id AND p.submitted_at IS NOT NULL AND p.archived_at IS NULL AND p.answers->>(st->>'id') IN ('yes','no'))) ORDER BY ord) FROM jsonb_array_elements(a.statements) WITH ORDINALITY q(st,ord)),'[]'::jsonb) ELSE '[]'::jsonb END,
- 'plan',CASE WHEN plan.id IS NOT NULL THEN jsonb_build_object('goals',coalesce((SELECT jsonb_agg(jsonb_build_object('area',g->>'area') ORDER BY ord) FROM jsonb_array_elements(plan.goals) WITH ORDINALITY q(g,ord)),'[]'::jsonb),'career',coalesce(profile.career,plan.career)) ELSE NULL END)
+ 'plan',CASE WHEN plan.id IS NOT NULL THEN jsonb_build_object('status',plan.status,'managerRemark',plan.manager_comment,'goals',coalesce((SELECT jsonb_agg(g-ARRAY['managerComment','editedByName','editedAt'] ORDER BY ord) FROM jsonb_array_elements(plan.goals) WITH ORDINALITY q(g,ord)),'[]'::jsonb),'career',coalesce(profile.career,plan.career)) ELSE NULL END)
  FROM evidence a LEFT JOIN performance_onehr_plan plan ON plan.tenant_id=a.tenant_id AND plan.employment_id=a.employment_id AND plan.plan_year=a.plan_year AND plan.status IN ('shared','closed') AND coalesce((a.policy->'modules'->>'idp')::boolean,false)
  LEFT JOIN performance_assessment_career_profile profile ON profile.tenant_id=a.tenant_id AND profile.employment_id=a.employment_id
 $$;
@@ -1768,7 +1768,7 @@ $$;
 REVOKE ALL ON FUNCTION app.assessment_record_visibility(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_record_visibility(uuid) TO ai_hr_app;
 CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text,wanted_context uuid,wanted_visibility text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT CASE WHEN wanted_kind='talent' THEN wanted_visibility=md5(app.assessment_talent_source(wanted_review,wanted_context)::text) WHEN wanted_kind IN ('record_present','record_cycle','record_trend') THEN wanted_context=wanted_review AND wanted_visibility=app.assessment_record_visibility(wanted_review) WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
+ SELECT CASE WHEN wanted_kind='talent_idp' THEN wanted_visibility=md5(app.assessment_idp_source(wanted_review,wanted_context)::text) AND coalesce(app.assessment_idp_source(wanted_review,wanted_context)->>'status','') IN ('shared','closed') WHEN wanted_kind='talent' THEN wanted_visibility=md5(app.assessment_talent_source(wanted_review,wanted_context)::text) WHEN wanted_kind IN ('record_present','record_cycle','record_trend') THEN wanted_context=wanted_review AND wanted_visibility=app.assessment_record_visibility(wanted_review) WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
  WHEN wanted_kind='pot' THEN coalesce((app.assessment_potential_source(wanted_review,NULL)->>'valid')::boolean,false)
  WHEN wanted_kind='idp' THEN coalesce((s.value->>'mine')::boolean,false) AND coalesce(s.value->>'status','') IN ('shared','closed') ELSE false END FROM (SELECT CASE WHEN wanted_kind='idp' THEN app.assessment_idp_source(wanted_review) END AS value) s
 $$;
@@ -1777,7 +1777,7 @@ GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text,uuid,text) TO 
 
 CREATE TABLE performance_assessment_summary (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
- actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,visibility_key text,kind text NOT NULL CHECK(kind IN ('talent','tc','idp','pot','pm_remarks','pot_remarks','record_present','record_cycle','record_trend')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,visibility_key text,kind text NOT NULL CHECK(kind IN ('talent_idp','talent','tc','idp','pot','pm_remarks','pot_remarks','record_present','record_cycle','record_trend')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
  source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
  updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind,context_id)
 );
@@ -1837,3 +1837,55 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_talent_summary_store(uuid,uuid,text,text,text,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_talent_summary_store(uuid,uuid,text,text,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_talent_idp_summary_store(wanted_review uuid,wanted_context uuid,wanted_visibility text,wanted_fingerprint text,wanted_source text,wanted_data jsonb) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NOT coalesce(app.assessment_summary_access(wanted_review,'talent_idp',wanted_context,wanted_visibility),false) THEN RAISE EXCEPTION 'This development plan is not in your Talent Box'; END IF;
+ INSERT INTO performance_assessment_summary(tenant_id,review_id,context_id,actor_user_id,kind,visibility_key,fingerprint,source,data)
+ VALUES(app.current_tenant_id(),wanted_review,wanted_context,app.current_user_id(),'talent_idp',wanted_visibility,wanted_fingerprint,wanted_source,wanted_data)
+ ON CONFLICT(review_id,actor_user_id,kind,context_id) DO UPDATE SET visibility_key=EXCLUDED.visibility_key,fingerprint=EXCLUDED.fingerprint,source=EXCLUDED.source,data=EXCLUDED.data,updated_at=now();
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_talent_idp_summary_store(uuid,uuid,text,text,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_talent_idp_summary_store(uuid,uuid,text,text,text,jsonb) TO ai_hr_app;
+
+-- The BG overall remark has its own owner, revision and restricted audience, independent of ratings.
+CREATE FUNCTION app.assessment_talent_remark_access(wanted_review uuid,wanted_session uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_calibration s
+ JOIN performance_onehr_calibration_entry ce ON ce.session_id=s.id AND ce.tenant_id=s.tenant_id
+ JOIN performance_onehr_review r ON r.review_id=ce.review_id AND r.cycle_id=s.cycle_id AND r.tenant_id=s.tenant_id
+ JOIN performance_onehr_cycle c ON c.cycle_id=s.cycle_id AND c.tenant_id=s.tenant_id
+ JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE s.id=wanted_session AND ce.review_id=wanted_review AND s.tenant_id=app.current_tenant_id() AND s.tier='bg'
+ AND app.onehr_calibration_access(s.id) AND NOT app.is_self_person(e.person_id) AND app.assessment_review_participates(r.review_id)
+ AND coalesce((c.policy->'modules'->>'calibration')::boolean,true) AND coalesce((c.policy->'modules'->>'pm')::boolean,false) AND coalesce((c.policy->'modules'->>'tm')::boolean,false) AND c.policy->>'kind'<>'quarterly')
+$$;
+REVOKE ALL ON FUNCTION app.assessment_talent_remark_access(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_talent_remark_access(uuid,uuid) TO ai_hr_app;
+CREATE TABLE performance_assessment_talent_remark (
+ tenant_id uuid NOT NULL REFERENCES tenant(id),session_id uuid NOT NULL REFERENCES performance_onehr_calibration(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
+ remark text NOT NULL DEFAULT '' CHECK(length(remark)<=4000 AND (btrim(remark)='' OR cardinality(regexp_split_to_array(btrim(remark),'\s+'))<=220)),
+ revision integer NOT NULL DEFAULT 1,updated_by uuid NOT NULL REFERENCES app_user(id),updated_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT performance_assessment_talent_remark_uq UNIQUE(session_id,review_id),
+ FOREIGN KEY(session_id,review_id) REFERENCES performance_onehr_calibration_entry(session_id,review_id)
+);
+ALTER TABLE performance_assessment_talent_remark ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_talent_remark FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_talent_remark TO ai_hr_app;
+CREATE POLICY talent_remark_access ON performance_assessment_talent_remark FOR ALL USING(tenant_id=app.current_tenant_id() AND app.assessment_talent_remark_access(review_id,session_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.assessment_talent_remark_access(review_id,session_id));
+CREATE FUNCTION app.assessment_talent_remark_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE s performance_onehr_calibration; e performance_onehr_calibration_entry; cfg jsonb; cycle_status text;
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.updated_by IS DISTINCT FROM app.current_user_id() OR NOT app.assessment_talent_remark_access(NEW.review_id,NEW.session_id) THEN RAISE EXCEPTION 'This Talent Box remark is not assigned to you'; END IF;
+ SELECT * INTO s FROM performance_onehr_calibration WHERE id=NEW.session_id FOR UPDATE;
+ SELECT * INTO e FROM performance_onehr_calibration_entry WHERE session_id=NEW.session_id AND review_id=NEW.review_id FOR UPDATE;
+ SELECT c.policy,r.status INTO cfg,cycle_status FROM performance_onehr_cycle c JOIN review_cycle r ON r.id=c.cycle_id WHERE c.cycle_id=s.cycle_id;
+ IF cycle_status NOT IN ('open','calibration') OR s.locked_at IS NOT NULL OR e.locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL AND s.potential_locked_at IS NOT NULL OR e.performance_locked_at IS NOT NULL AND e.potential_locked_at IS NOT NULL
+ OR EXISTS(SELECT 1 FROM performance_onehr_result r WHERE r.review_id=NEW.review_id) OR EXISTS(SELECT 1 FROM performance_review r WHERE r.id=NEW.review_id AND r.closed_at IS NOT NULL) THEN RAISE EXCEPTION 'This Talent Box remark is locked'; END IF;
+ IF cfg->'windows'->'tb_bgceo'->>'opensAt' IS NOT NULL AND now()<(cfg->'windows'->'tb_bgceo'->>'opensAt')::timestamptz OR cfg->'windows'->'tb_bgceo'->>'closesAt' IS NOT NULL AND now()>=(cfg->'windows'->'tb_bgceo'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'Talent Box review is not open'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.session_id IS DISTINCT FROM OLD.session_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.revision<>OLD.revision+1 THEN RAISE EXCEPTION 'Talent Box remark identity or revision changed'; END IF;
+ ELSIF NEW.revision<>1 THEN RAISE EXCEPTION 'Invalid initial Talent Box remark revision'; END IF;
+ NEW.updated_at:=now();RETURN NEW;
+END $$;
+CREATE TRIGGER assessment_talent_remark_guard BEFORE INSERT OR UPDATE ON performance_assessment_talent_remark FOR EACH ROW EXECUTE FUNCTION app.assessment_talent_remark_guard();

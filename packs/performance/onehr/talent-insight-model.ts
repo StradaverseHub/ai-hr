@@ -1,11 +1,12 @@
 import {z} from 'zod';
-import {bandFor,scoreKPI,kpiSchema,policySchema,careerSchema,talentCell9,talentColumn,type PMBand,type PotentialBand} from './model';
+import {bandFor,scoreKPI,kpiSchema,goalSchema,policySchema,careerSchema,talentCell9,talentColumn,type PMBand,type PotentialBand} from './model';
 import {potentialInsightSourceSchema} from './potential-insight-model';
 import {writtenSourceSchema,potentialWrittenRemarks,type WrittenRemark} from './written-remarks-model';
 import {insightBandError,insightTextGroundingError} from './insight-grounding';
 import {recordFigure} from './record-insight-model';
 import reference from './talent-insight-source.json';
-export const talentSourceSchema=z.object({pm:z.object({name:z.string(),companyId:z.uuid(),kpis:z.array(kpiSchema),bands:z.object({aBands:policySchema.shape.aBands,bBands:policySchema.shape.bBands}),fileLinks:z.array(z.object({kpiId:z.uuid(),attachmentId:z.uuid()}))}),pot:potentialInsightSourceSchema,written:writtenSourceSchema,leadership:z.array(z.object({name:z.string(),description:z.string(),future:z.boolean(),yes:z.number(),total:z.number()})),plan:z.object({goals:z.array(z.object({area:z.string()})),career:careerSchema}).nullable()});
+import type {IdpFitInsight} from './idp-fit-model';
+export const talentSourceSchema=z.object({pm:z.object({name:z.string(),companyId:z.uuid(),kpis:z.array(kpiSchema),bands:z.object({aBands:policySchema.shape.aBands,bBands:policySchema.shape.bBands}),fileLinks:z.array(z.object({kpiId:z.uuid(),attachmentId:z.uuid()}))}),pot:potentialInsightSourceSchema,written:writtenSourceSchema,leadership:z.array(z.object({name:z.string(),description:z.string(),future:z.boolean(),yes:z.number(),total:z.number()})),plan:z.object({status:z.string(),managerRemark:z.string(),goals:z.array(goalSchema.omit({managerComment:true})),career:careerSchema}).nullable()});
 export type TalentSource=z.infer<typeof talentSourceSchema>;
 export type TalentPosition={performance:PMBand|null;potential:PotentialBand|null;performanceSource:string|null;potentialSource:string|null;movedFrom:string|null};
 export type TalentInsight={insight:string;decision:string};
@@ -22,7 +23,7 @@ export function talentStrengths(rows:TalentSource['leadership'],letter:boolean){
 }
 const who:Record<string,string>={self:'They',lm:'Their line manager',hod:'The HOD',buceo:'The BU CEO',bg:'The BG CEO',group:'The Group'};
 const origin=(s:string|null)=>({reviewer:'your move',manager:'their line manager',hod:'HOD',bu:'BU CEO',bg:'BG CEO',group:'Group',final:'Final'}[s??'']??s??'');
-export function talentInsightCase(s:TalentSource,pos:TalentPosition,pmRemarks:WrittenRemark[]){
+export function talentInsightCase(s:TalentSource,pos:TalentPosition,pmRemarks:WrittenRemark[],fit:IdpFitInsight|null=null){
  const words=(b:PMBand|null)=>b?reference._TB_POS_WORDS[b]:'not rated',box=pos.performance&&pos.potential?talentCell9(talentColumn(pos.performance),pos.potential):'';
  const defaults=[...(pos.performanceSource==='default'?['performance']:[]),...(pos.potentialSource==='default'?['potential']:[])];
  const out=[`WHERE THEY SIT: ${box} -- performance ${pos.performanceSource==='default'?'no record yet (they count at the bottom band only by default)':`${words(pos.performance)} overall, from ${origin(pos.performanceSource)}`}; potential ${pos.potentialSource==='default'?'no record yet (the bottom band only by default)':`${pos.potential??'none'}, from ${origin(pos.potentialSource)}`}.`];
@@ -39,7 +40,8 @@ export function talentInsightCase(s:TalentSource,pos:TalentPosition,pmRemarks:Wr
  if(comp.size)out.push(`COMPETENCY (their line manager's review): fully demonstrated -- ${full.join(', ')||'none'}; still developing -- ${developing.join(', ')||'none'}.`);else if(s.pot.competencyStatus)out.push('COMPETENCY: not reviewed by their line manager yet.');
  for(const e of potentialWrittenRemarks(s.written).slice(0,4))if(!e.on)out.push(`${who[e.role]??'Someone'} wrote about their potential${e.move?' ('+talentMoveWords(e.move)+')':''}: <<<${e.text.slice(0,320)}>>>`);
  if(s.plan){const c=s.plan.career,mob={stay:'Happy where I am',role_in_unit:'Open to another role in my business unit',company_in_group:'Open to another company in my BG',other_group:'Open to another Business Group',relocate:'Open to relocating'};out.push(`DEVELOPMENT PLAN (shared): goals -- ${s.plan.goals.map(g=>g.area).filter(Boolean).join('; ')||'none'}; next move -- ${c.aspiration||'not said'}; longer term -- ${c.aspirationLong||'not said'}; how far they'd move -- ${c.mobility?mob[c.mobility]:'not said'}.`);}else out.push('DEVELOPMENT PLAN: none shared yet.');
- const facts:TalentFacts={kpis:counts,lm_pending:pending,default:defaults,moved_from:pos.movedFrom,plan:s.plan?'Shared':'None shared yet',top:top.slice(0,1),dev:dev.slice(0,1)};
+ const fitWords={fits:'Fits well',partly_fits:'Partly fits',not_yet:'Not yet a fit'};if(s.plan&&fit)out.push(`PLAN FIT (already read): ${fitWords[fit.verdict].toLowerCase()} -- ${fit.verdict_why}`);
+ const facts:TalentFacts={kpis:counts,lm_pending:pending,default:defaults,moved_from:pos.movedFrom,plan:s.plan?fit?fitWords[fit.verdict]:'Shared':'None shared yet',top:top.slice(0,1),dev:dev.slice(0,1)};
  return {text:out.join('\n'),facts,names,extra:[s.pm.name.split(/\s+/)[0],'HOD','BU','CEO','KPI','KPIs','360',...names,...top,...dev,...full,...developing].join(' ')};
 }
 export function plainTalentInsight(f:TalentFacts):TalentInsight{
