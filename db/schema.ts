@@ -10023,6 +10023,11 @@ export const onehrCycle = pgTable('performance_onehr_cycle', {
   cycleId: uuid('cycle_id').primaryKey().references(() => reviewCycle.id), tenantId: tenantId(),
   policy: jsonb('policy').notNull(), participationOpenedOn:date('participation_opened_on'), revision: integer('revision').notNull().default(1), createdAt: createdAt(),
 });
+export const assessmentCatalogue = pgTable('performance_assessment_catalogue', {
+ id:id(),tenantId:tenantId(),scopeKey:text('scope_key').notNull(),companyId:uuid('company_id').references(()=>company.id),
+ catalogue:jsonb('catalogue').notNull(),sourceCycleId:uuid('source_cycle_id').notNull().references(()=>reviewCycle.id),
+ revision:integer('revision').notNull().default(1),updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_catalogue_scope_uq').on(t.tenantId,t.scopeKey)]);
 export const assessmentParticipationSnapshot = pgTable('performance_assessment_participation', {
  id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
  employmentId:uuid('employment_id').notNull().references(()=>employment.id),

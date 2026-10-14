@@ -1,3 +1,4 @@
+import {assessmentDefaultPolicyTx,publishAssessmentCatalogueTx} from './catalogue-default-service';
 import {getAssessmentInsightSourceTx} from './insight-source';
 import {getAssessmentPerformanceReadingTx} from './insight-service';
 import {potentialInsightSourceSchema} from './potential-insight-model';
@@ -166,12 +167,13 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
     const [native]=await tx.select().from(reviewCycle).where(eq(reviewCycle.id,cycleId)).for('update');
     if(!native)throw Error('Cycle not found.');await requireAdmin(tx,cycleId);
     if(native.status!=='draft')throw Error('Assessment policy is fixed when the cycle opens.');
-    const policy=policySchema.parse(raw??defaultPolicy(framework));
+    const policy=policySchema.parse(raw??await assessmentDefaultPolicyTx(tx,native.companyId));
     for(const profile of policy.profiles){
       if(profile.companyId){const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_admin(${profile.companyId}::uuid) as ok`);if(!scope?.ok)throw Error('A competency profile company is outside your scope.');}
       if(profile.employmentIds?.length){const selected=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(inArray(employment.id,profile.employmentIds));if(selected.length!==new Set(profile.employmentIds).size||profile.companyId&&selected.some(e=>e.companyId!==profile.companyId))throw Error('Profile assignments must use visible native employments in the configured company.');}
     }
     const [existing]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
+    if(raw!=null)await publishAssessmentCatalogueTx(tx,ctx,cycleId,existing?policySchema.parse(existing.policy):defaultPolicy(framework),policy);
     if(existing){revision(existing.revision,expected!);await tx.update(onehrCycle).set({policy,revision:existing.revision+1}).where(eq(onehrCycle.cycleId,cycleId));}
     else {if(expected!=null)throw Error('Reload before configuring this cycle.');await tx.insert(onehrCycle).values({tenantId:ctx.tenantId,cycleId,policy});}
     await audit(tx,ctx,cycleId,'policy-configured',{policyDigest:hash(policy)});
@@ -187,6 +189,7 @@ export async function updateAssessmentFramework(ctx:SessionContext,cycleId:strin
   await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
   if(!['draft','open','calibration'].includes(cycle.native.status))throw Error('The archived leadership framework is read-only.');
   const next=editLeadershipFramework(cycle.policy,edit,()=>randomUUID());
+  await publishAssessmentCatalogueTx(tx,ctx,cycleId,cycle.policy,next);
   await tx.update(onehrCycle).set({policy:next,revision:cycle.config.revision+1}).where(eq(onehrCycle.cycleId,cycleId));
   await audit(tx,ctx,cycleId,'framework-updated',{edit,previous:{framework:cycle.policy.framework,principles:cycle.policy.leadershipPrinciples??null},next:{framework:next.framework,principles:next.leadershipPrinciples}});
  });
@@ -1423,7 +1426,8 @@ export async function confirmAssessmentTalentList(ctx:SessionContext,sessionId:s
 /** Used by the native cycle creator so a configured draft and its assessment policy appear atomically. */
 export async function configureAssessmentCycleTx(tx:Tx,ctx:SessionContext,cycleId:string) {
  await requireAdmin(tx,cycleId);
- const policy=defaultPolicy(framework);
+ const [native]=await tx.select({companyId:reviewCycle.companyId}).from(reviewCycle).where(eq(reviewCycle.id,cycleId));if(!native)throw Error('Cycle not found.');
+ const policy=await assessmentDefaultPolicyTx(tx,native.companyId);
  await tx.insert(onehrCycle).values({tenantId:ctx.tenantId,cycleId,policy});
  await audit(tx,ctx,cycleId,'policy-configured',{policyDigest:hash(policy)});
 }

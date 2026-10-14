@@ -1,3 +1,4 @@
+import {publishAssessmentCatalogueTx} from './catalogue-default-service';
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -12,12 +13,13 @@ import { careerSchema, policySchema, type Policy } from './model';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stableId=(cycleId:string,key:string)=>{const h=digest([cycleId,key]);return `${h.slice(0,8)}-${h.slice(8,12)}-5${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
-async function save(tx:Tx,cycleId:string,revision:number,policy:Policy){
+async function save(tx:Tx,ctx:SessionContext,cycleId:string,revision:number,previous:Policy,policy:Policy){
  // Company and employment references must stay inside this administrator's native scope.
  for(const p of policy.profiles){
   if(p.companyId){const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_admin(${p.companyId}::uuid) as ok`);if(!scope?.ok)throw Error('A profile company is outside your scope.');}
   for(const id of p.employmentIds??[]){const [e]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(eq(employment.id,id));if(!e||p.companyId&&e.companyId!==p.companyId)throw Error('A profile assignment is outside its company.');}
  }
+ await publishAssessmentCatalogueTx(tx,ctx,cycleId,previous,policy);
  await tx.update(onehrCycle).set({policy,revision:revision+1}).where(eq(onehrCycle.cycleId,cycleId));
 }
 export async function importAssessmentArchitecture(ctx:SessionContext,cycleId:string,sheets:Record<typeof architectureSheets[number],string>,token?:string){
@@ -25,7 +27,7 @@ export async function importAssessmentArchitecture(ctx:SessionContext,cycleId:st
   const v=await load(tx,cycleId),result=importArchitecture(v.policy,sheets,v.cycle.companyId,key=>stableId(cycleId,key));
   const current=digest({revision:v.config.revision,policy:v.policy,sheets});
   if(token&&token!==current)throw Error('The catalogue changed. Preview the workbook again.');
-  if(token){await save(tx,cycleId,v.config.revision,result.policy);await event(tx,ctx,cycleId,'architecture-imported',{skills:result.skills,profiles:result.profiles,links:result.links,skipped:result.skipped,digest:digest(result.policy)});}
+  if(token){await save(tx,ctx,cycleId,v.config.revision,v.policy,result.policy);await event(tx,ctx,cycleId,'architecture-imported',{skills:result.skills,profiles:result.profiles,links:result.links,skipped:result.skipped,digest:digest(result.policy)});}
   return {token:current,skills:result.skills,profiles:result.profiles,links:result.links,skipped:result.skipped,applied:!!token};
  });
 }
@@ -40,7 +42,7 @@ export async function saveAssessmentCatalogueProfile(ctx:SessionContext,cycleId:
   if(v.policy.profiles.some(p=>p.id!==id&&key(p)===key(input)))throw Error('That company, department, title and grade already has a profile.');
   const next={...previous,...input,id:id??crypto.randomUUID(),...(previous?.employmentIds?{employmentIds:previous.employmentIds}:{})};
   const policy=policySchema.parse({...v.policy,profiles:[...v.policy.profiles.filter(p=>p.id!==id),next]});
-  await save(tx,cycleId,v.config.revision,policy);await event(tx,ctx,cycleId,'catalogue-profile-saved',{profileId:next.id,active:next.active!==false,digest:digest(next)});
+  await save(tx,ctx,cycleId,v.config.revision,v.policy,policy);await event(tx,ctx,cycleId,'catalogue-profile-saved',{profileId:next.id,active:next.active!==false,digest:digest(next)});
   return next.id;
  });
 }
@@ -50,7 +52,7 @@ export async function setAssessmentCareerRoute(ctx:SessionContext,cycleId:string
   const v=await load(tx,cycleId);if(v.config.revision!==expected)throw Error('The catalogue changed. Reload before saving.');
   const routes=(v.policy.careerRoutes??[]).filter(r=>r.fromProfileId!==fromProfileId||r.toProfileId!==toProfileId);
   const policy=policySchema.parse({...v.policy,careerRoutes:[...routes,...(kind==='automatic'?[]:[{fromProfileId,toProfileId,kind}])]});
-  await save(tx,cycleId,v.config.revision,policy);await event(tx,ctx,cycleId,'career-route-saved',{fromProfileId,toProfileId,kind});
+  await save(tx,ctx,cycleId,v.config.revision,v.policy,policy);await event(tx,ctx,cycleId,'career-route-saved',{fromProfileId,toProfileId,kind});
  });
 }
 /** A preview and its apply use the same resolver, snapshots and started-assessment guard. */

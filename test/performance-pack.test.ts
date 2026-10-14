@@ -45,6 +45,7 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'calibration_session',
       'calibration_entry',
       'performance_attachment',
+      'performance_assessment_catalogue',
       'performance_onehr_cycle',
       'performance_onehr_review',
       'performance_onehr_panel',

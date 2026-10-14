@@ -108,6 +108,7 @@ export const performancePack: ModulePack = {
     { table: 'calibration_session', note: 'per-cycle calibration session (open → committed)' },
     { table: 'calibration_entry', note: 'proposed/committed rating adjustments within a session' },
     { table: 'performance_attachment', note: 'evidence files behind a review (per stage)' },
+    { table: 'performance_assessment_catalogue', note: 'scoped defaults for new cycles; existing review snapshots remain independent' },
     { table: 'performance_onehr_cycle', note: 'native performance cycle aggregate; ADR-0103' },
     { table: 'performance_onehr_review', note: 'native performance review aggregate; ADR-0103' },
     { table: 'performance_onehr_panel', note: 'native performance panel aggregate; ADR-0103' },

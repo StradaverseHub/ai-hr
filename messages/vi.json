@@ -17834,7 +17834,7 @@
     "saveModules": "Lưu mô-đun",
     "catalogueAdmin": {
       "title": "Cơ cấu năng lực",
-      "help": "Quản lý hồ sơ vai trò và lộ trình nghề nghiệp. Đổi danh mục không ghi lại các đánh giá đã phân công. Xem trước việc tạo phân công riêng.",
+      "help": "Quản lý hồ sơ vai trò và lộ trình nghề nghiệp. Đổi danh mục không ghi lại các đánh giá đã phân công. Xem trước việc tạo phân công riêng. Các thay đổi danh mục đã lưu cũng trở thành giá trị mặc định cho chu kỳ mới trong công ty hoặc tập đoàn này. Các chu kỳ hiện có và phân công nhân viên giữ nguyên bản dữ liệu riêng.",
       "import": "Nhập sổ tính nhân sự",
       "missingSheet": "Sổ tính cần trang Job_Skills có dữ liệu.",
       "importCount": "{skills} kỹ năng · {profiles} hồ sơ · {links} yêu cầu · bỏ qua {skipped} dòng",
@@ -18286,7 +18286,7 @@
     },
     "frameworkAdmin": {
       "title": "Khung năng lực lãnh đạo",
-      "help": "Thay đổi áp dụng cho các đánh giá chưa chốt trong kỳ này, kể cả phản hồi đã gửi. Hành vi bị loại bỏ không còn tính vào điểm hiện tại; câu trả lời gốc và kết quả đã chốt được giữ lại.",
+      "help": "Thay đổi áp dụng cho các đánh giá chưa chốt trong kỳ này, kể cả phản hồi đã gửi. Hành vi bị loại bỏ không còn tính vào điểm hiện tại; câu trả lời gốc và kết quả đã chốt được giữ lại. Các thay đổi về khung lãnh đạo cũng trở thành giá trị mặc định cho chu kỳ mới được tạo. Các chu kỳ hiện có khác giữ nguyên khung riêng.",
       "closed": "Khung đã lưu trữ chỉ được xem.",
       "readonly": "Thay đổi khung yêu cầu quyền nhân sự cấp tập đoàn.",
       "edit": "Sửa nguyên tắc và hành vi",

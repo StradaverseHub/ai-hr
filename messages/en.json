@@ -17834,7 +17834,7 @@
     "saveModules": "Save modules",
     "catalogueAdmin": {
       "title": "Competency architecture",
-      "help": "Maintain role profiles and career routes. Catalogue changes do not rewrite assigned assessments. Preview assignment generation separately.",
+      "help": "Maintain role profiles and career routes. Catalogue changes do not rewrite assigned assessments. Preview assignment generation separately. Saved catalogue changes also become the defaults for new cycles in this company or group. Existing cycles and employee assignments keep their own snapshots.",
       "import": "Import HR workbook",
       "missingSheet": "The workbook needs a populated Job_Skills sheet.",
       "importCount": "Skills: {skills} · Profiles: {profiles} · Requirements: {links} · Rows skipped: {skipped}",
@@ -18286,7 +18286,7 @@
     },
     "frameworkAdmin": {
       "title": "Leadership framework",
-      "help": "Changes apply to unfinished assessments in this cycle, including submitted feedback. Removed behaviours stop contributing to current scores; original answers and finalized results are retained.",
+      "help": "Changes apply to unfinished assessments in this cycle, including submitted feedback. Removed behaviours stop contributing to current scores; original answers and finalized results are retained. Leadership changes also become the defaults for newly created cycles. Other existing cycles keep their own framework.",
       "closed": "This archived framework is read-only.",
       "readonly": "Framework changes require group HR access.",
       "edit": "Edit principles and behaviours",

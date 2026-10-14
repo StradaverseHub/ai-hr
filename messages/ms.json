@@ -17834,7 +17834,7 @@
     "saveModules": "Simpan modul",
     "catalogueAdmin": {
       "title": "Seni bina kompetensi",
-      "help": "Urus profil jawatan dan laluan kerjaya. Perubahan katalog tidak menulis semula penilaian yang ditugaskan. Pratonton penjanaan tugasan secara berasingan.",
+      "help": "Urus profil jawatan dan laluan kerjaya. Perubahan katalog tidak menulis semula penilaian yang ditugaskan. Pratonton penjanaan tugasan secara berasingan. Perubahan katalog yang disimpan juga menjadi lalai bagi kitaran baharu dalam syarikat atau kumpulan ini. Kitaran sedia ada dan penugasan pekerja mengekalkan snapshot masing-masing.",
       "import": "Import buku kerja HR",
       "missingSheet": "Buku kerja memerlukan helaian Job_Skills yang berisi.",
       "importCount": "{skills} kemahiran · {profiles} profil · {links} keperluan · {skipped} baris dilangkau",
@@ -18286,7 +18286,7 @@
     },
     "frameworkAdmin": {
       "title": "Rangka kerja kepimpinan",
-      "help": "Perubahan digunakan pada penilaian yang belum dimuktamadkan dalam kitaran ini, termasuk maklum balas yang dihantar. Tingkah laku yang dibuang tidak lagi menyumbang kepada skor semasa; jawapan asal dan keputusan muktamad dikekalkan.",
+      "help": "Perubahan digunakan pada penilaian yang belum dimuktamadkan dalam kitaran ini, termasuk maklum balas yang dihantar. Tingkah laku yang dibuang tidak lagi menyumbang kepada skor semasa; jawapan asal dan keputusan muktamad dikekalkan. Perubahan kepimpinan juga menjadi lalai bagi kitaran yang baru diwujudkan. Kitaran sedia ada yang lain mengekalkan rangka kerja masing-masing.",
       "closed": "Rangka kerja yang diarkibkan ini untuk bacaan sahaja.",
       "readonly": "Perubahan rangka kerja memerlukan akses HR kumpulan.",
       "edit": "Edit prinsip dan tingkah laku",

@@ -1889,3 +1889,55 @@ BEGIN
  NEW.updated_at:=now();RETURN NEW;
 END $$;
 CREATE TRIGGER assessment_talent_remark_guard BEFORE INSERT OR UPDATE ON performance_assessment_talent_remark FOR EACH ROW EXECUTE FUNCTION app.assessment_talent_remark_guard();
+--> statement-breakpoint
+-- Catalogue definitions outlive a review year. Cycle policies and assigned reviews remain snapshots.
+CREATE TABLE performance_assessment_catalogue (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
+ scope_key text NOT NULL, company_id uuid REFERENCES company(id), catalogue jsonb NOT NULL,
+ source_cycle_id uuid NOT NULL REFERENCES review_cycle(id), revision integer NOT NULL DEFAULT 1 CHECK(revision>0),
+ updated_by uuid REFERENCES app_user(id), updated_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT assessment_catalogue_scope CHECK(scope_key=coalesce(company_id::text,'group')),
+ CONSTRAINT assessment_catalogue_object CHECK(jsonb_typeof(catalogue)='object'),
+ CONSTRAINT performance_assessment_catalogue_scope_uq UNIQUE(tenant_id,scope_key)
+);
+ALTER TABLE performance_assessment_catalogue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_catalogue FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE,DELETE ON performance_assessment_catalogue TO ai_hr_app;
+CREATE POLICY assessment_catalogue_admin ON performance_assessment_catalogue USING(tenant_id=app.current_tenant_id() AND app.onehr_admin(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_admin(company_id));
+CREATE FUNCTION app.assessment_catalogue_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE p jsonb;
+BEGIN
+ IF TG_OP='UPDATE' AND (NEW.tenant_id,NEW.scope_key,NEW.company_id) IS DISTINCT FROM (OLD.tenant_id,OLD.scope_key,OLD.company_id) THEN RAISE EXCEPTION 'Catalogue identity is immutable'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=NEW.source_cycle_id AND c.tenant_id=NEW.tenant_id AND c.status<>'closed' AND app.onehr_cycle_admin(c.id)) THEN RAISE EXCEPTION 'An authorized active source cycle is required'; END IF;
+ IF NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company c WHERE c.id=NEW.company_id AND c.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Catalogue company is outside this tenant'; END IF;
+ IF (NEW.catalogue->'framework' IS DISTINCT FROM OLD.catalogue->'framework' OR NEW.catalogue->'leadershipPrinciples' IS DISTINCT FROM OLD.catalogue->'leadershipPrinciples') AND NOT app.is_group_admin() THEN RAISE EXCEPTION 'Only group HR can change leadership defaults'; END IF;
+ IF NEW.company_id IS NOT NULL AND (NEW.catalogue ? 'framework' OR NEW.catalogue ? 'leadershipPrinciples') THEN RAISE EXCEPTION 'Leadership defaults belong to group HR'; END IF;
+ IF jsonb_typeof(NEW.catalogue->'profiles') IS DISTINCT FROM 'array' OR jsonb_typeof(NEW.catalogue->'skills') IS DISTINCT FROM 'array' OR jsonb_typeof(NEW.catalogue->'careerRoutes') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Catalogue collections are required'; END IF;
+ FOR p IN SELECT value FROM jsonb_array_elements(NEW.catalogue->'profiles') LOOP
+  IF p ? 'employmentIds' THEN RAISE EXCEPTION 'Employee assignments cannot become catalogue defaults'; END IF;
+  IF p->>'companyId' IS NOT NULL AND (NEW.company_id IS NOT NULL AND (p->>'companyId')::uuid<>NEW.company_id OR NOT EXISTS(SELECT 1 FROM company c WHERE c.id=(p->>'companyId')::uuid AND c.tenant_id=NEW.tenant_id AND app.onehr_admin(c.id))) THEN RAISE EXCEPTION 'A catalogue profile is outside your company scope'; END IF;
+ END LOOP;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_catalogue_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assessment_catalogue_guard BEFORE INSERT OR UPDATE ON performance_assessment_catalogue FOR EACH ROW EXECUTE FUNCTION app.assessment_catalogue_guard();
+--> statement-breakpoint
+-- Company administrators receive only their own definitions or filtered group defaults.
+CREATE FUNCTION app.assessment_catalogue_defaults(wanted_company uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE shared jsonb; selected jsonb; profiles jsonb;
+BEGIN
+ IF NOT app.onehr_admin(wanted_company) OR wanted_company IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company WHERE id=wanted_company AND tenant_id=app.current_tenant_id()) THEN RAISE EXCEPTION 'Catalogue administrator access is required'; END IF;
+ SELECT catalogue INTO shared FROM performance_assessment_catalogue WHERE tenant_id=app.current_tenant_id() AND scope_key='group';
+ SELECT catalogue INTO selected FROM performance_assessment_catalogue WHERE tenant_id=app.current_tenant_id() AND scope_key=coalesce(wanted_company::text,'group');
+ IF selected IS NULL AND shared IS NOT NULL THEN
+  selected:=shared;
+  SELECT coalesce(jsonb_agg(p-'employmentIds' ORDER BY ord),'[]'::jsonb) INTO profiles FROM jsonb_array_elements(shared->'profiles') WITH ORDINALITY a(p,ord) WHERE wanted_company IS NULL OR p->>'companyId' IS NULL OR p->>'companyId'=wanted_company::text;
+  selected:=jsonb_set(selected,'{profiles}',profiles);
+  selected:=jsonb_set(selected,'{careerRoutes}',coalesce((SELECT jsonb_agg(r ORDER BY ord) FROM jsonb_array_elements(shared->'careerRoutes') WITH ORDINALITY a(r,ord) WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(profiles) p WHERE p->>'id'=r->>'fromProfileId') AND EXISTS(SELECT 1 FROM jsonb_array_elements(profiles) p WHERE p->>'id'=r->>'toProfileId')),'[]'::jsonb));
+ END IF;
+ IF shared ? 'framework' THEN selected:=coalesce(selected,'{}'::jsonb) || jsonb_build_object('framework',shared->'framework'); END IF;
+ IF shared ? 'leadershipPrinciples' THEN selected:=coalesce(selected,'{}'::jsonb) || jsonb_build_object('leadershipPrinciples',shared->'leadershipPrinciples'); END IF;
+ RETURN selected;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_catalogue_defaults(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_catalogue_defaults(uuid) TO ai_hr_app;

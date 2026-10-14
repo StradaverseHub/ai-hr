@@ -1041,6 +1041,42 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await perf.getOnehrFeedback(peers[0].ctx,request)).toMatchObject({submitted:true,answers:original.answers});
   });
 
+  it('carries catalogue edits into new cycles while retaining existing assignments and independent policy',async()=>{
+    const group={...a,grants:[{role:'hr_admin',companyId:null}]};
+    const make=async(name:string)=>perf.createCycle(group,{name,companyId:b.companyId,periodStart:`${year+1}-01-01`,periodEnd:`${year+1}-12-31`,assessmentWorkflow:true});
+    const old=(await perf.getOnehrCycle(group,cycleId))!,profile=old.policy.profiles[0],assigned=(await view(self)).competencies;
+    const {cycleId:alreadyCreated}=await make('Already created snapshot');
+    await perf.saveAssessmentCatalogueProfile(group,cycleId,old.revision,profile.id,{name:'Updated Engineering',companyId:profile.companyId,grade:profile.grade,competencies:profile.competencies});
+    const {cycleId:nextId}=await make('Inherited catalogue');let next=(await perf.getOnehrCycle(group,nextId))!;
+    expect(next.policy.profiles.find(p=>p.id===profile.id)?.name).toBe('Updated Engineering');expect(next.policy.modules.evidence).toBe(false);expect(next.policy.windows).toEqual({});
+    expect((await perf.getOnehrCycle(group,alreadyCreated))!.policy.profiles.find(p=>p.id===profile.id)?.name).toBe('Engineering');expect((await view(self)).competencies).toEqual(assigned);
+    const otherId=await perf.saveAssessmentCatalogueProfile(group,nextId,next.revision,null,{name:'Future specialist',companyId:b.companyId,grade:'13',competencies:[]});
+    const older=(await perf.getOnehrCycle(group,cycleId))!;
+    await expect(perf.saveAssessmentCatalogueProfile(group,alreadyCreated,(await perf.getOnehrCycle(group,alreadyCreated))!.revision,profile.id,{name:'Stale overwrite',companyId:profile.companyId,grade:profile.grade,competencies:profile.competencies})).rejects.toThrow(/another cycle/);
+    await perf.saveAssessmentCatalogueProfile(group,cycleId,older.revision,profile.id,{name:'Engineering retained with newer addition',companyId:profile.companyId,grade:profile.grade,competencies:profile.competencies});
+    const {cycleId:third}=await make('Merged catalogue');expect((await perf.getOnehrCycle(group,third))!.policy.profiles.map(p=>p.id)).toEqual([profile.id,otherId]);
+    const active=(await perf.getOnehrCycle(group,cycleId))!,principle=leadershipPrinciples(active.policy)[0];
+    await perf.updateAssessmentFramework(group,cycleId,active.revision,{action:'edit_principle',principleId:principle.id,name:'Future customer practice',description:'Observable service outcomes'});
+    const {cycleId:fourth}=await make('Inherited leadership framework');expect(leadershipPrinciples((await perf.getOnehrCycle(group,fourth))!.policy).some(p=>p.name==='Future customer practice')).toBe(true);
+    expect(leadershipPrinciples((await perf.getOnehrCycle(group,third))!.policy).some(p=>p.name==='Future customer practice')).toBe(false);
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentCatalogue))).toEqual([]);
+    await expect(withTenant(self,tx=>tx.execute(sql`select app.assessment_catalogue_defaults(${b.companyId}::uuid)`))).rejects.toMatchObject({cause:{message:expect.stringMatching(/administrator/)}});
+  });
+  it('filters group catalogue defaults by company and never carries employee assignments',async()=>{
+    const group={...a,grants:[{role:'hr_admin',companyId:null}]},[other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other catalogue company'}).returning();
+    const {cycleId:globalId}=await perf.createCycle(group,{name:'Group catalogue source',companyId:null,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
+    const p=defaultPolicy(framework),shared={id:randomUUID(),name:'Shared definition',grade:'12',companyId:null,competencies:[]},privateProfile={...shared,id:randomUUID(),companyId:b.companyId,name:'Company private definition',employmentIds:[subject.employmentId]};p.profiles=[shared,privateProfile];p.careerRoutes=[{fromProfileId:shared.id,toProfileId:privateProfile.id,kind:'hidden'}];
+    await perf.configureOnehrCycle(group,globalId,null,p);
+    const scopedUser=await createAppUser(b.tenantId,peers[0].ctx.personId!,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,scopedUser));
+    const otherAdmin={...a,userId:scopedUser,personId:peers[0].ctx.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:other.id}]};
+    const {cycleId:newId}=await perf.createCycle(otherAdmin,{name:'Other company future cycle',companyId:other.id,periodStart:`${year+1}-01-01`,periodEnd:`${year+1}-12-31`,assessmentWorkflow:true});
+    const inherited=(await perf.getOnehrCycle(otherAdmin,newId))!.policy;expect(inherited.profiles).toEqual([shared]);expect(inherited.careerRoutes).toEqual([]);
+    await expect(withTenant(otherAdmin,tx=>tx.execute(sql`select app.assessment_catalogue_defaults(${b.companyId}::uuid)`))).rejects.toMatchObject({cause:{message:expect.stringMatching(/administrator/)}});
+    const stored=await owner.db.select().from(schema.assessmentCatalogue).where(eq(schema.assessmentCatalogue.scopeKey,'group'));expect(JSON.stringify(stored)).not.toContain(subject.employmentId);
+    const foreign=await seedBase();expect(await withTenant(adminCtx(foreign),tx=>tx.select().from(schema.assessmentCatalogue))).toEqual([]);
+    await expect(withTenant(group,tx=>tx.update(schema.assessmentCatalogue).set({catalogue:{profiles:[privateProfile],skills:[],careerRoutes:[]}}).where(eq(schema.assessmentCatalogue.scopeKey,'group')))).rejects.toMatchObject({cause:{message:expect.stringMatching(/assignments/)}});
+  });
+
   it('imports a live architecture and generates only unstarted, unpinned competency snapshots',async()=>{
     const sheets={Job_Profile:'',Job_Skills:toCsv([architectureHeaders.Job_Skills,['Technical','Analyst','12','','','','','ANA-3','Analysis','Technical','Analysis','3','Analyse a delivery','Understand context','Prepare analysis']])};
     await expect(perf.importAssessmentArchitecture(self,cycleId,sheets)).rejects.toThrow(/administrator/);
