@@ -545,6 +545,60 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('AE');
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sessionId));await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
   });
+  async function reviewerPlan(allMatrix=false){
+    const ids=[randomUUID(),randomUUID()],scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]},matrix=peers[0];
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,ids.map((id,i)=>({id,title:`Delivery ${i+1}`,description:'',weightBp:5000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId})));
+    for(const id of allMatrix?ids:[ids[1]])await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,id,matrix.employmentId);
+    const goalId=randomUUID();await perf.saveOnehrPlan(self,reviewId,null,{career:{aspiration:'Develop facilitation',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:goalId,area:'Facilitation',dueOn:'',onJob:'Facilitate planning',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    return {matrix,goalId,plan:(await view(mgr)).plans[0]};
+  }
+  it('keeps overall development-plan feedback with the eligible line manager while co-reviewers can record conversations and goal comments',async()=>{
+    const {matrix,goalId,plan}=await reviewerPlan();expect((await view()).planRemarkWriter).toBe(true);expect((await view(matrix.ctx)).planRemarkWriter).toBe(false);
+    await expect(perf.reviewOnehrPlan(matrix.ctx,plan.id,plan.revision,'Overwrite overall feedback','Conversation')).rejects.toThrow(/eligible line manager/);
+    await expect(withTenant(matrix.ctx,tx=>tx.update(schema.onehrPlan).set({managerComment:'Bypass form owner'}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toThrow();
+    let response=await perf.sendReviewMessage(mgr,reviewId,'career',null,randomUUID(),'Career comment: Practise facilitation with an experienced colleague.');
+    response=await perf.sendReviewMessage(mgr,reviewId,'career',response.revision,randomUUID(),'Plan comment: The planned workshop will develop facilitation.');
+    const goal=await perf.sendReviewMessage(matrix.ctx,reviewId,'career',null,randomUUID(),'Goal comment: Facilitation: Include a retrospective after the workshop.');
+    await expect(perf.sendReviewMessage(matrix.ctx,reviewId,'career',goal.revision,randomUUID(),'Plan comment: Replace the line manager feedback.')).rejects.toThrow(/eligible line manager/);
+    const request=randomUUID(),closed=await perf.sendReviewMessage(matrix.ctx,reviewId,'career',goal.revision,request,'Close development plan: We discussed the workshop and reflection.');
+    expect(await perf.sendReviewMessage(matrix.ctx,reviewId,'career',goal.revision,request,'Close development plan: We discussed the workshop and reflection.')).toEqual(closed);
+    const final=(await view(self)).plans[0];expect(final).toMatchObject({status:'closed',managerComment:'The planned workshop will develop facilitation.',conversation:'We discussed the workshop and reflection.',conversationHeldOn:null});expect(final.goals.find(g=>g.id===goalId)?.managerComment).toBe('Include a retrospective after the workshop.');
+    expect((await view(self)).careerProfile?.managerComment).toBe('Practise facilitation with an experienced colleague.');expect(generateDraft).not.toHaveBeenCalled();
+  });
+  it('allows an assigned co-reviewer to own overall plan feedback when the line manager is outside the KPI chain or inactive',async()=>{
+    const {matrix,plan}=await reviewerPlan(true);expect((await view()).planRemarkWriter).toBe(false);expect((await view(matrix.ctx)).planRemarkWriter).toBe(true);
+    await perf.sendReviewMessage(matrix.ctx,reviewId,'career',null,randomUUID(),'Plan comment: Agreed learning actions for the assigned work.');
+    expect((await view(matrix.ctx)).plans[0].managerComment).toBe('Agreed learning actions for the assigned work.');expect((await view(self)).plans[0].managerComment).toBe('');
+    await expect(perf.reviewOnehrPlan(mgr,plan.id,(await view()).plans[0].revision,'Outside-chain overwrite','')).rejects.toThrow(/eligible line manager/);
+    // With the line manager restored into the chain, losing their active login transfers the fallback.
+    const id=(await view(a)).kpis[0].id;await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,id,manager.employmentId);expect((await view(matrix.ctx)).planRemarkWriter).toBe(false);
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,mgr.userId!));expect((await view(matrix.ctx)).planRemarkWriter).toBe(true);
+    await perf.reviewOnehrPlan(matrix.ctx,plan.id,(await view(matrix.ctx)).plans[0].revision,'Revised with the available assigned reviewer.','');expect((await view(matrix.ctx)).plans[0].managerComment).toBe('Revised with the available assigned reviewer.');expect((await view(self)).plans[0].managerComment).toBe('');
+  });
+  it('confirms only explicit human KPI instructions, keeps the remaining private values and rolls back stale conversations',async()=>{
+    const ids=[randomUUID(),randomUUID()],scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,ids.map((id,i)=>({id,title:`Delivery ${i+1}`,description:'',weightBp:5000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId})),true);await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,ids.map(id=>({id,actual:100,note:'Completed the planned delivery'})),'The agreed outcomes were delivered.');
+    const lines=[{id:ids[0],actual:200,note:'Verified additional delivery against the ledger.'},{id:ids[1],actual:150,note:'Retain this second private numeric value and note.'}];
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines,remark:''});
+    await expect(perf.sendReviewMessage(mgr,reviewId,'moderation',null,randomUUID(),'Confirm KPI: Delivery 1')).rejects.toThrow(/overall remark/);expect((await view()).kpis.every(k=>!k.locked)).toBe(true);expect((await perf.getReviewConversation(mgr,reviewId,'moderation')).messages).toEqual([]);
+    let current=await view();await perf.saveAssessmentDraft(mgr,reviewId,current.revision,current.drafts.find(d=>d.kind==='moderation')!.revision,{kind:'moderation',lines,remark:'The ledger supports both additional deliveries.'});
+    const request=randomUUID(),first=await perf.sendReviewMessage(mgr,reviewId,'moderation',null,request,'Confirm KPI: Delivery 1');current=await view();
+    expect(current.kpis[0]).toMatchObject({locked:true,approvedActual:200});expect(current.kpis[1].locked).toBe(false);expect(current.drafts.find(d=>d.kind==='moderation')?.payload).toMatchObject({lines:[lines[1]],remark:'The ledger supports both additional deliveries.'});
+    expect((await view(self)).reviewerRemarks).toEqual([]);expect(await perf.sendReviewMessage(mgr,reviewId,'moderation',null,request,'Confirm KPI: Delivery 1')).toEqual(first);
+    await expect(perf.sendReviewMessage(mgr,reviewId,'moderation',0,randomUUID(),'Confirm all KPI results')).rejects.toThrow(/conversation changed/);expect((await view()).kpis[1].locked).toBe(false);
+    const final=await perf.sendReviewMessage(mgr,reviewId,'moderation',first.revision,randomUUID(),'Confirm all KPI results');expect(final.messages.filter(m=>m.kind==='action')).toHaveLength(2);current=await view();expect(current.managerPerformance).toBe('AE');expect(current.kpis.every(k=>k.locked)).toBe(true);expect(current.drafts.filter(d=>d.kind==='moderation')).toEqual([]);expect(generateDraft).not.toHaveBeenCalled();
+  });
+  it('cannot turn an AI suggestion into a manager confirmation',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'Delivered the planned work'}],'Completed the agreed outcomes.');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});vi.mocked(generateDraft).mockResolvedValue('{"commands":[{"action":"confirm_performance"}]}');
+    const result=await perf.sendReviewMessage(mgr,reviewId,'moderation',null,randomUUID(),'Help me assess Delivery.');expect(result.draftUpdated).toBe(false);expect((await view()).kpis[0].locked).toBe(false);expect((await view()).managerPerformance).toBeNull();
+  });
+  it('approves competency drafts through an explicit human instruction exactly once',async()=>{
+    await complete(false);await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers:{'skill-1':{answer:'yes',remark:'Observed current-skill delivery.'},'skill-2':{answer:'no',remark:''}},remark:'Continue practising the future skill.'});
+    const request=randomUUID(),first=await perf.sendReviewMessage(mgr,reviewId,'competency',null,request,'Approve competency review.');expect((await view()).competencyStatus).toBe('reviewed');expect((await view()).competencies.map(c=>c.manager)).toEqual(['yes','no']);expect(await perf.sendReviewMessage(mgr,reviewId,'competency',null,request,'Approve competency review.')).toEqual(first);expect(generateDraft).not.toHaveBeenCalled();
+    await expect(perf.sendReviewMessage(self,reviewId,'competency',null,randomUUID(),'Approve competency review.')).rejects.toThrow(/assigned reviewer/);
+  });
   it('preserves plan definitions after sharing, requires a career conversation to close, and audits year-round progress',async()=>{
     const goalId=randomUUID(),input={career:{aspiration:'Develop leadership',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:goalId,area:'Facilitation',dueOn:`${year+1}-06-01`,onJob:'Facilitate planning',fromOthers:'',formalLearning:'',status:'not_started'}]};
     await perf.saveOnehrPlan(self,reviewId,null,input);

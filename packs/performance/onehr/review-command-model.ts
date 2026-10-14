@@ -3,6 +3,7 @@ import { assessmentDraftSchema, assertOverallRemark, type AssessmentDraft } from
 const span=z.object({start:z.number().int().min(0),end:z.number().int().min(1)}).strict();
 const commandSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('kpi_result'),id:z.uuid(),target:span,actual:span,note:span.optional()}).strict(),
+ z.object({action:z.literal('kpi_note'),id:z.uuid(),target:span,note:span}).strict(),
  z.object({action:z.literal('competency_answer'),id:z.string().min(1).max(100),target:span,answer:span,remark:span.optional()}).strict(),
  z.object({action:z.literal('feedback_answer'),id:z.string().min(1).max(100),target:span,answer:span}).strict(),
  z.object({action:z.literal('feedback_comment'),id:z.string().min(1).max(300),target:span,text:span}).strict(),
@@ -23,12 +24,14 @@ export function adjudicateReviewCommands(raw:string,facts:ReviewCommandFacts):{o
    if(command.action==='overall_remark'){draft.remark=extract(command.text);assertOverallRemark(draft.remark);continue;}
    const target=facts.targets.find(t=>t.id===command.id),reference=extract(command.target);
    if(!target||normal(reference)!==normal(target.label)||facts.targets.filter(t=>normal(t.label)===normal(reference)).length!==1)throw Error('The message does not uniquely name this assigned item.');
-   if(command.action==='kpi_result'){
+   if(command.action==='kpi_result'||command.action==='kpi_note'){
     if(draft.kind!=='results'&&draft.kind!=='moderation')throw Error('This part does not accept KPI results.');
     const line=draft.lines.find(l=>l.id===command.id);if(!line)throw Error('KPI outside the editable draft.');
-    const value=extract(command.actual);
-    if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)||!Number.isFinite(Number(value)))throw Error('Use an actual number from the message, without calculations.');
-    line.actual=Number(value);if(command.note)line.note=extract(command.note);
+    if(command.action==='kpi_result'){const value=extract(command.actual);
+     if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)||!Number.isFinite(Number(value)))throw Error('Use an actual number from the message, without calculations.');
+     line.actual=Number(value);
+    }
+    if(command.note)line.note=extract(command.note);
    }else if(command.action==='feedback_answer'){
     if(draft.kind!=='feedback')throw Error('This part does not accept colleague feedback.');
     const answer=normal(extract(command.answer));if(!['yes','no','not yet'].includes(answer))throw Error('Use an explicit yes or not yet answer from the message.');draft.answers[command.id]=answer==='yes'?'yes':'no';

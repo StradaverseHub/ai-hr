@@ -595,6 +595,37 @@ END $$;
 REVOKE ALL ON FUNCTION app.assessment_working_result(uuid) FROM PUBLIC,ai_hr_app;
 
 --> statement-breakpoint
+-- The overall IDP remark has one owner; goal remarks and conversation recording retain approver access.
+CREATE FUNCTION app.assessment_plan_remark_writer(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id
+ LEFT JOIN employment m ON m.id=pr.reviewer_employment_id AND m.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND (app.onehr_moderator(r.review_id) OR app.onehr_manager(r.review_id) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.kpis) k WHERE NOT coalesce((k->>'hrOwned')::boolean,false)))
+ AND (app.onehr_manager(r.review_id) OR m.id IS NULL OR m.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.person_id=m.person_id AND u.tenant_id=r.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) OR NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(r.kpis) k WHERE NOT coalesce((k->>'hrOwned')::boolean,false) AND (k->>'moderatorEmploymentId'=m.id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step WHERE step->>'employmentId'=m.id::text))
+ )))
+$$;
+REVOKE ALL ON FUNCTION app.assessment_plan_remark_writer(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_plan_remark_writer(uuid) TO ai_hr_app;
+CREATE FUNCTION app.assessment_plan_remark_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.manager_comment<>'' THEN RAISE EXCEPTION 'Overall feedback belongs to an employee-shared plan'; END IF;
+ ELSIF NEW.manager_comment IS DISTINCT FROM OLD.manager_comment THEN
+  IF OLD.status<>'shared' OR NOT EXISTS(
+   SELECT 1 FROM performance_onehr_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id JOIN performance_onehr_cycle cfg ON cfg.cycle_id=c.id AND cfg.tenant_id=r.tenant_id
+   WHERE r.employment_id=NEW.employment_id AND r.tenant_id=NEW.tenant_id AND r.tenant_id=app.current_tenant_id() AND c.status IN ('open','calibration') AND coalesce((cfg.policy->'modules'->>'idp')::boolean,false)
+    AND NEW.plan_year=extract(year from c.period_end)::integer+CASE WHEN cfg.policy->>'kind'='year_end' THEN 1 ELSE 0 END
+    AND app.assessment_review_participates(r.review_id) AND app.assessment_plan_remark_writer(r.review_id)
+    AND (cfg.policy->'windows'->'idp_review'->>'opensAt' IS NULL OR now()>=(cfg.policy->'windows'->'idp_review'->>'opensAt')::timestamptz)
+    AND (cfg.policy->'windows'->'idp_review'->>'closesAt' IS NULL OR now()<(cfg.policy->'windows'->'idp_review'->>'closesAt')::timestamptz)
+  ) THEN RAISE EXCEPTION 'Only the eligible overall plan reviewer may change this remark'; END IF;
+  IF cardinality(regexp_split_to_array(trim(NEW.manager_comment),'\s+'))>220 THEN RAISE EXCEPTION 'Overall plan feedback is limited to 220 words'; END IF;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_plan_remark_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_plan_remark_guard BEFORE INSERT OR UPDATE ON performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.assessment_plan_remark_validate();
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_result_card(wanted_review uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r performance_onehr_review; f performance_onehr_result; rel performance_assessment_release; value jsonb; own boolean; administrator boolean;
 BEGIN

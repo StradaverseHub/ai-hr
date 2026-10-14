@@ -24,6 +24,12 @@ describe('Performance conversation layout',()=>{
   expect(widget.closest('[data-review-scroll]')).toBeTruthy();expect(composer.closest('[data-review-scroll]')).toBeNull();
   expect(screen.getByRole('button',{name:en.onehr.conversation.next})).toBeTruthy();
  });
+ it('shows the actual completed confirmation rather than calling it a private draft update',async()=>{
+  ports.send.mockResolvedValue({revision:1,messages:[{id:'confirmation',role:'assistant',kind:'action',text:'KPI confirmed: Delivery.',at:new Date().toISOString()}],draftUpdated:true});
+  render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="moderation" initial={{revision:null,messages:[]}} aiEnabled={false} labels={en.onehr.conversation}/></NextIntlClientProvider>);
+  fireEvent.change(screen.getByLabelText(en.onehr.conversation.message),{target:{value:'Confirm KPI: Delivery'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
+  await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());expect(screen.getByText('KPI confirmed: Delivery.')).toBeTruthy();expect(screen.getByText(en.onehr.conversation.action)).toBeTruthy();expect(screen.queryByText(en.onehr.conversation.updated)).toBeNull();
+ });
  it('refreshes the widget after a confirmed private draft update and displays deterministic local copy',async()=>{
   render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="results" initial={{revision:null,messages:[]}} aiEnabled labels={en.onehr.conversation}/></NextIntlClientProvider>);
   fireEvent.change(screen.getByLabelText(en.onehr.conversation.message),{target:{value:'Record Delivery at 100'}});

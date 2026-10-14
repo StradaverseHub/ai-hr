@@ -17188,7 +17188,9 @@
       "send": "Hantar",
       "starter": "Cadangkan kad skor dengan AI",
       "starterQuota": "{remaining} daripada {limit} cadangan berbaki hari ini · ditetapkan semula tengah malam waktu Malaysia",
-      "starterHelp": "Cadangan AI menggantikan pilihan yang boleh diedit dengan sehingga 8 KPI pustaka yang layak. Semak sasaran dan cadangkan kad skor sendiri."
+      "starterHelp": "Cadangan AI menggantikan pilihan yang boleh diedit dengan sehingga 8 KPI pustaka yang layak. Semak sasaran dan cadangkan kad skor sendiri.",
+      "action": "Selesai",
+      "managerHelp": "Sembang boleh menyimpan ulasan penyemak. Pengesahan jelas mengunci keputusan yang anda semak. Anda juga boleh menggunakan borang."
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",
@@ -17928,7 +17930,8 @@
         "partly": "Disokong atau dijelaskan sebahagian",
         "no": "Tidak disokong"
       }
-    }
+    },
+    "planRemarkOwnerHelp": "Hanya penyemak yang bertanggungjawab terhadap maklum balas keseluruhan pelan boleh mengedit medan ini. Anda masih boleh mengulas matlamat dan merekodkan perbincangan kerjaya."
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

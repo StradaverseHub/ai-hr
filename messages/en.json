@@ -17188,7 +17188,9 @@
       "send": "Send",
       "starter": "Suggest a scorecard with AI",
       "starterQuota": "{remaining} of {limit} suggestions left today · resets at midnight Malaysia time",
-      "starterHelp": "AI suggestions replace your editable selection with up to 8 eligible library KPIs. Review the targets and propose the scorecard yourself."
+      "starterHelp": "AI suggestions replace your editable selection with up to 8 eligible library KPIs. Review the targets and propose the scorecard yourself.",
+      "action": "Completed",
+      "managerHelp": "Chat can save reviewer comments. Explicit confirmation locks your reviewed results. You can also use the form."
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",
@@ -17928,7 +17930,8 @@
         "partly": "Partly backed or explained",
         "no": "Not backed"
       }
-    }
+    },
+    "planRemarkOwnerHelp": "Only the reviewer responsible for overall plan feedback can edit this field. You can still comment on goals and record the career conversation."
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

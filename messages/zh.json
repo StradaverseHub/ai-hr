@@ -17188,7 +17188,9 @@
       "send": "发送",
       "starter": "使用 AI 建议记分卡",
       "starterQuota": "今日剩余 {remaining}/{limit} 次建议 · 马来西亚时间午夜重置",
-      "starterHelp": "AI 建议会将可编辑的选择替换为最多 8 项符合条件的指标库 KPI。请审查目标，并自行提交记分卡。"
+      "starterHelp": "AI 建议会将可编辑的选择替换为最多 8 项符合条件的指标库 KPI。请审查目标，并自行提交记分卡。",
+      "action": "已完成",
+      "managerHelp": "对话可保存评审意见。明确确认会锁定您已评审的结果。您也可以使用表单。"
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",
@@ -17928,7 +17930,8 @@
         "partly": "部分支持或说明",
         "no": "缺少支持"
       }
-    }
+    },
+    "planRemarkOwnerHelp": "只有负责计划总体反馈的评审人可以编辑此字段。您仍可评论目标并记录职业发展对话。"
   },
   "allowanceV2": {
     "title": "考勤津贴",

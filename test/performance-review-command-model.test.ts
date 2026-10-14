@@ -11,6 +11,12 @@ describe('assessment chat draft adjudication',()=>{
   expect(result).toMatchObject({ok:true,changed:true,draft:{kind:'results',lines:[{id,actual:100,note:'Shipped on time.'}]}});
   expect(base.draft).toMatchObject({lines:[{actual:null,note:''}]});
  });
+ it('adds a literal justification without clearing an already drafted numeric result',()=>{
+  const text='Delivery note: Verified against the service ledger.',facts:ReviewCommandFacts={...base,text,draft:{kind:'moderation',lines:[{id,actual:150,note:'Earlier note'}],remark:'Retain this overall remark'}};
+  const command={action:'kpi_note',id,target:span(text,'Delivery'),note:span(text,'Verified against the service ledger.')};
+  expect(adjudicateReviewCommands(JSON.stringify({commands:[command]}),facts)).toMatchObject({ok:true,changed:true,draft:{kind:'moderation',lines:[{id,actual:150,note:'Verified against the service ledger.'}],remark:'Retain this overall remark'}});
+  expect(facts.draft).toMatchObject({lines:[{actual:150,note:'Earlier note'}]});
+ });
  it('rejects invented values, unknown fields, foreign items and mismatched references',()=>{
   for(const change of [{value:100},{id:randomUUID()},{target:span(base.text,'Record')},{actual:{start:999,end:1000}},{action:'submit'}])expect(adjudicateReviewCommands(JSON.stringify({commands:[{...command,...change}]}),base).ok).toBe(false);
   expect(adjudicateReviewCommands(JSON.stringify({commands:[command,command]}),base).ok).toBe(false);

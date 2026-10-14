@@ -17188,7 +17188,9 @@
       "send": "Gửi",
       "starter": "Đề xuất bảng điểm bằng AI",
       "starterQuota": "Còn {remaining}/{limit} lượt đề xuất hôm nay · đặt lại lúc nửa đêm giờ Malaysia",
-      "starterHelp": "Đề xuất AI thay thế lựa chọn có thể chỉnh sửa bằng tối đa 8 KPI đủ điều kiện từ thư viện. Hãy xem xét mục tiêu và tự đề xuất bảng điểm."
+      "starterHelp": "Đề xuất AI thay thế lựa chọn có thể chỉnh sửa bằng tối đa 8 KPI đủ điều kiện từ thư viện. Hãy xem xét mục tiêu và tự đề xuất bảng điểm.",
+      "action": "Hoàn tất",
+      "managerHelp": "Trò chuyện có thể lưu nhận xét của người đánh giá. Xác nhận rõ ràng sẽ khóa các kết quả bạn đã đánh giá. Bạn cũng có thể dùng biểu mẫu."
     },
     "closePlan": "Close after career conversation",
     "acknowledge": "Acknowledge conversation",
@@ -17928,7 +17930,8 @@
         "partly": "Có minh chứng hoặc giải thích một phần",
         "no": "Chưa có minh chứng"
       }
-    }
+    },
+    "planRemarkOwnerHelp": "Chỉ người đánh giá phụ trách phản hồi chung về kế hoạch mới có thể chỉnh sửa mục này. Bạn vẫn có thể nhận xét mục tiêu và ghi lại cuộc trao đổi nghề nghiệp."
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

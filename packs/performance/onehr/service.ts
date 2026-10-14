@@ -39,6 +39,7 @@ async function isSelf(tx: Tx, employmentId: string) {
 }
 async function isAdmin(tx: Tx, cycleId: string) { const [r] = await tx.execute<{ok:boolean}>(sql`select app.onehr_cycle_admin(${cycleId}::uuid) as ok`); return !!r?.ok; }
 async function isManager(tx: Tx, reviewId: string) { const [r] = await tx.execute<{ok:boolean}>(sql`select app.onehr_manager(${reviewId}::uuid) as ok`); return !!r?.ok; }
+async function canWritePlanRemark(tx:Tx,reviewId:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.assessment_plan_remark_writer(${reviewId}::uuid) as ok`);return !!r?.ok;}
 async function requireAdmin(tx: Tx, cycleId: string) { if (!await isAdmin(tx,cycleId)) throw Error('Performance administrator access is required.'); }
 async function loadCycle(tx: Tx, cycleId: string, lock = false) {
   uuid.parse(cycleId);
@@ -95,6 +96,26 @@ type ReviewerRemark={actorUserId:string|null;author:string;remark:string;role:st
 async function lockedReviewerRemarksTx(tx:Tx,reviewId:string) {
   const [row]=await tx.execute<{value:ReviewerRemark[]}>(sql`select app.assessment_locked_reviewer_remarks(${reviewId}::uuid) as value`);
   return row?.value??[];
+}
+
+/** Source journey locks require the LINE MANAGER's own remark when their scoped preview changes band. */
+async function assertJourneyReviewerRemark(tx:Tx,ctx:SessionContext,r:Awaited<ReturnType<typeof loadReview>>,kpis:KPI[]) {
+ if(!await isManager(tx,r.row.reviewId))return;
+ const [draft]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.reviewId,r.row.reviewId),eq(assessmentDraft.actorUserId,ctx.userId!),eq(assessmentDraft.kind,'moderation'),eq(assessmentDraft.contextId,r.row.reviewId)));
+ const privateValues=draft?assessmentDraftSchema.parse(draft.payload):null;
+ const mine=kpis.filter(k=>!k.hrOwned&&kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id)));
+ const preview=mine.map(k=>{const own=k.approvalChain?.find(step=>r.native.ownEmploymentIds.includes(step.employmentId)&&step.at);return {...k,locked:true,approvedActual:own?.actual??(privateValues?.kind==='moderation'?privateValues.lines.find(l=>l.id===k.id)?.actual:null)??k.approvedActual??k.actual};});
+ const self=scorecard(mine,r.cycle.policy,r.row.companyId,false),moderated=scorecard(preview,r.cycle.policy,r.row.companyId,true);
+ const [remark]=await tx.select({text:assessmentReviewerRemark.remark}).from(assessmentReviewerRemark).where(and(eq(assessmentReviewerRemark.reviewId,r.row.reviewId),eq(assessmentReviewerRemark.actorUserId,ctx.userId!)));
+ if(self.band&&moderated.band&&self.band!==moderated.band&&!remark?.text.trim())throw Error('Your moderation changes the overall band for your assigned KPIs. Add your overall remark before confirming.');
+}
+
+async function pruneModerationDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,kpiId:string,reviewRevision:number) {
+ const [draft]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!),eq(assessmentDraft.kind,'moderation'),eq(assessmentDraft.contextId,reviewId))).for('update');
+ if(!draft)return;const payload=assessmentDraftSchema.parse(draft.payload);if(payload.kind!=='moderation')return;
+ const lines=payload.lines.filter(l=>l.id!==kpiId);
+ if(!lines.length)await clearAssessmentDraftTx(tx,ctx,reviewId,'moderation');
+ else await tx.update(assessmentDraft).set({payload:{...payload,lines,remark:''},revision:draft.revision+1,reviewRevision,updatedAt:new Date()}).where(eq(assessmentDraft.id,draft.id));
 }
 
 /** Called by the existing cycle opener inside its transaction. No second roster or identity master. */
@@ -249,7 +270,7 @@ export async function saveOnehrKpiCheckInTx(tx:Tx,ctx:SessionContext,reviewId:st
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
  return withPerformanceTenant(ctx,tx=>moderateOnehrKpiTx(tx,ctx,reviewId,expected,kpiId,actual,remark));
 }
-export async function moderateOnehrKpiTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
+export async function moderateOnehrKpiTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string,journey=false) {
   uuid.parse(kpiId);z.number().finite().parse(actual);note.parse(remark);
 
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_approve',expected,'moderator');
@@ -260,7 +281,10 @@ export async function moderateOnehrKpiTx(tx:Tx,ctx:SessionContext,reviewId:strin
     const next=chain.findIndex(step=>!step.at);if(next<0)throw Error('This KPI chain is complete.');
     const approvalChain=chain.map((step,i)=>i===next?{...step,actual,remark,at:new Date().toISOString()}:step);
     const kpis=r.kpis.map(k=>k.id===kpiId?{...k,approvalChain,approvedActual:actual,moderationRemark:remark,locked:approvalChain.every(step=>step.at!=null)}:k);
-    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,'kpi-moderated',{kpiId});await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
+    if(journey)await assertJourneyReviewerRemark(tx,ctx,r,kpis);
+    const final=journey?scorecard(kpis,r.cycle.policy,r.row.companyId,true):null;
+    await touchReview(tx,reviewId,{kpis,...(final?.score!=null?{managerPerformance:final.band,managerScore:String(final.score)}:{})});
+    await pruneModerationDraftTx(tx,ctx,reviewId,kpiId,r.row.revision+1);await audit(tx,ctx,reviewId,'kpi-moderated',{kpiId});await notifyKpiApprovers(tx,ctx,reviewId,kpis,'results');
 }
 
 export async function confirmOnehrPerformance(ctx:SessionContext,reviewId:string,expected:number,band:PMBand,remark:string) {
@@ -711,6 +735,7 @@ export async function reviewOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,e
 
     const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!plan)throw Error('Plan not found.');revision(plan.revision,expected);
     const r=await loadReview(tx,activeReviewId??plan.reviewId);if(!r.cycle.policy.modules.idp)throw Error('Development plans are disabled.');const activeYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);if(r.row.employmentId!==plan.employmentId||activeYear!==plan.planYear)throw Error('This assessment does not own the plan year.');if(await isSelf(tx,plan.employmentId)||!await isManager(tx,activeReviewId??plan.reviewId)&&!await isModerator(tx,activeReviewId??plan.reviewId))throw Error('Only the assigned manager may review this plan.');if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_review');
+    if(comment!==plan.managerComment&&!await canWritePlanRemark(tx,r.row.reviewId))throw Error('Only the eligible line manager writes the overall plan feedback.');
     if(plan.status!=='shared'&&plan.status!=='closed')throw Error('The employee must share the plan first.');if(plan.status==='closed'&&comment!==plan.managerComment)throw Error('An agreed plan remark cannot change. Record a new conversation or update goal progress instead.');
     await tx.update(onehrPlan).set({managerComment:comment,conversation,conversationHeldOn:heldOn===undefined?plan.conversationHeldOn:heldOn,acknowledgedAt:conversation!==plan.conversation||heldOn!==undefined&&heldOn!==plan.conversationHeldOn?null:plan.acknowledgedAt,status:close||plan.status==='closed'?'closed':'shared',revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,close?'plan-closed':'plan-reviewed',{reviewId:activeReviewId??plan.reviewId,previous:{comment:plan.managerComment,conversation:plan.conversation,heldOn:plan.conversationHeldOn,status:plan.status},next:{comment,conversation,heldOn:heldOn===undefined?plan.conversationHeldOn:heldOn,status:close||plan.status==='closed'?'closed':'shared'}});
 }
@@ -891,7 +916,7 @@ export async function getOnehrReview(ctx:SessionContext,reviewId:string) {
     const careerChoice=careerProfile?careerSchema.parse(careerProfile.career).selfProfileId:null;
     const mapProfile=careerChoice&&!['roster','assigned'].includes(r.row.profileMatch??'')?r.cycle.policy.profiles.find(p=>p.id===careerChoice&&p.active!==false)??profile:profile;
     const routes=mapProfile?careerRoutes(mapProfile,r.cycle.policy.profiles,skills,r.cycle.policy.careerRoutes??[]):[];
-    return {participating:!!participant?.ok,careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,ownReviewerRemark,reviewerRemarks,drafts:drafts.map(d=>{const payload=assessmentDraftSchema.parse(d.payload);return {...d,payload:payload.kind==='moderation'?{...payload,remark:ownReviewerRemark}:payload};}),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
+    return {participating:!!participant?.ok,careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:routes,profile,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,ownReviewerRemark,reviewerRemarks,drafts:drafts.map(d=>{const payload=assessmentDraftSchema.parse(d.payload);return {...d,payload:payload.kind==='moderation'?{...payload,remark:ownReviewerRemark}:payload};}),attachmentLinks,calculatedPerformance:moderator&&!admin?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:moderator&&!admin?'':r.row.selfRemark,competencySelfRemark:moderator&&!admin?'':r.row.competencySelfRemark,competencyManagerRemark:moderator&&!admin?'':r.row.competencyManagerRemark,aiEnabled,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:moderator&&!admin?{...r.cycle.policy,modules:{pm:true,tm:false,idp:r.cycle.policy.modules.idp,evidence:false}}:r.cycle.policy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator,planRemarkWriter:await canWritePlanRemark(tx,reviewId),admin,moderator,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
       kpis:moderator&&!admin?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:moderator&&!admin?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:moderator&&!admin?null:r.row.managerPerformance,managerScore:moderator&&!admin||r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:moderator&&!admin?'':reviewerRemarks.find(n=>n.role==='Line manager')?.remark??'',
       potential:leadership?.potential.band??null,finalized:!!record?.frozen||!!r.native.closedAt||r.cycle.native.status==='closed'||!participant?.ok,result:result?{id:record!.id,digest:record!.digest,interim:!record!.frozen,performance:!self||record!.performanceReleasedAt?result.performance:null,potential:!self||record!.potentialReleasedAt?result.potential:null,talent:!self||record!.talentReleasedAt?result.talent:null,performanceReleased:!!record!.performanceReleasedAt,potentialReleased:!!record!.potentialReleasedAt,talentReleased:!!record!.talentReleasedAt,feedbackReleased:!!record!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&record!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,authorName:evidencePeople?.names[e.authorUserId]??'',files:attachments.filter(a=>a.evidenceId===e.id),details:evidenceDetailsSchema.parse(e.details),links:evidenceLinkSchema.array().parse(e.links),citations:evidenceCitationSchema.array().parse(e.citations).map(c=>({...c,name:evidencePeople?.names[c.userId]??''})),responses:standingResponses(evidenceResponseSchema.array().parse(e.responses)).map(c=>({...c,name:evidencePeople?.names[c.userId]??''}))})),attachments,peers,choices};
   });
@@ -1114,9 +1139,9 @@ export async function submitAssessmentModerationTx(tx:Tx,ctx:SessionContext,revi
    const approvalChain=chain.map((step,i)=>i===next?{...step,actual:line.actual,remark:line.note,at:now}:step);
    return {...k,approvalChain,approvedActual:line.actual,moderationRemark:line.note,locked:approvalChain.every(step=>!!step.at)};
   });
-  const final=scorecard(kpis,r.cycle.policy,r.row.companyId,true),self=scorecard(kpis,r.cycle.policy,r.row.companyId,false);
-  if(final.score!=null&&final.band!==self.band&&!overallRemark.trim())throw Error('Explain why moderation changed the overall performance band.');
+  const final=scorecard(kpis,r.cycle.policy,r.row.companyId,true);
   await saveReviewerRemarkTx(tx,ctx,reviewId,overallRemark);
+  await assertJourneyReviewerRemark(tx,ctx,r,kpis);
   await clearAssessmentDraftTx(tx,ctx,reviewId,'moderation');
   await touchReview(tx,reviewId,{kpis,...(final.score!=null?{managerPerformance:final.band,managerScore:String(final.score)}:{})});
   await audit(tx,ctx,reviewId,'moderation-submitted',{kpiIds:lines.map(l=>l.id),complete:final.score!=null});
