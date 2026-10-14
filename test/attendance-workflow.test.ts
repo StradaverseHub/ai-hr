@@ -54,6 +54,44 @@ const correction = async (id: string) => (await owner.db.select().from(schema.at
 const decisions = async () => owner.db.select().from(schema.attendanceWorkflowDecision).orderBy(asc(schema.attendanceWorkflowDecision.stageIndex));
 const events = async (id: string, type: string) => owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, type))).orderBy(asc(schema.domainEvent.sequence));
 describe('Attendance approval routing and exactly-once effects', () => {
+    it('persists multi-valued assignments, matches alternatives within each field and requires every filled field', async () => {
+        const { a, worker, manager } = await fixture();
+        const units = await owner.db.insert(schema.businessUnit).values(['A', 'B'].map(code => ({ tenantId: b.tenantId, companyId: b.companyId, code: `WF_${code}`, name: `Workflow unit ${code}` }))).returning();
+        const grades = await owner.db.insert(schema.jobGrade).values(['A', 'B'].map(code => ({ tenantId: b.tenantId, code: `WF_${code}`, name: `Workflow grade ${code}` }))).returning();
+        await owner.db.insert(schema.profileOption).values(['North', 'South'].map(value => ({ tenantId: b.tenantId, category: 'division', value, label: value })));
+        const unit = (code: string) => units.find(row => row.code === `WF_${code}`)!;
+        const grade = (code: string) => grades.find(row => row.code === `WF_${code}`)!;
+        for (const [employee, code, division] of [[worker, 'A', 'North'], [manager, 'B', 'South']] as const) {
+            await owner.db.update(schema.assignment).set({ businessUnitId: unit(code).id }).where(eq(schema.assignment.employmentId, employee.employmentId));
+            await owner.db.update(schema.employment).set({ gradeId: grade(code).id, orgDivision: division }).where(eq(schema.employment.id, employee.employmentId));
+        }
+        const criteria = { departmentIds: [b.deptA, b.deptB], businessUnitIds: [unit('A').id, unit('B').id], gradeIds: [grade('A').id, grade('B').id], orgDivision: ['North', 'South'] };
+        const value = input(['hr_admin'], { criteria });
+        const saved = await saveAttendanceWorkflow(a, value);
+        const reopened = (await listAttendanceWorkflows(a, [b.companyId])).find(row => row.lineageId === saved.lineageId)!;
+        expect(reopened.criteria).toEqual(criteria);
+        const matching = await previewAttendanceWorkflow(a, value, saved.lineageId);
+        expect(new Set(matching.rows.map(row => row.employmentId))).toEqual(new Set([worker.employmentId, manager.employmentId]));
+        for (const restriction of [{ departmentIds: [b.deptA] }, { businessUnitIds: [unit('A').id] }, { gradeIds: [grade('A').id] }, { orgDivision: ['North'] }]) {
+            const preview = await previewAttendanceWorkflow(a, { ...value, criteria: { ...criteria, ...restriction } }, saved.lineageId);
+            expect(preview.rows.map(row => row.employmentId)).toEqual([worker.employmentId]);
+        }
+        await expect(saveAttendanceWorkflow(a, { ...value, criteria: { departmentIds: [randomUUID()] } }, saved.lineageId)).rejects.toMatchObject({ code: 'invalid' });
+        expect((await listAttendanceWorkflows(a, [b.companyId])).find(row => row.lineageId === saved.lineageId)?.version).toBe(1);
+    });
+    it('does not let an any-one alternative skip a later level or approve the current level twice', async () => {
+        const { a, worker, mgr } = await fixture();
+        const value = input(); value.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }];
+        await enable(a, value);
+        const id = await submit(a, worker.employmentId);
+        await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toThrow();
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        expect((await correction(id)).status).toBe('pending');
+        await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
+        expect(await decisions()).toHaveLength(1);
+        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 });
+        expect((await correction(id)).status).toBe('approved');
+    });
     it('keeps routing off by default and preserves a pre-enablement pending request', async () => {
         const { a, worker } = await fixture();
         const id = await submit(a, worker.employmentId);

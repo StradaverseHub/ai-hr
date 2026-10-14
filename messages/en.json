@@ -17613,7 +17613,7 @@
     "name": "Workflow name",
     "description": "Description",
     "assignment": "Workflow assignment",
-    "assignmentHelp": "No selection means all employees on that axis. Selections combine across fields. Lower priority numbers apply first; ties are refused.",
+    "assignmentHelp": "Values within one field are alternatives. Every filled field must match; empty fields include all eligible values in this company. Lower priority numbers apply first; ties are refused.",
     "priority": "Priority",
     "department": "Department",
     "businessUnit": "Business Unit",
@@ -17658,7 +17658,16 @@
       "irregularity": "Attendance Irregularity",
       "self_overtime": "Self Overtime"
     },
-    "alternativeHelp": "Any-one stages keep their usable alternatives. An unavailable manager or a self-only HR group is excluded from the saved routing; a stage with no active non-self approver blocks activation and submission."
+    "alternativeHelp": "Any-one stages keep their usable alternatives. An unavailable manager or a self-only HR group is excluded from the saved routing; a stage with no active non-self approver blocks activation and submission.",
+    "companyHelp": "Choose a company to manage its approval workflows.",
+    "workflowCount": "Workflows",
+    "viewEdit": "View / Edit",
+    "noCompanies": "No companies in your scope.",
+    "backCompanies": "Back to companies",
+    "unavailable": "Unavailable ({value})",
+    "orderedHelp": "Levels proceed in order. Any eligible alternative can complete its current level; later levels must wait.",
+    "removeAlternative": "Remove alternative",
+    "requestFailed": "The request could not be completed. Your changes are kept; please try again."
   },
   "attendanceHistory": {
     "title": "Application History",

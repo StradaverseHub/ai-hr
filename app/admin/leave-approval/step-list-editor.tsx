@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ApprovalMode } from '@/components/approval-mode';
 import { Badge, Button, inputCls } from '@/components/ui';
 import {
   EmployeeSearchField,
@@ -245,37 +246,7 @@ export function StepListEditor({
           the levels (a level with alternates IS an any-one level), so the control and the chain beneath
           it cannot disagree. Hidden when the chain is empty: there is nothing to be any-one about yet. */}
       {levels.length > 0 && (
-        <fieldset className="space-y-2 rounded-xl border border-border p-3">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {labels.modeTitle}
-          </legend>
-          <label className="flex cursor-pointer items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="approvalMode"
-              className="mt-0.5"
-              checked={!anyOne}
-              onChange={() => setMode(false)}
-            />
-            <span>
-              <span className="font-medium">{labels.modeSequential}</span>
-              <span className="block text-xs text-muted-foreground">{labels.modeSequentialHint}</span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="approvalMode"
-              className="mt-0.5"
-              checked={anyOne}
-              onChange={() => setMode(true)}
-            />
-            <span>
-              <span className="font-medium">{labels.modeAnyOne}</span>
-              <span className="block text-xs text-muted-foreground">{labels.modeAnyOneHint}</span>
-            </span>
-          </label>
-        </fieldset>
+        <ApprovalMode anyOne={anyOne} onChange={setMode} labels={labels}/>
       )}
 
       <div className="flex items-baseline justify-between gap-2">

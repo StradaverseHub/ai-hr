@@ -17613,7 +17613,7 @@
     "name": "Nama aliran kerja",
     "description": "Keterangan",
     "assignment": "Penetapan aliran kerja",
-    "assignmentHelp": "Tiada pilihan bermaksud semua pekerja bagi medan itu. Pilihan antara medan digabungkan. Nombor keutamaan lebih kecil digunakan dahulu; padanan seri ditolak.",
+    "assignmentHelp": "Nilai dalam medan yang sama ialah pilihan alternatif. Setiap medan yang diisi mesti sepadan; medan kosong merangkumi semua nilai yang layak dalam syarikat ini. Nombor keutamaan lebih rendah didahulukan; nilai seri ditolak.",
     "priority": "Keutamaan",
     "department": "Jabatan",
     "businessUnit": "Unit Perniagaan",
@@ -17658,7 +17658,16 @@
       "irregularity": "Ketidakteraturan Kehadiran",
       "self_overtime": "Kerja Lebih Masa Sendiri"
     },
-    "alternativeHelp": "Peringkat mana-mana seorang mengekalkan pilihan yang boleh digunakan. Pengurus yang tiada atau kumpulan HR yang hanya terdiri daripada pemohon dikecualikan daripada laluan tersimpan; peringkat tanpa pelulus aktif selain pemohon menyekat pengaktifan dan penghantaran."
+    "alternativeHelp": "Peringkat mana-mana seorang mengekalkan pilihan yang boleh digunakan. Pengurus yang tiada atau kumpulan HR yang hanya terdiri daripada pemohon dikecualikan daripada laluan tersimpan; peringkat tanpa pelulus aktif selain pemohon menyekat pengaktifan dan penghantaran.",
+    "companyHelp": "Pilih syarikat untuk mengurus aliran kerja kelulusannya.",
+    "workflowCount": "Aliran kerja",
+    "viewEdit": "Lihat / Edit",
+    "noCompanies": "Tiada syarikat dalam skop anda.",
+    "backCompanies": "Kembali ke syarikat",
+    "unavailable": "Tidak tersedia ({value})",
+    "orderedHelp": "Peringkat berjalan mengikut turutan. Mana-mana pelulus alternatif yang layak boleh melengkapkan peringkat semasa; peringkat seterusnya mesti menunggu.",
+    "removeAlternative": "Buang alternatif",
+    "requestFailed": "Permintaan tidak dapat diselesaikan. Perubahan anda dikekalkan; sila cuba lagi."
   },
   "attendanceHistory": {
     "title": "Sejarah Permohonan",
