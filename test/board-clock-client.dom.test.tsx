@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -11,16 +11,17 @@ vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>
 const initial={clockContext:'a'.repeat(64),date:clockDate,serverNow:clockDate+'T00:00:00Z',workedSeconds:0,clockedIn:false,openSince:null,locationValid:true,locationAvailable:true,geofencingRequired:false,attendancePhotoSetting:'optional',captures:[],legacy:[],shift:{code:'SF',start:'07:00',end:'20:00'}} as unknown as React.ComponentProps<typeof ClockPageClient>['initial'];
 let selectedSetting:'required'|'optional'|'not_required';
 let geofencingRequired=false;
+let captureRows:typeof initial.captures=[];
 let post=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
 let lookup=vi.fn<(url:string,options?:RequestInit)=>Promise<Response>>();
 let getUserMedia=vi.fn<()=>Promise<MediaStream>>();
 const receipt={recordedAt:clockDate+'T01:00:00Z',direction:'in',id:'capture',date:clockDate};
 function mount(setting:'required'|'optional'|'not_required'='optional'){
   selectedSetting=setting;
-  return render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,attendancePhotoSetting:setting}} shiftName="Semi Flexi"/></NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale="en" messages={en}><ClockPageClient initial={{...initial,captures:captureRows,attendancePhotoSetting:setting}} shiftName="Semi Flexi"/></NextIntlClientProvider>);
 }
 beforeEach(()=>{
-  selectedSetting='optional';geofencingRequired=false;
+  selectedSetting='optional';geofencingRequired=false;captureRows=[];
   Object.defineProperty(window,'isSecureContext',{value:true,configurable:true});
   Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition:vi.fn((ok)=>ok({coords:{latitude:3,longitude:101,accuracy:10}}))},configurable:true});
   getUserMedia=vi.fn<()=>Promise<MediaStream>>().mockRejectedValue(new DOMException('Denied','NotAllowedError'));
@@ -30,7 +31,7 @@ beforeEach(()=>{
     if(options?.method==='POST')return post(url,options);
     if(url.startsWith('/api/attendance/clock?'))return lookup(url,options);
     if(url==='/api/time')return Promise.resolve(Response.json({serverNow:initial.serverNow}));
-    return Promise.resolve(Response.json({...initial,attendancePhotoSetting:selectedSetting,geofencingRequired,locationAvailable:url.includes('?lat=')}));
+    return Promise.resolve(Response.json({...initial,captures:captureRows,attendancePhotoSetting:selectedSetting,geofencingRequired,locationAvailable:url.includes('?lat=')}));
   }));
 });
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
@@ -166,4 +167,35 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
   it('clocks without fabricated coordinates after GPS denial when geofencing is off',async()=>{mount('not_required');await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));post.mockClear();vi.mocked(navigator.geolocation.getCurrentPosition).mockImplementationOnce((_ok,fail)=>fail?.({code:1} as GeolocationPositionError));await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));const body=post.mock.calls[0][1]!.body as FormData;expect(body.has('lat')).toBe(false);expect(body.has('lng')).toBe(false);expect(body.has('accuracy')).toBe(false);expect(screen.queryByText(en.attendance.clock.locationDenied)).toBeNull();});
   it('still refuses missing GPS when the freshly read setting requires geofencing',async()=>{mount('not_required');await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));post.mockClear();geofencingRequired=true;vi.mocked(navigator.geolocation.getCurrentPosition).mockImplementationOnce((_ok,fail)=>fail?.({code:1} as GeolocationPositionError));await begin();await screen.findByText(en.attendance.clock.locationDenied);expect(post).not.toHaveBeenCalled();expect(screen.queryByText(en.attendance.clock.pendingCommand)).toBeNull();});
   it('required camera failure cannot expose Skip Photo',async()=>{mount('required');await begin();await screen.findByText(en.attendance.clock.cameraDenied);expect(screen.queryByRole('button',{name:en.attendance.clock.skipPhoto})).toBeNull();expect(post).not.toHaveBeenCalled();});
+});
+
+const captureRow=(overrides:Partial<typeof initial.captures[number]>={}):typeof initial.captures[number]=>({
+  id:'capture-a',requestId:'request-a',direction:'in',date:clockDate,recordedAt:clockDate+'T01:00:00Z',
+  deviceId:null,lat:null,lng:null,accuracyM:null,locationStatus:null,geofencingRequired:false,locationName:null,
+  punchId:'punch-a',removalRequested:false,removalBlocked:false,photoAvailable:false,purgedAt:undefined,photoDigest:undefined,...overrides,
+});
+it.each([null,'denied','unavailable','timeout','unsupported'] as const)('shows recorded %s location evidence separately from geofencing policy',async status=>{
+  captureRows=[captureRow({locationStatus:status})];mount();
+  await waitFor(()=>expect(screen.getByRole('button',{name:en.attendance.clock.clockIn})).toBeEnabled());
+  const item=within(screen.getByRole('listitem'));
+  expect(item.getByText(en.attendance.clock.captureLocation[status??'unknown'])).toBeVisible();
+  expect(item.getByText(en.attendance.clock.geofencingNotRequired)).toBeVisible();
+  expect(item.queryByRole('link')).toBeNull();
+});
+it('renders captured coordinates and accuracy without inventing a historical geofencing policy',async()=>{
+  captureRows=[captureRow({lat:3.12,lng:101.6,accuracyM:8,locationStatus:'recorded',geofencingRequired:null})];mount();
+  await waitFor(()=>expect(screen.getByRole('button',{name:en.attendance.clock.clockIn})).toBeEnabled());
+  const item=within(screen.getByRole('listitem'));
+  expect(item.getByRole('link',{name:'3.12000, 101.60000 · ±8 m'})).toHaveAttribute('target','_blank');
+  expect(item.queryByText(en.attendance.clock.geofencingNotRequired)).toBeNull();
+  expect(item.queryByText(en.attendance.clock.geofenceEnforced)).toBeNull();
+});
+it('blocks both clock intents while reviewing a removal and restores them on cancellation',async()=>{
+  captureRows=[captureRow()];mount();
+  const clockIn=screen.getByRole('button',{name:en.attendance.clock.clockIn}),clockOut=screen.getByRole('button',{name:en.attendance.clock.clockOut});
+  await waitFor(()=>expect(clockIn).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.remove}));
+  expect(clockIn).toBeDisabled();expect(clockOut).toBeDisabled();
+  expect(within(screen.getByRole('dialog')).getByRole('textbox')).toBeRequired();
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:en.attendance.clock.cancelPhoto}));
+  expect(clockIn).toBeEnabled();expect(clockOut).toBeEnabled();expect(post).not.toHaveBeenCalled();
 });

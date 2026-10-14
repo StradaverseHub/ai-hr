@@ -155,10 +155,10 @@ const CAPTURE = fs.readFileSync(path.resolve(__dirname, '../components/attendanc
 
 describe('clock-client source guards (r430 — Switch removed, always-on buttons, device gate removed, conditional photo)', () => {
   it('both Clock In and Clock Out share the safety gate without clock-state gating, with synchronous duplicate protection', () => {
-    expect(ISLAND).toMatch(/const blocked=busy\|\|pending\|\|camera\|\|!!action\|\|!synced\|\|!today\.locationValid/);
+    expect(ISLAND).toMatch(/const blocked=!!removing\|\|busy\|\|pending\|\|camera\|\|!!action\|\|!synced\|\|!today\.locationValid/);
     expect(ISLAND).not.toContain('today.deviceValid');
     // r430 — neither button is gated by today.clockedIn any more: clocking out with no clock-in first, or
-    // clocking in again after a clock-out, are both allowed. `blocked` (busy/pending/camera/action/sync/geo)
+    // clocking in again after a clock-out, are both allowed. `blocked` (removal/busy/pending/camera/action/sync/geo)
     // is the only reason either button is ever disabled.
     expect(ISLAND).toContain("disabled={blocked} onClick={()=>startClock('in')}");
     expect(ISLAND).toContain("disabled={blocked} onClick={()=>startClock('out')}");
@@ -174,12 +174,18 @@ describe('clock-client source guards (r430 — Switch removed, always-on buttons
   /** Geofencing off permits an absent fix, but only an actual fix may be described as recorded. */
   it('distinguishes recorded and unavailable location when geofencing is off, in all six locales', () => {
     expect(ISLAND).toContain("t(today.locationValid?(today.geofencingRequired?'withinLocation':today.locationAvailable?'locationRecordedNoGeofence':'locationUnavailableAllowed'):geo?'outsideLocation':'locationCheckNeeded')");
-    expect(ISLAND).toContain("{c.locationName??t('geofencingNotRequired')}");
+    // Stored evidence is distinct from geofencing policy; missing historical policy stays unknown.
+    expect(ISLAND).toContain("t(`captureLocation.${c.locationStatus&&c.locationStatus!=='recorded'?c.locationStatus:'unknown'}`)");
+    expect(ISLAND).toContain("c.geofencingRequired!=null&&");
+    expect(ISLAND).toContain("t(c.geofencingRequired?'geofenceEnforced':'geofencingNotRequired')");
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
       expect(m.attendance.clock.locationRecordedNoGeofence, loc).toBeTruthy();
       expect(m.attendance.clock.locationUnavailableAllowed, loc).toBeTruthy();
       expect(m.attendance.clock.geofencingNotRequired, loc).toBeTruthy();
+      for (const status of ['unknown','denied','unavailable','timeout','unsupported']) {
+        expect(m.attendance.clock.captureLocation[status], `${loc}/${status}`).toBeTruthy();
+      }
     }
     const READ = fs.readFileSync(path.resolve(__dirname, '../core/attendance-clock-read.ts'), 'utf8');
     expect(READ).toContain('locationValid = result.enforced ? !!result.clockingLocationId : true');
