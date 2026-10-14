@@ -9886,7 +9886,29 @@
       "testFail": "连接失败。",
       "useThis": "使用此提供商",
       "remove": "移除",
-      "turnOff": "关闭 AI 起草"
+      "turnOff": "关闭 AI 起草",
+      "assessment": {
+        "title": "绩效 AI 辅助",
+        "description": "选择可使用 AI 的评估功能。这些设置适用于所有公司，且需要已配置的 AI 服务。",
+        "readOnly": "只有集团人力资源管理员可以更改这些设置。",
+        "off": "已关闭",
+        "on": "已开启",
+        "providerMissing": "已开启 · 需要 AI 服务",
+        "turnOff": "关闭",
+        "turnOn": "开启",
+        "turnOffFeature": "关闭{feature}",
+        "turnOnFeature": "开启{feature}",
+        "failed": "无法更改设置。请集团人力资源管理员重试。",
+        "saved": "绩效 AI 设置已保存",
+        "features": {
+          "360": "360 度反馈",
+          "tc": "技术能力",
+          "pm": "绩效",
+          "review": "引导式评估",
+          "idp": "职业发展计划",
+          "calib": "校准助手"
+        }
+      }
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",

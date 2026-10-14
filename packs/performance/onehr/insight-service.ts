@@ -3,7 +3,7 @@ import { and,asc,eq,inArray } from 'drizzle-orm';
 import type { SessionContext } from '../../../db/client';
 import { assessmentFileText,assessmentInsight } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { resolveActiveAiConfig } from '../../../core/ai-config';
+import { assessmentAiConfigTx } from './ai-settings';
 import { recordProposal } from '../../../core/agent-proposal';
 import { generateDraft,redactPII,type ResolvedAiConfig } from '../../../lib/ai';
 import { getAssessmentInsightSource,getAssessmentInsightSourceTx } from './insight-source';
@@ -14,7 +14,7 @@ import { plainPerformanceInsight,type PerformanceInsight } from './performance-i
 import type { EvidenceText } from './evidence-extraction';
 type Source=Awaited<ReturnType<typeof getAssessmentInsightSource>>;
 const fingerprint=(source:Source,texts:Map<string,EvidenceText>,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({version:2,name:source.name,facts:source.facts,files:source.attachments.map(f=>({id:f.id,name:f.fileName,size:f.sizeBytes})),texts:[...texts].filter(([,text])=>text.status!=='unread').map(([id,text])=>({id,status:text.status,method:text.method,text:text.text})),writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
-async function config(ctx:SessionContext){return withPerformanceTenant(ctx,async tx=>{try{return await resolveActiveAiConfig(tx,ctx);}catch{return null;}});}
+async function config(ctx:SessionContext){return withPerformanceTenant(ctx,async tx=>{try{return await assessmentAiConfigTx(tx,ctx,'pm');}catch{return null;}});}
 /** GET is cache-only. Explicit generation is the sole file/provider path, including for calibrators. */
 export async function getAssessmentPerformanceInsight(ctx:SessionContext,reviewId:string,contextId=reviewId,{generate=false}:{generate?:boolean}={}){
  const source=await getAssessmentInsightSource(ctx,reviewId,contextId);if(!source.facts.rows.length)return {status:'none' as const,pending:false,source:null,data:null};
@@ -38,7 +38,7 @@ export async function getAssessmentPerformanceInsight(ctx:SessionContext,reviewI
   // An unread/unattempted image has no cache row; it remains part of this attempt's explicit context.
   for(const id of ids)if(!freshTexts.has(id)&&readTexts.has(id))freshTexts.set(id,readTexts.get(id)!);
   const canonical=new Map([...freshTexts].sort(([a],[b])=>a.localeCompare(b)));
-  let freshCfg:ResolvedAiConfig|null=null;try{freshCfg=await resolveActiveAiConfig(tx,ctx);}catch{}
+  let freshCfg:ResolvedAiConfig|null=null;try{freshCfg=await assessmentAiConfigTx(tx,ctx,'pm');}catch{}
   if(fingerprint(fresh,canonical,freshCfg)!==readFp)throw Error('Assessment facts or access changed. Refresh the insight.');
   const fields={tenantId:ctx.tenantId,reviewId,contextId,actorUserId:ctx.userId!,fingerprint:readFp,source:kind,data:result,retry:again,updatedAt:new Date()};
   await tx.insert(assessmentInsight).values(fields).onConflictDoUpdate({target:[assessmentInsight.reviewId,assessmentInsight.actorUserId,assessmentInsight.contextId],set:{fingerprint:readFp,source:kind,data:result,retry:again,updatedAt:new Date()}});

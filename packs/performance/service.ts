@@ -37,3 +37,5 @@ export { getAssessmentPerformanceInsight } from './onehr/insight-service';
 export { suggestAssessmentDevelopmentGoals,applyAssessmentDevelopmentGoals } from './onehr/development-suggestion-service';
 
 export { saveAssessmentProfitAchievement } from './onehr/profit-service';
+
+export { getAssessmentAiSwitches,setAssessmentAiSwitch,ASSESSMENT_AI_FEATURES,type AssessmentAiFeature } from './onehr/ai-settings';

@@ -1357,3 +1357,14 @@ CREATE POLICY assessment_profit_insert ON performance_assessment_profit_achievem
 CREATE POLICY assessment_profit_update ON performance_assessment_profit_achievement FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND app.onehr_admin(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND app.onehr_admin(company_id));
 REVOKE ALL ON FUNCTION app.assessment_profit_read(uuid,uuid),app.assessment_profit_validate() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_profit_read(uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Assisted AI controls use the central catalog; absent overrides preserve the source default ON.
+INSERT INTO setting_definition (key,module_code,scope,value_type,default_value,default_on_install,customer_visible,description,sort_order) VALUES
+('performance.ai_360_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Draft colleague feedback comments.',210),
+('performance.ai_tc_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Draft technical competency and potential review remarks.',211),
+('performance.ai_pm_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Draft performance results, scorecards and supporting insights.',212),
+('performance.ai_review_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Prepare guided review summaries and record trends.',213),
+('performance.ai_idp_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Suggest development goals and career plan drafts.',214),
+('performance.ai_calib_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Assist calibration summaries, conversations and curve fit.',215)
+ON CONFLICT (key) DO NOTHING;

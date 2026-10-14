@@ -9886,7 +9886,29 @@
       "testFail": "Kết nối thất bại.",
       "useThis": "Dùng nhà cung cấp này",
       "remove": "Xóa",
-      "turnOff": "Tắt soạn thảo bằng AI"
+      "turnOff": "Tắt soạn thảo bằng AI",
+      "assessment": {
+        "title": "Hỗ trợ AI cho hiệu suất",
+        "description": "Chọn các tính năng đánh giá được phép dùng AI. Cài đặt áp dụng cho mọi công ty và cần nhà cung cấp AI đã cấu hình.",
+        "readOnly": "Chỉ quản trị viên nhân sự cấp tập đoàn mới có thể thay đổi các cài đặt này.",
+        "off": "Tắt",
+        "on": "Bật",
+        "providerMissing": "Bật · Cần nhà cung cấp AI",
+        "turnOff": "Tắt",
+        "turnOn": "Bật",
+        "turnOffFeature": "Tắt {feature}",
+        "turnOnFeature": "Bật {feature}",
+        "failed": "Không thể thay đổi cài đặt. Quản trị viên nhân sự cấp tập đoàn có thể thử lại.",
+        "saved": "Đã lưu cài đặt AI hiệu suất",
+        "features": {
+          "360": "Phản hồi 360",
+          "tc": "Năng lực kỹ thuật",
+          "pm": "Hiệu suất",
+          "review": "Đánh giá có hướng dẫn",
+          "idp": "Kế hoạch nghề nghiệp",
+          "calib": "Trợ lý hiệu chỉnh"
+        }
+      }
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",

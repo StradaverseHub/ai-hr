@@ -3,7 +3,7 @@ import { and,asc,eq,inArray,sql } from 'drizzle-orm';
 import type { SessionContext } from '../../../db/client';
 import { assessmentFileText,performanceAttachment,onehrReview } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { resolveActiveAiConfig } from '../../../core/ai-config';
+import { assessmentAiConfigTx,assessmentAiSettingsTx } from './ai-settings';
 import { recordProposal } from '../../../core/agent-proposal';
 import { AiImageReadError,readImage,supportsImageReading,type AiImageMime,type ResolvedAiConfig } from '../../../lib/ai';
 import { getOnehrReview } from './service';
@@ -37,7 +37,7 @@ export async function readAssessmentFileTexts(ctx:SessionContext,reviewId:string
  async function bytes(id:string,vision=false){
   return withPerformanceTenant(ctx,async tx=>{
    const [file]=await tx.select({id:performanceAttachment.id,name:performanceAttachment.fileName,content:performanceAttachment.content}).from(performanceAttachment).where(eq(performanceAttachment.id,id));
-   let cfg:ResolvedAiConfig|null=null;if(vision&&file)try{cfg=await resolveActiveAiConfig(tx,ctx);}catch{/* Manual file reading remains available when AI is unusable. */}return file?{...file,cfg,hash:createHash('sha256').update(file.content).digest('hex')}:null;
+   let cfg:ResolvedAiConfig|null=null;if(vision&&file)try{cfg=await assessmentAiConfigTx(tx,ctx,'pm');}catch{/* Manual file reading remains available when AI is unusable. */}return file?{...file,cfg,hash:createHash('sha256').update(file.content).digest('hex')}:null;
   });
  }
  for(const file of view.attachments){
@@ -65,8 +65,10 @@ export async function readAssessmentFileTexts(ctx:SessionContext,reviewId:string
  const fresh=await context(ctx,reviewId,contextId),freshIds=new Set(fresh.attachments.map(a=>a.id));
  for(const id of out.keys())if(!freshIds.has(id)||!idSet.has(id))out.delete(id);
  await withPerformanceTenant(ctx,async tx=>{
+  const aiAllowed=(await assessmentAiSettingsTx(tx,ctx))['pm'];
   for(const write of writes.sort((a,b)=>a.id.localeCompare(b.id))){
    if(!freshIds.has(write.id)||!write.value.method)continue;
+   if(write.value.method==='vision'&&!aiAllowed){out.set(write.id,unread());continue;}
    const [visible]=await tx.select({id:performanceAttachment.id}).from(performanceAttachment).where(eq(performanceAttachment.id,write.id));if(!visible){out.delete(write.id);continue;}
    // Concurrent reads share immutable contents; the first completed terminal read wins over a stale retry.
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`assessment-file-text:${write.id}`},0))`);

@@ -9886,7 +9886,29 @@
       "testFail": "Sambungan gagal.",
       "useThis": "Guna penyedia ini",
       "remove": "Buang",
-      "turnOff": "Matikan drafan AI"
+      "turnOff": "Matikan drafan AI",
+      "assessment": {
+        "title": "Bantuan AI prestasi",
+        "description": "Pilih ciri penilaian yang boleh menggunakan AI. Tetapan ini terpakai kepada semua syarikat. Penyedia AI yang dikonfigurasi diperlukan.",
+        "readOnly": "Hanya pentadbir HR kumpulan boleh menukar tetapan ini.",
+        "off": "Dimatikan",
+        "on": "Dihidupkan",
+        "providerMissing": "Dihidupkan · Penyedia AI diperlukan",
+        "turnOff": "Matikan",
+        "turnOn": "Hidupkan",
+        "turnOffFeature": "Matikan {feature}",
+        "turnOnFeature": "Hidupkan {feature}",
+        "failed": "Tetapan tidak dapat ditukar. Pentadbir HR kumpulan boleh mencuba lagi.",
+        "saved": "Tetapan AI prestasi disimpan",
+        "features": {
+          "360": "Maklum balas 360",
+          "tc": "Kompetensi teknikal",
+          "pm": "Prestasi",
+          "review": "Semakan berpandu",
+          "idp": "Pelan kerjaya",
+          "calib": "Pembantu kalibrasi"
+        }
+      }
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",

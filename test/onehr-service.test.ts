@@ -45,6 +45,45 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+  it('preserves six independent default-on assistance controls with central group-wide authorization',async()=>{
+    const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
+    const state=await perf.getAssessmentAiSwitches(groupAdmin);
+    expect(state).toMatchObject({mayWrite:true,providerConfigured:false,switches:{'360':true,tc:true,pm:true,review:true,idp:true,calib:true},features:{'360':false,tc:false,pm:false,review:false,idp:false,calib:false}});
+    await expect(perf.getAssessmentAiSwitches(self)).rejects.toThrow(/administrators/);
+    await expect(perf.setAssessmentAiSwitch(mgr,'pm',false)).rejects.toThrow(/not_group_admin/);
+    const companyAdmin={...a,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+    expect((await perf.getAssessmentAiSwitches(companyAdmin)).mayWrite).toBe(false);
+    await expect(perf.setAssessmentAiSwitch(companyAdmin,'idp',false)).rejects.toThrow(/not_group_admin/);
+    await expect(perf.setAssessmentAiSwitch(groupAdmin,'payroll.reset_enabled' as never,true)).rejects.toThrow(/Unknown/);
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    for(const feature of perf.ASSESSMENT_AI_FEATURES)await perf.setAssessmentAiSwitch(groupAdmin,feature,false);
+    expect((await view(self)).aiFeatures).toEqual({'360':false,tc:false,pm:false,review:false,idp:false,calib:false});
+    await perf.setAssessmentAiSwitch(groupAdmin,'idp',true);
+    // self still carries the old entitlement snapshot. The fresh tenant setting wins.
+    expect((await view(self)).aiFeatures).toMatchObject({pm:false,idp:true,tc:false});
+    const rows=await owner.db.select().from(schema.tenantSetting).where(eq(schema.tenantSetting.tenantId,b.tenantId));
+    expect(rows.filter(row=>row.key.startsWith('performance.ai_'))).toHaveLength(6);expect(rows.filter(row=>row.key.startsWith('performance.ai_')).every(row=>row.source==='customer')).toBe(true);
+    await expect(perf.draftOnehrNarrative(self,reviewId,'My delivery words.')).rejects.toThrow(/switched off/);expect(generateDraft).not.toHaveBeenCalled();
+    expect((await view(self)).kpis).toEqual([]);expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
+  });
+  it('discards a draft when HR switches that feature off during the provider call',async()=>{
+    const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(groupAdmin,'pm',false);return '{"items":[0]}';});
+    await expect(perf.draftOnehrNarrative(mgr,reviewId,'Verified delivery.')).rejects.toThrow(/switched off/);
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    expect((await view(mgr)).aiFeatures).toMatchObject({pm:false,tc:true,idp:true});
+  });
+  it('uses plain insights with PM assistance off and refuses a mid-flight disable without caching AI text',async()=>{
+    const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
+    await complete();vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    await perf.setAssessmentAiSwitch(groupAdmin,'pm',false);
+    expect(await perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true})).toMatchObject({source:'plain',pending:false});expect(generateDraft).not.toHaveBeenCalled();expect(readImage).not.toHaveBeenCalled();
+    await perf.setAssessmentAiSwitch(groupAdmin,'pm',true);
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(groupAdmin,'pm',false);return '{}';});
+    await expect(perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true})).rejects.toThrow(/facts or access changed/);
+    const [cached]=await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.reviewId,reviewId));expect(cached.source).toBe('plain');
+  });
   it('uses one company achievement for every calibration tier, preserving curve boundaries and concurrent edits',async()=>{
     await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:null,achievementPct:69.999999999});
     const make=(tier:'bu'|'bg')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} shared curve`,companyId:b.companyId,tier,reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
@@ -797,10 +836,12 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await complete();const reviewer=peers[0].ctx;
     const id=await perf.createOnehrCalibration(a,cycleId,{name:'Closed department',companyId:b.companyId,tier:'hod',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
     await perf.updateOnehrWindows(a,cycleId,1,{pm_hod:{opensAt:null,closesAt:new Date(Date.now()-60_000).toISOString()}},'Department window ended.');
-    const v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0]).toMatchObject({canWrite:{pm:false,pot:true},openAxes:{pm:false,pot:true}});expect(v.canSubmit).toMatchObject({pm:false,pot:true});
+    const v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0]).toMatchObject({canWrite:{pm:false,pot:true},openAxes:{pm:false,pot:true}});expect(v.canSubmit).toMatchObject({pm:false,pot:false});
     await expect(perf.saveOnehrCalibration(reviewer,id,1,{reviewId,axis:'performance',performance:'ME',potential:null,performanceNote:'',potentialNote:''})).rejects.toThrow(/closed/);
     await expect(perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'Set performance: Assessment subject: AE: Window ended.')).rejects.toThrow(/closed/);
     expect((await perf.getCalibrationConversation(reviewer,id,'performance')).messages).toEqual([]);
+    await perf.saveOnehrCalibration(reviewer,id,1,{reviewId,axis:'potential',performance:null,potential:v.rows[0].currentPotential,performanceNote:'',potentialNote:'Potential review verified.'});
+    expect((await perf.getOnehrCalibration(reviewer,id)).canSubmit).toMatchObject({pm:false,pot:true});
   });
   async function reviewerPlan(allMatrix=false){
     const ids=[randomUUID(),randomUUID()],scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]},matrix=peers[0];

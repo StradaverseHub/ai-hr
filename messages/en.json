@@ -9886,7 +9886,29 @@
       "testFail": "Connection failed.",
       "useThis": "Use this provider",
       "remove": "Remove",
-      "turnOff": "Turn off AI drafting"
+      "turnOff": "Turn off AI drafting",
+      "assessment": {
+        "title": "Performance AI assistance",
+        "description": "Choose which assessment features may use AI. These settings apply to all companies. A configured AI provider is required.",
+        "readOnly": "Only a group HR administrator can change these settings.",
+        "off": "Off",
+        "on": "On",
+        "providerMissing": "On · AI provider required",
+        "turnOff": "Turn off",
+        "turnOn": "Turn on",
+        "turnOffFeature": "Turn off {feature}",
+        "turnOnFeature": "Turn on {feature}",
+        "failed": "Could not change the setting. A group HR administrator can try again.",
+        "saved": "Performance AI setting saved",
+        "features": {
+          "360": "360 feedback",
+          "tc": "Technical competency",
+          "pm": "Performance",
+          "review": "Guided review",
+          "idp": "Career Plan",
+          "calib": "Calibration assistant"
+        }
+      }
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",
