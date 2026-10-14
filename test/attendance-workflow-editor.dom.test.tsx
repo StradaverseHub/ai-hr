@@ -83,6 +83,7 @@ describe('company workflow editor outcomes', () => {
     form(); save.mockResolvedValueOnce({ ok: false, error: 'Overlapping priority' }).mockRejectedValueOnce(new Error('offline'));
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Retain this' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await screen.findByText('Overlapping priority');
+    expect(screen.getByRole('alert').parentElement).toContainElement(screen.getByRole('button', { name: 'Save workflow' }));
     expect(screen.getByLabelText('Workflow name')).toHaveValue('Retain this');
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await screen.findByText(en.attendanceWorkflow.requestFailed);
     expect(router.push).not.toHaveBeenCalled();

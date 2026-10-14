@@ -23,8 +23,8 @@ describe('workflow company navigation and scope', () => {
   it('lists each company once with counts, including a company without workflows', async () => {
     show(await Page({ searchParams: Promise.resolve({}) }));
     const rows = screen.getAllByRole('row'); expect(rows).toHaveLength(3);
-    expect(within(rows[1]).getByText('Company A')).toBeVisible(); expect(within(rows[1]).getByText('2')).toBeVisible();
-    expect(within(rows[2]).getByText('Company B')).toBeVisible(); expect(within(rows[2]).getByText('0')).toBeVisible();
+    expect(within(rows[1]).getByRole('cell', { name: 'Company A' })).toBeVisible(); expect(within(rows[1]).getByText('2')).toBeVisible();
+    expect(within(rows[2]).getByRole('cell', { name: 'Company B' })).toBeVisible(); expect(within(rows[2]).getByText('0')).toBeVisible();
     expect(screen.queryByText('Routing control')).toBeNull();
     expect(screen.getByRole('link', { name: 'View / Edit Company A' })).toHaveAttribute('href', `/admin/attendance/approval-workflow?companyId=${companyId}&applicationType=irregularity`);
   });

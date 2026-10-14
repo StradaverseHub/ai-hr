@@ -19,7 +19,7 @@ export default async function AttendanceWorkflowPage({ searchParams }: { searchP
     <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['company', 'workflowCount', 'actions'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
       <tbody className={tbodyCls}>{options.companies.map(company => <tr key={company.id}>
         <td className="p-4 font-medium">{company.name}</td><td className="p-4">{rows.filter(row => row.companyId === company.id).length}</td>
-        <td className="p-4"><Link className="text-primary underline underline-offset-2" href={companyWorkflowHref(company.id, 'irregularity')}>{t('viewEdit')}<span className="sr-only"> {company.name}</span></Link></td>
+        <td className="p-4"><Link className="text-primary underline underline-offset-2" aria-label={`${t('viewEdit')} ${company.name}`} href={companyWorkflowHref(company.id, 'irregularity')}>{t('viewEdit')}</Link></td>
       </tr>)}</tbody></table>{!options.companies.length && <p className="p-5 text-muted-foreground">{t('noCompanies')}</p>}</div>
   </div>;
   const { companyId, applicationType } = context;

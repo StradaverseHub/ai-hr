@@ -96,7 +96,6 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
         }[]
     ][] = [['departmentIds', 'department', options.departments], ['businessUnitIds', 'businessUnit', options.businessUnits], ['gradeIds', 'grade', options.grades], ['orgDivision', 'division', options.divisions]];
     return <><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending} className="space-y-5">
-  {error && <p role="alert" className="rounded-lg border border-red-300 p-3 text-sm text-red-700">{error}</p>}
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('information')}</h2><div className="grid gap-4 sm:grid-cols-2">
    <label>{t('company')}<select name="companyId" className={inputCls} value={input.companyId} disabled onChange={e => change('companyId', e.target.value)}>{options.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
    <label>{t('applicationType')}<select name="applicationType" className={inputCls} value={input.applicationType} disabled onChange={e => change('applicationType', e.target.value as AttendanceWorkflowInput['applicationType'])}><option value="irregularity">{t('types.irregularity')}</option><option value="self_overtime">{t('types.self_overtime')}</option></select></label>
@@ -113,7 +112,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
       onSelectionChange={values => change('criteria', { ...input.criteria, [key]: values })}/>;
   })}</div></Card>
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('stages')}</h2><AttendanceStageEditor stages={input.stages} onChange={stages => change('stages', stages)}/></Card></div>
-  <Card className="space-y-3 p-5"><label className="flex gap-2"><input name="active" type="checkbox" checked={input.active} onChange={e => change('active', e.target.checked)}/>{t('activate')}</label><p className="text-sm text-muted-foreground">{t('activationHelp')}</p><div className="flex flex-wrap gap-3"><Button type="button" disabled={pending} onClick={() => run(false)}>{t('preview')}</Button><Button type="submit" disabled={pending || !options.companies.length}>{pending ? t('saving') : t('save')}</Button><button type="button" onClick={() => {
+  <Card className="space-y-3 p-5"><label className="flex gap-2"><input name="active" type="checkbox" checked={input.active} onChange={e => change('active', e.target.checked)}/>{t('activate')}</label><p className="text-sm text-muted-foreground">{t('activationHelp')}</p>{error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}<div className="flex flex-wrap gap-3"><Button type="button" disabled={pending} onClick={() => run(false)}>{t('preview')}</Button><Button type="submit" disabled={pending || !options.companies.length}>{pending ? t('saving') : t('save')}</Button><button type="button" onClick={() => {
             if (!dirty || window.confirm(t('discard')))
                 router.push(companyWorkflowHref(input.companyId, input.applicationType));
         }}>{t('cancel')}</button></div></Card>
