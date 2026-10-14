@@ -1,3 +1,4 @@
+import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Configurable Personnel-profile dropdown catalogs (7d309da7) — a generic, tenant-wide option table that
  * backs the six formerly-free-text Profile fields: religion / race / nationality / state / country /
@@ -66,16 +67,8 @@ export type ProfileOptionCategory = (typeof PROFILE_OPTION_CATEGORIES)[number];
 // 1001ff61 — the subset of categories whose values live on EMPLOYMENT columns (org assignment), as opposed
 // to the person-profile categories above. Drives the employment-side active-value validation in
 // core/org.ts::setEmploymentInfo and the employment leg of the delete in-use guard.
-export const EMPLOYMENT_PROFILE_CATEGORIES = [
-  'division',
-  'branch',
-  'region',
-  'line',
-  'section',
-  'team',
-  'base',
-  'category',
-] as const satisfies readonly ProfileOptionCategory[];
+export { EMPLOYMENT_LABEL_CATEGORIES as EMPLOYMENT_PROFILE_CATEGORIES } from '../lib/system-label-definition';
+import { EMPLOYMENT_LABEL_CATEGORIES as EMPLOYMENT_PROFILE_CATEGORIES } from '../lib/system-label-definition';
 
 /**
  * c9986927 — the categories that stay on the Profile Options tab. The eight organisation categories above
@@ -348,6 +341,7 @@ export function seedProfileOptions(
 export async function createProfileOption(
   ctx: SessionContext,
   p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null },
+  existingTx?: Tx,
 ): Promise<{ id: string }> {
   if (!isProfileOptionCategory(p.category)) throw new Error('Unknown option category');
   const value = p.value.trim();
@@ -356,7 +350,7 @@ export async function createProfileOption(
   // dafd475a — optional Description; empty ⇒ null (mirrors the org-label description handling).
   const description = (p.description ?? '').trim() || null;
   const sortOrder = Number.isFinite(p.sortOrder as number) ? Number(p.sortOrder) : 0;
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     const [dupe] = await tx
       .select({ id: profileOption.id })
       .from(profileOption)
@@ -387,13 +381,14 @@ export async function createProfileOption(
 export async function updateProfileOption(
   ctx: SessionContext,
   p: { id: string; label: string; description?: string | null; sortOrder?: number | null },
+  existingTx?: Tx,
 ): Promise<void> {
   const label = p.label.trim();
   if (!label) throw new Error('Label is required');
   const sortOrder = Number.isFinite(p.sortOrder as number) ? Number(p.sortOrder) : 0;
   const set: { label: string; sortOrder: number; description?: string | null } = { label, sortOrder };
   if (p.description !== undefined) set.description = (p.description ?? '').trim() || null;
-  await withTenant(ctx, async (tx) => {
+  await tenantMutation(ctx, existingTx, async (tx) => {
     const [row] = await tx
       .update(profileOption)
       .set(set)

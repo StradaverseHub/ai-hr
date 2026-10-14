@@ -25,7 +25,17 @@ export class AttendancePhotoRequiredError extends Error {}
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device); photo/mime are now
 // OPTIONAL — whether one is required, optional or ignored is decided server-side from the employee's own
 // attendance_photo_setting, never from what the client chooses to send.
-export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number; lng: number; accuracy: number; photo?: Buffer; mime?: string; clockContext?: string };
+export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number | null; lng: number | null; accuracy: number | null; photo?: Buffer; mime?: string; clockContext?: string };
+/** Missing location is explicit, never a numeric placeholder or a partial coordinate pair. */
+function clockLocation(p: Pick<ClockIntent, 'lat' | 'lng' | 'accuracy'>) {
+  if (p.lat === null && p.lng === null && p.accuracy === null) return null;
+  if (p.lat == null || p.lng == null || p.accuracy == null ||
+      ![p.lat, p.lng, p.accuracy].every(Number.isFinite) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180 || p.accuracy < 0) {
+    throw new ClockLocationError('Supply a complete valid location and accuracy, or explicitly leave them unavailable');
+  }
+  return { lat: p.lat, lng: p.lng, accuracy: p.accuracy };
+}
+
 // r430 — photoAvailable must also check photoDigest: a capture with NO photo (not_required, or optional
 // skipped) has photoPurgedAt null too (nothing was ever purged), which would otherwise misreport a photo
 // that was never taken as available.
@@ -49,8 +59,8 @@ export async function ownClockReceipt(ctx: SessionContext, requestId: string) {
  * r423 — the employee's "Use Geofencing for Clocking" switch decides the geofence here, as it does for every
  * other punch (core/attendance.ts resolveGeofence). ON: the position must fall inside an active assigned
  * location open to the employee's company, and the capture stores that site, the distance and the radius.
- * OFF: no site is needed; the capture stores the position (lat / lng / accuracy) with NO site, distance or
- * radius, and the punch is `not_enforced`. The photo and the registered phone are required either way.
+ * OFF: no site or position is required. Available coordinates are retained; absent coordinates stay NULL.
+ * Site, distance and radius stay NULL, and the punch is `not_enforced`. Photo policy remains independent.
  * This narrows r378's "a clock capture requires an enforced geofence" to employees whose switch is ON.
  *
  * A refused attempt (outside every site, or no usable site) is written to the audit trail as
@@ -71,7 +81,8 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   if (!me) throw new Error('No active employee profile');
   if (p.clockContext != null && p.clockContext !== clockCommandContext(ctx.tenantId, ctx.userId, me.employmentId)) throw new ClockContextChangedError('Sign in to the original employee account to recover this clocking.');
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
-  if (![p.lat, p.lng, p.accuracy].every(Number.isFinite) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180 || p.accuracy < 0) throw new ClockLocationError('Valid location and accuracy are required');
+  const point = clockLocation(p);
+  if (native && !point) throw new ClockLocationError('Native clocking requires a sampled location');
   return withTenant(ctx, async tx => {
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
@@ -125,7 +136,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     const sameMinute = priorPunches.filter(punch=>minute(punch.time)===minute(time));
     const legacyAggregateAnchor = p.action==='out' && !priorPunches.length && day?.checkIn && minute(day.checkIn)===minute(time);
     const preciseOrder = !legacyAggregateAnchor && sameMinute.every(punch=>punch.captureId!=null);
-    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: p.lat, lng: p.lng, punch: p.action });
+    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: point?.lat, lng: point?.lng, punch: p.action });
     // Geofenced → a matched site with its distance and radius, or resolveGeofence has already thrown. Not
     // geofenced → the three are stored NULL together (0517) and the position alone is the record.
     if (geo.enforced && (!geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null)) throw new Error('An assigned clocking location is required');
@@ -139,14 +150,14 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
     // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
     // sets this and stays fully policy-gated.
-    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: { lat: p.lat, lng: p.lng }, deviceGateExempt: !native, deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
+    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: !native, deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
   });
 }
 
 /** Native online carrier: own active employment, same transaction and rules, device policy enforced. */
-export async function captureNativeClock(ctx: SessionContext, p: ClockIntent & { employmentId: string; deviceToken?: string; sampledAt: number }) {
+export async function captureNativeClock(ctx: SessionContext, p: ClockIntent & { lat: number; lng: number; accuracy: number; employmentId: string; deviceToken?: string; sampledAt: number }) {
   try { return await captureEmployeeClockTx(ctx, p, { employmentId: p.employmentId, deviceToken: p.deviceToken, sampledAt: p.sampledAt }); }
   catch (e) { if (e instanceof OutsideGeofenceError) await appendGeofenceBlockedEvent(ctx, e); throw e; }
 }
@@ -195,9 +206,9 @@ export type ClockCaptureEvidence = {
   locationName: string | null;
   distanceM: number | null;
   radiusM: number | null;
-  lat: number;
-  lng: number;
-  accuracyM: number;
+  lat: number | null;
+  lng: number | null;
+  accuracyM: number | null;
 };
 
 export async function clockCaptureEvidence(ctx: SessionContext, captureIds: readonly string[]): Promise<Map<string, ClockCaptureEvidence>> {

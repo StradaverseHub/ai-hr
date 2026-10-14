@@ -21,6 +21,7 @@
  * fire immediately (a saved row must exist first), while text edits + new rows batch into Save.
  */
 
+import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -46,7 +47,8 @@ import {
   useResetPageOnFilterChange,
 } from './client-pager';
 
-export type GridKind = 'department' | 'position' | 'cost_center' | 'business_unit';
+import { ORGANISATION_LABEL_KINDS, ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind } from '@/lib/system-label-definition';
+export type GridKind = OrganisationLabelKind;
 
 export type GridCompany = { id: string; name: string; sharedSystemLabels: boolean };
 
@@ -128,7 +130,7 @@ export type GridActions = {
 // maintenance screen back to create/edit/activate the allowed values. The backend `business_unit` kind was
 // always present (LABEL_KINDS + full CRUD/scope wiring); this simply renders its tab again. TEXT_COLS +
 // buByCompany already handle it.
-const KINDS: GridKind[] = ['department', 'position', 'cost_center', 'business_unit'];
+const KINDS = ORGANISATION_LABEL_KINDS;
 
 // dafd475a — STANDARDIZED System Labels columns. Every kind renders the SAME three text columns in the
 // SAME order — Code, Label, Description — so the master-data surface reads consistently regardless of which
@@ -145,12 +147,7 @@ const KINDS: GridKind[] = ['department', 'position', 'cost_center', 'business_un
 // on save — the row re-sends its loaded value unchanged — so nothing is lost; they are simply not edited on
 // this standardized grid. Uniqueness, scope, active/inactive and the edit/delete actions are UNCHANGED.
 type StdCol = { headerKey: 'code' | 'label' | 'description'; field: keyof GridRecord; required?: boolean };
-const TEXT_COLS: Record<GridKind, StdCol[]> = {
-  department: [{ headerKey: 'code', field: 'name', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'description' }],
-  position: [{ headerKey: 'code', field: 'title', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'description' }],
-  cost_center: [{ headerKey: 'code', field: 'code', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'name', required: true }],
-  business_unit: [{ headerKey: 'code', field: 'code', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'name', required: true }],
-};
+const TEXT_COLS: Record<GridKind, readonly StdCol[]> = ORGANISATION_LABEL_COLUMNS;
 
 function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState {
   return {
@@ -279,6 +276,14 @@ export function SystemLabelsGrid({
     for (const k of KINDS) seed[k] = data[k].map((r) => ({ ...r, key: r.id, isNew: false, dirty: false }));
     return seed;
   });
+  const refreshedData = useRef(data);
+  useEffect(() => {
+    if (refreshedData.current === data) return;
+    refreshedData.current = data;
+    setRowsByKind(current => Object.fromEntries(KINDS.map(k => [k,
+      refreshEditableRows(current[k], data[k].map(r => ({ ...r, key: r.id, isNew: false, dirty: false }))),
+    ])) as Record<GridKind, RowState[]>);
+  }, [data]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'company'>('all');

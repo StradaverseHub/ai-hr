@@ -41,6 +41,8 @@ describe('dafd475a — standardized System Labels columns', () => {
   // ── A. Org-labels grid: standardized header set + order + Code binding ────────────────────────────
   it('A. org grid renders Code/Label/Description then Criteria/Status/Action, Code bound to the unique id', () => {
     const src = read('components/system-labels-grid.tsx');
+    const columns = read('lib/system-label-definition.ts');
+    expect(src).toContain('= ORGANISATION_LABEL_COLUMNS;');
 
     // The three standard text columns are defined in order (headerKey code → label → description) for the
     // three rendered kinds, with Code bound to the existing unique identifier per the approved decision.
@@ -48,8 +50,9 @@ describe('dafd475a — standardized System Labels columns', () => {
       ['department', 'name'],
       ['position', 'title'],
       ['cost_center', 'code'],
+      ['business_unit', 'code'],
     ] as const) {
-      const m = new RegExp(`${kind}:\\s*\\[([^\\]]*)\\]`).exec(src);
+      const m = new RegExp(`${kind}:\\s*\\[([^\\]]*)\\]`).exec(columns);
       expect(m, `TEXT_COLS entry for ${kind}`).toBeTruthy();
       const body = m![1];
       // header keys appear in order code, label, description
@@ -58,7 +61,7 @@ describe('dafd475a — standardized System Labels columns', () => {
       // Code column binds to the kind's unique identifier field
       expect(body).toContain(`headerKey: 'code', field: '${codeField}'`);
       // No brand-new code column was added to department/position (their Code IS name/title)
-      if (kind !== 'cost_center') expect(body).not.toMatch(/headerKey: 'code', field: 'code'/);
+      if (kind === 'department' || kind === 'position') expect(body).not.toMatch(/headerKey: 'code', field: 'code'/);
     }
 
     // Header renders text cols via col.<headerKey>, then Criteria(scope) → Status → Action, in that order.

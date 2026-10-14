@@ -112,6 +112,11 @@ export type TraceOtWindow = {
 };
 
 export type OvertimeTrace = {
+  approvedMinutes?:number;
+  calculatedMinutes?:number;
+  calculatedSplit?:TraceOtSplit;
+  rows?:{key:string;fromMinutes:number;toMinutes:number|null;ratePattern:'flat'|'variable';rate:number;
+    bucket:keyof TraceOtSplit;calculatedMinutes:number;effectiveMinutes:number;manual:boolean}[];
   /**
    * Which arithmetic produced the raw figure:
    *  • 'shiftWindows' — the shift's own clock-time Overtime Schedule decided which minutes count (cf21e554)

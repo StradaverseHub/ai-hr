@@ -171,17 +171,20 @@ describe('clock-client source guards (r430 — Switch removed, always-on buttons
     expect(ISLAND).not.toContain('if(!photo||!action||busy)return');
     expect(ISLAND).toContain('body:command.current.body');
   });
-  /** r423 — the third pill state: switch OFF, a valid fix → "Location recorded — geofencing not required". */
-  it('says "Location recorded — geofencing not required" when the employee is not geofenced, in all six locales', () => {
-    expect(ISLAND).toContain("t(today.locationValid?(today.geofencingRequired?'withinLocation':'locationRecordedNoGeofence'):geo?'outsideLocation':'locationCheckNeeded')");
+  /** Geofencing off permits an absent fix, but only an actual fix may be described as recorded. */
+  it('distinguishes recorded and unavailable location when geofencing is off, in all six locales', () => {
+    expect(ISLAND).toContain("t(today.locationValid?(today.geofencingRequired?'withinLocation':today.locationAvailable?'locationRecordedNoGeofence':'locationUnavailableAllowed'):geo?'outsideLocation':'locationCheckNeeded')");
     expect(ISLAND).toContain("{c.locationName??t('geofencingNotRequired')}");
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
       expect(m.attendance.clock.locationRecordedNoGeofence, loc).toBeTruthy();
+      expect(m.attendance.clock.locationUnavailableAllowed, loc).toBeTruthy();
       expect(m.attendance.clock.geofencingNotRequired, loc).toBeTruthy();
     }
     const READ = fs.readFileSync(path.resolve(__dirname, '../core/attendance-clock-read.ts'), 'utf8');
     expect(READ).toContain('locationValid = result.enforced ? !!result.clockingLocationId : true');
+    expect(READ).toContain('let locationValid = !geofencingRequired;');
+    expect(READ).toContain('const locationAvailable = !!geo');
     expect(READ).not.toContain('required:true');
   });
   it('the Switch link is GONE entirely — there is no shift-switching control on the client island at all', () => {

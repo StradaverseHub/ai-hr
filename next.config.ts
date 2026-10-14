@@ -62,9 +62,15 @@ const nextConfig: NextConfig = {
           // navigator.geolocation.getCurrentPosition (components/attendance-clock-button.tsx); an empty
           // allowlist disables the API for the whole document, so self-service clock-in would silently
           // stop recording where the employee was — a feature loss dressed as a security header.
-          // camera and microphone stay fully denied: nothing in the product uses either.
+          // Camera is denied by default; Web Clocking overrides it narrowly below. Microphone stays denied.
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
         ],
+      },
+      {
+        // Attendance camera is first-party and still requires the user's browser permission.
+        // A page-specific policy prevents unrelated application pages from requesting camera access.
+        source: '/attendance/clock',
+        headers: [{ key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' }],
       },
     ];
   },

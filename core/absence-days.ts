@@ -88,7 +88,7 @@ import { holidayDatesFor, holidayMemoKey } from './holidays';
 // does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
 // dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
 // fix is never test/pack-drift-allowlist.json — that list is audited kernel-contract debt and only shrinks.
-import { isWorkingDayKind, shiftDayKindFor, weekPatternFor, rotationLookupTx } from '../packs/attendance/service';
+import { isWorkingDayKind, shiftDayKindFor, weekPatternFor, rotationLookupTx, attendanceDateOverridesTx } from '../packs/attendance/service';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
 // approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
 // audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
@@ -256,6 +256,7 @@ export async function absenceBreakdownByEmployment(
     .where(inArray(employment.id, ids));
   if (emps.length === 0) return out;
   const empIds = emps.map((e) => e.employmentId);
+  const dateCorrections=await attendanceDateOverridesTx(tx,empIds,periodStart,lastCounted);
 
   const [rows, approved, partialLeave, policies, rosterRows, defaultShifts, scheduleGroups, groupWeeks] =
     await Promise.all([
@@ -509,7 +510,8 @@ export async function absenceBreakdownByEmployment(
       // A public holiday is never an absence and never a leave day, whatever else the day carries.
       // (Both rule sets: main's loop tested the company weekday first and the holiday second, which
       // reaches the same `continue`.)
-      if (holidays.has(d)) continue;
+      const dateCorrection=dateCorrections.get(`${e.employmentId}|${d}`);
+      if (dateCorrection ? dateCorrection.dayKind==='holiday' : holidays.has(d)) continue;
 
       const rotated = rotationOn(e.employmentId,d);
       if (!scheduled) {
@@ -520,7 +522,7 @@ export async function absenceBreakdownByEmployment(
         //    so a half-day leave date with no clock-in counts as a whole absent day — wrong, and exactly
         //    what production does today.
         const override = roster?.get(d);
-        const working = rotated ? override ? !override.isRestDay && override.hasShift
+        const working = dateCorrection ? dateCorrection.working : rotated ? override ? !override.isRestDay && override.hasShift
           : isWorkingDayKind(rotated.day.kind) : companyDays.includes(isoWeekdayOf(d));
         if (!working) continue;
         if (recorded.has(d)) continue;
@@ -533,7 +535,8 @@ export async function absenceBreakdownByEmployment(
       //    default-shift pattern → company working days. Only a SCHEDULED WORKING day can be an absence.
       const ra = roster?.get(d);
       let isScheduled: boolean;
-      if (ra) isScheduled = !ra.isRestDay && ra.hasShift;
+      if (dateCorrection) isScheduled=dateCorrection.working;
+      else if (ra) isScheduled = !ra.isRestDay && ra.hasShift;
       else if (rotated) isScheduled = isWorkingDayKind(rotated.day.kind);
       else if (hasDefaultShift) isScheduled = pattern != null && isWorkingDayKind(shiftDayKindFor(pattern, d));
       else isScheduled = companyDays.includes(isoWeekdayOf(d));

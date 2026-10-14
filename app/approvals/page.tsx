@@ -1025,6 +1025,7 @@ export default async function ApprovalsPage({
                     {c.proposedCheckIn
                       ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
                       : ''}
+                    {c.adminAmendment&&<p className="mt-1 rounded bg-muted p-2 text-xs">{tClock('administratorAmendment')}: {c.adminAmendment.checkIn??'—'} → {c.adminAmendment.checkOut??'—'} · {c.adminAmendment.reason}</p>}
                     {c.requestedOtMinutes != null
                       ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${formatMinutesToHM(c.requestedOtMinutes)}`
                       : ''}

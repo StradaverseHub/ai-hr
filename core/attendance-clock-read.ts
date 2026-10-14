@@ -45,7 +45,7 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     // taken as available (see the identical fix in core/attendance-clock.ts publicReceipt).
     const captures = await tx.select({ id: attendanceClockCapture.id, direction: attendanceClockCapture.direction, requestId: attendanceClockCapture.requestId, recordedAt: attendanceClockCapture.serverRecordedAt, purgedAt: attendanceClockCapture.photoPurgedAt, photoDigest: attendanceClockCapture.photoDigest, locationName: clockingLocation.name }).from(attendanceClockCapture).leftJoin(clockingLocation,eq(clockingLocation.id,attendanceClockCapture.clockingLocationId)).where(and(eq(attendanceClockCapture.employmentId,me.employmentId),eq(attendanceClockCapture.attendanceDate,date))).orderBy(asc(attendanceClockCapture.serverRecordedAt),asc(attendanceClockCapture.id));
     // r423 — the switch decides. ON: valid only inside an active assigned location open to the employee's
-    // company. OFF: a valid position fix is all that is needed (it is recorded, not compared), and
+    // company. OFF: a position is optional (recorded when available, never fabricated), and
     // `geofencingRequired: false` lets the screen say "Location recorded — geofencing not required".
     // r430 — attendancePhotoSetting joins the same row: the client needs it to know which capture flow to
     // run (required / optional / not_required), though the SERVER re-reads and enforces it independently
@@ -53,10 +53,11 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
     const [control] = await tx.select({ enabled: employment.geofencingEnabled, attendancePhotoSetting: employment.attendancePhotoSetting }).from(employment).where(eq(employment.id, me.employmentId)).limit(1);
     const geofencingRequired = control?.enabled ?? false;
     const attendancePhotoSetting = control?.attendancePhotoSetting ?? 'not_required';
-    let locationValid = false;
+    let locationValid = !geofencingRequired;
+    const locationAvailable = !!geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0;
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
       try { const result = await resolveGeofence(tx,{employmentId:me.employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
-    return { clockContext:clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId),serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
+    return { clockContext:clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId),serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end},captures:captures.filter(c=>live.some(p=>p.captureId===c.id)).map(c=>({...c,recordedAt:c.recordedAt.toISOString(),photoAvailable:c.purgedAt==null&&c.photoDigest!=null,purgedAt:undefined,photoDigest:undefined})),legacy:live.filter(p=>!p.captureId).map(p=>({direction:p.direction,time:p.time})) };
   });
 }

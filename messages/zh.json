@@ -367,7 +367,7 @@
     "reportClaim": "报销",
     "reportPerformance": "绩效",
     "profileOptions": "档案选项",
-    "delegations": "委托",
+    "delegations": "审批委托",
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
@@ -3044,7 +3044,7 @@
       "checkLocation": "检查位置",
       "serverTimeLabel": "服务器时间",
       "workedToday": "今日工作：{time}",
-      "photoHelper": "每次上班和下班打卡都会记录照片及位置。记录时间来自服务器。",
+      "photoHelper": "必须拍摄照片。可获取时会记录位置信息。记录时间以服务器为准。",
       "photoHeading": "考勤照片",
       "cameraOff": "摄像头已关闭",
       "cameraHint": "点击上班或下班打卡，在保存考勤前拍照。",
@@ -3078,7 +3078,7 @@
       "photoOptionalPrompt": "您可以拍照或跳过——无论哪种方式，这次打卡都会被保存。",
       "photoRequired": "必须先拍照才能保存此次打卡。",
       "cameraContext": "相机访问需要 HTTPS 或 localhost。可跳过非必需的照片。",
-      "cameraDenied": "相机权限被拒绝。请允许访问，或跳过非必需的照片。",
+      "cameraDenied": "相机访问被拒绝。请打开浏览器对此网站的权限，允许相机，然后选择“重试相机”。可选照片仍可跳过。",
       "cameraUnavailable": "未找到可用相机。请连接相机，或跳过非必需的照片。",
       "locationDenied": "定位权限被拒绝。请允许定位后重试。",
       "locationUnavailable": "无法读取位置。请检查设备定位设置后重试。",
@@ -3088,7 +3088,10 @@
       "pendingCommand": "一条打卡记录正在等待确认。开始另一次打卡前请先检查。",
       "checkSubmission": "检查提交结果",
       "signInAgain": "重新登录",
-      "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。"
+      "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。",
+      "locationUnavailableAllowed": "位置信息不可用 — 无需地理围栏。仍可上班或下班打卡。",
+      "retryCamera": "重试相机",
+      "cameraBusy": "相机正在被使用或无法启动。请关闭其他使用相机的应用，然后选择“重试相机”。可选照片仍可跳过。"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",
@@ -3429,11 +3432,66 @@
       "duplicate": "相同时间和方向的打卡已在使用中。",
       "discard": "放弃未保存的打卡更改？",
       "legacy": "历史打卡",
-      "summary": "考勤汇总"
+      "summary": "考勤汇总",
+      "administratorAmendment": "管理员修订"
     },
     "clockDataChanged": "打卡数据已更改。提交或批准更正前请重新加载此日期。",
     "clockDataPayrollClosed": "此日期已纳入已关闭的薪资批次。请先重新开启薪资批次再进行更正。",
-    "clockDataPending": "已保存为更正申请，但尚未生效。请在审批中查看；您不能批准自己的考勤更正。"
+    "clockDataPending": "已保存为更正申请，但尚未生效。请在审批中查看；您不能批准自己的考勤更正。",
+    "clockEvidenceLocationUnavailable": "未记录位置 — 位置信息不可用",
+    "dayEdit": {
+      "reason": "变更原因",
+      "payrollConsent": "我理解涵盖此日期的已处理工资将被标记为需要重新计算。",
+      "closed": "此日期已纳入已关闭的工资批次。请先重新打开工资批次再进行更正。",
+      "self": "您的出勤必须由另一位获授权管理员更正或批准。",
+      "shift": "此日期的班次",
+      "automaticSchedule": "自动 — 使用该日期的排班",
+      "currentShift": "当前分配班次",
+      "dayType": "日期类型",
+      "onLeave": "休假中",
+      "manageLeave": "管理休假",
+      "leaveOwner": "休假（包括部分日休假）控制此日期，此编辑器不能替代休假记录。",
+      "beforeAfter": "当前：{before} → 拟议：{after}",
+      "saved": "当日更正已保存并重新计算。",
+      "dateOnly": "仅适用于此员工和此日期。",
+      "saveSchedule": "保存当日变更",
+      "completeDay": "设置手动加班前需有完整的上班和下班时间。现有手动行仍可恢复为自动。",
+      "approved": "现有已批准加班：{minutes}。自动模式保留此批准，手动行单独保留。",
+      "otRow": "已配置加班行",
+      "calculated": "计算结果",
+      "method": "计算方式",
+      "manualMinutes": "手动分钟数",
+      "effective": "生效结果",
+      "flat": "固定加班",
+      "band": "{from}–{to} 分钟",
+      "unlimited": "无上限",
+      "orphan": "此行已不在配置中。请先恢复为自动，再重新计算。",
+      "original": "此手动值于 {date} 记录，当时计算为 {minutes}。",
+      "auto": "自动",
+      "manual": "手动覆盖",
+      "resetAuto": "将此行恢复为自动",
+      "manualHelp": "请输入整数分钟。自动仅移除所选手动值。原始计算与所有变更保留在历史中。",
+      "saveOvertime": "保存加班变更",
+      "history": "当日更正历史",
+      "administrator": "管理员",
+      "pendingStage": "更正已保存，仍有其他审批阶段待完成。",
+      "approvedSaved": "现有申请已获批准。",
+      "frozenStage": "先前决定或分阶段时钟记录请求保持不变。此操作审核现有申请，不重写请求。",
+      "requestedIn": "申请上班时间",
+      "requestedOut": "申请下班时间",
+      "administratorReason": "管理员更正 / 审批原因",
+      "correctApprove": "更正并批准",
+      "approvalHelp": "仅完成您获授权的审批阶段，并记录实际管理员。",
+      "application": "现有申请",
+      "amendment": "管理员修订",
+      "viewApplication": "查看申请历史",
+      "kind": {
+        "workday": "正常工作日",
+        "off_day": "非工作日",
+        "rest_day": "休息日",
+        "holiday": "公共假日"
+      }
+    }
   },
   "org": {
     "title": "组织架构图",
@@ -8556,7 +8614,34 @@
       "deletePermanently": "永久删除",
       "gradeRestored": "已恢复职级 {code}。",
       "deleteGradeTitle": "删除职级？",
-      "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
+      "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。",
+      "excel": {
+        "template": "下载模板",
+        "import": "导入 Excel",
+        "help": "下载模板，在相应工作表中填写组织选项，保存前预览每一行。现有标识和公司范围将保留。",
+        "file": "Excel 工作簿",
+        "mode": "导入模式",
+        "add": "新增 — 跳过完全重复项",
+        "update": "更新现有项 — 审核变更",
+        "working": "正在检查…",
+        "preview": "预览工作簿",
+        "row": "工作表 / 行",
+        "result": "结果",
+        "current": "当前值",
+        "proposed": "拟议值",
+        "message": "详情",
+        "fixErrors": "请修正所有无效或冲突行，重新预览后再保存。",
+        "errors": "下载错误报告",
+        "confirmUpdates": "我已审核当前值和拟议值，并确认更新现有选项。",
+        "confirm": "确认导入",
+        "summary": "已导入 {imported} · 已更新 {updated} · 已跳过 {skipped} · 失败 {failed}",
+        "outcome": {
+          "add": "新增",
+          "update": "更新",
+          "skip": "跳过",
+          "error": "错误"
+        }
+      }
     },
     "leave": {
       "typesSectionTitle": "休假类型设置",
@@ -14558,7 +14643,7 @@
     "retry": "重试"
   },
   "delegations": {
-    "title": "委托管理",
+    "title": "审批委托",
     "subtitle": "在审批人外出期间临时将审批职责交给代理人。",
     "createTitle": "新建委托",
     "listTitle": "委托",
@@ -18202,9 +18287,11 @@
       "clockRemoved": "打卡记录已从生效记录中移除",
       "clockRestored": "原始打卡记录已恢复",
       "clockAdded": "已添加更正的打卡记录",
-      "recorded": "已记录申请操作"
+      "recorded": "已记录申请操作",
+      "administratorAmended": "管理员修订"
     },
-    "hrApprover": "人事管理员"
+    "hrApprover": "人事管理员",
+    "administratorAmendment": "管理员修订"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

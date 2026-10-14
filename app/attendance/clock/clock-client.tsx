@@ -9,9 +9,9 @@ import type { ownClockToday } from '@/core/attendance-clock-read';
 export type PunchEvent = { time:string; direction:'in'|'out' };
 type Today=Awaited<ReturnType<typeof ownClockToday>>;
 type Geo={lat:number;lng:number;accuracy:number};
-const locate=()=>new Promise<Geo>((resolve,reject)=>{
+const locate=(timeout=12000)=>new Promise<Geo>((resolve,reject)=>{
   if (!navigator.geolocation) { reject(new Error('locationUnavailable')); return; }
-  navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),e=>reject(new Error(e.code===1?'locationDenied':'locationUnavailable')),{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+  navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),e=>reject(new Error(e.code===1?'locationDenied':'locationUnavailable')),{enableHighAccuracy:true,timeout,maximumAge:0});
 });
 function newRequestId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -43,6 +43,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
   const [geo,setGeo]=React.useState<Geo|null>(null), [busy,setBusy]=React.useState(false);
   const [action,setAction]=React.useState<'in'|'out'|null>(null), [camera,setCamera]=React.useState(false), [photo,setPhoto]=React.useState<Blob|null>(null), [photoUrl,setPhotoUrl]=React.useState<string|null>(null);
   const [error,setError]=React.useState(''), [success,setSuccess]=React.useState('');
+  const [cameraProblem,setCameraProblem]=React.useState(false);
   const video=React.useRef<HTMLVideoElement>(null), stream=React.useRef<MediaStream|null>(null), epoch=React.useRef(0), photoDialog=React.useRef<HTMLDialogElement>(null);
   const [enlarged,setEnlarged]=React.useState<string|null>(null);
   const command=React.useRef<{body:FormData;requestId:string;direction:'in'|'out'}|null>(null);
@@ -50,9 +51,9 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
   const [pending,setPending]=React.useState(false);
   React.useEffect(()=>{if(!pending)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[pending]);
   const stop=React.useCallback(()=>{stream.current?.getTracks().forEach(track=>track.stop());stream.current=null;},[]);
-  const refresh=React.useCallback(async(nextGeo?:Geo)=>{
+  const refresh=React.useCallback(async(nextGeo?:Geo|null)=>{
     const sequence=++refreshSequence.current;
-    const point=nextGeo??geo;
+    const point=nextGeo===undefined?geo:nextGeo;
     const params=point?'?'+new URLSearchParams({lat:String(point.lat),lng:String(point.lng),accuracy:String(point.accuracy)}):'';
     const response=await fetch('/api/attendance/today'+params,{cache:'no-store'});
     if(!response.ok) throw new Error(response.status===401?'authentication':'sync');
@@ -64,9 +65,10 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     base.current={server:Date.parse(clockValue.serverNow)+(end-clockStart)/2,mono:end};setNow(base.current.server);setToday(value);setSynced(true);return value;
   },[geo]);
   const refreshRef=React.useRef(refresh);refreshRef.current=refresh;
+  const todayRef=React.useRef(today);todayRef.current=today;
   React.useEffect(()=>{
     let live=true;
-    locate().then(point=>{if(live){setGeo(point);return refreshRef.current(point);}}).catch(error=>{if(live)setError(t(['locationDenied','locationUnavailable','authentication'].includes(error.message)?error.message:'syncFailed'));});
+    locate().then(point=>{if(live){setGeo(point);return refreshRef.current(point);}}).catch(error=>{if(!live)return;if(todayRef.current.geofencingRequired || error.message==='authentication')setError(t(['locationDenied','locationUnavailable','authentication'].includes(error.message)?error.message:'syncFailed'));else{setGeo(null);void refreshRef.current(null).catch(()=>setError(t('syncFailed')));}});
     const sync=()=>{setSynced(false);refreshRef.current().catch(error=>setError(t(error.message==='authentication'?'authentication':'syncFailed')));};sync();
     const focus=()=>{if(document.visibilityState==='visible')sync();};
     const hide=()=>{epoch.current++;if(stream.current)setAction(null);stop();setCamera(false);};
@@ -75,23 +77,23 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     window.addEventListener('focus',sync);window.addEventListener('online',sync);document.addEventListener('visibilitychange',focus);window.addEventListener('pagehide',hide);
     return()=>{live=false;epoch.current++;stop();clearInterval(tick);clearInterval(poll);window.removeEventListener('focus',sync);window.removeEventListener('online',sync);document.removeEventListener('visibilitychange',focus);window.removeEventListener('pagehide',hide);};
   },[stop,t]);
-  React.useEffect(()=>{if(camera&&video.current&&stream.current){video.current.srcObject=stream.current;void video.current.play().catch(()=>{stop();setCamera(false);setError(t('cameraFailed'));});}},[camera,t,stop]);
+  React.useEffect(()=>{if(camera&&video.current&&stream.current){video.current.srcObject=stream.current;void video.current.play().catch(()=>{stop();setCamera(false);setCameraProblem(true);setError(t('cameraFailed'));});}},[camera,t,stop]);
   React.useEffect(()=>{if(!photo){setPhotoUrl(null);return;}const url=URL.createObjectURL(photo);setPhotoUrl(url);return()=>URL.revokeObjectURL(url);},[photo]);
   async function openCamera(direction:'in'|'out') {
     if(command.current || inFlight.current)return;
-    if(!window.isSecureContext){setAction(direction);setError(t('cameraContext'));return;}
-    if(!navigator.mediaDevices?.getUserMedia){setAction(direction);setError(t('cameraUnavailable'));return;}
-    const version=++epoch.current;setError('');setSuccess('');setBusy(true);setAction(direction);setPhoto(null);command.current=null;
-    try {const next=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});if(version!==epoch.current){next.getTracks().forEach(track=>track.stop());return;}stream.current=next;setCamera(true);}catch(error){setError(t((error as DOMException).name==='NotAllowedError'?'cameraDenied':'cameraUnavailable'));}finally{setBusy(false);}
+    if(!window.isSecureContext){setAction(direction);setCameraProblem(true);setError(t('cameraContext'));return;}
+    if(!navigator.mediaDevices?.getUserMedia){setAction(direction);setCameraProblem(true);setError(t('cameraUnavailable'));return;}
+    const version=++epoch.current;setCameraProblem(false);setError('');setSuccess('');setBusy(true);setAction(direction);setPhoto(null);command.current=null;
+    try {const next=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});if(version!==epoch.current){next.getTracks().forEach(track=>track.stop());return;}stream.current=next;setCamera(true);}catch(error){setCameraProblem(true);const name=(error as DOMException).name;setError(t(name==='NotAllowedError'?'cameraDenied':name==='NotReadableError'?'cameraBusy':'cameraUnavailable'));}finally{setBusy(false);}
   }
-  function cancel(){if(command.current || inFlight.current)return;epoch.current++;stop();setCamera(false);setPhoto(null);setAction(null);command.current=null;setError('');}
+  function cancel(){if(command.current || inFlight.current)return;epoch.current++;stop();setCamera(false);setPhoto(null);setAction(null);command.current=null;setCameraProblem(false);setError('');}
   function capture(){
-    const source=video.current;if(!source?.videoWidth||!source.videoHeight){setError(t('cameraFailed'));return;}
+    const source=video.current;if(!source?.videoWidth||!source.videoHeight){setCameraProblem(true);setError(t('cameraFailed'));return;}
     const canvas=document.createElement('canvas'),scale=Math.min(1,640/source.videoWidth);canvas.width=Math.round(source.videoWidth*scale);canvas.height=Math.round(source.videoHeight*scale);
     canvas.getContext('2d')?.drawImage(source,0,0,canvas.width,canvas.height);
     stop();setCamera(false);
     const version=epoch.current;
-    canvas.toBlob(blob=>{if(version!==epoch.current)return;if(!blob){setError(t('cameraFailed'));return;}setPhoto(blob);stop();setCamera(false);},'image/jpeg',.8);
+    canvas.toBlob(blob=>{if(version!==epoch.current)return;if(!blob){setCameraProblem(true);setError(t('cameraFailed'));return;}setPhoto(blob);stop();setCamera(false);},'image/jpeg',.8);
   }
   /** r430 — takes the direction explicitly rather than reading `action` state, so the not_required
    *  direct-submit path (setAction + confirm in the same tick) never races a stale closure. The photo
@@ -113,12 +115,17 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
       }
       if(!receipt){
         if(!command.current){
-          const point=await locate();setGeo(point);const value=await refresh(point);
+          // Read current policy first. Optional location has a bounded best-effort read and can be
+          // explicitly absent; a retained uncertain command never enters this branch or changes bytes.
+          let value=await refresh(null),point:Geo|null=null;
+          try{point=await locate(value.geofencingRequired?12000:2000);}catch(error){if(value.geofencingRequired)throw error;}
+          setGeo(point);
+          if(point)value=await refresh(point);
           if(!value.locationValid)throw new Error('outsideGeofence');
           if(!value.clockContext)throw new Error('sync');
           const requestId=newRequestId(),body=new FormData();
           body.set('clockContext',value.clockContext);
-          for(const [key,val] of Object.entries({action:direction,requestId,...point}))body.set(key,String(val));
+          for(const [key,val] of Object.entries({action:direction,requestId,...(point??{})}))body.set(key,String(val));
           if(photo)body.set('photo',photo,'attendance.jpg');
           command.current={body,requestId,direction};setPending(true);
         }
@@ -149,7 +156,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
       setError(t(code==='sync'?'syncFailed':known.includes(code)?code:'retryFailed'));
     }finally{inFlight.current=false;setBusy(false);}
   }
-  async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch(error){const code=(error as Error).message;setError(t(['locationDenied','locationUnavailable','authentication'].includes(code)?code:'syncFailed'));}finally{setBusy(false);}}
+  async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch(error){const code=(error as Error).message;if(!todayRef.current.geofencingRequired&&['locationDenied','locationUnavailable'].includes(code)){setGeo(null);try{await refresh(null);setError('');}catch{setError(t('syncFailed'));}}else setError(t(['locationDenied','locationUnavailable','authentication'].includes(code)?code:'syncFailed'));}finally{setBusy(false);}}
   /** r430 — Clock In / Clock Out entry point. BOTH buttons are always enabled (see `blocked`) and route to
    *  one of three flows purely from the employee's own attendancePhotoSetting: required opens the camera
    *  immediately (unchanged); optional sets `action` so the inline Take Photo / Skip Photo choice renders;
@@ -176,7 +183,7 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
     {(error===t('authentication')||error===t('accountChanged'))&&<Link href="/login" target="_blank" rel="noopener noreferrer" className="text-sm underline">{t('signInAgain')}</Link>}
     {error&&<p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-destructive">{error}</p>}
     <div className={`grid gap-5 ${showPhotoCard?'md:grid-cols-2':''}`}>
-      <Card className="space-y-5 p-5"><p>{new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(today.date+'T12:00:00+08:00'))}</p><div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-full px-3 py-1 text-sm ${today.locationValid?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200':'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>{t(today.locationValid?(today.geofencingRequired?'withinLocation':'locationRecordedNoGeofence'):geo?'outsideLocation':'locationCheckNeeded')}</span><Button className="min-h-11" onClick={retryLocation} disabled={busy}>{t('checkLocation')}</Button></div>
+      <Card className="space-y-5 p-5"><p>{new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(today.date+'T12:00:00+08:00'))}</p><div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-full px-3 py-1 text-sm ${today.locationValid?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200':'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>{t(today.locationValid?(today.geofencingRequired?'withinLocation':today.locationAvailable?'locationRecordedNoGeofence':'locationUnavailableAllowed'):geo?'outsideLocation':'locationCheckNeeded')}</span><Button className="min-h-11" onClick={retryLocation} disabled={busy}>{t('checkLocation')}</Button></div>
         {/* r430 — the Switch link and its shiftOptions cycling are GONE: this is always the employee's
             actually-assigned shift, read-only. */}
         <div className="rounded-lg bg-muted/50 p-3"><div className="flex flex-wrap justify-between gap-2"><span className="font-medium">{t('currentShift')}</span><span className="text-sm">{today.clockedIn?'● '+(currentIn?t('clockedInAt',{time:new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(currentIn))}):t('punchIn')):'○ '+t('statusNotClockedIn')}</span></div><p className="mt-1 text-sm">{(today.shift.code===initial.shift.code?shiftName:today.shift.code)??t('noShiftAssigned')} · {today.shift.start??'—'} → {today.shift.end??'—'}</p></div>
@@ -188,8 +195,8 @@ export function ClockPageClient({initial,shiftName}:{initial:Today;shiftName:str
         <p role="status" className={`text-sm ${success?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}`}>{success||t(today.attendancePhotoSetting==='required'?'photoHelper':'serverTimeNote')}</p>
       </Card>
       {showPhotoCard&&<Card className="flex flex-col gap-4 p-5"><h2 className="font-semibold">{t('photoHeading')}</h2><div className="relative flex min-h-72 flex-1 items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/30">
-        {camera?<><video ref={video} autoPlay playsInline muted className="max-h-96 w-full object-contain"/><div className="pointer-events-none absolute h-3/4 w-1/2 rounded-[50%] border-2 border-white/80"/><span className="absolute left-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white">{t('liveFront')}</span></>:photoUrl?<><img src={photoUrl} alt={t('photoReview')} className="max-h-96 w-full object-contain"/><p className="absolute bottom-0 w-full bg-black/70 p-2 text-center text-xs text-white">{today.date} · {time} · {t(today.locationValid?(today.geofencingRequired?'withinLocation':'locationRecordedNoGeofence'):geo?'outsideLocation':'locationCheckNeeded')}</p></>:action&&today.attendancePhotoSetting==='optional'?<div className="max-w-xs p-5 text-center"><Camera className="mx-auto mb-3 h-10 w-10 text-muted-foreground"/><p className="font-medium">{t('photoOptionalPrompt')}</p></div>:<div className="max-w-xs p-5 text-center"><Camera className="mx-auto mb-3 h-10 w-10 text-muted-foreground"/><p className="font-medium">{t('cameraOff')}</p><p className="mt-2 text-sm text-muted-foreground">{t('cameraHint')}</p></div>}
-      </div>{camera?<><p className="text-center text-sm">{t('faceGuide')} · {t(action==='in'?'clockIn':'clockOut')}</p><div className="grid grid-cols-2 gap-3"><Button className="min-h-11" onClick={cancel}>{t('cancelPhoto')}</Button><Button className="min-h-11" onClick={capture}>{t('takePhoto')}</Button></div></>:photo?<div className="grid grid-cols-2 gap-3"><Button className="min-h-11" disabled={busy||command.current!=null} onClick={()=>{if(action)void openCamera(action);}}>{t('retakePhoto')}</Button><Button className={`min-h-11 whitespace-normal ${action==='in'?'bg-[#12795A] hover:bg-[#12795A]/90':'bg-[#B3402A] hover:bg-[#B3402A]/90'} text-white`} disabled={busy} onClick={()=>{if(action)void confirm(action);}}>{t(action==='in'?'confirmIn':'confirmOut')}</Button><Button className="min-h-11" disabled={busy||command.current!=null} onClick={cancel}>{t('cancelPhoto')}</Button></div>:action&&today.attendancePhotoSetting==='optional'?<div className="grid grid-cols-3 gap-3"><Button className="min-h-11" disabled={busy||pending} onClick={cancel}>{t('cancelPhoto')}</Button><Button className="min-h-11" disabled={busy||pending} onClick={()=>{if(action)void openCamera(action);}}>{t('takePhoto')}</Button><Button className="min-h-11 whitespace-normal" disabled={busy||pending} onClick={()=>{if(action)void confirm(action);}}>{t('skipPhoto')}</Button></div>:action&&today.attendancePhotoSetting==='required'?<div className="grid grid-cols-2 gap-3"><Button disabled={busy||pending} onClick={cancel}>{t('cancelPhoto')}</Button><Button disabled={busy||pending} onClick={()=>{if(action)void openCamera(action);}}>{t('takePhoto')}</Button></div>:null}</Card>}
+        {camera?<><video ref={video} autoPlay playsInline muted className="max-h-96 w-full object-contain"/><div className="pointer-events-none absolute h-3/4 w-1/2 rounded-[50%] border-2 border-white/80"/><span className="absolute left-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white">{t('liveFront')}</span></>:photoUrl?<><img src={photoUrl} alt={t('photoReview')} className="max-h-96 w-full object-contain"/><p className="absolute bottom-0 w-full bg-black/70 p-2 text-center text-xs text-white">{today.date} · {time} · {t(today.locationValid?(today.geofencingRequired?'withinLocation':today.locationAvailable?'locationRecordedNoGeofence':'locationUnavailableAllowed'):geo?'outsideLocation':'locationCheckNeeded')}</p></>:action&&today.attendancePhotoSetting==='optional'?<div className="max-w-xs p-5 text-center"><Camera className="mx-auto mb-3 h-10 w-10 text-muted-foreground"/><p className="font-medium">{t('photoOptionalPrompt')}</p></div>:<div className="max-w-xs p-5 text-center"><Camera className="mx-auto mb-3 h-10 w-10 text-muted-foreground"/><p className="font-medium">{t('cameraOff')}</p><p className="mt-2 text-sm text-muted-foreground">{t('cameraHint')}</p></div>}
+      </div>{camera?<><p className="text-center text-sm">{t('faceGuide')} · {t(action==='in'?'clockIn':'clockOut')}</p><div className="grid grid-cols-2 gap-3"><Button className="min-h-11" onClick={cancel}>{t('cancelPhoto')}</Button><Button className="min-h-11" onClick={capture}>{t('takePhoto')}</Button></div></>:photo?<div className="grid grid-cols-2 gap-3"><Button className="min-h-11" disabled={busy||command.current!=null} onClick={()=>{if(action)void openCamera(action);}}>{t('retakePhoto')}</Button><Button className={`min-h-11 whitespace-normal ${action==='in'?'bg-[#12795A] hover:bg-[#12795A]/90':'bg-[#B3402A] hover:bg-[#B3402A]/90'} text-white`} disabled={busy} onClick={()=>{if(action)void confirm(action);}}>{t(action==='in'?'confirmIn':'confirmOut')}</Button><Button className="min-h-11" disabled={busy||command.current!=null} onClick={cancel}>{t('cancelPhoto')}</Button></div>:action&&today.attendancePhotoSetting==='optional'?<div className="grid grid-cols-3 gap-3"><Button className="min-h-11" disabled={busy||pending} onClick={cancel}>{t('cancelPhoto')}</Button><Button className="min-h-11" disabled={busy||pending} onClick={()=>{if(action)void openCamera(action);}}>{t(cameraProblem?'retryCamera':'takePhoto')}</Button><Button className="min-h-11 whitespace-normal" disabled={busy||pending} onClick={()=>{if(action)void confirm(action);}}>{t('skipPhoto')}</Button></div>:action&&today.attendancePhotoSetting==='required'?<div className="grid grid-cols-2 gap-3"><Button disabled={busy||pending} onClick={cancel}>{t('cancelPhoto')}</Button><Button disabled={busy||pending} onClick={()=>{if(action)void openCamera(action);}}>{t(cameraProblem?'retryCamera':'takePhoto')}</Button></div>:null}</Card>}
     </div>
     <Card className="overflow-hidden"><div className="flex flex-wrap justify-between gap-2 border-b p-4"><h2 className="font-semibold">{t('todayLog')}</h2><Link className="text-sm text-primary" href="/attendance/my-records">{t('viewOverview')}</Link></div>{!today.captures.length&&!today.legacy.length?<p className="p-5 text-sm text-muted-foreground">{t('noPunches')}</p>:<ul className="divide-y">{today.captures.map(c=><li key={c.id} className="grid grid-cols-[48px_1fr] gap-3 p-3 sm:grid-cols-[48px_1fr_1fr_1fr]"><button className="h-12 w-12 overflow-hidden rounded" disabled={!c.photoAvailable} aria-label={t(c.photoAvailable?'openPhoto':'photoUnavailable')} onClick={()=>{setEnlarged(c.id);photoDialog.current?.showModal();}}>{c.photoAvailable?<img src={'/api/attendance/photo/'+c.id+'?thumbnail=1'} alt="" className="h-12 w-12 object-cover"/>:<Camera aria-hidden className="m-auto"/>}</button><span className="self-center text-sm font-medium">{t(c.direction==='in'?'punchIn':'punchOut')} · {new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(c.recordedAt))}</span><span className="col-start-2 text-sm text-muted-foreground sm:col-start-auto">{c.locationName??t('geofencingNotRequired')}</span><span className="col-start-2 text-xs text-muted-foreground sm:col-start-auto">{t(c.photoAvailable?'photoSaved':'photoUnavailable')}</span></li>)}{today.legacy.map((c,i)=><li key={'legacy'+i} className="flex flex-wrap gap-3 p-3 text-sm"><Camera aria-hidden size={18}/><span>{t(c.direction==='in'?'punchIn':'punchOut')} · {c.time}</span><span className="text-muted-foreground">{t('noHistoricalPhoto')}</span></li>)}</ul>}</Card>
     <dialog ref={photoDialog} aria-label={t('photoHeading')} className="max-w-[90vw] rounded-xl bg-background p-4 text-foreground backdrop:bg-black/70"><Button className="min-h-11" onClick={()=>photoDialog.current?.close()}>{t('cancelPhoto')}</Button>{enlarged&&<img src={'/api/attendance/photo/'+enlarged} alt={t('photoHeading')} className="mt-3 max-h-[75vh] max-w-full"/>}</dialog>

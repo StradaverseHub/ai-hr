@@ -367,7 +367,7 @@
     "reportClaim": "Claim",
     "reportPerformance": "Performance",
     "profileOptions": "Profile Options",
-    "delegations": "Delegations",
+    "delegations": "Approval Delegation",
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
@@ -3044,7 +3044,7 @@
       "checkLocation": "Check location",
       "serverTimeLabel": "SERVER TIME",
       "workedToday": "Worked today: {time}",
-      "photoHelper": "A photo and your location are captured with every clock-in and clock-out. Recorded times come from the server.",
+      "photoHelper": "A photo is required. Location is recorded when available. Recorded times come from the server.",
       "photoHeading": "Attendance photo",
       "cameraOff": "Camera is off",
       "cameraHint": "Tap Clock In or Clock Out to take a photo before saving your attendance.",
@@ -3078,7 +3078,7 @@
       "photoOptionalPrompt": "You may take a photo or skip it — either way this clocking is saved.",
       "photoRequired": "A photo is required before this clocking can be saved.",
       "cameraContext": "Camera access needs HTTPS or localhost. You can skip an optional photo.",
-      "cameraDenied": "Camera permission was denied. Allow access or skip an optional photo.",
+      "cameraDenied": "Camera access was denied. Open this site’s browser permissions, allow Camera, then select Try camera again. You may still skip an optional photo.",
       "cameraUnavailable": "No usable camera was found. Connect a camera or skip an optional photo.",
       "locationDenied": "Location permission was denied. Allow location access, then try again.",
       "locationUnavailable": "Location could not be read. Check your device location settings and retry.",
@@ -3088,7 +3088,10 @@
       "pendingCommand": "A clocking is awaiting confirmation. Check it before starting another.",
       "checkSubmission": "Check submission",
       "signInAgain": "Sign in again",
-      "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking."
+      "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking.",
+      "locationUnavailableAllowed": "Location unavailable — geofencing not required. You can clock in or out.",
+      "retryCamera": "Try camera again",
+      "cameraBusy": "The camera is in use or could not start. Close other apps using it, then select Try camera again. You may still skip an optional photo."
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",
@@ -3429,11 +3432,66 @@
       "duplicate": "The same time and direction is already in use.",
       "discard": "Discard your unsaved clock changes?",
       "legacy": "Legacy clocking",
-      "summary": "Attendance summary"
+      "summary": "Attendance summary",
+      "administratorAmendment": "Administrator amendment"
     },
     "clockDataChanged": "Clock data changed. Reload this day before submitting or approving the correction.",
     "clockDataPayrollClosed": "This day is included in a closed payroll. Reopen the payroll before correcting it.",
-    "clockDataPending": "Saved as a correction request, but not applied. Review the request in Approvals; you cannot approve your own attendance correction."
+    "clockDataPending": "Saved as a correction request, but not applied. Review the request in Approvals; you cannot approve your own attendance correction.",
+    "clockEvidenceLocationUnavailable": "Location not recorded — unavailable",
+    "dayEdit": {
+      "reason": "Reason for change",
+      "payrollConsent": "I understand that processed payroll covering this date will be marked for recalculation.",
+      "closed": "This date is included in closed payroll. Reopen the payroll before making corrections.",
+      "self": "Another authorised administrator must correct or approve your attendance.",
+      "shift": "Shift for this date",
+      "automaticSchedule": "Auto — use the dated schedule",
+      "currentShift": "Current assigned shift",
+      "dayType": "Day Type",
+      "onLeave": "On Leave",
+      "manageLeave": "Manage leave",
+      "leaveOwner": "Leave, including partial-day leave, owns this date. This editor cannot replace it.",
+      "beforeAfter": "Current: {before} → Proposed: {after}",
+      "saved": "Day correction saved and recalculated.",
+      "dateOnly": "Applies to this employee and date only.",
+      "saveSchedule": "Save day changes",
+      "completeDay": "A complete clock-in and clock-out is needed before setting manual overtime. Existing manual rows may still be returned to Auto.",
+      "approved": "Existing approved overtime: {minutes}. Auto retains this approval; manual rows remain separate.",
+      "otRow": "Configured overtime row",
+      "calculated": "Calculated",
+      "method": "Calculation method",
+      "manualMinutes": "Manual minutes",
+      "effective": "Effective",
+      "flat": "Flat OT",
+      "band": "{from}–{to} minutes",
+      "unlimited": "open",
+      "orphan": "This row is no longer configured. Return it to Auto before recalculating.",
+      "original": "Calculated {minutes} when this manual value was recorded on {date}.",
+      "auto": "Auto",
+      "manual": "Manual Override",
+      "resetAuto": "Return this row to Auto",
+      "manualHelp": "Enter whole minutes. Auto removes only the selected manual value. Original calculations and all changes remain in history.",
+      "saveOvertime": "Save overtime changes",
+      "history": "Day correction history",
+      "administrator": "Administrator",
+      "pendingStage": "The correction is saved; another approval stage is still pending.",
+      "approvedSaved": "The existing application has been approved.",
+      "frozenStage": "Earlier decisions or a staged clock-set request remain intact. This action reviews the existing request without rewriting it.",
+      "requestedIn": "Requested Clock In",
+      "requestedOut": "Requested Clock Out",
+      "administratorReason": "Administrator’s correction / approval reason",
+      "correctApprove": "Correct & approve",
+      "approvalHelp": "Only your authorised approval stage is completed. The actual administrator is recorded.",
+      "application": "Existing application",
+      "amendment": "Administrator amendment",
+      "viewApplication": "View application history",
+      "kind": {
+        "workday": "Normal Day",
+        "off_day": "Off Day",
+        "rest_day": "Rest Day",
+        "holiday": "Public Holiday"
+      }
+    }
   },
   "org": {
     "title": "Org chart",
@@ -8556,7 +8614,34 @@
       "deletePermanently": "Delete permanently",
       "gradeRestored": "Grade {code} restored.",
       "deleteGradeTitle": "Delete job grade?",
-      "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
+      "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone.",
+      "excel": {
+        "template": "Download Template",
+        "import": "Import Excel",
+        "help": "Download the template, enter organisation options in their named sheets, then preview every row before saving. Existing identifiers and company scope are preserved.",
+        "file": "Excel workbook",
+        "mode": "Import mode",
+        "add": "Add New — skip exact duplicates",
+        "update": "Update Existing — review changes",
+        "working": "Checking…",
+        "preview": "Preview workbook",
+        "row": "Worksheet / row",
+        "result": "Result",
+        "current": "Current values",
+        "proposed": "Proposed values",
+        "message": "Details",
+        "fixErrors": "Correct every invalid or conflicting row and preview the workbook again before saving.",
+        "errors": "Download error report",
+        "confirmUpdates": "I reviewed the current and proposed values and confirm updates to existing options.",
+        "confirm": "Confirm import",
+        "summary": "Imported {imported} · Updated {updated} · Skipped {skipped} · Failed {failed}",
+        "outcome": {
+          "add": "Add",
+          "update": "Update",
+          "skip": "Skip",
+          "error": "Error"
+        }
+      }
     },
     "leave": {
       "typesSectionTitle": "Leave type settings",
@@ -14558,7 +14643,7 @@
     "retry": "Try again"
   },
   "delegations": {
-    "title": "Delegation Management",
+    "title": "Approval Delegation",
     "subtitle": "Temporarily hand approval duties to a stand-in while an approver is away.",
     "createTitle": "New delegation",
     "listTitle": "Delegations",
@@ -18202,9 +18287,11 @@
       "clockRemoved": "Clocking removed from the effective set",
       "clockRestored": "Original clocking restored",
       "clockAdded": "Corrected clocking added",
-      "recorded": "Application action recorded"
+      "recorded": "Application action recorded",
+      "administratorAmended": "Administrator amendment"
     },
-    "hrApprover": "HR administrators"
+    "hrApprover": "HR administrators",
+    "administratorAmendment": "Administrator amendment"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",

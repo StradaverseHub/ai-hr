@@ -1,3 +1,4 @@
+import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Grade groups — the tenant's grade-banding vocabulary, read by leave APPROVAL ROUTING and, since
  * 9a65f808, by ENTITLEMENT ELIGIBILITY too.
@@ -109,10 +110,11 @@ export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRo
 export async function createGradeGroup(
   ctx: SessionContext,
   p: { name: string; gradeIds?: string[] },
+  existingTx?: Tx,
 ) {
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = [...new Set((p.gradeIds ?? []).filter(Boolean))];
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     const [row] = await tx
       .insert(gradeGroup)
       .values({ tenantId: ctx.tenantId, name })
@@ -139,10 +141,11 @@ export async function createGradeGroup(
 export async function updateGradeGroup(
   ctx: SessionContext,
   p: { id: string; name: string; gradeIds?: string[] },
+  existingTx?: Tx,
 ): Promise<{ gradeIds: string[] }> {
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = p.gradeIds === undefined ? undefined : [...new Set(p.gradeIds.filter(Boolean))];
-  return withTenant(ctx, async (tx) => {
+  return tenantMutation(ctx, existingTx, async (tx) => {
     // ae5b84d5: capture the BEFORE membership inside this tx — the action fires the cohort recalc over the
     // UNION of before/after grade ids, so both a grade that LEFT the group and one that JOINED are trued up
     // (the feedback's "employee transfers to another Grade Group" case, config-side).

@@ -28,6 +28,12 @@ import {
   type DelegationTaskType,
 } from '@/lib/delegation-scope';
 
+function refreshDelegationPaths() {
+  revalidatePath('/delegations');
+  revalidatePath('/admin/system-settings/approval-delegation');
+}
+
+
 /**
  * R44 delegation (Phase 2) — parse the scope picker's form fields into (reason, scope rows). A checked
  * module with no checked task = the WHOLE module (taskType null); with tasks = those tasks; ZERO modules =
@@ -242,7 +248,7 @@ export async function createSelfDelegationAction(
   } catch (e) {
     return { ok: false, error: publicErrorMessage(e) };
   }
-  revalidatePath('/delegations');
+  refreshDelegationPaths();
   return { ok: true };
 }
 
@@ -266,7 +272,7 @@ export async function revokeSelfDelegationAction(
   } catch (e) {
     return { ok: false, error: publicErrorMessage(e) };
   }
-  revalidatePath('/delegations');
+  refreshDelegationPaths();
   return { ok: true };
 }
 
@@ -317,7 +323,7 @@ export async function hrCreateDelegationAction(
   } catch (e) {
     return { ok: false, error: publicErrorMessage(e) };
   }
-  revalidatePath('/delegations');
+  refreshDelegationPaths();
   return { ok: true };
 }
 
@@ -348,7 +354,7 @@ export async function hrEditDelegationAction(
   } catch (e) {
     return { ok: false, error: publicErrorMessage(e) };
   }
-  revalidatePath('/delegations');
+  refreshDelegationPaths();
   return { ok: true };
 }
 
@@ -366,6 +372,6 @@ export async function hrRevokeDelegationAction(
   } catch (e) {
     return { ok: false, error: publicErrorMessage(e) };
   }
-  revalidatePath('/delegations');
+  refreshDelegationPaths();
   return { ok: true };
 }

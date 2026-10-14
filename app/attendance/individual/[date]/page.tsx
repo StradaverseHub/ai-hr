@@ -1,15 +1,17 @@
+import { AttendanceDateSchedule, AttendanceDateOvertime } from '@/components/attendance-day-editor';
+import { AttendanceDayApplications } from '@/components/attendance-day-applications';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { adminCorrectAttendanceDayAction, saveAttendanceClockDataAction } from './actions';
+import { saveAttendanceClockDataAction } from './actions';
 import { AttendanceClockData } from '@/components/attendance-clock-data';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
 import { employmentScheduleGroupName } from '@/core/roster';
-import { attendanceClockData, clockCaptureEvidence } from '@/packs/attendance/service';
+import { attendanceClockData, clockCaptureEvidence, attendanceDayEditor, attendanceIrregularitiesForDate } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
 import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
@@ -27,14 +29,8 @@ import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attenda
  * figure of its own would eventually disagree with the list it was opened from, and with the OT report —
  * which is the failure this repo keeps re-learning (8ebf77ae). No read of its own, no arithmetic of its own.
  *
- * EDIT IS A LINK, NOT AN EDITOR. Attendance is changed through the existing correction workflow, which
- * carries its own approval, attachment and cancellation. A second write path to an attendance record would
- * bypass that approval and is how overtime changes with no trail, so "Edit" points at the correction the
- * employee or HR already raises.
- *
- * BREAK TIME IS DERIVED, AND SAID TO BE. There is no break column on `AttendanceRangeRow`: the shift's span
- * (start → end) less its NET scheduled minutes IS the unpaid break, which is the same arithmetic the engine
- * does. The caption says so rather than presenting it as a stored figure.
+ * Date corrections and configured overtime rows use the attendance pack's dated correction owner.
+ * Original application proposals remain intact; administrator amendments and decisions have their own trail.
  *
  * ALLOWANCE IS DELIBERATELY ABSENT. The reporter's list asks for one, but "allowance" is ambiguous in this
  * codebase between a BREAK allowance (`attendance_allowance_policy`, minutes an employee may be away) and a
@@ -105,7 +101,8 @@ export default async function IndividualAttendanceDayPage({
   const row = rows[0] ?? null;
   /** dae7a10f — the one-action correction is an ADMIN affordance; everyone else keeps the link. */
   const admin = isAdmin(s);
-  const clockData = admin ? await attendanceClockData(s,selected.employmentId,date) : null;
+  const [clockData,dayEditor,applications]=await Promise.all([admin?attendanceClockData(s,selected.employmentId,date):null,admin?attendanceDayEditor(s,selected.employmentId,date):null,attendanceIrregularitiesForDate(s,selected.employmentId,date)]);
+  const applicationsSection=await AttendanceDayApplications({data:dayEditor,applications,employmentId:selected.employmentId,date});
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
   // r423 (83c0d3c8, plan point 13) — WHERE each self-service clocking was made. Only punches backed by a
@@ -184,6 +181,8 @@ export default async function IndividualAttendanceDayPage({
         ← {t('dayBackToList')}
       </Link>
 
+      {!admin&&<Link href="/attendance/requests" className="inline-block text-sm font-medium text-primary hover:underline">{t('dayEditCorrection')}</Link>}
+
       {/* dae7a10f — the correction's outcome. The action redirects with a message KEY, never a sentence,
           so the six locales stay the one place wording lives. An unknown key renders nothing rather than
           printing itself at the operator. */}
@@ -233,6 +232,7 @@ export default async function IndividualAttendanceDayPage({
         </DayFieldGrid>
         {!row.shiftCode && <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayNoShift')}</div>}
         <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayBreakDerived')}</div>
+        {dayEditor&&<AttendanceDateSchedule key={dayEditor.baseline} data={dayEditor} employmentId={selected.employmentId} date={date}/>}
       </Card>
 
       {/* 3 · CLOCK DATA — the pair, plus every punch when the day carries more than two. */}
@@ -243,6 +243,9 @@ export default async function IndividualAttendanceDayPage({
           <Field label={t('colCheckOut')} value={row.checkOutAt?.slice(0, 5) ?? DASH} />
           <Field label={t('colActualHours')} value={fmtMin(row.workedMinutes)} />
           <Field label={t('colStatus')} value={statusText[status]} />
+          <Field label={t('colFlag')} value={flag?flagText[flag]:DASH} />
+          <Field label={t('colLateness')} value={fmtMin(row.lateMinutes)} />
+          <Field label={t('colEarlyOut')} value={fmtMin(row.earlyOutMinutes)} />
         </div>
         {punches.length > 0 && (
           <div className="border-t border-border px-4 py-3">
@@ -284,14 +287,16 @@ export default async function IndividualAttendanceDayPage({
                     return (
                       <span data-clock-evidence="not-enforced" className="text-[11px] text-muted-foreground">
                         {t('clockEvidenceNotRequired')} ·{' '}
-                        <a
-                          href={osmPointHref(ev.lat, ev.lng)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-foreground"
-                        >
-                          {t('clockEvidenceCoordinates', { lat: fmtCoord(ev.lat), lng: fmtCoord(ev.lng), accuracy: Math.round(ev.accuracyM) })}
-                        </a>
+                        {ev.lat != null && ev.lng != null && ev.accuracyM != null ? (
+                          <a
+                            href={osmPointHref(ev.lat, ev.lng)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline underline-offset-2 hover:text-foreground"
+                          >
+                            {t('clockEvidenceCoordinates', { lat: fmtCoord(ev.lat), lng: fmtCoord(ev.lng), accuracy: Math.round(ev.accuracyM) })}
+                          </a>
+                        ) : t('clockEvidenceLocationUnavailable')}
                       </span>
                     );
                   })()}
@@ -308,7 +313,7 @@ export default async function IndividualAttendanceDayPage({
           the SAME working, so this screen and the list can never explain one day two ways. */}
       <Card className="overflow-hidden" data-day-section="overtime">
         <SectionHeader title={t('daySecOt')} />
-        {otItems.length === 0 ? (
+        {dayEditor?<AttendanceDateOvertime key={dayEditor.baseline} data={dayEditor} employmentId={selected.employmentId} date={date}/>:otItems.length === 0 ? (
           <p data-day-ot-none className="px-4 py-3 text-sm text-muted-foreground">{t('dayOtNone')}</p>
         ) : (
           <>
@@ -329,73 +334,8 @@ export default async function IndividualAttendanceDayPage({
         )}
       </Card>
 
-      <Card className="overflow-hidden" data-day-section="irregularity">
-        <SectionHeader title={t('daySecIrregular')} />
-        <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-          <Field label={t('colStatus')} value={statusText[status]} />
-          <Field label={t('colFlag')} value={flag ? flagText[flag] : DASH} />
-          <Field label={t('colLateness')} value={fmtMin(row.lateMinutes)} />
-          <Field label={t('colEarlyOut')} value={fmtMin(row.earlyOutMinutes)} />
-        </div>
-        {/**
-          * dae7a10f — THE ONE-ACTION ADMIN CORRECTION, and the link that stays for everyone else.
-          *
-          * The reporter asked to fix a day "without going through the approval workflow". An
-          * administrator no longer waits for anybody: this posts the correction and approves it in the
-          * same submit. What it does NOT do is write the attendance row — see actions.ts. The correction
-          * still runs through the same engine an approved request runs through, and still leaves the same
-          * record of who changed it, when, and why.
-          *
-          * For a non-admin the affordance is unchanged: the correction workflow they already use.
-          */}
-        {admin ? (
-          <form
-            action={adminCorrectAttendanceDayAction}
-            className="grid grid-cols-1 gap-3 border-t border-border px-4 py-3 sm:flex sm:flex-wrap sm:items-end"
-          >
-            <input type="hidden" name="employmentId" value={selected.employmentId} />
-            <input type="hidden" name="date" value={date} />
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {t('colCheckIn')}
-              <input type="time" name="checkIn" defaultValue={row.checkInAt?.slice(0, 5) ?? ''} className={inputCls} />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {t('colCheckOut')}
-              <input type="time" name="checkOut" defaultValue={row.checkOutAt?.slice(0, 5) ?? ''} className={inputCls} />
-            </label>
-            <label className="flex min-w-0 sm:min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
-              {t('dayCorrectReason')}
-              <input name="reason" required maxLength={500} className={inputCls} />
-            </label>
-            <Button type="submit" variant="outline" size="sm">
-              {t('dayCorrectSave')}
-            </Button>
-            {/* r368 c8282468 — THIS CAPTION IS AN AUDIT PROMISE, ON THE SCREEN WHERE A FIGURE THAT FEEDS
-              * PAY IS CHANGED, SO IT MAY SAY ONLY WHAT THE SYSTEM ACTUALLY KEEPS. `dayCorrectTrailNote`
-              * (retired in place, not deleted) claimed "the previous value" as well; nothing anywhere
-              * stored it. Step 1 of this round dropped the clause; step 2 made the recording real, and
-              * this is the sentence that states it — every figure the correction moves, old value and new
-              * value, plus the on-site location check it clears, on the `attendance.amended` event and
-              * rendered by /admin/audit (core/attendance.ts AMENDED_FIGURE_COLUMNS).
-              *
-              * ⚠️ IT NAMES THE AUDIT TRAIL AND NOT THIS SCREEN, DELIBERATELY. This page renders no
-              * history, and `core/read.ts` `employeeAudit` filters on an aggregate-id set that excludes
-              * attendance — so the personnel Change History card will NOT show a correction. /admin/audit,
-              * filtered to Attendance, is the only surface. Widen the sentence only after widening one of
-              * those two, or it starts overclaiming again.
-              *
-              * Item 67268d83 round 2 renders this same key on /attendance/my-records/<date> and must
-              * CONSUME it, never re-edit it. CAPTION OWNERSHIP IS c8282468's. */}
-            <p className="w-full text-[11px] text-muted-foreground">{t('dayCorrectAuditNote')}</p>
-          </form>
-        ) : (
-          <div className="border-t border-border px-4 py-2 text-xs">
-            <Link href="/attendance/requests" className="font-medium text-primary hover:underline">
-              {t('dayEditCorrection')}
-            </Link>
-          </div>
-        )}
-      </Card>
+      {applicationsSection}
+
     </div>
   );
 }

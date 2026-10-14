@@ -1,3 +1,4 @@
+import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 /**
  * Slice 0 schema — "the spine".
  *
@@ -3932,6 +3933,14 @@ export const attendancePunchDirectionEnum = pgEnum('attendance_punch_direction',
 // and a photo is no longer always taken (attendance_photo_setting 'optional' skipped, or 'not_required').
 // The CHECK below is a genuinely new nullable SET, so it is written explicitly rather than relying on a
 // comment — unlike the geofence columns' "null together" convention just below, which stays comment-only.
+export const attendanceDayAdjustment = pgTable('attendance_day_adjustment', {
+  id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  attendanceDate:date('attendance_date').notNull(),shiftId:uuid('shift_id').references(()=>shift.id),
+  dayKind:text('day_kind').$type<AttendanceDayKindOverride>(),manualOtRows:jsonb('manual_ot_rows').$type<ManualOtRows>().notNull().default({}),
+  version:integer('version').notNull().default(1),reason:text('reason').notNull(),updatedBy:text('updated_by').notNull(),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('attendance_day_adjustment_day_uq').on(t.tenantId,t.employmentId,t.attendanceDate)]);
+
 export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   id: id(), tenantId: tenantId(), employmentId: uuid('employment_id').notNull().references(() => employment.id),
   attendanceDate: date('attendance_date').notNull(), direction: attendancePunchDirectionEnum('direction').notNull(),
@@ -3941,7 +3950,8 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   photoBytes: bytea('photo_bytes'), thumbnailBytes: bytea('thumbnail_bytes'),
   decodedWidth: integer('decoded_width'), decodedHeight: integer('decoded_height'),
   deviceId: uuid('device_id').references(() => employeeDevice.id),
-  lat: doublePrecision('lat').notNull(), lng: doublePrecision('lng').notNull(), accuracyM: doublePrecision('accuracy_m').notNull(),
+  // Web location can be unavailable when geofencing is off; native sampled location remains required.
+  lat: doublePrecision('lat'), lng: doublePrecision('lng'), accuracyM: doublePrecision('accuracy_m'),
   // r423 (0517) — NULL together when the employee's geofencing switch is OFF: the position is recorded, it is
   // simply not compared with a site. Present together for every geofenced capture (core/attendance-clock.ts).
   clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
@@ -3950,6 +3960,7 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
   index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt),
+  check('attendance_clock_capture_location_together', sql`num_nonnulls(${t.lat}, ${t.lng}, ${t.accuracyM}) IN (0, 3) AND (${t.lat} IS NOT NULL OR (${t.clockingLocationId} IS NULL AND ${t.deviceId} IS NULL))`),
   // r430 — the six photo columns (device_id excluded: it is independently nullable, always null going
   // forward) are null together: either every one was captured, or none was.
   check(
@@ -4385,6 +4396,7 @@ export const attendanceCorrection = pgTable(
     // ADR-0069: relaxed to NULLABLE (was NOT NULL) so an OT-only request (no clock-in/out) can be represented.
     // A DB check constraint (migration 0145) requires at least one of proposedCheckIn / proposedCheckOut /
     // requestedOtMinutes to be present.
+    adminAmendment: jsonb('admin_amendment').$type<AttendanceAdminAmendment>(),
     proposedCheckIn: time('proposed_check_in'),
     proposedCheckOut: time('proposed_check_out'),
     reason: text('reason'),

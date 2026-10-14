@@ -112,53 +112,42 @@ export function rateForDay(row: ResolvedOtRow, dayType: DayType): number {
  *     function splits whatever total came out of it. (7c834696 rev 3 settled that rounding is DOWNWARD —
  *     see applyOtRuleRows. The total this function is handed changed; the split arithmetic did not.)
  */
-export function splitOtMinutes(
-  otMinutes: number | null,
-  dayType: DayType,
-  rule: ResolvedAttendanceRule | null,
-): OtSplit {
-  const out = emptyOtSplit();
-  const total = Math.max(0, Math.trunc(otMinutes ?? 0));
-  if (total === 0) return out;
+export type OvertimeCalculationRow = {
+  key:string;fromMinutes:number;toMinutes:number|null;ratePattern:'flat'|'variable';rate:number;
+  bucket:OtSplitBucket;calculatedMinutes:number;
+};
 
-  const bands = rule?.otRows ?? [];
-  if (bands.length === 0) {
-    // Byte-identical to the pre-7c834696 read-time routing in core/attendance-derive.ts otByRate.
-    if (dayType === 'holiday') out.ot30 = total;
-    else if (dayType === 'rest_day') out.ot20 = total;
-    else out.ot15 = total;
-    return out;
+/** One row for every configured band, including zero results. This also owns the bucket distribution. */
+export function overtimeCalculationRows(otMinutes:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null):OvertimeCalculationRow[] {
+  const total=Math.max(0,Math.trunc(otMinutes??0)),bands=[...(rule?.otRows??[])].sort((a,b)=>a.fromMinutes-b.fromMinutes);
+  if(!bands.length){const rate=dayType==='holiday'?3:dayType==='rest_day'?2:1.5;
+    return [{key:'default',fromMinutes:0,toMinutes:null,ratePattern:'variable',rate,bucket:bucketForRate('variable',rate),calculatedMinutes:total}];}
+  const rows=bands.map(row=>({key:row.id??`${rule!.id}:${row.fromMinutes}`,fromMinutes:row.fromMinutes,
+    toMinutes:row.toMinutes<=row.fromMinutes?null:row.toMinutes,ratePattern:row.ratePattern,
+    rate:rateForDay(row,dayType),bucket:bucketForRate(row.ratePattern,rateForDay(row,dayType)),calculatedMinutes:0}));
+  let remaining=total,cursor=Math.max(0,bands[0].fromMinutes);
+  if(cursor>0){const head=Math.min(remaining,cursor);rows[0].calculatedMinutes+=head;remaining-=head;}
+  for(let i=0;i<bands.length&&remaining>0;i++){
+    const row=bands[i],open=row.toMinutes<=row.fromMinutes,capacity=open?remaining:Math.max(0,row.toMinutes-cursor);
+    const take=Math.min(remaining,capacity);rows[i].calculatedMinutes+=take;remaining-=take;
+    cursor=open?cursor+take:Math.max(cursor,row.toMinutes);
   }
+  if(remaining>0)rows[rows.length-1].calculatedMinutes+=remaining;
+  return rows;
+}
+export function splitOtMinutes(otMinutes:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null):OtSplit {
+  const out=emptyOtSplit();for(const row of overtimeCalculationRows(otMinutes,dayType,rule))out[row.bucket]+=row.calculatedMinutes;return out;
+}
 
-  // Ascending by `from`; an open-ended band (to ≤ from) can only be the last one it consumes into.
-  const sorted = [...bands].sort((a, b) => a.fromMinutes - b.fromMinutes);
-  const add = (row: ResolvedOtRow, minutes: number) => {
-    if (minutes <= 0) return;
-    out[bucketForRate(row.ratePattern, rateForDay(row, dayType))] += minutes;
-  };
-
-  let remaining = total;
-  let cursor = Math.max(0, sorted[0].fromMinutes);
-  // A table that does not start at 0 leaves the minutes below it unclassified. Validation refuses to SAVE
-  // such a table, but a rule stored before this release may have one, and those minutes are real overtime
-  // that must not vanish — they take the first band's rate.
-  if (cursor > 0) {
-    const head = Math.min(remaining, cursor);
-    add(sorted[0], head);
-    remaining -= head;
-  }
-  for (const row of sorted) {
-    if (remaining <= 0) break;
-    const openEnded = row.toMinutes <= row.fromMinutes;
-    const capacity = openEnded ? remaining : Math.max(0, row.toMinutes - cursor);
-    const take = Math.min(remaining, capacity);
-    add(row, take);
-    remaining -= take;
-    cursor = openEnded ? cursor + take : Math.max(cursor, row.toMinutes);
-  }
-  // Past the final bounded band — see non-behaviour (1) above.
-  if (remaining > 0) add(sorted[sorted.length - 1], remaining);
-  return out;
+export class ManualOtConfigurationChangedError extends Error {
+  constructor(){super('The overtime configuration no longer contains a manually corrected row. Return that row to Auto before recalculating or changing this schedule.');}
+}
+export function effectiveOvertimeRows(total:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null,manual:import('../lib/attendance-day-adjustment').ManualOtRows={}) {
+  const calculated=overtimeCalculationRows(total,dayType,rule);
+  if(Object.keys(manual).some(key=>!calculated.some(r=>r.key===key)))throw new ManualOtConfigurationChangedError();
+  const rows=calculated.map(row=>({...row,effectiveMinutes:manual[row.key]?.minutes??row.calculatedMinutes,manual:manual[row.key]!=null}));
+  const split=emptyOtSplit();for(const row of rows)split[row.bucket]+=row.effectiveMinutes;
+  return {rows,split,total:otSplitTotal(split),calculatedSplit:splitOtMinutes(total,dayType,rule)};
 }
 
 /**

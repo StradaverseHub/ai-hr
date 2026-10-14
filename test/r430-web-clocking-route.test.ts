@@ -11,6 +11,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { adminCtx, harnessSnapshot, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
+import { createClockingLocation, setClockingControl } from '../core/clocking-location';
 import { ownClockToday } from '../core/attendance-clock-read';
 
 let b: Base;
@@ -109,4 +110,44 @@ it('binds new web commands to the original authenticated employee context',async
   CALLER=originalCaller;
   const recovered=await post(fields);expect(recovered.status).toBe(200);
   expect(await owner.db.select({id:schema.attendanceClockCapture.id}).from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId,originalId))).toHaveLength(1);
+});
+
+
+describe('optional web location is persisted without invented coordinates', () => {
+  it.each(['in', 'out'] as const)('accepts %s with no location when geofencing is off, and recovers the exact receipt', async action => {
+    const employmentId = await hire();
+    const requestId = randomUUID();
+    const fields = { action, requestId };
+    const accepted = await post(fields);
+    expect(accepted.status).toBe(200);
+    const receipt = (await accepted.json()).receipt;
+    const [capture] = await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId, employmentId));
+    expect(capture).toMatchObject({ lat: null, lng: null, accuracyM: null, clockingLocationId: null, distanceM: null, radiusM: null });
+    const [punch] = await owner.db.select().from(schema.attendancePunch).where(eq(schema.attendancePunch.clockCaptureId, capture.id));
+    expect(punch).toMatchObject({ lat: null, lng: null, geofenceStatus: 'not_enforced' });
+    const replay = await post(fields);
+    expect(replay.status).toBe(200);
+    expect((await replay.json()).receipt).toEqual(receipt);
+    expect(await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId, employmentId))).toHaveLength(1);
+    const changed = await post({ ...fields, lat: '3', lng: '101', accuracy: '10' });
+    expect(changed.status).toBe(409);
+    await expect(owner.db.insert(schema.attendanceClockCapture).values({ ...capture, id: randomUUID(), requestId: randomUUID(), lat: 3 })).rejects.toThrow();
+  });
+
+  it.each(['in', 'out'] as const)('rechecks current geofencing before %s and refuses missing/outside location without attendance writes', async action => {
+    const employmentId = await hire();
+    const site = await createClockingLocation(adminCtx(b), { name: 'Approved office', lat: 3.0448, lng: 101.4455, radiusM: 100, companyIds: [b.companyId] });
+    await setClockingControl(adminCtx(b), { employmentId, enabled: true, clockingLocationIds: [site.id] });
+    const missing = await post({ action, requestId: randomUUID() });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: 'locationRequired' });
+    const outside = await post({ action, requestId: randomUUID(), lat: '5', lng: '100', accuracy: '10' });
+    expect(outside.status).toBe(400);
+    expect(await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId, employmentId))).toEqual([]);
+    expect(await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId, employmentId))).toEqual([]);
+    const inside = await post({ action, requestId: randomUUID(), lat: '3.0448', lng: '101.4455', accuracy: '8' });
+    expect(inside.status).toBe(200);
+    const [capture] = await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId, employmentId));
+    expect(capture).toMatchObject({ lat: 3.0448, lng: 101.4455, accuracyM: 8, clockingLocationId: site.id, radiusM: 100 });
+  });
 });
