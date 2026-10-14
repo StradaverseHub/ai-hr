@@ -656,7 +656,9 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await complete();const reviewer=peers[0].ctx,other=peers[1].ctx;
     const make=(tier:'hod'|'bu'|'bg',who=reviewer)=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} submitted trail`,companyId:b.companyId,tier,reviewerUserIds:[who.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
     const hod=await make('hod'),bu=await make('bu',other),bg=await make('bg',other);
+    expect((await perf.getOnehrCalibration(reviewer,hod)).canSubmit.pm).toBe(false);
     await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Held department delivery explanation.',potentialNote:''});
+    expect((await perf.getOnehrCalibration(reviewer,hod)).canSubmit.pm).toBe(true);
     let v=await perf.getOnehrCalibration(other,bg);expect(v.rows[0]).toMatchObject({currentPerformance:'ME',performanceSource:'manager'});expect(v.rows[0].journey.find(j=>j.tier==='hod')?.performance).toBeNull();expect(v.rows[0].bandTrails.performance).toContainEqual({tier:'hod',band:null,state:'wait'});
     expect((await perf.getAssessmentInsightSource(other,reviewId,bg)).facts.trail).toEqual([]);
     expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)?.snapshot).toMatchObject({performance:'ME',tiers:{hod:{performance:null}}});

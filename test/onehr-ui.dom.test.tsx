@@ -66,6 +66,7 @@ describe('OneHR native workflow controls',()=>{
  it('renders the actual BG workspace Talent Box and opens both axes from its grid',async()=>{
   const v={session:{id:'session',name:'BG review',tier:'bg',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{companyId:'company',talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]};
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
+  expect(screen.queryByRole('button',{name:en.onehr.lockCalibration})).toBeNull();
   expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
   expect(screen.getByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
  });
