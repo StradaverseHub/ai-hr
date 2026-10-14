@@ -17931,7 +17931,25 @@
         "no": "缺少支持"
       }
     },
-    "planRemarkOwnerHelp": "只有负责计划总体反馈的评审人可以编辑此字段。您仍可评论目标并记录职业发展对话。"
+    "planRemarkOwnerHelp": "只有负责计划总体反馈的评审人可以编辑此字段。您仍可评论目标并记录职业发展对话。",
+    "moderationTable": {
+      "title": "评审 KPI 结果",
+      "theirResult": "员工结果",
+      "theirRating": "员工评级",
+      "justified": "依据充分？",
+      "moderate": "调整",
+      "theirNote": "员工备注",
+      "moderatedResult": "{kpi} 的调整结果",
+      "justificationFor": "{kpi} 的调整依据",
+      "theirOverall": "员工总评",
+      "moderatedOverall": "调整后",
+      "scopeHelp": "这些预览仅涵盖分配给您的 KPI。",
+      "theirRemark": "员工总述",
+      "yourRemark": "您的总体评语",
+      "remarkWords": "约 100 个词 · {count} / 220 个词",
+      "remarkRequired": "确认总体等级变化前，请填写您的总体评语。"
+    },
+    "careerConversation": "Career conversation record"
   },
   "allowanceV2": {
     "title": "考勤津贴",

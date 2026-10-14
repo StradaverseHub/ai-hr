@@ -17931,7 +17931,25 @@
         "no": "Not backed"
       }
     },
-    "planRemarkOwnerHelp": "Only the reviewer responsible for overall plan feedback can edit this field. You can still comment on goals and record the career conversation."
+    "planRemarkOwnerHelp": "Only the reviewer responsible for overall plan feedback can edit this field. You can still comment on goals and record the career conversation.",
+    "moderationTable": {
+      "title": "Review KPI results",
+      "theirResult": "Their result",
+      "theirRating": "Their rating",
+      "justified": "Justified?",
+      "moderate": "Moderate",
+      "theirNote": "Their note",
+      "moderatedResult": "Moderated result for {kpi}",
+      "justificationFor": "Justification for {kpi}",
+      "theirOverall": "Their overall",
+      "moderatedOverall": "Moderated",
+      "scopeHelp": "These previews cover the KPIs assigned to you.",
+      "theirRemark": "Their remark",
+      "yourRemark": "Your overall remark",
+      "remarkWords": "About 100 words · {count} / 220 words",
+      "remarkRequired": "Add your overall remark before confirming a change to the overall band."
+    },
+    "careerConversation": "Career conversation record"
   },
   "allowanceV2": {
     "title": "Attendance Allowance",

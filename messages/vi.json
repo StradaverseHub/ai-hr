@@ -17931,7 +17931,25 @@
         "no": "Chưa có minh chứng"
       }
     },
-    "planRemarkOwnerHelp": "Chỉ người đánh giá phụ trách phản hồi chung về kế hoạch mới có thể chỉnh sửa mục này. Bạn vẫn có thể nhận xét mục tiêu và ghi lại cuộc trao đổi nghề nghiệp."
+    "planRemarkOwnerHelp": "Chỉ người đánh giá phụ trách phản hồi chung về kế hoạch mới có thể chỉnh sửa mục này. Bạn vẫn có thể nhận xét mục tiêu và ghi lại cuộc trao đổi nghề nghiệp.",
+    "moderationTable": {
+      "title": "Đánh giá kết quả KPI",
+      "theirResult": "Kết quả của nhân viên",
+      "theirRating": "Xếp hạng của nhân viên",
+      "justified": "Có căn cứ?",
+      "moderate": "Điều chỉnh",
+      "theirNote": "Ghi chú của nhân viên",
+      "moderatedResult": "Kết quả điều chỉnh cho {kpi}",
+      "justificationFor": "Lý do điều chỉnh {kpi}",
+      "theirOverall": "Tổng thể của nhân viên",
+      "moderatedOverall": "Đã điều chỉnh",
+      "scopeHelp": "Các bản xem trước này chỉ bao gồm KPI được giao cho bạn.",
+      "theirRemark": "Nhận xét của nhân viên",
+      "yourRemark": "Nhận xét tổng thể của bạn",
+      "remarkWords": "Khoảng 100 từ · {count} / 220 từ",
+      "remarkRequired": "Thêm nhận xét tổng thể trước khi xác nhận thay đổi mức tổng thể."
+    },
+    "careerConversation": "Career conversation record"
   },
   "allowanceV2": {
     "title": "Phụ cấp chuyên cần",

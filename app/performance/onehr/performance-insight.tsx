@@ -7,12 +7,12 @@ import { assessmentInsightAction } from '../onehr-actions';
 import type { PerformanceInsight as Insight } from '@/packs/performance/onehr/performance-insight-model';
 type State={pending:boolean;source:'plain'|'ai'|null;data:Insight|null;status:string};
 /** Opening reads an existing insight only. The explicit generation button is the provider/file-reading action. */
-export function PerformanceInsight({reviewId,contextId=reviewId}:{reviewId:string;contextId?:string}){
- return <InsightContent key={`${reviewId}.${contextId}`} reviewId={reviewId} contextId={contextId}/>;
+export function PerformanceInsight({reviewId,contextId=reviewId,onResult}:{reviewId:string;contextId?:string;onResult?:(data:Insight|null)=>void}){
+ return <InsightContent key={`${reviewId}.${contextId}`} reviewId={reviewId} contextId={contextId} onResult={onResult}/>;
 }
-function InsightContent({reviewId,contextId}:{reviewId:string;contextId:string}){
+function InsightContent({reviewId,contextId,onResult}:{reviewId:string;contextId:string;onResult?:(data:Insight|null)=>void}){
  const t=useTranslations('onehr.insight'),[result,setResult]=useState<State|null>(null),[error,setError]=useState(''),[busy,start]=useTransition(),sequence=useRef(0);
- const load=(generate:boolean)=>{const request=++sequence.current;setError('');setResult(null);start(async()=>{try{const r=await assessmentInsightAction(reviewId,contextId,generate);if(request!==sequence.current)return;if('error' in r)setError(r.error);else setResult(r);}catch{if(request===sequence.current)setError(t('unavailable'));}});};
+ const load=(generate:boolean)=>{const request=++sequence.current;setError('');setResult(null);onResult?.(null);start(async()=>{try{const r=await assessmentInsightAction(reviewId,contextId,generate);if(request!==sequence.current)return;if('error' in r)setError(r.error);else {setResult(r);onResult?.(r.data);}}catch{if(request===sequence.current)setError(t('unavailable'));}});};
  return <details className="rounded-lg border border-border" onToggle={event=>{if(event.currentTarget.open)load(false);else{sequence.current++;setResult(null);setError('');}}}>
   <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Sparkles size={16} aria-hidden/>{t('title')}</summary>
   <div className="space-y-4 border-t border-border p-4">

@@ -17931,7 +17931,25 @@
         "no": "Tidak disokong"
       }
     },
-    "planRemarkOwnerHelp": "Hanya penyemak yang bertanggungjawab terhadap maklum balas keseluruhan pelan boleh mengedit medan ini. Anda masih boleh mengulas matlamat dan merekodkan perbincangan kerjaya."
+    "planRemarkOwnerHelp": "Hanya penyemak yang bertanggungjawab terhadap maklum balas keseluruhan pelan boleh mengedit medan ini. Anda masih boleh mengulas matlamat dan merekodkan perbincangan kerjaya.",
+    "moderationTable": {
+      "title": "Semak keputusan KPI",
+      "theirResult": "Keputusan mereka",
+      "theirRating": "Penarafan mereka",
+      "justified": "Berjustifikasi?",
+      "moderate": "Moderasi",
+      "theirNote": "Nota mereka",
+      "moderatedResult": "Keputusan disemak untuk {kpi}",
+      "justificationFor": "Justifikasi untuk {kpi}",
+      "theirOverall": "Keseluruhan mereka",
+      "moderatedOverall": "Disemak",
+      "scopeHelp": "Pratonton ini meliputi KPI yang diberikan kepada anda.",
+      "theirRemark": "Ulasan mereka",
+      "yourRemark": "Ulasan keseluruhan anda",
+      "remarkWords": "Kira-kira 100 perkataan · {count} / 220 perkataan",
+      "remarkRequired": "Tambah ulasan keseluruhan sebelum mengesahkan perubahan kategori keseluruhan."
+    },
+    "careerConversation": "Career conversation record"
   },
   "allowanceV2": {
     "title": "Elaun Kehadiran",

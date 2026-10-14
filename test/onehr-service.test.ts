@@ -140,6 +140,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(withTenant(mgr,tx=>tx.update(schema.onehrReview).set({managerRemark:'Overwrite the cache'}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
     await perf.submitAssessmentModeration(mgr,reviewId,(await view()).revision,[{id:ids[0],actual:100,note:'Verified delivery'}],'Verified the line manager deliverable.');
     expect((await view(self)).reviewerRemarks).toEqual([]);expect((await perf.getAssessmentInsightSource(peers[1].ctx,reviewId,sid)).facts.mgr_remarks).toEqual([]);
+    expect((await perf.performanceWorkspace(mgr)).find(i=>i.id===reviewId&&i.module==='pm')?.state).toBe('done');expect((await perf.performanceWorkspace(matrix.ctx)).find(i=>i.id===reviewId&&i.module==='pm')?.state).toBe('open');
     await expect(withTenant(mgr,tx=>tx.update(schema.assessmentReviewerRemark).set({remark:'Rewritten after confirmation'}).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!)))).rejects.toThrow();
     const [before]=await owner.db.select().from(schema.assessmentReviewerRemark).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!));
     await withTenant(mgr,tx=>tx.update(schema.assessmentReviewerRemark).set({actorRole:'approver',updatedAt:new Date(0)}).where(eq(schema.assessmentReviewerRemark.actorUserId,mgr.userId!)));

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { defaultPolicy } from '../packs/performance/onehr/model';
@@ -73,6 +73,14 @@ describe('OneHR native workflow controls',()=>{
   show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v']}));
   expect(screen.getByRole('button',{name:en.onehr.approve})).toBeTruthy();expect(screen.getByRole('button',{name:en.onehr.return})).toBeTruthy();
   expect(screen.queryByText(en.onehr.developmentPlan)).toBeNull();
+ });
+ it('renders the career conversation label as text and keeps co-reviewer overall feedback readonly',async()=>{
+  const v={policy:defaultPolicy(framework),drafts:[],careerRoutes:[],moderators:[],choices:[],kpis:[],competencies:[],peers:[],attachments:[],evidence:[],attachmentLinks:[],kpiLibrary:[],reviewId:'review',revision:1,cycle:{id:'cycle',name:'Annual',status:'open'},admin:false,self:false,manager:false,moderator:true,planReviewer:true,planRemarkWriter:false,finalized:false,canApproveSettingIds:[],canModerateIds:[],careerProfile:null,planYear:2027,plans:[{id:'plan',planYear:2027,revision:1,status:'shared',career:{aspiration:'Learn facilitation',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:crypto.randomUUID(),area:'Facilitation',dueOn:'',onJob:'Lead the workshop',fromOthers:'',formalLearning:'',status:'not_started',managerComment:'Add a retrospective after the workshop.'}],managerComment:'Line manager owns this feedback',conversation:'',conversationHeldOn:null}]};
+  show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'idp'}));
+  expect(screen.getByLabelText(en.onehr.careerConversation)).toBeTruthy();
+  expect((within(screen.getByLabelText(en.onehr.careerConversation).closest('form')!).getByLabelText(en.onehr.managerComment) as HTMLTextAreaElement).readOnly).toBe(true);
+  expect(screen.getByText(en.onehr.planRemarkOwnerHelp)).toBeTruthy();
+  expect(screen.queryByText('onehr.conversation')).toBeNull();expect(screen.getAllByText(/Add a retrospective after the workshop\./).some(node=>node.tagName==='P')).toBe(true);
  });
  it('offers each release before finalization and explains the working result',async()=>{
   const v={policy:defaultPolicy(framework),drafts:[],careerRoutes:[],moderators:[],choices:[],kpis:[],competencies:[],plans:[],peers:[],attachments:[],evidence:[],attachmentLinks:[],kpiLibrary:[],reviewId:'review',revision:1,cycle:{id:'cycle',name:'Annual',status:'open'},admin:true,self:false,manager:false,moderator:false,finalized:false,canApproveSettingIds:[],canModerateIds:[],result:{id:'review',digest:null,interim:true,performance:'ME',potential:null,talent:null,performanceReleased:true,potentialReleased:false,talentReleased:false,feedbackReleased:false}};
