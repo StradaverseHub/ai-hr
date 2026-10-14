@@ -18221,6 +18221,22 @@
       "lower": "↓ 降低",
       "provisional": "默认位置：{band}",
       "onBox": "当前九宫格：{band}，来源：{source}"
+    },
+    "rewrite": {
+      "title": "使用 AI 起草",
+      "help": "请先审阅并修改建议，再将其用于表单。",
+      "yourWords": "您的原文",
+      "instruction": "您希望如何修改措辞？",
+      "polishInstruction": "润色措辞，不添加事实。",
+      "working": "正在准备…",
+      "generate": "生成建议",
+      "quota": "今天还可起草 {remaining} 次，共 {limit} 次",
+      "unavailable": "无法准备草稿。您可以继续自行撰写或重试。",
+      "changed": "该字段已更改。请关闭此建议，再根据当前原文请求新建议。",
+      "tooLong": "请将建议缩短至 {limit} 个字符以内再使用。",
+      "suggestion": "建议措辞",
+      "discard": "放弃",
+      "keep": "使用措辞"
     }
   },
   "allowanceV2": {

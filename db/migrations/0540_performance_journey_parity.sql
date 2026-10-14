@@ -319,7 +319,7 @@ $$;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_moderator_choices(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce(jsonb_agg(jsonb_build_object('id',m.id,'name',p.full_name,'personId',m.person_id)),'[]'::jsonb) FROM performance_review r JOIN employment sub ON sub.id=r.employment_id AND sub.tenant_id=r.tenant_id JOIN employment m ON m.tenant_id=r.tenant_id JOIN person p ON p.id=m.person_id WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.onehr_review_header(r.id) IS NOT NULL AND sub.person_id<>m.person_id AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (EXISTS(SELECT 1 FROM performance_onehr_review rr, jsonb_array_elements(rr.kpis) k WHERE rr.review_id=r.id AND k->>'moderatorSource'='matrix' AND k->>'moderatorEmploymentId'=m.id::text) OR m.id=r.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL))
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',m.id,'name',p.full_name,'personId',m.person_id)),'[]'::jsonb) FROM performance_review r JOIN employment sub ON sub.id=r.employment_id AND sub.tenant_id=r.tenant_id JOIN employment m ON m.tenant_id=r.tenant_id JOIN person p ON p.id=m.person_id WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND (app.onehr_review_header(r.id) IS NOT NULL OR app.onehr_cycle_admin(r.cycle_id)) AND sub.person_id<>m.person_id AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (EXISTS(SELECT 1 FROM performance_onehr_review rr, jsonb_array_elements(rr.kpis) k WHERE rr.review_id=r.id AND k->>'moderatorSource'='matrix' AND k->>'moderatorEmploymentId'=m.id::text) OR m.id=r.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL))
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.assessment_plan_reviewer(wanted_plan uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -1044,7 +1044,7 @@ ALTER TABLE performance_assessment_ai_use ENABLE ROW LEVEL SECURITY;
 ALTER TABLE performance_assessment_ai_use FORCE ROW LEVEL SECURITY;
 GRANT SELECT,INSERT ON performance_assessment_ai_use TO ai_hr_app;
 CREATE POLICY assessment_ai_use_read ON performance_assessment_ai_use FOR SELECT USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id());
-CREATE POLICY assessment_ai_use_insert ON performance_assessment_ai_use FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.onehr_review_header(review_id) IS NOT NULL);
+CREATE POLICY assessment_ai_use_insert ON performance_assessment_ai_use FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND (app.onehr_review_header(review_id) IS NOT NULL OR EXISTS(SELECT 1 FROM performance_onehr_panel p WHERE p.review_id=performance_assessment_ai_use.review_id AND p.tenant_id=performance_assessment_ai_use.tenant_id AND app.onehr_feedback_card(p.request_id) IS NOT NULL)));
 CREATE FUNCTION app.assessment_ai_use_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT EXISTS(SELECT 1 FROM performance_onehr_review WHERE review_id=NEW.review_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Invalid AI usage actor or assessment'; END IF;
@@ -1368,3 +1368,7 @@ INSERT INTO setting_definition (key,module_code,scope,value_type,default_value,d
 ('performance.ai_idp_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Suggest development goals and career plan drafts.',214),
 ('performance.ai_calib_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Assist calibration summaries, conversations and curve fit.',215)
 ON CONFLICT (key) DO NOTHING;
+
+--> statement-breakpoint
+-- A real scheduled dispatcher has no human user ID. Read-only access retains cycle/company admin scope.
+CREATE POLICY assessment_review_dispatch_read ON performance_onehr_review FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id));

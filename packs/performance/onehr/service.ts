@@ -8,7 +8,7 @@ import { assessmentAiQuotaTx } from './ai-usage';
 import { emptyHeldCalibration,heldCalibrationSchema } from './calibration-command-model';
 import { defaultLibraryScoring,settingNumberSource,spreadScoring } from './setting-default-model';
 import { hasLibrarySpread } from './setting-suggestion-model';
-import { leaderWorkspaceParts,reviewerModerationState, type WorkspaceAxis } from './workspace-model';
+import { assessmentWorkWindowOpen,leaderWorkspaceParts,reviewWorkspaceParts, type WorkspaceAxis } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
@@ -25,6 +25,7 @@ import { actorOf, appendEvent } from '../../../db/events';
 import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { assessmentAiStateTx } from './ai-settings';
+import { isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { assessmentImportRecords, importKpiDefinition, importValue, kpiLibraryTemplateSchema } from './import-model';
 import framework from './framework.json';
@@ -405,7 +406,8 @@ async function feedbackCard(tx:Tx,requestId:string) {uuid.parse(requestId);const
 export async function getOnehrFeedback(ctx:SessionContext,requestId:string){return withPerformanceTenant(ctx,async tx=>{
  const card=await feedbackCard(tx,requestId);
  const [draft]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.contextId,requestId),eq(assessmentDraft.kind,'feedback'),eq(assessmentDraft.actorUserId,ctx.userId!)));
- return {...card,draft:draft?{...draft,payload:assessmentDraftSchema.parse(draft.payload)}:null};
+ const ai=await assessmentAiStateTx(tx,ctx);
+ return {...card,aiEnabled:ai.features['360'],draft:draft?{...draft,payload:assessmentDraftSchema.parse(draft.payload)}:null};
 });}
 export async function submitOnehrFeedback(ctx:SessionContext,requestId:string,raw:unknown,remark:string,comments:Record<string,string>={}) {
   const answers=z.record(z.string(),z.enum(['yes','no'])).parse(raw);note.parse(remark);
@@ -1176,7 +1178,33 @@ export async function linkAssessmentAttachmentTx(tx:Tx,ctx:SessionContext,review
   await audit(tx,ctx,reviewId,'kpi-evidence-linked',{attachmentId,kpiId});
 }
 
-export type PerformanceWorkspaceItem={key:string;id:string;kind:'review'|'feedback'|'calibration';cycleId:string;cycle:string;periodEnd:string;view:'mine'|'team'|'dept'|'bu'|'bg'|'group';module:'pm'|'tm'|'idp'|'cal';axis?:WorkspaceAxis;state:'open'|'waiting'|'done'|'later';title:string;stage:string;locked:boolean};
+export type PerformanceWorkspaceItem={key:string;id:string;kind:'review'|'feedback'|'calibration';cycleId:string;cycle:string;periodEnd:string;view:'mine'|'team'|'dept'|'bu'|'bg'|'group';module:'pm'|'tm'|'idp'|'cal';axis?:WorkspaceAxis;state:'open'|'waiting'|'done'|'later';title:string;stage:string;locked:boolean;cell?:WindowCell};
+/** Current pending graph, read under the dispatcher's real tenant scope; no event-supplied recipients. */
+export async function assessmentReviewTaskRecipientsTx(tx:Tx,reviewId:string,task:'setting'|'results'|'competencies'|'plan'){
+ uuid.parse(reviewId);z.enum(['setting','results','competencies','plan']).parse(task);
+ const [scope]=await tx.execute<{tenantId:string}>(sql`select app.current_tenant_id() as "tenantId"`);
+ if(!scope?.tenantId)return [];
+ const entitlements=await resolveEntitlementsTx(tx,scope.tenantId);
+ if(!isModuleEnabled({tenantId:scope.tenantId,entitlements},'performance'))return [];
+ const [row]=await tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));
+ const [native]=await tx.select().from(performanceReview).where(eq(performanceReview.id,reviewId));
+ if(!row||!native)return [];
+ const r={row,native:{reviewerEmploymentId:native.reviewerEmploymentId,closedAt:native.closedAt},cycle:await loadCycle(tx,row.cycleId),kpis:kpiSchema.array().parse(row.kpis),competencies:competencySchema.array().parse(row.competencies)};
+ if(!['open','calibration'].includes(r.cycle.native.status))return [];
+ const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
+ if(!participant?.ok)return [];
+ const [frozen]=task==='plan'?[]:await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+ if(frozen||task!=='plan'&&r.native.closedAt)return [];
+ const allowed=await moderatorChoices(tx,reviewId),assigned=new Set(r.kpis.filter(k=>!k.hrOwned).flatMap(kpiApprovers));
+ const candidates=allowed.filter(m=>m.id===r.native.reviewerEmploymentId||assigned.has(m.id));
+ const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
+ const [plan]=task==='plan'?await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,year))):[];
+ const facts={kpis:r.kpis,competenciesAssigned:r.competencies.length>0,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:r.row.managerPerformance,planStatus:plan?.status??null};
+ const matches=candidates.filter(m=>reviewWorkspaceParts(r.cycle.policy,facts,{self:false,manager:m.id===r.native.reviewerEmploymentId,employmentIds:[m.id]}).some(part=>part.state==='open'&&assessmentWorkWindowOpen(r.cycle.policy,part.cell)&&(task==='setting'?part.module==='pm'&&part.stage==='setting':task==='results'?part.module==='pm'&&part.stage==='moderation':task==='competencies'?part.module==='tm':part.module==='idp'))).map(m=>m.id);
+ if(!matches.length)return [];
+ const live=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(inArray(employment.id,matches),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`));
+ return [...new Set(live.map(e=>e.id))].sort();
+}
 /** A worklist projection, not a second workflow state store. Every card derives from current assignments. */
 export async function performanceWorkspace(ctx:SessionContext) {
  return withPerformanceTenant(ctx,async tx=>{
@@ -1187,24 +1215,10 @@ export async function performanceWorkspace(ctx:SessionContext) {
   for(const {row,cycle,policy:raw,header,self,manager} of reviews){
    const policy=policySchema.parse(raw),kpis=kpiSchema.array().parse(row.kpis),closed=cycle.status==='closed';
    const base={id:row.reviewId,kind:'review' as const,cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:self?'mine' as const:'team' as const,title:header.name,locked:false};
-   let pmState:PerformanceWorkspaceItem['state']='open',pmStage='results';
-   if(!kpis.length||kpis.some(k=>['draft','returned'].includes(k.setting))){pmStage='setting';pmState=self?'open':'waiting';}
-   else if(kpis.some(k=>k.setting==='proposed')){pmStage='setting';pmState=self?'waiting':kpis.some(k=>header.ownEmploymentIds.includes(pendingSettingApprover(k)??''))?'open':'waiting';}
-   else if(policy.kind==='quarterly'){pmStage='checkin';pmState=kpis.every(k=>k.checkIn)?'done':self?'open':'waiting';}
-   else if(row.managerPerformance){pmState='done';}
-   else if(row.resultsSubmittedAt){pmStage=self?'results':'moderation';pmState=self?'done':reviewerModerationState(kpis,header.ownEmploymentIds);}
-   else pmState=self?'open':'waiting';
-   if(policy.modules.pm)items.push({...base,key:`${row.reviewId}.pm`,module:'pm',stage:pmStage,state:closed?'done':pmState});
-   const competencies=competencySchema.array().parse(row.competencies);
-   const tcState=closed||row.competencyStatus==='reviewed'?'done':row.competencyStatus==='submitted'?self?'done':'open':self?'open':'waiting';
-   if(policy.modules.tm&&competencies.length&&(self||manager))items.push({...base,key:`${row.reviewId}.tm`,module:'tm',stage:'competency',state:tcState});
-   if(policy.modules.idp&&policy.kind==='year_end'){
-    const year=Number(cycle.periodEnd.slice(0,4))+1;
-    const [plan]=await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,row.employmentId),eq(onehrPlan.planYear,year)));
-    const locked=self&&(policy.modules.pm&&['open','waiting'].includes(pmState)||policy.modules.tm&&competencies.length>0&&['open','waiting'].includes(tcState));
-    const state=closed||plan?.status==='closed'?'done':locked?'later':plan?.status==='shared'?self?'done':'open':self?'open':'waiting';
-    items.push({...base,key:`${row.reviewId}.idp`,module:'idp',stage:'career',state,locked});
-   }
+   const year=Number(cycle.periodEnd.slice(0,4))+1;
+   const [plan]=policy.modules.idp&&policy.kind==='year_end'?await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,row.employmentId),eq(onehrPlan.planYear,year))):[];
+   const parts=reviewWorkspaceParts(policy,{kpis,competenciesAssigned:competencySchema.array().parse(row.competencies).length>0,competencyStatus:row.competencyStatus,resultsSubmitted:!!row.resultsSubmittedAt,managerPerformance:row.managerPerformance,planStatus:plan?.status??null},{self,manager,employmentIds:header.ownEmploymentIds});
+   for(const part of parts)items.push({...base,key:`${row.reviewId}.${part.module}`,...part,state:closed?'done':part.state});
   }
   const feedback=await tx.select({panel:onehrPanel,subject:peerFeedbackRequest.subjectName,cycle:reviewCycle}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).innerJoin(reviewCycle,eq(reviewCycle.id,sql`(app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId')::uuid`)).where(and(isNull(onehrPanel.archivedAt),sql`${reviewCycle.status}<>'closed' and app.onehr_feedback_card(${onehrPanel.requestId}) is not null`));
   for(const {panel,subject,cycle} of feedback)items.push({key:panel.requestId,id:panel.requestId,kind:'feedback',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:'mine',module:'tm',state:panel.submittedAt?'done':'open',title:subject,stage:'feedback',locked:false});

@@ -1,4 +1,6 @@
 'use client';
+import { RewriteField } from './rewrite-field';
+import { rewriteAssessmentFieldAction } from '../assessment-rewrite-actions';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Paperclip } from 'lucide-react';
@@ -9,7 +11,7 @@ import { evidenceFileExtensions } from '@/packs/performance/onehr/evidence-file-
 
 type File={id:string;fileName:string;kpiId:string};
 /** One source-style scorecard table. File controls belong to separate upload forms, never the draft payload. */
-export function KpiResultsTable({kpis,draft,files,bands,companyId,evidence}:{kpis:KPI[];draft:{lines:{id:string;actual:number|null;note:string}[]}|null;files:File[];bands:Pick<Policy,'aBands'|'bBands'>;companyId:string;evidence:boolean}){
+export function KpiResultsTable({kpis,draft,files,bands,companyId,evidence,reviewId,aiEnabled=false}:{reviewId?:string;aiEnabled?:boolean;kpis:KPI[];draft:{lines:{id:string;actual:number|null;note:string}[]}|null;files:File[];bands:Pick<Policy,'aBands'|'bBands'>;companyId:string;evidence:boolean}){
  const t=useTranslations('onehr'),[actuals,setActuals]=useState(()=>Object.fromEntries(kpis.map(k=>[k.id,draft?.lines.find(line=>line.id===k.id)?.actual??k.actual])));
  const mechanism=kpis[0]?.scoring.mechanism??'A',variant=kpis[0]?.scoring.mechanism==='B'?kpis[0].scoring.variant:'base';
  const columns=mechanism==='A'?5:3,scoring=kpis.map(k=>({...k,actual:actuals[k.id]??null}));
@@ -22,7 +24,7 @@ export function KpiResultsTable({kpis,draft,files,bands,companyId,evidence}:{kpi
     const line=draft?.lines.find(line=>line.id===k.id),value=actuals[k.id],attachments=files.filter(file=>file.kpiId===k.id),numbers=k.scoring.mechanism==='A'?k.scoring.rates:[k.scoring.threshold,k.scoring.target,k.scoring.variant==='excellence'?k.scoring.excellence:k.scoring.multiple??0];
     let rating:number|null=null;try{if(value!=null)rating=scoreKPI(value,k.scoring);}catch{}
     return <tr id={`kpi-${k.id}`} key={k.id} className="scroll-mt-4 border-t border-border align-top">
-     <th scope="row" aria-label={k.title} className="px-3 py-2.5 text-left font-normal">{k.hrOwned?<div className="font-semibold">{k.title}</div>:<><input type="hidden" name="kpiId" value={k.id}/><details><summary aria-label={`${k.title}: ${t('evidenceNote')}`} className="cursor-pointer font-semibold">{k.title}</summary><label className="mt-2 block"><span className="sr-only">{t('evidenceNote')}</span><textarea name={`${k.id}.note`} rows={2} maxLength={4000} defaultValue={line?.note??k.note} className={inputCls}/></label></details></>}{k.description&&<p className="mt-1 text-xs leading-snug text-muted-foreground">{k.description}</p>}{k.scoring.method==='less'&&<p className="mt-1 text-xs text-muted-foreground">{t('less')}</p>}{k.hrOwned&&<p className="mt-1 text-xs text-muted-foreground">{t('companyKpiOwned')}</p>}</th>
+     <th scope="row" aria-label={k.title} className="px-3 py-2.5 text-left font-normal">{k.hrOwned?<div className="font-semibold">{k.title}</div>:<><input type="hidden" name="kpiId" value={k.id}/><details><summary aria-label={`${k.title}: ${t('evidenceNote')}`} className="cursor-pointer font-semibold">{k.title}</summary><RewriteField enabled={!!reviewId&&aiEnabled} target={{kind:'kpi_note',id:k.id}} rewriteAction={rewriteAssessmentFieldAction.bind(null,reviewId??'')}><label className="mt-2 block"><span className="sr-only">{t('evidenceNote')}</span><textarea name={`${k.id}.note`} rows={2} maxLength={4000} defaultValue={line?.note??k.note} className={inputCls}/></label></RewriteField></details></>}{k.description&&<p className="mt-1 text-xs leading-snug text-muted-foreground">{k.description}</p>}{k.scoring.method==='less'&&<p className="mt-1 text-xs text-muted-foreground">{t('less')}</p>}{k.hrOwned&&<p className="mt-1 text-xs text-muted-foreground">{t('companyKpiOwned')}</p>}</th>
      <td className="px-2 py-4 text-right tabular-nums">{k.weightBp/100}%</td>
      {numbers.map((number,index)=><td key={index} className={`min-w-10 px-2 py-4 text-center tabular-nums ${mechanism==='A'&&rating===index+1?'bg-primary/10 font-semibold text-primary':'text-muted-foreground'}`}>{number??'—'}</td>)}
      <td className="px-3 py-3"><div className="flex items-center gap-2">{k.hrOwned?<span className="tabular-nums">{value??'—'}</span>:<label className="min-w-0"><span className="sr-only">{t('actual')}</span><input required type="number" step="any" name={`${k.id}.actual`} value={value??''} onChange={event=>setActuals(previous=>({...previous,[k.id]:event.target.value===''?null:Number(event.target.value)}))} className={`${inputCls} min-h-10 w-24! tabular-nums`}/></label>}<span className="text-xs text-muted-foreground">{k.unit}</span></div></td>

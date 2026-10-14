@@ -1,3 +1,4 @@
+import { assessmentReviewTaskRecipientsTx } from '../packs/performance/service';
 import { rewardNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
@@ -31,7 +32,6 @@ import {
   notificationCursor,
   noticeRecipient,
   payslip,
-  performanceReview,
   peerFeedbackRequest,
   reportingLine,
   roleAssignment,
@@ -221,13 +221,6 @@ type Spec = {
   recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null) => Promise<string[]>;
 };
 
-/** Generic task notices carry no assessment, peer identity or evidence text. */
-async function performanceManagerRecipient(tx:Tx,ev:EventRef):Promise<string[]> {
- const [r]=await tx.select({id:performanceReview.reviewerEmploymentId}).from(performanceReview).where(eq(performanceReview.id,ev.aggregateId));
- if(!r?.id)return [];
- const live=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(eq(employment.id,r.id),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>(now() at time zone 'Asia/Kuala_Lumpur')::date)`));
- return [...new Set(live.map(e=>e.id))];
-}
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
 // different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
@@ -603,12 +596,12 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     },
   },
   ...Object.fromEntries(['results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
-    kind:'performance.review-task',category:'performance' as const,recipients:performanceManagerRecipient,
+    kind:'performance.review-task',category:'performance' as const,recipients:(tx:Tx,ev:EventRef)=>assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,event==='results-submitted'?'results':event==='competencies-submitted'?'competencies':'plan'),
     render:()=>({severity:'action' as const,title:'Performance review task',body:'An employee has submitted information for your review. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
   'onehr.kpi-approval-needed': {
     kind:'performance.review-task',category:'performance',
-    recipients:async (_tx,_ev,payload)=>Array.isArray(payload?.employmentIds)?payload.employmentIds.filter((id):id is string=>typeof id==='string'&&/^[0-9a-f-]{36}$/i.test(id)):[],
+    recipients:(tx,ev,payload)=>payload?.phase==='setting'||payload?.phase==='results'?assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,payload.phase):Promise.resolve([]),
     render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
   },
   ...Object.fromEntries(['scorecard-approved','scorecard-returned','result-released','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{

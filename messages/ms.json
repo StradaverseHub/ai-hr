@@ -18221,6 +18221,22 @@
       "lower": "↓ Lebih rendah",
       "provisional": "Kedudukan lalai: {band}",
       "onBox": "Dalam kotak: {band}, daripada {source}"
+    },
+    "rewrite": {
+      "title": "Draf dengan AI",
+      "help": "Semak dan sunting cadangan sebelum menggunakannya dalam borang anda.",
+      "yourWords": "Kata-kata anda",
+      "instruction": "Bagaimanakah ayat perlu diubah?",
+      "polishInstruction": "Perkemas ayat tanpa menambah fakta.",
+      "working": "Sedang menyediakan…",
+      "generate": "Sediakan cadangan",
+      "quota": "{remaining} daripada {limit} draf berbaki hari ini",
+      "unavailable": "Draf tidak dapat disediakan. Anda boleh terus menulis atau cuba lagi.",
+      "changed": "Medan ini telah berubah. Tutup cadangan ini dan minta cadangan baharu berdasarkan ayat semasa.",
+      "tooLong": "Pendekkan cadangan kepada {limit} aksara sebelum menggunakannya.",
+      "suggestion": "Ayat yang dicadangkan",
+      "discard": "Buang",
+      "keep": "Gunakan ayat"
     }
   },
   "allowanceV2": {

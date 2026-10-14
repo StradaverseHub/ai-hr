@@ -15,7 +15,8 @@ import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults, setRewardMember } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
-import { dispatchNotifications } from '../core/notifications';
+import { dispatchNotifications,notificationStillTargets } from '../core/notifications';
+import { appendEvent,actorOf } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('../lib/ai')>(),generateDraft:vi.fn(),readImage:vi.fn()}));
@@ -83,6 +84,56 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(groupAdmin,'pm',false);return '{}';});
     await expect(perf.getAssessmentPerformanceInsight(mgr,reviewId,reviewId,{generate:true})).rejects.toThrow(/facts or access changed/);
     const [cached]=await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.reviewId,reviewId));expect(cached.source).toBe('plain');
+  });
+  async function editableDraftKpi(){
+    const id=randomUUID();
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Agreed delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Targets verified');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    return id;
+  }
+  it('rewrites only an editable field, counts five successful drafts per field and leaves the canonical form untouched',async()=>{
+    const id=await editableDraftKpi(),target={kind:'kpi_note',id},words='I completed 2 units.';
+    vi.mocked(generateDraft).mockResolvedValueOnce('I completed 42 units.');
+    await expect(perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow(/unsupported/);
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    vi.mocked(generateDraft).mockResolvedValue(words);
+    for(let i=0;i<5;i++)expect(await perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID())).toMatchObject({text:words,remaining:4-i,limit:5});
+    await expect(perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow(/All 5/);
+    expect(generateDraft).toHaveBeenCalledTimes(6);
+    expect(await perf.rewriteAssessmentField(self,reviewId,{kind:'pm_self_remark'},words,'Polish.',randomUUID())).toMatchObject({remaining:4});
+    expect((await view(self)).kpis[0].note).toBe('');expect((await view(self)).selfRemark).toBe('');
+    await expect(perf.rewriteAssessmentField(mgr,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow(/not assigned/);
+    expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
+  });
+  it('allows only the assigned feedback rater to use their own field quota without granting access to the subject review',async()=>{
+    await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    const rater=peers[0].ctx,request=(await perf.onehrAssignments(rater)).feedback.find(r=>r.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(rater,request.id),words='They supported our agreed delivery.';
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockResolvedValue(words);
+    const target={kind:'feedback_comment',contextId:request.id,principle:card.statements[0].principle};
+    expect(await perf.rewriteAssessmentField(rater,reviewId,target,words,'Polish.',randomUUID())).toMatchObject({remaining:4,text:words});
+    await expect(perf.getOnehrReview(rater,reviewId)).resolves.toBeNull();
+    expect(await withTenant(rater,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+    expect(await withTenant(self,tx=>tx.select().from(schema.assessmentAiUse))).toEqual([]);
+    expect((await perf.getOnehrFeedback(rater,request.id)).comments).toEqual({});
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).not.toContain('Assessment subject');expect(prompt).not.toContain(manager.personId);
+    await expect(perf.rewriteAssessmentField(peers[1].ctx,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow();
+    expect(generateDraft).toHaveBeenCalledOnce();
+  });
+  it('shares the source development-action quota across all three learning modes without writing a plan or mobility choice',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockResolvedValue('Facilitate a project retrospective and request feedback.');
+    const modes=['onJob','fromOthers','formalLearning'] as const;
+    for(let i=0;i<5;i++)expect(await perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:modes[i%3]},'','Suggest practical actions.',randomUUID())).toMatchObject({remaining:4-i});
+    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:'onJob'},'','Suggest practical actions.',randomUUID())).rejects.toThrow(/All 5/);
+    expect(generateDraft).toHaveBeenCalledTimes(5);expect((await view(self)).plans).toEqual([]);expect((await view(self)).careerProfile).toBeNull();
+    const uses=await owner.db.select().from(schema.assessmentAiUse);expect(new Set(uses.map(u=>u.fieldKey)).size).toBe(1);
+  });
+  it('discards a field rewrite if its independent feature is disabled while the provider runs',async()=>{
+    const id=await editableDraftKpi(),words='I completed the delivery.';
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'pm',false);return words;});
+    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'kpi_note',id},words,'Polish.',randomUUID())).rejects.toThrow(/changed/);
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    expect((await view(self)).kpis[0].note).toBe('');
   });
   it('uses one company achievement for every calibration tier, preserving curve boundaries and concurrent edits',async()=>{
     await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:null,achievementPct:69.999999999});
@@ -1443,6 +1494,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   });
 
   it('lets chat update only an actor-private draft, atomically and idempotently',async()=>{
+    await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'pm',false);
     const id=randomUUID();
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');
@@ -1492,6 +1544,8 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());expect(result).toMatchObject({empty:false,remaining:4,goals:[{area:'Collaborative delivery',itemIds:['lp:0']}]});expect(result.goals).toHaveLength(1);expect((await view(self)).plans).toEqual([]);
     const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;for(const peer of peers)expect(prompt).not.toContain(peer.employmentId);expect(prompt).not.toContain('Peer 0');
     const career={aspiration:'Develop practical facilitation',mobility:'stay',mobilityNote:'',targetProfileId:null},manual={id:randomUUID(),area:'My existing goal',dueOn:'',onJob:'Own practical assignment',fromOthers:'',formalLearning:'',status:'not_started'};
+    await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'idp',false);
+    await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/unavailable/);
     await perf.applyAssessmentDevelopmentGoals(self,reviewId,null,{careerRevision:null,career,goals:[manual]},result.goals,result.sourceDigest);
     const plan=(await view(self)).plans[0];expect(plan.status).toBe('draft');expect(plan.goals.map(g=>g.area)).toEqual(['My existing goal','Collaborative delivery']);expect(plan.goals[1]).toMatchObject({dueOn:'',managerComment:'',status:'not_started'});
     expect((await view(mgr)).plans).toEqual([]);expect((await owner.db.select().from(schema.assessmentAiUse))).toHaveLength(1);
@@ -1513,6 +1567,34 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(generateDraft).mockResolvedValue(response);const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());
     await perf.releaseOnehrResult(a,reviewId,'feedback',false);
     await expect(perf.applyAssessmentDevelopmentGoals(self,reviewId,null,{careerRevision:null,career:{aspiration:'Develop delivery',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]},result.goals,result.sourceDigest)).rejects.toThrow(/released feedback or reviewed competencies changed/);expect((await view(self)).plans).toEqual([]);
+  });
+  it('reauthorizes delayed review notices from current work instead of event recipient lists',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);
+    const matrix=peers[0],outsider=peers[1],id=randomUUID();
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Current assignment',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}]);
+    await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,id,matrix.employmentId);
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,(await view(self)).kpis,true);
+    const read=(task:'setting'|'results'|'competencies'|'plan')=>withTenant(a,tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,task));
+    expect(await read('setting')).toEqual([matrix.employmentId]);expect(await read('results')).toEqual([]);
+    const system={...a,userId:undefined,personId:undefined};expect(await withTenant(system,tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,'setting'))).toEqual([matrix.employmentId]);
+    await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onehr',aggregateId:reviewId,eventType:'onehr.kpi-approval-needed',actor:actorOf(a),payload:{phase:'setting',employmentIds:[outsider.employmentId]}}));
+    await dispatchNotifications(a);
+    const notices=await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'performance.review-task'));
+    expect(notices.length).toBeGreaterThan(0);expect(notices.every(n=>n.recipientEmploymentId===matrix.employmentId)).toBe(true);
+    await perf.approveOnehrScorecard(matrix.ctx,reviewId,(await view(matrix.ctx)).revision,true,'Targets verified');
+    expect(await read('setting')).toEqual([]);
+    for(const event of await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'onehr.kpi-approval-needed')))expect(await withTenant(a,tx=>notificationStillTargets(tx,event.id,'performance.review-task','performance',matrix.employmentId))).toBe(false);
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}],'Completed delivery.');
+    expect(await read('results')).toEqual([matrix.employmentId]);
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,matrix.ctx.userId!));expect(await read('results')).toEqual([]);
+    await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,matrix.ctx.userId!));
+    await setModule(b.tenantId,'performance','disabled');expect(await read('results')).toEqual([]);await setModule(b.tenantId,'performance','active');
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateOnehrWindows(a,cycleId,cycle.revision,{pm_approve:{opensAt:null,closesAt:new Date(Date.now()-60_000).toISOString()}},'Review window closed.');
+    expect(await read('results')).toEqual([]);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateOnehrWindows(a,cycleId,cycle.revision,{},'Review window reopened.');
+    expect(await read('results')).toEqual([matrix.employmentId]);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,cycle.participants.find(p=>p.employmentId===subject.employmentId)!.revision,'remove');
+    expect(await read('results')).toEqual([]);
   });
   it('uses exactly one HR-assigned moderator and sends that person the task',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);

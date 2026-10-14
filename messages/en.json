@@ -18221,6 +18221,22 @@
       "lower": "↓ Lower",
       "provisional": "Default placement: {band}",
       "onBox": "On the box: {band}, from {source}"
+    },
+    "rewrite": {
+      "title": "Draft with AI",
+      "help": "Review and edit the suggestion before keeping it in your form.",
+      "yourWords": "Your words",
+      "instruction": "How should the wording change?",
+      "polishInstruction": "Polish the wording without adding facts.",
+      "working": "Preparing…",
+      "generate": "Prepare suggestion",
+      "quota": "{remaining} of {limit} drafts remaining today",
+      "unavailable": "Could not prepare a draft. You can continue writing or try again.",
+      "changed": "This field changed. Close this suggestion and request a new one from your current words.",
+      "tooLong": "Shorten the suggestion to {limit} characters before keeping it.",
+      "suggestion": "Suggested wording",
+      "discard": "Discard",
+      "keep": "Keep wording"
     }
   },
   "allowanceV2": {

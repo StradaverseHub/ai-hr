@@ -18221,6 +18221,22 @@
       "lower": "↓ Thấp hơn",
       "provisional": "Vị trí mặc định: {band}",
       "onBox": "Trong ô: {band}, từ {source}"
+    },
+    "rewrite": {
+      "title": "Soạn với AI",
+      "help": "Xem lại và chỉnh sửa gợi ý trước khi dùng trong biểu mẫu.",
+      "yourWords": "Lời của bạn",
+      "instruction": "Bạn muốn thay đổi cách diễn đạt thế nào?",
+      "polishInstruction": "Trau chuốt câu chữ mà không thêm sự kiện.",
+      "working": "Đang chuẩn bị…",
+      "generate": "Chuẩn bị gợi ý",
+      "quota": "Hôm nay còn {remaining} trong {limit} bản nháp",
+      "unavailable": "Không thể chuẩn bị bản nháp. Bạn có thể tiếp tục viết hoặc thử lại.",
+      "changed": "Trường này đã thay đổi. Hãy đóng gợi ý và yêu cầu gợi ý mới từ nội dung hiện tại.",
+      "tooLong": "Rút ngắn gợi ý còn {limit} ký tự trước khi dùng.",
+      "suggestion": "Cách diễn đạt được gợi ý",
+      "discard": "Bỏ",
+      "keep": "Dùng câu chữ"
     }
   },
   "allowanceV2": {

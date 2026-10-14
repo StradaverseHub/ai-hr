@@ -1,5 +1,31 @@
-import { kpiApprovers,pendingKpiApprover,ratedPerformance,type KPI,type Policy,type Tier } from './model';
+import { assertWindow,kpiApprovers,pendingKpiApprover,pendingSettingApprover,ratedPerformance,type KPI,type Policy,type Tier,type WindowCell } from './model';
 export type WorkspaceAxis='performance'|'potential'|'both';
+export type ReviewWorkFacts={kpis:KPI[];competenciesAssigned:boolean;competencyStatus:string;resultsSubmitted:boolean;managerPerformance:string|null;planStatus:string|null};
+export type ReviewWorkActor={self:boolean;manager:boolean;employmentIds:string[]};
+export type ReviewWorkPart={module:'pm'|'tm'|'idp';stage:string;state:'open'|'waiting'|'done'|'later';locked:boolean;cell:WindowCell};
+/** A shared derivation for the person's worklist and actor-neutral notification/reminder readers. */
+export function reviewWorkspaceParts(policy:Policy,facts:ReviewWorkFacts,actor:ReviewWorkActor):ReviewWorkPart[]{
+ const {kpis}=facts,{self,manager,employmentIds}=actor,parts:ReviewWorkPart[]=[];
+ let state:ReviewWorkPart['state']='open',stage='results';
+ if(!kpis.length||kpis.some(k=>['draft','returned'].includes(k.setting))){stage='setting';state=self?'open':'waiting';}
+ else if(kpis.some(k=>k.setting==='proposed')){stage='setting';state=self?'waiting':kpis.some(k=>employmentIds.includes(pendingSettingApprover(k)??''))?'open':'waiting';}
+ else if(policy.kind==='quarterly'){stage='checkin';state=kpis.every(k=>k.checkIn)?'done':self?'open':'waiting';}
+ else if(facts.managerPerformance)state='done';
+ else if(facts.resultsSubmitted){stage=self?'results':'moderation';state=self?'done':reviewerModerationState(kpis,employmentIds);}
+ else state=self?'open':'waiting';
+ if(policy.modules.pm)parts.push({module:'pm',stage,state,locked:false,cell:stage==='setting'?self?'pm_setting':'pm_setting_approve':self?'pm_results':'pm_approve'});
+ const tcState=facts.competencyStatus==='reviewed'?'done':facts.competencyStatus==='submitted'?self?'done':'open':self?'open':'waiting';
+ if(policy.modules.tm&&facts.competenciesAssigned&&(self||manager))parts.push({module:'tm',stage:'competency',state:tcState,locked:false,cell:self?'tc_self':'tc_approve'});
+ if(policy.modules.idp&&policy.kind==='year_end'){
+  const locked=self&&(policy.modules.pm&&['open','waiting'].includes(state)||policy.modules.tm&&facts.competenciesAssigned&&['open','waiting'].includes(tcState));
+  const planState=facts.planStatus==='closed'?'done':locked?'later':facts.planStatus==='shared'?self?'done':'open':self?'open':'waiting';
+  parts.push({module:'idp',stage:'career',state:planState,locked,cell:self?'idp_self':'idp_review'});
+ }
+ return parts;
+}
+export function assessmentWorkWindowOpen(policy:Policy,cell:WindowCell,now=new Date()){
+ try{assertWindow(policy,cell,now);return true;}catch{return false;}
+}
 /** Completion belongs to this approver's steps, even while a colleague still owes their review. */
 export function reviewerModerationState(kpis:KPI[],ownEmploymentIds:string[]):'open'|'waiting'|'done'{
  const mine=kpis.filter(k=>!k.hrOwned&&kpiApprovers(k).some(id=>ownEmploymentIds.includes(id)));

@@ -1,3 +1,4 @@
+vi.mock('../app/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';

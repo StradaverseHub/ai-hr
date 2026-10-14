@@ -39,3 +39,5 @@ export { suggestAssessmentDevelopmentGoals,applyAssessmentDevelopmentGoals } fro
 export { saveAssessmentProfitAchievement } from './onehr/profit-service';
 
 export { getAssessmentAiSwitches,setAssessmentAiSwitch,ASSESSMENT_AI_FEATURES,type AssessmentAiFeature } from './onehr/ai-settings';
+
+export { rewriteAssessmentField } from './onehr/rewrite-service';
