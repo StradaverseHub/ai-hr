@@ -45,7 +45,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  }
  const returnTo=href({},selected);
  const review=selected?.kind==='review'?await getOnehrReview(s,selected.id):null;
- const calibration=selected?.kind==='calibration'?await getOnehrCalibration(s,selected.id,selected.axis??'both'):null;
+ const calibration=selected?.kind==='calibration'?await getOnehrCalibration(s,selected.id,selected.axis??'both','roster'):null;
  const feedback=selected?.kind==='feedback'?await getOnehrFeedback(s,selected.id):null;
  if(selected?.kind==='review'&&!review)notFound();
  const stage=query.stage==='record'?'record':query.stage==='evidence'&&review?.policy.modules.evidence?'evidence':module;
@@ -83,7 +83,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  return <JourneyProgressProvider key={`${selected?.key}.${stage}.${review?.revision}.${review?.drafts.map(d=>d.revision).join(".")}`} initial={stepProgress} labels={journeyLabels}><div className="mx-auto max-w-[100rem] space-y-3">
   <h1 className="sr-only">{t('workspace.title')}</h1>
   <ErrorBanner message={query.error}/>
-  {!items.length?<section className="rounded-lg border border-border p-8"><h2 className="font-semibold">{t('workspace.empty')}</h2><p className="mt-2 text-sm text-muted-foreground">{t('workspace.emptyHelp')}</p><Link href="/performance" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.manageCycles')}</Link></section>:<>
+  {!items.length?<section className="rounded-lg border border-border p-8"><h2 className="font-semibold">{t('workspace.empty')}</h2><p className="mt-2 text-sm text-muted-foreground">{t('workspace.emptyHelp')}</p><Link href="/me/performance" className="mt-4 mr-6 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.record')}</Link><Link href="/performance" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.manageCycles')}</Link></section>:<>
    <div className="grid gap-3 lg:grid-cols-[224px_minmax(0,1fr)]">
     <nav aria-label={t('workspace.viewsLabel')} className="flex gap-1 rounded-lg border border-border p-1">{availableViews.map(v=><Link key={v} href={href({view:v,module:undefined,stage:undefined})} aria-current={view===v?'page':undefined} className={`flex min-h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-md px-1 text-xs ${view===v?'bg-foreground text-background':'hover:bg-muted'}`}>{t(`workspace.views.${v}`)}</Link>)}</nav>
     <nav aria-label={t('workspace.modulesLabel')} className="flex flex-wrap gap-2">{availableModules.map(m=>{const locked=items.some(item=>item.cycleId===cycle&&item.view===view&&item.module===m&&item.locked);return <div key={m} className={`flex min-h-11 flex-wrap items-center gap-x-3 rounded-lg border px-3 text-sm ${module===m?'flex-1 border-primary bg-primary/5':'border-border hover:bg-muted'}`}>{locked?<span aria-disabled="true" title={t('workspace.planLocked')} className="flex min-h-11 items-center gap-2 text-muted-foreground"><b>{m.toUpperCase()}</b><Lock size={14} aria-hidden/></span>:<Link href={href({module:m,stage:undefined})} aria-current={module===m?'page':undefined} className="flex min-h-11 items-center gap-2"><b>{m==='cal'&&view==='dept'?'DR':m.toUpperCase()}</b>{module===m&&<span>{t(m==='cal'&&view==='dept'?'workspace.departmentReview':`workspace.modules.${m}`)}</span>}</Link>}{module===m&&journeyWidget!==widget&&<div className="ml-auto"><JourneySteps/></div>}</div>;})}</nav>

@@ -298,3 +298,7 @@ export async function applyCalibrationFitAction(sessionId:string,axis:'performan
 export async function keepCompetencyReflectionAction(reviewId:string,messageId:string){
  const ctx=await getSession();try{const result=await perf.keepCompetencyReflection(ctx,reviewId,messageId);revalidatePath('/performance/workspace');return result;}catch(error){return {error:publicErrorMessage(error)};}
 }
+
+export async function assessmentCalibrationPersonAction(sessionId:string,reviewId:string,axis:'performance'|'potential'|'both'){
+ const s=await getSession();try{return await perf.getAssessmentCalibrationPerson(s,z.uuid().parse(sessionId),z.uuid().parse(reviewId),z.enum(['performance','potential','both']).parse(axis));}catch(error){return {error:publicErrorMessage(error)};}
+}

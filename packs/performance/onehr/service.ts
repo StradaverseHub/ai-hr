@@ -464,7 +464,10 @@ type Inputs={reviewId:string;employmentId:string;companyId:string;department:str
 async function assessment(tx:Tx,reviewId:string,policy:Policy) {
   const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);if(!participant?.ok)throw Error('This employee is not participating in the cycle.');
   const [r]=await tx.execute<{value:Inputs|null}>(sql`select app.onehr_assessment_inputs(${reviewId}::uuid) as value`);if(!r?.value)throw Error('Assessment not available to this calibration scope.');
-  const input=r.value;const c=input.competencies;
+  return assessmentFromInputs(r.value,policy);
+}
+function assessmentFromInputs(input:Inputs,policy:Policy){
+  const c=input.competencies;
   const tech=input.competencyStatus==='reviewed'&&c.length?scoreAnswers(c,Object.fromEntries(c.map(s=>[s.id,s.manager??s.self!]))):null;
   const managerPotential=potential(input.leadership,tech,policy,input.grade);
   const selfTech=input.selfCompetencies.length?scoreAnswers(input.selfCompetencies,Object.fromEntries(input.selfCompetencies.map(s=>[s.id,s.self!]))):null;
@@ -478,7 +481,10 @@ async function decisions(tx:Tx,reviewId:string) {
   const [r]=await tx.execute<{value:{tier:Tier;mode:string;performance:PMBand|null;potential:PotentialBand|null;locked:boolean;performanceLocked:boolean;potentialLocked:boolean;pipConfirmed:boolean;promotionConfirmed:boolean;pip:boolean;promotion:boolean;specialReward:boolean}[]}>(sql`select app.onehr_decisions(${reviewId}::uuid) as value`);return r?.value??[];
 }
 async function resolved(tx:Tx,reviewId:string,policy:Policy) {
-  const input=await assessment(tx,reviewId,policy),rows=await decisions(tx,reviewId),effective=rows.filter(d=>!(d.tier==='group'&&d.mode==='blend'));
+  return resolveAssessment(await assessment(tx,reviewId,policy),await decisions(tx,reviewId));
+}
+function resolveAssessment(input:ReturnType<typeof assessmentFromInputs>,rows:Awaited<ReturnType<typeof decisions>>){
+  const effective=rows.filter(d=>!(d.tier==='group'&&d.mode==='blend'));
   return {input,rows,performance:resolveBand<PMBand>(input.performance,effective.map(d=>({...d,band:d.performance,locked:d.performanceLocked}))),potential:resolveBand<PotentialBand>(input.potential.band,rows.filter(d=>!(d.tier==='group'&&d.mode==='blend')).map(d=>({...d,band:d.potential,locked:d.potentialLocked})))};
 }
 /** Source Talent Box places everyone. Defaults stay provisional until a human locks them. */
@@ -754,9 +760,9 @@ export async function exportAssessmentFinalBands(ctx:SessionContext,sessionId:st
  return toCsv([['Employee ID','Name','Business group','Company','Department','BG call','Group call','Group locked at (MYT)','Suggested','Final','Reason','Decided by','Decided at (MYT)'],...view.rows.map(r=>[r.employeeCode,r.name,r.businessGroup,r.company,r.department,r.bg??'',r.group??'',myt(r.groupLockedAt),r.suggestion?.band??r.suggestion?.tie?.join(' or ')??'',r.final?.performance??'',r.final?.reason??'',r.final?.by??'',myt(r.final?.at)])]);
 }
 
-async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibrationEntry.$inferSelect,policy:Policy,session:typeof onehrCalibration.$inferSelect,status:string,viewAxis:Axis='both',resolvedInput?:Awaited<ReturnType<typeof resolved>>){
+async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibrationEntry.$inferSelect,policy:Policy,session:typeof onehrCalibration.$inferSelect,status:string,viewAxis:Axis='both',resolvedInput?:Awaited<ReturnType<typeof resolved>>,includeTalent=true){
  const tier=session.tier;
- const r=resolvedInput??await resolved(tx,entry.reviewId,policy),talent=await talentContext(tx,ctx.tenantId,entry.reviewId,entry.employmentId,policy),bands=boxBands(r,tier,viewAxis);
+ const r=resolvedInput??await resolved(tx,entry.reviewId,policy),talent=includeTalent?await talentContext(tx,ctx.tenantId,entry.reviewId,entry.employmentId,policy):null,bands=boxBands(r,tier,viewAxis);
  const movement=talentMovement(entry,{performance:z.enum(pmBands).nullable().parse(entry.performance??bands.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??bands.potential)});
  const managerPotential=potentialReviewReady(r.input.potential.valid,r.input.competencyAssigned,r.input.competencyStatus)?r.input.potential.band:null;
  const current={performance:z.enum(pmBands).nullable().parse(entry.performance??bands.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??bands.potential)};
@@ -769,7 +775,7 @@ async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibra
   if(!enabled||!['open','calibration'].includes(status)||session.lockedAt||(pm?session.performanceLockedAt:session.potentialLockedAt))continue;
   try{calibrationWindows(policy,tier as Tier,axis);assertPrecedingTier(r.rows,tier as Tier,session.mode,pm,!pm);openAxes[key]=true;canWrite[key]=!(tier==='group'&&viewAxis==='performance'&&!r.input.performance)&&!r.input.finalized&&(tier==='final'||!(pm?entry.performanceLockedAt:entry.potentialLockedAt));}catch{/* A closed workflow is displayed read-only; the writer independently checks the same guards. */}
  }
- return {bandTrails,movement,entry:{...entry,...talent.actions,performance:z.enum(pmBands).nullable().parse(entry.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential)},canWrite,openAxes,talent,companyId:r.input.companyId,department:r.input.department,businessGroupId:r.input.businessGroupId,businessGroup:r.input.businessGroup,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,priorPerformance:resolveBand(r.input.performance,r.rows.filter(d=>tiers.indexOf(d.tier)<tiers.indexOf(tier as Tier)&&!(d.tier==='group'&&d.mode==='blend')).map(d=>({...d,band:d.performance,locked:d.performanceLocked}))).band,managerPerformance:r.input.performance,managerPotential,currentPerformance:bands.performance,currentPotential:bands.potential,performanceSource:bands.performanceSource,potentialSource:bands.potentialSource,potentialPct:managerPotential?r.input.potential.pct:null,canAgreePerformance:r.input.performance!=null,canAgreePotential:r.input.potential.valid&&(!r.input.competencyAssigned||r.input.competencyStatus==='reviewed'),journey:[{tier:'self',performance:r.input.selfPerformance,potential:r.input.selfPotential},{tier:'manager',performance:r.input.performance,potential:managerPotential},...r.rows.filter(d=>tiers.indexOf(d.tier)<=tiers.indexOf(tier as Tier)).sort((a,b)=>tiers.indexOf(a.tier)-tiers.indexOf(b.tier)).map(d=>({tier:d.tier,performance:d.tier===tier||d.performanceLocked?d.performance:null,potential:d.tier===tier||d.potentialLocked?d.potential:null}))]};
+ return {bandTrails,movement,entry:{...entry,...talent?.actions,performance:z.enum(pmBands).nullable().parse(entry.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential)},canWrite,openAxes,talent,companyId:r.input.companyId,department:r.input.department,businessGroupId:r.input.businessGroupId,businessGroup:r.input.businessGroup,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,priorPerformance:resolveBand(r.input.performance,r.rows.filter(d=>tiers.indexOf(d.tier)<tiers.indexOf(tier as Tier)&&!(d.tier==='group'&&d.mode==='blend')).map(d=>({...d,band:d.performance,locked:d.performanceLocked}))).band,managerPerformance:r.input.performance,managerPotential,currentPerformance:bands.performance,currentPotential:bands.potential,performanceSource:bands.performanceSource,potentialSource:bands.potentialSource,potentialPct:managerPotential?r.input.potential.pct:null,canAgreePerformance:r.input.performance!=null,canAgreePotential:r.input.potential.valid&&(!r.input.competencyAssigned||r.input.competencyStatus==='reviewed'),journey:[{tier:'self',performance:r.input.selfPerformance,potential:r.input.selfPotential},{tier:'manager',performance:r.input.performance,potential:managerPotential},...r.rows.filter(d=>tiers.indexOf(d.tier)<=tiers.indexOf(tier as Tier)).sort((a,b)=>tiers.indexOf(a.tier)-tiers.indexOf(b.tier)).map(d=>({tier:d.tier,performance:d.tier===tier||d.performanceLocked?d.performance:null,potential:d.tier===tier||d.potentialLocked?d.potential:null}))]};
 }
 /** Reuse the Talent Box's canonical row resolver for one selected person, never the whole roster. */
 export async function getAssessmentTalentPositionTx(tx:Tx,ctx:SessionContext,reviewId:string,sessionId:string){
@@ -804,13 +810,23 @@ export async function saveAssessmentTalentRemark(ctx:SessionContext,sessionId:st
   await audit(tx,ctx,sessionId,'talent-overall-remark-saved',{reviewId,previous:prior.remark,next:remark});return next;
  });
 }
-export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,viewAxis:Axis='both') {
+export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,viewAxis:Axis='both',detail:'all'|'roster'='all') {
   z.enum(['performance','potential','both']).parse(viewAxis);
   return withPerformanceTenant(ctx,async tx=>{
     const {session,cycle}=await loadCalibration(tx,sessionId);
-    const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId)).orderBy(asc(onehrCalibrationEntry.reviewId));
+    // Read the authorized cohort in bulk. The database functions retain their per-person
+    // permission checks; batching removes application/database round trips, not those checks.
+    const entries=await tx.select().from(onehrCalibrationEntry).where(and(eq(onehrCalibrationEntry.sessionId,sessionId),sql`not exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id where e.id=${onehrCalibrationEntry.employmentId} and e.tenant_id=app.current_tenant_id() and u.id=app.current_user_id() and u.archived_at is null and not app.login_blocked(u.id))`)).orderBy(asc(onehrCalibrationEntry.reviewId));
+    const ids=entries.map(e=>e.reviewId);
+    const inputs=ids.length?await tx.execute<{id:string;participates:boolean;input:Inputs|null;decisions:Awaited<ReturnType<typeof decisions>>}>(sql`select e.review_id as id,app.assessment_review_participates(e.review_id) as participates,app.onehr_assessment_inputs(e.review_id) as input,app.onehr_decisions(e.review_id) as decisions from performance_onehr_calibration_entry e where e.session_id=${sessionId}::uuid and e.review_id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)})`):[];
+    const byId=new Map(inputs.map(r=>[r.id,r]));
     const rows:Awaited<ReturnType<typeof calibrationRow>>[]=[];
-    for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;rows.push(await calibrationRow(tx,ctx,entry,cycle.policy,session,cycle.native.status,viewAxis));}
+    for(const entry of entries){
+      const source=byId.get(entry.reviewId);
+      if(!source?.participates)throw Error('This employee is not participating in the cycle.');
+      if(!source.input)throw Error('Assessment not available to this calibration scope.');
+      rows.push(await calibrationRow(tx,ctx,entry,cycle.policy,session,cycle.native.status,viewAxis,resolveAssessment(assessmentFromInputs(source.input,cycle.policy),source.decisions??[]),detail==='all'||!!session.lockedAt));
+    }
     const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);
     const companyIds=[...new Set(rows.map(r=>r.companyId))];
     const companies=companyIds.length?await tx.select({id:company.id,name:company.legalName,parent:company.parentCompanyId}).from(company).where(inArray(company.id,companyIds)):[];
@@ -822,6 +838,21 @@ export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,vi
     const held=Object.fromEntries(conversations.map(c=>{const saved=heldCalibrationSchema.parse(c.held),lines=saved.lines.filter(l=>['open','calibration'].includes(cycle.native.status)&&l.sessionRevision===session.revision&&rows.some(r=>r.entry.reviewId===l.reviewId&&!r.finalized&&!(l.axis==='performance'?r.entry.performanceLockedAt||session.performanceLockedAt:r.entry.potentialLockedAt||session.potentialLockedAt)));return [c.axis,{...saved,lines,focus:(saved.navigation?rows.some(r=>r.entry.reviewId===saved.focus):lines.some(l=>l.reviewId===saved.focus))?saved.focus:null,requestId:lines.length||saved.navigation&&rows.some(r=>r.entry.reviewId===saved.focus)?saved.requestId:null}];})) as Partial<Record<Axis,typeof emptyHeldCalibration>>;
     return {canSubmit:{pm:rows.length>0&&rows.every(r=>r.openAxes.pm&&(session.tier!=='hod'||!!r.entry.performanceLockedAt)&&(!r.finalized||!!r.entry.performanceLockedAt)),pot:rows.length>0&&rows.every(r=>r.openAxes.pot&&(session.tier!=='hod'||!!r.entry.potentialLockedAt)&&(!r.finalized||!!r.entry.potentialLockedAt))},held,actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name,status:cycle.native.status},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,viewAxis,session.tier),rows,curvePolicy:{curveToleranceMode:cycle.policy.curveToleranceMode,curveTolerancePct:cycle.policy.curveTolerancePct,curveTolerancePeople:cycle.policy.curveTolerancePeople},reference:cohortCompanyId?cohortProfit.reference:null};
   });
+}
+
+/** Selected-person detail uses the same resolver and rechecks membership on every open. */
+export async function getAssessmentCalibrationPerson(ctx:SessionContext,sessionId:string,reviewId:string,viewAxis:Axis='both'){
+ uuid.parse(sessionId);uuid.parse(reviewId);z.enum(['performance','potential','both']).parse(viewAxis);
+ return withPerformanceTenant(ctx,async tx=>{
+  const {session,cycle}=await loadCalibration(tx,sessionId);
+  const [entry]=await tx.select().from(onehrCalibrationEntry).where(and(eq(onehrCalibrationEntry.sessionId,sessionId),eq(onehrCalibrationEntry.reviewId,reviewId)));
+  if(!entry||await isSelf(tx,entry.employmentId))throw Error('This person is outside your calibration scope.');
+  const row=await calibrationRow(tx,ctx,entry,cycle.policy,session,cycle.native.status,viewAxis);
+  if(!row.talent)throw Error('Talent decisions are outside your review scope.');
+  const heldRow=await tx.select({held:calibrationConversation.held}).from(calibrationConversation).where(and(eq(calibrationConversation.sessionId,sessionId),eq(calibrationConversation.actorUserId,ctx.userId!),eq(calibrationConversation.axis,viewAxis)));
+  const held=heldRow[0]?heldCalibrationSchema.parse(heldRow[0].held):emptyHeldCalibration;
+  return {row:{...row,entry:{...row.entry,...row.talent.actions},talent:row.talent},session,actorUserId:ctx.userId,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),axes:needsAxes(cycle.policy,viewAxis,session.tier),held:{...held,lines:held.lines.filter(l=>l.reviewId===reviewId&&l.sessionRevision===session.revision&&!row.finalized&&(l.axis==='performance'?row.canWrite.pm:row.canWrite.pot))}};
+ });
 }
 /** Same cohort/axis writer and canonical calculations as manual calibration. No private moderation or ballots leave this projection. */
 async function calibrationFitContextTx(tx:Tx,ctx:SessionContext,sessionId:string,axis:'performance'|'potential',companyId:string|null){

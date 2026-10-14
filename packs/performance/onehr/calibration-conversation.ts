@@ -16,7 +16,7 @@ import { reviewConversationMessages,type ReviewMessage } from './conversation';
 import { type PMBand,type PotentialBand } from './model';
 const axisSchema=z.enum(['performance','potential','both']);
 async function authorized(ctx:SessionContext,id:string,axis:'performance'|'potential'|'both'){
- z.uuid().parse(id);axisSchema.parse(axis);const v=await getOnehrCalibration(ctx,id,axis);
+ z.uuid().parse(id);axisSchema.parse(axis);const v=await getOnehrCalibration(ctx,id,axis,'roster');
  if(v.modules.review===false)throw Error('Guided review is disabled.');
  if(axis==='performance'&&!v.axes.pm||axis==='potential'&&!v.axes.pot||axis==='both'&&!v.axes.pm&&!v.axes.pot)throw Error('This calibration axis is disabled.');
  return v;

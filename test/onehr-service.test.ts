@@ -1618,6 +1618,23 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     c=await perf.getOnehrCalibration(a,sessionId);expect(c.session.lockedAt).not.toBeNull();
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('ME');
   });
+  it('loads a compact calibration roster and rechecks each selected person without changing canonical decisions',async()=>{
+    await complete();
+    const reviewIds=(await owner.db.select({id:schema.onehrReview.reviewId}).from(schema.onehrReview).where(eq(schema.onehrReview.cycleId,cycleId))).map(r=>r.id);
+    const id=await perf.createOnehrCalibration(a,cycleId,{name:'Compact cohort',companyId:b.companyId,tier:'bg',reviewerUserIds:[mgr.userId!],reviewIds,pbtAchievement:null,mode:'replace'});
+    const full=await perf.getOnehrCalibration(mgr,id),compact=await perf.getOnehrCalibration(mgr,id,'both','roster');
+    expect(compact.rows).toHaveLength(reviewIds.length-1);expect(compact.rows.every(r=>r.talent===null)).toBe(true);
+    const bands=(v:typeof full)=>v.rows.map(r=>({reviewId:r.entry.reviewId,performance:r.currentPerformance,potential:r.currentPotential,journey:r.journey,bandTrails:r.bandTrails,canWrite:r.canWrite}));
+    expect(bands(compact)).toEqual(bands(full));expect(compact.canSubmit).toEqual(full.canSubmit);
+    const selected=await perf.getAssessmentCalibrationPerson(mgr,id,reviewId);expect(selected.row).toEqual(full.rows.find(r=>r.entry.reviewId===reviewId));
+    const [own]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,manager.employmentId)));
+    await expect(perf.getAssessmentCalibrationPerson(mgr,id,own.reviewId)).rejects.toThrow();
+    await expect(perf.getAssessmentCalibrationPerson(mgr,id,randomUUID())).rejects.toThrow();
+    await expect(perf.getAssessmentCalibrationPerson(peers[0].ctx,id,reviewId)).rejects.toThrow();
+    const foreign=await seedBase();await expect(perf.getAssessmentCalibrationPerson(adminCtx(foreign),id,reviewId)).rejects.toThrow();
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,id));
+    await expect(perf.getAssessmentCalibrationPerson(mgr,id,reviewId)).rejects.toThrow();
+  });
   it('keeps a reviewer’s own calibration hidden even inside an assigned mixed cohort',async()=>{
     const [other]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
     const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Mixed own cohort',companyId:b.companyId,tier:'group',reviewerUserIds:[self.userId!],reviewIds:[reviewId,other.reviewId],pbtAchievement:null,mode:'replace'});
@@ -1646,7 +1663,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await complete();
     const bu=await perf.createOnehrCalibration(a,cycleId,{name:'Shared BU',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
     const bg=await perf.createOnehrCalibration(a,cycleId,{name:'Shared BG',companyId:b.companyId,tier:'bg',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
-    const before=(await perf.getOnehrCalibration(a,bg)).rows[0].talent.revision;
+    const before=(await perf.getOnehrCalibration(a,bg)).rows[0].talent!.revision;
     await perf.saveAssessmentTalentDecision(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,reviewId,'specialReward',true,'Shared evidence');
     expect((await perf.getOnehrCalibration(a,bg)).rows[0].entry).toMatchObject({specialReward:true,specialRewardReason:'Shared evidence'});
     await expect(perf.saveAssessmentTalentDecision(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,reviewId,'specialReward',false,'',{talentRevision:before})).rejects.toThrow();

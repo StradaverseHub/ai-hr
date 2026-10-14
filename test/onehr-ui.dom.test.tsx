@@ -7,12 +7,12 @@ import { defaultPolicy } from '../packs/performance/onehr/model';
 import { emptyTalentActions } from '../packs/performance/onehr/talent-model';
 import framework from '../packs/performance/onehr/framework.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
-const ports=vi.hoisted(()=>({calibration:vi.fn(),session:vi.fn()}));
+const ports=vi.hoisted(()=>({calibration:vi.fn(),person:vi.fn(),session:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
 vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
-vi.mock('../app/performance/onehr-actions',()=>({assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
+vi.mock('../app/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
@@ -59,17 +59,20 @@ describe('OneHR native workflow controls',()=>{
  });
  it('renders only the selected Dept/BU calibration axis inside the source CAL workspace',async()=>{
   const v={session:{name:'Department review',tier:'hod',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{canWrite:{pm:true,pot:true},talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]};
+  ports.person.mockResolvedValue({...v,row:v.rows[0],held:{lines:[],focus:null,requestId:null,navigation:false}});
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'potential'}));
+  expect(ports.person).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button',{name:'Employee'}));
-  expect(screen.queryByLabelText(en.onehr.performance)).toBeNull();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();expect(screen.queryByText(en.onehr.talentGrid)).toBeNull();
+  expect(screen.queryByLabelText(en.onehr.performance)).toBeNull();expect(await screen.findByLabelText(en.onehr.potential)).toBeTruthy();expect(screen.queryByText(en.onehr.talentGrid)).toBeNull();
   expect(screen.queryByLabelText(en.onehr.assessmentAxis)).toBeNull();const axisInputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[name=axis]'));expect(axisInputs.length).toBeGreaterThan(0);expect(axisInputs.every(input=>input.value==='potential')).toBe(true);
  });
  it('renders the actual BG workspace Talent Box and opens both axes from its grid',async()=>{
   const v={session:{id:'session',name:'BG review',tier:'bg',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{companyId:'company',canWrite:{pm:true,pot:true},talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]};
+  ports.person.mockResolvedValue({...v,row:v.rows[0],held:{lines:[],focus:null,requestId:null,navigation:false}});
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
   expect(screen.queryByRole('button',{name:en.onehr.lockCalibration})).toBeNull();
   expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
-  expect(await screen.findByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Summary'})).toBeTruthy();expect(screen.getByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
+  expect(await screen.findByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Summary'})).toBeTruthy();expect(await screen.findByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
  });
  it('passes the current development allowance to the actual editable-plan suggestion control',async()=>{
   const v={policy:defaultPolicy(framework),drafts:[],careerRoutes:[],moderators:[],choices:[],kpis:[],competencies:[],peers:[],attachments:[],evidence:[],attachmentLinks:[],kpiLibrary:[],reviewId:'review',revision:1,cycle:{id:'cycle',name:'Annual',status:'open'},admin:false,self:true,manager:false,moderator:false,planReviewer:false,planRemarkWriter:false,finalized:false,canApproveSettingIds:[],canModerateIds:[],careerProfile:null,planYear:Number(todayInKualaLumpur().slice(0,4))+1,plans:[],aiEnabled:true,aiFeatures:{pm:true,tc:true,idp:true,review:true,calib:true,"360":true},developmentQuota:{remaining:0,limit:5}};
