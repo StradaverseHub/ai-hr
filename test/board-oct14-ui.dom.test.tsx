@@ -12,13 +12,13 @@ vi.mock('../app/attendance/individual/[date]/actions',()=>({saveAttendanceDayCha
 vi.mock('../app/attendance/application-history/actions',()=>({attendanceHistoryBulkAction:calls.bulk}));
 const data={baseline:'baseline',shiftId:'first',dayKind:'workday',closed:false,self:false,processed:false,leave:[],schedule:{shiftCode:'DAY',dayKind:'workday'},shifts:[{id:'first',code:'DAY',name:'Day'},{id:'second',code:'LATE',name:'Late'}]} as unknown as React.ComponentProps<typeof AttendanceDateSchedule>['data'];
 const wrap=(children:React.ReactNode)=><NextIntlClientProvider locale="en" messages={en}>{children}</NextIntlClientProvider>;
-const edit=()=>fireEvent.click(screen.getByRole('button',{name:'Edit',exact:true}));
+const edit=()=>fireEvent.click(screen.getByRole('button',{name:'Edit'}));
 beforeEach(()=>{vi.clearAllMocks();calls.save.mockResolvedValue({ok:true});calls.bulk.mockResolvedValue([{id:'a',status:'pending'},{id:'b',status:'failed',message:'The approval stage changed.'}]);});afterEach(cleanup);
 it('opens a deliberate schedule edit, discards cancel, retains validation errors, and reopens saved props',async()=>{
   const ui=render(wrap(<AttendanceDateSchedule data={data} employmentId="employee" date="2026-10-01"/>));
   expect(screen.queryByRole('combobox')).toBeNull();edit();
   fireEvent.change(screen.getByLabelText(en.attendance.dayEdit.shift),{target:{value:'second'}});
-  fireEvent.click(screen.getByRole('button',{name:'Cancel',exact:true}));expect(calls.save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(calls.save).not.toHaveBeenCalled();
   edit();expect(screen.getByLabelText(en.attendance.dayEdit.shift)).toHaveValue('first');
   calls.save.mockResolvedValueOnce({ok:false,message:'Clock data changed. Reload the day.'});
   fireEvent.change(screen.getByLabelText(en.attendance.dayEdit.reason),{target:{value:'Verified correction'}});
@@ -30,7 +30,7 @@ it('opens a deliberate schedule edit, discards cancel, retains validation errors
   const payload=calls.save.mock.calls[1][0] as FormData;expect(payload.get('employmentId')).toBe('employee');expect(payload.get('date')).toBe('2026-10-01');expect(payload.get('baseline')).toBe('baseline');
 });
 it('protects Leave ownership and disables editing a closed or self day',()=>{
-  const ui=render(wrap(<AttendanceDateSchedule data={{...data,closed:true}} employmentId="employee" date="2026-10-01"/>));expect(screen.getByRole('button',{name:'Edit',exact:true})).toBeDisabled();
+  const ui=render(wrap(<AttendanceDateSchedule data={{...data,closed:true}} employmentId="employee" date="2026-10-01"/>));expect(screen.getByRole('button',{name:'Edit'})).toBeDisabled();
   ui.rerender(wrap(<AttendanceDateSchedule data={{...data,leave:[{name:'Annual Leave',duration:'full_day'}] as typeof data.leave}} employmentId="employee" date="2026-10-01"/>));edit();expect(screen.getByLabelText(en.attendance.dayEdit.dayType)).toBeDisabled();expect(screen.getByText(en.attendance.dayEdit.leaveOwner)).toBeVisible();
 });
 const row=(id:string,selectable=true)=>({id,employmentId:id,employee:'Employee '+id,employeeCode:id,company:'Example Company',companyId:'company',attendanceDate:'2026-10-01',submittedAt:new Date(),status:'pending',applicationType:'irregularity',requestKind:'absent',currentStage:0,stages:null,templateName:null,selectable}) as React.ComponentProps<typeof AttendanceHistoryTable>['rows'][number];
@@ -39,10 +39,10 @@ it('selects only eligible page rows, confirms, reports mixed outcomes, and prese
   expect(screen.queryByRole('columnheader',{name:en.attendanceHistory.reference})).toBeNull();expect(screen.getAllByText('01-Oct-2026')).toHaveLength(3);
   fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));expect(screen.getByText('2 selected')).toBeVisible();
   fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.approveSelected}));expect(calls.bulk).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button',{name:'Confirm',exact:true}));await screen.findByText(en.attendanceHistory.furtherApproval);
+  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));await screen.findByText(en.attendanceHistory.furtherApproval);
   expect(calls.bulk).toHaveBeenCalledWith({items:[{id:'a',stage:0},{id:'b',stage:0}],decision:'approved',reason:''});expect(screen.getByText('The approval stage changed.',{exact:false})).toBeVisible();
   expect(screen.getAllByRole('link',{name:en.attendanceHistory.view})[0].getAttribute('href')).toContain('returnTo=%2Fattendance%2Fapplication-history%3Fstatus%3Dpending%26page%3D2');
 });
 it('requires rejection remarks and does not submit when cancelled',()=>{
-  render(wrap(<AttendanceHistoryTable rows={[row('a')]} returnTo="/attendance/application-history"/>));fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.rejectSelected}));expect(screen.getByRole('textbox')).toBeRequired();fireEvent.click(screen.getByRole('button',{name:'Cancel',exact:true}));expect(calls.bulk).not.toHaveBeenCalled();
+  render(wrap(<AttendanceHistoryTable rows={[row('a')]} returnTo="/attendance/application-history"/>));fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.rejectSelected}));expect(screen.getByRole('textbox')).toBeRequired();fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(calls.bulk).not.toHaveBeenCalled();
 });

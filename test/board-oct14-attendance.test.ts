@@ -15,7 +15,7 @@ import {clockFingerprint} from '../core/attendance-punch-change';
 import {clockCommandContext} from '../lib/clock-command-context';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {listAttendanceApplicationHistory,attendanceApplicationDetail} from '../core/attendance-application-history';
-import {decideAttendanceHistorySelection} from '../core/attendance-history-decisions';
+import {decideAttendanceHistorySelection} from '../packs/attendance/history-decisions';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 let b:Base;
 const day=()=>todayInKualaLumpur(new Date(Date.now()-86400000));

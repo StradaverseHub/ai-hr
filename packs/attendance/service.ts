@@ -41,4 +41,4 @@ export * from '../../core/attendance-application-history';
 
 export * from './day-adjustment';
 
-export * from '../../core/attendance-history-decisions';
+export * from './history-decisions';

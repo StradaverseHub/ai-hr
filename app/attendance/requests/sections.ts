@@ -1,1 +1,1 @@
-export * from '@/lib/attendance-exceptions';
+export * from '@/packs/attendance/exceptions';

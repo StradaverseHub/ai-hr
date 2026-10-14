@@ -1,9 +1,9 @@
 /** A batch is a bounded set of independent decisions over the existing application owner. */
-import type { SessionContext } from '../db/client';
-import { attendanceApplicationDetail } from './attendance-application-history';
-import { decideAttendanceCorrection } from './attendance';
-import { attendanceHistoryId } from '../lib/attendance-history-filter';
-import { publicErrorMessage } from '../lib/public-error';
+import type { SessionContext } from '../../db/client';
+import { attendanceApplicationDetail } from '../../core/attendance-application-history';
+import { decideAttendanceCorrection } from '../../core/attendance';
+import { attendanceHistoryId } from '../../lib/attendance-history-filter';
+import { publicErrorMessage } from '../../lib/public-error';
 export type AttendanceHistorySelection={id:string;stage:number|null};
 export async function decideAttendanceHistorySelection(ctx:SessionContext,companyIds:string[],p:{items:AttendanceHistorySelection[];decision:'approved'|'rejected';reason:string}){
   if(!Array.isArray(p.items)||!p.items.length||p.items.length>100)throw new Error('Select between one and 100 applications on this page.');

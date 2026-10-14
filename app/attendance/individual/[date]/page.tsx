@@ -1,4 +1,4 @@
-import { classifyDay } from '@/lib/attendance-exceptions';
+import { classifyDay } from '@/packs/attendance/exceptions';
 import { AttendanceDateSchedule, AttendanceDateOvertime } from '@/components/attendance-day-editor';
 import { AttendanceDayApplications } from '@/components/attendance-day-applications';
 import Link from 'next/link';
