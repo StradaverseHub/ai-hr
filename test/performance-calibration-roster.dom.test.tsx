@@ -1,3 +1,6 @@
+import { defaultPolicy } from '../packs/performance/onehr/model';
+import framework from '../packs/performance/onehr/framework.json';
+import { profitCurveFor } from '../packs/performance/onehr/calibration-curve-model';
 import React from 'react';
 import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 import { cleanup,fireEvent,render,screen,within } from '@testing-library/react';
@@ -70,6 +73,12 @@ it('returns to the viewed person’s cell rather than the originally selected ce
  fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.backToBox}));
  const drawer=screen.getByRole('complementary',{name:en.onehr.calibrationRoster.boxPeople});expect(within(drawer).getByRole('button',{name:'Alice Tan'})).toBeTruthy();expect(within(drawer).queryByRole('button',{name:'Bob Lim'})).toBeNull();
 });
+it('puts moved people first in a cell, sorts their names, and brings the last-read face into the visible three',()=>{
+ const cohort=[['d','Zeta',false],['c','Gamma',true],['a','Alpha',false],['b','Beta',true]].map(([id,name,moved])=>({...rows[0],id:String(id),name:String(name),moved:Boolean(moved),performance:'AE' as const,potential:'High' as const}));
+ render(<NextIntlClientProvider locale="en" messages={en}><CalibrationRoster sessionId="session" revision={1} rows={cohort} cards={cohort.map(r=>({id:r.id,content:<p>{r.name} case</p>}))} axes={{pm:true,pot:true}} grid reference={{}}/></NextIntlClientProvider>);
+ const people=screen.getByRole('complementary',{name:en.onehr.calibrationRoster.boxPeople});expect(within(people).getAllByRole('button').filter(b=>!b.getAttribute('aria-label')?.startsWith('Move ')).map(b=>b.getAttribute('aria-label'))).toEqual(['Beta','Gamma','Alpha','Zeta']);
+ fireEvent.click(within(people).getByRole('button',{name:'Zeta'}));fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.backToBox}));const grid=screen.getByRole('region',{name:en.onehr.talentGrid});expect(within(grid).getByRole('button',{name:'Zeta'})).toBeTruthy();expect(within(grid).getAllByRole('button').filter(b=>['Zeta','Beta','Gamma','Alpha'].includes(b.getAttribute('aria-label')??'')).map(b=>b.getAttribute('aria-label'))).toEqual(['Zeta','Beta','Gamma']);
+});
 it('opens on the first unit still to lock, filters categories without combining units and explains an empty box',()=>{
  render(<NextIntlClientProvider locale="en" messages={en}><CalibrationRoster sessionId="session" revision={1} rows={rows.map(r=>({...r,locked:r.companyId==='x'}))} cards={[]} axes={{pm:true,pot:true}} grid reference={{}}/></NextIntlClientProvider>);
  expect(screen.getByRole('button',{name:'Unit Y'}).getAttribute('aria-pressed')).toBe('true');
@@ -94,4 +103,13 @@ it('reflects the same cached insight verdict in the roster after reading a perso
  expect(assessmentInsightAction).toHaveBeenCalledWith('alice','session',false);
  fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.close}));
  expect(within(screen.getByRole('button',{name:'Alice Tan'}).closest('tr')!).getByRole('button',{name:en.onehr.insight.verdict.well_justified})).toBeTruthy();
+});
+
+it('opens read-only axis curves for the selected unit with company figures, full population and native close behavior',()=>{
+ const units=[{id:'x',name:'Unit X',profit:profitCurveFor('x',null,[{companyId:'x',achievementPct:0,revision:1}])},{id:'y',name:'Unit Y',profit:profitCurveFor('y',null,[])}];
+ render(<NextIntlClientProvider locale="en" messages={en}><CalibrationRoster rows={rows} cards={rows.map(r=>({id:r.id,content:<p>{r.name} review</p>}))} axes={{pm:true,pot:true}} grid reference={{}} sessionId="session" revision={1} curves={{policy:defaultPolicy(framework),units}} unitActions={units.map(unit=>({id:unit.id,node:<span>Lock {unit.name}</span>}))}/></NextIntlClientProvider>);
+ expect(screen.getByText('PBT/PAT achievement 0%')).toBeTruthy();expect(screen.getByText('Lock Unit X')).toBeTruthy();expect(screen.queryByText('Lock Unit Y')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Show Performance distribution'}));let dialog=screen.getByRole('dialog',{name:'Performance distribution — Unit X'});expect(within(dialog).getByText(/2 people against/)).toBeTruthy();expect(within(dialog).getByText(/Negatively skewed/)).toBeTruthy();expect(within(dialog).queryByRole('button',{name:/Save|Move/})).toBeNull();expect(within(dialog).getAllByRole('row')).toHaveLength(6);fireEvent.click(within(dialog).getByRole('button',{name:'Close'}));expect(screen.queryByRole('dialog')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Unit Y'}));expect(screen.getByText('PBT/PAT not entered · normal curve')).toBeTruthy();expect(screen.getByText('Lock Unit Y')).toBeTruthy();expect(screen.queryByText('Lock Unit X')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Show Potential distribution'}));dialog=screen.getByRole('dialog',{name:'Potential distribution — Unit Y'});expect(within(dialog).getByText(/1 person against/)).toBeTruthy();expect(within(dialog).getAllByRole('row')).toHaveLength(4);expect(within(dialog).queryByText(/PBT/)).toBeNull();
 });

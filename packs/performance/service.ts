@@ -35,3 +35,5 @@ export { getAssessmentFileTexts,readAssessmentFileTexts } from './onehr/evidence
 export { getAssessmentInsightSource } from './onehr/insight-source';
 export { getAssessmentPerformanceInsight } from './onehr/insight-service';
 export { suggestAssessmentDevelopmentGoals,applyAssessmentDevelopmentGoals } from './onehr/development-suggestion-service';
+
+export { saveAssessmentProfitAchievement } from './onehr/profit-service';

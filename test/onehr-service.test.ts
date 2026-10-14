@@ -45,6 +45,42 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+  it('uses one company achievement for every calibration tier, preserving curve boundaries and concurrent edits',async()=>{
+    await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:null,achievementPct:69.999999999});
+    const make=(tier:'bu'|'bg')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} shared curve`,companyId:b.companyId,tier,reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const bu=await make('bu'),bg=await make('bg');
+    await expect(perf.createOnehrCalibration(a,cycleId,{name:'Mixed BU without a company',companyId:null,tier:'bu',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'})).rejects.toThrow(/one company/);
+    for(const id of [bu,bg])expect((await perf.getOnehrCalibration(peers[0].ctx,id)).units[0].profit).toMatchObject({key:'negative',achievementPct:69.999999999,source:'company',revision:1});
+    expect((await perf.getOnehrCycle(a,cycleId))?.profitAchievements[0].achievementPct).toBe(69.999999999);
+    await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:null,achievementPct:100})).rejects.toThrow(/changed/);
+    await expect(perf.saveAssessmentProfitAchievement(peers[0].ctx,cycleId,{companyId:b.companyId,revision:1,achievementPct:200})).rejects.toThrow(/administrator/);
+    await expect(withTenant(peers[0].ctx,tx=>tx.update(schema.assessmentProfitAchievement).set({achievementPct:'200',revision:2}).where(eq(schema.assessmentProfitAchievement.cycleId,cycleId)).returning())).resolves.toEqual([]);
+    await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:1,achievementPct:0});
+    expect((await perf.getOnehrCalibration(peers[0].ctx,bg)).units[0].profit).toMatchObject({key:'negative',achievementPct:0,entered:true,revision:2});
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,bg));
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,bu));
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.assessmentProfitAchievement))).toEqual([]);
+  });
+  it('falls back to the company’s own BG figure, then normal-unentered, without exposing other company figures',async()=>{
+    const [group]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Consolidated BG'}).returning();
+    await owner.db.update(schema.company).set({parentCompanyId:group.id}).where(eq(schema.company.id,b.companyId));
+    await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:group.id,revision:null,achievementPct:150});
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'BG reference',companyId:group.id,tier:'bg',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    expect((await perf.getOnehrCalibration(peers[0].ctx,sid)).units[0].profit).toMatchObject({key:'positive',achievementPct:150,source:'bg'});
+    await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:null,achievementPct:70});
+    expect((await perf.getOnehrCalibration(peers[0].ctx,sid)).units[0].profit).toMatchObject({key:'normal',achievementPct:70,source:'company'});
+    await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:1,achievementPct:null});
+    expect((await perf.getOnehrCalibration(peers[0].ctx,sid)).units[0].profit.source).toBe('bg');
+    await perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:group.id,revision:1,achievementPct:null});
+    expect((await perf.getOnehrCalibration(peers[0].ctx,sid)).units[0].profit).toMatchObject({key:'normal',achievementPct:null,entered:false,source:null});
+    const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated company'}).returning();
+    const {cycleId:otherCycle}=await perf.createCycle(a,{name:'Unrelated cycle',companyId:other.id,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
+    await perf.configureOnehrCycle(a,otherCycle,null,defaultPolicy(framework));
+    await perf.saveAssessmentProfitAchievement(a,otherCycle,{companyId:other.id,revision:null,achievementPct:123});
+    const visible=await withTenant(peers[0].ctx,tx=>tx.select().from(schema.assessmentProfitAchievement));expect(visible.map(row=>row.companyId).sort()).toEqual([b.companyId,group.id].sort());
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
+    await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:2,achievementPct:100})).rejects.toThrow(/archived/);
+  });
   it('generates adjudicated insights explicitly, reuses current cache and discards a provider reply after reviewer access is revoked',async()=>{
     await complete();const source=await perf.getAssessmentInsightSource(mgr,reviewId),title=source.facts.rows[0].kpi;
     const raw=JSON.stringify({paragraph:'Their result met target, and their note explains the period.',overall:'Their note explains the result.',verdict:'well_justified',verdict_why:'Their note explains the result.',kpis:[{kpi:title,read:'The result met target.',evidence:'none',evidence_note:'',justified:'yes',why:'Their note explains the result.'}],discuss:[]});
@@ -228,7 +264,9 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Interim department assessment',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
     let c=await perf.getOnehrCalibration(a,sessionId);
     await perf.saveOnehrCalibration(a,sessionId,c.session.revision,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Verified wider impact',potentialNote:''});
-    expect((await view(self)).result?.performance).toBe('AE'); // HOD's one-save lock resolves immediately.
+    expect((await view(self)).result?.performance).toBe('ME'); // A saved department row still needs the scope submission.
+    await perf.lockOnehrCalibration(a,sessionId,(await perf.getOnehrCalibration(a,sessionId)).session.revision,'','performance');
+    expect((await view(self)).result?.performance).toBe('AE');
     await perf.releaseOnehrResult(a,reviewId,'potential',true);
     await perf.releaseOnehrResult(a,reviewId,'talent',true);
     expect((await view(self)).result).toMatchObject({performance:'AE',potential:'High',talent:'Super Star'});
@@ -281,6 +319,8 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Recorded HOD assessment',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
     const c=await perf.getOnehrCalibration(a,sessionId);
     await perf.saveOnehrCalibration(a,sessionId,c.session.revision,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Private calibration justification',potentialNote:''});
+    expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)?.snapshot).toMatchObject({performance:'ME',tiers:{hod:{performance:null}}});
+    await perf.lockOnehrCalibration(a,sessionId,(await perf.getOnehrCalibration(a,sessionId)).session.revision,'','performance');
     const exported=await perf.exportAssessmentRatingRecords(a,cycleId);
     expect(exported.records.find(r=>r.reviewId===reviewId)?.snapshot).toMatchObject({performance:'AE',performanceSource:'hod',tiers:{hod:{performance:'AE',potential:null}}});
     expect(JSON.stringify(exported.records)).not.toContain('Private calibration justification');
@@ -427,6 +467,8 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(JSON.stringify(report)).not.toMatch(/Consistently observed|Observed delivery|Completed outcomes/);
     const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Progress department',companyId:b.companyId,tier:'hod',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
     await perf.saveOnehrCalibration(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:''});
+    expect((await perf.getAssessmentProgress(a,cycleId,{q:'Assessment subject',module:'calibration'})).rows[0].cells.calibration?.state).toBe('active');
+    await perf.lockOnehrCalibration(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,'','potential');
     expect((await perf.getAssessmentProgress(a,cycleId,{q:'Assessment subject',module:'calibration'})).rows[0].cells.calibration?.state).toBe('done');
     await recordLoginSucceeded({tenantId:b.tenantId,userId:peers[0].ctx.userId!});
     const assessors=await perf.getAssessmentAssessorProgress(a,cycleId);expect(assessors).toHaveLength(4);expect(assessors.find(r=>r.employmentId===peers[0].employmentId)).toMatchObject({assigned:1,done:1,remaining:0,state:'done',lastLogin:expect.any(String)});
@@ -597,6 +639,8 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await move(null,'Mid');v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;expect(v.rows[0].entry).toMatchObject({performance:null,potential:'Mid',originalPotential:incoming,seenPotential:changed});
     await move(null,incoming);v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;expect(v.rows[0].movement.moved).toBe(false);expect(v.rows[0].entry.originalPotential).toBe(incoming);
     const hod=await make('hod');await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'New confirmed lower-tier delivery.',potentialNote:''});
+    v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0]).toMatchObject({currentPerformance:'ME',performanceSource:'manager',entry:{performance:null}});
+    await perf.lockOnehrCalibration(reviewer,hod,(await perf.getOnehrCalibration(reviewer,hod)).session.revision,'','performance');
     v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0]).toMatchObject({currentPerformance:'AE',performanceSource:'hod',entry:{performance:null}});
     await perf.lockOnehrCalibration(reviewer,bg,revision,'');v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;
     expect(v.rows[0].entry).toMatchObject({performance:'AE',performancePinned:true,performancePinSource:'hod',originalPerformance:null,potentialPinned:false,originalPotential:incoming});expect(v.rows[0].movement.moved).toBe(false);
@@ -607,6 +651,27 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const control=await withTenant(reviewer,tx=>tx.update(schema.onehrCalibrationEntry).set({performanceNote:'Allowed review note.'}).where(eq(schema.onehrCalibrationEntry.id,v.rows[0].entry.id)).returning({id:schema.onehrCalibrationEntry.id}));expect(control).toHaveLength(1);
     await expect(withTenant(reviewer,tx=>tx.update(schema.onehrCalibrationEntry).set({originalPerformance:'OU'}).where(eq(schema.onehrCalibrationEntry.id,v.rows[0].entry.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:'The first calibration origin is immutable'})});
     await expect(perf.moveAssessmentTalentBox(self,bg,v.session.revision,{reviewId,performance:'AE',potential:null,performanceNote:'',potentialNote:''})).rejects.toThrow(/not found|removed|calibrated/);
+  });
+  it('keeps saved department bands private upstream until separate submission and shares only confirmed trail steps',async()=>{
+    await complete();const reviewer=peers[0].ctx,other=peers[1].ctx;
+    const make=(tier:'hod'|'bu'|'bg',who=reviewer)=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} submitted trail`,companyId:b.companyId,tier,reviewerUserIds:[who.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const hod=await make('hod'),bu=await make('bu',other),bg=await make('bg',other);
+    await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Held department delivery explanation.',potentialNote:''});
+    let v=await perf.getOnehrCalibration(other,bg);expect(v.rows[0]).toMatchObject({currentPerformance:'ME',performanceSource:'manager'});expect(v.rows[0].journey.find(j=>j.tier==='hod')?.performance).toBeNull();expect(v.rows[0].bandTrails.performance).toContainEqual({tier:'hod',band:null,state:'wait'});
+    expect((await perf.getAssessmentInsightSource(other,reviewId,bg)).facts.trail).toEqual([]);
+    expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)?.snapshot).toMatchObject({performance:'ME',tiers:{hod:{performance:null}}});
+    await perf.lockOnehrCalibration(reviewer,hod,2,'','performance');v=await perf.getOnehrCalibration(other,bg);expect(v.rows[0]).toMatchObject({currentPerformance:'AE',performanceSource:'hod'});expect(v.rows[0].bandTrails.performance).toContainEqual({tier:'hod',band:'AE',state:'moved'});
+    await perf.saveOnehrCalibration(other,bu,1,{reviewId,axis:'performance',performance:'BE',potential:null,performanceNote:'Private BU working judgement.',potentialNote:''});v=await perf.getOnehrCalibration(other,bg);expect(v.rows[0].journey.find(j=>j.tier==='bu')?.performance).toBeNull();expect(v.rows[0].bandTrails.performance).toContainEqual({tier:'bu',band:null,state:'wait'});expect(v.rows[0].currentPerformance).toBe('AE');
+  });
+  it('uses submitted self potential until assigned competency is reviewed while keeping genuine interim calculations available',async()=>{
+    await complete(false);const reviewer=peers[0].ctx;
+    const make=(tier:'hod'|'bg')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} potential source`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const hod=await make('hod'),bg=await make('bg');expect((await view()).potential).toBe('Mid');
+    let v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0]).toMatchObject({currentPotential:'Low',potentialSource:'self',managerPotential:null,potentialPct:null,canAgreePotential:false});expect(v.rows[0].bandTrails.potential).toContainEqual({tier:'manager',band:null,state:'none'});
+    expect((await perf.getOnehrCalibration(reviewer,hod)).rows[0]).toMatchObject({currentPotential:'Low',potentialSource:'default',managerPotential:null,potentialPct:null});
+    await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:'Human decision while the manager competency review is still pending.'});expect((await perf.getOnehrCalibration(reviewer,bg)).rows[0].currentPotential).toBe('Low');
+    await perf.lockOnehrCalibration(reviewer,hod,2,'','potential');v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0]).toMatchObject({currentPotential:'High',potentialSource:'hod',managerPotential:null});
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed skill'}},true);v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0].managerPotential).toBe('High');expect(v.rows[0].potentialSource).toBe('hod');
   });
   it('records a provisional Talent Box origin only when explicitly moved',async()=>{
     const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Provisional box',companyId:b.companyId,tier:'bg',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
@@ -620,6 +685,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await complete();const reviewer=peers[0].ctx;
     const make=(tier:'hod'|'group',reviewIds=[reviewId])=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} source rules`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds,pbtAchievement:100,mode:'after'});
     const hod=await make('hod');await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Verified extra delivery.',potentialNote:''});
+    await perf.lockOnehrCalibration(reviewer,hod,(await perf.getOnehrCalibration(reviewer,hod)).session.revision,'','performance');
     const group=await make('group');let v=await perf.getOnehrCalibration(reviewer,group,'performance');expect(v).toMatchObject({axes:{pm:true,pot:false},rows:[{currentPerformance:'ME',priorPerformance:'AE',performanceSource:'manager',canWrite:{pm:true,pot:false}}]});
     await perf.saveOnehrCalibration(reviewer,group,1,{reviewId,axis:'performance',performance:'ME',potential:'Low',performanceNote:'',potentialNote:'Ignored by the PM table.'});
     expect((await perf.getOnehrCalibration(reviewer,group)).rows[0].entry.potential).toBeNull();

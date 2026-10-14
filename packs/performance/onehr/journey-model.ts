@@ -25,7 +25,7 @@ export function settingModerator(existing:KPI|undefined, reviewer:string|null, a
   return assigned;
 }
 
-export function curveTolerance(policy:Policy,count:number):number {
+export function curveTolerance(policy:Pick<Policy,'curveToleranceMode'|'curveTolerancePeople'|'curveTolerancePct'>,count:number):number {
   if(count<=0)return 0;
   return policy.curveToleranceMode==='people'
     ? Math.min(policy.curveTolerancePeople,count)

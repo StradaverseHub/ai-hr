@@ -291,8 +291,15 @@ BEGIN
 END $$;
 
 --> statement-breakpoint
+-- An HOD person save is held until the department's separate submission; BG unit and Group person locks
+-- are independently final for their covered people. Every downstream projection uses this same predicate.
+CREATE FUNCTION app.assessment_calibration_axis_confirmed(tier text,person_lock timestamptz,scope_lock timestamptz) RETURNS boolean
+ LANGUAGE sql IMMUTABLE AS $$ SELECT scope_lock IS NOT NULL OR (tier<>'hod' AND person_lock IS NOT NULL) $$;
+REVOKE ALL ON FUNCTION app.assessment_calibration_axis_confirmed(text,timestamptz,timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_calibration_axis_confirmed(text,timestamptz,timestamptz) TO ai_hr_app;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_decisions(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL,'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',e.pip,'promotion',e.promotion,'specialReward',e.special_reward) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
+ SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',app.assessment_calibration_axis_confirmed(s.tier,e.performance_locked_at,s.performance_locked_at),'potentialLocked',app.assessment_calibration_axis_confirmed(s.tier,e.potential_locked_at,s.potential_locked_at),'locked',app.assessment_calibration_axis_confirmed(s.tier,e.locked_at,s.locked_at),'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',e.pip,'promotion',e.promotion,'specialReward',e.special_reward) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
  FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id AND s.tenant_id=e.tenant_id JOIN performance_review r ON r.id=e.review_id AND r.tenant_id=e.tenant_id JOIN employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
  WHERE e.review_id=wanted_review AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(emp.person_id) AND (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND app.onehr_calibration_access(ce.session_id)))
 $$;
@@ -456,7 +463,7 @@ INSERT INTO performance_assessment_talent(review_id,tenant_id,actions)
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_decisions(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL,'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',coalesce((a.actions->>'pip')::boolean,false),'promotion',coalesce((a.actions->>'promotion')::boolean,false),'specialReward',coalesce((a.actions->>'specialReward')::boolean,false)) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
+ SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',app.assessment_calibration_axis_confirmed(s.tier,e.performance_locked_at,s.performance_locked_at),'potentialLocked',app.assessment_calibration_axis_confirmed(s.tier,e.potential_locked_at,s.potential_locked_at),'locked',app.assessment_calibration_axis_confirmed(s.tier,e.locked_at,s.locked_at),'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',coalesce((a.actions->>'pip')::boolean,false),'promotion',coalesce((a.actions->>'promotion')::boolean,false),'specialReward',coalesce((a.actions->>'specialReward')::boolean,false)) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
  FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id AND s.tenant_id=e.tenant_id JOIN performance_review r ON r.id=e.review_id AND r.tenant_id=e.tenant_id JOIN employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
  LEFT JOIN performance_assessment_talent a ON a.review_id=e.review_id AND a.tenant_id=e.tenant_id
  WHERE e.review_id=wanted_review AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(emp.person_id) AND (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND app.onehr_calibration_access(ce.session_id)))
@@ -581,8 +588,8 @@ BEGIN
   ORDER BY CASE cs.tier WHEN 'final' THEN 5 WHEN 'group' THEN 4 WHEN 'bg' THEN 3 WHEN 'bu' THEN 2 ELSE 1 END DESC
  LOOP
   IF d.tier='group' AND d.mode='blend' THEN CONTINUE; END IF;
-  IF NOT found_pm AND d.performance IS NOT NULL AND (d.performance_locked_at IS NOT NULL OR d.session_pm_lock IS NOT NULL OR d.tier='final') THEN pm:=d.performance;pm_source:=d.tier;found_pm:=true; END IF;
-  IF NOT found_pot AND d.potential IS NOT NULL AND (d.potential_locked_at IS NOT NULL OR d.session_pot_lock IS NOT NULL OR d.tier='final') THEN pot:=d.potential;pot_source:=d.tier;found_pot:=true; END IF;
+  IF NOT found_pm AND d.performance IS NOT NULL AND (app.assessment_calibration_axis_confirmed(d.tier,d.performance_locked_at,d.session_pm_lock) OR d.tier='final') THEN pm:=d.performance;pm_source:=d.tier;found_pm:=true; END IF;
+  IF NOT found_pot AND d.potential IS NOT NULL AND (app.assessment_calibration_axis_confirmed(d.tier,d.potential_locked_at,d.session_pot_lock) OR d.tier='final') THEN pot:=d.potential;pot_source:=d.tier;found_pot:=true; END IF;
  END LOOP;
  -- Agreement percentages are unweighted. Weighting belongs only to the potential calculation.
  SELECT jsonb_build_object('principles',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',q.principle,'agreementPct',q.pct) ORDER BY q.ord) FROM (
@@ -737,8 +744,8 @@ BEGIN
  minimum:=CASE WHEN r.grade ~ '^\d+$' THEN (cfg->>'minValid')::integer ELSE 1 END;
  effective:=app.assessment_working_result(r.review_id);
  SELECT coalesce(jsonb_object_agg(q.tier,q.value),'{}'::jsonb) INTO tiers FROM (
-  SELECT cs.tier,jsonb_build_object('performance',CASE WHEN ce.performance_locked_at IS NOT NULL OR cs.performance_locked_at IS NOT NULL OR cs.tier='final' THEN ce.performance END,
-   'potential',CASE WHEN ce.potential_locked_at IS NOT NULL OR cs.potential_locked_at IS NOT NULL OR cs.tier='final' THEN ce.potential END) value
+  SELECT cs.tier,jsonb_build_object('performance',CASE WHEN app.assessment_calibration_axis_confirmed(cs.tier,ce.performance_locked_at,cs.performance_locked_at) OR cs.tier='final' THEN ce.performance END,
+   'potential',CASE WHEN app.assessment_calibration_axis_confirmed(cs.tier,ce.potential_locked_at,cs.potential_locked_at) OR cs.tier='final' THEN ce.potential END) value
   FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND NOT(cs.tier='group' AND cs.mode='blend')
  ) q;
  snapshot:=identity||jsonb_build_object('mechanism',mech,'selfScore',self_score,'selfBand',self_band,'weightCovered',covered,'weightTotal',total,'managerScore',r.manager_score,'managerBand',r.manager_performance,
@@ -1200,7 +1207,7 @@ CREATE FUNCTION app.assessment_insight_source(wanted_review uuid,wanted_context 
   'fileLinks',CASE WHEN a.results_submitted_at IS NOT NULL THEN coalesce((SELECT jsonb_agg(link ORDER BY link->>'attachmentId',link->>'kpiId') FROM jsonb_array_elements(app.assessment_kpi_file_links(a.review_id)) link WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(a.visible_kpis) k WHERE k->>'id'=link->>'kpiId' AND NOT coalesce((k->>'hrOwned')::boolean,false))),'[]'::jsonb) ELSE '[]'::jsonb END,
   'trail',CASE WHEN a.reviewer_kind='calibrator' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('tier',s.tier,'label',CASE s.tier WHEN 'hod' THEN 'HOD' WHEN 'bu' THEN 'BU CEO' WHEN 'bg' THEN 'BG CEO' ELSE 'Group' END,'by',coalesce((SELECT p.full_name FROM domain_event d JOIN app_user u ON u.id=d.actor_id AND u.tenant_id=d.tenant_id JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE d.tenant_id=a.tenant_id AND d.aggregate_id=s.id AND d.event_type='onehr.calibration-recorded' AND d.payload->>'reviewId'=a.review_id::text ORDER BY d.occurred_at DESC,d.id DESC LIMIT 1),''),'from',ce.seen_performance,'band',ce.performance,'note',ce.performance_note) ORDER BY array_position(ARRAY['hod','bu','bg','group','final'],s.tier))
    FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration s ON s.id=ce.session_id AND s.tenant_id=ce.tenant_id
-   WHERE ce.review_id=a.review_id AND ce.tenant_id=a.tenant_id AND (ce.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL) AND array_position(ARRAY['hod','bu','bg','group','final'],s.tier)<array_position(ARRAY['hod','bu','bg','group','final'],a.tier)),'[]'::jsonb) ELSE '[]'::jsonb END
+   WHERE ce.review_id=a.review_id AND ce.tenant_id=a.tenant_id AND (app.assessment_calibration_axis_confirmed(s.tier,ce.performance_locked_at,s.performance_locked_at)) AND array_position(ARRAY['hod','bu','bg','group','final'],s.tier)<array_position(ARRAY['hod','bu','bg','group','final'],a.tier)),'[]'::jsonb) ELSE '[]'::jsonb END
  ) FROM scoped a
 $$;
 REVOKE ALL ON FUNCTION app.assessment_insight_source(uuid,uuid) FROM PUBLIC;
@@ -1305,3 +1312,48 @@ CREATE TRIGGER assessment_final_authority BEFORE INSERT OR UPDATE ON performance
 CREATE TRIGGER assessment_final_authority BEFORE INSERT OR UPDATE ON performance_onehr_calibration_entry FOR EACH ROW EXECUTE FUNCTION app.assessment_final_authority();
 REVOKE ALL ON FUNCTION app.assessment_final_authority(),app.onehr_calibration_access(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_calibration_access(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The reference curve belongs to a company/cycle, not to the reviewer cohort. Legacy rows are
+-- accepted only when they establish one unambiguous scoped figure; never blend conflicting figures.
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM performance_onehr_calibration WHERE pbt_achievement IS NOT NULL AND company_id IS NULL)
+ OR EXISTS(SELECT 1 FROM performance_onehr_calibration WHERE pbt_achievement IS NOT NULL GROUP BY tenant_id,cycle_id,company_id HAVING count(DISTINCT pbt_achievement)>1)
+ THEN RAISE EXCEPTION 'Reconcile legacy calibration profit figures before migrating'; END IF;
+END $$;
+CREATE TABLE performance_assessment_profit_achievement (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),cycle_id uuid NOT NULL REFERENCES review_cycle(id),company_id uuid NOT NULL REFERENCES company(id),
+ achievement_pct numeric CHECK(achievement_pct NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric)),revision integer NOT NULL DEFAULT 1 CHECK(revision>0),updated_by uuid REFERENCES app_user(id),updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(cycle_id,company_id)
+);
+INSERT INTO performance_assessment_profit_achievement(tenant_id,cycle_id,company_id,achievement_pct)
+ SELECT tenant_id,cycle_id,company_id,min(pbt_achievement) FROM performance_onehr_calibration WHERE pbt_achievement IS NOT NULL GROUP BY tenant_id,cycle_id,company_id;
+CREATE FUNCTION app.assessment_profit_read(wanted_cycle uuid,wanted_company uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT (app.onehr_cycle_admin(wanted_cycle) AND app.onehr_admin(wanted_company)) OR EXISTS(
+ SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id
+ JOIN performance_onehr_review r ON r.review_id=ce.review_id AND r.tenant_id=ce.tenant_id JOIN company c ON c.id=r.company_id AND c.tenant_id=r.tenant_id
+ JOIN employment e ON e.id=ce.employment_id AND e.tenant_id=ce.tenant_id
+ WHERE ce.tenant_id=app.current_tenant_id() AND cs.cycle_id=wanted_cycle AND (c.id=wanted_company OR c.parent_company_id=wanted_company)
+ AND app.onehr_calibration_access(cs.id) AND app.assessment_review_participates(ce.review_id) AND NOT app.is_self_person(e.person_id))
+$$;
+CREATE FUNCTION app.assessment_profit_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE c review_cycle;
+BEGIN
+ SELECT * INTO c FROM review_cycle WHERE id=NEW.cycle_id AND tenant_id=NEW.tenant_id;
+ IF c.id IS NULL OR c.status='closed' OR NOT EXISTS(SELECT 1 FROM performance_onehr_cycle WHERE cycle_id=c.id AND tenant_id=NEW.tenant_id)
+ OR NOT EXISTS(SELECT 1 FROM company co WHERE co.id=NEW.company_id AND co.tenant_id=NEW.tenant_id AND (c.company_id IS NULL OR co.id=c.company_id OR app.is_company_descendant(co.id,c.company_id) OR app.is_company_descendant(c.company_id,co.id)))
+ OR NEW.updated_by IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Invalid company achievement scope'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id<>OLD.id OR NEW.tenant_id<>OLD.tenant_id OR NEW.cycle_id<>OLD.cycle_id OR NEW.company_id<>OLD.company_id OR NEW.revision<>OLD.revision+1)
+ OR TG_OP='INSERT' AND NEW.revision<>1 THEN RAISE EXCEPTION 'Company achievement identity or revision cannot change'; END IF;
+ NEW.updated_at:=now();RETURN NEW;
+END $$;
+CREATE TRIGGER assessment_profit_links BEFORE INSERT OR UPDATE ON performance_assessment_profit_achievement FOR EACH ROW EXECUTE FUNCTION app.assessment_profit_validate();
+ALTER TABLE performance_assessment_profit_achievement ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_profit_achievement FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_profit_achievement TO ai_hr_app;
+CREATE POLICY assessment_profit_read ON performance_assessment_profit_achievement FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_profit_read(cycle_id,company_id));
+CREATE POLICY assessment_profit_insert ON performance_assessment_profit_achievement FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND app.onehr_admin(company_id));
+CREATE POLICY assessment_profit_update ON performance_assessment_profit_achievement FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND app.onehr_admin(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND app.onehr_admin(company_id));
+REVOKE ALL ON FUNCTION app.assessment_profit_read(uuid,uuid),app.assessment_profit_validate() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_profit_read(uuid,uuid) TO ai_hr_app;

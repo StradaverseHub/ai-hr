@@ -2,7 +2,8 @@
 import { useEffect,useRef,useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
-import { ArrowDown,ArrowUp,ChevronDown,History,Sparkles } from 'lucide-react';
+import { ArrowDown,ArrowUp,ChevronDown,Sparkles } from 'lucide-react';
+import { BandHistoryProvider,TalentBandHistory } from './talent-band-history';
 import { TalentBoxMove } from './talent-box-move';
 import { inputCls } from '@/components/ui';
 import { talentListColumns,talentListRows,talentListValue,talentListValues,type TalentListColumn,type TalentListFilters,type TalentListSort } from '@/packs/performance/onehr/talent-list-model';
@@ -33,28 +34,28 @@ function ColumnMenu({column,values,selected,sort,open,onOpen,onSelect,onSort}:{c
 
 /** The source Talent Box List, with one unit's filters and both rating axes in the same row. */
 export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,category,lastViewed,active,unitId,height,move}:{rows:CalibrationRosterRow[];filters:TalentListFilters;sort:TalentListSort;onFilters:(filters:TalentListFilters)=>void;onSort:(sort:TalentListSort)=>void;onSelect:(id:string)=>void;onRead?:(id:string)=>void;category:string;lastViewed:string|null;active:boolean;unitId:string;height?:number;move?:{sessionId:string;revision:number;onMoved?:(id:string)=>void}}){
- const t=useTranslations('onehr.talentList'),tr=useTranslations('onehr'),[openColumn,setOpenColumn]=useState<TalentListColumn|null>(null),[trail,setTrail]=useState<{id:string;axis:'performance'|'potential'}|null>(null);
+ const t=useTranslations('onehr.talentList'),tr=useTranslations('onehr'),[openColumn,setOpenColumn]=useState<TalentListColumn|null>(null);
  const [page,setPage]=useState({key:'',limit:100}),key=JSON.stringify([unitId,category,filters,sort]),sorted=talentListRows(rows,filters,category,sort);
  const reached=lastViewed?sorted.findIndex(row=>row.id===lastViewed)+1:0,limit=Math.max(page.key===key?page.limit:100,Math.ceil(reached/100)*100);
- useEffect(()=>{if(!active){setOpenColumn(null);setTrail(null);}},[active]);
- const person=rows.find(row=>row.id===trail?.id),currentFiltered=talentListColumns.some(column=>filters[column]!==undefined);
+ useEffect(()=>{if(!active){setOpenColumn(null);}},[active]);
+ const currentFiltered=talentListColumns.some(column=>filters[column]!==undefined);
  function select(column:TalentListColumn,values:string[]|undefined){const next={...filters};if(values===undefined)delete next[column];else next[column]=values;onFilters(next);}
  const origin=(row:CalibrationRosterRow)=>row.fromCategory==='PIP/Improvement'?'PIP':row.fromCategory??'';
- return <div className="min-w-0 space-y-2">
+ return <BandHistoryProvider><div className="min-w-0 space-y-2">
   <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-5 text-xs text-muted-foreground"><p>{t('count',{count:sorted.length,total:rows.length})}</p>{currentFiltered&&<button type="button" onClick={()=>{onFilters({});setOpenColumn(null);}} className="min-h-11 px-2 text-sm text-primary">{t('clearFilters')}</button>}</div>
   <div data-talent-list-scroll role="region" aria-label={t('title')} tabIndex={0} style={height?{maxHeight:height}:undefined} className="max-h-[32rem] overflow-auto border-y border-border">
    <table className="w-full min-w-[48rem] table-fixed border-collapse text-sm"><caption className="sr-only">{t('title')}</caption><colgroup>{['w-44','w-36','w-20','w-24','w-24','w-36','w-16','w-20'].map((width,index)=><col key={index} className={width}/>)}</colgroup>
     <thead className="sticky top-0 z-10 bg-card"><tr>{talentListColumns.map(column=><th key={column} scope="col" aria-sort={sort.column===column?sort.direction===1?'ascending':'descending':'none'}><ColumnMenu column={column} values={talentListValues(rows,column,filters,category)} selected={filters[column]} sort={sort} open={active&&openColumn===column} onOpen={next=>setOpenColumn(next?column:null)} onSelect={values=>select(column,values)} onSort={direction=>onSort({column,direction})}/></th>)}<th scope="col" className="p-2 text-center text-xs font-medium">AI</th><th scope="col" className="p-2"><span className="sr-only">{t('actions')}</span></th></tr></thead>
     <tbody>{sorted.slice(0,limit).map(row=><tr key={row.id} id={`assessment-${row.id}`} aria-current={lastViewed===row.id?'true':undefined} className={`border-t border-border hover:bg-muted/20 ${lastViewed===row.id?'bg-primary/5':''}`}>
-     <th scope="row" className={`border-l-2 px-2 py-1 text-left font-normal ${lastViewed===row.id?'border-primary':'border-transparent'}`}><button type="button" aria-label={row.name} title={lastViewed===row.id?`${row.name} · ${tr('calibrationRoster.lastViewed')}`:row.name} onClick={()=>onSelect(row.id)} className="min-h-11 w-full truncate text-left font-medium text-primary hover:underline">{row.name}</button></th>
+     <th scope="row" className="px-2 py-1 text-left font-normal"><button type="button" aria-label={row.name} title={lastViewed===row.id?`${row.name} · ${tr('calibrationRoster.lastViewed')}`:row.name} onClick={()=>onSelect(row.id)} className="min-h-11 w-full truncate text-left font-medium text-primary hover:underline">{row.name}</button></th>
      <td className="px-2 py-1"><span className="block truncate" title={row.department}>{row.department||'—'}</span></td><td className="px-2 py-1 tabular-nums">{row.grade||'—'}</td>
-     {(['performance','potential'] as const).map(axis=><td key={axis} translate="no" className="px-2 py-1"><div className="flex items-center gap-1"><span title={row[`${axis}Source`]==='default'?tr('calibrationRoster.provisional'):undefined} className={row[`${axis}Source`]==='default'?'text-muted-foreground':''}>{row[axis]??'—'}{row[`${axis}Source`]==='default'&&<span className="sr-only"> · {tr('calibrationRoster.provisional')}</span>}</span><button type="button" aria-label={t('trailFor',{axis:tr(axis),name:row.name})} onClick={()=>setTrail({id:row.id,axis})} className="flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-primary"><History size={14}/></button></div></td>)}
+     {(['performance','potential'] as const).map(axis=><td key={axis} translate="no" className="px-2 py-1"><div className="flex items-center gap-1"><span title={row[`${axis}Source`]==='default'?tr('talentTrail.default'):undefined} className={row[`${axis}Source`]==='default'?'text-muted-foreground':''}>{row[axis]??'—'}{row[`${axis}Source`]==='default'&&<span className="sr-only"> · {tr('talentTrail.default')}</span>}</span><TalentBandHistory active={active} name={row.name} axis={axis} current={row[axis]} source={row[`${axis}Source`]} steps={row.bandTrails?.[axis]??[]}/></div></td>)}
      <td className="px-2 py-1"><span className="font-medium">{talentListValue(row,'box')||'—'}</span>{row.moved&&<span className="mt-0.5 block text-xs text-muted-foreground">{origin(row)?t('movedFrom',{box:origin(row)}):tr('calibrationRoster.moved')}</span>}</td>
      <td className="px-2 py-1 text-center"><button type="button" aria-label={t('readFor',{name:row.name})} onClick={()=>(onRead??onSelect)(row.id)} className="inline-flex min-h-11 min-w-11 items-center justify-center text-primary"><Sparkles size={16}/></button></td>
      <td className="px-2 py-1">{move?<TalentBoxMove person={row} sessionId={move.sessionId} revision={move.revision} disabled={row.locked||row.readOnly||row.canMove===false} onMoved={()=>move.onMoved?.(row.id)}/>:<button type="button" onClick={()=>onSelect(row.id)} className="min-h-11 text-sm text-primary hover:underline">{t('review')}</button>}</td>
     </tr>)}{!sorted.length&&<tr><td colSpan={8} className="px-5 py-8 text-sm text-muted-foreground">{t('empty')}</td></tr>}{sorted.length>limit&&<tr><td colSpan={8} className="px-5 py-2"><button type="button" className="min-h-11 text-sm text-primary" onClick={()=>setPage({key,limit:limit+100})}>{t('showMore',{count:Math.min(100,sorted.length-limit)})}</button></td></tr>}</tbody>
    </table>
   </div>
-  <Dialog.Root open={active&&!!person&&!!trail} onOpenChange={next=>{if(!next)setTrail(null);}}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-40 bg-black/40"/><Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 z-40 max-h-[80dvh] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-card p-5 text-foreground shadow-xl"><Dialog.Title className="font-semibold">{person&&trail?t('trailFor',{axis:tr(trail.axis),name:person.name}):''}</Dialog.Title><ol className="my-4 divide-y divide-border">{person?.journey.map(j=><li key={j.tier} className="flex items-center justify-between gap-4 py-3 text-sm"><span>{j.tier==='self'?tr('calibrationRoster.self'):j.tier==='manager'?tr('calibrationRoster.lineManager'):tr(`tiers.${j.tier}`)}</span><b translate="no">{trail?j[trail.axis]??'—':'—'}</b></li>)}</ol><Dialog.Close asChild><button type="button" className="min-h-11 text-sm text-primary">{tr('calibrationRoster.close')}</button></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>
- </div>;
+
+ </div></BandHistoryProvider>;
 }

@@ -79,6 +79,8 @@ export async function onehrCycleAction(f:FormData){
       await perf.updateOnehrWindows(s,id,num(f,'revision'),readWindows(f),str(f,'reason'));
     }else if(str(f,'action')==='participation'){
       await perf.setAssessmentParticipation(s,id,num(f,'revision'),str(f,'employmentId'),str(f,'participantRevision')?num(f,'participantRevision'):null,z.enum(['add','remove','clear']).parse(str(f,'mode')));
+    }else if(str(f,'action')==='profit-achievement'){
+      await perf.saveAssessmentProfitAchievement(s,id,{companyId:str(f,'companyId'),revision:str(f,'profitRevision')?num(f,'profitRevision'):null,achievementPct:nullableNumber(f,'achievementPct')});
     }else if(str(f,'action')==='calibration'){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode'),bgWeight:nullableNumber(f,'bgWeight')??50});
     }else throw Error('Unknown action.');

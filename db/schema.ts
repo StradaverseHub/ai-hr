@@ -10048,6 +10048,11 @@ export const onehrPanel = pgTable('performance_onehr_panel', {
   resetAt:timestamp('reset_at',{withTimezone:true}),archiveReason:text('archive_reason'),
   answers: jsonb('answers'), remark: text('remark').notNull().default(''), submittedAt: timestamp('submitted_at',{withTimezone:true}), archivedAt: timestamp('archived_at',{withTimezone:true}),
 },t=>[index('performance_onehr_panel_review_idx').on(t.reviewId)]);
+/** One HR-entered achievement percentage per cycle/company; separate from Rewards' monetary PAT inputs. */
+export const assessmentProfitAchievement = pgTable('performance_assessment_profit_achievement', {
+ id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ achievementPct:numeric('achievement_pct'),revision:integer('revision').notNull().default(1),updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_profit_cycle_company_uq').on(t.cycleId,t.companyId)]);
 export const onehrCalibration = pgTable('performance_onehr_calibration', {
   id: id(), tenantId: tenantId(), cycleId: uuid('cycle_id').notNull().references(()=>reviewCycle.id),
   companyId: uuid('company_id').references(()=>company.id), name: text('name').notNull(), tier: text('tier').notNull(),
