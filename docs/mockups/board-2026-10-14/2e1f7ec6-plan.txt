@@ -1,0 +1,39 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Web Clocking already has a live time counter and tries to capture location without geofencing. Today's Log can hide captured coordinates, Optional photos require another choice, and employees lack a controlled Remove action.
+
+WHAT WE'LL CHANGE
+
+- Keep the layout. Add Remove for eligible clockings, showing the selected date, direction and time in a confirmation dialog with a mandatory remark.
+- Route removal through attendance correction approval. Show Removal requested while pending; only final approval excludes the clocking from calculations. Preserve original evidence and history.
+- Refuse stale, duplicate or payroll-protected removals. If removing one clocking creates a broken sequence, explain why and direct the employee to HR for a coordinated correction; never silently remove another record.
+- Label the counter Elapsed time today, explain that it is not payable time, and preserve its live updates and recovery after reopening.
+- Show actual recorded coordinates and any existing location description separately from geofencing. Retain denied, unavailable or timed-out capture explanations for new clockings; do not guess missing historical locations.
+- Automatically open the camera for Required and Optional photos. Required must succeed; Optional permits Skip and retry; Not Required bypasses the camera. Preserve review and retake.
+- Retain duplicate-submission protection, including checking an uncertain clocking's result before retrying.
+
+WHAT YOU'LL GET
+
+Controlled correction requests, clearer elapsed time and location, and photo capture started directly from the clocking buttons.
+
+GOOD TO KNOW
+
+This uses the existing approval route, not a new immediate-removal policy. Pending removal leaves calculations intact. Geofencing and photo requirements remain enforced independently.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: app/attendance/clock/clock-client.tsx already updates now every second, syncs with server time, refreshes on visibility/focus, attempts location at submission, and retains an uncertain command and requestId. core/attendance-clock-read.ts computes workedSeconds from active punches and exposes openSince, but its captures omit coordinates and capture-failure reasons. Today's Log uses locationName or geofencingNotRequired. startClock opens the camera only for required photos; optional currently stops at a choice. core/attendance-clock.ts retains available coordinates even when geofencing is off. core/attendance-punch-change.ts preserves voided punches and audit events. requestAttendanceCorrection currently allows clockChanges only for administrators.
+
+Graph: attendance_clock_capture owns immutable submission/photo/location evidence; attendance_punch owns active versus voided calculation input; attendance owns the derived day; attendance_correction and its workflow own removal approval. Add a narrow employee-owned removal command, deriving the employee and date from the session and selected owned punch. Do not expose arbitrary clockChanges to self-service or weaken the administrator guard. Server-construct the proposal from an authoritative locked snapshot minus only the selected eligible Web Clocking punch. Reuse the existing correction/workflow/effect/audit owners. Explicitly handle existing corrections and same-day duplicate pending requests. Use a stable removal request identity; re-check current clock-set baseline and dependencies at submission and final approval. Preserve capture evidence and IDs rather than deleting records.
+
+The counter is an elapsed active-interval display and must not subtract break rules independently or claim payroll hours. Test same-day multiple intervals, repeated directions, overnight shifts, corrected and removed records, timezone boundaries, refresh, reopened pages and server/browser clock skew. Decide sequence validity using the existing attendance model, including its supported out-first records; prevent removal from introducing a new unresolved dependency and provide the admin correction route.
+
+Persist new location capture status separately from geofence enforcement/result and policy snapshot, through the existing command transaction. Browser-reported denied/unavailable status is client-supplied evidence, not trusted proof of permission. Reject contradictory coordinates/status and preserve accuracy. Allocate any append-only migration only after checking the current journal and other reservations; historical absence remains unknown/not recorded. Update native/mobile and quick-clock consumers compatibly when changing shared types or command digests. Show existing location/address only when grounded; do not add an external geocoding provider or fabricate one. Restrict coordinates/photos to the employee and authorized scoped administrators.
+
+Acceptance: blank remark refused; cancel does not submit; eligible own punch only; cross-person/company/tenant IDs refused; pending status with unchanged calculation; final approval voids only the target and recomputes through canonical attendance/payroll controls; rejection leaves clocking active; original evidence and true requester/approver remain. Test stale baseline, duplicate retry, dependent pairs, payroll closure, concurrency and corrected-day ownership. Exercise all three photo modes, denied camera, optional skip/retake, denied/unavailable/timed-out GPS, both geofence settings, uncertain network success and repeat clicks. Review employee and administrator location displays and active/removed history. Ensure removal cannot race the normal clock command or duplicate a final effect.
+
+UNKNOWN: live browser reproduction was blocked by the browser client. Complete actual saved/reopened local journeys and authorized live checks before closure. Security, payroll-adjacent mutation and possible schema changes require the classifier's full verification, typecheck, production build and any required migration shadow/live-baseline rehearsal. No new immediate-removal policy or broad visual redesign is included.

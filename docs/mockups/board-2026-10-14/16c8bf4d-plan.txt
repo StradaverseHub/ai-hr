@@ -1,0 +1,36 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Correction to the previous plan: date-only Shift and Day Type editing, manual overtime overrides and existing-request links have since been built. Your latest feedback concerns the editing experience and clearer irregularity information.
+
+WHAT WE'LL CHANGE
+
+- Show Clock Date and Break Time as information by default. Put Edit at the heading's top-right; it opens a dialog containing Shift, Day Type, the required reason and applicable payroll confirmation.
+- Add Save and Cancel. Cancellation changes nothing; validation errors stay in the dialog. Saving refreshes the day's results, and reopening loads saved values.
+- Keep the selected date fixed and break time derived from the shift, as today. Leave-controlled day types remain managed through Leave.
+- Show each request's recorded subtype, submission date, original remarks, status and approval progress. Where an older subtype is missing, say it was not recorded.
+- Distinguish detected irregularities from employee requests. Show a clear empty state without inventing a request. Existing requests remain visible even when no attendance record exists for that day.
+- Let permitted administrators correct, approve the current stage or reject with a reason. Keep the same request and history in employee and HR views, identifying the actual administrator.
+
+WHAT YOU'LL GET
+
+Deliberate editing and clear, consistent irregularity information for the selected employee and day.
+
+GOOD TO KNOW
+
+Existing overtime controls, approval stages, Leave ownership and payroll protections remain. This does not alter future rosters or shared shift definitions.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: main application sources match the production sources by checksum. components/attendance-day-editor.tsx already calls saveAttendanceDayChangesAction with the baseline, reason and payroll consent. packs/attendance/day-adjustment.ts already reads attendance_correction by employment and date and attaches the existing workflows. components/attendance-day-applications.tsx omits requestKind, submission date, detected-state context and an empty message. app/attendance/individual/[date]/page.tsx returns early when row is absent, hiding applications despite having fetched them. My Attendance classifies detected days through app/attendance/requests/sections.ts and core/attendance-derive.ts; these are detected conditions, not submitted records.
+
+Graph: employment and date own one resolved attendance day; dated schedule overrides affect that day; Leave owns leave; attendance_correction owns the submitted request; attendance_workflow_request owns its approval stages. Keep these owners. Share or extract the canonical classifier without importing a page into a core service. Read stored requestKind for historical subtypes, with an honest unknown fallback. Do not recategorize a submitted request using a newly recalculated day. Do not fabricate requests while rendering detected exceptions.
+
+Move the existing schedule form into an accessible dialog with heading, keyboard close, focus return, fresh draft state on each open and pending-save protection. Keep date and derived break read-only. Reuse the existing write action, optimistic baseline, transaction and audit events. Add the header Edit affordance without leaving a second inline editor. Reuse the existing decision owner for approve/reject; never write status directly or impersonate the assigned approver. Preserve amendment, original request and event history. Refresh Attendance Detail, Application History, employee request status and irregularity views after decisions.
+
+Acceptance: demonstrate view, open, edit, cancel, save, reopen, validation failure, stale baseline and pending submission; authorized versus unauthorized/self access; Leave-controlled day; processed and closed payroll; unchanged future schedule and overtime overrides. Cover every stored subtype, unknown subtype, no request, detected-only, request without an attendance aggregate, other employee/date exclusion, multiple requests and multi-stage approval/rejection with true actor attribution. Verify the same request ID and status from employee and HR views. Update affected locale messages in all six languages and exercise the actual rendered pages at desktop and mobile widths.
+
+UNKNOWN: the live browser walkthrough was blocked by the browser client; source inspection is not evidence of the rendered journey. Complete representative local and authorized live verification before closure, followed by the deterministic release gate and build. No new migration is expected for this scope.

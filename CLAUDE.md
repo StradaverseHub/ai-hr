@@ -128,62 +128,46 @@ like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HI
 
 ## 4. The gate
 
-Two tiers (ADR-0094). Pick by asking the classifier, never by judgement: `gate-affected.sh` refuses
-(exit 3, `FULL GATE REQUIRED` + every reason) whenever the full tier is needed.
+Use the deterministic impact gate ([ADR-0114](docs/adr/0114-impact-aware-release-and-learning.md)).
+Complete the outcome walkthrough before the final gate. During development, run focused checks for the
+changed behavior and its consumers. Reuse valid evidence; a new commit calls for impact reassessment.
 
-    # AFFECTED tier — only when EVERY file changed since the deployed commit is presentational or docs
-    bash scripts/gate-affected.sh > /tmp/aihr-gate-affected.log 2>&1          # [BASE]; default: built_ref on the box, else main
-
-    # FULL tier — everything else (and always when a migration, lib/, core/, packs/, actions, routes, scripts or config changed)
     pnpm exec tsc --noEmit
-    CHUNKS=8 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1   # harness background flag, never a bare &
+    bash scripts/gate.sh > /tmp/aihr-gate-impact.log 2>&1
     pnpm exec next build
-    env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow            # whenever a migration is involved
+    env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow  # when migrations changed
 
-- **Affected tier is allowed** only when every changed file is: `components/**` (no `'use server'`),
-  `app/globals.css`, `messages/*.json`, `docs/**`, `*.md`, `test/**` (not the vitest setup files),
-  `public/**` (not `public/forms/**`), or an `app/**/page|layout|loading.tsx` whose changed lines contain
-  none of `await`, `import `, `scoped`, `session`, `redirect(`, `notFound(`, `permission`, `sql`, `db.`,
-  `withTenant`, `'use server'`, `fetch(`, `process.env`, `export async function`, `export function`,
-  `searchParams`. All of `lib/` is FULL. It refuses a dirty tree. It runs `vitest related` + every test
-  naming a changed file + every `-guard`/`-drift`/pack-drift guard + `pnpm test:browser` on a .tsx/.css
-  change, under both lock slots, one cluster rebuild if any of those touch the DB. Green writes
-  `.gate-receipt.json` `tier: "affected"`; red writes nothing. It does NOT run `tsc` or `next build`
-  (release runs `tsc`; the box builds before it migrates).
-- **The full gate runs in two parts.** (a) every no-DB file in ONE run through `vitest.nodb.config.ts`
-  (no globalSetup, `VITEST_MAX_WORKERS_NODB`, default 6), with every DB URL on a CLOSED port so a
-  misclassified file fails rather than passing on a leftover cluster; (b) the DB files chunked with a
-  rebuild per chunk, as before. Which side a file is on is computed (`scripts/gate-db-classify.ts`;
-  `$GATE_OUT/classify.tsv` says why), never hand-listed, and doubt means DB. `GATE_NODB_PROOF=1` runs
-  part (a) alone. Logs: `nodb.log` and `chunkN.log` in `$GATE_OUT` (default `/tmp/aihr-gate`). A green
-  full run on a clean tree writes `.gate-receipt.json` `tier: "full"`. Both scripts print the load
-  average first (a slow run under another project's 35 workers explains itself) and take both test-lock
-  slots themselves unless the caller already holds them.
-- The suite is ~1,220 node + dom files and writes more WAL than this machine retires: never a bare
-  `pnpm vitest run` for the full suite. The chunked gate rebuilds the cluster per DB chunk and asserts
-  vitest COUNTED as many files as it was asked (a file whose worker fails to spawn is not counted), and
-  that parts (a) + (b) counted the whole suite.
-  `CHUNKS=8` is part of the command: the script's default of 3 fills the 8 GB RAM disk, and in r422 one
-  chunk of 6 did too (88 files red on "No space left on device"); at 8 the peak was 22%, same wall time.
-- One vitest per cluster at a time, and nothing else on the cluster during a gate: no agent tests, no
-  dev server. Parallel agents each get their own `TEST_DB_NAMESPACE`; never invent one otherwise.
-- Red gate: `grep -c AssertionError /tmp/aihr-gate/chunkN.log` FIRST. Zero assertion errors means the
-  environment, not the code: cluster died (`ECONNREFUSED 5433`, `No space left`), `peak-disk=100%`
-  (that chunk is not evidence), OOM, or a second client. Memory-bound → `AIHR_RAMDISK_GB=0` passed TO
-  THE GATE (it rebuilds per chunk); under memory pressure → `VITEST_MAX_WORKERS=4`.
-- Read the exit code and file count out of the log, never the notification: a background task's exit
-  code is its last command's, and so is one read through a pipe. Redirect long commands to a file,
-  never a pipe. "Is it stuck?" → `grep Duration <log>`, never the process list; a redirected vitest
-  run prints nothing until it finishes.
-- Never `source .env.local` in the shell that runs `gate:shadow`: the exported URL beats the file the
-  script rewrites and the run reports a phantom silent skip.
-- **The harness kills a BACKGROUND command when system memory is low**, and this 18 GB machine sits
-  near 16 GB used before a test runs. A six-chunk background gate died in chunk 3 twice on 2026-09-11,
-  at 6 and at 4 workers. What ran clean: every chunk or batch in the FOREGROUND, ≤ 68 files at
-  `VITEST_MAX_WORKERS=3` (each under four minutes, inside one tool call), rebuilding the cluster before
-  each and adding the counted totals up to the full file count. Chunks 1-2 of a killed background gate
-  still count if their logs report exit 0 and the full file count; only re-run what never reported.
-- Green targeted tests and a green gate are claims about the tests, not about the work (§8).
+- `gate.sh` selects low/moderate-risk tests from old/new transitive imports, source-reading consumers,
+  changed tests, repository/access invariants and previous failures. High-risk or unknown impact runs
+  the full suite. Read the plan and uncertainty reasons in `$GATE_OUT/plan.json` (default
+  `/tmp/aihr-gate-impact`). `--plan-only` explains selection; `--shadow` validates it with a full run;
+  `--full` requests full regression. The classifier owns the decision.
+- Database, security roots, financial owners, jurisdiction, dependency/configuration and verification
+  machinery retain full verification. An error-message-only edit can qualify for selection when the
+  AST proves the remaining code is unchanged. An unsupported or uncovered module stays unknown.
+- A completed full candidate remains usable as the witness for a later small repair, including before
+  deployment. The selected gate issues fresh exact-commit evidence for the repair; release recomputes
+  the complete required set and validates the witness. Keep authentic receipts and observation records.
+- Both test slots and the shared database lock cover the run. No-DB files run against a closed port;
+  selected DB tests run in batches of at most 64 with a rebuild per batch. Explicit full runs use
+  `CHUNKS=8 bash scripts/gate-chunked.sh`; its classifier partitions and counts every suite file.
+- Read exit codes and counted totals from logs. A slice, missing worker, dirty tree, changed HEAD or
+  incomplete attempt cannot supply PASS. Diagnose a red result before repeating checks. Environment
+  faults require evidence (connection refusal, disk pressure, OOM or competing clients), not guesswork.
+- Gates and official releases save learning in `~/.aihr-gate-state/impact-learning`; successful builds
+  also mirror release evidence outside the server's source tree. `pnpm gate:learning` shows accumulated
+  classifications. Unknown cases retain their reasons; new coverage can establish a known category.
+  A pass alone never lowers risk. Past failures add tests; corrupt evidence falls back to full.
+- A full regression becomes due at the next gate after seven days or ten released versions. This is
+  event-driven, not a scheduled nightly job. Changes to selection or release verification need a full
+  validation and an explicit policy version.
+- The release's local TypeScript check covers the complete repository. Next's production check uses
+  `tsconfig.build.json` with the same strict options and every application root; test/CLI/tooling roots
+  are excluded there. Keep production type-error refusal enabled. Development uses `tsconfig.json`.
+- Type checks, production builds, migration shadow/live-baseline rehearsals and experience checks remain
+  separate claims. A selected test pass establishes only its recorded coverage.
+- Legacy presentational receipts and the existing full runner remain supported. Default new work to
+  `gate.sh`; receipt revalidation in the official release is mandatory.
 
 ## 5. Local database
 
@@ -226,13 +210,13 @@ script the round depends on
 → prove arrival with the zero-line dry-run of §3 → `GET localhost:3000/` on the box returns **401**
 (the password gate: healthy) → record the round (§12) → `graphify update .` (§11).
 
-- **The release never runs vitest** (r417, ADR-0094). It ships only a HEAD that `.gate-receipt.json`
-  covers (`result: PASS`, `sha` = HEAD) and prints the tier. `tier: "full"` (or a pre-tier receipt) ships.
-  `tier: "affected"` is re-judged against the diff from the DEPLOYED commit (`built_ref`) to HEAD with
-  the gate's own classifier: if that now needs FULL (more commits landed, a lib/ file crept in) or the
-  box cannot be asked, it REFUSES with the reasons. A missing, stale or red receipt refuses too. The fix
-  is always to run the gate (§4), never to hand-write a receipt. The gate is run on the commit that
-  ships: gate the merged main, or merge nothing after gating.
+- **The release never runs vitest.** It requires an authentic PASS receipt for the exact clean HEAD.
+  Full receipts cover the whole suite; legacy affected receipts are reclassified against production;
+  impact receipts require deterministic revalidation of production baseline, full witness where used,
+  environment, policy fingerprint and every selected/counted test. Missing, stale, altered or unknown
+  evidence refuses. Run `bash scripts/gate.sh`, then release the same candidate. Official successful
+  builds save the continuous-learning record; report and retry any evidence-mirroring warning. Record
+  live restart/health separately: a successful build does not prove the new service is active.
 - Server: `ssh -p 8288 ubuntu@203.142.6.241`, app `/opt/ai-hr`, no git checkout there. Default `node`
   is v18 and lacks `--env-file`; run scripts as
   `cd /opt/ai-hr && set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/<x>.ts`.

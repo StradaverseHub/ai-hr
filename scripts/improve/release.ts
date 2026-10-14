@@ -43,6 +43,9 @@ import { join } from 'node:path';
 import { tierFor } from '../gate-tier-git';
 import { decideReleaseGate, type DeployedVerdict, type GateReceipt } from './release-gate';
 import { markDeployed } from './remote';
+import { readyProductionBaseline } from '../gate-impact-git';
+import { validateImpactReceipt } from './release-impact-gate';
+import { recordReleaseLearning } from './release-learning';
 
 const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
 const PORT = process.env.IMPROVE_SSH_PORT ?? '8288';
@@ -396,6 +399,13 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
     receiptError,
     head,
     deployedVerdict: () => deployedVerdict(p.worktree),
+    impactVerdict: () => {
+      try {
+        const status=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000}));
+        const deployedRef=readyProductionBaseline(status);
+        return validateImpactReceipt(receipt!,{head,deployedRef,worktree:p.worktree});
+      } catch(e) { return {ok:false,lines:['✗ REFUSED: impact revalidation unavailable: '+String(e)]}; }
+    },
   });
   for (const line of decision.lines) console.log(line);
   if (!decision.ok) {
@@ -404,6 +414,10 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
 
   console.log('→ final gate: npx tsc --noEmit');
   run('npx', ['tsc', '--noEmit'], p.worktree, tscEnv());
+
+  let previousRef:string|undefined;
+  try { previousRef=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000})).built_ref; }
+  catch { console.warn('  Release-learning baseline unavailable; full gate evidence remains authoritative.'); }
 
   // 2. Announce the release on the box BEFORE a single byte of source moves. See buildPendingCommand.
   console.log(`→ announcing ${head.slice(0, 7)} on the server (so an interrupted rsync is detectable)`);
@@ -455,6 +469,20 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
         `  current state: ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"`,
     );
   }
+  try {
+    const learning=recordReleaseLearning({worktree:p.worktree,sha:head,buildId:status.built_build_id,previousRef,receipt:receipt!,status,
+      mirror:record=>{
+        const quote=(value:string)=>"'"+value.replace(/'/g,"'\"'\"'")+"'";
+        execFileSync('ssh',sshArgs(`cd ${quote(DIR)} && AIHR_IMPACT_STATE_DIR=${quote(DEPLOY_STATE_DIR+'/impact-learning')} /opt/node20/bin/node --import tsx scripts/gate-learning-cli.ts record-release`),
+          {input:JSON.stringify(record),encoding:'utf8',timeout:30000,maxBuffer:1024*1024});
+      }});
+    console.log(`→ release learning saved: ${learning.id}; ${learning.unknowns.length} unknown classifications; ${learning.transitions.length} risk transitions`);
+  } catch(e) {
+    // The build already succeeded. Never disguise it as a failed deploy because evidence mirroring
+    // failed; the local immutable record permits a safe retry and the warning makes the gap visible.
+    console.warn('⚠ release learning needs attention: '+String(e));
+  }
+
 }
 
 export async function releaseBuiltItem(p: {

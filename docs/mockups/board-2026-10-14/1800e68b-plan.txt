@@ -1,0 +1,27 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+The supplied Leave Credit attachment shows expiry information repeated beneath Available Balance. The same row already has an Expires column and an Expired status. The extra red line makes the balance harder to scan.
+
+WHAT WE'LL CHANGE
+
+- Show only the formatted available balance in each row of the Credits tab.
+- Remove the extra expired-amount and expiry-date sentence beneath that balance.
+- Keep the Expires column, status, credit earned and used values, totals and movement history available in their existing places.
+
+WHAT YOU'LL GET
+
+A cleaner Credits table with the balance, expiry date and status each shown in their own column. This only changes what is shown on this table, not any balances, expiry processing or calculations.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: inspected the submitted Leave Credit -Expires.pdf, including its screenshot. app/admin/leave-config/leave-credit/page.tsx renders formatDays(row.available) followed by a red expiredOn paragraph when row.expired is positive. Adjacent cells already render expiresOn and registerLabels[row.status]. This application source matches production by checksum.
+
+Remove only that conditional paragraph from the Available Balance cell. Keep core leave-credit register, expiry writers, ledger, summary values, status computation, column order and formatting unchanged. Do not remove shared expiredOn translations without checking all consumers. No migration or new business rule.
+
+Acceptance: render the Credits tab with expired, available, partially used and fully used records. Available Balance is a single formatted amount with no expiredOn sentence; Expires and Status remain visible and accurate. Compare before/after at desktop and narrow widths, with long employee names. Review populated and empty states and ensure existing row actions and movement history remain accessible. Use focused existing leave-credit table/register checks where relevant; no broad new test suite for this presentation-only change. Let the impact classifier choose release coverage, then complete the required typecheck and production build.
+
+UNKNOWN: live browser access was blocked by the browser client; the reporter's image and deployed-source match establish the rendering path, not a completed live walkthrough. Verify the changed screen in the local app and on the authorized deployed route before closure.

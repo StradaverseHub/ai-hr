@@ -27,13 +27,14 @@ export interface GateReceipt {
 export type DeployedVerdict = { deployedRef: string; verdict: TierVerdict } | { error: string };
 
 export type ReleaseGateDecision =
-  | { ok: true; tier: 'full' | 'affected'; lines: string[] }
+  | { ok: true; tier: 'full' | 'affected' | 'impact'; lines: string[] }
   | { ok: false; lines: string[] };
 
 const RUN_THE_GATE = [
   '  Run the gate in the worktree first (CLAUDE.md §4), then release again:',
   '    presentational-only diff:  bash scripts/gate-affected.sh > /tmp/aihr-gate-affected.log 2>&1',
-  '    anything else:             CHUNKS=6 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1',
+  '    default impact-aware gate: bash scripts/gate.sh > /tmp/aihr-gate-impact.log 2>&1',
+  '    explicit full gate:        CHUNKS=8 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1',
   '  release no longer runs the suite itself: a bare `pnpm vitest run` is the command this machine cannot take.',
 ];
 
@@ -44,6 +45,7 @@ export function decideReleaseGate(p: {
   head: string;
   /** Called only for an affected-tier receipt. */
   deployedVerdict: () => DeployedVerdict;
+  impactVerdict?: () => {ok:boolean;lines:string[]};
 }): ReleaseGateDecision {
   const short = (s: string) => s.slice(0, 7);
   const r = p.receipt;
@@ -68,6 +70,11 @@ export function decideReleaseGate(p: {
       ],
     };
   }
+  if (r.tier === 'impact') {
+    const proof=p.impactVerdict?.();
+    if(!proof)return {ok:false,lines:['✗ REFUSED: impact receipt requires deterministic release-time revalidation.',...RUN_THE_GATE]};
+    return proof.ok?{ok:true,tier:'impact',lines:proof.lines}:{ok:false,lines:proof.lines};
+  }
   if (r.tier !== 'affected') {
     return { ok: false, lines: [`✗ REFUSED: unknown gate tier '${r.tier}' in the receipt.`, ...RUN_THE_GATE] };
   }
@@ -91,7 +98,7 @@ export function decideReleaseGate(p: {
         `✗ REFUSED: tier=affected covers ${short(p.head)} (gated against ${r.base ? short(r.base) : '?'}), but the diff from the`,
         `  DEPLOYED commit ${short(d.deployedRef)} to HEAD now needs the FULL gate:`,
         ...d.verdict.reasons.map((x) => `    ✗ ${x}`),
-        '  Run the full gate: CHUNKS=6 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1',
+        '  Run the full gate: CHUNKS=8 bash scripts/gate-chunked.sh > /tmp/aihr-gate/run.log 2>&1',
       ],
     };
   }

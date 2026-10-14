@@ -13,6 +13,8 @@
     "test:dom": "vitest run --project dom",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "gate:cleanroom": "bash cleanroom-verify.sh",
+    "gate": "bash scripts/gate.sh",
+    "gate:learning": "node --import tsx scripts/gate-learning-cli.ts status",
     "gate:shadow": "bash scripts/shadow-migrate.sh",
     "gate:fresh": "bash scripts/fresh-migrate.sh",
     "db:start": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /opt/homebrew/var/aihr-pg16 -o '-p 5433 -k /tmp' -l /tmp/aihr-pg16.log start",

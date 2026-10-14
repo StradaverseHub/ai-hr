@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "mobile",
+    "test",
+    "scripts",
+    "scratchpad",
+    ".next/dev",
+    "vitest*.config.ts",
+    "drizzle.config.ts"
+  ]
+}
