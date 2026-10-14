@@ -352,9 +352,9 @@ $$;
 --> statement-breakpoint
 -- A narrow career-planning projection: skill evidence only, never peer identities or unreleased bands.
 CREATE FUNCTION app.assessment_skill_history(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce((SELECT jsonb_agg(jsonb_build_object('status',h.competency_status,'competencies',h.competencies) ORDER BY h.cycle_id,h.review_id)
+ SELECT coalesce((SELECT jsonb_agg(jsonb_build_object('reviewId',h.review_id,'status',h.competency_status,'competencies',h.competencies) ORDER BY h.cycle_id,h.review_id)
   FROM performance_onehr_review h WHERE h.tenant_id=r.tenant_id AND h.employment_id=r.employment_id
-   AND (h.competency_status='reviewed' OR app.is_self_person(e.person_id) AND h.competency_status='submitted')),'[]'::jsonb)
+   AND (h.competency_status='reviewed' OR app.is_self_person(e.person_id))),'[]'::jsonb)
  FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id()
   AND (app.is_self_person(e.person_id) OR app.onehr_manager(r.review_id) OR app.onehr_cycle_admin(r.cycle_id))
@@ -1366,6 +1366,10 @@ GRANT EXECUTE ON FUNCTION app.assessment_profit_read(uuid,uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 -- Assisted AI controls use the central catalog; absent overrides preserve the source default ON.
+-- A schema-only baseline has no catalog data. Ensure the global declaration, never a tenant entitlement.
+INSERT INTO module(code,name,category,description,depends_on,billable,is_core,parent_module,pack_backed,sort_order)
+ VALUES('performance','Performance','hr','Review cycles, goals and compensation recommendations.','["employees"]'::jsonb,true,false,NULL,true,130)
+ ON CONFLICT(code) DO NOTHING;
 INSERT INTO setting_definition (key,module_code,scope,value_type,default_value,default_on_install,customer_visible,description,sort_order) VALUES
 ('performance.ai_360_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Draft colleague feedback comments.',210),
 ('performance.ai_tc_enabled','performance','tenant','boolean','true'::jsonb,'true'::jsonb,true,'Draft technical competency and potential review remarks.',211),

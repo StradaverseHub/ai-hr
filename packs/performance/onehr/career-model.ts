@@ -82,3 +82,22 @@ export function careerRoutes(profile:Profile,profiles:Profile[],have:Record<stri
   return [{profile:candidate,overlap:sourceRound(overlap*100),shared,newSkills:theirs.length-shared,gap,readiness,pinned:kind==='pinned',score,lane:sameTrack?'deepen' as const:'cross' as const,step:gradeRank(candidate.grade)>gradeRank(profile.grade)?'up' as const:'same' as const,group:readiness==null?'related' as const:readiness>=60?'closest' as const:readiness>=25?'stretch' as const:'longer' as const}];
  }).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.readiness??-1)-(a.readiness??-1)||b.score-a.score||(a.profile.jobTitle??a.profile.name).localeCompare(b.profile.jobTitle??b.profile.name)||a.profile.id.localeCompare(b.profile.id)).slice(0,limit);
 }
+
+/** The career map can show the ladder; the next-move picker is bounded by the person's actual grade. */
+export function careerGradeChoices<T extends {grade:string|number|null}>(roles:T[],current:string|number|null,span=2):T[]{
+ if(current==null)return roles;
+ const rank=gradeRank(String(current));
+ return roles.filter(role=>{const distance=gradeRank(String(role.grade??''))-rank;return distance>=0&&distance<=span;});
+}
+/** Source candidate order: rank the reviewed-evidence map, take nine, THEN cap the grade span. */
+export function careerDirections(profile:Profile|null,profiles:Profile[],reviewed:Record<string,number>,currentGrade:string|null,overrides:NonNullable<Policy['careerRoutes']>=[]){
+ if(!profile)return [];
+ return careerGradeChoices(careerRoutes(profile,profiles,reviewed,overrides).map(route=>route.profile),currentGrade);
+}
+
+/** Pending self answers are planning context only. A private edit replaces this review's prior claim. */
+export function careerSkillEvidence(records:{reviewId?:string;status:string;competencies:Competency[]}[],current?:{reviewId:string;status:string;competencies:Competency[]}){
+ const reviewed=demonstratedSkills(records);
+ const planning=demonstratedSkills(current?[...records.filter(r=>r.reviewId!==current.reviewId),current]:records,true);
+ return {reviewed,planning};
+}

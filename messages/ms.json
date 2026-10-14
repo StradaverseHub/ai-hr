@@ -18238,6 +18238,16 @@
       "suggestion": "Ayat yang dicadangkan",
       "discard": "Buang",
       "keep": "Gunakan ayat"
+    },
+    "careerDraft": {
+      "title": "Draf pelan kerjaya anda",
+      "help": "Semak cadangan matlamat dan aspirasi jangka panjang berdasarkan peranan pilihan serta penilaian anda. Pilih mobiliti sendiri.",
+      "generate": "Draf pelan",
+      "saveDirection": "Simpan hala tuju pilihan sebelum mendraf pelan.",
+      "empty": "Tiada jurang lanjut atau aspirasi kosong untuk didraf.",
+      "preview": "Semak cadangan. Pilihan yang disimpan menjadi draf peribadi untuk diedit sebelum dikongsi.",
+      "keepAspiration": "Simpan aspirasi jangka panjang",
+      "keep": "Simpan draf pilihan"
     }
   },
   "allowanceV2": {

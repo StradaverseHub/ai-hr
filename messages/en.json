@@ -18238,6 +18238,16 @@
       "suggestion": "Suggested wording",
       "discard": "Discard",
       "keep": "Keep wording"
+    },
+    "careerDraft": {
+      "title": "Draft your career plan",
+      "help": "Review suggested goals and a longer-term aspiration based on your chosen role and assessment. Choose mobility yourself.",
+      "generate": "Draft plan",
+      "saveDirection": "Save your chosen direction before drafting the plan.",
+      "empty": "Your plan has no further gaps or blank aspiration to draft.",
+      "preview": "Review the suggestions. Keeping them saves a private draft for you to edit before sharing.",
+      "keepAspiration": "Keep longer-term aspiration",
+      "keep": "Keep selected draft"
     }
   },
   "allowanceV2": {

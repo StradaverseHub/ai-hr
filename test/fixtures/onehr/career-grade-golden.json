@@ -1,0 +1,337 @@
+{
+  "source": "app.py _jg_rank and _career_cap_grades; isolated AST, source app never imported",
+  "cases": [
+    {
+      "grade": null,
+      "roles": [
+        {
+          "id": "None",
+          "grade": null
+        },
+        {
+          "id": "H",
+          "grade": "H"
+        },
+        {
+          "id": "0",
+          "grade": 0
+        },
+        {
+          "id": "1",
+          "grade": 1
+        },
+        {
+          "id": "2",
+          "grade": 2
+        },
+        {
+          "id": "11",
+          "grade": 11
+        },
+        {
+          "id": "12",
+          "grade": 12
+        },
+        {
+          "id": "13",
+          "grade": 13
+        },
+        {
+          "id": "14",
+          "grade": 14
+        },
+        {
+          "id": "15",
+          "grade": 15
+        },
+        {
+          "id": "22",
+          "grade": 22
+        }
+      ],
+      "expected": [
+        "None",
+        "H",
+        "0",
+        "1",
+        "2",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "22"
+      ]
+    },
+    {
+      "grade": "H",
+      "roles": [
+        {
+          "id": "None",
+          "grade": null
+        },
+        {
+          "id": "H",
+          "grade": "H"
+        },
+        {
+          "id": "0",
+          "grade": 0
+        },
+        {
+          "id": "1",
+          "grade": 1
+        },
+        {
+          "id": "2",
+          "grade": 2
+        },
+        {
+          "id": "11",
+          "grade": 11
+        },
+        {
+          "id": "12",
+          "grade": 12
+        },
+        {
+          "id": "13",
+          "grade": 13
+        },
+        {
+          "id": "14",
+          "grade": 14
+        },
+        {
+          "id": "15",
+          "grade": 15
+        },
+        {
+          "id": "22",
+          "grade": 22
+        }
+      ],
+      "expected": [
+        "None",
+        "H",
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    {
+      "grade": 12,
+      "roles": [
+        {
+          "id": "None",
+          "grade": null
+        },
+        {
+          "id": "H",
+          "grade": "H"
+        },
+        {
+          "id": "0",
+          "grade": 0
+        },
+        {
+          "id": "1",
+          "grade": 1
+        },
+        {
+          "id": "2",
+          "grade": 2
+        },
+        {
+          "id": "11",
+          "grade": 11
+        },
+        {
+          "id": "12",
+          "grade": 12
+        },
+        {
+          "id": "13",
+          "grade": 13
+        },
+        {
+          "id": "14",
+          "grade": 14
+        },
+        {
+          "id": "15",
+          "grade": 15
+        },
+        {
+          "id": "22",
+          "grade": 22
+        }
+      ],
+      "expected": [
+        "12",
+        "13",
+        "14"
+      ]
+    },
+    {
+      "grade": "12",
+      "roles": [
+        {
+          "id": "None",
+          "grade": null
+        },
+        {
+          "id": "H",
+          "grade": "H"
+        },
+        {
+          "id": "0",
+          "grade": 0
+        },
+        {
+          "id": "1",
+          "grade": 1
+        },
+        {
+          "id": "2",
+          "grade": 2
+        },
+        {
+          "id": "11",
+          "grade": 11
+        },
+        {
+          "id": "12",
+          "grade": 12
+        },
+        {
+          "id": "13",
+          "grade": 13
+        },
+        {
+          "id": "14",
+          "grade": 14
+        },
+        {
+          "id": "15",
+          "grade": 15
+        },
+        {
+          "id": "22",
+          "grade": 22
+        }
+      ],
+      "expected": [
+        "12",
+        "13",
+        "14"
+      ]
+    },
+    {
+      "grade": 13,
+      "roles": [
+        {
+          "id": "None",
+          "grade": null
+        },
+        {
+          "id": "H",
+          "grade": "H"
+        },
+        {
+          "id": "0",
+          "grade": 0
+        },
+        {
+          "id": "1",
+          "grade": 1
+        },
+        {
+          "id": "2",
+          "grade": 2
+        },
+        {
+          "id": "11",
+          "grade": 11
+        },
+        {
+          "id": "12",
+          "grade": 12
+        },
+        {
+          "id": "13",
+          "grade": 13
+        },
+        {
+          "id": "14",
+          "grade": 14
+        },
+        {
+          "id": "15",
+          "grade": 15
+        },
+        {
+          "id": "22",
+          "grade": 22
+        }
+      ],
+      "expected": [
+        "13",
+        "14",
+        "15"
+      ]
+    },
+    {
+      "grade": 22,
+      "roles": [
+        {
+          "id": "None",
+          "grade": null
+        },
+        {
+          "id": "H",
+          "grade": "H"
+        },
+        {
+          "id": "0",
+          "grade": 0
+        },
+        {
+          "id": "1",
+          "grade": 1
+        },
+        {
+          "id": "2",
+          "grade": 2
+        },
+        {
+          "id": "11",
+          "grade": 11
+        },
+        {
+          "id": "12",
+          "grade": 12
+        },
+        {
+          "id": "13",
+          "grade": 13
+        },
+        {
+          "id": "14",
+          "grade": 14
+        },
+        {
+          "id": "15",
+          "grade": 15
+        },
+        {
+          "id": "22",
+          "grade": 22
+        }
+      ],
+      "expected": [
+        "22"
+      ]
+    }
+  ]
+}

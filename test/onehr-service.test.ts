@@ -679,6 +679,37 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.closeCycle(a,{cycleId});await expect(perf.generateAssessmentProfiles(a,cycleId)).rejects.toThrow(/archived/);
   });
 
+  it('separates reviewed career readiness from private planning skills and validates next moves against the live grade',async()=>{
+    const cycle=(await perf.getOnehrCycle(a,cycleId))!,current=cycle.policy.profiles[0];
+    const role=(name:string,grade:string,level:number)=>({companyId:b.companyId,name,grade,track:'Engineering',competencies:[{id:`delivery-${level}`,principle:'Technical',text:`Delivery at level ${level}`,future:false,skillTitle:'Delivery',skillLevel:level}]});
+    await perf.saveAssessmentCatalogueProfile(a,cycleId,cycle.revision,current.id,role('Current','12',2));
+    const next=await perf.saveAssessmentCatalogueProfile(a,cycleId,(await perf.getOnehrCycle(a,cycleId))!.revision,null,role('Next','14',3));
+    const far=await perf.saveAssessmentCatalogueProfile(a,cycleId,(await perf.getOnehrCycle(a,cycleId))!.revision,null,role('Later','15',4));
+    const generation=await perf.generateAssessmentProfiles(a,cycleId);await perf.generateAssessmentProfiles(a,cycleId,generation.token);
+    let v=await view(self);const statement=v.competencies[0];
+    await perf.saveAssessmentDraft(self,reviewId,v.revision,null,{kind:'competency_self',answers:{[statement.id]:{answer:'yes',remark:'Private claim for my plan.'}},remark:''});
+    v=await view(self);expect(v.careerRoutes.map(r=>r.profile.id)).toContain(far);expect(v.careerDirections.map(p=>p.id)).toEqual([next]);
+    expect(v.careerRoutes.find(r=>r.profile.id===next)).toMatchObject({readiness:null,gap:{missing:1}});
+    const career={aspiration:'Grow toward the next role',mobility:null,mobilityNote:'',targetProfileId:next};
+    await perf.saveAssessmentCareerProfile(self,reviewId,null,career);v=await view(self);
+    expect(v.careerTargetGap?.rows).toMatchObject([{title:'Delivery',have:2,required:3,state:'stretch'}]);
+    expect((await view(mgr)).careerTargetGap?.rows).toMatchObject([{title:'Delivery',have:null,state:'missing'}]);
+    await expect(perf.saveAssessmentCareerProfile(self,reviewId,v.careerProfile!.revision,{...career,targetProfileId:far})).rejects.toThrow(/current career options/);
+    await expect(perf.saveAssessmentCareerProfile(self,reviewId,v.careerProfile!.revision,{...career,targetProfileId:randomUUID()})).rejects.toThrow(/active role/);
+    const [higher]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'13',name:'Current grade 13'}).returning();
+    await owner.db.update(schema.employment).set({gradeId:higher.id}).where(eq(schema.employment.id,subject.employmentId));
+    v=await view(self);expect(v.grade).toBe('12');expect(v.careerDirections.map(p=>p.id).sort()).toEqual([next,far].sort());
+    await perf.saveAssessmentCareerProfile(self,reviewId,v.careerProfile!.revision,{...career,targetProfileId:far});
+    // A later grade change narrows NEW choices but does not erase the person's existing aspiration.
+    const [original]=await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.code,'12'));
+    await owner.db.update(schema.employment).set({gradeId:original.id}).where(eq(schema.employment.id,subject.employmentId));
+    v=await view(self);expect(v.careerDirections.map(p=>p.id)).toEqual([next]);
+    await perf.saveAssessmentCareerProfile(self,reviewId,v.careerProfile!.revision,{...career,targetProfileId:far,aspiration:'Retain my chosen direction'});
+    expect((await view(self)).careerProfile?.career.targetProfileId).toBe(far);
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,1,{kind:'competency_self',answers:{[statement.id]:{answer:'no',remark:'Corrected my private claim.'}},remark:''});
+    expect((await view(self)).careerTargetGap?.rows).toMatchObject([{have:null,state:'missing'}]);
+  });
+
   it('calibrates through live assigned scopes, bans self calibration, and revokes stale reviewer access',async()=>{
     await complete();const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Calibrator',primaryEmail:`${randomUUID()}@onehr.test`}).returning();
     const userId=await createAppUser(b.tenantId,p.id,'employee'),calibrator={...self,userId,personId:p.id};
@@ -1576,6 +1607,43 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.releaseOnehrResult(a,reviewId,'feedback',false);
     await expect(perf.applyAssessmentDevelopmentGoals(self,reviewId,null,{careerRevision:null,career:{aspiration:'Develop delivery',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]},result.goals,result.sourceDigest)).rejects.toThrow(/released feedback or reviewed competencies changed/);expect((await view(self)).plans).toEqual([]);
   });
+  it('previews a whole career plan from weak KPIs, preserves human choices and saves only explicitly kept draft content',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery reliability',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,10,20,30,40]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Agreed targets');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:0,note:'The agreed delivery needs improvement.'}],'Review the delivery gaps.');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>request.system.includes('aspirationLong')?JSON.stringify({aspirationLong:'I aim to deepen my delivery practice.',mobility:'relocate',targetProfileId:randomUUID(),strengths:'Invented strength'}):JSON.stringify([{i:0,area:'Invented goal',experience:'Lead a delivery retrospective',exposure:'Ask a mentor',education:'Study delivery planning',dueOn:'2099-01-01'}]));
+    const result=await perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID());expect(result).toMatchObject({remaining:4,goals:[{area:'Delivery reliability',onJob:'Lead a delivery retrospective'}],aspirationLong:'I aim to deepen my delivery practice.'});
+    expect(generateDraft).toHaveBeenCalledTimes(2);expect((await view(self)).plans).toEqual([]);expect((await view(self)).careerProfile).toBeNull();expect((await view(self)).careerDraftQuota?.remaining).toBe(4);
+    const career={aspiration:'My chosen direction',aspirationLong:'',mobility:null,mobilityNote:'My own travel preference',targetProfileId:null},manual={id:randomUUID(),area:'My manual goal',dueOn:`${year+1}-06-01`,onJob:'My own action',fromOthers:'',formalLearning:'',status:'not_started'};
+    await expect(perf.applyAssessmentCareerPlan(self,reviewId,null,{careerRevision:null,career,goals:[manual]},[{...result.goals[0],area:'Invented goal'}],result.aspirationLong,result.sourceDigest)).rejects.toThrow(/available development gaps/);
+    await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'idp',false);
+    await perf.applyAssessmentCareerPlan(self,reviewId,null,{careerRevision:null,career,goals:[manual]},result.goals,result.aspirationLong,result.sourceDigest);
+    const v=await view(self);expect(v.plans[0]).toMatchObject({status:'draft',career:{aspiration:'My chosen direction',aspirationLong:result.aspirationLong,mobility:null,mobilityNote:'My own travel preference',targetProfileId:null}});
+    expect(v.plans[0].goals.map(g=>g.area)).toEqual(['My manual goal','Delivery reliability']);expect(v.plans[0].goals[0].dueOn).toBe(manual.dueOn);expect(v.plans[0].goals[1].dueOn).toBe('');expect((await view(mgr)).plans).toEqual([]);
+    expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);expect((await owner.db.select().from(schema.assessmentAiUse)).map(r=>r.fieldKey)).toEqual([`career_draft:${cycleId}`]);
+    await expect(perf.suggestAssessmentCareerPlan(mgr,reviewId,randomUUID())).rejects.toThrow(/only for your/);
+  });
+  it('counts partial whole-plan drafts independently and refuses stale assessment or career changes',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    // A profile-only success still counts; a malformed action response does not invent generic goals.
+    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>request.system.includes('aspirationLong')?'\n{"aspirationLong":"Grow my practice"}':'not JSON');
+    const request=randomUUID(),first=await perf.suggestAssessmentCareerPlan(self,reviewId,request);expect(first).toMatchObject({goals:[],aspirationLong:'Grow my practice',remaining:4});
+    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,request)).rejects.toThrow(/already completed/);expect(generateDraft).toHaveBeenCalledTimes(2);
+    for(let i=0;i<4;i++)expect((await perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).remaining).toBe(3-i);
+    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/All 5 career plan/);
+    expect((await view(self)).developmentQuota?.remaining).toBe(5);
+    const career={aspiration:'My own direction',aspirationLong:'My own longer-term words',mobility:'stay',mobilityNote:'',targetProfileId:null};
+    await perf.saveAssessmentCareerProfile(self,reviewId,null,career);
+    await expect(perf.applyAssessmentCareerPlan(self,reviewId,null,{careerRevision:1,career,goals:[]},[],first.aspirationLong,first.sourceDigest)).rejects.toThrow(/changed/);
+    expect((await view(self)).careerProfile?.career.aspirationLong).toBe('My own longer-term words');expect((await view(self)).plans).toEqual([]);
+  });
+  it('rejects an in-flight whole-plan draft after evidence release is withdrawn without charging quota',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>{if(request.system.includes('aspirationLong'))return '{"aspirationLong":"Grow my practice"}';await perf.releaseOnehrResult(a,reviewId,'feedback',false);return JSON.stringify([{area:'Facilitation',item_ids:['lp:0'],experience:'Lead a workshop'}]);});
+    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await view(self)).plans).toEqual([]);
+  });
+
   it('reauthorizes delayed review notices from current work instead of event recipient lists',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);
     const matrix=peers[0],outsider=peers[1],id=randomUUID();

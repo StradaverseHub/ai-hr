@@ -14,7 +14,7 @@ import { developmentItems,parseDevelopmentSuggestions,type SuggestedDevelopmentG
 import type { AnonymousFeedbackReport } from './feedback-report';
 const sourceDigest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const reportSchema=z.object({statements:z.array(z.object({id:z.string(),principle:z.string(),text:z.string(),future:z.boolean(),agreementPct:z.number().finite().min(0).max(100).nullable()})),remarks:z.array(z.string()),comments:z.array(z.object({principle:z.string(),text:z.string()}))});
-async function source(ctx:SessionContext,reviewId:string,requireAi=true){
+export async function assessmentDevelopmentContext(ctx:SessionContext,reviewId:string,requireAi=true){
  z.uuid().parse(reviewId);const view=await getOnehrReview(ctx,reviewId);
  if(!view?.self||!view.participating||!view.policy.modules.idp||view.policy.kind!=='year_end')throw Error('Development suggestions are available only for your participating year-end plan.');
  if(requireAi&&!view.aiFeatures.idp)throw Error('AI goal suggestions are unavailable. You can add development goals yourself.');
@@ -24,6 +24,7 @@ async function source(ctx:SessionContext,reviewId:string,requireAi=true){
  const gaps=developmentItems(report,view.competencies,view.competencyStatus),room=Math.max(0,(view.policy.idpMaxGoals||100)-(plan?.goals.filter(g=>[g.area,g.onJob,g.fromOthers,g.formalLearning].some(s=>s.trim())).length??0));
  return {view,plan,gaps,room};
 }
+const source=assessmentDevelopmentContext;
 export async function suggestAssessmentDevelopmentGoals(ctx:SessionContext,reviewId:string,requestId:string){
  z.uuid().parse(requestId);const before=await source(ctx,reviewId),fieldKey=`idp_goals:${before.view.cycle.id}`;
  const quota=before.view.developmentQuota??await withPerformanceTenant(ctx,tx=>assessmentAiQuotaTx(tx,ctx,fieldKey));

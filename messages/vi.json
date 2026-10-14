@@ -18238,6 +18238,16 @@
       "suggestion": "Cách diễn đạt được gợi ý",
       "discard": "Bỏ",
       "keep": "Dùng câu chữ"
+    },
+    "careerDraft": {
+      "title": "Soạn kế hoạch nghề nghiệp",
+      "help": "Xem xét mục tiêu và nguyện vọng dài hạn được đề xuất dựa trên vai trò đã chọn và đánh giá của bạn. Tự chọn nguyện vọng điều chuyển.",
+      "generate": "Soạn kế hoạch",
+      "saveDirection": "Lưu hướng nghề nghiệp đã chọn trước khi soạn kế hoạch.",
+      "empty": "Không còn khoảng trống phát triển hoặc nguyện vọng trống để soạn.",
+      "preview": "Xem xét đề xuất. Nội dung giữ lại được lưu thành bản nháp riêng để bạn sửa trước khi chia sẻ.",
+      "keepAspiration": "Giữ nguyện vọng dài hạn",
+      "keep": "Giữ bản nháp đã chọn"
     }
   },
   "allowanceV2": {

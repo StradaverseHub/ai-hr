@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTechnicalProfile, technicalProfilePlan, demonstratedSkills, careerGap, careerRoutes } from '../packs/performance/onehr/career-model';
+import { resolveTechnicalProfile, technicalProfilePlan, demonstratedSkills, careerGap, careerRoutes, careerDirections, careerGradeChoices, careerSkillEvidence } from '../packs/performance/onehr/career-model';
+import gradeGolden from './fixtures/onehr/career-grade-golden.json';
 import type { Competency, Policy, Statement } from '../packs/performance/onehr/model';
 
 type Profile=Policy['profiles'][number];
@@ -8,6 +9,24 @@ const profile=(id:string,overrides:Partial<Profile>={}):Profile=>({id,name:id,gr
 const identity={companyId:'company',employmentId:'employment',department:'Engineering',title:'Engineer',grade:'12'};
 
 describe('source technical architecture and career rules',()=>{
+ it('matches the isolated source grade-span cases, including letter and unknown grades',()=>{
+  for(const example of gradeGolden.cases)expect(careerGradeChoices(example.roles,example.grade).map(r=>r.id)).toEqual(example.expected);
+ });
+ it('caps next-role choices after the nine ranked map entries and never expands choices without a mapped role',()=>{
+  const current=profile('current'),same=profile('same'),next=profile('next',{grade:'14'}),far=profile('far',{grade:'15'});
+  expect(careerRoutes(current,[same,next,far],{}).map(r=>r.profile.id)).toContain('far');
+  expect(careerDirections(current,[same,next,far],{},'12').map(r=>r.id).sort()).toEqual(['next','same']);
+  expect(careerDirections(current,[same,next,far],{},'13').map(r=>r.id).sort()).toEqual(['far','next']);
+  expect(careerDirections(null,[same,next,far],{},null)).toEqual([]);
+  const top=Array.from({length:9},(_,i)=>profile(`top-${i}`,{jobTitle:`A${i}`,grade:'15'}));
+  expect(careerDirections(current,[...top,profile('tenth',{jobTitle:'Z',grade:'13'})],{},'12')).toEqual([]);
+ });
+ it('keeps private self claims out of career readiness and replaces a pending persisted claim when privately changed',()=>{
+  const yes:Competency={...skill('delivery','Delivery',4),self:'yes',manager:null,managerRemark:''};
+  const records=[{reviewId:'past',status:'reviewed',competencies:[{...yes,skillLevel:2,manager:'yes' as const}]},{reviewId:'now',status:'pending',competencies:[yes]}];
+  expect(careerSkillEvidence(records)).toEqual({reviewed:{Delivery:2},planning:{Delivery:4}});
+  expect(careerSkillEvidence(records,{reviewId:'now',status:'pending',competencies:[{...yes,self:'no'}]})).toEqual({reviewed:{Delivery:2},planning:{Delivery:2}});
+ });
  it('uses exact role before self-pick, then title-grade and title with deterministic ties',()=>{
   const exact=profile('z'),other=profile('a',{department:'Operations'}),picked=profile('picked',{jobTitle:'Designer'});
   expect(resolveTechnicalProfile([other,exact,picked],identity,'picked')).toMatchObject({profile:{id:'z'},source:'roster'});
