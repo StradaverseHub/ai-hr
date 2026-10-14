@@ -1,7 +1,10 @@
+import { notFound } from 'next/navigation';
+import { PersonalRecord } from '@/app/performance/workspace/personal-record';
+import { RecordDrawer } from '@/app/performance/workspace/record-drawer';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { onehrAssignments, myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/packs/performance/service';
+import { getAssessmentPersonalRecord, onehrAssignments, myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/packs/performance/service';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   myCreateGoal,
@@ -36,11 +39,11 @@ import {
 export default async function MyPerformancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; recordFor?: string; record?: string; recordTab?: string; planYear?: string }>;
 }) {
   const t = await getTranslations('me');
   const s = await getSession();
-  const { error } = await searchParams;
+  const { error,recordFor,record,recordTab,planYear } = await searchParams;
 
   const [reviews, goals, checkins, feedbackRequests, onehr] = await Promise.all([
     myReviews(s),
@@ -50,6 +53,11 @@ export default async function MyPerformancePage({
     onehrAssignments(s),
   ]);
 
+  // Own history remains reachable when no cycle has current work. The record service rechecks ownership and releases.
+  const ownRecordIds=new Set(reviews.map(r=>r.reviewId));
+  const recordAnchor=recordFor?onehr.reviews.find(r=>r.id===recordFor&&ownRecordIds.has(r.id)):undefined;
+  if(recordFor&&!recordAnchor)notFound();
+  const personalRecord=recordAnchor?await getAssessmentPersonalRecord(s,recordAnchor.id,record,planYear?Number(planYear):undefined):null;
   const standardReviews=reviews.filter(r=>!onehr.reviews.some(a=>a.id===r.reviewId));
   const standardFeedbackRequests=feedbackRequests.filter(r=>!onehr.feedback.some(a=>a.id===r.requestId));
   const onehrText=await getTranslations('onehr');
@@ -62,8 +70,9 @@ export default async function MyPerformancePage({
       />
 
       <ErrorBanner message={error} />
+      {personalRecord&&recordAnchor&&<RecordDrawer title={onehrText('workspace.record')} closeLabel={onehrText('personalRecord.close')} returnTo="/me/performance"><PersonalRecord v={personalRecord} tab={recordTab} baseHref={`/me/performance?recordFor=${recordAnchor.id}`}/></RecordDrawer>}
       <Link data-tour="performance-journey-entry" href="/performance/workspace" className="flex min-h-11 items-center justify-between rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{onehrText('workspace.title')}<span className="text-sm font-normal">{onehrText('workspace.description')} →</span></Link>
-      {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle} · {a.periodEnd}</Link></p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}
+      {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle} · {a.periodEnd}</Link>{ownRecordIds.has(a.id)&&<Link href={`/me/performance?recordFor=${a.id}&record=${a.cycleStatus==='closed'?a.id:'current'}`} className="ml-4 inline-flex min-h-11 items-center text-sm text-primary underline" aria-label={`${onehrText('workspace.record')} · ${a.cycle}`}>{onehrText('workspace.record')}</Link>}</p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}
 
       {/* Performance reviews */}
       {standardReviews.length > 0 && (

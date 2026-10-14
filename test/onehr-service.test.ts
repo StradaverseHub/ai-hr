@@ -795,6 +795,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     record=await perf.getAssessmentPersonalRecord(self,reviewId);
     expect(record.current).toBeNull();expect(record.history).toHaveLength(1);expect(record.selected?.performance).toBeNull();
+    expect(await perf.performanceWorkspace(self)).toEqual([]);expect((await perf.onehrAssignments(self)).reviews.find(r=>r.id===reviewId)?.cycleStatus).toBe('closed');
   });
   it('records sign-offs and locked bands, exports only the scoped record, and freezes it at archive',async()=>{
     expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows).toEqual([]);
