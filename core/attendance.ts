@@ -1,3 +1,7 @@
+import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
+import { clockCommandContext } from '../lib/clock-command-context';
+import { myEmployment } from './read';
+import { removalPreservesSequence } from '../lib/attendance-removal';
 /**
  * Attendance — generic, jurisdiction-neutral time engine (ADR-0011).
  *
@@ -7,7 +11,7 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
-import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, type ClockChanges } from './attendance-punch-change';
+import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, AttendancePayrollClosedError, type ClockChanges } from './attendance-punch-change';
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
@@ -85,6 +89,7 @@ import {
   assignment,
   attendance,
   attendanceCorrection,
+  attendanceClockCapture,
   // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
   attendanceCorrectionAttachment,
   domainEvent,
@@ -3466,58 +3471,7 @@ export async function requestAttendanceCorrection(
         await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
       }
     }
-    const [original] = clockChanges || checkIn || checkOut ? await tx.select({
-      id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
-    }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
-    const originalClockSnapshot = clockChanges || checkIn || checkOut ? {
-      version: 1 as const, attendanceId: original?.id ?? null,
-      originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
-      capturedAt: new Date().toISOString(),
-    } : null;
-    const [row] = await tx
-      .insert(attendanceCorrection)
-      .values({
-        tenantId: ctx.tenantId,
-        employmentId: p.employmentId,
-        attendanceDate: p.date,
-        proposedCheckIn: checkIn,
-        proposedCheckOut: checkOut,
-        requestedOtMinutes,
-        reason,
-        plannedStartTime,
-        plannedEndTime,
-        otReasonCategory,
-        remark,
-        requestKind,
-        originalClockSnapshot,
-        clockChanges,
-      })
-      .returning({ id: attendanceCorrection.id });
-    await snapshotAttendanceWorkflowTx(tx, ctx, row.id, p.employmentId, attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'attendance-correction',
-      aggregateId: row.id,
-      eventType: 'attendance-correction.requested',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: {
-        employmentId: p.employmentId,
-        date: p.date,
-        checkIn,
-        checkOut,
-        requestedOtMinutes,
-        reason,
-        plannedStartTime,
-        plannedEndTime,
-        otReasonCategory,
-        remark,
-        requestKind,
-        originalClockSnapshot,
-        clockChanges,
-      },
-    });
-    return { correctionId: row.id };
+    return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind});
   }).catch((error: unknown) => {
     // Preserve the database's atomic pending-request fence, including simultaneous submissions.
     let cause: unknown = error;
@@ -6282,4 +6236,102 @@ export async function attendanceDateOverridesTx(tx:Tx,employmentIds:string[],fro
         breakEnd:schedule.breakPeriods?.length===1?schedule.breakPeriods[0].end.slice(0,5):null,breakMinutes:schedule.breakMinutes}});
   }
   return result;
+}
+
+/** Shared submission owner: employee removal constructs a narrow proposal before entering here. */
+async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
+  id?:string;removalPunchId?:string;employmentId:string;date:string;clockChanges:ClockChanges|null;
+  checkIn:string|null;checkOut:string|null;requestedOtMinutes:number|null;reason:string;
+  plannedStartTime:string|null;plannedEndTime:string|null;otReasonCategory:OtReasonCategory|null;
+  remark:string|null;requestKind:AttendanceRequestKind;
+}){
+  const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
+    const [original] = clockChanges || checkIn || checkOut ? await tx.select({
+      id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
+    }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
+    const originalClockSnapshot = clockChanges || checkIn || checkOut ? {
+      version: 1 as const, attendanceId: original?.id ?? null,
+      originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
+      capturedAt: new Date().toISOString(),
+    } : null;
+    const [row] = await tx
+      .insert(attendanceCorrection)
+      .values({
+        ...(p.id?{id:p.id}:{}),
+        removalPunchId:p.removalPunchId??null,
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        attendanceDate: p.date,
+        proposedCheckIn: checkIn,
+        proposedCheckOut: checkOut,
+        requestedOtMinutes,
+        reason,
+        plannedStartTime,
+        plannedEndTime,
+        otReasonCategory,
+        remark,
+        requestKind,
+        originalClockSnapshot,
+        clockChanges,
+      })
+      .returning({ id: attendanceCorrection.id });
+    await snapshotAttendanceWorkflowTx(tx, ctx, row.id, p.employmentId, attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-correction',
+      aggregateId: row.id,
+      eventType: 'attendance-correction.requested',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        employmentId: p.employmentId,
+        date: p.date,
+        checkIn,
+        checkOut,
+        requestedOtMinutes,
+        reason,
+        plannedStartTime,
+        plannedEndTime,
+        otReasonCategory,
+        remark,
+        requestKind,
+        originalClockSnapshot,
+        clockChanges,
+      },
+    });
+    return { correctionId: row.id };
+}
+
+/** Own web punch only. The caller never supplies a subject, day, or replacement clock set. */
+export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}){
+  const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+  const reason=typeof p.reason==='string'?p.reason.trim():'';
+  if(!uuid.test(p.punchId)||!uuid.test(p.requestId)||!reason||reason.length>500||!/^[0-9a-f]{64}$/.test(p.baseline))throw new Error('Choose a clocking and enter a removal remark of at most 500 characters.');
+  const me=await myEmployment(ctx);if(!me)throw new Error('No active employee profile.');
+  if(p.clockContext!==clockCommandContext(ctx.tenantId,ctx.userId,me.employmentId))throw new Error('Your employee account changed. Reopen Web Clocking.');
+  return withTenant(ctx,async tx=>{
+    // Same fence as captureEmployeeClock, including a day that has never had a correction.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+me.employmentId},0))`);
+    const [previous]=await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,p.requestId)).limit(1);
+    if(previous){if(previous.employmentId!==me.employmentId||previous.removalPunchId!==p.punchId||previous.reason!==reason||previous.clockChanges?.baseline!==p.baseline)throw new Error('This removal identity is already in use.');return {correctionId:previous.id};}
+    const [target]=await tx.select({punch:attendancePunch,capture:attendanceClockCapture.id,deviceId:attendanceClockCapture.deviceId}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.id,p.punchId),eq(attendancePunch.employmentId,me.employmentId),eq(attendanceClockCapture.employmentId,me.employmentId))).limit(1);
+    if(!target||target.deviceId||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
+    const date=target.punch.attendanceDate;
+    if(date>todayInKualaLumpur())throw new AttendanceCorrectionFutureDateError();
+    // Payroll precedes attendance row locks, matching the final correction effect.
+    const payroll=await lockPayrollForOwnAttendanceRemoval(tx,me.employmentId,date);
+    if(payroll.some(batch=>batch.status==='closed'))throw new AttendancePayrollClosedError();
+    await tx.select({id:attendance.id}).from(attendance).where(eq(attendance.id,target.punch.attendanceId)).for('update');
+    await assertDayNotOwnedByCorrectionTx(tx,me.employmentId,date);
+    const [pending]=await tx.select({id:attendanceCorrection.id}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,me.employmentId),eq(attendanceCorrection.attendanceDate,date),eq(attendanceCorrection.status,'pending'))).limit(1);
+    if(pending)throw new AttendanceCorrectionPendingError();
+    const rows=await punchesForCorrectionTx(tx,me.employmentId,date);
+    if(clockFingerprint(rows)!==p.baseline)throw new ClockDataChangedError();
+    const active=rows.filter(row=>!row.voidedAt),schedule=await clockScheduleForTx(tx,me.employmentId,date);
+    const position=(time:string)=>{const m=toMinutes(time);return schedule.crossesMidnight&&schedule.start&&m<toMinutes(schedule.start)?m+1440:m;};
+    const ordered=[...active].sort((a,b)=>position(a.punchAt)-position(b.punchAt)||a.createdAt.getTime()-b.createdAt.getTime()||a.id.localeCompare(b.id));
+    if(!removalPreservesSequence(ordered,p.punchId))throw new Error('Removing this clocking would leave another clocking without its matching entry. Ask HR for a coordinated correction.');
+    const clockChanges={version:1 as const,baseline:p.baseline,entries:active.filter(row=>row.id!==p.punchId).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}))};
+    return insertAttendanceCorrectionRequestTx(tx,ctx,{id:p.requestId,removalPunchId:p.punchId,employmentId:me.employmentId,date,clockChanges,checkIn:null,checkOut:null,requestedOtMinutes:null,reason,plannedStartTime:null,plannedEndTime:null,otReasonCategory:null,remark:null,requestKind:'other'});
+  });
 }

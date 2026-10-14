@@ -3090,7 +3090,25 @@
       "accountChanged": "Tài khoản nhân viên đang đăng nhập đã thay đổi. Hãy đăng nhập tài khoản ban đầu để kiểm tra lần chấm công này.",
       "locationUnavailableAllowed": "Không có vị trí — không yêu cầu hàng rào địa lý. Bạn vẫn có thể chấm công vào hoặc ra.",
       "retryCamera": "Thử lại camera",
-      "cameraBusy": "Camera đang được sử dụng hoặc không khởi động được. Đóng các ứng dụng khác đang dùng camera rồi chọn Thử lại camera. Bạn vẫn có thể bỏ qua ảnh tùy chọn."
+      "cameraBusy": "Camera đang được sử dụng hoặc không khởi động được. Đóng các ứng dụng khác đang dùng camera rồi chọn Thử lại camera. Bạn vẫn có thể bỏ qua ảnh tùy chọn.",
+      "elapsedToday": "Thời gian đã trôi qua hôm nay: {time}",
+      "elapsedHelp": "Các khoảng thời gian chấm công, trước khi trừ giờ nghỉ và áp dụng quy tắc lương.",
+      "remove": "Xóa",
+      "requestRemoval": "Yêu cầu xóa",
+      "removalRequested": "Đã yêu cầu xóa",
+      "removalRemark": "Lý do xóa",
+      "removalHelp": "Yêu cầu này cần được duyệt. Bản ghi vẫn có hiệu lực đến khi duyệt cuối cùng. Bản gốc và ảnh được giữ trong lịch sử kiểm tra.",
+      "removalUnconfirmed": "Chưa xác định được kết quả. Kiểm tra gửi để thử lại cùng yêu cầu an toàn.",
+      "geofenceEnforced": "Đã kiểm tra vùng địa lý",
+      "captureLocation": {
+        "denied": "Đã từ chối quyền vị trí",
+        "unavailable": "Không có vị trí",
+        "timeout": "Hết thời gian lấy vị trí",
+        "unsupported": "Thiết bị không hỗ trợ vị trí",
+        "unknown": "Chưa ghi vị trí"
+      },
+      "locationTimeout": "Hết thời gian lấy vị trí. Hãy thử lại.",
+      "locationUnsupported": "Thiết bị không hỗ trợ lấy vị trí."
     },
     "colOtFlat": "Tăng ca cố định",
     "colOt00": "Tăng ca 0.0 (không trả)",
@@ -3489,7 +3507,15 @@
         "off_day": "Ngày không làm việc",
         "rest_day": "Ngày nghỉ",
         "holiday": "Ngày lễ"
-      }
+      },
+      "edit": "Chỉnh sửa",
+      "editSchedule": "Chỉnh sửa ca và loại ngày",
+      "cancel": "Hủy",
+      "reject": "Từ chối",
+      "rejectedSaved": "Đã từ chối yêu cầu.",
+      "noApplications": "Không có yêu cầu bất thường cho nhân viên và ngày này.",
+      "detected": "Phát hiện: {type}. Đây là trạng thái tính toán, tách biệt với yêu cầu đã gửi.",
+      "saveFailed": "Không thể xác nhận lưu. Tải lại ngày trước khi thử lại."
     }
   },
   "org": {
@@ -17735,7 +17761,33 @@
       "administratorAmended": "Chỉnh sửa của quản trị viên"
     },
     "hrApprover": "Quản trị viên nhân sự",
-    "administratorAmendment": "Chỉnh sửa của quản trị viên"
+    "administratorAmendment": "Chỉnh sửa của quản trị viên",
+    "subtype": "Loại chi tiết",
+    "subtypes": {
+      "absent": "Vắng mặt",
+      "short_hours": "Thiếu giờ",
+      "incomplete_entry": "Bản ghi chưa đầy đủ",
+      "self_overtime": "Tự đăng ký tăng ca",
+      "other": "Điều chỉnh khác",
+      "unknown": "Chưa ghi loại chi tiết"
+    },
+    "attendanceFrom": "Ngày bắt đầu chấm công",
+    "attendanceTo": "Ngày kết thúc chấm công",
+    "selected": "Đã chọn {count}",
+    "approveSelected": "Duyệt mục đã chọn",
+    "rejectSelected": "Từ chối mục đã chọn",
+    "selectPage": "Chọn tất cả mục hợp lệ trên trang",
+    "selectEmployee": "Chọn yêu cầu của {name}",
+    "ineligible": "Chỉ chọn yêu cầu chờ xử lý của nhân viên khác. Quyền sẽ được kiểm tra lại khi gửi.",
+    "results": "Kết quả xử lý",
+    "furtherApproval": "Đã duyệt bước hiện tại; cần phê duyệt tiếp.",
+    "confirmSelected": "Xử lý riêng {count} yêu cầu đã chọn ở bước phê duyệt hiện tại. Không bao gồm trang khác.",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "close": "Đóng",
+    "bulkFailed": "Không thể xác nhận kết quả. Tải lại trước khi thử lại.",
+    "hideFilters": "Ẩn bộ lọc",
+    "showFilters": "Hiện bộ lọc"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",

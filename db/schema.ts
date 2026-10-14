@@ -3956,6 +3956,8 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   // simply not compared with a site. Present together for every geofenced capture (core/attendance-clock.ts).
   clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
   distanceM: integer('distance_m'), radiusM: integer('radius_m'),
+  locationCaptureStatus: text('location_capture_status').$type<import('../lib/attendance-removal').LocationCaptureStatus>(),
+  geofencingRequired: boolean('geofencing_required'),
   commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest'),
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
@@ -4452,6 +4454,7 @@ export const attendanceCorrection = pgTable(
     cancellationKind: text('cancellation_kind').$type<'cancelled' | 'withdrawn'>(),
     cancellationReason: text('cancellation_reason'),
     rejectReason: text('reject_reason'),
+    removalPunchId: uuid('removal_punch_id').references(() => attendancePunch.id),
     clockChanges: jsonb('clock_changes').$type<{ version: 1; baseline: string; entries: { id?: string; punchAt: string; direction: 'in' | 'out' }[] }>(),
     originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
       version: 1; attendanceId: string | null; originalCheckIn: string | null;
