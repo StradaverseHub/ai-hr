@@ -109,6 +109,39 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.rewriteAssessmentField(mgr,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow(/not assigned/);
     expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
   });
+  it('shares conversational narrative quota with field rewriting, including concurrent requests for the last slot',async()=>{
+    await editableDraftKpi();const words='I completed the agreed delivery.';
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
+    for(let i=0;i<4;i++)expect(await perf.draftOnehrNarrative(self,reviewId,words)).toBe(words);
+    const outcomes=await Promise.allSettled([perf.draftOnehrNarrative(self,reviewId,words),perf.draftOnehrNarrative(self,reviewId,words)]);
+    expect(outcomes.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(outcomes.filter(r=>r.status==='rejected')).toHaveLength(1);
+    const uses=await owner.db.select().from(schema.assessmentAiUse);expect(uses).toHaveLength(5);expect(new Set(uses.map(u=>u.fieldKey))).toEqual(new Set([`pm_self_remark:${reviewId}`]));
+    const calls=vi.mocked(generateDraft).mock.calls.length;
+    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'pm_self_remark'},words,'Polish.',randomUUID())).rejects.toThrow(/All 5/);
+    await expect(perf.draftOnehrNarrative(self,reviewId,words)).rejects.toThrow(/All 5/);expect(generateDraft).toHaveBeenCalledTimes(calls);
+    expect((await view(self)).selfRemark).toBe('');expect((await view(self)).resultsSubmitted).toBe(false);
+    expect(await perf.draftOnehrNarrative(mgr,reviewId,words)).toBe(words);
+  });
+  it('shares competency and development draft limits across entry points without charging refused drafts',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    const words='I practised the agreed work with my colleagues.';
+    for(const feature of ['tc','idp'] as const){
+      vi.mocked(generateDraft).mockResolvedValue('{"items":[999]}');expect(await perf.draftOnehrNarrative(self,reviewId,words,feature)).toBe('');
+      vi.mocked(generateDraft).mockResolvedValue(words);
+      const target=feature==='tc'?{kind:'tc_self_remark'}:{kind:'idp_action',area:'Collaboration',mode:'onJob'};
+      for(let i=0;i<4;i++)await perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID());
+      vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');expect(await perf.draftOnehrNarrative(self,reviewId,words,feature)).toBe(words);
+      await expect(perf.draftOnehrNarrative(self,reviewId,words,feature)).rejects.toThrow(/All 5/);
+    }
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toHaveLength(10);
+    expect((await view(self)).competencySelfRemark).toBe('');expect((await view(self)).plans).toEqual([]);
+  });
+  it('does not charge or return a narrative after the provider configuration changes in flight',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'different',apiKey:'fixture-local-only'});return '{"items":[0]}';});
+    await expect(perf.draftOnehrNarrative(self,reviewId,'I completed the delivery.')).rejects.toThrow(/changed/);
+    expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+  });
   it('allows only the assigned feedback rater to use their own field quota without granting access to the subject review',async()=>{
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     const rater=peers[0].ctx,request=(await perf.onehrAssignments(rater)).feedback.find(r=>r.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(rater,request.id),words='They supported our agreed delivery.';

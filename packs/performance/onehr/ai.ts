@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
+import { assessmentAiQuotaTx,recordAssessmentAiUseTx } from './ai-usage';
 import type { SessionContext } from '../../../db/client';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { assessmentAiConfigTx,type AssessmentAiFeature } from './ai-settings';
@@ -22,7 +24,11 @@ export async function draftOnehrNarrative(ctx:SessionContext,reviewId:string,wor
   z.enum(['pm','tc','idp']).parse(feature);
   if(!view.policy.modules[feature==='tc'?'tm':feature])throw Error('This assessment module is disabled.');
   if(!view.aiFeatures[feature])throw Error('AI drafting is switched off or unavailable for this assessment.');
-  const cfg=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx,feature));
+  const fieldKey=feature==='idp'?`idp:${view.cycle.id}`:`${feature}_${view.self?'self':'manager'}_remark:${reviewId}`;
+  const cfg=await withPerformanceTenant(ctx,async tx=>{
+    if(!(await assessmentAiQuotaTx(tx,ctx,fieldKey)).remaining)throw Error('All 5 AI drafts for this field have been used today. The limit resets at midnight Malaysia time.');
+    return assessmentAiConfigTx(tx,ctx,feature);
+  });
   if(!cfg)throw Error('AI drafting is not configured for this tenant.');
   const fileTexts=feature==='pm'&&(view.policy.modules.evidence||view.moderator)?await readAssessmentFileTexts(ctx,reviewId,{allowImages:false,budgetMs:6000}):new Map();
   const passages=(texts:Map<string,{status:string;text:string}>)=>[...texts.values()].filter(t=>t.status==='ok').flatMap(t=>t.text.split(/\n\s*\n|(?<=[.!?])\s+/)).filter(Boolean);
@@ -38,9 +44,16 @@ export async function draftOnehrNarrative(ctx:SessionContext,reviewId:string,wor
   // Evidence can be retracted while the provider is running. Reject a selection against changed facts.
   const freshTexts=feature==='pm'&&(fresh.policy.modules.evidence||fresh.moderator)?await getAssessmentFileTexts(ctx,reviewId):new Map();
   const freshFacts=narrativeFacts(fresh,freshTexts);
-  const checked=JSON.stringify(facts)===JSON.stringify(freshFacts)?adjudicateNarrative(raw,facts):{ok:false as const,reason:'Assessment evidence changed.'};
+  const unchanged=view.revision===fresh.revision&&view.self===fresh.self&&view.manager===fresh.manager&&view.moderator===fresh.moderator&&JSON.stringify(facts)===JSON.stringify(freshFacts);
+  const checked=unchanged?adjudicateNarrative(raw,facts):{ok:false as const,reason:'Assessment evidence changed.'};
   await recordProposal(ctx,{type:'onehr_narrative',subject:{type:'performance-review',id:reviewId},facts,proposal:checked.ok?{items:checked.indices}:{},adjudication:checked.ok?{ok:true}:{ok:false,reason:checked.reason},provider:cfg.provider,model:cfg.model});
   if(!checked.ok)return '';
-  await withPerformanceTenant(ctx,async tx=>appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:reviewId,eventType:'onehr.ai-draft-generated',actor:actorOf(ctx),payload:{provider:cfg.provider,model:cfg.model}}));
+  await withPerformanceTenant(ctx,async tx=>{
+    const currentCfg=await assessmentAiConfigTx(tx,ctx,feature);
+    if(!currentCfg||JSON.stringify(currentCfg)!==JSON.stringify(cfg))throw Error('AI drafting was switched off or changed while preparing this response.');
+    // The database serializes the final slot across rewriting and conversational drafts.
+    await recordAssessmentAiUseTx(tx,ctx,reviewId,fieldKey,randomUUID());
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:reviewId,eventType:'onehr.ai-draft-generated',actor:actorOf(ctx),payload:{provider:cfg.provider,model:cfg.model}});
+  });
   return checked.draft;
 }

@@ -54,4 +54,24 @@ describe('assessment chat draft adjudication',()=>{
   expect(adjudicateReviewCommands(JSON.stringify({commands:[{action:'feedback_comment',id:'principle:Reliability',target:span(text,'Delivery'),text:{start:500,end:501}}]}),{text,draft:{kind:'feedback',answers:{},remark:''},targets:[{id:'principle:Reliability',label:'Delivery'}]}).ok).toBe(false);
  });
 
+ it('accepts the source competency vocabulary, preserves notes on button taps and guards only the paired self level',()=>{
+  for(const [word,answer] of Object.entries({yes:'yes',demonstrate:'yes',demonstrated:'yes',no:'no',developing:'no',develop:'no'})){
+   const text=`Record Higher as ${word}. Add example`,facts:ReviewCommandFacts={text,targets:[{id:'lo',label:'Lower',competency:{title:'Planning',category:'Technical',future:false}},{id:'hi',label:'Higher',competency:{title:'Planning',category:'Technical',future:true}}],draft:{kind:'competency_self',answers:{lo:{answer:'yes',remark:''},hi:{answer:null,remark:'Keep the actual observed example.'}},remark:''}};
+   const command={action:'competency_answer',id:'hi',target:span(text,'Higher'),answer:span(text,word),remark:span(text,'Add example')},run=(f:ReviewCommandFacts)=>adjudicateReviewCommands(JSON.stringify({commands:[command]}),f);
+   expect(run(facts)).toMatchObject({ok:true,draft:{answers:{hi:{answer,remark:'Keep the actual observed example.'}}}});
+   if(facts.draft.kind!=='competency_self')throw Error('Wrong fixture');facts.draft.answers.lo.answer='no';
+   expect(run(facts).ok).toBe(answer==='no');
+   expect(run({...facts,draft:{...facts.draft,kind:'competency_manager'}}).ok).toBe(true);
+   expect(run({...facts,targets:facts.targets.map(t=>t.id==='lo'?{...t,competency:{...t.competency!,category:'Other'}}:t)}).ok).toBe(true);
+   facts.draft.answers.lo.answer=null;expect(run(facts).ok).toBe(true);
+  }
+ });
+ it('refuses competency reflection stubs and source placeholders without changing the draft',()=>{
+  for(const text of ['Yes please!','Add an example','[Write your note here]','Please replace this with a note.']){
+   const facts:ReviewCommandFacts={text,targets:[],draft:{kind:'competency_self',answers:{},remark:'Existing actual reflection.'}};
+   expect(adjudicateReviewCommands(JSON.stringify({commands:[{action:'overall_remark',text:{start:0,end:text.length}}]}),facts).ok).toBe(false);
+   expect(facts.draft.remark).toBe('Existing actual reflection.');
+  }
+ });
+
 });
