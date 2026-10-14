@@ -5413,6 +5413,7 @@ export const notificationCursor = pgTable(
     id: id(),
     tenantId: tenantId(),
     lastSequence: bigint('last_sequence', { mode: 'number' }),
+    assessmentLastSequence:bigint('assessment_last_sequence',{mode:'number'}),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
@@ -10051,6 +10052,25 @@ export const onehrPanel = pgTable('performance_onehr_panel', {
   resetAt:timestamp('reset_at',{withTimezone:true}),archiveReason:text('archive_reason'),
   answers: jsonb('answers'), remark: text('remark').notNull().default(''), submittedAt: timestamp('submitted_at',{withTimezone:true}), archivedAt: timestamp('archived_at',{withTimezone:true}),
 },t=>[index('performance_onehr_panel_review_idx').on(t.reviewId)]);
+// Reminder runs reference the existing notification/delivery ledger; SMTP outcomes remain owned there.
+export const assessmentReminderRun=pgTable('performance_assessment_reminder_run',{
+ id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+ mode:text('mode').notNull(),sendDay:date('send_day'),actorUserId:uuid('actor_user_id').references(()=>appUser.id),
+ reasons:jsonb('reasons').notNull().default([]),createdAt:createdAt(),
+},t=>[uniqueIndex('assessment_reminder_auto_day_uq').on(t.tenantId,t.cycleId,t.sendDay)]);
+export const assessmentReminderRecipient=pgTable('performance_assessment_reminder_recipient',{
+ id:id(),tenantId:tenantId(),runId:uuid('run_id').notNull().references(()=>assessmentReminderRun.id),
+ userId:uuid('user_id').notNull().references(()=>appUser.id),employmentId:uuid('employment_id').references(()=>employment.id),
+ sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),outcome:text('outcome').notNull(),
+ tasks:jsonb('tasks').$type<import('../packs/performance/onehr/reminder-model').AssessmentReminderTask[]>().notNull().default([]),
+ preparedAt:timestamp('prepared_at',{withTimezone:true}),preparedUntil:timestamp('prepared_until',{withTimezone:true}),
+ tenantEpoch:bigint('tenant_epoch',{mode:'number'}),cycleEpoch:bigint('cycle_epoch',{mode:'number'}),
+ createdAt:createdAt(),
+},t=>[uniqueIndex('assessment_reminder_run_user_uq').on(t.runId,t.userId),index('assessment_reminder_user_idx').on(t.tenantId,t.userId,t.createdAt)]);
+// Cache invalidation only. Zero UUID is the tenant scope; other scope IDs are assessment cycles.
+export const assessmentReminderEpoch=pgTable('performance_assessment_reminder_epoch',{
+ tenantId:tenantId(),scopeId:uuid('scope_id').notNull(),revision:bigint('revision',{mode:'number'}).notNull().default(1),
+},t=>[primaryKey({columns:[t.tenantId,t.scopeId]})]);
 /** One HR-entered achievement percentage per cycle/company; separate from Rewards' monetary PAT inputs. */
 export const assessmentProfitAchievement = pgTable('performance_assessment_profit_achievement', {
  id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),companyId:uuid('company_id').notNull().references(()=>company.id),

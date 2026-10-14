@@ -17139,7 +17139,38 @@
       "rewards": "Rewards",
       "toil": "Time off in lieu"
     },
-    "groupAdminHelp": "A group administrator is required to change categories for the whole organisation."
+    "groupAdminHelp": "A group administrator is required to change categories for the whole organisation.",
+    "assessmentReminder": {
+      "subject": "Assessment: {count} tasks waiting on you",
+      "opening": "Here is the assessment work currently waiting on you.",
+      "count": "{count} pending",
+      "more": "and {count} more",
+      "deadline": "Closes {date}",
+      "groups": {
+        "feedback": "360 feedback",
+        "team": "Your team",
+        "own": "Your own review",
+        "lead": "What you lead"
+      },
+      "tasks": {
+        "own_results": "Enter and submit your KPI results",
+        "own_checkin": "Check in on your KPIs",
+        "own_competency": "Rate your own competencies",
+        "own_plan": "Write and share your Career Plan",
+        "feedback": "Rate your colleagues",
+        "team_setting": "Approve proposed KPI targets",
+        "team_results": "Review your team’s KPI results",
+        "team_competency": "Review competency self-assessments",
+        "team_plan": "Review Career Plans",
+        "team_career": "Review career profiles",
+        "hod_performance": "Submit department performance reviews",
+        "hod_potential": "Submit department potential reviews",
+        "bu_performance": "Complete performance calibration",
+        "bu_potential": "Complete potential calibration",
+        "bg_talent": "Complete the Talent Box",
+        "group_performance": "Complete Group performance review"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -18248,6 +18279,33 @@
       "preview": "Review the suggestions. Keeping them saves a private draft for you to edit before sharing.",
       "keepAspiration": "Keep longer-term aspiration",
       "keep": "Keep selected draft"
+    },
+    "reminders": {
+      "title": "Assessment reminders",
+      "help": "One email per account lists current work across own reviews, feedback, team and leadership. Automatic reminders start off. Email also requires the Performance category policy, recipient consent and an active relay.",
+      "waiting": "{count} accounts have work waiting",
+      "eligible": "{count} accounts have email consent",
+      "enabled": "Automatic reminders",
+      "onOpen": "On a step’s opening day",
+      "daysBefore": "Days before closing (comma separated)",
+      "everyDays": "Repeat every N days (0 disables)",
+      "sendTime": "Send time (Malaysia)",
+      "save": "Save schedule",
+      "preview": "Preview only",
+      "send": "Send now",
+      "runs": "Recent runs",
+      "sent": "Sent",
+      "failed": "Failed",
+      "pending": "Pending",
+      "skipped": "Skipped",
+      "dry": "Preview",
+      "next": "Next scheduled day: {day}",
+      "noNext": "No scheduled day in the next 90 days",
+      "readonly": "Schedule changes require group HR access.",
+      "confirm": "Queue reminders for current, consenting recipients? The 20-hour cooldown still applies.",
+      "saveFirst": "Save first to change the automatic schedule. Preview and Send now use current work.",
+      "saved": "Reminder schedule saved.",
+      "result": "Queued: {queued}; skipped: {skipped}; preview: {dry}."
     }
   },
   "allowanceV2": {

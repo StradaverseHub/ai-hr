@@ -17139,7 +17139,38 @@
       "rewards": "Ganjaran",
       "toil": "Cuti gantian"
     },
-    "groupAdminHelp": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi."
+    "groupAdminHelp": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
+    "assessmentReminder": {
+      "subject": "Penilaian: {count} tugasan menunggu anda",
+      "opening": "Berikut ialah tugasan penilaian yang sedang menunggu anda.",
+      "count": "{count} belum selesai",
+      "more": "dan {count} lagi",
+      "deadline": "Tutup {date}",
+      "groups": {
+        "feedback": "Maklum balas 360",
+        "team": "Pasukan anda",
+        "own": "Penilaian sendiri",
+        "lead": "Di bawah pimpinan anda"
+      },
+      "tasks": {
+        "own_results": "Masukkan dan hantar keputusan KPI",
+        "own_checkin": "Semak kemajuan KPI",
+        "own_competency": "Nilai kompetensi sendiri",
+        "own_plan": "Tulis dan kongsi Pelan Kerjaya",
+        "feedback": "Nilai rakan sekerja",
+        "team_setting": "Luluskan sasaran KPI yang dicadangkan",
+        "team_results": "Semak keputusan KPI pasukan",
+        "team_competency": "Semak penilaian kendiri kompetensi",
+        "team_plan": "Semak Pelan Kerjaya",
+        "team_career": "Semak profil kerjaya",
+        "hod_performance": "Hantar penilaian prestasi jabatan",
+        "hod_potential": "Hantar penilaian potensi jabatan",
+        "bu_performance": "Lengkapkan kalibrasi prestasi",
+        "bu_potential": "Lengkapkan kalibrasi potensi",
+        "bg_talent": "Lengkapkan Kotak Bakat",
+        "group_performance": "Lengkapkan penilaian prestasi Kumpulan"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -18248,6 +18279,33 @@
       "preview": "Semak cadangan. Pilihan yang disimpan menjadi draf peribadi untuk diedit sebelum dikongsi.",
       "keepAspiration": "Simpan aspirasi jangka panjang",
       "keep": "Simpan draf pilihan"
+    },
+    "reminders": {
+      "title": "Peringatan penilaian",
+      "help": "Satu e-mel bagi setiap akaun menyenaraikan tugasan kendiri, maklum balas, pasukan dan kepimpinan semasa. Peringatan automatik bermula dalam keadaan dimatikan. E-mel memerlukan dasar kategori Prestasi, persetujuan penerima dan geganti aktif.",
+      "waiting": "{count} akaun mempunyai tugasan",
+      "eligible": "{count} akaun memberi persetujuan e-mel",
+      "enabled": "Peringatan automatik",
+      "onOpen": "Pada hari langkah dibuka",
+      "daysBefore": "Hari sebelum tutup (pisahkan dengan koma)",
+      "everyDays": "Ulang setiap N hari (0 mematikan)",
+      "sendTime": "Masa hantar (Malaysia)",
+      "save": "Simpan jadual",
+      "preview": "Pratonton sahaja",
+      "send": "Hantar sekarang",
+      "runs": "Larian terkini",
+      "sent": "Dihantar",
+      "failed": "Gagal",
+      "pending": "Menunggu",
+      "skipped": "Dilangkau",
+      "dry": "Pratonton",
+      "next": "Hari berjadual seterusnya: {day}",
+      "noNext": "Tiada hari berjadual dalam 90 hari",
+      "readonly": "Perubahan jadual memerlukan akses HR kumpulan.",
+      "confirm": "Bariskan peringatan untuk penerima semasa yang bersetuju? Tempoh sela 20 jam masih terpakai.",
+      "saveFirst": "Simpan dahulu untuk menukar jadual automatik. Pratonton dan Hantar sekarang menggunakan tugasan semasa.",
+      "saved": "Jadual peringatan disimpan.",
+      "result": "Dibariskan: {queued}; dilangkau: {skipped}; pratonton: {dry}."
     }
   },
   "allowanceV2": {

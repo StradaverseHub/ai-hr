@@ -17139,7 +17139,38 @@
       "rewards": "奖励",
       "toil": "补休"
     },
-    "groupAdminHelp": "只有集团管理员可更改整个组织的类别设置。"
+    "groupAdminHelp": "只有集团管理员可更改整个组织的类别设置。",
+    "assessmentReminder": {
+      "subject": "评估：您有 {count} 项待办任务",
+      "opening": "以下评估任务目前等待您处理。",
+      "count": "{count} 项待处理",
+      "more": "及另外 {count} 人",
+      "deadline": "{date} 截止",
+      "groups": {
+        "feedback": "360 度反馈",
+        "team": "您的团队",
+        "own": "您的自评",
+        "lead": "您负责的评审"
+      },
+      "tasks": {
+        "own_results": "填写并提交 KPI 结果",
+        "own_checkin": "更新 KPI 进展",
+        "own_competency": "评估自己的能力",
+        "own_plan": "编写并分享职业计划",
+        "feedback": "评价同事",
+        "team_setting": "批准拟定的 KPI 目标",
+        "team_results": "审核团队 KPI 结果",
+        "team_competency": "审核能力自评",
+        "team_plan": "审核职业计划",
+        "team_career": "审核职业档案",
+        "hod_performance": "提交部门绩效评审",
+        "hod_potential": "提交部门潜力评审",
+        "bu_performance": "完成绩效校准",
+        "bu_potential": "完成潜力校准",
+        "bg_talent": "完成人才九宫格",
+        "group_performance": "完成集团绩效评审"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -18248,6 +18279,33 @@
       "preview": "请审核建议。保留的内容将保存为私人草稿，供您编辑后再分享。",
       "keepAspiration": "保留长期愿望",
       "keep": "保留所选草稿"
+    },
+    "reminders": {
+      "title": "评估提醒",
+      "help": "每个账户收到一封邮件，列出当前的自评、反馈、团队和领导评审任务。自动提醒默认关闭。发送邮件还需启用绩效邮件类别、获得接收者同意，并配置可用邮件服务。",
+      "waiting": "{count} 个账户有待办任务",
+      "eligible": "{count} 个账户已同意接收邮件",
+      "enabled": "自动提醒",
+      "onOpen": "在步骤开放当天发送",
+      "daysBefore": "截止前天数（用逗号分隔）",
+      "everyDays": "每 N 天重复（0 表示关闭）",
+      "sendTime": "发送时间（马来西亚）",
+      "save": "保存计划",
+      "preview": "仅预览",
+      "send": "立即发送",
+      "runs": "最近运行",
+      "sent": "已发送",
+      "failed": "失败",
+      "pending": "待发送",
+      "skipped": "已跳过",
+      "dry": "预览",
+      "next": "下次计划日期：{day}",
+      "noNext": "未来 90 天无计划日期",
+      "readonly": "只有集团 HR 可以修改计划。",
+      "confirm": "为当前已同意的接收者排队发送提醒？仍适用 20 小时间隔。",
+      "saveFirst": "先保存才能修改自动计划。预览和立即发送基于当前待办任务。",
+      "saved": "提醒计划已保存。",
+      "result": "排队：{queued}；跳过：{skipped}；预览：{dry}。"
     }
   },
   "allowanceV2": {

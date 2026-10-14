@@ -1454,3 +1454,114 @@ CREATE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb LAN
 $$;
 REVOKE ALL ON FUNCTION app.assessment_pending_work(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_pending_work(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+INSERT INTO setting_definition(key,module_code,scope,value_type,default_value,default_on_install,customer_visible,description,sort_order)
+VALUES('performance.reminder_rules','performance','tenant','string','"{\"enabled\":false,\"onOpen\":true,\"daysBefore\":[7,3,1],\"everyDays\":0,\"sendTime\":\"09:00\"}"'::jsonb,NULL,true,'Assessment reminder schedule in Malaysia time.',216) ON CONFLICT(key) DO NOTHING;
+CREATE TABLE performance_assessment_reminder_run (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),cycle_id uuid NOT NULL REFERENCES review_cycle(id),
+ mode text NOT NULL CHECK(mode IN ('automatic','manual','dry')),send_day date,actor_user_id uuid REFERENCES app_user(id),reasons jsonb NOT NULL DEFAULT '[]',created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK((mode='automatic')=(send_day IS NOT NULL)),UNIQUE(tenant_id,cycle_id,send_day)
+);
+CREATE TABLE performance_assessment_reminder_recipient (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),run_id uuid NOT NULL REFERENCES performance_assessment_reminder_run(id),
+ user_id uuid NOT NULL REFERENCES app_user(id),employment_id uuid REFERENCES employment(id),source_event_id uuid REFERENCES domain_event(id),
+ outcome text NOT NULL CHECK(outcome IN ('queued','dry','cooldown','noConsent','noPendingWork')),tasks jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(tasks)='array' AND jsonb_array_length(tasks)<=16 AND octet_length(tasks::text)<=20000),
+ prepared_at timestamptz,prepared_until timestamptz,tenant_epoch bigint,cycle_epoch bigint,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(run_id,user_id)
+);
+CREATE INDEX assessment_reminder_user_idx ON performance_assessment_reminder_recipient(tenant_id,user_id,created_at);
+-- Invalidation tokens only, never workflow state. Zero UUID identifies tenant routing/entitlement changes.
+CREATE TABLE performance_assessment_reminder_epoch(tenant_id uuid NOT NULL REFERENCES tenant(id),scope_id uuid NOT NULL,revision bigint NOT NULL DEFAULT 1,PRIMARY KEY(tenant_id,scope_id));
+ALTER TABLE performance_assessment_reminder_run ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_reminder_run FORCE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_reminder_recipient ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_reminder_recipient FORCE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_reminder_epoch ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_reminder_epoch FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_reminder_run,performance_assessment_reminder_recipient TO ai_hr_app;
+GRANT SELECT ON performance_assessment_reminder_epoch TO ai_hr_app;
+CREATE POLICY assessment_reminder_run_admin ON performance_assessment_reminder_run USING(tenant_id=app.current_tenant_id() AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle_id))) WITH CHECK(tenant_id=app.current_tenant_id() AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle_id)) AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=cycle_id AND c.tenant_id=performance_assessment_reminder_run.tenant_id));
+CREATE POLICY assessment_reminder_recipient_admin ON performance_assessment_reminder_recipient USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_assessment_reminder_run r WHERE r.id=run_id AND r.tenant_id=performance_assessment_reminder_recipient.tenant_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_assessment_reminder_run r JOIN app_user u ON u.id=user_id AND u.tenant_id=r.tenant_id WHERE r.id=run_id AND r.tenant_id=performance_assessment_reminder_recipient.tenant_id AND (employment_id IS NULL OR EXISTS(SELECT 1 FROM employment e WHERE e.id=employment_id AND e.person_id=u.person_id AND e.tenant_id=u.tenant_id))) AND (source_event_id IS NULL OR EXISTS(SELECT 1 FROM domain_event ev WHERE ev.id=source_event_id AND ev.tenant_id=performance_assessment_reminder_recipient.tenant_id AND ev.aggregate_id=performance_assessment_reminder_recipient.id AND ev.event_type='assessment.reminder-queued')));
+CREATE POLICY assessment_reminder_epoch_read ON performance_assessment_reminder_epoch FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin());
+CREATE FUNCTION app.assessment_reminder_touch() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE t uuid;scopes uuid[];v jsonb;scope uuid;
+BEGIN
+ v=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
+ IF TG_TABLE_NAME='app_external_identity' THEN SELECT tenant_id INTO t FROM app_user WHERE id=(v->>'app_user_id')::uuid;
+ ELSE t=CASE WHEN TG_TABLE_NAME='tenant' THEN (v->>'id')::uuid ELSE (v->>'tenant_id')::uuid END;END IF;
+ IF t IS NULL THEN RETURN NULL;END IF;
+ IF TG_ARGV[0]='tenant' THEN scopes=ARRAY['00000000-0000-0000-0000-000000000000'::uuid];
+ ELSIF TG_TABLE_NAME='review_cycle' THEN scopes=ARRAY[(v->>'id')::uuid];
+ ELSIF TG_TABLE_NAME='performance_onehr_panel' THEN SELECT ARRAY[r.cycle_id] INTO scopes FROM performance_onehr_review r WHERE r.review_id=(v->>'review_id')::uuid;
+ ELSIF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN SELECT ARRAY[s.cycle_id] INTO scopes FROM performance_onehr_calibration s WHERE s.id=(v->>'session_id')::uuid;
+ ELSIF TG_TABLE_NAME='performance_onehr_plan' THEN SELECT array_agg(DISTINCT r.cycle_id) INTO scopes FROM performance_onehr_review r WHERE r.tenant_id=t AND r.employment_id=(v->>'employment_id')::uuid;
+ ELSE scopes=ARRAY[(v->>'cycle_id')::uuid]; END IF;
+ FOREACH scope IN ARRAY coalesce(scopes,'{}'::uuid[]) LOOP
+  INSERT INTO performance_assessment_reminder_epoch(tenant_id,scope_id) VALUES(t,scope) ON CONFLICT(tenant_id,scope_id) DO UPDATE SET revision=performance_assessment_reminder_epoch.revision+1;
+ END LOOP;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_reminder_touch() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE name text; BEGIN
+ FOREACH name IN ARRAY ARRAY['tenant_module','tenant_setting','app_user','person','employment','role_assignment','reporting_line','company','app_external_identity','notification_pref','notification_email_policy','tenant'] LOOP
+  EXECUTE format('CREATE TRIGGER assessment_reminder_touch AFTER INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION app.assessment_reminder_touch(''tenant'')',name);
+ END LOOP;
+ FOREACH name IN ARRAY ARRAY['review_cycle','performance_review','performance_onehr_cycle','performance_onehr_review','performance_onehr_panel','performance_onehr_calibration','performance_onehr_calibration_entry','performance_onehr_plan','performance_assessment_participation','performance_onehr_result'] LOOP
+  EXECUTE format('CREATE TRIGGER assessment_reminder_touch AFTER INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION app.assessment_reminder_touch(''cycle'')',name);
+ END LOOP;
+END $$;
+-- Only scoped routing IDs leave consent storage. Addresses and identity subjects remain private.
+CREATE FUNCTION app.assessment_reminder_mail_routes(wanted_cycle uuid) RETURNS TABLE(user_id uuid,employment_id uuid,company_id uuid) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH work AS (SELECT app.assessment_pending_work(wanted_cycle) AS value),actors AS (SELECT actor FROM work CROSS JOIN LATERAL jsonb_array_elements(value->'actors') actor)
+ SELECT u.id,e.id,e.company_id FROM actors a JOIN app_user u ON u.id=(a.actor->>'userId')::uuid AND u.tenant_id=app.current_tenant_id()
+ JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id AND e.id::text IN (SELECT jsonb_array_elements_text(a.actor->'employmentIds'))
+ JOIN notification_pref p ON p.tenant_id=u.tenant_id AND p.recipient_employment_id=e.id AND p.category='performance' AND p.channel='email' AND p.enabled AND p.email_consent_user_id=u.id AND p.email_after_sequence IS NOT NULL
+ JOIN notification_email_policy policy ON policy.tenant_id=u.tenant_id AND policy.category='performance' AND policy.enabled
+ WHERE EXISTS(SELECT 1 FROM app_external_identity i WHERE i.app_user_id=u.id AND i.revoked_at IS NULL) ORDER BY u.id,e.id
+$$;
+REVOKE ALL ON FUNCTION app.assessment_reminder_mail_routes(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_reminder_mail_routes(uuid) TO ai_hr_app;
+-- The isolated mail service receives only an already leased, fresh, bounded task summary.
+CREATE FUNCTION identity_email.assessment_tasks(p_id uuid,p_token uuid,p_issuer text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('tasks',r.tasks) FROM notification_delivery d
+ JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
+ JOIN domain_event ev ON ev.id=d.source_event_id AND ev.tenant_id=d.tenant_id AND ev.event_type='assessment.reminder-queued'
+ JOIN performance_assessment_reminder_recipient r ON r.source_event_id=ev.id AND r.id=ev.aggregate_id AND r.tenant_id=d.tenant_id AND r.user_id=target.user_id
+ JOIN performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+ JOIN review_cycle c ON c.id=run.cycle_id AND c.tenant_id=run.tenant_id AND c.status IN ('open','calibration')
+ WHERE d.id=p_id AND r.outcome='queued' AND r.prepared_until>now() AND r.prepared_at>now()-interval '60 seconds'
+ AND r.tenant_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id='00000000-0000-0000-0000-000000000000'),0)
+ AND r.cycle_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id=c.id),0)
+ AND jsonb_array_length(r.tasks)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.tasks) task WHERE task->>'closesAt' IS NOT NULL AND (task->>'closesAt')::timestamptz<=now())
+$$;
+REVOKE ALL ON FUNCTION identity_email.assessment_tasks(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION identity_email.start_delivery(p_id uuid,p_token uuid,p_issuer text,p_target jsonb)
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM 1 FROM notification_delivery d WHERE d.id=p_id FOR UPDATE;
+ IF NOT EXISTS(SELECT 1 FROM identity_email.delivery_target(p_id,p_token,p_issuer) t WHERE to_jsonb(t)=p_target) THEN RETURN false; END IF;
+ IF EXISTS(SELECT 1 FROM notification_delivery d JOIN domain_event ev ON ev.id=d.source_event_id AND ev.tenant_id=d.tenant_id WHERE d.id=p_id AND ev.event_type='assessment.reminder-queued') AND identity_email.assessment_tasks(p_id,p_token,p_issuer) IS NULL THEN RETURN false; END IF;
+ UPDATE notification_delivery SET started_at=now(),attempts=attempts+1,updated_at=now(),lease_until=now()+interval '90 seconds'
+ WHERE id=p_id AND lease_token=p_token AND status='pending' AND started_at IS NULL AND attempts<5;
+ RETURN FOUND;
+END; $$;
+
+--> statement-breakpoint
+CREATE FUNCTION identity_email.delivery_summary(p_id uuid,p_token uuid,p_issuer text) RETURNS TABLE(required boolean,summary jsonb) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT ev.event_type='assessment.reminder-queued',CASE WHEN ev.event_type='assessment.reminder-queued' THEN identity_email.assessment_tasks(p_id,p_token,p_issuer) END
+ FROM identity_email.delivery_target(p_id,p_token,p_issuer) target JOIN notification_delivery d ON d.id=p_id AND d.recipient_user_id=target.user_id
+ JOIN domain_event ev ON ev.id=d.source_event_id AND ev.tenant_id=d.tenant_id
+$$;
+REVOKE ALL ON FUNCTION identity_email.delivery_summary(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+ALTER TABLE notification_cursor ADD COLUMN assessment_last_sequence bigint;
+
+--> statement-breakpoint
+-- Admins cannot SELECT recipient-frozen notification bodies. The dispatcher needs only existence.
+CREATE UNIQUE INDEX assessment_reminder_projection_uq ON notification(tenant_id,source_event_id,recipient_employment_id) WHERE kind='performance.reminder';
+CREATE FUNCTION app.assessment_reminder_projected(wanted_event uuid,wanted_employment uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT app.is_admin() AND EXISTS(SELECT 1 FROM notification n JOIN domain_event ev ON ev.id=n.source_event_id AND ev.tenant_id=n.tenant_id WHERE n.tenant_id=app.current_tenant_id() AND n.source_event_id=wanted_event AND n.recipient_employment_id=wanted_employment AND n.kind='performance.reminder' AND ev.event_type='assessment.reminder-queued')
+$$;
+REVOKE ALL ON FUNCTION app.assessment_reminder_projected(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_reminder_projected(uuid,uuid) TO ai_hr_app;

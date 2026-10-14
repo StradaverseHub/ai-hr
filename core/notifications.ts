@@ -1,4 +1,4 @@
-import { assessmentReviewTaskRecipientsTx } from '../packs/performance/service';
+import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
 import { rewardNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
@@ -226,6 +226,11 @@ type Spec = {
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  'assessment.reminder-queued': {
+    kind:'performance.reminder',category:'performance',
+    recipients:(tx,ev)=>assessmentReminderRecipientsTx(tx,ev.aggregateId),
+    render:()=>({severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'}),
+  },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
     render: (_p, ev) => ({ severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
@@ -847,12 +852,15 @@ export type DispatchResult = { processed: number; created: number };
  * per-tenant cursor; idempotent (only events after the cursor are processed). Gated ⇒ no-op.
  */
 export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number } = {}): Promise<DispatchResult> {
-  if (!enabled(ctx)) return { processed: 0, created: 0 };
+  const allCategories=enabled(ctx);
+  const scopedReminders=(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));
+  if(!allCategories&&!scopedReminders)return {processed:0,created:0};
   const limit = Math.min(Math.max(opts.limit ?? 1000, 1), 5000);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
-    const after = cur?.lastSequence != null ? gt(domainEvent.sequence, cur.lastSequence) : undefined;
+    const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
+    const after=cursor!=null?gt(domainEvent.sequence,cursor):undefined;
     const rows = await tx
       .select({
         id: domainEvent.id,
@@ -863,7 +871,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         sequence: domainEvent.sequence,
       })
       .from(domainEvent)
-      .where(after)
+      .where(and(after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
       .orderBy(asc(domainEvent.sequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
@@ -883,6 +891,9 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         if (recipients.length === 0) continue;
         const r = spec.render((ev.payload as Record<string, unknown> | null) ?? null, evRef);
         for (const recipient of recipients) {
+          // A company-only reminder cursor never consumes other categories. Global dispatch may later
+          // encounter the same event, so retain one projection per event/kind/recipient.
+          if(spec.kind==='performance.reminder'){const [prior]=await tx.execute<{present:boolean}>(sql`select app.assessment_reminder_projected(${ev.id}::uuid,${recipient}::uuid) as present`);if(prior?.present)continue;}
           const notificationId = randomUUID();
           await tx.insert(notification).values({
             id: notificationId,
@@ -905,10 +916,10 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
     if (cur) {
       await tx
         .update(notificationCursor)
-        .set({ lastSequence: last.sequence, updatedAt: sql`now()` })
+        .set({...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence}),updatedAt:sql`now()`})
         .where(eq(notificationCursor.tenantId, ctx.tenantId));
     } else {
-      await tx.insert(notificationCursor).values({ tenantId: ctx.tenantId, lastSequence: last.sequence });
+      await tx.insert(notificationCursor).values({tenantId:ctx.tenantId,...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence})});
     }
     return { processed: rows.length, created };
   });

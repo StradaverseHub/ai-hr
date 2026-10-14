@@ -15,6 +15,8 @@ import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults, setRewardMember } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { saveNotificationEmailPolicy,saveNotificationEmailPreferences } from '../core/notification-email';
+import { deliverNotificationEmails } from '../core/notification-email-delivery';
 import { dispatchNotifications,notificationStillTargets } from '../core/notifications';
 import { appendEvent,actorOf } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -1642,6 +1644,75 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
     vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>{if(request.system.includes('aspirationLong'))return '{"aspirationLong":"Grow my practice"}';await perf.releaseOnehrResult(a,reviewId,'feedback',false);return JSON.stringify([{area:'Facilitation',item_ids:['lp:0'],experience:'Lead a workshop'}]);});
     await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await view(self)).plans).toEqual([]);
+  });
+
+  it('queues unified reminders only after consent, previews without mail, and observes the 20-hour sent cooldown',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);self={...self,entitlements:a.entitlements};
+    expect((await perf.getAssessmentReminders(a,cycleId)).rules.enabled).toBe(false);
+    await expect(perf.queueAssessmentReminders(self,cycleId,'manual')).rejects.toThrow(/administrator/);
+    await expect(perf.saveAssessmentReminderRules({...a,grants:[{role:'hr_admin',companyId:b.companyId}]},{enabled:true})).rejects.toThrow(/group HR/);
+    await expect(perf.saveAssessmentReminderRules({...a,grants:[{role:'hr_admin',companyId:null}]},{enabled:true,everyDays:31})).rejects.toThrow();
+    await perf.saveAssessmentReminderRules({...a,grants:[{role:'hr_admin',companyId:null}]},{enabled:true,onOpen:true,daysBefore:[7,3,1],everyDays:0,sendTime:'09:00'});
+    expect((await perf.getAssessmentReminders(a,cycleId)).rules.enabled).toBe(true);
+    const before=await perf.queueAssessmentReminders(a,cycleId,'manual');expect(before.queued).toBe(0);expect(before.skipped).toBeGreaterThan(0);
+    const issuer='https://hr.test/identity/realms/ai-hr',subjectId=randomUUID(),[person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId));
+    await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:subjectId,appUserId:self.userId!});
+    await saveNotificationEmailPolicy(a,['performance']);await saveNotificationEmailPreferences(self,subject.employmentId,['performance'],'en',{issuer,subject:subjectId,email:person.primaryEmail,emailVerified:true});
+    const dry=await perf.queueAssessmentReminders(a,cycleId,'dry');expect(dry.dry).toBe(1);expect(dry.queued).toBe(0);expect(await owner.db.select().from(schema.notificationDelivery)).toEqual([]);
+    const queued=await perf.queueAssessmentReminders(a,cycleId,'manual');expect(queued.queued).toBe(1);
+    await dispatchNotifications(a);const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.kind,'performance.reminder'));expect(delivery.recipientUserId).toBe(self.userId);
+    expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(0);
+    const old=async<T>(request:unknown):Promise<T>=>({version:1,ready:true} as T);
+    expect(await deliverNotificationEmails(a,old)).toMatchObject({attempted:0,unavailable:true});
+    const checked=await withTenant({...a,userId:undefined,personId:undefined},tx=>perf.assessmentReminderRecipientsTx(tx,queued.runId!));expect(checked).toEqual([]);
+    await owner.db.update(schema.notificationDelivery).set({status:'sent',sentAt:new Date()}).where(eq(schema.notificationDelivery.id,delivery.id));
+    expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(0);
+    await owner.db.update(schema.notificationDelivery).set({sentAt:new Date(Date.now()-21*3600000)}).where(eq(schema.notificationDelivery.id,delivery.id));
+    expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(1);
+    expect((await perf.getAssessmentReminders(a,cycleId)).runs.some(r=>r.sent===1)).toBe(true);
+  });
+
+  it('claims automatic reminder days once and isolates company-only notification dispatch from other categories',async()=>{
+    const system={...a,userId:undefined,personId:undefined};
+    expect((await perf.queueAssessmentReminders(system,cycleId,'automatic')).duplicate).toBe(false);expect(await owner.db.select().from(schema.assessmentReminderRun)).toEqual([]);
+    const [config]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,cycleId)),policy=defaultPolicy(framework),now=new Date();
+    await owner.db.update(schema.onehrCycle).set({policy:{...config.policy as typeof policy,windows:{tc_self:{opensAt:new Date(now.getTime()-60000).toISOString(),closesAt:new Date(now.getTime()+86400000).toISOString()}}}}).where(eq(schema.onehrCycle.cycleId,cycleId));
+    await perf.saveAssessmentReminderRules({...a,grants:[{role:'hr_admin',companyId:null}]},{enabled:true,sendTime:'00:00'});
+    const first=await perf.queueAssessmentReminders(system,cycleId,'automatic');expect(first.duplicate).toBe(false);expect((await perf.queueAssessmentReminders(system,cycleId,'automatic')).duplicate).toBe(true);
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);self={...self,entitlements:a.entitlements};
+    const issuer='https://hr.test/identity/realms/ai-hr',subjectId=randomUUID(),[person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId));
+    await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:subjectId,appUserId:self.userId!});await saveNotificationEmailPolicy(a,['performance']);await saveNotificationEmailPreferences(self,subject.employmentId,['performance'],'en',{issuer,subject:subjectId,email:person.primaryEmail,emailVerified:true});
+    await owner.db.update(schema.tenantModule).set({status:'disabled'}).where(and(eq(schema.tenantModule.tenantId,b.tenantId),eq(schema.tenantModule.moduleCode,'notifications')));
+    await owner.db.insert(schema.tenantModule).values({tenantId:b.tenantId,moduleCode:'notifications',companyId:b.companyId,status:'active'});const scoped={...await entitledCtx(b),userId:undefined,personId:undefined};
+    expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(1);
+    await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'test',aggregateId:randomUUID(),eventType:'leave-request.approved',subjectEmploymentId:subject.employmentId,actor:actorOf(a)}));
+    expect((await dispatchNotifications(scoped)).created).toBe(1);expect((await owner.db.select().from(schema.notification)).map(n=>n.kind)).toEqual(['performance.reminder']);
+    const [cursor]=await owner.db.select().from(schema.notificationCursor);expect(cursor.lastSequence).toBeNull();expect(cursor.assessmentLastSequence).toBeGreaterThan(0);
+    await setModule(b.tenantId,'notifications','active');await dispatchNotifications(await entitledCtx(b));
+    expect((await owner.db.select().from(schema.notification)).map(n=>n.kind).sort()).toEqual(['leave.approved','performance.reminder']);
+  });
+
+  it('prepares a bounded reminder through the actual dispatcher and rejects changed work before private SMTP starts',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);self={...self,entitlements:a.entitlements};
+    const issuer='https://hr.test/identity/realms/ai-hr',subjectId=randomUUID(),[person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId));
+    await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:subjectId,appUserId:self.userId!});await saveNotificationEmailPolicy(a,['performance']);
+    await saveNotificationEmailPreferences(self,subject.employmentId,['performance'],'en',{issuer,subject:subjectId,email:person.primaryEmail,emailVerified:true});
+    const queued=await perf.queueAssessmentReminders(a,cycleId,'manual');expect(queued.queued).toBe(1);const system={...a,userId:undefined,personId:undefined};await dispatchNotifications(system);
+    const [recipient]=await owner.db.select().from(schema.assessmentReminderRecipient).where(and(eq(schema.assessmentReminderRecipient.runId,queued.runId!),eq(schema.assessmentReminderRecipient.userId,self.userId!)));
+    expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
+    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,recipient.sourceEventId!)),token=randomUUID();
+    await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+60000)}).where(eq(schema.notificationDelivery.id,delivery.id));
+    const [payload]=await owner.db.execute<{value:{tasks:{key:string}[]}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`);
+    expect(payload.value.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);
+    await expect(withTenant(self,tx=>tx.select().from(schema.assessmentReminderRecipient))).resolves.toEqual([]);
+    expect((await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','identity_email.assessment_tasks(uuid,uuid,text)','EXECUTE') as allowed`))[0].allowed).toBe(false);
+    await expect(withTenant(a,tx=>tx.execute(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer})`))).rejects.toThrow();
+    const [target]=await owner.db.execute(sql`select * from identity_email.delivery_target(${delivery.id}::uuid,${token}::uuid,${issuer})`);
+    await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(eq(schema.onehrReview.reviewId,reviewId));
+    expect((await owner.db.execute<{value:unknown}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value).toBeNull();
+    expect((await owner.db.execute<{started:boolean}>(sql`select identity_email.start_delivery(${delivery.id}::uuid,${token}::uuid,${issuer},${JSON.stringify(target)}::jsonb) as started`))[0].started).toBe(false);
+    expect((await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id)))[0].startedAt).toBeNull();
+    expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([]);
   });
 
   it('batches current pending metadata for authorized dispatchers without review text, amounts or peer answers',async()=>{

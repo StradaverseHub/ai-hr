@@ -17139,7 +17139,38 @@
       "rewards": "Khen thưởng",
       "toil": "Nghỉ bù"
     },
-    "groupAdminHelp": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức."
+    "groupAdminHelp": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
+    "assessmentReminder": {
+      "subject": "Đánh giá: {count} công việc đang chờ bạn",
+      "opening": "Đây là các công việc đánh giá hiện đang chờ bạn.",
+      "count": "{count} đang chờ",
+      "more": "và {count} người khác",
+      "deadline": "Đóng {date}",
+      "groups": {
+        "feedback": "Phản hồi 360",
+        "team": "Nhóm của bạn",
+        "own": "Đánh giá của bạn",
+        "lead": "Phạm vi bạn phụ trách"
+      },
+      "tasks": {
+        "own_results": "Nhập và gửi kết quả KPI",
+        "own_checkin": "Cập nhật tiến độ KPI",
+        "own_competency": "Tự đánh giá năng lực",
+        "own_plan": "Viết và chia sẻ kế hoạch nghề nghiệp",
+        "feedback": "Đánh giá đồng nghiệp",
+        "team_setting": "Duyệt mục tiêu KPI đề xuất",
+        "team_results": "Xem xét kết quả KPI của nhóm",
+        "team_competency": "Xem xét tự đánh giá năng lực",
+        "team_plan": "Xem xét kế hoạch nghề nghiệp",
+        "team_career": "Xem xét hồ sơ nghề nghiệp",
+        "hod_performance": "Gửi đánh giá hiệu suất phòng ban",
+        "hod_potential": "Gửi đánh giá tiềm năng phòng ban",
+        "bu_performance": "Hoàn tất hiệu chỉnh hiệu suất",
+        "bu_potential": "Hoàn tất hiệu chỉnh tiềm năng",
+        "bg_talent": "Hoàn tất ma trận nhân tài",
+        "group_performance": "Hoàn tất đánh giá hiệu suất Tập đoàn"
+      }
+    }
   },
   "onehr": {
     "back": "Back",
@@ -18248,6 +18279,33 @@
       "preview": "Xem xét đề xuất. Nội dung giữ lại được lưu thành bản nháp riêng để bạn sửa trước khi chia sẻ.",
       "keepAspiration": "Giữ nguyện vọng dài hạn",
       "keep": "Giữ bản nháp đã chọn"
+    },
+    "reminders": {
+      "title": "Nhắc việc đánh giá",
+      "help": "Mỗi tài khoản nhận một email liệt kê các việc cá nhân, phản hồi, nhóm và lãnh đạo hiện tại. Nhắc tự động mặc định tắt. Email cần chính sách danh mục Hiệu suất, sự đồng ý của người nhận và dịch vụ thư đang hoạt động.",
+      "waiting": "{count} tài khoản có việc đang chờ",
+      "eligible": "{count} tài khoản đã đồng ý nhận email",
+      "enabled": "Nhắc tự động",
+      "onOpen": "Vào ngày mở bước",
+      "daysBefore": "Số ngày trước khi đóng (cách nhau bằng dấu phẩy)",
+      "everyDays": "Lặp lại mỗi N ngày (0 để tắt)",
+      "sendTime": "Giờ gửi (Malaysia)",
+      "save": "Lưu lịch",
+      "preview": "Chỉ xem trước",
+      "send": "Gửi ngay",
+      "runs": "Các lần chạy gần đây",
+      "sent": "Đã gửi",
+      "failed": "Thất bại",
+      "pending": "Đang chờ",
+      "skipped": "Đã bỏ qua",
+      "dry": "Xem trước",
+      "next": "Ngày gửi tiếp theo: {day}",
+      "noNext": "Không có ngày gửi trong 90 ngày tới",
+      "readonly": "Cần quyền HR Tập đoàn để thay đổi lịch.",
+      "confirm": "Xếp hàng nhắc việc cho người nhận hiện tại đã đồng ý? Vẫn áp dụng khoảng cách 20 giờ.",
+      "saveFirst": "Lưu trước khi đổi lịch tự động. Xem trước và Gửi ngay dùng công việc hiện tại.",
+      "saved": "Đã lưu lịch nhắc việc.",
+      "result": "Xếp hàng: {queued}; bỏ qua: {skipped}; xem trước: {dry}."
     }
   },
   "allowanceV2": {
