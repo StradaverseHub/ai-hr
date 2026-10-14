@@ -1,5 +1,6 @@
 -- Native assessment journey: private working copies, persisted conversations and catalogue.
--- Unapplied Performance increment: when 1791900000018, after board migrations 0536/0537.
+-- Unapplied Performance increment: when 1791900000020, above the pending attendance reservation.
+-- Re-check the live watermark and merge the journal union before release.
 -- Apply strictly after 0531–0535. Historical assessment identifiers remain stable.
 ALTER TABLE performance_onehr_review ADD COLUMN profile_id uuid, ADD COLUMN profile_match text, ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
 ALTER TABLE performance_onehr_panel ADD COLUMN reset_at timestamptz, ADD COLUMN archive_reason text;
