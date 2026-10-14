@@ -45,12 +45,14 @@ describe('company workflow editor outcomes', () => {
     expect(screen.getByText('Unavailable (missing)')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Preview assignment' }));
     await screen.findByText('Example employee — OVERTIME');
+    await waitFor(() => expect(screen.getByLabelText('Workflow name')).not.toBeDisabled());
     expect(preview.mock.calls[0][1].criteria.departmentIds).toEqual(['d1', 'missing']);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Unavailable (missing)' }));
     expect(screen.queryByText('Example employee — OVERTIME')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][1].criteria.departmentIds).toEqual(['d1']);
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
   });
   it('keeps names with reordered stages, derives mode from alternatives, and offers only Attendance authorities', async () => {
     form();
@@ -67,6 +69,7 @@ describe('company workflow editor outcomes', () => {
     expect(payload.stages.map((stage: { name: string }) => stage.name)).toEqual(['Final review', 'Manager review']);
     expect(payload.stages[1].level).toMatchObject({ kind: 'hr_admin', alternates: [{ kind: 'direct_manager', employmentId: null }] });
     expect(payload).not.toHaveProperty('mode');
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
   });
   it('switching to sequential removes alternatives and cancel preserves edits unless confirmed', () => {
     const value = initial(); value.stages[1].level.alternates = [{ kind: 'direct_manager', employmentId: null }]; form(value);
@@ -83,9 +86,14 @@ describe('company workflow editor outcomes', () => {
     form(); save.mockResolvedValueOnce({ ok: false, error: 'Overlapping priority' }).mockRejectedValueOnce(new Error('offline'));
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Retain this' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await screen.findByText('Overlapping priority');
+    // Feedback can render while the async transition still disables editing and shows Saving.
+    await waitFor(() => expect(screen.getByLabelText('Workflow name')).not.toBeDisabled());
     expect(screen.getByRole('alert').parentElement).toContainElement(screen.getByRole('button', { name: 'Save workflow' }));
     expect(screen.getByLabelText('Workflow name')).toHaveValue('Retain this');
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await screen.findByText(en.attendanceWorkflow.requestFailed);
+    await waitFor(() => expect(screen.getByLabelText('Workflow name')).not.toBeDisabled());
+    expect(screen.getByLabelText('Workflow name')).toHaveValue('Retain this');
+    expect(save).toHaveBeenCalledTimes(2);
     expect(router.push).not.toHaveBeenCalled();
   });
   it.each([['en', en], ['ms', ms], ['ta', ta], ['th', th], ['vi', viLocale], ['zh', zh]] as const)('renders translated shared controls without missing messages (%s)', (_, messages) => {
