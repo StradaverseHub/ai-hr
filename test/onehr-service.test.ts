@@ -1112,6 +1112,36 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.sendCalibrationMessage(mgr,id,'performance',null,randomUUID(),'Set performance: Assessment subject: AE: Prepared wider delivery for review.');
     await perf.agreeAssessmentDepartment(mgr,id,v.session.revision,'performance',[reviewId]);v=await perf.getOnehrCalibration(mgr,id);expect(v.held.performance).toMatchObject({lines:[],focus:null,requestId:null});expect(v.rows.find(r=>r.entry.reviewId===reviewId)?.entry).toMatchObject({performance:'ME',performanceLockedAt:expect.any(Date)});expect(v.rows.find(r=>r.entry.reviewId===pending.reviewId)?.entry.performance).toBeNull();
   });
+  it('answers natural calibration queries from fresh scoped facts and opens a person without moving or locking them',async()=>{
+    await complete();const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Query cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockResolvedValue('{"action":"distribution","axis":"performance"}');
+    const first=await perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'How are the performance bands spread across my cohort?');
+    expect(first.messages.at(-1)?.text).toContain('ME: 1');
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).toContain('Assessment subject');expect(prompt).not.toContain('primaryEmail');expect(prompt).not.toContain('anonymousFeedback');expect(prompt).not.toContain('salary');
+    const words='Could you explain Assessment subject?',start=words.indexOf('Assessment subject');
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({action:'person',reviewId,name:{start,end:start+'Assessment subject'.length}}));
+    const request=randomUUID(),second=await perf.sendCalibrationMessage(reviewer,id,'performance',first.revision,request,words);
+    expect(second.messages.at(-1)?.text).toContain('manager: ME');let v=await perf.getOnehrCalibration(reviewer,id);
+    expect(v.held.performance).toMatchObject({focus:reviewId,lines:[],requestId:request});expect(v.rows[0].entry.performance).toBeNull();expect(v.session.revision).toBe(1);
+    const calls=vi.mocked(generateDraft).mock.calls.length;expect(await perf.sendCalibrationMessage(reviewer,id,'performance',first.revision,request,words)).toEqual(second);expect(generateDraft).toHaveBeenCalledTimes(calls);
+    const third=await perf.sendCalibrationMessage(reviewer,id,'performance',second.revision,randomUUID(),'Suggest to framework');expect(third.messages.at(-1)?.text).toContain('Tolerance: 1');
+    const fourth=await perf.sendCalibrationMessage(reviewer,id,'performance',third.revision,randomUUID(),'Lock calibration');expect(fourth.messages.at(-1)?.text).toContain('Nothing has been locked');
+    v=await perf.getOnehrCalibration(reviewer,id);expect(v.session.lockedAt).toBeNull();expect(v.rows[0].entry.performance).toBeNull();expect(generateDraft).toHaveBeenCalledTimes(calls);
+    await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'calib',false);
+    await perf.sendCalibrationMessage(reviewer,id,'performance',fourth.revision,randomUUID(),'Could you explain the distribution?');expect(generateDraft).toHaveBeenCalledTimes(calls);
+  });
+  it('rejects a calibration query when its cohort or feature access changes during the provider call',async()=>{
+    await complete();const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Fresh query cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'calib',false);return '{"action":"distribution"}';});
+    await expect(perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'How are the bands distributed?')).rejects.toThrow(/changed/);
+    expect((await perf.getCalibrationConversation(reviewer,id,'performance')).messages).toEqual([]);
+    await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'calib',true);
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,id));return '{"action":"distribution"}';});
+    await expect(perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'How are the bands distributed?')).rejects.toThrow(/removed/);
+    expect(await withTenant(reviewer,tx=>tx.select().from(schema.calibrationConversation))).toEqual([]);
+  });
   it('keeps BU chat moves reversible, never locks through chat, and keeps the Group conversation read-only',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const make=(tier:'bu'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} chat`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { pmBands,potentialBands,type PMBand,type PotentialBand } from './model';
-export const heldCalibrationSchema=z.object({lines:z.array(z.object({reviewId:z.uuid(),sessionRevision:z.number().int().positive(),axis:z.enum(['performance','potential']),band:z.string(),reason:z.string().max(4000)})).max(200),focus:z.uuid().nullable(),requestId:z.uuid().nullable()});
+export const heldCalibrationSchema=z.object({lines:z.array(z.object({reviewId:z.uuid(),sessionRevision:z.number().int().positive(),axis:z.enum(['performance','potential']),band:z.string(),reason:z.string().max(4000)})).max(200),focus:z.uuid().nullable(),requestId:z.uuid().nullable(),navigation:z.boolean().optional()});
 export type HeldCalibration=z.infer<typeof heldCalibrationSchema>;
 export const emptyHeldCalibration:HeldCalibration={lines:[],focus:null,requestId:null};
 type Target={id:string;name:string};

@@ -113,3 +113,9 @@ it('opens read-only axis curves for the selected unit with company figures, full
  fireEvent.click(screen.getByRole('button',{name:'Unit Y'}));expect(screen.getByText('PBT/PAT not entered · normal curve')).toBeTruthy();expect(screen.getByText('Lock Unit Y')).toBeTruthy();expect(screen.queryByText('Lock Unit X')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Show Potential distribution'}));dialog=screen.getByRole('dialog',{name:'Potential distribution — Unit Y'});expect(within(dialog).getByText(/1 person against/)).toBeTruthy();expect(within(dialog).getAllByRole('row')).toHaveLength(4);expect(within(dialog).queryByText(/PBT/)).toBeNull();
 });
+
+it('opens the requested person in their own unit when chat navigates across Talent Box units',()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><CalibrationRoster sessionId="session" revision={1} initialFocus="cara" rows={rows} cards={rows.map(r=>({id:r.id,content:<p>{r.name} supporting review</p>}))} axes={{pm:true,pot:true}} grid reference={{}}/></NextIntlClientProvider>);
+ expect(screen.getByRole('button',{name:'Unit Y'}).getAttribute('aria-pressed')).toBe('true');
+ expect(screen.getByText('Cara Lee supporting review')).toBeTruthy();expect(screen.queryByText('Alice Tan supporting review')).toBeNull();
+});
