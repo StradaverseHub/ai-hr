@@ -526,6 +526,40 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
       const answer=i<2?'yes':'no';await perf.submitOnehrFeedback(peers[i].ctx,request.id,Object.fromEntries(card.statements.map(s=>[s.id,answer])),answer==='yes'?'Consistently observed these behaviours':'');
     }
   }
+  it('previews curve fit without writes or providers, then preserves human notes and skips stale moves',async()=>{
+    await complete();const reviewer=peers[0].ctx,[thin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId))),sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Fit preview',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!,mgr.userId!],reviewIds:[reviewId,thin.reviewId],pbtAchievement:100});
+    await perf.saveOnehrCalibration(reviewer,sessionId,1,{reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'My considered observation.',potentialNote:''});
+    await perf.saveOnehrCalibration(reviewer,sessionId,2,{reviewId:thin.reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Awaiting score.',potentialNote:''});
+    const before=await owner.db.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId)).orderBy(schema.onehrCalibrationEntry.reviewId),events=(await owner.db.select().from(schema.domainEvent)).length;
+    const preview=await perf.previewAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId);expect(preview.moves).toHaveLength(1);expect(preview.moves.find(m=>m.id===reviewId)).toMatchObject({id:reviewId,from:'OU',to:'AE'});expect(preview.withinAfter).toBe(true);
+    expect(await owner.db.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId)).orderBy(schema.onehrCalibrationEntry.reviewId)).toEqual(before);expect((await owner.db.select().from(schema.domainEvent)).length).toBe(events);expect(generateDraft).not.toHaveBeenCalled();expect(readImage).not.toHaveBeenCalled();
+    const reading=await perf.getAssessmentPerformanceInsight(reviewer,reviewId,sessionId,{generate:true});expect(reading.data?.verdict).toBeTruthy();
+    expect((await perf.previewAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId)).moves.find(m=>m.id===reviewId)!.reasons.some(r=>r.startsWith('AI insight:'))).toBe(true);
+    expect((await perf.previewAssessmentCalibrationFit(mgr,sessionId,'performance',b.companyId)).moves.find(m=>m.id===reviewId)!.reasons.some(r=>r.startsWith('AI insight:'))).toBe(false);
+    expect(await perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,preview.moves)).toMatchObject({applied:[reviewId],skipped:[],revision:4});
+    const [after]=await owner.db.select().from(schema.onehrCalibrationEntry).where(and(eq(schema.onehrCalibrationEntry.sessionId,sessionId),eq(schema.onehrCalibrationEntry.reviewId,reviewId)));expect(after).toMatchObject({performance:'AE',performanceNote:'My considered observation.',potential:before.find(e=>e.reviewId===reviewId)!.potential,potentialNote:before.find(e=>e.reviewId===reviewId)!.potentialNote,performanceLockedAt:null,potentialLockedAt:null});
+    expect(await perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,preview.moves)).toMatchObject({applied:[],skipped:[reviewId],revision:4});
+    expect(await owner.db.select().from(schema.onehrResult)).toEqual([]);expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
+    await expect(perf.previewAssessmentCalibrationFit(self,sessionId,'performance',b.companyId)).rejects.toThrow();await expect(perf.applyAssessmentCalibrationFit(self,sessionId,'performance',b.companyId,preview.moves)).rejects.toThrow();
+    await expect(perf.previewAssessmentCalibrationFit(reviewer,sessionId,'performance',randomUUID())).rejects.toThrow(/scope/);
+    const hod=await perf.createOnehrCalibration(a,cycleId,{name:'No department curve',companyId:b.companyId,tier:'hod',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:100});await expect(perf.previewAssessmentCalibrationFit(reviewer,hod,'performance',b.companyId)).rejects.toThrow(/no curve/);
+    const fresh=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateOnehrWindows(a,cycleId,fresh.revision,{...fresh.policy.windows,pm_buceo:{opensAt:null,closesAt:new Date(Date.now()-60000).toISOString()}},'Close the preview window');await expect(perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,preview.moves)).rejects.toThrow(/closed/);
+  });
+  it('curve fit holds invalid potential and independently checks each axis and revoked cohort access',async()=>{
+    await complete();const reviewer=peers[0].ctx,[thin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    const [otherThin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[2].employmentId)));
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Potential fit',companyId:b.companyId,tier:'bg',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,thin.reviewId,otherThin.reviewId],pbtAchievement:null});
+    await perf.saveOnehrCalibration(reviewer,sid,1,{reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:'Keep this reviewer comment.'});
+    await perf.saveOnehrCalibration(reviewer,sid,2,{reviewId:thin.reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:'A provisional decision without a usable score.'});
+    await perf.saveOnehrCalibration(reviewer,sid,3,{reviewId:otherThin.reviewId,axis:'potential',performance:null,potential:'High',performanceNote:'',potentialNote:'Another provisional decision.'});
+    const preview=await perf.previewAssessmentCalibrationFit(reviewer,sid,'potential',b.companyId);expect(preview.unscored).toContain('Peer 1');expect(preview.moves.some(m=>m.id===thin.reviewId)).toBe(false);expect(preview.moves.length).toBeGreaterThan(0);expect(JSON.stringify(preview)).not.toMatch(/"(?:peerEmploymentId|answers|requestId|raters)"\s*:/);
+    expect(await perf.applyAssessmentCalibrationFit(reviewer,sid,'potential',b.companyId,[{id:thin.reviewId,from:'High',to:'Low'},...preview.moves])).toMatchObject({applied:[reviewId],skipped:[thin.reviewId]});
+    const v=await perf.getOnehrCalibration(reviewer,sid);expect(v.rows.find(r=>r.entry.reviewId===reviewId)!.entry.potentialNote).toBe('Keep this reviewer comment.');
+    await perf.lockOnehrCalibration(reviewer,sid,v.session.revision,'Reasoned distribution','potential');
+    await expect(perf.previewAssessmentCalibrationFit(reviewer,sid,'potential',b.companyId)).rejects.toThrow(/locked/);await expect(perf.applyAssessmentCalibrationFit(reviewer,sid,'potential',b.companyId,preview.moves)).rejects.toThrow(/locked/);
+    expect(await perf.previewAssessmentCalibrationFit(reviewer,sid,'performance',b.companyId)).toHaveProperty('moves');
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[mgr.userId!]}).where(eq(schema.onehrCalibration.id,sid));await expect(perf.previewAssessmentCalibrationFit(reviewer,sid,'performance',b.companyId)).rejects.toThrow();expect(generateDraft).not.toHaveBeenCalled();
+  });
   it('edits the active leadership framework after submission while preserving original answers and renamed comments',async()=>{
     const group={...a,grants:[{role:'hr_admin',companyId:null}]};
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));

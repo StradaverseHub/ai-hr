@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { and,asc,eq,inArray } from 'drizzle-orm';
-import type { SessionContext } from '../../../db/client';
+import type { SessionContext,Tx } from '../../../db/client';
 import { assessmentFileText,assessmentInsight } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { assessmentAiConfigTx } from './ai-settings';
@@ -45,4 +45,13 @@ export async function getAssessmentPerformanceInsight(ctx:SessionContext,reviewI
  });
  if(cfg)await recordProposal(ctx,{type:'performance_insight',subject:{type:'performance-review',id:reviewId},facts:{contextId,fingerprint:readFp,kpis:source.facts.rows.length},proposal:{source:kind,verdict:result.verdict},adjudication:kind==='ai'?{ok:true}:{ok:false,reason},provider:cfg.provider,model:cfg.model});
  return {status:'submitted' as const,pending:false,source:kind,data:result};
+}
+
+/** Curve fitting consumes a current reading only; it never reads files or calls a provider. */
+export async function getAssessmentPerformanceReadingTx(tx:Tx,ctx:SessionContext,source:Source){
+ const ids=source.attachments.map(f=>f.id),rows=ids.length?await tx.select().from(assessmentFileText).where(inArray(assessmentFileText.attachmentId,ids)).orderBy(asc(assessmentFileText.attachmentId)):[];
+ const texts=new Map(rows.map(row=>[row.attachmentId,{status:row.status as EvidenceText['status'],method:row.method as EvidenceText['method'],text:row.text}]));
+ let cfg:ResolvedAiConfig|null=null;try{cfg=await assessmentAiConfigTx(tx,ctx,'pm');}catch{}
+ const [cached]=await tx.select().from(assessmentInsight).where(and(eq(assessmentInsight.reviewId,source.reviewId),eq(assessmentInsight.contextId,source.contextId),eq(assessmentInsight.actorUserId,ctx.userId!)));
+ return cached?.fingerprint===fingerprint(source,texts,cfg)?cached.data:null;
 }

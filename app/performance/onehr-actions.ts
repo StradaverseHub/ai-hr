@@ -287,3 +287,10 @@ export async function assessmentTalentPersonAction(reviewId:string,sessionId:str
 export async function saveAssessmentTalentRemarkAction(f:FormData){
  const s=await getSession();try{return {revision:await perf.saveAssessmentTalentRemark(s,z.uuid().parse(str(f,'sessionId')),z.uuid().parse(str(f,'reviewId')),num(f,'draftRevision'),str(f,'remark'))};}catch(error){return {error:publicErrorMessage(error)};}
 }
+
+export async function previewCalibrationFitAction(sessionId:string,axis:'performance'|'potential',companyId:string|null){
+ const s=await getSession();try{return await perf.previewAssessmentCalibrationFit(s,sessionId,axis,companyId);}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function applyCalibrationFitAction(sessionId:string,axis:'performance'|'potential',companyId:string|null,moves:unknown){
+ const s=await getSession();try{const result=await perf.applyAssessmentCalibrationFit(s,sessionId,axis,companyId,moves);revalidatePath('/performance/workspace');revalidatePath(`/performance/assessment/calibration/${sessionId}`);return result;}catch(error){return {error:publicErrorMessage(error)};}
+}

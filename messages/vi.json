@@ -18396,6 +18396,22 @@
       "noRemark": "Chưa có nhận xét. Đánh giá này đã khóa.",
       "longerTerm": "Dài hạn",
       "noPlanRemark": "Chưa có nhận xét về kế hoạch của họ."
+    },
+    "calibrationFit": {
+      "title": "Xem trước điều chỉnh phân bố",
+      "performance": "Dựa trên điểm số, phân tích hiệu suất hiện tại, nhận xét đã gửi và bằng chứng đã chia sẻ.",
+      "potential": "Dựa trên phản hồi 360 hợp lệ, điểm năng lực đã duyệt, đánh giá của quản lý và suy ngẫm đã gửi.",
+      "help": "Xem từng đề xuất trước khi áp dụng. Nhận xét của bạn được giữ nguyên.",
+      "working": "Đang chuẩn bị đề xuất…",
+      "failed": "Không thể hoàn tất yêu cầu. Vui lòng thử lại.",
+      "saved": "Đã áp dụng {applied} điều chỉnh; bỏ qua {skipped} hồ sơ đã thay đổi hoặc không còn khả dụng.",
+      "within": "{count} điều chỉnh đưa mọi mức vào khung.",
+      "already": "Phân bố đã nằm trong khung.",
+      "closer": "Các điều chỉnh này đưa phân bố gần hơn; phần còn lại cần bạn cân nhắc.",
+      "held": "Chưa có điểm hợp lệ cho {names}. Vị trí của họ được giữ nguyên.",
+      "batch": "Áp dụng 200 điều chỉnh đầu tiên rồi xem trước lại.",
+      "close": "Đóng",
+      "apply": "Áp dụng {count} điều chỉnh"
     }
   },
   "allowanceV2": {

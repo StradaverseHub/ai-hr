@@ -10,6 +10,7 @@ import { pmBands,potentialBands,talentCell9,talentCell,talentColumn,tiers as cal
 import { PerformanceInsight } from './performance-insight';
 import type { PerformanceInsight as Insight } from '@/packs/performance/onehr/performance-insight-model';
 import { TalentGrid } from './talent-grid';
+import {CalibrationFit} from './calibration-fit';
 import { CalibrationCurveDialog } from './calibration-curve-dialog';
 import { calibrationDistribution,profitAchievementText,type CalibrationCurvePolicy,type profitCurveFor } from '@/packs/performance/onehr/calibration-curve-model';
 import type { TalentTrailStep } from '@/packs/performance/onehr/talent-trail-model';
@@ -22,7 +23,7 @@ import { agreeDepartmentAction } from '../onehr-actions';
 
 export type CalibrationRosterRow={id:string;name:string;grade:string;companyId:string;company:string;department?:string;bandTrails?:{performance:TalentTrailStep[];potential:TalentTrailStep[]};fromCategory?:string|null;performance:PMBand|null;potential:PotentialBand|null;performanceSource:string|null;potentialSource:string|null;locked:boolean;moved?:boolean;readOnly?:boolean;canMove?:boolean;journey:{tier:string;performance:PMBand|null;potential:PotentialBand|null}[];potentialPct:number|null};
 /** Department/BU use a compact roster. The BG Talent Box keeps the grid beside the person being read. */
-export function CalibrationRoster({rows,cards,axes,grid,reference,talentInsight=false,initialFocus=null,agree,sessionId,revision,curves,unitActions}:{talentInsight?:boolean;curves?:{policy:CalibrationCurvePolicy;units:{id:string;name:string;profit:ReturnType<typeof profitCurveFor>}[]};unitActions?:{id:string;node:ReactNode}[];sessionId:string;revision:number;agree?:{sessionId:string;revision:number;axis:'performance'|'potential';returnTo?:string;eligibleIds:string[]};initialFocus?:string|null;rows:CalibrationRosterRow[];cards:{id:string;content:ReactNode}[];axes:{pm:boolean;pot:boolean};grid:boolean;reference:Partial<Record<PMBand|PotentialBand,number>>}){
+export function CalibrationRoster({rows,cards,axes,grid,reference,talentInsight=false,initialFocus=null,agree,sessionId,revision,curves,unitActions,allowFit=false,fitAxes={pm:true,pot:true}}:{fitAxes?:{pm:boolean;pot:boolean};allowFit?:boolean;talentInsight?:boolean;curves?:{policy:CalibrationCurvePolicy;units:{id:string;name:string;profit:ReturnType<typeof profitCurveFor>}[]};unitActions?:{id:string;node:ReactNode}[];sessionId:string;revision:number;agree?:{sessionId:string;revision:number;axis:'performance'|'potential';returnTo?:string;eligibleIds:string[]};initialFocus?:string|null;rows:CalibrationRosterRow[];cards:{id:string;content:ReactNode}[];axes:{pm:boolean;pot:boolean};grid:boolean;reference:Partial<Record<PMBand|PotentialBand,number>>}){
  const unitOptions=[...new Map(rows.map(r=>[r.companyId,r.company])).entries()].sort((a,b)=>a[1].localeCompare(b[1])),unlockedUnits=new Set(rows.filter(r=>!r.locked).map(r=>r.companyId));
  const firstUnit=unitOptions.find(([id])=>unlockedUnits.has(id))?.[0]??unitOptions[0]?.[0]??'';
  const t=useTranslations('onehr'),[company,setCompany]=useState(grid?firstUnit:''),[query,setQuery]=useState(''),[band,setBand]=useState(''),[focus,setFocus]=useState<string|null>(initialFocus);
@@ -48,7 +49,7 @@ export function CalibrationRoster({rows,cards,axes,grid,reference,talentInsight=
  const activeCompany=grid&&(!company||!units.some(([id])=>id===company))?firstUnit:company;
  const unitRows=rows.filter(r=>!activeCompany||r.companyId===activeCompany).sort((a,b)=>(grid?Number(!!b.moved)-Number(!!a.moved):0)||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
  const curveUnit=curves?.units.find(unit=>unit.id===activeCompany);
- const curveFor=(axis:'performance'|'potential',vertical=false)=>curves&&curveUnit?<CalibrationCurveDialog axis={axis} unit={curveUnit.name} distribution={calibrationDistribution(unitRows,axis,curves.policy,curveUnit.profit.reference)} profit={axis==='performance'?curveUnit.profit:undefined} vertical={vertical}/>:undefined;
+ const curveFor=(axis:'performance'|'potential',vertical=false)=>curves&&curveUnit?<CalibrationCurveDialog axis={axis} unit={curveUnit.name} distribution={calibrationDistribution(unitRows,axis,curves.policy,curveUnit.profit.reference)} profit={axis==='performance'?curveUnit.profit:undefined} vertical={vertical} fit={allowFit?{sessionId,companyId:curveUnit.id,disabled:!(axis==='performance'?fitAxes.pm:fitAxes.pot)||unitRows.every(r=>r.locked||r.readOnly)}:undefined}/>:undefined;
  const cellOf=(r:CalibrationRosterRow|undefined)=>r?talentCell(r):null;
  const categoryOf=(r:CalibrationRosterRow)=>r.performance&&r.potential?talentCell9(talentColumn(r.performance),r.potential):null;
  const categories=['Super Star','Star','Solid Core','PIP/Improvement','Moved'];
@@ -95,6 +96,7 @@ export function CalibrationRoster({rows,cards,axes,grid,reference,talentInsight=
    <label className="min-w-0 flex-1 text-xs font-medium">{t('calibrationRoster.search')}<input type="search" value={query} onChange={e=>{setQuery(e.target.value);setPicked([]);}} className={`${inputCls} mt-1`}/></label>
   </div>}
   {!grid&&<div className="flex flex-wrap gap-2 px-5" aria-label={t('calibrationRoster.distribution')}>
+   {allowFit&&<CalibrationFit key={`${sessionId}.${axis}.${activeCompany}`} sessionId={sessionId} axis={axis} companyId={activeCompany||null} disabled={!(axis==='performance'?fitAxes.pm:fitAxes.pot)||unitRows.every(r=>r.locked||r.readOnly)}/>}
    <button type="button" aria-pressed={!band} onClick={()=>{setBand('');setPicked([]);}} className="min-h-11 rounded-md border border-border px-3 text-sm">{t('calibrationRoster.allBands')} · {unitRows.length}</button>
    {bands.map(code=><button type="button" key={code} aria-pressed={band===code} onClick={()=>{setBand(band===code?'':code);setPicked([]);}} className={`min-h-11 rounded-md border px-3 py-2 text-sm ${band===code?'border-primary bg-primary/5':'border-border'}`}><b translate="no">{code}</b> · {count(code)} <span className="ml-1 text-xs text-muted-foreground">({unitRows.length?Math.round(count(code)/unitRows.length*100):0}%{reference[code]!=null&&<> / {reference[code]}%</>})</span></button>)}
   </div>}

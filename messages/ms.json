@@ -18396,6 +18396,22 @@
       "noRemark": "Tiada ulasan. Semakan ini dikunci.",
       "longerTerm": "Jangka panjang",
       "noPlanRemark": "Belum ada ulasan tentang pelan mereka."
+    },
+    "calibrationFit": {
+      "title": "Pratonton pelarasan taburan",
+      "performance": "Menggunakan skor, analisis prestasi semasa, ulasan yang dihantar dan bukti yang dikongsi.",
+      "potential": "Menggunakan maklum balas 360 yang sah, skor kompetensi yang disemak, penilaian pengurus dan refleksi yang dihantar.",
+      "help": "Semak setiap cadangan sebelum menerapkannya. Ulasan anda dikekalkan.",
+      "working": "Menyediakan cadangan…",
+      "failed": "Permintaan tidak dapat diselesaikan. Sila cuba lagi.",
+      "saved": "{applied} perubahan diterapkan; {skipped} rekod yang berubah atau tidak tersedia dilangkau.",
+      "within": "{count} perubahan membawa semua kategori ke dalam rangka kerja.",
+      "already": "Taburan sudah dalam rangka kerja.",
+      "closer": "Perubahan ini mendekatkan taburan; selebihnya memerlukan pertimbangan anda.",
+      "held": "Skor belum tersedia untuk {names}. Kedudukan mereka dikekalkan.",
+      "batch": "Terapkan 200 perubahan pertama, kemudian pratonton semula.",
+      "close": "Tutup",
+      "apply": "Terapkan {count} perubahan"
     }
   },
   "allowanceV2": {

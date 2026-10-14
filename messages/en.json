@@ -18396,6 +18396,22 @@
       "noRemark": "No remark. This review is locked.",
       "longerTerm": "Longer term",
       "noPlanRemark": "No remark on their plan yet."
+    },
+    "calibrationFit": {
+      "title": "Preview curve fit",
+      "performance": "Uses scores, the current performance insight, submitted remarks and shared evidence.",
+      "potential": "Uses valid 360 feedback and reviewed competency scores, the manager’s assessment and submitted reflection.",
+      "help": "Review each suggested move before applying it. Your remarks are kept unchanged.",
+      "working": "Preparing the moves…",
+      "failed": "Could not complete this request. Please try again.",
+      "saved": "Applied {applied, plural, one {# move} other {# moves}}; skipped {skipped} changed or unavailable records.",
+      "within": "{count, plural, one {# move brings} other {# moves bring}} every band within the framework.",
+      "already": "The spread is already within the framework.",
+      "closer": "These moves bring it closer; the rest need your judgement.",
+      "held": "No usable score yet for {names}. They remain where they are.",
+      "batch": "Apply the first 200 moves, then preview again for the remaining people.",
+      "close": "Close",
+      "apply": "Apply {count, plural, one {# move} other {# moves}}"
     }
   },
   "allowanceV2": {
