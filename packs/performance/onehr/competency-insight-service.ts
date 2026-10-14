@@ -22,7 +22,7 @@ const fingerprint=(value:z.infer<typeof sourceSchema>,cfg:ResolvedAiConfig|null)
 export async function getAssessmentCompetencyInsight(ctx:SessionContext,reviewId:string,{generate=false}:{generate?:boolean}={}){
  z.uuid().parse(reviewId);
  const initial=await withPerformanceTenant(ctx,async tx=>{
-  const source=await sourceTx(tx,reviewId),cfg=await configTx(tx,ctx),[cached]=await tx.select().from(assessmentSummary).where(and(eq(assessmentSummary.reviewId,reviewId),eq(assessmentSummary.actorUserId,ctx.userId!),eq(assessmentSummary.kind,'tc')));
+  const source=await sourceTx(tx,reviewId),cfg=await configTx(tx,ctx),[cached]=await tx.select().from(assessmentSummary).where(and(eq(assessmentSummary.reviewId,reviewId),eq(assessmentSummary.contextId,reviewId),eq(assessmentSummary.actorUserId,ctx.userId!),eq(assessmentSummary.kind,'tc')));
   return {source,cfg,cached};
  });
  const {source,cfg,cached}=initial,status=source.status;
@@ -42,7 +42,7 @@ export async function getAssessmentCompetencyInsight(ctx:SessionContext,reviewId
  await withPerformanceTenant(ctx,async tx=>{
   const fresh=await sourceTx(tx,reviewId),freshCfg=await configTx(tx,ctx);
   if(fingerprint(fresh,freshCfg)!==fp)throw Error('Competency facts or access changed. Refresh the insight.');
-  await tx.insert(assessmentSummary).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,kind:'tc',fingerprint:fp,source:kind,data}).onConflictDoUpdate({target:[assessmentSummary.reviewId,assessmentSummary.actorUserId,assessmentSummary.kind],set:{fingerprint:fp,source:kind,data,updatedAt:new Date()}});
+  await tx.insert(assessmentSummary).values({tenantId:ctx.tenantId,reviewId,contextId:reviewId,actorUserId:ctx.userId!,kind:'tc',fingerprint:fp,source:kind,data}).onConflictDoUpdate({target:[assessmentSummary.reviewId,assessmentSummary.actorUserId,assessmentSummary.kind,assessmentSummary.contextId],set:{fingerprint:fp,source:kind,data,updatedAt:new Date()}});
  });
  if(cfg)await recordProposal(ctx,{type:'competency_insight',subject:{type:'performance-review',id:reviewId},facts:{fingerprint:fp,competencies:facts.total},proposal:{source:kind,verdict:data.verdict},adjudication:kind==='ai'?{ok:true}:{ok:false,reason},provider:cfg.provider,model:cfg.model});
  return {status,pending:false,source:kind,data};

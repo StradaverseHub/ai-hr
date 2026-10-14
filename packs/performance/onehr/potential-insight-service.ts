@@ -20,7 +20,7 @@ const fingerprint=(source:unknown,cfg:ResolvedAiConfig|null)=>createHash('sha256
 export async function getAssessmentPotentialInsight(ctx:SessionContext,reviewId:string,sessionId:string,{generate=false}:{generate?:boolean}={}){
  z.uuid().parse(reviewId);z.uuid().parse(sessionId);
  const {source,cfg,cached}=await withPerformanceTenant(ctx,async tx=>{
-  const source=await sourceTx(tx,reviewId,sessionId),cfg=await configTx(tx,ctx),[cached]=source.valid?await tx.select().from(assessmentSummary).where(and(eq(assessmentSummary.reviewId,reviewId),eq(assessmentSummary.actorUserId,ctx.userId!),eq(assessmentSummary.kind,'pot'))):[];
+  const source=await sourceTx(tx,reviewId,sessionId),cfg=await configTx(tx,ctx),[cached]=source.valid?await tx.select().from(assessmentSummary).where(and(eq(assessmentSummary.reviewId,reviewId),eq(assessmentSummary.contextId,reviewId),eq(assessmentSummary.actorUserId,ctx.userId!),eq(assessmentSummary.kind,'pot'))):[];
   return {source,cfg,cached};
  });
  const facts=potentialInsightFacts(source);
@@ -38,7 +38,7 @@ export async function getAssessmentPotentialInsight(ctx:SessionContext,reviewId:
  await withPerformanceTenant(ctx,async tx=>{
   const fresh=await sourceTx(tx,reviewId,sessionId),freshCfg=await configTx(tx,ctx);
   if(fingerprint(fresh,freshCfg)!==fp)throw Error('Potential facts or access changed. Refresh the insight.');
-  await tx.insert(assessmentSummary).values({tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,kind:'pot',fingerprint:fp,source:kind,data}).onConflictDoUpdate({target:[assessmentSummary.reviewId,assessmentSummary.actorUserId,assessmentSummary.kind],set:{fingerprint:fp,source:kind,data,updatedAt:new Date()}});
+  await tx.insert(assessmentSummary).values({tenantId:ctx.tenantId,reviewId,contextId:reviewId,actorUserId:ctx.userId!,kind:'pot',fingerprint:fp,source:kind,data}).onConflictDoUpdate({target:[assessmentSummary.reviewId,assessmentSummary.actorUserId,assessmentSummary.kind,assessmentSummary.contextId],set:{fingerprint:fp,source:kind,data,updatedAt:new Date()}});
  });
  if(cfg)await recordProposal(ctx,{type:'potential_insight',subject:{type:'performance-review',id:reviewId},facts:{fingerprint:fp},proposal:{source:kind},adjudication:kind==='ai'?{ok:true}:{ok:false,reason},provider:cfg.provider,model:cfg.model});
  return {pending:false,source:kind,data};

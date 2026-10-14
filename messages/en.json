@@ -18360,6 +18360,13 @@
       "remark": "Remark on {category}",
       "employee": "Employee section remark",
       "manager": "Manager section remark"
+    },
+    "writtenRemarks": {
+      "pm": "Written performance remarks",
+      "pot": "Written potential remarks",
+      "help": "Read the submitted remarks and a summary of where reviewers agree or differ.",
+      "read": "Read remarks",
+      "full": "View full written remarks"
     }
   },
   "allowanceV2": {

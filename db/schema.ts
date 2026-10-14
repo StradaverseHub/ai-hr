@@ -10213,9 +10213,9 @@ export const assessmentInsight = pgTable('performance_assessment_insight', {
 },t=>[uniqueIndex('performance_assessment_insight_actor_uq').on(t.reviewId,t.actorUserId,t.contextId)]);
 // Reviewer-owned summaries of submitted evidence; never a rating or decision authority.
 export const assessmentSummary = pgTable('performance_assessment_summary', {
- id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),kind:text('kind').notNull(),
+ id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),contextId:uuid('context_id').notNull(),kind:text('kind').notNull(),
  fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
-},t=>[uniqueIndex('performance_assessment_summary_actor_uq').on(t.reviewId,t.actorUserId,t.kind)]);
+},t=>[uniqueIndex('performance_assessment_summary_actor_uq').on(t.reviewId,t.actorUserId,t.kind,t.contextId)]);
 // Authoritative PM overall remarks. The legacy review column is a guarded derived projection.
 export const assessmentReviewerRemark = pgTable('performance_assessment_reviewer_remark', {
  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').references(()=>appUser.id),

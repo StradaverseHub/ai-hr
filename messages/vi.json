@@ -18360,6 +18360,13 @@
       "remark": "Nhận xét về {category}",
       "employee": "Nhận xét nhóm năng lực của nhân viên",
       "manager": "Nhận xét nhóm năng lực của quản lý"
+    },
+    "writtenRemarks": {
+      "pm": "Nhận xét bằng văn bản về hiệu suất",
+      "pot": "Nhận xét bằng văn bản về tiềm năng",
+      "help": "Đọc các nhận xét đã gửi và bản tóm tắt những điểm người đánh giá đồng ý hoặc khác biệt.",
+      "read": "Đọc nhận xét",
+      "full": "Xem toàn bộ nhận xét bằng văn bản"
     }
   },
   "allowanceV2": {

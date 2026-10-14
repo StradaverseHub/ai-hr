@@ -18360,6 +18360,13 @@
       "remark": "关于{category}的评语",
       "employee": "员工类别评语",
       "manager": "经理类别评语"
+    },
+    "writtenRemarks": {
+      "pm": "绩效书面评语",
+      "pot": "潜力书面评语",
+      "help": "阅读已提交的评语，以及评审意见相同或不同之处的摘要。",
+      "read": "阅读评语",
+      "full": "查看完整书面评语"
     }
   },
   "allowanceV2": {

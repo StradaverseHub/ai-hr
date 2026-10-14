@@ -18360,6 +18360,13 @@
       "remark": "Ulasan tentang {category}",
       "employee": "Ulasan bahagian pekerja",
       "manager": "Ulasan bahagian pengurus"
+    },
+    "writtenRemarks": {
+      "pm": "Ulasan prestasi bertulis",
+      "pot": "Ulasan potensi bertulis",
+      "help": "Baca ulasan yang dihantar dan ringkasan persamaan atau perbezaan pandangan penilai.",
+      "read": "Baca ulasan",
+      "full": "Lihat ulasan bertulis penuh"
     }
   },
   "allowanceV2": {

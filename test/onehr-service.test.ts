@@ -203,6 +203,49 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [frozen]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.id,resultId));expect(frozen.result).toMatchObject({provenance:{competencySelfSections:{Technical:'Employee category history.'},competencyManagerSections:{Technical:'Manager category history.'}}});
     await expect(withTenant(mgr,tx=>tx.update(schema.onehrReview).set({competencyManagerSections:{Technical:'Later words'}}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
   });
+  it('scopes written remarks to submitted authors and exact viewing tiers without requiring anonymous feedback',async()=>{
+    const actor=peers[0].ctx,make=(tier:'hod'|'bu')=>perf.createOnehrCalibration(a,cycleId,{name:'Written remarks cohort',companyId:b.companyId,tier,reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'}),hod=await make('hod'),bu=await make('bu');
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{},remark:'Private reflection'});
+    expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,hod,'pot',{generate:true})).toMatchObject({entries:[],pending:false,source:'plain'});expect(generateDraft).not.toHaveBeenCalled();
+    const answers={'skill-1':{answer:'no' as const,remark:'Develop service skills.'},'skill-2':{answer:'no' as const,remark:''}};
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,answers,false,'I am developing service skills.');
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers,remark:'Private manager reflection'});
+    const submitted=await perf.getAssessmentWrittenRemarks(actor,reviewId,hod,'pot');expect(submitted).toMatchObject({pending:true});expect(submitted.entries).toHaveLength(2);expect(JSON.stringify(submitted)).not.toMatch(/Private|Peer 0/);
+    expect((await perf.getAssessmentPotentialInsight(actor,reviewId,hod)).data?.paragraph).toContain('0 of the 4');
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,answers,true,'Practise service recovery.');
+    const reviewed=await perf.getAssessmentWrittenRemarks(actor,reviewId,hod,'pot',{generate:true});expect(reviewed.entries.some(e=>e.role==='lm'&&e.text==='Practise service recovery.')).toBe(true);expect(reviewed).toMatchObject({source:'plain',pending:false});
+    for(const denied of [self,mgr,peers[1].ctx]){await expect(perf.getAssessmentWrittenRemarks(denied,reviewId,hod,'pot')).rejects.toThrow(/not assigned/);expect(await withTenant(denied,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);}
+    await expect(perf.getAssessmentWrittenRemarks(actor,reviewId,randomUUID(),'pot')).rejects.toThrow(/not assigned/);
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,hod));
+    // Access to another tier must not reveal this tier's existing cache.
+    expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pot')).toMatchObject({pending:true});
+  });
+  it('publishes written lower-tier notes only on scope submission and keeps distinct tier caches',async()=>{
+    await complete(true,'Verified delivery outcomes.');const actor=peers[0].ctx,make=(tier:'hod'|'bu')=>perf.createOnehrCalibration(a,cycleId,{name:'Written tier evidence',companyId:b.companyId,tier,reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'}),hod=await make('hod'),bu=await make('bu');
+    const before=await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pm',{generate:true});expect(before.entries.some(e=>e.text==='Verified delivery outcomes.')).toBe(true);expect(before.entries.some(e=>e.text==='Completed outcomes')).toBe(true);
+    await perf.saveOnehrCalibration(actor,hod,(await perf.getOnehrCalibration(actor,hod)).session.revision,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Confirmed broader outcomes.',potentialNote:''});
+    expect((await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pm')).entries.some(e=>e.role==='hod')).toBe(false);
+    await perf.lockOnehrCalibration(actor,hod,(await perf.getOnehrCalibration(actor,hod)).session.revision,'','performance');
+    expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pm')).toMatchObject({pending:true});
+    const released=await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pm',{generate:true});expect(released.entries).toContainEqual(expect.objectContaining({role:'hod',text:'Confirmed broader outcomes.',move:'moved ME → AE'}));
+    const own=await perf.getAssessmentWrittenRemarks(actor,reviewId,hod,'pm',{generate:true});expect(own.entries.some(e=>e.role==='hod')).toBe(false);
+    await perf.saveOnehrCalibration(actor,hod,(await perf.getOnehrCalibration(actor,hod)).session.revision,{reviewId,axis:'potential',performance:null,potential:'Mid',performanceNote:'',potentialNote:'Practise team leadership.'});
+    expect((await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pot')).entries.some(e=>e.role==='hod')).toBe(false);
+    await perf.lockOnehrCalibration(actor,hod,(await perf.getOnehrCalibration(actor,hod)).session.revision,'','potential');
+    expect((await perf.getAssessmentWrittenRemarks(actor,reviewId,bu,'pot')).entries).toContainEqual(expect.objectContaining({role:'hod',text:'Practise team leadership.',move:'moved High → Mid'}));
+    const caches=await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary));expect(caches.filter(c=>c.kind==='pm_remarks').map(c=>c.contextId).sort()).toEqual([hod,bu].sort());
+    const foreign=await seedBase();await setModule(foreign.tenantId,'performance','active');await expect(perf.getAssessmentWrittenRemarks(await entitledCtx(foreign),reviewId,bu,'pm')).rejects.toThrow(/not assigned/);
+  });
+  it('generates written summaries explicitly and rechecks authorization and settings after the provider returns',async()=>{
+    await complete(true,'Verified delivery outcomes.');const actor=peers[0].ctx,group={...a,grants:[{role:'hr_admin',companyId:null}]},sid=await perf.createOnehrCalibration(a,cycleId,{name:'Written summary cache',companyId:b.companyId,tier:'hod',reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockResolvedValue('They wrote that they completed the agreed outcomes. Their line manager verified delivery outcomes.');
+    expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm')).toMatchObject({pending:true});expect(generateDraft).not.toHaveBeenCalled();
+    const result=await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true});expect(result).toMatchObject({source:'ai'});expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm')).toEqual(result);expect(generateDraft).toHaveBeenCalledOnce();
+    await perf.setAssessmentAiSwitch(group,'tc',false);expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true})).toMatchObject({source:'plain'});expect(generateDraft).toHaveBeenCalledOnce();
+    await perf.setAssessmentAiSwitch(group,'tc',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(group,'tc',false);return 'They completed the agreed outcomes.';});await expect(perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true})).rejects.toThrow(/remarks or access changed/);
+    await perf.setAssessmentAiSwitch(group,'tc',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));return 'They completed the agreed outcomes.';});await expect(perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true})).rejects.toThrow(/not assigned/);
+    expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);
+  });
   it('withholds potential themes below threshold and exposes only anonymous submitted and reviewed evidence',async()=>{
     const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Potential evidence',companyId:b.companyId,tier:'hod',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'}),actor=peers[0].ctx;
     await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Private skill canary'},'skill-2':{answer:'no',remark:''}},remark:'Private reflection canary'});

@@ -1703,28 +1703,55 @@ CREATE FUNCTION app.assessment_potential_source(wanted_review uuid,wanted_sessio
 $$;
 REVOKE ALL ON FUNCTION app.assessment_potential_source(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_potential_source(uuid,uuid) TO ai_hr_app;
-CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT CASE WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
+-- Written remarks are scoped to the exact viewing cohort. Anonymous 360 responses are never attributed here.
+CREATE FUNCTION app.assessment_written_source(wanted_review uuid,wanted_session uuid,wanted_axis text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH authorized AS (
+  SELECT r.*,p.full_name,s.tier FROM performance_onehr_review r
+  JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+  JOIN performance_onehr_calibration s ON s.id=wanted_session AND s.cycle_id=r.cycle_id AND s.tenant_id=r.tenant_id
+  JOIN performance_onehr_calibration_entry ce ON ce.session_id=s.id AND ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id
+  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
+   AND app.assessment_review_participates(r.review_id) AND app.onehr_calibration_access(s.id)
+   AND coalesce((c.policy->'modules'->>'calibration')::boolean,true)
+   AND CASE wanted_axis WHEN 'pm' THEN coalesce((c.policy->'modules'->>'pm')::boolean,false) AND c.policy->>'kind'<>'quarterly' WHEN 'pot' THEN coalesce((c.policy->'modules'->>'tm')::boolean,false) ELSE false END
+ )
+ SELECT jsonb_build_object('name',a.full_name,'tier',a.tier,
+  'status',CASE WHEN wanted_axis='pot' THEN a.competency_status ELSE NULL END,
+  'selfRemark',CASE WHEN wanted_axis='pot' AND a.competency_status IN ('submitted','reviewed') THEN a.competency_self_remark ELSE '' END,
+  'managerRemark',CASE WHEN wanted_axis='pot' AND a.competency_status='reviewed' THEN a.competency_manager_remark ELSE '' END,
+  'managerName',CASE WHEN wanted_axis='pot' AND a.competency_status='reviewed' THEN coalesce((SELECT p.full_name FROM domain_event d JOIN app_user u ON u.id=d.actor_id AND u.tenant_id=d.tenant_id JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE d.tenant_id=a.tenant_id AND d.aggregate_id=a.review_id AND d.event_type='onehr.competencies-reviewed' ORDER BY d.occurred_at DESC,d.id DESC LIMIT 1),'') ELSE '' END,
+  'competencies',CASE WHEN wanted_axis='pot' AND a.competency_status IN ('submitted','reviewed') THEN coalesce((SELECT jsonb_agg(jsonb_build_object('title',coalesce(k->>'skillTitle',k->>'text'),'future',coalesce((k->>'future')::boolean,false),'selfRemark',coalesce(k->>'selfRemark',''),'managerRemark',CASE WHEN a.competency_status='reviewed' THEN coalesce(k->>'managerRemark','') ELSE '' END) ORDER BY ord) FROM jsonb_array_elements(a.competencies) WITH ORDINALITY q(k,ord)),'[]'::jsonb) ELSE '[]'::jsonb END,
+  'trail',CASE WHEN wanted_axis='pot' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('tier',s.tier,'label',CASE s.tier WHEN 'hod' THEN 'HOD' WHEN 'bu' THEN 'BU CEO' WHEN 'bg' THEN 'BG CEO' ELSE 'Group' END,'by',coalesce((SELECT p.full_name FROM domain_event d JOIN app_user u ON u.id=d.actor_id AND u.tenant_id=d.tenant_id JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE d.tenant_id=a.tenant_id AND d.aggregate_id=s.id AND d.event_type='onehr.calibration-recorded' AND d.payload->>'reviewId'=a.review_id::text ORDER BY d.occurred_at DESC,d.id DESC LIMIT 1),''),'from',ce.seen_potential,'band',ce.potential,'note',ce.potential_note) ORDER BY array_position(ARRAY['hod','bu','bg','group','final'],s.tier))
+   FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration s ON s.id=ce.session_id AND s.tenant_id=ce.tenant_id
+   WHERE ce.review_id=a.review_id AND ce.tenant_id=a.tenant_id AND app.assessment_calibration_axis_confirmed(s.tier,ce.potential_locked_at,s.potential_locked_at) AND array_position(ARRAY['hod','bu','bg','group','final'],s.tier)<array_position(ARRAY['hod','bu','bg','group','final'],a.tier)),'[]'::jsonb) ELSE '[]'::jsonb END
+ ) FROM authorized a
+$$;
+REVOKE ALL ON FUNCTION app.assessment_written_source(uuid,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_written_source(uuid,uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text,wanted_context uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
  WHEN wanted_kind='pot' THEN coalesce((app.assessment_potential_source(wanted_review,NULL)->>'valid')::boolean,false)
  WHEN wanted_kind='idp' THEN coalesce((s.value->>'mine')::boolean,false) AND coalesce(s.value->>'status','') IN ('shared','closed') ELSE false END FROM (SELECT CASE WHEN wanted_kind='idp' THEN app.assessment_idp_source(wanted_review) END AS value) s
 $$;
-REVOKE ALL ON FUNCTION app.assessment_summary_access(uuid,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.assessment_summary_access(uuid,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text,uuid) TO ai_hr_app;
 
 CREATE TABLE performance_assessment_summary (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
- actor_user_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind IN ('tc','idp','pot')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,kind text NOT NULL CHECK(kind IN ('tc','idp','pot','pm_remarks','pot_remarks')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
  source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
- updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind)
+ updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind,context_id)
 );
 ALTER TABLE performance_assessment_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE performance_assessment_summary FORCE ROW LEVEL SECURITY;
 GRANT SELECT,INSERT,UPDATE ON performance_assessment_summary TO ai_hr_app;
-CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind));
+CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind,context_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_summary_access(review_id,kind,context_id));
 CREATE FUNCTION app.assessment_summary_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.assessment_summary_access(NEW.review_id,NEW.kind) THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
- IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.kind IS DISTINCT FROM OLD.kind) THEN RAISE EXCEPTION 'Assessment summary identity is immutable'; END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.assessment_summary_access(NEW.review_id,NEW.kind,NEW.context_id) THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.kind IS DISTINCT FROM OLD.kind OR NEW.context_id IS DISTINCT FROM OLD.context_id) THEN RAISE EXCEPTION 'Assessment summary identity is immutable'; END IF;
  NEW.updated_at:=now();RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_summary_validate() FROM PUBLIC;
