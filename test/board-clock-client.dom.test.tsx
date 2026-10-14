@@ -108,6 +108,25 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
     await screen.findByText(en.attendance.clock.cameraBusy);expect(screen.getByRole('button',{name:en.attendance.clock.retryCamera})).toBeEnabled();
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));await waitFor(()=>expect(post).toHaveBeenCalledOnce());
   });
+  it('allows optional skip while permission is unresolved and stops a camera granted too late',async()=>{
+    let grant!:(stream:MediaStream)=>void;
+    getUserMedia.mockImplementation(()=>new Promise(resolve=>{grant=resolve;}));
+    mount();await begin();expect(screen.getByRole('button',{name:en.attendance.clock.skipPhoto})).toBeEnabled();
+    fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));
+    await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));
+    const stop=vi.fn();grant({getTracks:()=>[{stop}]} as unknown as MediaStream);
+    await waitFor(()=>expect(stop).toHaveBeenCalledTimes(1));
+    expect(document.querySelector('video')).toBeNull();
+    expect((post.mock.calls[0][1]!.body as FormData).has('photo')).toBe(false);
+  });
+  it.each(['required','optional'] as const)('cancels an unresolved %s camera without a late error or submission',async setting=>{
+    let reject!:(reason:Error)=>void;
+    getUserMedia.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));
+    mount(setting);await begin();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.cancelPhoto}));
+    reject(new DOMException('Late denial','NotAllowedError'));
+    await waitFor(()=>expect(screen.getByRole('button',{name:en.attendance.clock.clockIn})).toBeEnabled());
+    expect(screen.queryByText(en.attendance.clock.cameraDenied)).toBeNull();expect(post).not.toHaveBeenCalled();
+  });
   it('never opens a camera for Not Required',async()=>{
     mount('not_required');await begin();await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));expect(getUserMedia).not.toHaveBeenCalled();
   });
@@ -121,7 +140,7 @@ describe('Web Clocking optional camera and uncertain commands',()=>{
   });
   it('reposts the identical FormData only when the receipt is not yet found',async()=>{
     post.mockRejectedValueOnce(new TypeError('Network lost'));lookup.mockResolvedValueOnce(Response.json({error:'notFound'},{status:404}));
-    mount();await begin();fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));await screen.findByText(en.attendance.clock.pendingCommand);
+    mount();await begin();await screen.findByText(en.attendance.clock.cameraDenied);fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.skipPhoto}));await screen.findByText(en.attendance.clock.pendingCommand);
     const original=post.mock.calls[0][1]!.body;
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.cancelPhoto}));expect(screen.getByText(en.attendance.clock.pendingCommand)).toBeTruthy();
     fireEvent.click(screen.getByRole('button',{name:en.attendance.clock.checkSubmission}));await waitFor(()=>expect(post).toHaveBeenCalledTimes(2));

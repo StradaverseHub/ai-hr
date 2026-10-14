@@ -1,0 +1,39 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+The page repeats each company for Attendance Irregularity and Self Overtime. Multiple departments and other assignment values already work, but the current selection boxes make this difficult to discover. Ordered approval levels and alternative approvers also exist; their editor needs to follow the clearer Leave Approval Template pattern.
+
+WHAT WE'LL CHANGE
+
+- Show each company once, with View/Edit opening that company's Attendance Irregularity and Self Overtime tabs.
+- Move each application's routing control and workflow list into its tab. Show code, name, assignment, approval-level summary, priority, status and actions.
+- Replace the assignment boxes with searchable selections that clearly show chosen departments, business units, divisions and job grades, with controls to add or remove each choice.
+- Keep the chosen company fixed for each workflow. Values within one assignment field are alternatives; different filled fields must all match. Empty fields mean all eligible values in that company.
+- Follow the Leave editor's Approval Mode and ordered-level design. Sequential Approval uses one approver per level; Any One Approver allows alternatives within a level. Levels still proceed in order, and later levels cannot approve early.
+- Retain Attendance's supported Direct Manager and HR Administrator choices. Add, edit, reorder and remove levels, with clear Save, Cancel and assignment preview controls.
+- Preserve saved versions, requests already awaiting approval, actual decision history and company access restrictions.
+
+WHAT YOU'LL GET
+
+One clear starting point per company, understandable assignment selections and a familiar approval editor whose displayed rules match how requests are approved.
+
+GOOD TO KNOW
+
+Any One Approver clears only the current level. It does not let a later approver skip earlier levels or approve the entire application immediately. Leave-specific approver types are not added to Attendance by this change.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: app/admin/attendance/approval-workflow/page.tsx repeats companies with flatMap across both application types. WorkflowForm already uses multiple selects backed by departmentIds, businessUnitIds, gradeIds and orgDivision arrays. core/attendance-workflow.ts scopes a template to one company and type, resolves org criteria, validates overlapping priority, and snapshots ordered stages on submission. Existing stage alternates already implement any-one within the current stage.
+
+FACT: the Leave reference app/admin/leave-approval/step-list-editor.tsx derives its two-way mode choice from level alternates. lib/leave-approval-kinds.ts explicitly avoids a separately stored mode that can contradict its levels. Preserve that owner and model. Reuse or extract the suitable editor interaction with an explicit Attendance approver allowlist; do not expose every Leave kind or relax final attendance decision authority.
+
+Graph: company and application type own routing settings and versioned templates; criteria arrays own matching; ordered level/alternate definitions own approval behavior; each submitted request owns its saved version and resolved stage snapshot. No second workflow store, independent mode flag, cross-company template or reassignment of pending requests. Keep canonical decisions, self-approval refusal, delegated/administrator actor attribution, and final payroll/attendance effects unchanged.
+
+Implement a company landing list with a company-scoped tabbed route, validated company/type parameters and scoped create/edit/back links. Keep existing lineage deep links working. Include every required list column, readable named criteria and stage/alternative summaries. Keep routing enable/disable per company and application type. Wire searchable checklists/chips to existing criteria arrays, preserve unavailable saved values visibly for correction rather than silently dropping them, and filter choices to values usable by the chosen company. Changing an assignment invalidates its preview.
+
+Acceptance: company listed once, correct counts and empty states, scope refusal for foreign company/type/lineage URLs, distinct type tabs and routing controls; multiple values within each supported field and combinations across fields; stable save/reopen, remove choice, cancel and invalid assignments; ordered levels and any-one within a level; later-stage, self, duplicate and unauthorized decisions refused; preview, overlapping-priority refusal and unresolved-approver refusal. Demonstrate old pending requests keep their original snapshot after template editing and decisions retain actual actors. Render the actual company list, populated/empty tabs, assignment selector and editor at desktop/mobile widths in all appearance choices, and check six locales, keyboard use and runtime logs. Follow the impact gate, TypeScript and production build before release.
+
+UNKNOWN: production browser access was blocked during this board pass. Source inspection establishes the existing model but does not prove a live rendered journey. Complete authorized live verification and representative local save/reopen checks before closure. No migration is expected; allocate an append-only reservation if implementation proves one necessary. No attachments were supplied with this item.

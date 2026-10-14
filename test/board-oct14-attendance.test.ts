@@ -79,6 +79,17 @@ describe('Own Web Clocking removal uses the existing approval owner',()=>{
     await expect(requestOwnClockRemoval(self,{...input,punchId:rows.find(r=>r.direction==='in')!.id})).rejects.toThrow(/matching entry/);
     await expect(requestAttendanceCorrection(self,{employmentId:e.employmentId,date,reason:'Arbitrary self edit',clockChanges:{version:1,baseline:input.baseline,entries:[]}})).rejects.toThrow(/administrator/);
   });
+  it('serializes concurrent submissions and refuses another change after final correction ownership',async()=>{
+    const {self,a,input}=await fixture();
+    const attempts=await Promise.allSettled([requestOwnClockRemoval(self,input),requestOwnClockRemoval(self,{...input,requestId:randomUUID()})]);
+    expect(attempts.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+    expect(attempts.filter(r=>r.status==='rejected')).toHaveLength(1);
+    const winner=attempts.find(r=>r.status==='fulfilled')!;
+    if(winner.status!=='fulfilled')throw Error('No successful request');
+    await decideAttendanceCorrection(a,{correctionId:winner.value.correctionId,decision:'approved'});
+    const original=await punches((await record(winner.value.correctionId)).employmentId);
+    await expect(requestOwnClockRemoval(self,{...input,requestId:randomUUID(),punchId:original.find(p=>!p.voidedAt)!.id,baseline:clockFingerprint(original)})).rejects.toThrow(/owns this day/);
+  });
   it('protects closed payroll on submission and approval without widening payroll visibility',async()=>{
     const {self,a,e,input}=await fixture();
     await setCompensation(a,{employmentId:e.employmentId,basicSalary:4000,monthlyAllowance:0,effectiveFrom:'2020-01-01'});

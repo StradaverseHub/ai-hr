@@ -35,13 +35,15 @@ it('protects Leave ownership and disables editing a closed or self day',()=>{
 });
 const row=(id:string,selectable=true)=>({id,employmentId:id,employee:'Employee '+id,employeeCode:id,company:'Example Company',companyId:'company',attendanceDate:'2026-10-01',submittedAt:new Date(),status:'pending',applicationType:'irregularity',requestKind:'absent',currentStage:0,stages:null,templateName:null,selectable}) as React.ComponentProps<typeof AttendanceHistoryTable>['rows'][number];
 it('selects only eligible page rows, confirms, reports mixed outcomes, and preserves the filtered return link',async()=>{
-  render(wrap(<AttendanceHistoryTable rows={[row('a'),row('b'),row('self',false)]} returnTo="/attendance/application-history?status=pending&page=2"/>));
+  const ui=render(wrap(<AttendanceHistoryTable rows={[row('a'),row('b'),row('self',false)]} returnTo="/attendance/application-history?status=pending&page=2"/>));
   expect(screen.queryByRole('columnheader',{name:en.attendanceHistory.reference})).toBeNull();expect(screen.getAllByText('01-Oct-2026')).toHaveLength(3);
   fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));expect(screen.getByText('2 selected')).toBeVisible();
   fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.approveSelected}));expect(calls.bulk).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));await screen.findByText(en.attendanceHistory.furtherApproval);
+  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));await screen.findByText(en.attendanceHistory.furtherApproval,{exact:false});
   expect(calls.bulk).toHaveBeenCalledWith({items:[{id:'a',stage:0},{id:'b',stage:0}],decision:'approved',reason:''});expect(screen.getByText('The approval stage changed.',{exact:false})).toBeVisible();
   expect(screen.getAllByRole('link',{name:en.attendanceHistory.view})[0].getAttribute('href')).toContain('returnTo=%2Fattendance%2Fapplication-history%3Fstatus%3Dpending%26page%3D2');
+  ui.rerender(wrap(<AttendanceHistoryTable rows={[]} returnTo="/attendance/application-history?status=pending&page=2"/>));
+  expect(screen.getByText('Employee a · 01-Oct-2026 · '+en.attendanceHistory.furtherApproval)).toBeVisible();
 });
 it('requires rejection remarks and does not submit when cancelled',()=>{
   render(wrap(<AttendanceHistoryTable rows={[row('a')]} returnTo="/attendance/application-history"/>));fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceHistory.selectPage}));fireEvent.click(screen.getByRole('button',{name:en.attendanceHistory.rejectSelected}));expect(screen.getByRole('textbox')).toBeRequired();fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(calls.bulk).not.toHaveBeenCalled();
