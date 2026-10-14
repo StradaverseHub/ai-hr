@@ -1,0 +1,39 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Applications History has organization and application filters and individual approval/rejection. It still shows technical references and raw attendance dates, lacks subtype labels and bulk actions, and places filters above the table.
+
+WHAT WE'LL CHANGE
+
+- Add a collapsible left filter panel following Individual Attendance. Include one/all employees, Company, Department, Job Grade, Business Unit, Division, type, subtype, status and attendance Start/End Date. Keep submission-date filters separately labelled.
+- Preserve filters after viewing or deciding a request. Provide Apply and Clear, plus a compact filter drawer on smaller screens.
+- Remove the visible reference column and retain View. Show recorded Absent, Short Hours and Incomplete Entry subtypes, Self Overtime and an honest fallback for unknown historical subtypes.
+- Add checkboxes and Select all eligible on this page, with a selection count. Changing filters or pages clears selection; other pages are never silently included.
+- Confirm Approve Selected or Reject Selected before processing. Rejection requires remarks. Check each request's current permission, status and approval stage independently.
+- Report each success, failure or skipped request and its reason, including further approval still required. Record the actual administrator, time and remarks.
+- Use dd-mmm-yyyy attendance dates in list and detail views, white field-label and table-heading backgrounds, readable text and usable wrapping for long names.
+
+WHAT YOU'LL GET
+
+Faster filtering and controlled review of selected applications with clear outcomes.
+
+GOOD TO KNOW
+
+Existing access, self-approval and workflow restrictions remain. Bulk approval only completes the stage the administrator is permitted to decide.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: app/attendance/application-history/page.tsx renders a top grid of organization, type, status and submittedFrom/submittedTo filters, a reference column and raw attendanceDate. core/attendance-application-history.ts reads one attendance_correction owner plus its workflow and scopes companies with app.is_admin_for; AttendanceHistoryRow lacks requestKind. lib/attendance-history-filter.ts validates existing filters. Detail actions already call decideAttendanceCorrection and require rejection remarks through the UI. Workflow decisions enforce the actual actor and expectedStageIndex. My Attendance persists absent, short_hours, incomplete_entry, self_overtime and other in request_kind.
+
+Graph: each selected row is the existing application and current approval stage, not a new batch-owned request. Organization options and employee selections must be scoped to authorized companies. Extend the shared filter contract with employmentId, stored subtype and attendance-date range; retain submission-date filters with explicit labels, real date comparisons and query-string persistence. Use the Individual Attendance filter-shell pattern; inspect its current implementation before reuse. Keep counts and pagination under identical predicates and deterministic ordering. Never derive a historical subtype from the current attendance result or manufacture missing values.
+
+Create a bounded bulk decision service/action using the same per-item authorization and canonical decision service as individual actions. Re-read each item's stage/status and pass the expected stage observed when selecting; a duplicate ID or stale item must not advance a later stage. Use independent per-item transactions/results, a bounded selection limit and stable submission protection. No all-matching cross-page action in this scope. Render eligibility explanations but enforce again server-side. Do not trust canDecide or pending alone as complete approval authorization. Existing self-approval, scoped admin, delegation, payroll and workflow restrictions remain authoritative. Record true actor events; report both final and intermediate-stage outcomes accurately. Validate reject remarks server-side as well as in the dialog.
+
+Update list and detail date rendering with one date-only formatter, avoiding timezone shifts and preserving sorting/filter semantics. Keep all six locales complete. Use scoped white label/header styling with dark readable text rather than globally changing shared table tokens. Preserve filter state with validated internal return parameters, not arbitrary redirect URLs.
+
+Acceptance: every filter alone and in combination, one/all employees, invalid and empty results, subtype unknowns, pagination, cleared selection on navigation, selection eligibility, confirmation/cancel, mixed bulk results, duplicate/stale/malicious IDs, current-stage-only behavior, unauthorized and self records, rejection reason, true actor audit and refresh. Open a record and return to the same list filters. Render long names, many rows, desktop and narrow widths and all appearance themes; ensure the collapsed panel does not cover the table and keyboard access works. Tests must verify stored historical request types and real dates, not simply text in the page source.
+
+UNKNOWN: a live browser walkthrough was blocked by the browser client. Complete real local list/detail/decision journeys and an authorized live check before closure, then run the impact classifier's required gate, full repository typecheck and production build. No copied application store or new approval policy is included; no migration is expected unless investigation identifies a concrete storage requirement.
