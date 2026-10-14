@@ -1,3 +1,4 @@
+import performanceCatalogue from './performance-help-catalogue.json';
 const stopwords=new Set(['what','how','does','the','are','and','for','about','this','that','you','your','with','when','from','into','them','they','can','will','would','should','please','tell','explain','mean','means','work','works','here']);
 /** Source FAQ ranking: any significant word, most matches first, stable catalogue order, first three fallback. */
 export function rankKnowledgeArticles<T extends {title:string;body:string;tags?:string}>(query:string,rows:T[]):T[]{
@@ -8,4 +9,11 @@ export function rankKnowledgeArticles<T extends {title:string;body:string;tags?:
 export function assessmentHelpQuery(text:string):string|null{
  const literal=/^(?:help|search (?:the )?(?:help|knowledge base)):\s*([\s\S]+)$/i.exec(text.trim());if(literal)return literal[1].trim();
  return /^(?:what (?:is|are|does)|how (?:do|does|can|is)|who can|why (?:is|are|does))\b/i.test(text.trim())&&/\b(?:kpi|calibration|competenc\w*|360|career|development|mobility|rating|potential|confidential\w*|anonymous|review|submit|star|smart)\b/i.test(text)?text.trim():null;
+}
+
+/** Preserve the imported guide's search tags and ordering while reading the editable native article text. */
+export function rankPerformanceArticles<T extends {slug:string|null;title:string;body:string}>(query:string,rows:T[]):T[]{
+ const metadata=new Map(performanceCatalogue.map(r=>[r.slug,r]));
+ const ordered=rows.map((row,index)=>({row,index,meta:metadata.get(row.slug??'')})).sort((a,b)=>(a.meta?.order??Number.MAX_SAFE_INTEGER)-(b.meta?.order??Number.MAX_SAFE_INTEGER)||a.index-b.index);
+ return rankKnowledgeArticles(query,ordered.map(({row,meta})=>({...row,tags:meta?.tags??''})));
 }

@@ -151,10 +151,10 @@ DO $$ DECLARE t text; BEGIN FOREACH t IN ARRAY ARRAY['performance_assessment_dra
 END LOOP; END $$;
 CREATE POLICY assessment_draft_private ON performance_assessment_draft FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,kind,context_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,kind,context_id));
 CREATE POLICY assessment_conversation_private ON performance_assessment_conversation FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,CASE WHEN stage='feedback' THEN 'feedback_conversation' ELSE 'conversation' END,context_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_private_access(review_id,CASE WHEN stage='feedback' THEN 'feedback_conversation' ELSE 'conversation' END,context_id));
-CREATE POLICY kpi_library_read ON performance_kpi_library FOR SELECT USING(tenant_id=app.current_tenant_id() AND (company_id IS NULL AND group_company_id IS NULL OR app.onehr_admin(coalesce(company_id,group_company_id)) OR EXISTS(SELECT 1 FROM employment e WHERE (performance_kpi_library.company_id IS NULL OR e.company_id=performance_kpi_library.company_id) AND (performance_kpi_library.group_company_id IS NULL OR app.is_company_descendant(e.company_id,performance_kpi_library.group_company_id)) AND app.can_see_employment(e.id))));
+CREATE POLICY kpi_library_read ON performance_kpi_library FOR SELECT USING(tenant_id=app.current_tenant_id() AND (company_id IS NULL AND group_company_id IS NULL OR app.onehr_admin(coalesce(company_id,group_company_id)) OR EXISTS(SELECT 1 FROM employment e WHERE (performance_kpi_library.company_id IS NULL OR e.company_id=performance_kpi_library.company_id) AND (performance_kpi_library.group_company_id IS NULL OR app.is_company_descendant(e.company_id,performance_kpi_library.group_company_id)) AND e.id=ANY((SELECT app.visible_employment_ids())::uuid[]))));
 CREATE POLICY kpi_library_write ON performance_kpi_library FOR ALL USING(tenant_id=app.current_tenant_id() AND app.onehr_admin(coalesce(company_id,group_company_id))) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_admin(coalesce(company_id,group_company_id)));
 CREATE POLICY assessment_attachment_link_access ON performance_assessment_attachment_link FOR ALL USING(tenant_id=app.current_tenant_id() AND app.onehr_attachment_access(review_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_attachment_access(review_id));
-CREATE FUNCTION app.performance_kpi_library_company_in_use(wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$ SELECT EXISTS(SELECT 1 FROM performance_kpi_library WHERE company_id=wanted_company AND tenant_id=app.current_tenant_id()) $$;
+CREATE FUNCTION app.performance_kpi_library_company_in_use(wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$ SELECT app.is_admin_for(wanted_company) AND EXISTS(SELECT 1 FROM performance_kpi_library WHERE company_id=wanted_company AND tenant_id=app.current_tenant_id()) $$;
 REVOKE ALL ON FUNCTION app.performance_kpi_library_company_in_use(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.performance_kpi_library_company_in_use(uuid) TO ai_hr_app;
 
@@ -337,7 +337,7 @@ REVOKE ALL ON FUNCTION app.onehr_decisions(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_decisions(uuid) TO ai_hr_app;
 
 
-CREATE FUNCTION app.performance_kpi_library_group_in_use(wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$ SELECT EXISTS(SELECT 1 FROM performance_kpi_library WHERE group_company_id=wanted_company AND tenant_id=app.current_tenant_id()) $$;
+CREATE FUNCTION app.performance_kpi_library_group_in_use(wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$ SELECT app.is_admin_for(wanted_company) AND EXISTS(SELECT 1 FROM performance_kpi_library WHERE group_company_id=wanted_company AND tenant_id=app.current_tenant_id()) $$;
 REVOKE ALL ON FUNCTION app.performance_kpi_library_group_in_use(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.performance_kpi_library_group_in_use(uuid) TO ai_hr_app;
 
@@ -1946,3 +1946,20 @@ GRANT EXECUTE ON FUNCTION app.assessment_catalogue_defaults(uuid) TO ai_hr_app;
 --> statement-breakpoint
 INSERT INTO setting_definition(key,module_code,scope,value_type,default_value,default_on_install,customer_visible,description,sort_order)
 VALUES('performance.reminder_words','performance','tenant','string','"null"'::jsonb,NULL,true,'Optional assessment reminder subject and opening templates.',217) ON CONFLICT(key) DO NOTHING;
+
+--> statement-breakpoint
+-- Company deletion needs only a scoped boolean, never private catalogue or profit data.
+CREATE FUNCTION app.assessment_catalogue_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.is_admin_for(wanted_company) AND EXISTS(SELECT 1 FROM public.performance_assessment_catalogue c
+ WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=wanted_company);
+$$;
+REVOKE ALL ON FUNCTION app.assessment_catalogue_company_in_use(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.assessment_catalogue_company_in_use(uuid) TO ai_hr_app;
+CREATE FUNCTION app.assessment_profit_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.is_admin_for(wanted_company) AND EXISTS(SELECT 1 FROM public.performance_assessment_profit_achievement c
+ WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=wanted_company);
+$$;
+REVOKE ALL ON FUNCTION app.assessment_profit_company_in_use(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.assessment_profit_company_in_use(uuid) TO ai_hr_app;

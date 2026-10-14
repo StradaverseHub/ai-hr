@@ -11,7 +11,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
 import { isAdmin } from '../lib/authz';
-import { rankKnowledgeArticles } from '../lib/knowledge-search';
+import { rankKnowledgeArticles,rankPerformanceArticles } from '../lib/knowledge-search';
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB (ADR-0017 — Postgres bytea storage)
 
@@ -414,6 +414,6 @@ export async function searchKnowledgeArticles(ctx:SessionContext,query:string,ca
   const rows=await tx.select({id:kbDocument.id,title:kbDocument.title,body:sql<string>`left(${kbDocument.body},5000)`,slug:kbDocument.slug}).from(kbDocument)
    .where(and(eq(kbDocument.kind,'article'),eq(kbDocument.category,category),isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx))))
    .orderBy(asc(kbDocument.createdAt),asc(kbDocument.id)).limit(100);
-  return rankKnowledgeArticles(query,rows.filter(r=>r.body)).map(r=>({id:r.id,title:r.title,body:r.body.slice(0,1400)}));
+  return (category==='performance-faq'?rankPerformanceArticles(query,rows.filter(r=>r.body)):rankKnowledgeArticles(query,rows.filter(r=>r.body))).map(r=>({id:r.id,title:r.title,body:r.body.slice(0,1400)}));
  });
 }
