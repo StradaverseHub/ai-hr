@@ -1,0 +1,10 @@
+import {expect,it} from 'vitest';
+import {plainTalentInsight,talentMoveWords,talentStrengths,polishTalentInsight,talentInsightError} from '../packs/performance/onehr/talent-insight-model';
+import plain from './fixtures/onehr/talent-insight-golden.json';
+import moves from './fixtures/onehr/talent-move-golden.json';
+import strengths from './fixtures/onehr/talent-strength-golden.json';
+import polish from './fixtures/onehr/talent-polish-golden.json';
+it('matches original Talent Box readings for missing, pending, moved and shared-plan cases',()=>{for(const c of plain)expect(plainTalentInsight(c.facts)).toEqual(c.plain);for(const c of moves)expect(talentMoveWords(c.move)).toBe(c.words);});
+it('matches original weighted strengths and development ranking including ties and letter grades',()=>{for(const c of strengths){const actual=talentStrengths(c.rows,c.letter),pick=(xs:typeof actual.top)=>xs.map(({name,label})=>({name,label}));expect({top:pick(actual.top),bottom:pick(actual.bottom),even:actual.even}).toEqual({top:c.top,bottom:c.bottom,even:c.even});}});
+it('preserves source wording cleanup',()=>{for(const c of polish)expect(polishTalentInsight(c.text,c.name)).toBe(c.result);});
+it('refuses invented figures, rating bands, placement and pay advice',()=>{const src='Their service results landed on target. Their 360 feedback is mixed. Their development plan is shared.';expect(talentInsightError(src,'360','Their service results are on target.','Service'.split(','))).toBeNull();for(const text of ['Their results improved by 10%.','They are a Super Star.','They have high potential.','They met expectations.','They should move to the top box.','Recommend a promotion.'])expect(talentInsightError(src,'360',text,[])).not.toBeNull();});

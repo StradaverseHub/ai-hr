@@ -18372,6 +18372,10 @@
       "present": "Tổng quan chu kỳ này",
       "cycle": "Tóm tắt chu kỳ của bạn",
       "trend": "Xu hướng đánh giá của bạn"
+    },
+    "talentInsight": {
+      "title": "Thông tin tổng hợp về nhân tài",
+      "decision": "Trước khi quyết định:"
     }
   },
   "allowanceV2": {

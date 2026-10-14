@@ -18372,6 +18372,10 @@
       "present": "本周期概览",
       "cycle": "您的周期摘要",
       "trend": "您的评审趋势"
+    },
+    "talentInsight": {
+      "title": "人才洞察",
+      "decision": "作出决定前："
     }
   },
   "allowanceV2": {

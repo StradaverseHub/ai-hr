@@ -18372,6 +18372,10 @@
       "present": "This cycle at a glance",
       "cycle": "Your cycle snapshot",
       "trend": "Your review trend"
+    },
+    "talentInsight": {
+      "title": "Talent insight",
+      "decision": "Before deciding:"
     }
   },
   "allowanceV2": {

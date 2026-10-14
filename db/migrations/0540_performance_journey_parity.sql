@@ -1730,6 +1730,33 @@ CREATE FUNCTION app.assessment_written_source(wanted_review uuid,wanted_session 
 $$;
 REVOKE ALL ON FUNCTION app.assessment_written_source(uuid,uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_written_source(uuid,uuid,text) TO ai_hr_app;
+-- Combined Talent Box evidence: one assigned BG person, saved facts and shared plans only.
+CREATE FUNCTION app.assessment_talent_source(wanted_review uuid,wanted_session uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH authorized AS (
+ SELECT r.*,c.policy,extract(year from rc.period_end)::integer+CASE WHEN c.policy->>'kind'='year_end' THEN 1 ELSE 0 END AS plan_year
+ FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+ JOIN review_cycle rc ON rc.id=r.cycle_id AND rc.tenant_id=r.tenant_id
+ JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ JOIN performance_onehr_calibration s ON s.id=wanted_session AND s.cycle_id=r.cycle_id AND s.tenant_id=r.tenant_id
+ JOIN performance_onehr_calibration_entry ce ON ce.session_id=s.id AND ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND s.tier='bg'
+ AND NOT app.is_self_person(e.person_id) AND app.assessment_review_participates(r.review_id) AND app.onehr_calibration_access(s.id)
+ AND coalesce((c.policy->'modules'->>'calibration')::boolean,true) AND coalesce((c.policy->'modules'->>'pm')::boolean,false)
+ AND coalesce((c.policy->'modules'->>'tm')::boolean,false) AND c.policy->>'kind'<>'quarterly'
+ ), evidence AS (
+ SELECT a.*,app.assessment_potential_source(wanted_review,wanted_session) AS pot FROM authorized a
+ )
+ SELECT jsonb_build_object('pm',app.assessment_insight_source(wanted_review,wanted_session),'pot',a.pot,
+ 'written',app.assessment_written_source(wanted_review,wanted_session,'pot'),
+ 'leadership',CASE WHEN coalesce((a.pot->>'valid')::boolean,false) THEN coalesce((SELECT jsonb_agg(jsonb_build_object('name',st->>'principle','description',coalesce(st->>'principleDescription',''),'future',coalesce((st->>'future')::boolean,false),
+ 'yes',(SELECT count(*) FROM performance_onehr_panel p WHERE p.review_id=a.review_id AND p.tenant_id=a.tenant_id AND p.submitted_at IS NOT NULL AND p.archived_at IS NULL AND p.answers->>(st->>'id')='yes'),
+ 'total',(SELECT count(*) FROM performance_onehr_panel p WHERE p.review_id=a.review_id AND p.tenant_id=a.tenant_id AND p.submitted_at IS NOT NULL AND p.archived_at IS NULL AND p.answers->>(st->>'id') IN ('yes','no'))) ORDER BY ord) FROM jsonb_array_elements(a.statements) WITH ORDINALITY q(st,ord)),'[]'::jsonb) ELSE '[]'::jsonb END,
+ 'plan',CASE WHEN plan.id IS NOT NULL THEN jsonb_build_object('goals',coalesce((SELECT jsonb_agg(jsonb_build_object('area',g->>'area') ORDER BY ord) FROM jsonb_array_elements(plan.goals) WITH ORDINALITY q(g,ord)),'[]'::jsonb),'career',coalesce(profile.career,plan.career)) ELSE NULL END)
+ FROM evidence a LEFT JOIN performance_onehr_plan plan ON plan.tenant_id=a.tenant_id AND plan.employment_id=a.employment_id AND plan.plan_year=a.plan_year AND plan.status IN ('shared','closed') AND coalesce((a.policy->'modules'->>'idp')::boolean,false)
+ LEFT JOIN performance_assessment_career_profile profile ON profile.tenant_id=a.tenant_id AND profile.employment_id=a.employment_id
+$$;
+REVOKE ALL ON FUNCTION app.assessment_talent_source(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_talent_source(uuid,uuid) TO ai_hr_app;
 CREATE FUNCTION app.assessment_record_visibility(wanted_review uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT md5(coalesce(jsonb_agg(jsonb_build_object('review',r.review_id,'status',c.status,'card',app.onehr_result_card(r.review_id)) ORDER BY r.review_id)::text,''))
  FROM performance_onehr_review anchor JOIN employment e ON e.id=anchor.employment_id AND e.tenant_id=anchor.tenant_id
@@ -1741,7 +1768,7 @@ $$;
 REVOKE ALL ON FUNCTION app.assessment_record_visibility(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_record_visibility(uuid) TO ai_hr_app;
 CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text,wanted_context uuid,wanted_visibility text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT CASE WHEN wanted_kind IN ('record_present','record_cycle','record_trend') THEN wanted_context=wanted_review AND wanted_visibility=app.assessment_record_visibility(wanted_review) WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
+ SELECT CASE WHEN wanted_kind='talent' THEN wanted_visibility=md5(app.assessment_talent_source(wanted_review,wanted_context)::text) WHEN wanted_kind IN ('record_present','record_cycle','record_trend') THEN wanted_context=wanted_review AND wanted_visibility=app.assessment_record_visibility(wanted_review) WHEN wanted_kind IN ('pm_remarks','pot_remarks') THEN app.assessment_written_source(wanted_review,wanted_context,split_part(wanted_kind,'_',1)) IS NOT NULL WHEN wanted_context<>wanted_review THEN false WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
  WHEN wanted_kind='pot' THEN coalesce((app.assessment_potential_source(wanted_review,NULL)->>'valid')::boolean,false)
  WHEN wanted_kind='idp' THEN coalesce((s.value->>'mine')::boolean,false) AND coalesce(s.value->>'status','') IN ('shared','closed') ELSE false END FROM (SELECT CASE WHEN wanted_kind='idp' THEN app.assessment_idp_source(wanted_review) END AS value) s
 $$;
@@ -1750,7 +1777,7 @@ GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text,uuid,text) TO 
 
 CREATE TABLE performance_assessment_summary (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
- actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,visibility_key text,kind text NOT NULL CHECK(kind IN ('tc','idp','pot','pm_remarks','pot_remarks','record_present','record_cycle','record_trend')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),context_id uuid NOT NULL,visibility_key text,kind text NOT NULL CHECK(kind IN ('talent','tc','idp','pot','pm_remarks','pot_remarks','record_present','record_cycle','record_trend')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
  source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
  updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind,context_id)
 );
@@ -1799,3 +1826,14 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_record_summary_store(uuid,text,text,text,text,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_record_summary_store(uuid,text,text,text,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_talent_summary_store(wanted_review uuid,wanted_context uuid,wanted_visibility text,wanted_fingerprint text,wanted_source text,wanted_data jsonb) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NOT coalesce(app.assessment_summary_access(wanted_review,'talent',wanted_context,wanted_visibility),false) THEN RAISE EXCEPTION 'This person is not in your Talent Box'; END IF;
+ INSERT INTO performance_assessment_summary(tenant_id,review_id,context_id,actor_user_id,kind,visibility_key,fingerprint,source,data)
+ VALUES(app.current_tenant_id(),wanted_review,wanted_context,app.current_user_id(),'talent',wanted_visibility,wanted_fingerprint,wanted_source,wanted_data)
+ ON CONFLICT(review_id,actor_user_id,kind,context_id) DO UPDATE SET visibility_key=EXCLUDED.visibility_key,fingerprint=EXCLUDED.fingerprint,source=EXCLUDED.source,data=EXCLUDED.data,updated_at=now();
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_talent_summary_store(uuid,uuid,text,text,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_talent_summary_store(uuid,uuid,text,text,text,jsonb) TO ai_hr_app;

@@ -764,6 +764,17 @@ async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibra
  }
  return {bandTrails,movement,entry:{...entry,...talent.actions,performance:z.enum(pmBands).nullable().parse(entry.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential)},canWrite,openAxes,talent,companyId:r.input.companyId,department:r.input.department,businessGroupId:r.input.businessGroupId,businessGroup:r.input.businessGroup,finalized:r.input.finalized,name:r.input.name,grade:r.input.grade,priorPerformance:resolveBand(r.input.performance,r.rows.filter(d=>tiers.indexOf(d.tier)<tiers.indexOf(tier as Tier)&&!(d.tier==='group'&&d.mode==='blend')).map(d=>({...d,band:d.performance,locked:d.performanceLocked}))).band,managerPerformance:r.input.performance,managerPotential,currentPerformance:bands.performance,currentPotential:bands.potential,performanceSource:bands.performanceSource,potentialSource:bands.potentialSource,potentialPct:managerPotential?r.input.potential.pct:null,canAgreePerformance:r.input.performance!=null,canAgreePotential:r.input.potential.valid&&(!r.input.competencyAssigned||r.input.competencyStatus==='reviewed'),journey:[{tier:'self',performance:r.input.selfPerformance,potential:r.input.selfPotential},{tier:'manager',performance:r.input.performance,potential:managerPotential},...r.rows.filter(d=>tiers.indexOf(d.tier)<=tiers.indexOf(tier as Tier)).sort((a,b)=>tiers.indexOf(a.tier)-tiers.indexOf(b.tier)).map(d=>({tier:d.tier,performance:d.tier===tier||d.performanceLocked?d.performance:null,potential:d.tier===tier||d.potentialLocked?d.potential:null}))]};
 }
+/** Reuse the Talent Box's canonical row resolver for one selected person, never the whole roster. */
+export async function getAssessmentTalentPositionTx(tx:Tx,ctx:SessionContext,reviewId:string,sessionId:string){
+ const {session,cycle}=await loadCalibration(tx,sessionId);
+ if(session.tier!=='bg')throw Error('This person is not in your Talent Box.');
+ const [entry]=await tx.select().from(onehrCalibrationEntry).where(and(eq(onehrCalibrationEntry.sessionId,sessionId),eq(onehrCalibrationEntry.reviewId,reviewId)));
+ if(!entry||await isSelf(tx,entry.employmentId))throw Error('This person is not in your Talent Box.');
+ const r=await calibrationRow(tx,ctx,entry,cycle.policy,session,cycle.native.status,'both');
+ return {performance:r.entry.performance??r.currentPerformance,potential:r.entry.potential??r.currentPotential,
+  performanceSource:r.entry.performancePinned?r.entry.performancePinSource:r.entry.performance!=null?'reviewer':r.performanceSource,
+  potentialSource:r.entry.potentialPinned?r.entry.potentialPinSource:r.entry.potential!=null?'reviewer':r.potentialSource,movedFrom:r.movement?.moved?r.movement.fromCategory:null};
+}
 export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,viewAxis:Axis='both') {
   z.enum(['performance','potential','both']).parse(viewAxis);
   return withPerformanceTenant(ctx,async tx=>{

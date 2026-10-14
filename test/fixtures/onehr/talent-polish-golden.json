@@ -1,0 +1,22 @@
+[
+  {
+    "text": "Nadia has met the target. Nadia\u2019s record is clear.",
+    "name": "Nadia Rahman",
+    "result": "They have met the target. Their record is clear."
+  },
+  {
+    "text": "The case file says both keyed figures are independently substantiated..",
+    "name": "Nadia Rahman",
+    "result": "Their record says both figures are backed."
+  },
+  {
+    "text": "Nadia shows progress -- the keyed result is 42 %.",
+    "name": "Nadia Rahman",
+    "result": "They show progress \u2014 their result is 42%."
+  },
+  {
+    "text": "Nadia wrote a clear note.; the case file is complete.",
+    "name": "Nadia Rahman",
+    "result": "They wrote a clear note; their record is complete."
+  }
+]

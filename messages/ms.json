@@ -18372,6 +18372,10 @@
       "present": "Kitaran ini sepintas lalu",
       "cycle": "Ringkasan kitaran anda",
       "trend": "Trend penilaian anda"
+    },
+    "talentInsight": {
+      "title": "Cerapan bakat",
+      "decision": "Sebelum membuat keputusan:"
     }
   },
   "allowanceV2": {

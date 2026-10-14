@@ -277,3 +277,7 @@ export async function saveAssessmentKpiSettingAction(f:FormData){
   return {revision};
  }catch(e){return {error:publicErrorMessage(e)};}
 }
+
+export async function assessmentTalentInsightAction(reviewId:string,sessionId:string,generate=false){
+ const s=await getSession();try{return await perf.getAssessmentTalentInsight(s,z.uuid().parse(reviewId),z.uuid().parse(sessionId),{generate:z.boolean().parse(generate)});}catch(error){return {error:publicErrorMessage(error)};}
+}
