@@ -3,6 +3,7 @@ import { useEffect,useRef,useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { ArrowDown,ArrowUp,ChevronDown,History,Sparkles } from 'lucide-react';
+import { TalentBoxMove } from './talent-box-move';
 import { inputCls } from '@/components/ui';
 import { talentListColumns,talentListRows,talentListValue,talentListValues,type TalentListColumn,type TalentListFilters,type TalentListSort } from '@/packs/performance/onehr/talent-list-model';
 import type { CalibrationRosterRow } from './calibration-roster';
@@ -31,7 +32,7 @@ function ColumnMenu({column,values,selected,sort,open,onOpen,onSelect,onSort}:{c
 }
 
 /** The source Talent Box List, with one unit's filters and both rating axes in the same row. */
-export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,category,lastViewed,active,unitId,height}:{rows:CalibrationRosterRow[];filters:TalentListFilters;sort:TalentListSort;onFilters:(filters:TalentListFilters)=>void;onSort:(sort:TalentListSort)=>void;onSelect:(id:string)=>void;onRead?:(id:string)=>void;category:string;lastViewed:string|null;active:boolean;unitId:string;height?:number}){
+export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,category,lastViewed,active,unitId,height,move}:{rows:CalibrationRosterRow[];filters:TalentListFilters;sort:TalentListSort;onFilters:(filters:TalentListFilters)=>void;onSort:(sort:TalentListSort)=>void;onSelect:(id:string)=>void;onRead?:(id:string)=>void;category:string;lastViewed:string|null;active:boolean;unitId:string;height?:number;move?:{sessionId:string;revision:number;onMoved?:(id:string)=>void}}){
  const t=useTranslations('onehr.talentList'),tr=useTranslations('onehr'),[openColumn,setOpenColumn]=useState<TalentListColumn|null>(null),[trail,setTrail]=useState<{id:string;axis:'performance'|'potential'}|null>(null);
  const [page,setPage]=useState({key:'',limit:100}),key=JSON.stringify([unitId,category,filters,sort]),sorted=talentListRows(rows,filters,category,sort);
  const reached=lastViewed?sorted.findIndex(row=>row.id===lastViewed)+1:0,limit=Math.max(page.key===key?page.limit:100,Math.ceil(reached/100)*100);
@@ -50,7 +51,7 @@ export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,c
      {(['performance','potential'] as const).map(axis=><td key={axis} translate="no" className="px-2 py-1"><div className="flex items-center gap-1"><span title={row[`${axis}Source`]==='default'?tr('calibrationRoster.provisional'):undefined} className={row[`${axis}Source`]==='default'?'text-muted-foreground':''}>{row[axis]??'—'}{row[`${axis}Source`]==='default'&&<span className="sr-only"> · {tr('calibrationRoster.provisional')}</span>}</span><button type="button" aria-label={t('trailFor',{axis:tr(axis),name:row.name})} onClick={()=>setTrail({id:row.id,axis})} className="flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-primary"><History size={14}/></button></div></td>)}
      <td className="px-2 py-1"><span className="font-medium">{talentListValue(row,'box')||'—'}</span>{row.moved&&<span className="mt-0.5 block text-xs text-muted-foreground">{origin(row)?t('movedFrom',{box:origin(row)}):tr('calibrationRoster.moved')}</span>}</td>
      <td className="px-2 py-1 text-center"><button type="button" aria-label={t('readFor',{name:row.name})} onClick={()=>(onRead??onSelect)(row.id)} className="inline-flex min-h-11 min-w-11 items-center justify-center text-primary"><Sparkles size={16}/></button></td>
-     <td className="px-2 py-1"><button type="button" onClick={()=>onSelect(row.id)} className="min-h-11 text-sm text-primary hover:underline">{t('review')}</button></td>
+     <td className="px-2 py-1">{move?<TalentBoxMove person={row} sessionId={move.sessionId} revision={move.revision} disabled={row.locked||row.readOnly||row.canMove===false} onMoved={()=>move.onMoved?.(row.id)}/>:<button type="button" onClick={()=>onSelect(row.id)} className="min-h-11 text-sm text-primary hover:underline">{t('review')}</button>}</td>
     </tr>)}{!sorted.length&&<tr><td colSpan={8} className="px-5 py-8 text-sm text-muted-foreground">{t('empty')}</td></tr>}{sorted.length>limit&&<tr><td colSpan={8} className="px-5 py-2"><button type="button" className="min-h-11 text-sm text-primary" onClick={()=>setPage({key,limit:limit+100})}>{t('showMore',{count:Math.min(100,sorted.length-limit)})}</button></td></tr>}</tbody>
    </table>
   </div>

@@ -9,6 +9,9 @@ ALTER TABLE performance_onehr_evidence ADD COLUMN details jsonb NOT NULL DEFAULT
 ALTER TABLE performance_onehr_calibration ADD COLUMN pip_locked_at timestamptz, ADD COLUMN promotion_locked_at timestamptz;
 ALTER TABLE performance_onehr_calibration ADD COLUMN bg_weight integer NOT NULL DEFAULT 50 CHECK(bg_weight BETWEEN 1 AND 99);
 ALTER TABLE performance_onehr_calibration_entry ADD COLUMN performance_pinned boolean NOT NULL DEFAULT false, ADD COLUMN potential_pinned boolean NOT NULL DEFAULT false, ADD COLUMN pip_reason text NOT NULL DEFAULT '', ADD COLUMN promotion_reason text NOT NULL DEFAULT '', ADD COLUMN special_reward_reason text NOT NULL DEFAULT '';
+-- First adjustment origin differs from the latest incoming band. Legacy first origins are unknown;
+-- do not invent them from a later seen band or modify frozen records during migration.
+ALTER TABLE performance_onehr_calibration_entry ADD COLUMN original_performance text CHECK(original_performance IN ('UA','BE','ME','AE','OU')), ADD COLUMN original_potential text CHECK(original_potential IN ('Low','Mid','High')), ADD COLUMN performance_pin_source text CHECK(performance_pin_source IN ('self','default','manager','hod','bu','bg','group','final')), ADD COLUMN potential_pin_source text CHECK(potential_pin_source IN ('self','default','manager','hod','bu','bg','group','final'));
 ALTER TABLE performance_onehr_cycle ADD COLUMN participation_opened_on date;
 CREATE TABLE performance_assessment_participation (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
@@ -245,6 +248,8 @@ BEGIN
   IF TG_TABLE_NAME='performance_onehr_plan' AND n->'plan_year' IS DISTINCT FROM o->'plan_year' THEN RAISE EXCEPTION 'The development plan year is immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' AND (n->'career' IS DISTINCT FROM o->'career' OR n->>'status'='draft' OR o->>'status'='closed' AND n->>'status'<>'closed' OR ((SELECT coalesce(jsonb_agg(g-ARRAY['status','managerComment','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g-ARRAY['status','managerComment','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) AND NOT (o->>'status'='shared' AND app.assessment_plan_reviewer((n->>'id')::uuid)))) THEN RAISE EXCEPTION 'Shared development plan definitions are immutable'; END IF;
   IF TG_TABLE_NAME='performance_onehr_calibration_entry' THEN
+   IF o->>'performance' IS NOT NULL AND n->>'performance' IS NOT NULL AND NOT coalesce((o->>'performance_pinned')::boolean,false) AND n->'original_performance' IS DISTINCT FROM o->'original_performance'
+    OR o->>'potential' IS NOT NULL AND n->>'potential' IS NOT NULL AND NOT coalesce((o->>'potential_pinned')::boolean,false) AND n->'original_potential' IS DISTINCT FROM o->'original_potential' THEN RAISE EXCEPTION 'The first calibration origin is immutable'; END IF;
    IF n->'pip' IS DISTINCT FROM o->'pip' OR n->'pip_reason' IS DISTINCT FROM o->'pip_reason' THEN
     IF s.locked_at IS NULL OR s.pip_locked_at IS NOT NULL OR s.tier NOT IN ('bg','group','final') THEN RAISE EXCEPTION 'PIP decisions require a locked calibration and an open PIP list'; END IF;
    END IF;

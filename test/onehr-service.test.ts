@@ -585,6 +585,37 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const group=await make('group');await expect(perf.sendCalibrationMessage(reviewer,group,'performance',null,randomUUID(),'Set performance: Assessment subject: OU: Unsupported conversation decision.')).rejects.toThrow(/read-only/);expect((await perf.getCalibrationConversation(reviewer,group,'performance')).messages).toEqual([]);
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,id));await expect(perf.getCalibrationConversation(reviewer,id,'performance')).rejects.toThrow(/removed/);expect(await withTenant(reviewer,tx=>tx.select().from(schema.calibrationConversation).where(eq(schema.calibrationConversation.sessionId,id)))).toEqual([]);
   });
+  it('moves only changed Talent Box axes, preserves first origins and lets untouched bands follow later confirmations',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const make=(tier:'bg'|'hod')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} movement origins`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const bg=await make('bg');const move=(performance:'ME'|'AE'|null,potential:'Low'|'Mid'|'High'|null)=>perf.moveAssessmentTalentBox(reviewer,bg,revision,{reviewId,performance,potential,performanceNote:'Verified delivery context.',potentialNote:'Verified development context.'});let revision=1;
+    let v=await perf.getOnehrCalibration(reviewer,bg);const incoming=v.rows[0].currentPotential!;
+    await move('ME',incoming);v=await perf.getOnehrCalibration(reviewer,bg);expect(v.session.revision).toBe(1);expect(v.rows[0].entry).toMatchObject({performance:null,potential:null,originalPerformance:null,originalPotential:null});
+    const changed=incoming==='Low'?'High':'Low';await move('ME',changed);v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;
+    expect(v.rows[0].entry).toMatchObject({performance:null,potential:changed,originalPerformance:null,originalPotential:incoming,seenPotential:incoming,performanceNote:''});expect(v.rows[0].movement.moved).toBe(true);
+    const [event]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,bg),eq(schema.domainEvent.eventType,'onehr.calibration-recorded'))).orderBy(schema.domainEvent.occurredAt,schema.domainEvent.id);expect(event.payload).toMatchObject({axis:'potential',next:{potential:changed}});expect((event.payload as {next:Record<string,unknown>}).next).not.toHaveProperty('performance');
+    await move(null,'Mid');v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;expect(v.rows[0].entry).toMatchObject({performance:null,potential:'Mid',originalPotential:incoming,seenPotential:changed});
+    await move(null,incoming);v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;expect(v.rows[0].movement.moved).toBe(false);expect(v.rows[0].entry.originalPotential).toBe(incoming);
+    const hod=await make('hod');await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'New confirmed lower-tier delivery.',potentialNote:''});
+    v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0]).toMatchObject({currentPerformance:'AE',performanceSource:'hod',entry:{performance:null}});
+    await perf.lockOnehrCalibration(reviewer,bg,revision,'');v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;
+    expect(v.rows[0].entry).toMatchObject({performance:'AE',performancePinned:true,performancePinSource:'hod',originalPerformance:null,potentialPinned:false,originalPotential:incoming});expect(v.rows[0].movement.moved).toBe(false);
+    await expect(move('AE',changed)).rejects.toThrow(/locked/);
+    await perf.unlockOnehrCalibration(a,bg,revision,'Review the box again.');v=await perf.getOnehrCalibration(reviewer,bg);revision=v.session.revision;
+    expect(v.rows[0].entry).toMatchObject({performance:null,performancePinned:false,performancePinSource:null,originalPerformance:null,potential:incoming,originalPotential:incoming});
+    await move('ME',incoming);v=await perf.getOnehrCalibration(reviewer,bg);expect(v.rows[0].entry).toMatchObject({performance:'ME',originalPerformance:'AE',seenPerformance:'AE'});
+    const control=await withTenant(reviewer,tx=>tx.update(schema.onehrCalibrationEntry).set({performanceNote:'Allowed review note.'}).where(eq(schema.onehrCalibrationEntry.id,v.rows[0].entry.id)).returning({id:schema.onehrCalibrationEntry.id}));expect(control).toHaveLength(1);
+    await expect(withTenant(reviewer,tx=>tx.update(schema.onehrCalibrationEntry).set({originalPerformance:'OU'}).where(eq(schema.onehrCalibrationEntry.id,v.rows[0].entry.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:'The first calibration origin is immutable'})});
+    await expect(perf.moveAssessmentTalentBox(self,bg,v.session.revision,{reviewId,performance:'AE',potential:null,performanceNote:'',potentialNote:''})).rejects.toThrow(/not found|removed|calibrated/);
+  });
+  it('records a provisional Talent Box origin only when explicitly moved',async()=>{
+    const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Provisional box',companyId:b.companyId,tier:'bg',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    let v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0]).toMatchObject({currentPerformance:'UA',performanceSource:'default',currentPotential:'Low',potentialSource:'default',entry:{performance:null,potential:null}});
+    await perf.moveAssessmentTalentBox(reviewer,id,1,{reviewId,performance:'ME',potential:null,performanceNote:'Human review of provisional evidence.',potentialNote:''});
+    v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry).toMatchObject({performance:'ME',originalPerformance:'UA',seenPerformance:'UA',potential:null});expect(v.rows[0].movement).toMatchObject({moved:true,fromCategory:'PIP/Improvement'});
+    await perf.moveAssessmentTalentBox(reviewer,id,2,{reviewId,performance:'AE',potential:null,performanceNote:'Further review.',potentialNote:''});v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry).toMatchObject({performance:'AE',originalPerformance:'UA',seenPerformance:'ME',potential:null});
+    expect(v.rows[0].movement.moved).toBe(true);
+  });
   it('keeps the Group PM table separate from the dual-axis Talent Box and starts PM calls from the line manager',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const make=(tier:'hod'|'group',reviewIds=[reviewId])=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} source rules`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds,pbtAchievement:100,mode:'after'});

@@ -18108,6 +18108,22 @@
       "movedFrom": "Moved from {box}",
       "saved": "Draft calibration saved.",
       "saveError": "Could not save this calibration. Your changes are still here."
+    },
+    "talentMove": {
+      "move": "Pindah",
+      "forPerson": "Pindahkan {name}",
+      "now": "Kini · prestasi {performance} · potensi {potential}",
+      "destination": "Kedudukan baharu",
+      "currentBox": "Kotak semasa: {box}, potensi {potential}, prestasi {performance}",
+      "targetBox": "Pindah ke {box}, potensi {potential}, prestasi {performance}",
+      "axes": "Potensi ↑ · prestasi →",
+      "band": "Jalur prestasi baharu",
+      "pick": "Pilih kotak untuk kedudukan baharu.",
+      "reason": "Sebab · pilihan, dibaca oleh peringkat di atas",
+      "failed": "Perpindahan tidak dapat disimpan. Cuba lagi.",
+      "saving": "Menyimpan…",
+      "save": "Simpan perpindahan",
+      "cancel": "Batal"
     }
   },
   "allowanceV2": {

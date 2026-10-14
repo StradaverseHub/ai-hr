@@ -18108,6 +18108,22 @@
       "movedFrom": "Moved from {box}",
       "saved": "Draft calibration saved.",
       "saveError": "Could not save this calibration. Your changes are still here."
+    },
+    "talentMove": {
+      "move": "移动",
+      "forPerson": "移动 {name}",
+      "now": "当前 · 绩效 {performance} · 潜力 {potential}",
+      "destination": "目标位置",
+      "currentBox": "当前位置：{box}，潜力 {potential}，绩效 {performance}",
+      "targetBox": "移至 {box}，潜力 {potential}，绩效 {performance}",
+      "axes": "潜力 ↑ · 绩效 →",
+      "band": "新绩效等级",
+      "pick": "选择目标位置。",
+      "reason": "原因 · 可选，上级校准者可见",
+      "failed": "无法保存移动，请重试。",
+      "saving": "正在保存…",
+      "save": "保存移动",
+      "cancel": "取消"
     }
   },
   "allowanceV2": {

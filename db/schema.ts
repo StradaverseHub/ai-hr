@@ -10060,6 +10060,7 @@ export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entr
   reviewId:uuid('review_id').notNull().references(()=>performanceReview.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
   performance:text('performance'),potential:text('potential'),performanceNote:text('performance_note').notNull().default(''),potentialNote:text('potential_note').notNull().default(''),
   seenPerformance:text('seen_performance'),seenPotential:text('seen_potential'),performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}),lockedAt:timestamp('locked_at',{withTimezone:true}),
+  originalPerformance:text('original_performance'),originalPotential:text('original_potential'),performancePinSource:text('performance_pin_source'),potentialPinSource:text('potential_pin_source'),
   performancePinned:boolean('performance_pinned').notNull().default(false),potentialPinned:boolean('potential_pinned').notNull().default(false),
   pip:boolean('pip').notNull().default(false),promotion:boolean('promotion').notNull().default(false),specialReward:boolean('special_reward').notNull().default(false),
   pipReason:text('pip_reason').notNull().default(''),promotionReason:text('promotion_reason').notNull().default(''),specialRewardReason:text('special_reward_reason').notNull().default(''),

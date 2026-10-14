@@ -18108,6 +18108,22 @@
       "movedFrom": "Moved from {box}",
       "saved": "Draft calibration saved.",
       "saveError": "Could not save this calibration. Your changes are still here."
+    },
+    "talentMove": {
+      "move": "ย้าย",
+      "forPerson": "ย้าย {name}",
+      "now": "ปัจจุบัน · ผลงาน {performance} · ศักยภาพ {potential}",
+      "destination": "ตำแหน่งใหม่",
+      "currentBox": "ตำแหน่งปัจจุบัน: {box}, ศักยภาพ {potential}, ผลงาน {performance}",
+      "targetBox": "ย้ายไป {box}, ศักยภาพ {potential}, ผลงาน {performance}",
+      "axes": "ศักยภาพ ↑ · ผลงาน →",
+      "band": "ระดับผลงานใหม่",
+      "pick": "เลือกตำแหน่งที่ต้องการย้ายไป",
+      "reason": "เหตุผล · ไม่บังคับ ผู้ประเมินระดับถัดไปจะอ่าน",
+      "failed": "บันทึกการย้ายไม่ได้ โปรดลองอีกครั้ง",
+      "saving": "กำลังบันทึก…",
+      "save": "บันทึกการย้าย",
+      "cancel": "ยกเลิก"
     }
   },
   "allowanceV2": {

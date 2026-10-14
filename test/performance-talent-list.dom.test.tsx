@@ -10,6 +10,7 @@ const ports=vi.hoisted(()=>({save:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:ports.refresh})}));
 vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:ports.save}));
 import { CalibrationBandForm } from '../app/performance/onehr/calibration-band-form';
+import { TalentBoxMove } from '../app/performance/onehr/talent-box-move';
 const people:CalibrationRosterRow[]=[
  {id:'a',name:'Alice Tan',department:'Finance',grade:'12',performance:'AE',potential:'High'},
  {id:'b',name:'Bob Lim',department:'Operations',grade:'2',performance:'ME',potential:'Mid'},
@@ -48,4 +49,18 @@ it('refreshes an embedded band save in place and retains the human words if a re
  render(<NextIntlClientProvider locale="en" messages={en}><CalibrationBandForm preserveView action={legacy}><input type="hidden" name="revision" value="4" readOnly/><input type="hidden" name="reviewId" value="subject" readOnly/><label>Reason<input name="performanceNote" defaultValue="The observed delivery supports this draft call."/></label><button type="submit">Save</button></CalibrationBandForm></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByRole('status')).toHaveProperty('textContent',en.onehr.talentList.saved);expect(legacy).not.toHaveBeenCalled();expect(ports.save.mock.calls[0][0].get('revision')).toBe('4');expect(ports.save.mock.calls[0][0].get('performanceNote')).toBe('The observed delivery supports this draft call.');await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());
  fireEvent.change(screen.getByRole('textbox',{name:'Reason'}),{target:{value:'Retain this explanation when the save is refused.'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByRole('alert')).toHaveProperty('textContent','The calibration changed. Reload before saving.');expect((screen.getByRole('textbox',{name:'Reason'}) as HTMLInputElement).value).toBe('Retain this explanation when the save is refused.');expect(ports.refresh).toHaveBeenCalledOnce();
+});
+it('picks a nine-box move with an explicit band choice, preserves a refused reason and refreshes only after saving',async()=>{
+ ports.save.mockResolvedValueOnce({error:'This record changed. Reload before saving.'}).mockResolvedValueOnce({ok:true});const moved=vi.fn();
+ render(<NextIntlClientProvider locale="en" messages={en}><TalentBoxMove person={people[0]} sessionId="scope" revision={7} onMoved={moved}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Move Alice Tan'}));const dialog=screen.getByRole('dialog',{name:'Move Alice Tan'});
+ expect(within(dialog).getByRole('button',{name:'Current box: Super Star, High potential, High performance'}).hasAttribute('disabled')).toBe(true);expect(within(dialog).getByRole('button',{name:'Save move'}).hasAttribute('disabled')).toBe(true);
+ fireEvent.click(within(dialog).getByRole('button',{name:'Move to PIP/Improvement, Mid potential, Low performance'}));expect(within(dialog).getByRole('button',{name:'BE'}).getAttribute('aria-pressed')).toBe('true');fireEvent.click(within(dialog).getByRole('button',{name:'UA'}));fireEvent.change(within(dialog).getByRole('textbox',{name:en.onehr.talentMove.reason}),{target:{value:'Keep the delivery evidence attached to this move.'}});
+ fireEvent.click(within(dialog).getByRole('button',{name:'Save move'}));expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent','This record changed. Reload before saving.');expect((within(dialog).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep the delivery evidence attached to this move.');expect(ports.refresh).not.toHaveBeenCalled();expect(moved).not.toHaveBeenCalled();
+ const data=ports.save.mock.calls[0][0] as FormData;expect(Object.fromEntries(data)).toEqual({sessionId:'scope',revision:'7',reviewId:'a',performance:'UA',potential:'Mid',performanceNote:'Keep the delivery evidence attached to this move.',potentialNote:'Keep the delivery evidence attached to this move.'});
+ fireEvent.click(within(dialog).getByRole('button',{name:'Save move'}));await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(moved).toHaveBeenCalledOnce();expect(ports.refresh).toHaveBeenCalledOnce();
+});
+it('cancels a proposed move without saving and refuses a locked row',()=>{
+ const ui=render(<NextIntlClientProvider locale="en" messages={en}><TalentBoxMove person={people[0]} sessionId="scope" revision={7}/></NextIntlClientProvider>);fireEvent.click(screen.getByRole('button',{name:'Move Alice Tan'}));fireEvent.click(screen.getByRole('button',{name:'Move to Star, High potential, Mid performance'}));fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.queryByRole('dialog')).toBeNull();expect(ports.save).not.toHaveBeenCalled();
+ ui.rerender(<NextIntlClientProvider locale="en" messages={en}><TalentBoxMove person={people[0]} sessionId="scope" revision={7} disabled/></NextIntlClientProvider>);expect(screen.getByRole('button',{name:'Move Alice Tan'}).hasAttribute('disabled')).toBe(true);
 });

@@ -18108,6 +18108,22 @@
       "movedFrom": "Moved from {box}",
       "saved": "Draft calibration saved.",
       "saveError": "Could not save this calibration. Your changes are still here."
+    },
+    "talentMove": {
+      "move": "நகர்த்து",
+      "forPerson": "{name} என்பவரை நகர்த்து",
+      "now": "தற்போது · செயல்திறன் {performance} · திறன் {potential}",
+      "destination": "புதிய இடம்",
+      "currentBox": "தற்போதைய இடம்: {box}, திறன் {potential}, செயல்திறன் {performance}",
+      "targetBox": "{box} இடத்திற்கு நகர்த்து, திறன் {potential}, செயல்திறன் {performance}",
+      "axes": "திறன் ↑ · செயல்திறன் →",
+      "band": "புதிய செயல்திறன் நிலை",
+      "pick": "புதிய இடத்தைத் தேர்ந்தெடுக்கவும்.",
+      "reason": "காரணம் · விருப்பமானது, மேல்நிலை மதிப்பாய்வாளர் படிப்பார்",
+      "failed": "மாற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயலவும்.",
+      "saving": "சேமிக்கிறது…",
+      "save": "மாற்றத்தைச் சேமி",
+      "cancel": "ரத்துசெய்"
     }
   },
   "allowanceV2": {

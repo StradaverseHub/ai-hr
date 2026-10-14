@@ -164,7 +164,7 @@ export async function changeGroupBandAction(sessionId:string,revision:number,rev
 /** Reversible Talent Box saves refresh the same route, retaining the person's list filters. */
 export async function saveCalibrationBandAction(f:FormData){
  const s=await getSession();
- try{const id=z.uuid().parse(str(f,'sessionId'));await perf.saveOnehrCalibration(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),axis:str(f,'axis')||'both',performance:str(f,'performance')||null,potential:str(f,'potential')||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote')});revalidatePath('/performance/workspace');revalidatePath(`/performance/assessment/calibration/${id}`);return {ok:true as const};}
+ try{const id=z.uuid().parse(str(f,'sessionId'));await perf.moveAssessmentTalentBox(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),performance:str(f,'performance')||null,potential:str(f,'potential')||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote')});revalidatePath('/performance/workspace');revalidatePath(`/performance/assessment/calibration/${id}`);return {ok:true as const};}
  catch(error){return {error:publicErrorMessage(error)};}
 }
 export async function onehrCalibrationAction(f:FormData){

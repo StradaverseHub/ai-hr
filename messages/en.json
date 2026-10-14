@@ -18108,6 +18108,22 @@
       "movedFrom": "Moved from {box}",
       "saved": "Draft calibration saved.",
       "saveError": "Could not save this calibration. Your changes are still here."
+    },
+    "talentMove": {
+      "move": "Move",
+      "forPerson": "Move {name}",
+      "now": "Now · {performance} performance · {potential} potential",
+      "destination": "Where they should sit",
+      "currentBox": "Current box: {box}, {potential} potential, {performance} performance",
+      "targetBox": "Move to {box}, {potential} potential, {performance} performance",
+      "axes": "Potential ↑ · performance →",
+      "band": "New performance band",
+      "pick": "Pick the box they should sit in.",
+      "reason": "Reason · optional, the tier above reads it",
+      "failed": "Could not save the move. Try again.",
+      "saving": "Saving…",
+      "save": "Save move",
+      "cancel": "Cancel"
     }
   },
   "allowanceV2": {

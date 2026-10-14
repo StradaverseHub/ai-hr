@@ -18108,6 +18108,22 @@
       "movedFrom": "Moved from {box}",
       "saved": "Draft calibration saved.",
       "saveError": "Could not save this calibration. Your changes are still here."
+    },
+    "talentMove": {
+      "move": "Chuyển",
+      "forPerson": "Chuyển {name}",
+      "now": "Hiện tại · hiệu suất {performance} · tiềm năng {potential}",
+      "destination": "Vị trí mới",
+      "currentBox": "Vị trí hiện tại: {box}, tiềm năng {potential}, hiệu suất {performance}",
+      "targetBox": "Chuyển đến {box}, tiềm năng {potential}, hiệu suất {performance}",
+      "axes": "Tiềm năng ↑ · hiệu suất →",
+      "band": "Mức hiệu suất mới",
+      "pick": "Chọn vị trí muốn chuyển đến.",
+      "reason": "Lý do · không bắt buộc, cấp đánh giá tiếp theo sẽ đọc",
+      "failed": "Không thể lưu thay đổi. Vui lòng thử lại.",
+      "saving": "Đang lưu…",
+      "save": "Lưu thay đổi",
+      "cancel": "Hủy"
     }
   },
   "allowanceV2": {
