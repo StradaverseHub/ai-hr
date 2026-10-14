@@ -50,6 +50,11 @@ it('reads a person beside the same Talent Box, returns with a last-viewed marker
  expect(screen.getByText(/Last viewed/)).toBeTruthy();
  expect(screen.getByRole('button',{name:'Unit Y'}).getAttribute('aria-pressed')).toBe('true');
 });
+it('returns to the viewed person’s cell rather than the originally selected cell',()=>{
+ show(true);fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Alice Tan'}));
+ fireEvent.click(screen.getByRole('button',{name:en.onehr.calibrationRoster.backToBox}));
+ const drawer=screen.getByRole('complementary',{name:en.onehr.calibrationRoster.boxPeople});expect(within(drawer).getByRole('button',{name:'Alice Tan'})).toBeTruthy();expect(within(drawer).queryByRole('button',{name:'Bob Lim'})).toBeNull();
+});
 it('opens on the first unit still to lock, filters categories without combining units and explains an empty box',()=>{
  render(<NextIntlClientProvider locale="en" messages={en}><CalibrationRoster sessionId="session" revision={1} rows={rows.map(r=>({...r,locked:r.companyId==='x'}))} cards={[]} axes={{pm:true,pot:true}} grid reference={{}}/></NextIntlClientProvider>);
  expect(screen.getByRole('button',{name:'Unit Y'}).getAttribute('aria-pressed')).toBe('true');

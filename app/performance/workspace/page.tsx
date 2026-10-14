@@ -45,7 +45,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  }
  const returnTo=href({},selected);
  const review=selected?.kind==='review'?await getOnehrReview(s,selected.id):null;
- const calibration=selected?.kind==='calibration'?await getOnehrCalibration(s,selected.id):null;
+ const calibration=selected?.kind==='calibration'?await getOnehrCalibration(s,selected.id,selected.axis??'both'):null;
  const feedback=selected?.kind==='feedback'?await getOnehrFeedback(s,selected.id):null;
  if(selected?.kind==='review'&&!review)notFound();
  const stage=query.stage==='record'?'record':query.stage==='evidence'&&review?.policy.modules.evidence?'evidence':module;

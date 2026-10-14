@@ -17993,6 +17993,24 @@
       "peopleCount": "{count} người",
       "lastViewed": "Đã xem gần nhất",
       "emptyBox": "Không có nhân sự trong ô này."
+    },
+    "groupCalibration": {
+      "title": "Hiệu chỉnh cấp tập đoàn",
+      "all": "Tất cả",
+      "noGroup": "Không có khối kinh doanh",
+      "noDepartment": "Không có phòng ban",
+      "help": "Quyết định của bạn và từng CEO khối kinh doanh: {mode}. Chọn mức, chọn nhân sự và khóa quyết định. HR xác định mức cuối cùng cho quyết định đã khóa.",
+      "yourCall": "Quyết định của bạn",
+      "selectPerson": "Chọn {name} để khóa",
+      "callFor": "Quyết định của bạn cho {name}",
+      "lockConfirm": "Khóa quyết định hiệu suất của {count} người đã chọn? Người đánh giá tập đoàn không thể sửa quyết định đã khóa.",
+      "lockSelected": "Khóa người đã chọn ({count})",
+      "lockDepartment": "Khóa nhân sự còn mở trong phòng ban ({count})",
+      "saveError": "Không thể lưu quyết định. Vui lòng thử lại.",
+      "movedFrom": "Chuyển từ {band}",
+      "differsBg": "Khác với CEO khối kinh doanh",
+      "businessGroup": "Khối kinh doanh",
+      "department": "Phòng ban"
     }
   },
   "allowanceV2": {

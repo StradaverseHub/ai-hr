@@ -17993,6 +17993,24 @@
       "peopleCount": "{count, plural, one {# person} other {# people}}",
       "lastViewed": "Last viewed",
       "emptyBox": "No people in this box."
+    },
+    "groupCalibration": {
+      "title": "Group calibration",
+      "all": "All",
+      "noGroup": "No business group",
+      "noDepartment": "No department",
+      "help": "Your call and each BG CEO’s: {mode}. Set a band, then select people and lock their calls. Locked calls go to HR for the final band.",
+      "yourCall": "Your call",
+      "selectPerson": "Select {name} to lock",
+      "callFor": "Your call for {name}",
+      "lockConfirm": "Lock the performance {count, plural, one {call for the selected person} other {calls for # selected people}}? Locked calls cannot be changed by the Group reviewer.",
+      "lockSelected": "Lock selected ({count})",
+      "lockDepartment": "Lock open people in department ({count})",
+      "saveError": "Could not save this call. Try again.",
+      "movedFrom": "Moved from {band}",
+      "differsBg": "Differs from BG CEO",
+      "businessGroup": "Business group",
+      "department": "Department"
     }
   },
   "allowanceV2": {

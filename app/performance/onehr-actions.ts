@@ -133,6 +133,15 @@ export async function agreeDepartmentAction(f:FormData){
  try{await perf.agreeAssessmentDepartment(s,id,num(f,'revision'),z.enum(['performance','potential']).parse(str(f,'axis')),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
  revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
 }
+export async function lockGroupPeopleAction(f:FormData){
+ const s=await getSession(),id=z.uuid().parse(str(f,'sessionId')),url=destination(f,`/performance/assessment/calibration/${id}`);
+ try{await perf.lockAssessmentGroupPeople(s,id,num(f,'revision'),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
+ revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
+}
+export async function changeGroupBandAction(sessionId:string,revision:number,reviewId:string,band:PMBand){
+ const s=await getSession();
+ try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:'',potentialNote:''});revalidatePath('/performance/workspace');return {ok:true as const};}catch(error){return {error:publicErrorMessage(error)};}
+}
 export async function onehrCalibrationAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'sessionId'));const url=destination(f,`/performance/assessment/calibration/${id}`);
   try{if(str(f,'action')==='talent-save')await perf.saveAssessmentTalentDecision(s,id,num(f,'revision'),str(f,'reviewId'),str(f,'kind') as 'pip'|'promotion'|'specialReward'|'nomination',f.has('selected'),str(f,'reason'),{grade:str(f,'grade'),title:str(f,'title'),talentRevision:f.has('talentRevision')?num(f,'talentRevision'):undefined});else if(['talent-lock','talent-reopen'].includes(str(f,'action')))await perf.confirmAssessmentTalentList(s,id,num(f,'revision'),str(f,'kind') as 'pip'|'promotion',str(f,'action')==='talent-reopen',str(f,'reason'));else if(str(f,'action')==='unlock')await perf.unlockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else if(str(f,'action')==='lock')await perf.lockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined,str(f,'companyId')||undefined);else await perf.saveOnehrCalibration(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),axis:str(f,'axis')||'both',performance:str(f,'performance') as PMBand||null,potential:str(f,'potential') as PotentialBand||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote'),confirmTalentDecisions:f.has('confirmTalentDecisions'),pip:f.has('pip'),promotion:f.has('promotion'),specialReward:f.has('specialReward')});}catch(e){redirect(withError(url,e));}

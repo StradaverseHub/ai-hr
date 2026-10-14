@@ -17993,6 +17993,24 @@
       "peopleCount": "{count} orang",
       "lastViewed": "Terakhir dilihat",
       "emptyBox": "Tiada individu dalam kotak ini."
+    },
+    "groupCalibration": {
+      "title": "Kalibrasi kumpulan",
+      "all": "Semua",
+      "noGroup": "Tiada kumpulan perniagaan",
+      "noDepartment": "Tiada jabatan",
+      "help": "Keputusan anda dan setiap CEO kumpulan perniagaan: {mode}. Tetapkan band, kemudian pilih individu dan kunci keputusan. Keputusan terkunci diserahkan kepada HR untuk band akhir.",
+      "yourCall": "Keputusan anda",
+      "selectPerson": "Pilih {name} untuk dikunci",
+      "callFor": "Keputusan anda untuk {name}",
+      "lockConfirm": "Kunci keputusan prestasi untuk {count} individu dipilih? Penyemak kumpulan tidak boleh mengubah keputusan terkunci.",
+      "lockSelected": "Kunci dipilih ({count})",
+      "lockDepartment": "Kunci individu terbuka dalam jabatan ({count})",
+      "saveError": "Keputusan tidak dapat disimpan. Cuba lagi.",
+      "movedFrom": "Dipindahkan daripada {band}",
+      "differsBg": "Berbeza daripada CEO kumpulan perniagaan",
+      "businessGroup": "Kumpulan perniagaan",
+      "department": "Jabatan"
     }
   },
   "allowanceV2": {

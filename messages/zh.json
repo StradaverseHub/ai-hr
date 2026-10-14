@@ -17993,6 +17993,24 @@
       "peopleCount": "{count} 人",
       "lastViewed": "上次查看",
       "emptyBox": "此格暂无人员。"
+    },
+    "groupCalibration": {
+      "title": "集团校准",
+      "all": "全部",
+      "noGroup": "无业务集团",
+      "noDepartment": "无部门",
+      "help": "您的决定与各业务集团 CEO 的决定：{mode}。设置等级，然后选择人员并锁定决定。已锁定决定由 HR 确定最终等级。",
+      "yourCall": "您的决定",
+      "selectPerson": "选择并锁定 {name}",
+      "callFor": "您对 {name} 的决定",
+      "lockConfirm": "锁定所选 {count} 人的绩效决定？集团审核人无法更改已锁定的决定。",
+      "lockSelected": "锁定所选人员（{count}）",
+      "lockDepartment": "锁定部门内待处理人员（{count}）",
+      "saveError": "无法保存决定，请重试。",
+      "movedFrom": "由 {band} 调整",
+      "differsBg": "与业务集团 CEO 不同",
+      "businessGroup": "业务集团",
+      "department": "部门"
     }
   },
   "allowanceV2": {
