@@ -18334,6 +18334,13 @@
       "title": "能力评估摘要",
       "help": "查看员工已提交的自评及其回答依据。评估决定由您作出。",
       "none": "员工尚未提交能力评估。"
+    },
+    "competencyBand": {
+      "self": "员工能力等级",
+      "manager": "您的评审能力等级",
+      "help": "仅根据能力评估答案计算。更改答案时，您的评审等级会同步更新。",
+      "employeeReason": "员工说明",
+      "employeeReflection": "员工总结"
     }
   },
   "allowanceV2": {

@@ -18334,6 +18334,13 @@
       "title": "Competency insight",
       "help": "Review the employee’s submitted self-assessment and the reasons behind their answers. You decide the assessment.",
       "none": "The employee has not submitted their competency assessment yet."
+    },
+    "competencyBand": {
+      "self": "Employee competency band",
+      "manager": "Your review competency band",
+      "help": "Based on competency answers only. Your review updates as you change answers.",
+      "employeeReason": "Employee explanation",
+      "employeeReflection": "Employee reflection"
     }
   },
   "allowanceV2": {

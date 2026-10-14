@@ -18334,6 +18334,13 @@
       "title": "Tóm tắt đánh giá năng lực",
       "help": "Xem bản tự đánh giá đã nộp và lý do cho các câu trả lời của nhân viên. Bạn quyết định kết quả đánh giá.",
       "none": "Nhân viên chưa nộp bản đánh giá năng lực."
+    },
+    "competencyBand": {
+      "self": "Mức năng lực của nhân viên",
+      "manager": "Mức năng lực theo đánh giá của bạn",
+      "help": "Chỉ dựa trên câu trả lời về năng lực. Mức đánh giá cập nhật khi bạn thay đổi câu trả lời.",
+      "employeeReason": "Giải thích của nhân viên",
+      "employeeReflection": "Tự nhận xét của nhân viên"
     }
   },
   "allowanceV2": {

@@ -18334,6 +18334,13 @@
       "title": "Rumusan kompetensi",
       "help": "Semak penilaian kendiri yang dihantar oleh pekerja dan alasan bagi jawapan mereka. Anda menentukan penilaian.",
       "none": "Pekerja belum menghantar penilaian kompetensi mereka."
+    },
+    "competencyBand": {
+      "self": "Tahap kompetensi pekerja",
+      "manager": "Tahap kompetensi semakan anda",
+      "help": "Berdasarkan jawapan kompetensi sahaja. Semakan anda dikemas kini apabila anda mengubah jawapan.",
+      "employeeReason": "Penjelasan pekerja",
+      "employeeReflection": "Refleksi pekerja"
     }
   },
   "allowanceV2": {
