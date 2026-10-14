@@ -13,7 +13,7 @@ import { performanceInsightInstruction } from './insight-prompt';
 import { plainPerformanceInsight,type PerformanceInsight } from './performance-insight-model';
 import type { EvidenceText } from './evidence-extraction';
 type Source=Awaited<ReturnType<typeof getAssessmentInsightSource>>;
-const fingerprint=(source:Source,texts:Map<string,EvidenceText>,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({version:1,name:source.name,facts:source.facts,files:source.attachments.map(f=>({id:f.id,name:f.fileName,size:f.sizeBytes})),texts:[...texts].filter(([,text])=>text.status!=='unread').map(([id,text])=>({id,status:text.status,method:text.method,text:text.text})),writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
+const fingerprint=(source:Source,texts:Map<string,EvidenceText>,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({version:2,name:source.name,facts:source.facts,files:source.attachments.map(f=>({id:f.id,name:f.fileName,size:f.sizeBytes})),texts:[...texts].filter(([,text])=>text.status!=='unread').map(([id,text])=>({id,status:text.status,method:text.method,text:text.text})),writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 async function config(ctx:SessionContext){return withPerformanceTenant(ctx,async tx=>{try{return await resolveActiveAiConfig(tx,ctx);}catch{return null;}});}
 /** GET is cache-only. Explicit generation is the sole file/provider path, including for calibrators. */
 export async function getAssessmentPerformanceInsight(ctx:SessionContext,reviewId:string,contextId=reviewId,{generate=false}:{generate?:boolean}={}){

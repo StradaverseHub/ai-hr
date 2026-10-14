@@ -11,7 +11,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { performanceWorkspace, getAssessmentPersonalRecord, getOnehrReview, getOnehrFeedback, getOnehrCalibration, getReviewConversation, getFeedbackConversation, type ConversationStage, type PerformanceWorkspaceItem } from '@/packs/performance/service';
+import { performanceWorkspace, getAssessmentPersonalRecord, getOnehrReview, getOnehrFeedback, getOnehrCalibration, getReviewConversation, getFeedbackConversation, getCalibrationConversation, type ConversationStage, type PerformanceWorkspaceItem } from '@/packs/performance/service';
 import { ErrorBanner, inputCls } from '@/components/ui';
 import { OnehrReviewView } from '../onehr/review-view';
 import { FeedbackView } from '../onehr/feedback-view';
@@ -50,11 +50,12 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  if(selected?.kind==='review'&&!review)notFound();
  const stage=query.stage==='record'?'record':query.stage==='evidence'&&review?.policy.modules.evidence?'evidence':module;
  const personalRecord=stage==='record'&&review?.self?await getAssessmentPersonalRecord(s,review.reviewId,query.record,query.planYear?Number(query.planYear):undefined):null;
- const conversationStage:ConversationStage=feedback?'feedback':stage==='evidence'?'evidence':module==='tm'?'competency':module==='idp'?'career':selected?.stage==='setting'?'setting':selected?.stage==='moderation'?'moderation':'results';
- const conversation=review&&review.policy.modules.review!==false&&(review.self||review.manager||review.moderator)&&stage!=='record'&&!selected?.locked?await getReviewConversation(s,review.reviewId,conversationStage):feedback&&feedback.guidedReview!==false?await getFeedbackConversation(s,feedback.reviewId,feedback.requestId):null;
+ const conversationStage:ConversationStage|'calibration'=calibration?'calibration':feedback?'feedback':stage==='evidence'?'evidence':module==='tm'?'competency':module==='idp'?'career':selected?.stage==='setting'?'setting':selected?.stage==='moderation'?'moderation':'results';
+ const conversation=calibration&&calibration.modules.review!==false?await getCalibrationConversation(s,calibration.session.id,selected?.axis??'both'):review&&review.policy.modules.review!==false&&(review.self||review.manager||review.moderator)&&stage!=='record'&&!selected?.locked?await getReviewConversation(s,review.reviewId,conversationStage as ConversationStage):feedback&&feedback.guidedReview!==false?await getFeedbackConversation(s,feedback.reviewId,feedback.requestId):null;
  const conversationAiEnabled=review?.aiEnabled??(!!conversation&&'aiEnabled' in conversation&&conversation.aiEnabled===true);
  const conversationLabels=Object.fromEntries(['title','you','draft','guide','action','message','next','preparing','help','updated','send','starter','starterHelp'].map(key=>[key,t(`conversation.${key}`)]));
  if(review&&(review.manager||review.moderator))conversationLabels.help=t('conversation.managerHelp');
+ if(calibration)conversationLabels.help=t('conversation.calibrationHelp');
  conversationLabels.starterQuota=t('conversation.starterQuota',{remaining:'{remaining}',limit:'{limit}'});
  const pending=cards.filter(c=>c.state==='open').length,done=cards.filter(c=>c.state==='done').length;
  const listRail=<><div className="border-b border-border px-4 py-3"><h2 className="text-sm font-semibold">{t(module==='cal'&&view==='dept'?'workspace.departmentReview':`workspace.modules.${module}`)}</h2><p className="mt-1 text-xs text-muted-foreground">{t('workspace.progress',{done,total:cards.length})}</p><progress aria-label={t('workspace.progress',{done,total:cards.length})} value={done} max={Math.max(1,cards.length)} className="mt-2 h-1.5 w-full accent-primary"/></div>{(['open','waiting','later','done'] as const).map(state=>{
@@ -91,7 +92,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
     <WorkspaceRail label={t('workspace.navigator')}>{rail}</WorkspaceRail>
     <main className="min-w-0 rounded-lg border border-border bg-card lg:overflow-hidden">
      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2"><div><h2 className="font-semibold">{selected?.title}</h2><p className="text-xs text-muted-foreground">{selected&&t(`workspace.stages.${selected.stage}`)}</p></div>{cycleIds.length>0&&<form className="flex items-center gap-2" action="/performance/workspace"><label className="sr-only" htmlFor="workspace-cycle">{t('workspace.cycle')}</label><select id="workspace-cycle" name="cycle" defaultValue={cycle} className={`${inputCls} w-auto`}>{cycleIds.map(id=>{const first=items.find(i=>i.cycleId===id)!;return <option key={id} value={id}>{first.cycle}</option>;})}</select><button type="submit" className="min-h-11 whitespace-nowrap rounded-md border border-border px-3 text-sm hover:bg-muted">{t('workspace.openCycle')}</button></form>}{review&&<nav aria-label={t('workspace.recordsLabel')} className="flex gap-4 text-sm"><Link href={href({stage:'record'},selected)} className="text-primary hover:underline">{t('workspace.record')}</Link>{review.policy.modules.evidence&&<Link href={href({stage:'evidence'},selected)} className="text-primary hover:underline">{t('evidence')}</Link>}{!review.self&&<Link href={`/performance/review/${review.reviewId}`} className="text-muted-foreground hover:underline">{t('workspace.fullView')}</Link>}</nav>}</header>
-     {conversation&&(review||feedback)?<ReviewConversation key={`${s.tenantId}.${s.userId}.${feedback?.requestId??review?.reviewId}.${conversationStage}`} reviewId={feedback?.reviewId??review!.reviewId} contextId={feedback?.requestId} stage={conversationStage} initial={conversation} aiEnabled={conversationAiEnabled} labels={conversationLabels}>{journeyWidget}</ReviewConversation>:journeyWidget}
+     {conversation&&(review||feedback||calibration)?<ReviewConversation key={`${s.tenantId}.${s.userId}.${feedback?.requestId??review?.reviewId??calibration?.session.id}.${conversationStage}.${selected?.axis??''}`} reviewId={feedback?.reviewId??review?.reviewId??calibration!.session.id} contextId={feedback?.requestId??calibration?.session.id} axis={selected?.axis} stage={conversationStage} initial={conversation} aiEnabled={conversationAiEnabled} labels={conversationLabels}>{journeyWidget}</ReviewConversation>:journeyWidget}
     </main>
    </div>
   </>}

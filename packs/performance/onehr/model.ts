@@ -112,6 +112,8 @@ export function potential(leadership:{score:number;max:number}[],tech:{score:num
 }
 const talent15:Record<PotentialBand,readonly Talent[]>={High:['PIP/Improvement','Solid Core','Star','Super Star','Super Star'],Mid:['PIP/Improvement','PIP/Improvement','Solid Core','Star','Star'],Low:['PIP/Improvement','PIP/Improvement','Solid Core','Solid Core','Solid Core']};
 export function talentCategory(pm:PMBand|null,pot:PotentialBand|null):Talent|null{return pm&&pot?talent15[pot][pmBands.indexOf(pm)]:null;}
+export const talentColumn=(band:PMBand):'low'|'mid'|'high'=>band==='UA'||band==='BE'?'low':band==='ME'?'mid':'high';
+export const talentCell=(person:{performance:PMBand|null;potential:PotentialBand|null})=>person.performance&&person.potential?`${talentColumn(person.performance)}|${person.potential}`:null;
 export function talentCell9(performance:'low'|'mid'|'high',pot:PotentialBand):Talent {const map:Record<PotentialBand,Talent[]>={High:['Solid Core','Star','Super Star'],Mid:['PIP/Improvement','Solid Core','Star'],Low:['PIP/Improvement','Solid Core','Solid Core']};return map[pot][['low','mid','high'].indexOf(performance)];}
 export const tiers=['hod','bu','bg','group','final'] as const;
 export type Tier=typeof tiers[number];

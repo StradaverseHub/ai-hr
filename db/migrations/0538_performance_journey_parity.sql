@@ -285,7 +285,7 @@ END $$;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_decisions(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL,'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',e.pip,'promotion',e.promotion,'specialReward',e.special_reward) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
+ SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',CASE WHEN s.tier='group' THEN NULL ELSE e.potential END,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',s.tier<>'group' AND (e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL),'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',e.pip,'promotion',e.promotion,'specialReward',e.special_reward) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
  FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id AND s.tenant_id=e.tenant_id JOIN performance_review r ON r.id=e.review_id AND r.tenant_id=e.tenant_id JOIN employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
  WHERE e.review_id=wanted_review AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(emp.person_id) AND (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND app.onehr_calibration_access(ce.session_id)))
 $$;
@@ -449,7 +449,7 @@ INSERT INTO performance_assessment_talent(review_id,tenant_id,actions)
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_decisions(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL,'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',coalesce((a.actions->>'pip')::boolean,false),'promotion',coalesce((a.actions->>'promotion')::boolean,false),'specialReward',coalesce((a.actions->>'specialReward')::boolean,false)) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
+ SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',CASE WHEN s.tier='group' THEN NULL ELSE e.potential END,'performanceLocked',e.performance_locked_at IS NOT NULL OR s.performance_locked_at IS NOT NULL,'potentialLocked',s.tier<>'group' AND (e.potential_locked_at IS NOT NULL OR s.potential_locked_at IS NOT NULL),'locked',e.locked_at IS NOT NULL OR s.locked_at IS NOT NULL,'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',coalesce((a.actions->>'pip')::boolean,false),'promotion',coalesce((a.actions->>'promotion')::boolean,false),'specialReward',coalesce((a.actions->>'specialReward')::boolean,false)) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
  FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id AND s.tenant_id=e.tenant_id JOIN performance_review r ON r.id=e.review_id AND r.tenant_id=e.tenant_id JOIN employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
  LEFT JOIN performance_assessment_talent a ON a.review_id=e.review_id AND a.tenant_id=e.tenant_id
  WHERE e.review_id=wanted_review AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(emp.person_id) AND (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND app.onehr_calibration_access(ce.session_id)))
@@ -576,7 +576,7 @@ BEGIN
  LOOP
   IF d.tier='group' AND d.mode='blend' THEN CONTINUE; END IF;
   IF NOT found_pm AND NOT (d.tier='bg' AND group_replace) AND d.performance IS NOT NULL AND (d.performance_locked_at IS NOT NULL OR d.session_pm_lock IS NOT NULL OR d.tier='final') THEN pm:=d.performance;pm_source:=d.tier;found_pm:=true; END IF;
-  IF NOT found_pot AND d.potential IS NOT NULL AND (d.potential_locked_at IS NOT NULL OR d.session_pot_lock IS NOT NULL OR d.tier='final') THEN pot:=d.potential;pot_source:=d.tier;found_pot:=true; END IF;
+  IF NOT found_pot AND d.tier<>'group' AND d.potential IS NOT NULL AND (d.potential_locked_at IS NOT NULL OR d.session_pot_lock IS NOT NULL OR d.tier='final') THEN pot:=d.potential;pot_source:=d.tier;found_pot:=true; END IF;
  END LOOP;
  -- Agreement percentages are unweighted. Weighting belongs only to the potential calculation.
  SELECT jsonb_build_object('principles',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',q.principle,'agreementPct',q.pct) ORDER BY q.ord) FROM (
@@ -1220,3 +1220,39 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_insight_validate() FROM PUBLIC;
 CREATE TRIGGER assessment_insight_guard BEFORE INSERT OR UPDATE ON performance_assessment_insight FOR EACH ROW EXECUTE FUNCTION app.assessment_insight_validate();
+--> statement-breakpoint
+-- A leader's cohort conversation and held department edits belong to the actor and scope.
+CREATE TABLE performance_calibration_conversation (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
+ session_id uuid NOT NULL REFERENCES performance_onehr_calibration(id),actor_user_id uuid NOT NULL REFERENCES app_user(id),
+ axis text NOT NULL CHECK(axis IN ('performance','potential','both')),
+ messages jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(messages)='array' AND jsonb_array_length(messages)<=300),
+ held jsonb NOT NULL DEFAULT '{"lines":[],"focus":null,"requestId":null}' CHECK(jsonb_typeof(held)='object' AND jsonb_typeof(held->'lines')='array' AND jsonb_array_length(held->'lines')<=200),
+ revision integer NOT NULL DEFAULT 1 CHECK(revision>0),updated_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT performance_calibration_conversation_actor_uq UNIQUE(session_id,actor_user_id,axis)
+);
+CREATE FUNCTION app.assessment_calibration_chat_access(wanted_session uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT app.onehr_calibration_access(wanted_session) AND EXISTS(
+  SELECT 1 FROM performance_onehr_calibration s JOIN performance_onehr_cycle c ON c.cycle_id=s.cycle_id AND c.tenant_id=s.tenant_id
+  WHERE s.id=wanted_session AND s.tenant_id=app.current_tenant_id()
+   AND coalesce((c.policy->'modules'->>'calibration')::boolean,true) AND coalesce((c.policy->'modules'->>'review')::boolean,true))
+$$;
+CREATE FUNCTION app.assessment_calibration_chat_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN review_cycle c ON c.id=s.cycle_id AND c.tenant_id=s.tenant_id JOIN app_user u ON u.id=NEW.actor_user_id AND u.tenant_id=s.tenant_id WHERE s.id=NEW.session_id AND s.tenant_id=NEW.tenant_id AND c.status IN ('open','calibration')) THEN RAISE EXCEPTION 'Invalid or closed calibration conversation'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.held->'lines') h WHERE jsonb_typeof(h->'sessionRevision') IS DISTINCT FROM 'number' OR (h->>'sessionRevision') !~ '^[1-9][0-9]*$' OR jsonb_typeof(h->'reason') IS DISTINCT FROM 'string' OR length(h->>'reason')>4000 OR h->>'axis' NOT IN ('performance','potential') OR h->>'axis' IS NULL OR h->>'band' IS NULL OR (h->>'axis'='performance' AND h->>'band' NOT IN ('UA','BE','ME','AE','OU')) OR (h->>'axis'='potential' AND h->>'band' NOT IN ('Low','Mid','High')) OR NOT EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.session_id=NEW.session_id AND ce.tenant_id=NEW.tenant_id AND ce.review_id::text=h->>'reviewId')) THEN RAISE EXCEPTION 'Held review must belong to this calibration cohort'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF (NEW.id,NEW.tenant_id,NEW.session_id,NEW.actor_user_id,NEW.axis) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.session_id,OLD.actor_user_id,OLD.axis) THEN RAISE EXCEPTION 'Calibration conversation identity is immutable'; END IF;
+  IF jsonb_array_length(NEW.messages)<jsonb_array_length(OLD.messages) OR EXISTS(SELECT 1 FROM jsonb_array_elements(OLD.messages) WITH ORDINALITY p(v,i) WHERE NEW.messages->((p.i-1)::integer) IS DISTINCT FROM p.v) THEN RAISE EXCEPTION 'Calibration conversation is append-only'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_calibration_chat_access(uuid),app.assessment_calibration_chat_validate() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_calibration_chat_access(uuid) TO ai_hr_app;
+ALTER TABLE performance_calibration_conversation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_calibration_conversation FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE,DELETE ON performance_calibration_conversation TO ai_hr_app;
+CREATE POLICY calibration_conversation_read ON performance_calibration_conversation FOR SELECT USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id));
+CREATE POLICY calibration_conversation_insert ON performance_calibration_conversation FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id));
+CREATE POLICY calibration_conversation_update ON performance_calibration_conversation FOR UPDATE USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id));
+CREATE TRIGGER calibration_conversation_links BEFORE INSERT OR UPDATE ON performance_calibration_conversation FOR EACH ROW EXECUTE FUNCTION app.assessment_calibration_chat_validate();

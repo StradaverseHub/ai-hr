@@ -1,15 +1,24 @@
 'use client';
-import { useState } from 'react';
-import { pmBands, potentialBands, talentCategory, talentCell9, type PMBand, type PotentialBand } from '@/packs/performance/onehr/model';
-export function TalentGrid({rows,labels}:{rows:{id:string;name:string;performance:PMBand|null;potential:PotentialBand|null}[];labels:Record<string,string>}) {
- const [columns,setColumns]=useState<9|15>(9);
- const performance=columns===15?[...pmBands]:['low','mid','high'] as const;
- const group=(p:PMBand)=>columns===15?p:['UA','BE'].includes(p)?'low':p==='ME'?'mid':'high';
- const tone=(label:string)=>label==='PIP/Improvement'?'bg-amber-50 dark:bg-amber-500/10':label==='Super Star'?'bg-emerald-100 dark:bg-emerald-500/20':label==='Star'?'bg-emerald-50 dark:bg-emerald-500/10':'bg-muted/30';
- const unrated=rows.filter(r=>!r.performance||!r.potential).length;
- return <section className="space-y-3 p-5" aria-label={labels.title}>
-  <header className="flex items-center justify-between gap-3"><h2 className="font-semibold">{labels.title}</h2><div className="flex rounded-md border border-border p-1" aria-label={labels.layout}>{([9,15] as const).map(n=><button key={n} type="button" aria-pressed={columns===n} onClick={()=>setColumns(n)} className={`min-h-11 rounded px-3 text-sm ${columns===n?'bg-foreground text-background':'hover:bg-muted'}`}>{n}</button>)}</div></header>
-  <div className="overflow-x-auto"><table className="w-full min-w-[36rem] table-fixed border-collapse text-sm"><caption className="sr-only">{labels.title}</caption><thead><tr><th scope="col" className="w-16 p-2 text-xs font-medium text-muted-foreground">{labels.potential}</th>{performance.map(p=><th scope="col" key={p} className="p-2 font-semibold">{labels[p]??p}</th>)}</tr></thead><tbody>{[...potentialBands].reverse().map(pot=><tr key={pot}><th scope="row" className="p-2 text-xs font-medium">{pot}</th>{performance.map(perf=>{const members=rows.filter(r=>r.performance&&group(r.performance)===perf&&r.potential===pot),category=columns===15?talentCategory(perf as PMBand,pot)!:talentCell9(perf as 'low'|'mid'|'high',pot);return <td key={perf} className={`h-28 border border-border p-2 align-top ${tone(category)}`}><p className="mb-2 text-xs font-medium text-muted-foreground">{category} · {members.length}</p><ul className="space-y-1">{members.map(m=><li key={m.id}><a href={`#assessment-${m.id}`} className="block truncate rounded border border-border bg-card px-2 py-1 text-xs hover:border-primary" title={m.name}>{m.name}</a></li>)}</ul></td>;})}</tr>)}</tbody></table></div>
-  <p className="text-center text-xs font-medium text-muted-foreground">{labels.performance} →</p>{unrated>0&&<p className="text-xs text-muted-foreground">{labels.unrated}: {unrated}</p>}
+import { potentialBands,talentCell9,talentCell,type PMBand,type PotentialBand } from '@/packs/performance/onehr/model';
+export type TalentGridPerson={id:string;name:string;performance:PMBand|null;potential:PotentialBand|null};
+export function TalentGrid({rows,labels,onSelect,onPick,selected,compact=false,highlight,height}:{rows:TalentGridPerson[];labels:Record<string,string>;onSelect?:(id:string)=>void;onPick?:(cell:string)=>void;selected?:string;compact?:boolean;highlight?:string;height?:number}) {
+ const performance=['low','mid','high'] as const;
+ const placed=rows.filter(r=>talentCell(r)!=null).length;
+ const tone=(category:string)=>category==='PIP/Improvement'?'bg-amber-50 dark:bg-amber-500/10':category==='Super Star'?'bg-primary/15':category==='Star'?'bg-primary/10':'bg-muted/30';
+ return <section style={height?{height}:undefined} className="min-w-0 space-y-2" aria-label={labels.title}>
+  <div style={height?{height:height-24,gridTemplateRows:'1rem repeat(3,minmax(0,1fr))'}:undefined} className="grid grid-cols-[2.5rem_repeat(3,minmax(0,1fr))] gap-1">
+   <div className="col-start-2 col-span-3 grid grid-cols-3 gap-1 text-center text-xs font-medium">{performance.map(p=><span key={p}>{labels[p]??p}</span>)}</div>
+   {[...potentialBands].reverse().map(pot=><div key={pot} className="contents"><span className="flex items-center justify-center text-xs font-medium">{pot}</span>{performance.map(perf=>{
+    const key=`${perf}|${pot}`,members=rows.filter(r=>talentCell(r)===key),category=talentCell9(perf,pot),active=selected===key,marked=highlight===category;
+    return <div key={key} className={`min-w-0 rounded-md border p-2 ${height?'overflow-hidden':compact?'min-h-14':'min-h-20'} ${tone(category)} ${active||marked?'border-primary ring-1 ring-primary':'border-border'} ${highlight&&!marked?'opacity-50':''}`}>
+     <button type="button" onClick={()=>onPick?.(key)} aria-pressed={active} aria-label={`${labels[perf]??perf} ${labels.performance}, ${pot} ${labels.potential}: ${members.length}`} className="flex min-h-8 w-full items-center justify-between gap-1 text-left">
+      {!compact&&<span className="text-[11px] font-medium leading-tight">{category}</span>}<span className="text-lg font-semibold tabular-nums">{members.length}</span>{!compact&&(!height||height>=280)&&<span className="ml-1 text-xs text-muted-foreground">{placed?Math.round(members.length/placed*100):0}%</span>}
+     </button>
+     {!compact&&(!height||height>=280)&&<ul className="flex flex-wrap gap-1">{members.slice(0,3).map(m=><li key={m.id}>{onSelect?<button type="button" onClick={()=>onSelect(m.id)} aria-label={m.name} className="flex size-7 items-center justify-center rounded-full border border-border bg-card text-[10px] font-semibold text-primary hover:border-primary" title={m.name}>{m.name.split(/\s+/).map(part=>part[0]).filter(Boolean).slice(0,2).join('')}</button>:<a href={`#assessment-${m.id}`} className="block truncate text-xs text-primary" title={m.name}>{m.name}</a>}</li>)}</ul>}
+    </div>;
+   })}</div>)}
+  </div>
+  <p className="text-center text-xs font-medium text-muted-foreground">{labels.performance} →</p><p className="sr-only">{labels.potential} ↑</p>
+  {rows.length>placed&&<p className="text-xs text-muted-foreground">{labels.unrated}: {rows.length-placed}</p>}
  </section>;
 }

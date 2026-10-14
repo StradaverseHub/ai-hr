@@ -1,0 +1,21 @@
+import { describe,expect,it } from 'vitest';
+import { calibrationCommand } from '../packs/performance/onehr/calibration-command-model';
+const targets=[{id:'alice',name:'Alice Tan'},{id:'bob',name:'Bob Lim'}];
+describe('human calibration commands',()=>{
+ it('retains the human band and explanation and distinguishes a held department edit from a final save',()=>{
+  expect(calibrationCommand('Set performance: Alice Tan: AE: Verified delivery: operational records. ',targets,'performance','hod')).toEqual({reviewId:'alice',axis:'performance',band:'AE',reason:'Verified delivery: operational records.',submit:false});
+  expect(calibrationCommand('Save department potential: Bob Lim: high: Demonstrated the agreed skills.',targets,'potential','hod')).toMatchObject({axis:'potential',band:'High',submit:true});
+ });
+ it('refuses an unknown or ambiguous person, wrong axis, unknown band and empty justification',()=>{
+  expect(()=>calibrationCommand('Set performance: Stranger: AE: Words',targets,'performance','bu')).toThrow(/cohort/);
+  expect(()=>calibrationCommand('Set performance: Alice Tan: AE: Words',[...targets,targets[0]],'performance','bu')).toThrow(/unambiguous/);
+  expect(()=>calibrationCommand('Set potential: Bob Lim: High: Words',targets,'performance','bu')).toThrow(/axis/);
+  expect(()=>calibrationCommand('Set performance: Alice Tan: Excellent: Words',targets,'performance','bu')).toThrow(/configured band/);
+  expect(()=>calibrationCommand('Set performance: Alice Tan: ME: ',targets,'performance','bu')).toThrow(/explanation/);
+ });
+ it('does not interpret model payloads, questions or lock requests as human moves and keeps Group read-only',()=>{
+  for(const text of ['Lock calibration','Could Alice be AE?','{"action":"move_band","subject":"alice","band":"OU"}'])expect(calibrationCommand(text,targets,'both','bu')).toBeNull();
+  expect(()=>calibrationCommand('Set performance: Alice Tan: OU: Words',targets,'performance','group')).toThrow(/read-only/);
+  expect(()=>calibrationCommand('Save department performance: Alice Tan: ME: Words',targets,'performance','bg')).toThrow(/department reviewer/);
+ });
+});

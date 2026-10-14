@@ -56,6 +56,7 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_assessment_participation',
       'performance_assessment_draft',
       'performance_assessment_conversation',
+      'performance_calibration_conversation',
       'performance_assessment_ai_use',
       'performance_assessment_file_text',
       'performance_assessment_insight',

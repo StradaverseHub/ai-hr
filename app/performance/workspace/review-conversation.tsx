@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { flushAssessmentDrafts } from '../onehr/draft-form';
 import { Sparkles } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
-import { reviewConversationAction } from '../onehr-actions';
-export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,children,contextId}:{contextId?:string;children?:ReactNode;reviewId:string;stage:ConversationStage;initial:{revision:number|null;messages:ReviewMessage[];settingQuota?:{remaining:number;limit:number}};aiEnabled:boolean;labels:Record<string,string>}){
+import { calibrationConversationAction,reviewConversationAction } from '../onehr-actions';
+export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,children,contextId,axis}:{axis?:'performance'|'potential'|'both';contextId?:string;children?:ReactNode;reviewId:string;stage:ConversationStage|'calibration';initial:{revision:number|null;messages:ReviewMessage[];settingQuota?:{remaining:number;limit:number}};aiEnabled:boolean;labels:Record<string,string>}){
  const router=useRouter(),frame=useRef<HTMLElement>(null);
  const [availableHeight,setAvailableHeight]=useState<number>();
  useEffect(()=>{
@@ -27,7 +27,7 @@ export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,chil
   start(async()=>{
    try{await flushAssessmentDrafts();}catch(e){setError(e instanceof Error?e.message:labels.help);return;}
    try{
-   const result=await reviewConversationAction(reviewId,stage,conversation.revision,crypto.randomUUID(),text,intent,contextId);
+   const result=stage==='calibration'?await calibrationConversationAction(contextId??reviewId,axis??'both',conversation.revision,crypto.randomUUID(),text):await reviewConversationAction(reviewId,stage,conversation.revision,crypto.randomUUID(),text,intent,contextId);
    if('error' in result){setError(result.error);return;}
    setConversation(result);setWords('');setError('');if('draftUpdated' in result&&result.draftUpdated)router.refresh();
    }catch(e){setError(e instanceof Error?e.message:labels.help);}

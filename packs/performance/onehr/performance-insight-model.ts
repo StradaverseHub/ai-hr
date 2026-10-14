@@ -125,7 +125,7 @@ function casePlain(facts:InsightFacts,kpis:InsightKpi[],verdict:InsightVerdict|n
  if(facts.remark)out.push('They say: '+q(facts.remark,28)+'.');else if(!read.includes('overall remark'))out.push('They wrote no overall remark.');
  const mods=kpis.flatMap(k=>k.moderation.map(m=>({k,m})));
  for(const {k,m} of mods)out.push(`Their line manager (${m.by}) moderated ${k.kpi} from ${m.from} to ${m.to}`+(m.why?', noting '+q(m.why,20):', with no reason given')+'.');
- for(const m of facts.mgr_remarks??[])out.push(`Their line manager's remark (${m.author}): ${q(m.remark,28)}.`);
+ for(const m of facts.mgr_remarks??[]){const role=!m.role||m.role==='Line manager'?'line manager':m.role==='Approver'?'approver':'reviewer';out.push(`Their ${role}'s remark (${m.author}): ${q(m.remark,28)}.`);}
  if(!mods.length&&!facts.mgr_remarks?.length)out.push('Their line manager has written no remark.');
  for(const t of facts.trail??[]){const note=/^\s*(Moved to fit the calibration curve|Set on their own results)/.test(t.note)?'':t.note.trim();out.push(`The ${t.label} ${t.from===t.band?'kept them at':'placed them at'} ${t.band?labels[t.band]:'not rated'}`+(note?', noting '+q(note,24):', with no note')+'.');}
  return out.join(' ');

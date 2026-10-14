@@ -23,6 +23,11 @@ export async function assessmentInsightAction(reviewId:string,contextId:string,g
  try{return await perf.getAssessmentPerformanceInsight(s,z.uuid().parse(reviewId),z.uuid().parse(contextId),{generate:z.boolean().parse(generate)});}
  catch(error){return {error:publicErrorMessage(error)};}
 }
+export async function calibrationConversationAction(sessionId:string,axis:'performance'|'potential'|'both',expected:number|null,requestId:string,text:string){
+ const s=await getSession();
+ try{const result=await perf.sendCalibrationMessage(s,z.uuid().parse(sessionId),z.enum(['performance','potential','both']).parse(axis),expected,requestId,text);revalidatePath('/performance/workspace');return result;}
+ catch(error){return {error:publicErrorMessage(error)};}
+}
 
 
 
@@ -122,6 +127,11 @@ export async function onehrFeedbackAction(f:FormData){
   const declined=str(f,'action')==='decline';
   try{if(declined)await perf.declineOnehrFeedback(s,id);else if(str(f,'intent')==='draft')await saveDraftForm(s,f);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'),Object.fromEntries(f.getAll('principle').map(p=>[String(p),str(f,`comment.${p}`)])));}catch(e){redirect(withError(url,e));}
   revalidatePath('/me/performance');revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(declined?'/me/performance':url);
+}
+export async function agreeDepartmentAction(f:FormData){
+ const s=await getSession(),id=z.uuid().parse(str(f,'sessionId')),url=destination(f,`/performance/assessment/calibration/${id}`);
+ try{await perf.agreeAssessmentDepartment(s,id,num(f,'revision'),z.enum(['performance','potential']).parse(str(f,'axis')),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
+ revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
 }
 export async function onehrCalibrationAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'sessionId'));const url=destination(f,`/performance/assessment/calibration/${id}`);

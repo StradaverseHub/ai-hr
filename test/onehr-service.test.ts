@@ -233,7 +233,8 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.releaseOnehrResult(a,reviewId,'talent',true);
     expect((await view(self)).result).toMatchObject({performance:'AE',potential:'High',talent:'Super Star'});
     c=await perf.getOnehrCalibration(a,sessionId);
-    await perf.lockOnehrCalibration(a,sessionId,c.session.revision,'','potential');
+    await perf.agreeAssessmentDepartment(a,sessionId,c.session.revision,'potential',[reviewId]);
+    await perf.lockOnehrCalibration(a,sessionId,(await perf.getOnehrCalibration(a,sessionId)).session.revision,'','potential');
     const frozenId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     expect(await view(self)).toMatchObject({finalized:true,result:{id:frozenId,interim:false,performance:'AE',potential:'High',talent:'Super Star'}});
     await perf.releaseOnehrResult(a,reviewId,'performance',false);
@@ -371,19 +372,21 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.unlockOnehrCalibration(mgr,group,(await perf.getOnehrCalibration(mgr,group)).session.revision,'Reconsider')).rejects.toThrow(/administrator/);
     await expect(perf.unlockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'Reconsider')).rejects.toThrow(/later calibration tiers/);
     await perf.unlockOnehrCalibration(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'Correct the group decision','performance',reviewId);
-    let reopened=await perf.getOnehrCalibration(a,group);expect(reopened.rows[0].entry).toMatchObject({performanceLockedAt:null,promotion:false,specialReward:true});expect(reopened.rows[0].entry.potentialLockedAt).toBeTruthy();
+    let reopened=await perf.getOnehrCalibration(a,group);expect(reopened.rows[0].entry).toMatchObject({performanceLockedAt:null,promotion:false,specialReward:true});expect(reopened.rows[0].entry.potentialLockedAt).toBeNull();
     await perf.unlockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'Review the underlying BU performance','performance');
     await perf.lockOnehrCalibration(a,bu,(await perf.getOnehrCalibration(a,bu)).session.revision,'','performance');
     await perf.saveOnehrCalibration(a,group,reopened.session.revision,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Reconsidered verified delivery',potentialNote:''});
     reopened=await perf.getOnehrCalibration(a,group);await perf.lockOnehrCalibration(a,group,reopened.session.revision,'','performance',reviewId);
     await perf.confirmAssessmentTalentList(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'pip');
     await perf.confirmAssessmentTalentList(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'promotion');
+    await perf.updateOnehrWindows(a,cycleId,2,{tb_bgceo:{opensAt:null,closesAt:null}},'Reopen BG potential before finalization.');
+    await perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'','potential');
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);const frozen=(await view(a)).result!;expect(frozen.performance).toBe('AE');
     await expect(perf.unlockOnehrCalibration(a,group,(await perf.getOnehrCalibration(a,group)).session.revision,'Change a frozen result','performance',reviewId)).rejects.toThrow(/Finalized/);
     expect((await view(a)).result?.digest).toBe(frozen.digest);
     const audit=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,group),eq(schema.domainEvent.eventType,'onehr.calibration-reopened')));expect(audit).toHaveLength(1);expect(audit[0].payload).toMatchObject({reason:'Correct the group decision',axis:'performance'});
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
-    await expect(perf.lockOnehrCalibration(a,bg,1,'')).rejects.toThrow(/read-only/);
+    await expect(perf.lockOnehrCalibration(a,bg,(await perf.getOnehrCalibration(a,bg)).session.revision,'')).rejects.toThrow(/read-only/);
   });
   it('rejects stale submissions, self approvals, legacy bypasses, and cross-tenant requests',async()=>{
     const first=await view(self);await perf.saveOnehrKpis(self,reviewId,first.revision,[],false);
@@ -545,6 +548,64 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     v=await perf.getOnehrCalibration(calibrator,sessionId);await perf.lockOnehrCalibration(calibrator,sessionId,v.session.revision,'');
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('AE');
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sessionId));await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
+  });
+  it('holds department chat edits privately until an explicit human save and commits conversation and decision atomically',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const id=await perf.createOnehrCalibration(a,cycleId,{name:'Department chat',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!,reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const request=randomUUID(),first=await perf.sendCalibrationMessage(reviewer,id,'performance',null,request,'Set performance: Assessment subject: AE: Verified additional operational delivery.');
+    expect(await perf.sendCalibrationMessage(reviewer,id,'performance',null,request,'Set performance: Assessment subject: AE: Verified additional operational delivery.')).toEqual(first);
+    let v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry.performance).toBeNull();expect(v.session.revision).toBe(1);expect(v.held.performance?.lines).toMatchObject([{reviewId,band:'AE',reason:'Verified additional operational delivery.'}]);
+    expect((await perf.getOnehrCalibration(mgr,id)).held).toEqual({});expect((await perf.getCalibrationConversation(mgr,id,'performance')).messages).toEqual([]);
+    expect(await withTenant(self,tx=>tx.select().from(schema.calibrationConversation))).toEqual([]);
+    await expect(withTenant(reviewer,tx=>tx.update(schema.calibrationConversation).set({held:{lines:[{reviewId:randomUUID(),sessionRevision:1,axis:'performance',band:'AE',reason:'Forged scope'}],focus:null,requestId:null}}).where(eq(schema.calibrationConversation.sessionId,id)))).rejects.toThrow();
+    await expect(perf.sendCalibrationMessage(reviewer,id,'performance',0,randomUUID(),'Save department performance: Assessment subject: AE: Verified additional operational delivery.')).rejects.toThrow(/conversation changed/);
+    expect((await perf.getOnehrCalibration(reviewer,id)).rows[0].entry.performance).toBeNull();
+    const final=await perf.sendCalibrationMessage(reviewer,id,'performance',first.revision,randomUUID(),'Save department performance: Assessment subject: AE: Verified additional operational delivery.');
+    v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry).toMatchObject({performance:'AE',performanceNote:'Verified additional operational delivery.',performanceLockedAt:expect.any(Date)});expect(v.held.performance?.lines).toEqual([]);expect(final.messages.filter(m=>m.kind==='action')).toHaveLength(1);
+    await expect(perf.sendCalibrationMessage(reviewer,id,'performance',final.revision,randomUUID(),'Set performance: Assessment subject: ME: Rewrite a confirmed decision.')).rejects.toThrow(/locked/);
+    expect((await perf.getCalibrationConversation(reviewer,id,'performance')).revision).toBe(final.revision);expect(generateDraft).not.toHaveBeenCalled();
+  });
+  it('agrees selected department rows atomically and labels an unfinished manager review provisional without storing a rating',async()=>{
+    await complete();const [pending]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    const id=await perf.createOnehrCalibration(a,cycleId,{name:'Selected department rows',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!],reviewIds:[reviewId,pending.reviewId],pbtAchievement:null,mode:'after'});
+    await expect(perf.lockOnehrCalibration(mgr,id,1,'','performance')).rejects.toThrow(/Save each department/);
+    let v=await perf.getOnehrCalibration(mgr,id);expect(v.rows.find(r=>r.entry.reviewId===pending.reviewId)).toMatchObject({currentPerformance:'UA',performanceSource:'default',canAgreePerformance:false,entry:{performance:null}});
+    await expect(perf.agreeAssessmentDepartment(mgr,id,v.session.revision,'performance',[reviewId,pending.reviewId])).rejects.toThrow(/Assign a band/);
+    v=await perf.getOnehrCalibration(mgr,id);expect(v.session.revision).toBe(1);expect(v.rows.every(r=>!r.entry.performanceLockedAt)).toBe(true);
+    await perf.sendCalibrationMessage(mgr,id,'performance',null,randomUUID(),'Set performance: Assessment subject: AE: Prepared wider delivery for review.');
+    await perf.agreeAssessmentDepartment(mgr,id,v.session.revision,'performance',[reviewId]);v=await perf.getOnehrCalibration(mgr,id);expect(v.held.performance).toMatchObject({lines:[],focus:null,requestId:null});expect(v.rows.find(r=>r.entry.reviewId===reviewId)?.entry).toMatchObject({performance:'ME',performanceLockedAt:expect.any(Date)});expect(v.rows.find(r=>r.entry.reviewId===pending.reviewId)?.entry.performance).toBeNull();
+  });
+  it('keeps BU chat moves reversible, never locks through chat, and keeps the Group conversation read-only',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const make=(tier:'bu'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} chat`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
+    const id=await make('bu');let response=await perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'Set performance: Assessment subject: AE: Verified additional delivery.');
+    let v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0].entry.performance).toBe('AE');expect(v.rows[0].entry.performanceLockedAt).toBeNull();expect(v.rows[0].currentPerformance).toBe('ME');
+    response=await perf.sendCalibrationMessage(reviewer,id,'performance',response.revision,randomUUID(),'Set performance: Assessment subject: ME: Retain the incoming band.');
+    response=await perf.sendCalibrationMessage(reviewer,id,'performance',response.revision,randomUUID(),'Lock calibration');v=await perf.getOnehrCalibration(reviewer,id);expect(v.session.lockedAt).toBeNull();expect(v.rows[0].entry.performance).toBe('ME');expect(response.messages.some(m=>m.kind==='guide'&&m.text.includes('Locking calibration remains a separate confirmation.'))).toBe(true);
+    const group=await make('group');await expect(perf.sendCalibrationMessage(reviewer,group,'performance',null,randomUUID(),'Set performance: Assessment subject: OU: Unsupported conversation decision.')).rejects.toThrow(/read-only/);expect((await perf.getCalibrationConversation(reviewer,group,'performance')).messages).toEqual([]);
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,id));await expect(perf.getCalibrationConversation(reviewer,id,'performance')).rejects.toThrow(/removed/);expect(await withTenant(reviewer,tx=>tx.select().from(schema.calibrationConversation).where(eq(schema.calibrationConversation.sessionId,id)))).toEqual([]);
+  });
+  it('keeps Group calls performance-only, starts from the line manager and refuses unfinished ratings',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const make=(tier:'hod'|'group',reviewIds=[reviewId])=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} source rules`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds,pbtAchievement:100,mode:'after'});
+    const hod=await make('hod');await perf.saveOnehrCalibration(reviewer,hod,1,{reviewId,axis:'performance',performance:'AE',potential:null,performanceNote:'Verified extra delivery.',potentialNote:''});
+    const group=await make('group');let v=await perf.getOnehrCalibration(reviewer,group);expect(v).toMatchObject({axes:{pm:true,pot:false},rows:[{currentPerformance:'ME',performanceSource:'manager',canWrite:{pm:true,pot:false}}]});
+    await expect(perf.saveOnehrCalibration(reviewer,group,1,{reviewId,axis:'potential',performance:null,potential:'Low',performanceNote:'',potentialNote:'Do not alter potential.'})).rejects.toThrow(/axis is disabled/);
+    await expect(perf.lockOnehrCalibration(reviewer,group,1,'','potential',reviewId)).rejects.toThrow(/axis is disabled/);
+    await perf.lockOnehrCalibration(reviewer,group,1,'','performance',reviewId);v=await perf.getOnehrCalibration(reviewer,group);expect(v.rows[0].entry).toMatchObject({performance:'ME',potential:null,potentialLockedAt:null,lockedAt:expect.any(Date)});
+    const [pending]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    const unfinished=await make('group',[pending.reviewId]);v=await perf.getOnehrCalibration(reviewer,unfinished);expect(v.rows[0]).toMatchObject({currentPerformance:null,canWrite:{pm:false,pot:false}});
+    await expect(perf.saveOnehrCalibration(reviewer,unfinished,1,{reviewId:pending.reviewId,axis:'performance',performance:'UA',potential:null,performanceNote:'Direct assignment must fail.',potentialNote:''})).rejects.toThrow(/line manager rating/);
+    await expect(perf.lockOnehrCalibration(reviewer,unfinished,1,'','performance',pending.reviewId)).rejects.toThrow(/line manager rating/);
+  });
+  it('projects closed calibration windows as read-only using the same guards as form and chat writes',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const id=await perf.createOnehrCalibration(a,cycleId,{name:'Closed department',companyId:b.companyId,tier:'hod',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    await perf.updateOnehrWindows(a,cycleId,1,{pm_hod:{opensAt:null,closesAt:new Date(Date.now()-60_000).toISOString()}},'Department window ended.');
+    const v=await perf.getOnehrCalibration(reviewer,id);expect(v.rows[0]).toMatchObject({canWrite:{pm:false,pot:true},openAxes:{pm:false,pot:true}});expect(v.canSubmit).toMatchObject({pm:false,pot:true});
+    await expect(perf.saveOnehrCalibration(reviewer,id,1,{reviewId,axis:'performance',performance:'ME',potential:null,performanceNote:'',potentialNote:''})).rejects.toThrow(/closed/);
+    await expect(perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'Set performance: Assessment subject: AE: Window ended.')).rejects.toThrow(/closed/);
+    expect((await perf.getCalibrationConversation(reviewer,id,'performance')).messages).toEqual([]);
   });
   async function reviewerPlan(allMatrix=false){
     const ids=[randomUUID(),randomUUID()],scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]},matrix=peers[0];

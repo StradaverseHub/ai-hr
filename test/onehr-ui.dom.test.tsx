@@ -10,7 +10,7 @@ const ports=vi.hoisted(()=>({calibration:vi.fn(),session:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
-vi.mock('../app/performance/onehr-actions',()=>({assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
+vi.mock('../app/performance/onehr-actions',()=>({assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
@@ -58,8 +58,15 @@ describe('OneHR native workflow controls',()=>{
  it('renders only the selected Dept/BU calibration axis inside the source CAL workspace',async()=>{
   const v={session:{name:'Department review',tier:'hod',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]};
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'potential'}));
+  fireEvent.click(screen.getByRole('button',{name:'Employee'}));
   expect(screen.queryByLabelText(en.onehr.performance)).toBeNull();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();expect(screen.queryByText(en.onehr.talentGrid)).toBeNull();
-  for(const select of screen.getAllByLabelText(en.onehr.assessmentAxis))expect((select as HTMLSelectElement).value).toBe('potential');
+  expect(screen.queryByLabelText(en.onehr.assessmentAxis)).toBeNull();const axisInputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[name=axis]'));expect(axisInputs.length).toBeGreaterThan(0);expect(axisInputs.every(input=>input.value==='potential')).toBe(true);
+ });
+ it('renders the actual BG workspace Talent Box and opens both axes from its grid',async()=>{
+  const v={session:{id:'session',name:'BG review',tier:'bg',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:true},units:[],modules:{pm:true,tm:true},reference:null,rows:[{companyId:'company',talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:''}}]};
+  show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
+  expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
+  expect(screen.getByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
  });
  it('keeps talent decisions separate from an open calibration',async()=>{
   ports.calibration.mockResolvedValue({session:{name:'Group review',tier:'group',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:false},units:[],modules:{pm:true,tm:false},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:null,currentPerformance:'ME',currentPotential:null,entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false}}]});

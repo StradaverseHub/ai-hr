@@ -119,6 +119,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_participation', note: 'opening eligibility snapshot and HR cycle overrides; ADR-0103' },
     { table: 'performance_assessment_draft', note: 'actor-private working copies of assessment answers; ADR-0103' },
     { table: 'performance_assessment_conversation', note: 'actor-private review journey conversation; ADR-0103' },
+    { table: 'performance_calibration_conversation', note: 'actor-private cohort conversation and held department edits' },
     { table: 'performance_assessment_ai_use', note: 'successful draft usage with per-actor field limits at Malaysia midnight' },
     { table: 'performance_assessment_file_text', note: 'derived file text cache; visibility always follows the native attachment' },
     { table: 'performance_assessment_insight', note: 'reviewer insight cache; live assignment and submitted-fact fingerprint are rechecked' },

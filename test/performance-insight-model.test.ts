@@ -15,6 +15,10 @@ describe('source reviewer insight parity',()=>{
   expect(fixture.cases.length).toBeGreaterThan(125);
   for(const item of fixture.cases)expect(plainPerformanceInsight(item.facts as InsightFacts,new Map(Object.entries(item.texts)) as Map<string,EvidenceText>),item.name).toEqual(item.expected);
  });
+ it('attributes an overall remark to the actual reviewer role rather than labelling every approver the line manager',()=>{
+  const facts={...fixture.cases[0].facts,reviewer_kind:'calibrator',mgr_remarks:[{author:'Direct manager',role:'Line manager',remark:'Verified the assigned delivery.'},{author:'Matrix reviewer',role:'Approver',remark:'Verified the matrix assignment.'},{author:'Historical reviewer',role:'Historical reviewer',remark:'Retained historical words.'}]} as InsightFacts;
+  const result=plainPerformanceInsight(facts,new Map());expect(result.paragraph).toContain("Their line manager's remark (Direct manager)");expect(result.paragraph).toContain("Their approver's remark (Matrix reviewer)");expect(result.paragraph).toContain("Their reviewer's remark (Historical reviewer)");expect(result.paragraph).not.toContain("line manager's remark (Matrix reviewer)");
+ });
  it('never lets a model raise an unsupported above-target result or remove its mandatory next step',()=>{
   const item=fixture.cases.find(c=>c.name==='A/higher is better/200/none')!,facts=item.facts as InsightFacts,plain=plainPerformanceInsight(facts,new Map());
   const checked=applyInsightAssessment(plain.kpis,facts,new Map(),{kpis:{delivery:{justified:'yes',why:'Fully backed.'}},verdict:'well_justified',verdict_why:'Everything is justified.'});
