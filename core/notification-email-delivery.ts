@@ -23,7 +23,7 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
   let attempted=0,skipped=0,unavailable=false;
   for (const job of due) {
     if(!allCategories&&job.kind!=='performance.reminder')continue;
-    if(job.kind==='performance.reminder'&&!status.assessmentReminders){unavailable=true;continue;}
+    if(job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
     const leaseToken=randomUUID();
     const claimed=await withTenant(ctx,async tx=>{
       if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id)) {

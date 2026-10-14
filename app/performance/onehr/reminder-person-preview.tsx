@@ -1,0 +1,9 @@
+"use client";
+import {useState} from 'react';
+import {useTranslations} from 'next-intl';
+import {Button,ErrorBanner,Field,inputCls} from '@/components/ui';
+import {assessmentReminderPersonPreviewAction} from '../assessment-reminder-actions';
+export function ReminderPersonPreview({cycleId}:{cycleId:string}){
+ const t=useTranslations('onehr.reminders'),[busy,setBusy]=useState(false),[error,setError]=useState<string>(),[result,setResult]=useState<Awaited<ReturnType<typeof assessmentReminderPersonPreviewAction>>['result']>();
+ return <details><summary className="cursor-pointer text-sm font-medium">{t('personPreview')}</summary><form className="mt-3 flex flex-wrap items-end gap-3" onSubmit={async event=>{event.preventDefault();if(busy)return;const form=new FormData(event.currentTarget);setBusy(true);setError(undefined);setResult(undefined);try{const response=await assessmentReminderPersonPreviewAction(cycleId,String(form.get('employeeCode')??''));setError(response.error);setResult(response.result);}catch{setError(t('previewError'));}finally{setBusy(false);}}}><Field label={t('employeeId')}><input name="employeeCode" required maxLength={100} disabled={busy} className={inputCls}/></Field><Button type="submit" variant="outline" disabled={busy}>{t('personPreview')}</Button></form><ErrorBanner message={error}/>{result&&<div className="mt-3 space-y-3 rounded-lg border border-border p-4" role="status"><p className="text-sm font-medium">{result.employee} · {result.employeeCode}</p>{result.message?<><p className="break-words text-sm"><b>{t('subject')}: </b>{result.message.subject}</p><iframe sandbox="" title={t('emailPreview')} srcDoc={result.message.html} className="h-80 w-full rounded-md border border-border bg-white"/>{!result.eligible&&<p className="text-sm text-muted-foreground">{t('previewConsent')}</p>}</>:<p className="text-sm">{t('nothingWaiting')}</p>}</div>}</details>;
+}

@@ -2099,6 +2099,21 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await view(self)).plans).toEqual([]);
   });
 
+  it('previews one scoped employee reminder without delivery and saves wording independently of the schedule',async()=>{
+    const group={...a,grants:[{role:'hr_admin',companyId:null}]},[employee]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId));
+    await perf.saveAssessmentReminderWords(group,{subject:'{first_name}: {count} {things} waiting — {cycle}',opening:'Hello {first_name}, please review your open work.'});
+    await perf.saveAssessmentReminderRules(group,{enabled:true,everyDays:7});
+    const configured=await perf.getAssessmentReminders(group,cycleId);expect(configured.words?.subject).toContain('{first_name}');expect(configured.rules.everyDays).toBe(7);
+    const preview=await perf.previewAssessmentReminder(group,cycleId,employee.employeeCode!);
+    expect(preview).toMatchObject({employee:'Assessment subject',eligible:false,mail:{tasks:[{key:'own_competency',count:1}],words:{subject:'Assessment: 1 thing is waiting — Native annual assessment',opening:'Hello Assessment, please review your open work.'}}});
+    expect(await owner.db.select().from(schema.assessmentReminderRun)).toEqual([]);expect(await owner.db.select().from(schema.notificationDelivery)).toEqual([]);
+    await expect(perf.previewAssessmentReminder(self,cycleId,employee.employeeCode!)).rejects.toThrow(/administrator/);
+    await expect(perf.previewAssessmentReminder(group,cycleId,'unknown-employee')).rejects.toThrow(/No employee/);
+    await expect(perf.saveAssessmentReminderWords({...group,grants:[{role:'hr_admin',companyId:b.companyId}]},{subject:'Other',opening:'Other'})).rejects.toThrow(/group HR/);
+    await perf.saveAssessmentReminderWords(group,null);expect((await perf.getAssessmentReminders(group,cycleId)).words).toBeNull();expect((await perf.getAssessmentReminders(group,cycleId)).rules.everyDays).toBe(7);
+    await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(eq(schema.onehrReview.reviewId,reviewId));expect((await perf.previewAssessmentReminder(group,cycleId,employee.employeeCode!)).mail.tasks).toEqual([]);
+  });
+
   it('queues unified reminders only after consent, previews without mail, and observes the 20-hour sent cooldown',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);self={...self,entitlements:a.entitlements};
     expect((await perf.getAssessmentReminders(a,cycleId)).rules.enabled).toBe(false);
@@ -2117,6 +2132,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(0);
     const old=async<T>(request:unknown):Promise<T>=>({version:1,ready:true} as T);
     expect(await deliverNotificationEmails(a,old)).toMatchObject({attempted:0,unavailable:true});
+    const oldSummaryWorker=async<T>():Promise<T>=>({version:1,ready:true,assessmentReminders:true} as T);expect(await deliverNotificationEmails(a,oldSummaryWorker)).toMatchObject({attempted:0,unavailable:true});
     const checked=await withTenant({...a,userId:undefined,personId:undefined},tx=>perf.assessmentReminderRecipientsTx(tx,queued.runId!));expect(checked).toEqual([]);
     await owner.db.update(schema.notificationDelivery).set({status:'sent',sentAt:new Date()}).where(eq(schema.notificationDelivery.id,delivery.id));
     expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(0);
@@ -2175,13 +2191,18 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const issuer='https://hr.test/identity/realms/ai-hr',subjectId=randomUUID(),[person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId));
     await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:subjectId,appUserId:self.userId!});await saveNotificationEmailPolicy(a,['performance']);
     await saveNotificationEmailPreferences(self,subject.employmentId,['performance'],'en',{issuer,subject:subjectId,email:person.primaryEmail,emailVerified:true});
+    await perf.saveAssessmentReminderWords({...a,grants:[{role:'hr_admin',companyId:null}]},{subject:'{first_name}: review {cycle}',opening:'Please complete {count} task groups.'});
     const queued=await perf.queueAssessmentReminders(a,cycleId,'manual');expect(queued.queued).toBe(1);const system={...a,userId:undefined,personId:undefined};await dispatchNotifications(system);
     const [recipient]=await owner.db.select().from(schema.assessmentReminderRecipient).where(and(eq(schema.assessmentReminderRecipient.runId,queued.runId!),eq(schema.assessmentReminderRecipient.userId,self.userId!)));
     expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
     const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,recipient.sourceEventId!)),token=randomUUID();
     await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+60000)}).where(eq(schema.notificationDelivery.id,delivery.id));
-    const [payload]=await owner.db.execute<{value:{tasks:{key:string}[]}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`);
-    expect(payload.value.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);
+    const [payload]=await owner.db.execute<{value:{tasks:{key:string}[];words:{subject:string;opening:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`);
+    expect(payload.value.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);expect(payload.value.words).toEqual({subject:'Assessment: review Native annual assessment',opening:'Please complete 1 task groups.'});
+    await perf.saveAssessmentReminderWords({...a,grants:[{role:'hr_admin',companyId:null}]},{subject:'Changed reminder',opening:'Updated opening'});
+    expect((await owner.db.execute<{value:unknown}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value).toBeNull();
+    expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
+    expect((await owner.db.execute<{value:{words:{subject:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value.words.subject).toBe('Changed reminder');
     await expect(withTenant(self,tx=>tx.select().from(schema.assessmentReminderRecipient))).resolves.toEqual([]);
     expect((await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','identity_email.assessment_tasks(uuid,uuid,text)','EXECUTE') as allowed`))[0].allowed).toBe(false);
     await expect(withTenant(a,tx=>tx.execute(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer})`))).rejects.toThrow();

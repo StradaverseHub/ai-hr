@@ -1504,6 +1504,7 @@ CREATE TABLE performance_assessment_reminder_recipient (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),run_id uuid NOT NULL REFERENCES performance_assessment_reminder_run(id),
  user_id uuid NOT NULL REFERENCES app_user(id),employment_id uuid REFERENCES employment(id),source_event_id uuid REFERENCES domain_event(id),
  outcome text NOT NULL CHECK(outcome IN ('queued','dry','cooldown','noConsent','noPendingWork','changed')),tasks jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(tasks)='array' AND jsonb_array_length(tasks)<=16 AND octet_length(tasks::text)<=20000),
+ mail_words jsonb CHECK(mail_words IS NULL OR jsonb_typeof(mail_words)='object' AND octet_length(mail_words::text)<=220000),
  prepared_at timestamptz,prepared_until timestamptz,tenant_epoch bigint,cycle_epoch bigint,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(run_id,user_id)
 );
 CREATE INDEX assessment_reminder_user_idx ON performance_assessment_reminder_recipient(tenant_id,user_id,created_at);
@@ -1560,7 +1561,7 @@ REVOKE ALL ON FUNCTION app.assessment_reminder_mail_routes(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_reminder_mail_routes(uuid) TO ai_hr_app;
 -- The isolated mail service receives only an already leased, fresh, bounded task summary.
 CREATE FUNCTION identity_email.assessment_tasks(p_id uuid,p_token uuid,p_issuer text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT jsonb_build_object('tasks',r.tasks) FROM notification_delivery d
+ SELECT jsonb_build_object('tasks',r.tasks,'words',r.mail_words) FROM notification_delivery d
  JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
  JOIN domain_event ev ON ev.id=d.source_event_id AND ev.tenant_id=d.tenant_id AND ev.event_type='assessment.reminder-queued'
  JOIN performance_assessment_reminder_recipient r ON r.source_event_id=ev.id AND r.id=ev.aggregate_id AND r.tenant_id=d.tenant_id AND r.user_id=target.user_id
@@ -1941,3 +1942,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_catalogue_defaults(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_catalogue_defaults(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+INSERT INTO setting_definition(key,module_code,scope,value_type,default_value,default_on_install,customer_visible,description,sort_order)
+VALUES('performance.reminder_words','performance','tenant','string','"null"'::jsonb,NULL,true,'Optional assessment reminder subject and opening templates.',217) ON CONFLICT(key) DO NOTHING;

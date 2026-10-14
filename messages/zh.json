@@ -18330,7 +18330,21 @@
       "confirm": "为当前已同意的接收者排队发送提醒？仍适用 20 小时间隔。",
       "saveFirst": "先保存才能修改自动计划。预览和立即发送基于当前待办任务。",
       "saved": "提醒计划已保存。",
-      "result": "排队：{queued}；跳过：{skipped}；预览：{dry}。"
+      "result": "排队：{queued}；跳过：{skipped}；预览：{dry}。",
+      "words": "邮件措辞",
+      "wordsHelp": "自定义措辞适用于所有绩效提醒。使用下方占位符填入收件人名字、任务组数量、“thing is / things are”和评审周期。",
+      "subject": "主题",
+      "opening": "开头语",
+      "useDefault": "使用标准翻译措辞",
+      "saveWords": "保存邮件措辞",
+      "resetWords": "恢复标准措辞",
+      "wordsSaved": "邮件措辞已保存。",
+      "personPreview": "预览个人邮件",
+      "employeeId": "员工编号",
+      "previewError": "无法加载预览，请重试。",
+      "emailPreview": "提醒邮件预览",
+      "previewConsent": "这仅为预览。发送仍需邮件同意、绩效邮件策略和有效的邮件服务。",
+      "nothingWaiting": "当前开放步骤中没有待办事项，因此该员工不会收到提醒。"
     },
     "competencyInsight": {
       "title": "能力评估摘要",

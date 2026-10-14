@@ -18330,7 +18330,21 @@
       "confirm": "Xếp hàng nhắc việc cho người nhận hiện tại đã đồng ý? Vẫn áp dụng khoảng cách 20 giờ.",
       "saveFirst": "Lưu trước khi đổi lịch tự động. Xem trước và Gửi ngay dùng công việc hiện tại.",
       "saved": "Đã lưu lịch nhắc việc.",
-      "result": "Xếp hàng: {queued}; bỏ qua: {skipped}; xem trước: {dry}."
+      "result": "Xếp hàng: {queued}; bỏ qua: {skipped}; xem trước: {dry}.",
+      "words": "Nội dung email",
+      "wordsHelp": "Nội dung tùy chỉnh áp dụng cho mọi lời nhắc Hiệu suất. Dùng các biến bên dưới cho tên người nhận, số nhóm công việc, “thing is / things are” và chu kỳ đánh giá.",
+      "subject": "Tiêu đề",
+      "opening": "Lời mở đầu",
+      "useDefault": "Đang dùng nội dung dịch tiêu chuẩn",
+      "saveWords": "Lưu nội dung email",
+      "resetWords": "Khôi phục nội dung tiêu chuẩn",
+      "wordsSaved": "Đã lưu nội dung email.",
+      "personPreview": "Xem trước email của một người",
+      "employeeId": "Mã nhân viên",
+      "previewError": "Không tải được bản xem trước. Vui lòng thử lại.",
+      "emailPreview": "Xem trước email nhắc việc",
+      "previewConsent": "Đây chỉ là bản xem trước. Việc gửi vẫn cần sự đồng ý nhận email, chính sách email Hiệu suất và dịch vụ email đang hoạt động.",
+      "nothingWaiting": "Không có việc chờ trong các bước đang mở nên người này sẽ không nhận được lời nhắc."
     },
     "competencyInsight": {
       "title": "Tóm tắt đánh giá năng lực",

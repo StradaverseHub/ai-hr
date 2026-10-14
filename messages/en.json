@@ -18330,7 +18330,21 @@
       "confirm": "Queue reminders for current, consenting recipients? The 20-hour cooldown still applies.",
       "saveFirst": "Save first to change the automatic schedule. Preview and Send now use current work.",
       "saved": "Reminder schedule saved.",
-      "result": "Queued: {queued}; skipped: {skipped}; preview: {dry}."
+      "result": "Queued: {queued}; skipped: {skipped}; preview: {dry}.",
+      "words": "Email wording",
+      "wordsHelp": "Custom wording applies to all Performance reminders. Use the placeholders below for the recipient’s first name, number of task groups, “thing is / things are”, and review cycle.",
+      "subject": "Subject",
+      "opening": "Opening line",
+      "useDefault": "Using the standard translated wording",
+      "saveWords": "Save email wording",
+      "resetWords": "Restore standard wording",
+      "wordsSaved": "Email wording saved.",
+      "personPreview": "Preview one person’s email",
+      "employeeId": "Employee ID",
+      "previewError": "The preview could not be loaded. Try again.",
+      "emailPreview": "Reminder email preview",
+      "previewConsent": "This is a preview only. Delivery still requires email consent, the Performance email policy and an active relay.",
+      "nothingWaiting": "Nothing is waiting in the open steps, so this person would receive no reminder."
     },
     "competencyInsight": {
       "title": "Competency insight",

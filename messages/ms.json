@@ -18330,7 +18330,21 @@
       "confirm": "Bariskan peringatan untuk penerima semasa yang bersetuju? Tempoh sela 20 jam masih terpakai.",
       "saveFirst": "Simpan dahulu untuk menukar jadual automatik. Pratonton dan Hantar sekarang menggunakan tugasan semasa.",
       "saved": "Jadual peringatan disimpan.",
-      "result": "Dibariskan: {queued}; dilangkau: {skipped}; pratonton: {dry}."
+      "result": "Dibariskan: {queued}; dilangkau: {skipped}; pratonton: {dry}.",
+      "words": "Teks e-mel",
+      "wordsHelp": "Teks tersuai digunakan untuk semua peringatan Prestasi. Gunakan pemegang tempat di bawah untuk nama pertama penerima, bilangan kumpulan tugas, “thing is / things are” dan kitaran semakan.",
+      "subject": "Subjek",
+      "opening": "Ayat pembukaan",
+      "useDefault": "Menggunakan teks terjemahan standard",
+      "saveWords": "Simpan teks e-mel",
+      "resetWords": "Pulihkan teks standard",
+      "wordsSaved": "Teks e-mel disimpan.",
+      "personPreview": "Pratonton e-mel seorang pekerja",
+      "employeeId": "ID pekerja",
+      "previewError": "Pratonton tidak dapat dimuatkan. Cuba lagi.",
+      "emailPreview": "Pratonton e-mel peringatan",
+      "previewConsent": "Ini pratonton sahaja. Penghantaran masih memerlukan persetujuan e-mel, dasar e-mel Prestasi dan geganti aktif.",
+      "nothingWaiting": "Tiada tugas menunggu dalam langkah yang terbuka, jadi pekerja ini tidak akan menerima peringatan."
     },
     "competencyInsight": {
       "title": "Rumusan kompetensi",

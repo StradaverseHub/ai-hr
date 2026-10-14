@@ -1,9 +1,10 @@
+import {assessmentReminderWordsSchema,fillAssessmentReminderWords} from '../../../lib/assessment-reminder-mail';
 import { randomUUID } from 'node:crypto';
 import { and,asc,eq,sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant,type SessionContext,type Tx } from '../../../db/client';
 import { actorOf,appendEvent } from '../../../db/events';
-import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,onehrCycle,reviewCycle } from '../../../db/schema';
+import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,onehrCycle,reviewCycle,employment,person } from '../../../db/schema';
 import { getSetting,isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
 import { setTenantSetting } from '../../../core/tenant-settings';
 import { isGroupAdmin } from '../../../lib/authz';
@@ -21,6 +22,7 @@ function rules(ctx:SessionContext){
  // Malformed operator data fails closed; the public settings writer always stores a validated value.
  try{return assessmentReminderRulesSchema.parse(JSON.parse(getSetting<string>(ctx,'performance.reminder_rules')));}catch{return defaultAssessmentReminderRules;}
 }
+function words(ctx:SessionContext){try{return assessmentReminderWordsSchema.nullable().parse(JSON.parse(getSetting<string>(ctx,'performance.reminder_words')));}catch{return null;}}
 async function work(tx:Tx,cycleId:string,ctx:SessionContext,now=new Date()){
  await access(tx,cycleId);
  const [row]=await tx.execute<{value:ReminderWorkGraph|null}>(sql`select app.assessment_pending_work(${cycleId}::uuid) as value`),graph=row?.value;
@@ -76,6 +78,28 @@ export async function saveAssessmentReminderRules(ctx:SessionContext,raw:unknown
  await setTenantSetting(ctx,{key:'performance.reminder_rules',value:JSON.stringify(parsed)});
 }
 
+/** Wording has its own central setting, so changing the schedule cannot erase a template. */
+export async function saveAssessmentReminderWords(ctx:SessionContext,raw:unknown){
+ if(!isGroupAdmin(ctx))throw Error('Only group HR administrators may change reminder wording.');
+ const parsed=assessmentReminderWordsSchema.nullable().parse(raw);
+ await withTenant(ctx,async tx=>{const state=await fresh(tx,ctx.tenantId);if(!isModuleEnabled(state,'performance')&&!(state.entitlements.scopedModules.performance??[]).some(companyId=>isModuleEnabled(state,'performance',companyId)))throw Error('Performance is not enabled.');});
+ await setTenantSetting(ctx,{key:'performance.reminder_words',value:JSON.stringify(parsed)});
+}
+/** Same current work and template as delivery, without queuing mail or borrowing the recipient's identity. */
+export async function previewAssessmentReminder(ctx:SessionContext,cycleId:string,employeeCode:string){
+ const code=z.string().trim().min(1).max(100).parse(employeeCode);
+ if(!ctx.userId)throw Error('Sign in to preview a reminder.');
+ return withTenant(ctx,async tx=>{
+  await access(tx,cycleId);const state=await fresh(tx,ctx.tenantId),current=await work(tx,cycleId,state);
+  const [employee]=await tx.select({id:employment.id,name:person.fullName}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.employeeCode,code),sql`app.onehr_admin(${employment.companyId})`));
+  if(!current||!employee||!current.graph.actors.some(actor=>actor.employmentIds.includes(employee.id)))throw Error('No employee with that ID is available in this cycle and your scope.');
+  const actors=current.graph.actors.filter(actor=>actor.employmentIds.includes(employee.id));if(actors.length!==1)throw Error('This employee has more than one active account. Review the account mapping before previewing.');
+  const actor=actors[0],recipient=current.recipients.find(recipient=>recipient.userId===actor.userId),tasks=recipient?.tasks??[];
+  const mailRoutes=await routes(tx,cycleId,state);
+  return {employee:employee.name,employeeCode:code,eligible:mailRoutes.has(actor.userId),mail:{tasks,words:fillAssessmentReminderWords(words(state),actor.name,current.graph.cycle.name,tasks.length)}};
+ });
+}
+
 /** Counts and SMTP outcomes are projections of the current graph and the existing delivery ledger. */
 export async function getAssessmentReminders(ctx:SessionContext,cycleId:string){
  return withTenant(ctx,async tx=>{
@@ -92,7 +116,7 @@ export async function getAssessmentReminders(ctx:SessionContext,cycleId:string){
    left join notification_delivery d on d.source_event_id=r.source_event_id and d.recipient_user_id=r.user_id and d.channel='email'
    group by run.id,run.mode,run.created_at order by run.created_at desc,run.id desc`);
   const taskCounts:Record<string,number>={};for(const recipient of current?.recipients??[])for(const task of recipient.tasks)taskCounts[task.key]=(taskCounts[task.key]??0)+1;
-  return {rules:configured,mayWrite:isGroupAdmin(ctx),waiting:current?.recipients.length??0,mailEligible:current?.recipients.filter(r=>mailRoutes.has(r.userId)).length??0,
+  return {rules:configured,words:words(state),mayWrite:isGroupAdmin(ctx),waiting:current?.recipients.length??0,mailEligible:current?.recipients.filter(r=>mailRoutes.has(r.userId)).length??0,
    taskCounts,
    next:current?nextAssessmentReminder(current.graph.cycle.policy,current.graph.cycle.periodEnd,configured):null,runs};
  });
@@ -138,7 +162,7 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  z.uuid().parse(recipientId);
  const [recipient]=await tx.select({recipient:assessmentReminderRecipient,run:assessmentReminderRun}).from(assessmentReminderRecipient).innerJoin(assessmentReminderRun,eq(assessmentReminderRun.id,assessmentReminderRecipient.runId)).where(eq(assessmentReminderRecipient.id,recipientId));
  if(!recipient||recipient.recipient.outcome!=='queued'||!recipient.recipient.employmentId)return [];
- const skip=async(outcome:'changed'|'noPendingWork'|'noConsent'|'cooldown')=>{await tx.update(assessmentReminderRecipient).set({outcome,tasks:[],preparedAt:null,preparedUntil:null}).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
+ const skip=async(outcome:'changed'|'noPendingWork'|'noConsent'|'cooldown')=>{await tx.update(assessmentReminderRecipient).set({outcome,tasks:[],mailWords:null,preparedAt:null,preparedUntil:null}).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
  const epochs=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
  const prepared=await projection(tx,recipient.run.tenantId,recipient.run.cycleId,epochs),{state,mailRoutes}=prepared;
  if(recipient.run.mode==='automatic'&&!rules(state).enabled)return skip('changed');
@@ -149,7 +173,7 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  const checked=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
  if(checked.length!==epochs.length||checked.some(row=>epochs.find(e=>e.scopeId===row.scopeId)?.revision!==row.revision)||prepared.expiresAt<=Date.now())return skip('changed');
  const now=new Date(),until=new Date(Math.min(now.getTime()+60_000,prepared.expiresAt));
- await tx.update(assessmentReminderRecipient).set({tasks:actor.tasks,preparedAt:now,preparedUntil:until,tenantEpoch:epochs.find(e=>e.scopeId===tenantScope)?.revision??0,cycleEpoch:epochs.find(e=>e.scopeId===recipient.run.cycleId)?.revision??0}).where(eq(assessmentReminderRecipient.id,recipientId));
+ await tx.update(assessmentReminderRecipient).set({tasks:actor.tasks,mailWords:fillAssessmentReminderWords(words(state),prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,prepared.current!.graph.cycle.name,actor.tasks.length),preparedAt:now,preparedUntil:until,tenantEpoch:epochs.find(e=>e.scopeId===tenantScope)?.revision??0,cycleEpoch:epochs.find(e=>e.scopeId===recipient.run.cycleId)?.revision??0}).where(eq(assessmentReminderRecipient.id,recipientId));
  return [recipient.recipient.employmentId];
 }
 

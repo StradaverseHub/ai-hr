@@ -42,7 +42,7 @@ export { getAssessmentAiSwitches,setAssessmentAiSwitch,ASSESSMENT_AI_FEATURES,ty
 
 export { rewriteAssessmentField } from './onehr/rewrite-service';
 export { suggestAssessmentCareerPlan,applyAssessmentCareerPlan } from './onehr/career-draft-service';
-export { getAssessmentReminders,saveAssessmentReminderRules,queueAssessmentReminders,assessmentReminderRecipientsTx,sweepAssessmentReminders } from './onehr/reminder-service';
+export { getAssessmentReminders,saveAssessmentReminderRules,saveAssessmentReminderWords,previewAssessmentReminder,queueAssessmentReminders,assessmentReminderRecipientsTx,sweepAssessmentReminders } from './onehr/reminder-service';
 
 export { updateAssessmentFramework } from './onehr/service';
 

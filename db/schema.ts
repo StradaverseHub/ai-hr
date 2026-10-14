@@ -10069,6 +10069,7 @@ export const assessmentReminderRecipient=pgTable('performance_assessment_reminde
  userId:uuid('user_id').notNull().references(()=>appUser.id),employmentId:uuid('employment_id').references(()=>employment.id),
  sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),outcome:text('outcome').notNull(),
  tasks:jsonb('tasks').$type<import('../packs/performance/onehr/reminder-model').AssessmentReminderTask[]>().notNull().default([]),
+ mailWords:jsonb('mail_words').$type<import('../lib/assessment-reminder-mail').AssessmentReminderWords|null>(),
  preparedAt:timestamp('prepared_at',{withTimezone:true}),preparedUntil:timestamp('prepared_until',{withTimezone:true}),
  tenantEpoch:bigint('tenant_epoch',{mode:'number'}),cycleEpoch:bigint('cycle_epoch',{mode:'number'}),
  createdAt:createdAt(),
