@@ -1,0 +1,938 @@
+[
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": false,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Not enough 360 feedback yet for an insight — 1 of the 1 raters needed have submitted."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Raters' views were mixed across the principles."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Raters' views were mixed across the principles."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Raters' views were mixed across the principles. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Raters' views were mixed across the principles. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Raters' views were mixed across the principles. Their competency assessment has been reviewed by their line manager."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Raters' views were mixed across the principles. Their competency assessment has been reviewed by their line manager. On review, their line manager moved Planning (next level) to still developing. On review, their line manager moved Delivery (current level) up to demonstrated. Their line manager's competency remark: “Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise…”"
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment has been reviewed by their line manager."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 3,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment has been reviewed by their line manager. On review, their line manager moved Planning (next level) to still developing. On review, their line manager moved Delivery (current level) up to demonstrated. Their line manager's competency remark: “Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise…”"
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters' views were mixed across the principles."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters' views were mixed across the principles."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": null,
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters' views were mixed across the principles. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters' views were mixed across the principles. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment is not reviewed yet, so it doesn't count toward the band."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters' views were mixed across the principles. Their competency assessment has been reviewed by their line manager."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters' views were mixed across the principles. Their competency assessment has been reviewed by their line manager. On review, their line manager moved Planning (next level) to still developing. On review, their line manager moved Delivery (current level) up to demonstrated. Their line manager's competency remark: “Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise…”"
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment has been reviewed by their line manager."
+  },
+  {
+    "facts": {
+      "valid": true,
+      "raters": 1,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust",
+        "Delivery"
+      ],
+      "dev": [
+        "Collaboration"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [
+        "Delivery (current level)"
+      ],
+      "tc_mgr_remark": "Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise,"
+    },
+    "expected": "At their grade the 360 is their line manager's rating alone. Raters saw them strongest on Trust, Delivery. Less consistently on Collaboration. Their competency assessment has been reviewed by their line manager. On review, their line manager moved Planning (next level) to still developing. On review, their line manager moved Delivery (current level) up to demonstrated. Their line manager's competency remark: “Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise Practise…”"
+  }
+]

@@ -19,12 +19,12 @@ export function insightWordForms(text:string){
  }
  return [...out].sort().join(' ');
 }
-export function insightTextGroundingError(source:string,extra:string,text:string,options?:{vocabulary:string;starters:string[]}){
+export function insightTextGroundingError(source:string,extra:string,text:string,options?:{vocabulary:string;starters:string[];ratio?:number;floor?:number}){
  const vocab=(options?.vocabulary??vocabulary._PERF_SUMMARY_VOCAB).split(/\s+/),starters=new Set(options?.starters??vocabulary._PERF_SUMMARY_STARTERS);
  if(!text.trim())return 'empty';if(text.trim().split(/\s+/).length>120)return 'too long';
  const all=source+' '+extra+' '+vocab.join(' '),have=new Set(words(all).map(norm)),content=words(text),novel=new Set(content.filter(w=>!have.has(norm(w)))),knownNumbers=numbers(all);
  if([...numbers(text)].some(n=>!knownNumbers.has(n)))return 'Invented figure.';
- if(novel.size>Math.max(6,Math.trunc(content.length*.4)))return 'Unsupported wording.';
+ if(novel.size>Math.max(options?.floor??6,Math.trunc(content.length*(options?.ratio??.4))))return 'Unsupported wording.';
  const known=new Set((source+' '+extra).match(/[A-Za-z][A-Za-z'’\-]*/g)?.map(bare)??[]),knownOrVocab=new Set([...known,...vocab]);
  for(const match of text.matchAll(/\b([A-Z][A-Za-z'’\-]+|[A-Z]{2,})\b/g)){
   const tok=bare(match[1]),before=text.slice(0,match.index).trimEnd().replace(/['’]+$/,''),start=!before||'.!?:"('.includes(before.at(-1)!);

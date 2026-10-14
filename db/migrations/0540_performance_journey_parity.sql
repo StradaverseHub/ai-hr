@@ -1662,8 +1662,48 @@ CREATE FUNCTION app.assessment_idp_source(wanted_review uuid) RETURNS jsonb LANG
 $$;
 REVOKE ALL ON FUNCTION app.assessment_idp_source(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_idp_source(uuid) TO ai_hr_app;
+-- Anonymous leadership themes and finalized competency calls for a currently authorized calibrator.
+-- A null session is used only to recheck viewer-independent cache access in any current permitted cohort.
+CREATE FUNCTION app.assessment_potential_source(wanted_review uuid,wanted_session uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH scope AS (
+  SELECT r.*,c.policy,p.full_name,
+   CASE WHEN btrim(regexp_replace(r.grade,'^JG\s*','','i')) ~ '^\d+$' THEN (c.policy->>'minValid')::integer ELSE 1 END AS minimum
+  FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
+   AND app.assessment_review_participates(r.review_id) AND coalesce((c.policy->'modules'->>'tm')::boolean,false)
+   AND coalesce((c.policy->'modules'->>'calibration')::boolean,true)
+   AND EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN performance_onehr_calibration_entry ce ON ce.session_id=s.id AND ce.tenant_id=s.tenant_id
+    WHERE s.tenant_id=r.tenant_id AND s.cycle_id=r.cycle_id AND ce.review_id=r.review_id AND (wanted_session IS NULL OR s.id=wanted_session) AND app.onehr_calibration_access(s.id))
+ ), panels AS (
+  SELECT a.answers,app.assessment_principle_comments(r.statements,a.principle_comments) AS comments,a.remark
+  FROM scope r JOIN performance_onehr_panel a ON a.review_id=r.review_id AND a.tenant_id=r.tenant_id WHERE a.submitted_at IS NOT NULL AND a.archived_at IS NULL
+ ), counted AS (
+  SELECT r.*,(SELECT count(*) FROM panels) AS raters,(SELECT count(*) FROM panels)>=r.minimum AND jsonb_array_length(r.statements)>0 AS valid FROM scope r
+ ), principle_names AS (
+  SELECT r.statements,st->>'principle' AS name,coalesce(st->>'principleDescription','') AS description,min(ord) AS position
+  FROM counted r CROSS JOIN LATERAL jsonb_array_elements(r.statements) WITH ORDINALITY q(st,ord) WHERE r.valid GROUP BY r.statements,st->>'principle',coalesce(st->>'principleDescription','')
+ ), principles AS (
+  SELECT p.name,p.description,p.position,
+   (SELECT count(*) FROM panels a CROSS JOIN LATERAL jsonb_array_elements(p.statements) q WHERE q->>'principle'=p.name AND a.answers->>(q->>'id')='yes') AS yes,
+   (SELECT count(*) FROM panels a CROSS JOIN LATERAL jsonb_array_elements(p.statements) q WHERE q->>'principle'=p.name AND a.answers->>(q->>'id') IN ('yes','no')) AS total,
+   coalesce((SELECT jsonb_agg(a.comments->>p.name ORDER BY lower(a.comments->>p.name) COLLATE "C",a.comments->>p.name COLLATE "C") FROM panels a WHERE btrim(coalesce(a.comments->>p.name,''))<>''),'[]'::jsonb) AS comments
+  FROM principle_names p
+ )
+ SELECT jsonb_build_object('name',r.full_name,'valid',r.valid,'raters',r.raters,'minimum',r.minimum,
+  'principles',coalesce((SELECT jsonb_agg(jsonb_build_object('name',name,'description',description,'yes',yes,'total',total,'comments',comments) ORDER BY position) FROM principles),'[]'::jsonb),
+  'remarks',CASE WHEN r.valid THEN coalesce((SELECT jsonb_agg(remark ORDER BY lower(remark) COLLATE "C",remark COLLATE "C") FROM panels WHERE btrim(remark)<>''),'[]'::jsonb) ELSE '[]'::jsonb END,
+  'competencyStatus',CASE WHEN r.valid AND jsonb_array_length(r.competencies)>0 THEN r.competency_status ELSE NULL END,
+  'competencyRemark',CASE WHEN r.valid AND r.competency_status IN ('submitted','reviewed') THEN r.competency_self_remark ELSE '' END,
+  'managerRemark',CASE WHEN r.valid AND r.competency_status='reviewed' THEN r.competency_manager_remark ELSE '' END,
+  'competencies',CASE WHEN r.valid AND r.competency_status='reviewed' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('text',s->>'text','skillTitle',coalesce(s->>'skillTitle',s->>'text'),'principle',s->>'principle','future',(s->>'future')::boolean,'self',s->'self','manager',s->'manager','managerRemark',coalesce(s->>'managerRemark','')) ORDER BY ord) FROM jsonb_array_elements(r.competencies) WITH ORDINALITY q(s,ord)),'[]'::jsonb) ELSE '[]'::jsonb END)
+ FROM counted r
+$$;
+REVOKE ALL ON FUNCTION app.assessment_potential_source(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_potential_source(uuid,uuid) TO ai_hr_app;
 CREATE FUNCTION app.assessment_summary_access(wanted_review uuid,wanted_kind text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT CASE WHEN wanted_kind='tc' THEN coalesce(app.assessment_competency_source(wanted_review)->>'status','') IN ('submitted','reviewed')
+ WHEN wanted_kind='pot' THEN coalesce((app.assessment_potential_source(wanted_review,NULL)->>'valid')::boolean,false)
  WHEN wanted_kind='idp' THEN coalesce((s.value->>'mine')::boolean,false) AND coalesce(s.value->>'status','') IN ('shared','closed') ELSE false END FROM (SELECT CASE WHEN wanted_kind='idp' THEN app.assessment_idp_source(wanted_review) END AS value) s
 $$;
 REVOKE ALL ON FUNCTION app.assessment_summary_access(uuid,text) FROM PUBLIC;
@@ -1671,7 +1711,7 @@ GRANT EXECUTE ON FUNCTION app.assessment_summary_access(uuid,text) TO ai_hr_app;
 
 CREATE TABLE performance_assessment_summary (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
- actor_user_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind IN ('tc','idp')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind IN ('tc','idp','pot')),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
  source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
  updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind)
 );

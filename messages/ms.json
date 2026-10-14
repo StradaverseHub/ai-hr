@@ -18351,6 +18351,10 @@
         "partly_fits": "Sebahagiannya sesuai",
         "not_yet": "Belum sesuai"
       }
+    },
+    "potentialInsight": {
+      "title": "Gambaran potensi",
+      "help": "Maklum balas kepimpinan tanpa nama dan bukti kompetensi yang telah disemak. Anda tetap menentukan penilaian."
     }
   },
   "allowanceV2": {

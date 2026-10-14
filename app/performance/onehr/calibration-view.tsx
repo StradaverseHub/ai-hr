@@ -1,3 +1,4 @@
+import { PotentialInsight } from './potential-insight';
 import { GroupCalibration } from './group-calibration';
 import { CalibrationBandForm } from './calibration-band-form';
 import { CalibrationRoster } from './calibration-roster';
@@ -28,7 +29,7 @@ export async function AssessmentCalibrationView({v,error,embedded=false,returnTo
       const ownNomination=r.entry.nominations.find(n=>n.userId===v.actorUserId);
       return <Card id={`${embedded?'assessment-detail':'assessment'}-${r.entry.reviewId}`} key={r.entry.id} className="space-y-4 p-5">
         <h2 className="font-semibold">{r.name} · {r.grade}</h2>
-        {!embedded&&axes.pm&&<PerformanceInsight reviewId={r.entry.reviewId} contextId={sessionId}/>}
+        {!embedded&&axes.pm&&<PerformanceInsight reviewId={r.entry.reviewId} contextId={sessionId}/>}{!embedded&&axes.pot&&<PotentialInsight reviewId={r.entry.reviewId} sessionId={sessionId}/>}
         {v.canReopen&&!r.finalized&&(axes.pm&&(v.session.performanceLockedAt||r.entry.performanceLockedAt)||axes.pot&&(v.session.potentialLockedAt||r.entry.potentialLockedAt))&&<details><summary className="cursor-pointer text-sm font-medium">{t('reopenCalibration')}</summary><form action={onehrCalibrationAction} className="mt-3 space-y-3">{fields}<input type="hidden" name="action" value="unlock"/><input type="hidden" name="reviewId" value={r.entry.reviewId}/>{axisSelect(axes.pm&&!!(v.session.performanceLockedAt||r.entry.performanceLockedAt),axes.pot&&!!(v.session.potentialLockedAt||r.entry.potentialLockedAt))}<p className="text-sm text-muted-foreground">{t('reopenCalibrationHelp')}</p><Field label={t('reason')}><textarea aria-label={t('reason')} required name="reason" maxLength={4000} className={inputCls}/></Field><ConfirmSubmit description={t('reopenCalibrationHelp')} variant="secondary">{t('reopenCalibration')}</ConfirmSubmit></form></details>}
         <p className="text-sm">{axes.pm&&<>{t('managerAssessment')}: {r.managerPerformance??'—'}</>}{axes.pm&&axes.pot&&' · '}{axes.pot&&<>{t('managerPotential')}: {r.managerPotential??'—'}</>}</p>
         <p className="text-sm">{t('effectiveAssessment')}: {axes.pm&&<>{r.currentPerformance??'—'}</>}{axes.pm&&axes.pot&&' · '}{axes.pot&&<>{r.currentPotential??'—'}</>}</p>

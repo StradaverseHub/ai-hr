@@ -182,6 +182,38 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:2,achievementPct:100})).rejects.toThrow(/archived/);
   });
+  it('withholds potential themes below threshold and exposes only anonymous submitted and reviewed evidence',async()=>{
+    const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Potential evidence',companyId:b.companyId,tier:'hod',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'}),actor=peers[0].ctx;
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Private skill canary'},'skill-2':{answer:'no',remark:''}},remark:'Private reflection canary'});
+    expect(await perf.getAssessmentPotentialInsight(actor,reviewId,sid,{generate:true})).toMatchObject({pending:false,source:'plain',data:{paragraph:'Not enough 360 feedback yet for an insight — 0 of the 4 raters needed have submitted.'}});expect(generateDraft).not.toHaveBeenCalled();
+    const [thin]=await withTenant(actor,tx=>tx.execute<{value:unknown}>(sql`select app.assessment_potential_source(${reviewId}::uuid,${sid}::uuid) as value`));expect(thin.value).toMatchObject({principles:[],remarks:[],competencies:[],competencyRemark:'',managerRemark:''});
+    await complete(false);
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers:{'skill-1':{answer:'yes',remark:'Private manager canary'},'skill-2':{answer:'yes',remark:''}},remark:'Private manager reflection'});
+    const [pending]=await withTenant(actor,tx=>tx.execute<{value:unknown}>(sql`select app.assessment_potential_source(${reviewId}::uuid,${sid}::uuid) as value`));expect(pending.value).toMatchObject({valid:true,competencies:[],managerRemark:'',competencyStatus:'submitted'});expect(JSON.stringify(pending.value)).not.toMatch(/Private|Peer 0|peerEmploymentId|requestId/);
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'no',remark:''}},true,'Practise future skills.');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockResolvedValue('Their 360 feedback is mixed across the principles. Their reviewed competency shows developing skills.');
+    expect(await perf.getAssessmentPotentialInsight(actor,reviewId,sid)).toMatchObject({pending:true,data:null});expect(generateDraft).not.toHaveBeenCalled();
+    const output=await perf.getAssessmentPotentialInsight(actor,reviewId,sid,{generate:true});expect(output).toMatchObject({source:'ai',pending:false});expect(generateDraft).toHaveBeenCalledOnce();
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).toContain('Observed delivery');expect(prompt).not.toMatch(/Private|Peer 0|peerEmploymentId|requestId/);for(const peer of peers)expect(prompt).not.toContain(peer.employmentId);
+    expect(await perf.getAssessmentPotentialInsight(actor,reviewId,sid)).toEqual(output);expect(generateDraft).toHaveBeenCalledOnce();
+    for(const denied of [self,mgr,peers[1].ctx]){await expect(perf.getAssessmentPotentialInsight(denied,reviewId,sid)).rejects.toThrow(/not assigned/);expect(await withTenant(denied,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);}
+    const other=await seedBase();await setModule(other.tenantId,'performance','active');await expect(perf.getAssessmentPotentialInsight(await entitledCtx(other),reviewId,sid)).rejects.toThrow(/not assigned/);
+    const [panel]=await owner.db.select().from(schema.onehrPanel).where(and(eq(schema.onehrPanel.reviewId,reviewId),eq(schema.onehrPanel.peerEmploymentId,peers[0].employmentId)));await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,panel.requestId,'archive','Remove invalid response.');
+    expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);expect(await perf.getAssessmentPotentialInsight(actor,reviewId,sid)).toMatchObject({source:'plain',data:{paragraph:'Not enough 360 feedback yet for an insight — 3 of the 4 raters needed have submitted.'}});
+  });
+  it('rechecks exact potential cohort access and independent assistance settings before saving',async()=>{
+    await complete();const actor=peers[0].ctx,group={...a,grants:[{role:'hr_admin',companyId:null}]};
+    const make=(tier:'hod'|'bu')=>perf.createOnehrCalibration(a,cycleId,{name:'Potential cohort',companyId:b.companyId,tier,reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'}),sid=await make('hod');
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    await perf.setAssessmentAiSwitch(group,'tc',false);expect(await perf.getAssessmentPotentialInsight(actor,reviewId,sid,{generate:true})).toMatchObject({source:'plain'});expect(generateDraft).not.toHaveBeenCalled();
+    await perf.setAssessmentAiSwitch(group,'tc',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(group,'tc',false);return 'Their feedback is mixed across the principles.';});
+    await expect(perf.getAssessmentPotentialInsight(actor,reviewId,sid,{generate:true})).rejects.toThrow(/facts or access changed/);
+    await perf.setAssessmentAiSwitch(group,'tc',true);const second=await make('bu');vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));return 'Their feedback is mixed across the principles.';});
+    await expect(perf.getAssessmentPotentialInsight(actor,reviewId,sid,{generate:true})).rejects.toThrow(/not assigned/);
+    // Another permitted cohort does not authorize the revoked requested cohort, but may read viewer-independent facts.
+    await expect(perf.getAssessmentPotentialInsight(actor,reviewId,sid)).rejects.toThrow(/not assigned/);expect(await perf.getAssessmentPotentialInsight(actor,reviewId,second)).toMatchObject({pending:true});
+    await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,second));expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);
+  });
   it('summarizes submitted competency self-claims only, caches explicitly and hides the cache from other actors',async()=>{
     vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
     await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Private competency draft'},'skill-2':{answer:'no',remark:''}},remark:'Private competency reflection'});

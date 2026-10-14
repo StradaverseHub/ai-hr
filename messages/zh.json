@@ -18351,6 +18351,10 @@
         "partly_fits": "部分匹配",
         "not_yet": "尚未匹配"
       }
+    },
+    "potentialInsight": {
+      "title": "潜力分析",
+      "help": "匿名领导力反馈及已审核的能力证据。评级仍由您决定。"
     }
   },
   "allowanceV2": {

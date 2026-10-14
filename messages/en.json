@@ -18351,6 +18351,10 @@
         "partly_fits": "Partly fits",
         "not_yet": "Not yet a fit"
       }
+    },
+    "potentialInsight": {
+      "title": "Potential insight",
+      "help": "Anonymous leadership feedback and reviewed competency evidence. Ratings remain yours to decide."
     }
   },
   "allowanceV2": {

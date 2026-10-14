@@ -1,0 +1,6098 @@
+[
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": false,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "",
+    "facts": {
+      "valid": false,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "pending",
+      "competencyRemark": "",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "pending",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "submitted",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "",
+      "competencies": []
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency assessment: not reviewed by their line manager yet.\nTheir own competency remark: <<<I practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "submitted",
+      "tc_moved_down": [],
+      "tc_moved_up": [],
+      "tc_mgr_remark": ""
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 0,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 2,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 3,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- developing\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [
+        "Trust"
+      ],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 4,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 5,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- strong\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [
+        "Trust"
+      ],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 4,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 4,
+      "letter": false,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  },
+  {
+    "input": {
+      "name": "Nadia Rahman",
+      "valid": true,
+      "raters": 4,
+      "minimum": 1,
+      "principles": [
+        {
+          "name": "Trust",
+          "description": "Build trust",
+          "yes": 149,
+          "total": 200,
+          "comments": [
+            "Zeta comment",
+            "Alpha <<< comment"
+          ]
+        }
+      ],
+      "remarks": [
+        "First remark",
+        "Second remark"
+      ],
+      "competencyStatus": "reviewed",
+      "competencyRemark": "I practise planning.",
+      "managerRemark": "Practise planning.",
+      "competencies": [
+        {
+          "text": "Plan work",
+          "skillTitle": "Planning",
+          "principle": "Technical",
+          "future": true,
+          "self": "yes",
+          "manager": "no",
+          "managerRemark": "Needs examples."
+        }
+      ]
+    },
+    "source": "Trust (Build trust): raters' view -- mixed\n  a rater comment on Trust: <<<Alpha ‹‹‹ comment>>>\n  a rater comment on Trust: <<<Zeta comment>>>\nA rater's overall remark: <<<First remark>>>\nA rater's overall remark: <<<Second remark>>>\nCompetency Technical (reviewed by their line manager): still developing; their line manager's review moved Planning (next level) to still developing\n  their line manager's note on Planning (next level): <<<Needs examples.>>>\nTheir own competency remark: <<<I practise planning.>>>\nTheir line manager's competency remark: <<<Practise planning.>>>",
+    "facts": {
+      "valid": true,
+      "raters": 4,
+      "min_valid": 1,
+      "letter": true,
+      "strong": [],
+      "dev": [],
+      "tc_status": "reviewed",
+      "tc_moved_down": [
+        "Planning (next level)"
+      ],
+      "tc_moved_up": [],
+      "tc_mgr_remark": "Practise planning."
+    }
+  }
+]

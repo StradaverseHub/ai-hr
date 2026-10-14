@@ -18351,6 +18351,10 @@
         "partly_fits": "Phù hợp một phần",
         "not_yet": "Chưa phù hợp"
       }
+    },
+    "potentialInsight": {
+      "title": "Phân tích tiềm năng",
+      "help": "Phản hồi lãnh đạo ẩn danh và bằng chứng năng lực đã được đánh giá. Bạn vẫn là người quyết định xếp loại."
     }
   },
   "allowanceV2": {
