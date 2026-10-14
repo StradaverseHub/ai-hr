@@ -49,6 +49,14 @@ export async function enableOnehrAction(f:FormData){
   try{await perf.configureOnehrCycle(s,id,null);}catch(e){redirect(`/performance/${id}?error=${encodeURIComponent(publicErrorMessage(e))}`);}
   revalidatePath(`/performance/${id}`);redirect(`/performance/${id}`);
 }
+export async function finalBandsAction(f:FormData){
+ const s=await getSession(),id=z.uuid().parse(str(f,'sessionId')),url=`/performance/assessment/calibration/${id}?view=final-bands`;
+ try{
+  if(str(f,'action')==='mode')await perf.configureAssessmentGroupMode(s,id,num(f,'revision'),z.enum(['after','replace','blend']).parse(str(f,'mode')),num(f,'bgWeight'));
+  else await perf.decideAssessmentFinalBands(s,id,str(f,'sourceDigest'),{action:str(f,'action'),reviewId:str(f,'reviewId')||undefined,band:str(f,'band')||undefined,reason:str(f,'reason')});
+ }catch(error){redirect(withError(url,error));}
+ revalidatePath(`/performance/assessment/calibration/${id}`);revalidatePath('/performance/workspace');revalidatePath('/me/performance');redirect(url);
+}
 export async function onehrCycleAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));const url=`/performance/${id}`;
   try{
@@ -72,7 +80,7 @@ export async function onehrCycleAction(f:FormData){
     }else if(str(f,'action')==='participation'){
       await perf.setAssessmentParticipation(s,id,num(f,'revision'),str(f,'employmentId'),str(f,'participantRevision')?num(f,'participantRevision'):null,z.enum(['add','remove','clear']).parse(str(f,'mode')));
     }else if(str(f,'action')==='calibration'){
-      await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode')});
+      await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode'),bgWeight:nullableNumber(f,'bgWeight')??50});
     }else throw Error('Unknown action.');
   }catch(e){redirect(withError(url,e));}
   revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(url);

@@ -10052,7 +10052,7 @@ export const onehrCalibration = pgTable('performance_onehr_calibration', {
   id: id(), tenantId: tenantId(), cycleId: uuid('cycle_id').notNull().references(()=>reviewCycle.id),
   companyId: uuid('company_id').references(()=>company.id), name: text('name').notNull(), tier: text('tier').notNull(),
   reviewerUserIds: uuid('reviewer_user_ids').array().notNull(), pbtAchievement: numeric('pbt_achievement',{precision:12,scale:2}),
-  mode:text('mode').notNull().default('after'), performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}), lockedAt: timestamp('locked_at',{withTimezone:true}), revision:integer('revision').notNull().default(1), createdAt:createdAt(),
+  mode:text('mode').notNull().default('after'), bgWeight:integer('bg_weight').notNull().default(50), performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}), lockedAt: timestamp('locked_at',{withTimezone:true}), revision:integer('revision').notNull().default(1), createdAt:createdAt(),
   pipLockedAt:timestamp('pip_locked_at',{withTimezone:true}), promotionLockedAt:timestamp('promotion_locked_at',{withTimezone:true}),
 },t=>[index('performance_onehr_calibration_cycle_idx').on(t.cycleId)]);
 export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entry', {

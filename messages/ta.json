@@ -18029,6 +18029,52 @@
       "noAction": "உங்கள் சொற்களில் செயலைச் சேர்க்கவும்.",
       "discard": "பரிந்துரைகளை நீக்கு",
       "apply": "தேர்ந்தெடுத்தவற்றை வரைவில் சேர் ({count})"
+    },
+    "finalBands": {
+      "title": "Final bands",
+      "help": "Compare the BG and Group calls, then confirm the final performance band. A different band needs a reason. Every decision is recorded in the rating history.",
+      "weights": "BG {bg}% · Group {group}%",
+      "counts": "{total} scorecards · {decided} decided · {locked} Group calls locked",
+      "acceptClear": "Accept clear suggestions ({count})",
+      "acceptConfirm": "Accept the {count} clear suggestions? Each band will be recorded as your final decision.",
+      "download": "Download CSV",
+      "groupView": "Open Group calibration",
+      "configure": "How the two calls combine",
+      "bgWeight": "BG share of a blend (%)",
+      "weightHelp": "For “Both count”, enter the BG share from 1 to 99. Group receives the rest. An exact halfway result requires your choice.",
+      "empty": "There are no participating scorecards in this Group scope.",
+      "person": "Person",
+      "bg": "BG call",
+      "group": "Group call",
+      "suggested": "Suggested",
+      "final": "Final",
+      "decide": "Decide",
+      "draft": "Draft {band}, unlocked",
+      "notYet": "Not yet",
+      "locked": "Locked",
+      "notDecided": "Not decided",
+      "bandFor": "Final band for {name}",
+      "reasonFor": "Final band reason for {name}",
+      "reason": "Reason if different from the suggestion",
+      "decideConfirm": "Set {name}’s final band? This becomes their official performance band and is recorded in the rating history. You can change or clear it before finalization.",
+      "change": "Change",
+      "clear": "Clear final band",
+      "clearConfirm": "Clear {name}’s final band and use the confirmed calibration cascade again?",
+      "reopen": "Reopen Group call",
+      "reopenConfirm": "Reopen {name}’s Group call so the Group reviewer can assess it again?",
+      "readOnly": "Read-only",
+      "waiting": {
+        "manager": "The line manager rating is not confirmed.",
+        "group": "Waiting for the Group call to be locked."
+      },
+      "why": {
+        "bg_only": "Only the BG call is available.",
+        "group_only": "The Group call, with no BG call.",
+        "group": "The Group call.",
+        "agree": "Both calls agree.",
+        "halfway": "Exactly halfway. Choose a band and give a reason.",
+        "blend": "The weighted blend of the two calls."
+      }
     }
   },
   "allowanceV2": {

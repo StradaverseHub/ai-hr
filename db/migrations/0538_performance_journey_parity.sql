@@ -7,6 +7,7 @@ ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
 ALTER TABLE performance_onehr_evidence ADD COLUMN details jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(details)='object' AND octet_length(details::text)<=5000), ADD COLUMN citations jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(citations)='array'), ADD COLUMN revision integer NOT NULL DEFAULT 1;
 ALTER TABLE performance_onehr_calibration ADD COLUMN pip_locked_at timestamptz, ADD COLUMN promotion_locked_at timestamptz;
+ALTER TABLE performance_onehr_calibration ADD COLUMN bg_weight integer NOT NULL DEFAULT 50 CHECK(bg_weight BETWEEN 1 AND 99);
 ALTER TABLE performance_onehr_calibration_entry ADD COLUMN performance_pinned boolean NOT NULL DEFAULT false, ADD COLUMN potential_pinned boolean NOT NULL DEFAULT false, ADD COLUMN pip_reason text NOT NULL DEFAULT '', ADD COLUMN promotion_reason text NOT NULL DEFAULT '', ADD COLUMN special_reward_reason text NOT NULL DEFAULT '';
 ALTER TABLE performance_onehr_cycle ADD COLUMN participation_opened_on date;
 CREATE TABLE performance_assessment_participation (
@@ -1272,3 +1273,29 @@ CREATE FUNCTION app.assessment_development_feedback(wanted_review uuid) RETURNS 
 $$;
 REVOKE ALL ON FUNCTION app.assessment_development_feedback(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_development_feedback(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Group mode is HR configuration. Final-tier decisions remain HR-owned even if an old cohort named a manager.
+CREATE OR REPLACE FUNCTION app.onehr_calibration_access(wanted_session uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN app_user u ON u.id=app.current_user_id() AND u.tenant_id=s.tenant_id
+ WHERE s.id=wanted_session AND s.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND CASE WHEN s.tier='final' THEN app.onehr_cycle_admin(s.cycle_id) ELSE app.onehr_admin(s.company_id) OR u.id=ANY(s.reviewer_user_ids) END)
+$$;
+CREATE FUNCTION app.assessment_final_authority() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE s performance_onehr_calibration;
+BEGIN
+ IF TG_TABLE_NAME='performance_onehr_calibration' THEN
+  IF TG_OP='UPDATE' AND (NEW.tier IS DISTINCT FROM OLD.tier OR NEW.company_id IS DISTINCT FROM OLD.company_id) THEN RAISE EXCEPTION 'Calibration scope identity is immutable'; END IF;
+  IF NEW.tier<>'group' AND NEW.bg_weight<>50 THEN RAISE EXCEPTION 'Blend weights belong to Group calibration'; END IF;
+  IF TG_OP='INSERT' OR NEW.mode IS DISTINCT FROM OLD.mode OR NEW.bg_weight IS DISTINCT FROM OLD.bg_weight OR NEW.tier='final' THEN
+   IF NOT app.onehr_cycle_admin(NEW.cycle_id) THEN RAISE EXCEPTION 'Performance administrator access is required'; END IF;
+  END IF;
+ ELSE
+  SELECT * INTO s FROM performance_onehr_calibration WHERE id=NEW.session_id AND tenant_id=NEW.tenant_id;
+  IF s.tier='final' AND (NOT app.onehr_cycle_admin(s.cycle_id) OR TG_OP='UPDATE' AND EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND app.is_self_person(e.person_id))) THEN RAISE EXCEPTION 'Final bands require an independent performance administrator'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER assessment_final_authority BEFORE INSERT OR UPDATE ON performance_onehr_calibration FOR EACH ROW EXECUTE FUNCTION app.assessment_final_authority();
+CREATE TRIGGER assessment_final_authority BEFORE INSERT OR UPDATE ON performance_onehr_calibration_entry FOR EACH ROW EXECUTE FUNCTION app.assessment_final_authority();
+REVOKE ALL ON FUNCTION app.assessment_final_authority(),app.onehr_calibration_access(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_calibration_access(uuid) TO ai_hr_app;

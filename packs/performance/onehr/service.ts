@@ -1,3 +1,5 @@
+import { finalBandExplanation,suggestFinalBand,type GroupMode } from './final-band-model';
+import { toCsv } from '../../../lib/csv';
 import { assessmentAiQuotaTx } from './ai-usage';
 import { emptyHeldCalibration,heldCalibrationSchema } from './calibration-command-model';
 import { defaultLibraryScoring,settingNumberSource,spreadScoring } from './setting-default-model';
@@ -459,14 +461,14 @@ function boxBands(result:Awaited<ReturnType<typeof resolved>>,tier:string,axis:'
  };
 }
 export async function createOnehrCalibration(ctx:SessionContext,cycleId:string,raw:unknown) {
-  const p=z.object({name:z.string().trim().min(1).max(300),companyId:uuid.nullable(),tier:z.enum(tiers),reviewerUserIds:z.array(uuid).min(1).max(100),reviewIds:z.array(uuid).min(1).max(10000),pbtAchievement:z.number().finite().nullable(),mode:z.enum(['after','replace','blend']).default('after')}).parse(raw);
+  const p=z.object({name:z.string().trim().min(1).max(300),companyId:uuid.nullable(),tier:z.enum(tiers),reviewerUserIds:z.array(uuid).min(1).max(100),reviewIds:z.array(uuid).min(1).max(10000),pbtAchievement:z.number().finite().nullable(),mode:z.enum(['after','replace','blend']).default('after'),bgWeight:z.number().int().min(1).max(99).default(50)}).parse(raw);
   return withPerformanceTenant(ctx,async tx=>{
     const cycle=await loadCycle(tx,cycleId,true);await requireAdmin(tx,cycleId);if(cycle.policy.modules.calibration===false)throw Error('Calibration is disabled.');if(cycle.policy.kind!=='year_end')throw Error('Calibration is available only in year-end cycles.');if(!ratedPerformance(cycle.policy)&&!cycle.policy.modules.tm)throw Error('This cycle has no rating axes to calibrate.');if(!['open','calibration'].includes(cycle.native.status))throw Error('Open the cycle before assigning calibration.');
     if(new Set(p.reviewIds).size!==p.reviewIds.length)throw Error('Duplicate assessment.');
     const reviews=await tx.select().from(onehrReview).where(and(eq(onehrReview.cycleId,cycleId),inArray(onehrReview.reviewId,p.reviewIds)));
     if(reviews.length!==p.reviewIds.length||!(await tx.execute<{ok:boolean}>(sql`select bool_and(app.assessment_review_participates(r)) as ok from unnest(array[${sql.join(p.reviewIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) r`))[0]?.ok)throw Error('Every assessment must belong to this cycle and your scope.');
     if(p.companyId!=null){const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_admin(${p.companyId}::uuid) as ok`);if(!scope?.ok)throw Error('Company outside your scope.');}
-    const [session]=await tx.insert(onehrCalibration).values({tenantId:ctx.tenantId,cycleId,companyId:p.companyId,name:p.name,tier:p.tier,reviewerUserIds:[...new Set(p.reviewerUserIds)],pbtAchievement:p.pbtAchievement==null?null:String(p.pbtAchievement),mode:p.mode}).returning();
+    const [session]=await tx.insert(onehrCalibration).values({tenantId:ctx.tenantId,cycleId,companyId:p.companyId,name:p.name,tier:p.tier,reviewerUserIds:[...new Set(p.reviewerUserIds)],pbtAchievement:p.pbtAchievement==null?null:String(p.pbtAchievement),mode:p.mode,bgWeight:p.tier==='group'&&p.mode==='blend'?p.bgWeight:50}).returning();
     for(const r of reviews)await tx.insert(onehrCalibrationEntry).values({tenantId:ctx.tenantId,sessionId:session.id,reviewId:r.reviewId,employmentId:r.employmentId});
     await audit(tx,ctx,session.id,'calibration-assigned',{tier:p.tier,count:reviews.length});return session.id;
   });
@@ -475,6 +477,7 @@ async function loadCalibration(tx:Tx,id:string,expected?:number) {
   uuid.parse(id);const [session]=await tx.select().from(onehrCalibration).where(eq(onehrCalibration.id,id)).for('update');if(!session)throw Error('Calibration not found or access has been removed.');
   if(expected!==undefined)revision(session.revision,expected);
   const cycle=await loadCycle(tx,session.cycleId);if(cycle.policy.modules.calibration===false)throw Error('Calibration is disabled.');
+  if(session.tier==='final')await requireAdmin(tx,session.cycleId);
   return {session,cycle};
 }
 type Axis='performance'|'potential'|'both';
@@ -500,6 +503,7 @@ export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:
   if(pm&&(session.performanceLockedAt||entry.performanceLockedAt)&&session.tier!=='final'||pot&&(session.potentialLockedAt||entry.potentialLockedAt)&&session.tier!=='final')throw Error('This assessment axis is locked.');
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${p.reviewId},0))`);
   const current=await resolved(tx,p.reviewId,cycle.policy);if(current.input.finalized)throw Error('Assessment is finalized.');
+  if(session.tier==='final'&&pm&&!current.input.performance)throw Error('The line manager rating must be confirmed before a final band is decided.');
   assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);
   const below=current.rows.filter(d=>tiers.indexOf(d.tier)<tiers.indexOf(session.tier as Tier)&&!(d.tier==='group'&&d.mode==='blend'));
   const baselinePm=session.tier==='group'?p.axis==='performance'?current.input.performance:boxBands(current,session.tier,p.axis).performance:resolveBand(current.input.performance,below.map(d=>({...d,band:d.performance,locked:d.performanceLocked}))).band;
@@ -590,7 +594,9 @@ export async function lockAssessmentGroupPeople(ctx:SessionContext,sessionId:str
 /** HR can reopen an unfinalized decision; downstream confirmations must be reopened first. */
 export async function unlockOnehrCalibration(ctx:SessionContext,sessionId:string,expected:number,reason:string,axis:Axis='both',reviewId?:string) {
  z.string().trim().min(1).max(4000).parse(reason);z.enum(['performance','potential','both']).parse(axis);if(reviewId)uuid.parse(reviewId);
- return withPerformanceTenant(ctx,async tx=>{
+ return withPerformanceTenant(ctx,tx=>unlockOnehrCalibrationTx(tx,ctx,sessionId,expected,reason,axis,reviewId));
+}
+async function unlockOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:string,expected:number,reason:string,axis:Axis,reviewId?:string) {
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);await requireAdmin(tx,session.cycleId);
   if(!['open','calibration'].includes(cycle.native.status))throw Error('Closed calibration periods are read-only.');
   const {pm,pot}=needsAxes(cycle.policy,axis,session.tier);if(!pm&&!pot)throw Error('This assessment axis is disabled.');
@@ -615,7 +621,93 @@ export async function unlockOnehrCalibration(ctx:SessionContext,sessionId:string
   const tl=!own?.present&&updated.length&&updated.every(e=>e.potentialLockedAt)?session.potentialLockedAt:null;
   await tx.update(onehrCalibration).set({performanceLockedAt:pl||null,potentialLockedAt:tl||null,lockedAt:null,revision:session.revision+1}).where(eq(onehrCalibration.id,sessionId));
   await audit(tx,ctx,sessionId,'calibration-reopened',{axis,reason,changes:changed});
+}
+
+/** Final bands consume the existing Group and final-tier records; a suggestion never becomes a rating by itself. */
+async function finalBandQueueTx(tx:Tx,ctx:SessionContext,sessionId:string) {
+ const {session,cycle}=await loadCalibration(tx,sessionId);await requireAdmin(tx,session.cycleId);
+ if(session.tier!=='group'||!ratedPerformance(cycle.policy)||cycle.policy.kind!=='year_end')throw Error('Final bands are available for a year-end Group performance scope.');
+ const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId)).orderBy(asc(onehrCalibrationEntry.reviewId));
+ const rows=[];
+ for(const entry of entries){
+  if(await isSelf(tx,entry.employmentId))continue;
+  const r=await resolved(tx,entry.reviewId,cycle.policy);
+  const bg=resolveBand(r.input.performance,r.rows.filter(d=>['hod','bu','bg'].includes(d.tier)).map(d=>({...d,band:d.performance,locked:d.performanceLocked}))).band;
+  const groupLocked=!!(entry.performanceLockedAt||session.performanceLockedAt),group=groupLocked?z.enum(pmBands).nullable().parse(entry.performance):null;
+  const [final]=await tx.select({entry:onehrCalibrationEntry,session:onehrCalibration}).from(onehrCalibrationEntry).innerJoin(onehrCalibration,eq(onehrCalibration.id,onehrCalibrationEntry.sessionId)).where(and(eq(onehrCalibrationEntry.reviewId,entry.reviewId),eq(onehrCalibration.tier,'final')));
+  const [decision]=final?.entry.performance?await tx.execute<{name:string;at:string}>(sql`select coalesce(p.full_name,u.id::text,d.actor_id::text,'') as name,d.occurred_at::text as at from domain_event d left join app_user u on u.id=d.actor_id and u.tenant_id=d.tenant_id left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_id=${final.session.id}::uuid and d.event_type='onehr.calibration-recorded' and d.payload->>'reviewId'=${entry.reviewId} order by d.occurred_at desc,d.id desc limit 1`):[];
+  const ready=!!r.input.performance,suggestion=ready&&groupLocked?suggestFinalBand(bg,group,session.mode as GroupMode,session.bgWeight):null;
+  rows.push({reviewId:entry.reviewId,employmentId:entry.employmentId,name:r.input.name,department:r.input.department,companyId:r.input.companyId,businessGroup:r.input.businessGroup,
+   ready,finalized:r.input.finalized,bg,group,draft:groupLocked?null:entry.performance,groupLockedAt:entry.performanceLockedAt??session.performanceLockedAt,
+   suggestion,waiting:!ready?'manager':!groupLocked?'group':null,
+   final:final?{sessionId:final.session.id,revision:final.session.revision,performance:z.enum(pmBands).nullable().parse(final.entry.performance),reason:final.entry.performance?final.entry.performanceNote:'',by:decision?.name??'',at:decision?.at??null}:null,
+   agreed:ready&&groupLocked&&!!suggestion?.band&&!final?.entry.performance&&(!bg||group===bg||session.mode!=='blend')});
+ }
+ rows.sort((a,b)=>a.businessGroup.localeCompare(b.businessGroup)||a.companyId.localeCompare(b.companyId)||a.department.localeCompare(b.department)||a.name.localeCompare(b.name)||a.reviewId.localeCompare(b.reviewId));
+ const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,[...new Set(rows.map(r=>r.companyId))]));
+ const employees=await tx.select({id:employment.id,code:employment.employeeCode}).from(employment).where(inArray(employment.id,rows.map(r=>r.employmentId)));
+ const projected=rows.map(r=>({...r,company:companies.find(c=>c.id===r.companyId)?.name??'',employeeCode:employees.find(e=>e.id===r.employmentId)?.code??''}));
+ return {session:{id:session.id,cycleId:session.cycleId,name:session.name,revision:session.revision,mode:session.mode as GroupMode,bgWeight:session.bgWeight},cycle:{name:cycle.native.name,status:cycle.native.status},rows:projected,sourceDigest:hash({sessionId,revision:session.revision,mode:session.mode,bgWeight:session.bgWeight,rows:projected})};
+}
+export async function getAssessmentFinalBands(ctx:SessionContext,sessionId:string){return withPerformanceTenant(ctx,tx=>finalBandQueueTx(tx,ctx,sessionId));}
+export async function configureAssessmentGroupMode(ctx:SessionContext,sessionId:string,expected:number,mode:GroupMode,bgWeight:number){
+ z.enum(['after','replace','blend']).parse(mode);z.number().int().min(1).max(99).parse(bgWeight);
+ return withPerformanceTenant(ctx,async tx=>{
+  const {session,cycle}=await loadCalibration(tx,sessionId,expected);await requireAdmin(tx,session.cycleId);
+  if(session.tier!=='group'||!['open','calibration'].includes(cycle.native.status))throw Error('The Group mode can change only in an open cycle.');
+  const next={mode,bgWeight:mode==='blend'?bgWeight:50};
+  await tx.update(onehrCalibration).set({...next,revision:session.revision+1}).where(eq(onehrCalibration.id,sessionId));
+  await audit(tx,ctx,sessionId,'group-mode-configured',{previous:{mode:session.mode,bgWeight:session.bgWeight},next});
  });
+}
+export async function decideAssessmentFinalBands(ctx:SessionContext,sessionId:string,expectedDigest:string,raw:unknown){
+ const p=z.object({action:z.enum(['decide','accept_agreed','clear','reopen']),reviewId:uuid.optional(),band:z.enum(pmBands).optional(),reason:note.default('')}).parse(raw);
+ if(p.action!=='accept_agreed'&&!p.reviewId)throw Error('Choose a person.');if(p.action==='decide'&&!p.band)throw Error('Choose a performance band.');
+ return withPerformanceTenant(ctx,async tx=>{
+  // Lock the scope before its members, in a stable order. Re-read every input after locking the people.
+  const {session,cycle}=await loadCalibration(tx,sessionId);await requireAdmin(tx,session.cycleId);
+  if(session.tier!=='group'||!['open','calibration'].includes(cycle.native.status))throw Error('Final bands are read-only.');
+  const members=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,sessionId)).orderBy(asc(onehrCalibrationEntry.reviewId));
+  const finalScopes=await tx.select({id:onehrCalibration.id}).from(onehrCalibration).where(and(eq(onehrCalibration.cycleId,session.cycleId),eq(onehrCalibration.tier,'final'),sql`exists(select 1 from performance_onehr_calibration_entry e where e.session_id=${onehrCalibration.id} and e.review_id in (select g.review_id from performance_onehr_calibration_entry g where g.session_id=${sessionId}::uuid))`)).orderBy(asc(onehrCalibration.id)).for('update');
+  // All scope locks precede person locks, matching the canonical calibration writer's lock order.
+  for(const e of members)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.reviewId},0))`);
+  const view=await finalBandQueueTx(tx,ctx,sessionId);if(view.sourceDigest!==expectedDigest)throw Error('These calls changed. Reload before deciding.');
+  const selected=p.action==='accept_agreed'?view.rows.filter(r=>r.agreed):view.rows.filter(r=>r.reviewId===p.reviewId);
+  if(!selected.length)throw Error('No eligible people are available for this decision.');
+  if(selected.some(r=>!r.ready||r.finalized))throw Error('A confirmed, unfinalized manager rating is required.');
+  let createdReusable:string|undefined;
+  for(const r of selected){
+   if(p.action==='reopen'){
+    if(!r.groupLockedAt||r.final?.performance)throw Error('Clear the final band before reopening the Group call.');
+    const {session:current}=await loadCalibration(tx,sessionId);
+    await unlockOnehrCalibrationTx(tx,ctx,sessionId,current.revision,p.reason||'Reopened for the Group reviewer.','performance',r.reviewId);continue;
+   }
+   if(p.action==='clear'){
+    if(!r.final?.performance)throw Error('There is no final band to clear.');
+    const {session:current}=await loadCalibration(tx,r.final.sessionId);
+    await unlockOnehrCalibrationTx(tx,ctx,current.id,current.revision,p.reason||'Final band cleared; the confirmed calibration cascade applies.','performance',r.reviewId);continue;
+   }
+   const band=p.action==='accept_agreed'?r.suggestion!.band!:p.band!;
+   if(band!==r.suggestion?.band&&!p.reason.trim())throw Error('A final band that differs from the suggestion needs a reason.');
+   const [compatible]=!r.final&&!createdReusable&&finalScopes.length?await tx.select({id:onehrCalibration.id}).from(onehrCalibration).where(and(inArray(onehrCalibration.id,finalScopes.map(s=>s.id)),isNull(onehrCalibration.lockedAt),sql`(${onehrCalibration.companyId} is null or ${onehrCalibration.companyId}=${r.companyId}::uuid or app.is_company_descendant(${r.companyId}::uuid,${onehrCalibration.companyId}))`)).orderBy(asc(onehrCalibration.id)).limit(1):[];
+   let finalId=r.final?.sessionId??createdReusable??compatible?.id;
+   if(!finalId){
+    const [created]=await tx.insert(onehrCalibration).values({tenantId:ctx.tenantId,cycleId:session.cycleId,companyId:session.companyId,name:`${session.name} · Final bands`,tier:'final',reviewerUserIds:[ctx.userId!]}).returning();
+    finalId=createdReusable=created.id;await audit(tx,ctx,finalId,'calibration-assigned',{tier:'final',sourceSessionId:sessionId});
+   }
+   const {session:finalSession}=await loadCalibration(tx,finalId);
+   const [existing]=await tx.select().from(onehrCalibrationEntry).where(and(eq(onehrCalibrationEntry.sessionId,finalId),eq(onehrCalibrationEntry.reviewId,r.reviewId)));
+   if(!existing)await tx.insert(onehrCalibrationEntry).values({tenantId:ctx.tenantId,sessionId:finalId,reviewId:r.reviewId,employmentId:r.employmentId});
+   const why=p.reason||`Final band: accepted the suggestion (${r.suggestion?finalBandExplanation[r.suggestion.why]:'human decision'}).`;
+   await saveOnehrCalibrationTx(tx,ctx,finalId,finalSession.revision,{reviewId:r.reviewId,axis:'performance',performance:band,potential:null,performanceNote:why,potentialNote:''});
+  }
+  return {count:selected.length};
+ });
+}
+export async function exportAssessmentFinalBands(ctx:SessionContext,sessionId:string){
+ const view=await getAssessmentFinalBands(ctx,sessionId);
+ const myt=(value:Date|string|null|undefined)=>value?new Date(new Date(value).getTime()+8*3600000).toISOString().slice(0,19).replace('T',' '):'';
+ return toCsv([['Employee ID','Name','Business group','Company','Department','BG call','Group call','Group locked at (MYT)','Suggested','Final','Reason','Decided by','Decided at (MYT)'],...view.rows.map(r=>[r.employeeCode,r.name,r.businessGroup,r.company,r.department,r.bg??'',r.group??'',myt(r.groupLockedAt),r.suggestion?.band??r.suggestion?.tie?.join(' or ')??'',r.final?.performance??'',r.final?.reason??'',r.final?.by??'',myt(r.final?.at)])]);
 }
 
 async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibrationEntry.$inferSelect,policy:Policy,session:typeof onehrCalibration.$inferSelect,status:string,viewAxis:Axis='both'){

@@ -601,6 +601,78 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.saveOnehrCalibration(reviewer,unfinished,1,{reviewId:pending.reviewId,axis:'performance',performance:'UA',potential:null,performanceNote:'Direct assignment must fail.',potentialNote:''})).rejects.toThrow(/line manager rating/);
     await expect(perf.lockOnehrCalibration(reviewer,unfinished,1,'','performance',pending.reviewId)).rejects.toThrow(/line manager rating/);
   });
+  it('keeps final-band suggestions provisional, resolves weighted ties only by a reasoned HR decision and detects changed inputs',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const make=(tier:'bg'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} final queue`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:tier==='group'?'blend':'after',bgWeight:50});
+    const bg=await make('bg');await perf.saveOnehrCalibration(reviewer,bg,1,{reviewId,performance:'AE',potential:'High',performanceNote:'BG judgement.',potentialNote:''});await perf.lockOnehrCalibration(reviewer,bg,2,'');
+    const group=await make('group');await perf.saveOnehrCalibration(reviewer,group,1,{reviewId,axis:'performance',performance:'ME',potential:null,performanceNote:'Group judgement.',potentialNote:''});
+    let queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0]).toMatchObject({bg:'AE',group:null,draft:'ME',suggestion:null,waiting:'group',final:null,agreed:false});
+    await expect(perf.getAssessmentFinalBands(reviewer,group)).rejects.toThrow(/administrator/);
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'ME'})).rejects.toThrow(/needs a reason/);
+    await perf.lockAssessmentGroupPeople(reviewer,group,2,[reviewId]);
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'ME',reason:'Reviewed both calls.'})).rejects.toThrow(/changed/);
+    queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0]).toMatchObject({bg:'AE',group:'ME',draft:null,suggestion:{band:null,tie:['ME','AE'],why:'halfway'},agreed:false});
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'ME'})).rejects.toThrow(/needs a reason/);
+    await perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'ME',reason:'The completed outcomes support ME.'});
+    queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0].final).toMatchObject({performance:'ME',reason:'The completed outcomes support ME.',by:expect.any(String),at:expect.any(String)});expect(queue.rows[0].final?.by).toBeTruthy();
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);expect((await view(self)).result?.performance).toBe('ME');
+    const csv=parseCsv(await perf.exportAssessmentFinalBands(a,group));expect(csv).toHaveLength(2);expect(csv[0][0]).toBe('Employee ID');expect(csv[1].slice(5,7)).toEqual(['AE','ME']);expect(csv[1][8]).toBe('ME or AE');expect(csv[1][10]).toBe('The completed outcomes support ME.');
+    await expect(perf.decideAssessmentFinalBands(reviewer,group,queue.sourceDigest,{action:'clear',reviewId})).rejects.toThrow(/administrator/);
+    await perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'clear',reviewId});queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0].final?.performance).toBeNull();expect((await view(self)).result?.performance).toBe('AE');
+    await perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'reopen',reviewId});expect((await perf.getAssessmentFinalBands(a,group)).rows[0]).toMatchObject({group:null,draft:'ME',suggestion:null});
+  });
+  it('accepts only clear suggestions in bulk, requires fresh mode weights and preserves the frozen Rewards boundary',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const group=await perf.createOnehrCalibration(a,cycleId,{name:'Clear final decisions',companyId:b.companyId,tier:'group',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'blend',bgWeight:50});
+    await perf.saveOnehrCalibration(reviewer,group,1,{reviewId,performance:'AE',potential:'High',performanceNote:'Group confirms delivery.',potentialNote:'Group confirms potential.'});await perf.lockOnehrCalibration(reviewer,group,2,'');
+    let queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0]).toMatchObject({suggestion:{band:null,tie:['ME','AE']},agreed:false});
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'accept_agreed'})).rejects.toThrow(/No eligible/);
+    await expect(perf.configureAssessmentGroupMode(reviewer,group,3,'after',50)).rejects.toThrow(/administrator/);
+    await expect(withTenant(reviewer,tx=>tx.update(schema.onehrCalibration).set({bgWeight:75}).where(eq(schema.onehrCalibration.id,group)))).rejects.toMatchObject({cause:expect.objectContaining({message:'Performance administrator access is required'})});
+    await expect(perf.configureAssessmentGroupMode(a,group,3,'blend',0)).rejects.toThrow();
+    await perf.configureAssessmentGroupMode(a,group,3,'blend',25);
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'AE'})).rejects.toThrow(/changed/);
+    queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0]).toMatchObject({suggestion:{band:'AE',tie:null},agreed:false});
+    await perf.configureAssessmentGroupMode(a,group,4,'after',25);queue=await perf.getAssessmentFinalBands(a,group);expect(queue.session.bgWeight).toBe(50);expect(queue.rows[0].agreed).toBe(true);
+    expect(await perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'accept_agreed'})).toEqual({count:1});queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0].final?.performance).toBe('AE');expect(queue.rows[0].agreed).toBe(false);
+    const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'FINAL',name:'Final queue unit'}).returning();
+    await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
+    const unitId=await createRewardUnit(a,{companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur(),name:'Final queue Rewards',year});let reward=await getRewardUnit(a,unitId);
+    await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
+    for(const kind of ['pip','promotion'] as const)await perf.confirmAssessmentTalentList(reviewer,group,(await perf.getOnehrCalibration(reviewer,group)).session.revision,kind);
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await importOnehrRewardResults(a,unitId,reward.unit.revision);reward=await getRewardUnit(a,unitId);expect(reward.rows[0].facts).toMatchObject({performance:'AE',talent:'SSTAR'});
+    queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0].finalized).toBe(true);
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'OU',reason:'Must not rewrite a frozen result.'})).rejects.toThrow(/unfinalized/);
+  });
+  it('accepts several clear final bands as one operation through one canonical final-tier cohort',async()=>{
+    await complete();const secondSelf=peers[1].ctx,[second]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
+    const secondView=async(ctx:SessionContext)=>{const v=await perf.getOnehrReview(ctx,second.reviewId);if(!v)throw Error('Missing second review');return v;},id=randomUUID();
+    await perf.saveOnehrKpis(secondSelf,second.reviewId,(await secondView(secondSelf)).revision,[{id,title:'Deliver the service plan',description:'Verified service delivery',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,second.reviewId,(await secondView(mgr)).revision,true,'Agreed the service objective.');await perf.submitOnehrResults(secondSelf,second.reviewId,(await secondView(secondSelf)).revision,[{id,actual:100,note:'Completed the service plan.'}],'Completed the agreed service plan.');await perf.moderateOnehrKpi(mgr,second.reviewId,(await secondView(mgr)).revision,id,100,'Verified.');await perf.confirmOnehrPerformance(mgr,second.reviewId,(await secondView(mgr)).revision,'ME','');
+    const reviewer=peers[0].ctx,group=await perf.createOnehrCalibration(a,cycleId,{name:'Several clear calls',companyId:b.companyId,tier:'group',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,second.reviewId],pbtAchievement:null,mode:'after'});
+    await perf.lockAssessmentGroupPeople(reviewer,group,1,[reviewId,second.reviewId]);let queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows.filter(r=>r.agreed)).toHaveLength(2);
+    expect(await perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'accept_agreed'})).toEqual({count:2});queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows.map(r=>r.final?.performance)).toEqual(['ME','ME']);expect(new Set(queue.rows.map(r=>r.final?.sessionId)).size).toBe(1);
+    const records=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,queue.rows[0].final!.sessionId),eq(schema.domainEvent.eventType,'onehr.calibration-recorded')));expect(records).toHaveLength(2);
+  });
+  it('shows an empty final-band scope after participation is withdrawn without deleting its retained review',async()=>{
+    const group=await perf.createOnehrCalibration(a,cycleId,{name:'Withdrawn final scope',companyId:b.companyId,tier:'group',reviewerUserIds:[mgr.userId!],reviewIds:[reviewId],pbtAchievement:null});
+    const cycle=(await perf.getOnehrCycle(a,cycleId))!,participant=cycle.participants.find(p=>p.employmentId===subject.employmentId)!;
+    await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,participant.revision,'remove');
+    const queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows).toEqual([]);expect(parseCsv(await perf.exportAssessmentFinalBands(a,group))).toHaveLength(1);
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'accept_agreed'})).rejects.toThrow(/No eligible/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toHaveLength(1);expect(await owner.db.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,group))).toHaveLength(1);
+  });
+  it('keeps unfinished people out of final decisions and denies a named non-HR final reviewer at the database boundary',async()=>{
+    const pending=(await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId))))[0];
+    const group=await perf.createOnehrCalibration(a,cycleId,{name:'Unfinished final queue',companyId:b.companyId,tier:'group',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[pending.reviewId],pbtAchievement:null});
+    const queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0]).toMatchObject({ready:false,suggestion:null,agreed:false,waiting:'manager'});
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId:pending.reviewId,band:'ME',reason:'Cannot bypass an unfinished review.'})).rejects.toThrow(/confirmed/);
+    await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'ME',reason:'Cannot select outside this scope.'})).rejects.toThrow(/No eligible/);
+    const final=await perf.createOnehrCalibration(a,cycleId,{name:'Legacy final reviewer',companyId:b.companyId,tier:'final',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null});
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,final)))).toEqual([]);
+    await expect(perf.saveOnehrCalibration(peers[0].ctx,final,1,{reviewId,performance:'OU',potential:null,performanceNote:'Cannot make HR’s final call.',potentialNote:''})).rejects.toThrow();
+    await expect(perf.saveOnehrCalibration(a,final,1,{reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Manager must finish first.',potentialNote:''})).rejects.toThrow(/line manager rating/);
+  });
   it('retains a locked BG call while a replacing Group call is still a draft',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const make=(tier:'bg'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} precedence`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:tier==='group'?'replace':'after'});
