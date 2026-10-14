@@ -11,6 +11,7 @@ import { listEmployees } from '@/core/read';
 // audited kernel-contract debt (test/pack-drift-allowlist.json); a NEW file may not, and the drift ratchet
 // refuses one that tries.
 import {
+  attendanceApplicationDetail,
   requestAttendanceCorrection,
   decideAttendanceCorrection,
   ClockDataChangedError,
@@ -34,7 +35,9 @@ export async function adminCorrectAttendanceDayAction(formData: FormData) {
 }
 
 function refreshAttendanceDay(){
-  for(const path of ['/attendance','/attendance/individual','/attendance/daily','/attendance/requests','/attendance/application-history','/attendance/my-records'])revalidatePath(path);
+  for(const path of ['/attendance','/attendance/individual','/attendance/daily','/attendance/requests','/attendance/application-history','/attendance/my-records','/attendance/request-status','/approvals'])revalidatePath(path);
+  revalidatePath('/attendance/individual/[date]','page');
+  revalidatePath('/attendance/application-history/[id]','page');
 }
 export async function saveAttendanceDayChangesAction(formData:FormData){
   const {s,scopeIds}=await scopedAdmin();
@@ -78,4 +81,17 @@ export async function saveAttendanceClockDataAction(formData: FormData) {
   revalidatePath('/attendance/individual');
   revalidatePath('/attendance/my-records');
   redirect(`${back}&corrected=1`);
+}
+
+export async function rejectAttendanceDayApplicationAction(formData:FormData){
+  const {s,scopeIds}=await scopedAdmin();
+  try{
+    const id=String(formData.get('correctionId')??''), reason=String(formData.get('reason')??'').trim();
+    if(!reason||reason.length>500)throw new Error('Enter a rejection reason of at most 500 characters.');
+    const detail=await attendanceApplicationDetail(s,scopeIds,id);
+    if(!detail?.canDecide||detail.application.employmentId!==formData.get('employmentId')||detail.application.attendanceDate!==formData.get('date'))throw new Error('This application is not available for your decision.');
+    const stage=String(formData.get('stage')??'');
+    await decideAttendanceCorrection(s,{correctionId:id,decision:'rejected',rejectReason:reason,remarks:reason,expectedStageIndex:stage===''?undefined:Number(stage)});
+    refreshAttendanceDay();return {ok:true as const,pending:false};
+  }catch(e){return {ok:false as const,message:publicErrorMessage(e)};}
 }

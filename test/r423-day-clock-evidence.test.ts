@@ -28,7 +28,7 @@ import { hireEmployee } from '../core/org';
 import { createClockingLocation, setClockingControl } from '../core/clocking-location';
 import { registerDevice } from '../core/attendance-device';
 import { captureEmployeeClock, clockCaptureEvidence } from '../core/attendance-clock';
-import { checkIn } from '../core/attendance';
+import { checkIn,requestAttendanceCorrection } from '../core/attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const EN = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'));
@@ -128,13 +128,33 @@ describe('r423 — the day detail’s punch trail carries each clocking’s loca
     expect(html).not.toContain('data-clock-evidence="geofenced"');
   });
 
-  it('shows unavailable location without any fabricated map link', async () => {
+  it('keeps historical missing location unknown without any fabricated map link', async () => {
     const x = await clocker('Unavailable Umi', false);
     await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), lat: null, lng: null, accuracy: null });
     const html = await render(x.h.employmentId);
     expect(html).toContain('data-clock-evidence="not-enforced"');
-    expect(html).toContain(EN.attendance.clockEvidenceLocationUnavailable);
+    expect(html).toContain(EN.attendance.clock.captureLocation.unknown);
     expect(html).not.toContain('openstreetmap.org/?mlat');
+  });
+
+  it.each(['denied','unavailable','timeout','unsupported'] as const)('shows the recorded %s reason without fabricating coordinates', async locationStatus => {
+    const x = await clocker('Location evidence', false);
+    await captureEmployeeClock(x.ctx, { action: 'in', requestId: randomUUID(), lat: null, lng: null, accuracy: null, locationStatus });
+    const html = await render(x.h.employmentId);
+    expect(html).toContain(EN.attendance.clock.captureLocation[locationStatus]);
+    expect(html).not.toContain('openstreetmap.org/?mlat');
+  });
+
+  it('shows an existing request and its recorded subtype even before a day aggregate exists',async()=>{
+    const x=await clocker('Absent applicant',false);
+    const request=await requestAttendanceCorrection(x.ctx,{employmentId:x.h.employmentId,date:DATE(),checkIn:'09:00',checkOut:'18:00',requestKind:'absent',reason:'Original absence explanation'});
+    const html=await render(x.h.employmentId);
+    expect(html).toContain('Original absence explanation');
+    expect(html).toContain('Subtype: Absent');
+    expect(html).toContain(request.correctionId.slice(0,8).toUpperCase());
+    expect(html).not.toContain(EN.attendance.dayEdit.noApplications);
+    const other=await clocker('Other applicant',false);
+    expect(await render(other.h.employmentId)).not.toContain('Original absence explanation');
   });
 
   it('(c) a manual (HR-typed) punch shows no evidence line', async () => {

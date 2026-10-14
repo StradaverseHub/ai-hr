@@ -1,3 +1,4 @@
+import { classifyDay } from '@/packs/attendance/exceptions';
 import { AttendanceDateSchedule, AttendanceDateOvertime } from '@/components/attendance-day-editor';
 import { AttendanceDayApplications } from '@/components/attendance-day-applications';
 import Link from 'next/link';
@@ -102,7 +103,7 @@ export default async function IndividualAttendanceDayPage({
   /** dae7a10f — the one-action correction is an ADMIN affordance; everyone else keeps the link. */
   const admin = isAdmin(s);
   const [clockData,dayEditor,applications]=await Promise.all([admin?attendanceClockData(s,selected.employmentId,date):null,admin?attendanceDayEditor(s,selected.employmentId,date):null,attendanceIrregularitiesForDate(s,selected.employmentId,date)]);
-  const applicationsSection=await AttendanceDayApplications({data:dayEditor,applications,employmentId:selected.employmentId,date});
+  const applicationsSection=await AttendanceDayApplications({data:dayEditor,applications,detected:row?classifyDay(row)?.section??null:null,employmentId:selected.employmentId,date});
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
   // r423 (83c0d3c8, plan point 13) — WHERE each self-service clocking was made. Only punches backed by a
@@ -126,6 +127,7 @@ export default async function IndividualAttendanceDayPage({
           ← {t('dayBackToList')}
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
+        {applicationsSection}
         {clockData && <AttendanceClockData key={selected.employmentId + date + clockData.baseline + (sp.error === 'clockDataPending' ? 'pending' : '')} data={clockData} employmentId={selected.employmentId} date={date} action={saveAttendanceClockDataAction} />}
       </div>
     );
@@ -212,7 +214,7 @@ export default async function IndividualAttendanceDayPage({
           date, the shift period and the break together. The break is DERIVED (shift span less net
           scheduled minutes), never stored, and the caption says so. */}
       <Card className="overflow-hidden" data-day-section="clock-break">
-        <SectionHeader title={t('daySecClockBreak')} />
+        <div className="flex items-center justify-between gap-3 border-b border-border pr-4"><SectionHeader className="border-b-0" title={t('daySecClockBreak')} />{dayEditor&&<AttendanceDateSchedule key={dayEditor.baseline} data={dayEditor} employmentId={selected.employmentId} date={date}/>}</div>
         <DayFieldGrid cols={3}>
           <Field label={t('dayInfoDate')} value={fmtDayDate(date, locale)} />
           <Field
@@ -228,11 +230,11 @@ export default async function IndividualAttendanceDayPage({
                 : (row.shiftCode ?? DASH)
             }
           />
+          <Field label={t('dayEdit.dayType')} value={dayEditor?.leave.length?`${t('dayEdit.onLeave')} · ${dayEditor.leave.map(l=>l.name).join(', ')}`:dayEditor?t(`dayEdit.kind.${dayEditor.schedule.dayKind}`):statusText[status]} />
           <Field label={t('daySecBreak')} value={fmtMin(breakMinutes)} />
         </DayFieldGrid>
         {!row.shiftCode && <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayNoShift')}</div>}
         <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayBreakDerived')}</div>
-        {dayEditor&&<AttendanceDateSchedule key={dayEditor.baseline} data={dayEditor} employmentId={selected.employmentId} date={date}/>}
       </Card>
 
       {/* 3 · CLOCK DATA — the pair, plus every punch when the day carries more than two. */}
@@ -296,7 +298,7 @@ export default async function IndividualAttendanceDayPage({
                           >
                             {t('clockEvidenceCoordinates', { lat: fmtCoord(ev.lat), lng: fmtCoord(ev.lng), accuracy: Math.round(ev.accuracyM) })}
                           </a>
-                        ) : t('clockEvidenceLocationUnavailable')}
+                        ) : t(`clock.captureLocation.${ev.locationStatus&&ev.locationStatus!=='recorded'?ev.locationStatus:'unknown'}`)}
                       </span>
                     );
                   })()}

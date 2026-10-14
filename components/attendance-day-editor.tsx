@@ -1,11 +1,12 @@
 'use client';
 
+import * as Dialog from '@radix-ui/react-dialog';
 import { useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import type { AttendanceDayEditorData } from '@/packs/attendance/service';
-import { saveAttendanceDayChangesAction, adminCorrectAttendanceDayAction } from '@/app/attendance/individual/[date]/actions';
+import { saveAttendanceDayChangesAction, adminCorrectAttendanceDayAction, rejectAttendanceDayApplicationAction } from '@/app/attendance/individual/[date]/actions';
 import { Button, ErrorBanner, inputCls, tableWrapCls, thCls, theadCls, tbodyCls } from './ui';
 import { fmtMin } from './attendance-format';
 
@@ -19,11 +20,24 @@ function SaveFields({data,disabled}:{data:AttendanceDayEditorData;disabled:boole
     {data.processed&&<label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmPayrollRecalculation" required disabled={disabled}/>{t('payrollConsent')}</label>}
     {data.closed&&<p className="text-sm text-destructive">{t('closed')}</p>}{data.self&&<p className="text-sm text-muted-foreground">{t('self')}</p>}</>;
 }
-export function AttendanceDateSchedule({data,employmentId,date}:Props){
+export function AttendanceDateSchedule(props:Props){
+  const t=useTranslations('attendance.dayEdit');
+  const [open,setOpen]=useState(false),[saving,setSaving]=useState(false);
+  return <Dialog.Root open={open} onOpenChange={next=>{if(!saving)setOpen(next);}}>
+    <Dialog.Trigger asChild><Button type="button" variant="outline" size="sm" disabled={props.data.closed||props.data.self} title={props.data.closed?t('closed'):props.data.self?t('self'):undefined}>{t('edit')}</Button></Dialog.Trigger>
+    <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>
+      <Dialog.Content onEscapeKeyDown={e=>{if(saving)e.preventDefault();}} onInteractOutside={e=>{if(saving)e.preventDefault();}} className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+        <Dialog.Title className="text-lg font-semibold">{t('editSchedule')}</Dialog.Title>
+        <Dialog.Description className="mt-1 text-sm text-muted-foreground">{props.date} · {t('dateOnly')}</Dialog.Description>
+        <AttendanceDateScheduleForm {...props} onSaved={()=>setOpen(false)} onCancel={()=>setOpen(false)} onPending={setSaving}/>
+      </Dialog.Content></Dialog.Portal>
+  </Dialog.Root>;
+}
+function AttendanceDateScheduleForm({data,employmentId,date,onSaved,onCancel,onPending}:Props&{onSaved:()=>void;onCancel:()=>void;onPending:(pending:boolean)=>void}){
   const t=useTranslations('attendance.dayEdit'),router=useRouter();
   const [shift,setShift]=useState(data.shiftId??''),[kind,setKind]=useState(data.dayKind??''),[error,setError]=useState(''),[saved,setSaved]=useState(false),[pending,start]=useTransition();
   const disabled=data.closed||data.self||pending;
-  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);start(async()=>{setError('');setSaved(false);const r=await saveAttendanceDayChangesAction(fd);if(r.ok){setSaved(true);toast.success(t('saved'));router.refresh();}else setError(r.message);});};
+  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);onPending(true);start(async()=>{try{setError('');setSaved(false);const r=await saveAttendanceDayChangesAction(fd);if(r.ok){setSaved(true);toast.success(t('saved'));router.refresh();onSaved();}else setError(r.message);}catch{setError(t('saveFailed'));}finally{onPending(false);}});};
   const selected=data.shifts.find(s=>s.id===shift);
   return <form onSubmit={submit} className="space-y-3 border-t border-border p-4" data-day-edit="schedule">
     <Context data={data} employmentId={employmentId} date={date}><input type="hidden" name="kind" value="schedule"/></Context>
@@ -35,7 +49,7 @@ export function AttendanceDateSchedule({data,employmentId,date}:Props){
     {data.leave.length>0&&<><input type="hidden" name="dayKind" value={data.dayKind??''}/><p className="rounded-md bg-muted p-3 text-sm">{t('onLeave')}: {data.leave.map(l=>`${l.name} (${l.duration})`).join(', ')} · <a className="text-primary underline" href={`/admin/personnel/${employmentId}?tab=leave`}>{t('manageLeave')}</a><span className="mt-1 block text-muted-foreground">{t('leaveOwner')}</span></p></>}
     <p className="text-xs text-muted-foreground">{t('beforeAfter',{before:`${data.schedule.shiftCode??'—'} · ${t(`kind.${data.schedule.dayKind}`)}`,after:`${selected?.code??(shift?data.schedule.shiftCode:t('automaticSchedule'))} · ${kind?t(`kind.${kind}`):t('automaticSchedule')}`})}</p>
     <SaveFields data={data} disabled={disabled}/><ErrorBanner message={error}/>{saved&&<p role="status" className="text-sm text-emerald-700">{t('saved')}</p>}
-    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{t('dateOnly')}</p><Button type="submit" disabled={disabled}>{t('saveSchedule')}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{t('dateOnly')}</p><div className="flex gap-2"><Button type="button" variant="outline" disabled={pending} onClick={onCancel}>{t('cancel')}</Button><Button type="submit" disabled={disabled}>{t('saveSchedule')}</Button></div></div>
   </form>;
 }
 
@@ -73,7 +87,7 @@ export function AttendanceApplicationDecision({data,employmentId,date,applicatio
   const t=useTranslations('attendance.dayEdit'),router=useRouter(),[error,setError]=useState(''),[result,setResult]=useState(''),[pending,start]=useTransition();
   const disabled=data.closed||data.self||pending;
   const staged=!!application.clockChanges||(application.workflow?.currentStage??0)>0;
-  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);start(async()=>{setError('');setResult('');const r=await adminCorrectAttendanceDayAction(fd);if(r.ok){setResult(r.pending?t('pendingStage'):t('approvedSaved'));router.refresh();}else setError(r.message);});};
+  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);const reject=(e.nativeEvent as SubmitEvent).submitter?.getAttribute("value")==="reject";start(async()=>{setError('');setResult('');const r=await (reject?rejectAttendanceDayApplicationAction(fd):adminCorrectAttendanceDayAction(fd));if(r.ok){setResult(reject?t('rejectedSaved'):r.pending?t('pendingStage'):t('approvedSaved'));router.refresh();}else setError(r.message);});};
   return <form onSubmit={submit} className="space-y-3 border-t border-border pt-3">
     <Context data={data} employmentId={employmentId} date={date}><input type="hidden" name="correctionId" value={application.id}/><input type="hidden" name="stage" value={application.workflow?.currentStage??''}/></Context>
     {staged?<p className="text-xs text-muted-foreground">{t('frozenStage')}</p>:<div className="grid gap-3 sm:grid-cols-2">
@@ -83,7 +97,7 @@ export function AttendanceApplicationDecision({data,employmentId,date,applicatio
     <label className="block space-y-1 text-sm"><span>{t('administratorReason')}</span><input name="reason" required maxLength={500} disabled={disabled} className={inputCls}/></label>
     {data.processed&&<label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmPayrollRecalculation" required disabled={disabled}/>{t('payrollConsent')}</label>}
     <ErrorBanner message={error}/>{result&&<p role="status" className="text-sm text-primary">{result}</p>}
-    <div className="flex flex-wrap items-center justify-between gap-2">{children}<Button type="submit" disabled={disabled}>{t('correctApprove')}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-2">{children}<div className="flex gap-2"><Button type="submit" name="decision" value="reject" formNoValidate variant="outline" disabled={disabled}>{t('reject')}</Button><Button type="submit" disabled={disabled}>{t('correctApprove')}</Button></div></div>
     <p className="text-xs text-muted-foreground">{t('approvalHelp')}</p>
   </form>;
 }

@@ -3091,7 +3091,25 @@
       "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。",
       "locationUnavailableAllowed": "位置信息不可用 — 无需地理围栏。仍可上班或下班打卡。",
       "retryCamera": "重试相机",
-      "cameraBusy": "相机正在被使用或无法启动。请关闭其他使用相机的应用，然后选择“重试相机”。可选照片仍可跳过。"
+      "cameraBusy": "相机正在被使用或无法启动。请关闭其他使用相机的应用，然后选择“重试相机”。可选照片仍可跳过。",
+      "elapsedToday": "今日累计时间：{time}",
+      "elapsedHelp": "打卡时段累计时间，尚未扣除休息或应用薪资规则。",
+      "remove": "移除",
+      "requestRemoval": "申请移除",
+      "removalRequested": "已申请移除",
+      "removalRemark": "移除原因",
+      "removalHelp": "此操作需审批。最终批准前，打卡记录仍有效。原始记录和照片保留在审计历史中。",
+      "removalUnconfirmed": "结果尚不确定。请检查提交状态以安全重试同一申请。",
+      "geofenceEnforced": "已执行地理围栏校验",
+      "captureLocation": {
+        "denied": "位置权限被拒绝",
+        "unavailable": "位置不可用",
+        "timeout": "位置获取超时",
+        "unsupported": "此设备不支持位置获取",
+        "unknown": "未记录位置"
+      },
+      "locationTimeout": "位置获取超时。请重试。",
+      "locationUnsupported": "此设备不支持获取位置。"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",
@@ -3490,7 +3508,15 @@
         "off_day": "非工作日",
         "rest_day": "休息日",
         "holiday": "公共假日"
-      }
+      },
+      "edit": "编辑",
+      "editSchedule": "编辑班次和日期类型",
+      "cancel": "取消",
+      "reject": "拒绝",
+      "rejectedSaved": "申请已拒绝。",
+      "noApplications": "此员工在该日期没有异常申请。",
+      "detected": "检测到：{type}。这是计算出的情况，与已提交的申请不同。",
+      "saveFailed": "无法确认保存。请刷新该日期后重试。"
     }
   },
   "org": {
@@ -18536,7 +18562,33 @@
       "administratorAmended": "管理员修订"
     },
     "hrApprover": "人事管理员",
-    "administratorAmendment": "管理员修订"
+    "administratorAmendment": "管理员修订",
+    "subtype": "子类型",
+    "subtypes": {
+      "absent": "缺勤",
+      "short_hours": "工时不足",
+      "incomplete_entry": "记录不完整",
+      "self_overtime": "自助加班",
+      "other": "其他更正",
+      "unknown": "未记录子类型"
+    },
+    "attendanceFrom": "考勤开始日期",
+    "attendanceTo": "考勤结束日期",
+    "selected": "已选择 {count} 项",
+    "approveSelected": "批准所选",
+    "rejectSelected": "拒绝所选",
+    "selectPage": "选择本页所有可处理项",
+    "selectEmployee": "选择 {name} 的申请",
+    "ineligible": "仅可选择其他员工的待处理申请。提交时会再次检查权限。",
+    "results": "处理结果",
+    "furtherApproval": "当前阶段已批准；仍需后续审批。",
+    "confirmSelected": "独立处理所选 {count} 项申请的当前审批阶段。不包含其他页面。",
+    "cancel": "取消",
+    "confirm": "确认",
+    "close": "关闭",
+    "bulkFailed": "无法确认处理结果。请刷新后重试。",
+    "hideFilters": "隐藏筛选",
+    "showFilters": "显示筛选"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

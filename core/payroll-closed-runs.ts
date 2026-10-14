@@ -77,10 +77,7 @@ export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: strin
     batch_id: string; status: 'processed' | 'closed'; pay_period: string;
     policy_config: PayrollPolicyConfig | null; attendance_cutoff_day: number | null;
   }[];
-  return rows.filter(row => {
-    const window = cutOffWindowFor('attendance', row.policy_config, { attendanceCutOffDay: row.attendance_cutoff_day }, row.pay_period);
-    return date >= window.start && date <= window.end;
-  }).map(row => ({ batchId: row.batch_id, status: row.status }));
+  return attendanceCoverage(rows,date);
 }
 
 /** Future-effective recurring schedules affect every later covered attendance window. */
@@ -103,4 +100,16 @@ export async function markPayrollForAttendanceChange(tx: Tx, ctx: SessionContext
       payload: { addedEmploymentIds: [employmentId] },
     });
   }
+}
+
+function attendanceCoverage(rows:{batch_id:string;status:'processed'|'closed';pay_period:string;policy_config:PayrollPolicyConfig|null;attendance_cutoff_day:number|null}[],date:string){
+  return rows.filter(row => {
+    const window = cutOffWindowFor('attendance', row.policy_config, { attendanceCutOffDay: row.attendance_cutoff_day }, row.pay_period);
+    return date >= window.start && date <= window.end;
+  }).map(row => ({ batchId: row.batch_id, status: row.status }));
+}
+/** Employee removal may inspect only their own coverage facts, never payslips or other employees. */
+export async function lockPayrollForOwnAttendanceRemoval(tx:Tx,employmentId:string,date:string){
+  const rows=await tx.execute(sql`select * from app.own_attendance_removal_payroll_protection(${employmentId}::uuid)`) as unknown as Parameters<typeof attendanceCoverage>[0];
+  return attendanceCoverage(rows,date);
 }

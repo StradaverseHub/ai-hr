@@ -1,8 +1,9 @@
 'use server';
+import { attendanceHistoryReturn } from '@/lib/attendance-history-filter';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { scopedAdmin } from '@/lib/scope';
-import { attendanceApplicationDetail, decideAttendanceCorrection, cancelAttendanceApplication } from '@/packs/attendance/service';
+import { decideAttendanceHistorySelection, type AttendanceHistorySelection, attendanceApplicationDetail, decideAttendanceCorrection, cancelAttendanceApplication } from '@/packs/attendance/service';
 import { publicErrorMessage } from '@/lib/public-error';
 export async function attendanceHistoryAction(form: FormData) {
     const { s, scopeIds } = await scopedAdmin(), id = String(form.get('id') ?? ''), action = String(form.get('action') ?? ''), reason = String(form.get('reason') ?? '').trim();
@@ -30,5 +31,14 @@ export async function attendanceHistoryAction(form: FormData) {
     for (const path of ['/attendance/application-history', '/attendance/request-status', '/attendance/plan-ot', '/approvals', '/attendance'])
         revalidatePath(path);
     revalidatePath(`/attendance/application-history/${id}`);
-    redirect(`/attendance/application-history/${id}${error ? '?error=' + encodeURIComponent(error) : ''}`);
+    const q=new URLSearchParams({returnTo:attendanceHistoryReturn(String(form.get('returnTo')??''))});if(error)q.set('error',error);
+    redirect(`/attendance/application-history/${id}?${q}`);
+}
+
+export async function attendanceHistoryBulkAction(p:{items:AttendanceHistorySelection[];decision:'approved'|'rejected';reason:string}){
+  const {s,scopeIds}=await scopedAdmin();
+  const results=await decideAttendanceHistorySelection(s,scopeIds,p);
+  for(const path of ['/attendance/application-history','/attendance/request-status','/attendance/requests','/attendance/plan-ot','/approvals','/attendance','/attendance/individual','/attendance/daily','/attendance/my-records'])revalidatePath(path);
+  revalidatePath('/attendance/application-history/[id]','page');revalidatePath('/attendance/individual/[date]','page');
+  return results;
 }

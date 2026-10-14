@@ -1,3 +1,4 @@
+import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '../lib/attendance-removal';
 /** Employee web command. A private capture and the existing attendance writer share one transaction. */
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
@@ -25,7 +26,7 @@ export class AttendancePhotoRequiredError extends Error {}
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device); photo/mime are now
 // OPTIONAL — whether one is required, optional or ignored is decided server-side from the employee's own
 // attendance_photo_setting, never from what the client chooses to send.
-export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number | null; lng: number | null; accuracy: number | null; photo?: Buffer; mime?: string; clockContext?: string };
+export type ClockIntent = { action: 'in' | 'out'; requestId: string; lat: number | null; lng: number | null; accuracy: number | null; photo?: Buffer; mime?: string; clockContext?: string; locationStatus?: LocationCaptureStatus };
 /** Missing location is explicit, never a numeric placeholder or a partial coordinate pair. */
 function clockLocation(p: Pick<ClockIntent, 'lat' | 'lng' | 'accuracy'>) {
   if (p.lat === null && p.lng === null && p.accuracy === null) return null;
@@ -82,6 +83,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   if (p.clockContext != null && p.clockContext !== clockCommandContext(ctx.tenantId, ctx.userId, me.employmentId)) throw new ClockContextChangedError('Sign in to the original employee account to recover this clocking.');
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
   const point = clockLocation(p);
+  if(p.locationStatus!=null&&(!LOCATION_CAPTURE_STATUSES.includes(p.locationStatus)||(p.locationStatus==='recorded')!==!!point))throw new ClockLocationError('Location status must agree with the supplied coordinates.');
   if (native && !point) throw new ClockLocationError('Native clocking requires a sampled location');
   return withTenant(ctx, async tx => {
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
@@ -97,7 +99,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     const photoSetting = empRow?.attendancePhotoSetting ?? 'not_required';
     if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError();
     const photo = photoSetting !== 'not_required' && p.photo ? await decodeClockPhoto(p.photo, p.mime ?? 'image/jpeg') : null;
-    const commandDigest = createHash('sha256').update(JSON.stringify([p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? ''])).digest('hex');
+    const commandDigest = createHash('sha256').update(JSON.stringify([p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? '',...(p.locationStatus?[p.locationStatus]:[])])).digest('hex');
     const [accepted] = await tx.select().from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, me.employmentId), eq(attendanceClockCapture.requestId, p.requestId))).limit(1);
     if (accepted) {
       if (accepted.commandDigest !== commandDigest) throw new ClockConflictError('This request already recorded a different clock action');
@@ -145,7 +147,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     // r430 — the six photo columns are spread ONLY when a photo exists (nullable since 0520; CHECK enforces
     // they land null together). deviceId is never set any more for a Web Clocking capture (nullable since
     // 0520 too) — there is no registered device to attribute it to.
-    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(nativeDevice ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, commandDigest }).returning();
+    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(nativeDevice ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, locationCaptureStatus:p.locationStatus??(point?'recorded':null),geofencingRequired:geo.enforced,commandDigest }).returning();
     // r430 — deviceGateExempt:true: Web Clocking's own self-capture path is fully exempt from the
     // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
     // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
@@ -201,6 +203,7 @@ export async function purgeClockPhoto(ctx: SessionContext, captureId: string) {
  * shows, so this widens nothing. An id the caller may not see simply has no entry.
  */
 export type ClockCaptureEvidence = {
+  locationStatus: LocationCaptureStatus|null;
   captureId: string;
   geofenced: boolean;
   locationName: string | null;
@@ -218,6 +221,7 @@ export async function clockCaptureEvidence(ctx: SessionContext, captureIds: read
   const rows = await withTenant(ctx, (tx) =>
     tx
       .select({
+        locationStatus: attendanceClockCapture.locationCaptureStatus,
         captureId: attendanceClockCapture.id,
         clockingLocationId: attendanceClockCapture.clockingLocationId,
         locationName: clockingLocation.name,
@@ -233,6 +237,7 @@ export async function clockCaptureEvidence(ctx: SessionContext, captureIds: read
   );
   for (const r of rows) {
     out.set(r.captureId, {
+      locationStatus:r.locationStatus,
       captureId: r.captureId,
       geofenced: r.clockingLocationId != null,
       locationName: r.locationName,

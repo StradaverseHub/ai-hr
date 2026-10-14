@@ -3091,7 +3091,25 @@
       "accountChanged": "Akaun pekerja yang dilog masuk telah berubah. Log masuk ke akaun asal untuk menyemak rekod waktu ini.",
       "locationUnavailableAllowed": "Lokasi tidak tersedia — geofencing tidak diperlukan. Anda boleh merekod masuk atau keluar.",
       "retryCamera": "Cuba kamera semula",
-      "cameraBusy": "Kamera sedang digunakan atau tidak dapat dimulakan. Tutup aplikasi lain yang menggunakannya, kemudian pilih Cuba kamera semula. Foto pilihan masih boleh dilangkau."
+      "cameraBusy": "Kamera sedang digunakan atau tidak dapat dimulakan. Tutup aplikasi lain yang menggunakannya, kemudian pilih Cuba kamera semula. Foto pilihan masih boleh dilangkau.",
+      "elapsedToday": "Masa berlalu hari ini: {time}",
+      "elapsedHelp": "Tempoh masa direkodkan, sebelum potongan rehat dan peraturan gaji.",
+      "remove": "Buang",
+      "requestRemoval": "Mohon pembuangan",
+      "removalRequested": "Pembuangan dimohon",
+      "removalRemark": "Catatan pembuangan",
+      "removalHelp": "Ini memohon kelulusan. Catatan kekal aktif sehingga kelulusan akhir. Rekod asal dan foto kekal dalam sejarah audit.",
+      "removalUnconfirmed": "Keputusan belum pasti. Semak penghantaran untuk mencuba permohonan yang sama dengan selamat.",
+      "geofenceEnforced": "Geopagar dikuatkuasakan",
+      "captureLocation": {
+        "denied": "Kebenaran lokasi ditolak",
+        "unavailable": "Lokasi tidak tersedia",
+        "timeout": "Rakaman lokasi tamat masa",
+        "unsupported": "Lokasi tidak disokong pada peranti ini",
+        "unknown": "Lokasi tidak direkodkan"
+      },
+      "locationTimeout": "Rakaman lokasi tamat masa. Cuba semula.",
+      "locationUnsupported": "Peranti ini tidak menyokong rakaman lokasi."
     },
     "colOtFlat": "OT Rata",
     "colOt00": "OT 0.0 (tanpa bayaran)",
@@ -3490,7 +3508,15 @@
         "off_day": "Hari Tidak Bekerja",
         "rest_day": "Hari Rehat",
         "holiday": "Cuti Umum"
-      }
+      },
+      "edit": "Edit",
+      "editSchedule": "Edit syif dan jenis hari",
+      "cancel": "Batal",
+      "reject": "Tolak",
+      "rejectedSaved": "Permohonan ditolak.",
+      "noApplications": "Tiada permohonan ketidakaturan bagi pekerja dan tarikh ini.",
+      "detected": "Dikesan: {type}. Ini keadaan yang dikira, berasingan daripada permohonan dihantar.",
+      "saveFailed": "Simpanan tidak dapat disahkan. Muat semula hari sebelum mencuba lagi."
     }
   },
   "org": {
@@ -18536,7 +18562,33 @@
       "administratorAmended": "Pindaan pentadbir"
     },
     "hrApprover": "Pentadbir HR",
-    "administratorAmendment": "Pindaan pentadbir"
+    "administratorAmendment": "Pindaan pentadbir",
+    "subtype": "Subjenis",
+    "subtypes": {
+      "absent": "Tidak hadir",
+      "short_hours": "Jam tidak mencukupi",
+      "incomplete_entry": "Catatan tidak lengkap",
+      "self_overtime": "Lebih masa sendiri",
+      "other": "Pembetulan lain",
+      "unknown": "Subjenis tidak direkodkan"
+    },
+    "attendanceFrom": "Tarikh mula kehadiran",
+    "attendanceTo": "Tarikh akhir kehadiran",
+    "selected": "{count} dipilih",
+    "approveSelected": "Luluskan pilihan",
+    "rejectSelected": "Tolak pilihan",
+    "selectPage": "Pilih semua yang layak di halaman ini",
+    "selectEmployee": "Pilih permohonan {name}",
+    "ineligible": "Hanya permohonan menunggu pekerja lain boleh dipilih. Kebenaran disemak semula semasa dihantar.",
+    "results": "Keputusan tindakan",
+    "furtherApproval": "Peringkat diluluskan; kelulusan lanjut diperlukan.",
+    "confirmSelected": "Proses {count} permohonan dipilih secara berasingan pada peringkat semasa. Halaman lain tidak disertakan.",
+    "cancel": "Batal",
+    "confirm": "Sahkan",
+    "close": "Tutup",
+    "bulkFailed": "Keputusan tidak dapat disahkan. Muat semula sebelum mencuba lagi.",
+    "hideFilters": "Sembunyikan penapis",
+    "showFilters": "Tunjukkan penapis"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",

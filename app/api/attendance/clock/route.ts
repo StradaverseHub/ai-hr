@@ -1,3 +1,4 @@
+import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '@/lib/attendance-removal';
 import { clockApiSession } from '@/lib/attendance-clock-session';
 import { isSameOriginBrowserRequest } from '@/lib/request-origin';
 import { ClockPhotoError } from '@/lib/attendance-photo';
@@ -28,9 +29,9 @@ export async function POST(request: Request) {
     // r430 — deviceToken is GONE from the contract entirely (the client no longer sends one); 'photo' is
     // now OPTIONAL (0 or 1) — whether one is required is decided server-side from the employee's own
     // attendance_photo_setting (core/attendance-clock.ts), never from whether the client sent one.
-    const keys=['action','requestId','lat','lng','accuracy','photo','clockContext'];
+    const keys=['locationStatus','action','requestId','lat','lng','accuracy','photo','clockContext'];
     if([...data.keys()].some(k=>!keys.includes(k))) throw new InvalidInput('Invalid request');
-    for (const k of keys) { const n=data.getAll(k).length; if (['photo','clockContext','lat','lng','accuracy'].includes(k) ? n>1 : n!==1) throw new InvalidInput('Invalid request'); }
+    for (const k of keys) { const n=data.getAll(k).length; if (['locationStatus','photo','clockContext','lat','lng','accuracy'].includes(k) ? n>1 : n!==1) throw new InvalidInput('Invalid request'); }
     if (!['in','out'].includes(String(data.get('action'))) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(data.get('requestId')))) throw new InvalidInput('Invalid intent');
     const clockContext=data.get('clockContext');
     if(clockContext!=null && (typeof clockContext!=='string' || !/^[0-9a-f]{64}$/.test(clockContext)))throw new InvalidInput('Invalid employee context');
@@ -43,7 +44,9 @@ export async function POST(request: Request) {
     const location = suppliedLocation.every(Boolean)
       ? {lat:Number(data.get('lat')),lng:Number(data.get('lng')),accuracy:Number(data.get('accuracy'))}
       : {lat:null,lng:null,accuracy:null};
-    const receipt=await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),...location,clockContext:typeof clockContext==='string'?clockContext:undefined,photo:photo?Buffer.from(await photo.arrayBuffer()):undefined,mime:photo?photo.type:undefined});
+    const locationStatus=data.get('locationStatus');
+    if(locationStatus!=null&&(typeof locationStatus!=='string'||!LOCATION_CAPTURE_STATUSES.includes(locationStatus as LocationCaptureStatus)))throw new InvalidInput('Invalid location status');
+    const receipt=await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),...location,locationStatus:locationStatus as LocationCaptureStatus|undefined??undefined,clockContext:typeof clockContext==='string'?clockContext:undefined,photo:photo?Buffer.from(await photo.arrayBuffer()):undefined,mime:photo?photo.type:undefined});
     return Response.json({receipt},{headers:{'Cache-Control':'private, no-store'}});
   } catch(error) {
     const known=error instanceof InvalidInput || error instanceof ClockContextChangedError || error instanceof ClockPhotoError || error instanceof CorrectedClockConflictError || error instanceof ClockConflictError || error instanceof AttendancePhotoRequiredError || error instanceof OutsideGeofenceError || error instanceof GeolocationRequiredError || error instanceof ClockLocationError;

@@ -1,4 +1,7 @@
 'use server';
+import { requestOwnClockRemoval } from '@/packs/attendance/service';
+import { revalidatePath } from 'next/cache';
+
 
 /**
  * Server actions for Attendance > Clock in/out (feedback 5249d43f). Same engine as the /me clock card —
@@ -81,3 +84,9 @@ export async function clockOutAction(_formData: FormData) {
 // is deleted rather than left unreferenced. core/attendance-device.ts's registerDevice/revokeDevice/
 // listRegisteredDevices/enforceDeviceGateTx are UNCHANGED — the admin Attendance Policy screen and the
 // policy-gated admin Daily path still use them.
+
+export async function requestClockRemovalAction(input:{punchId:string;requestId:string;baseline:string;reason:string;clockContext:string}){
+  const session=await getSession();
+  try{const result=await requestOwnClockRemoval(session,input);revalidatePath('/attendance/clock');revalidatePath('/attendance/request-status');revalidatePath('/attendance/application-history');return {ok:true as const,...result};}
+  catch(error){return {ok:false as const,message:publicErrorMessage(error)};}
+}

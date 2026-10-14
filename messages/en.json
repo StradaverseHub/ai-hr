@@ -3091,7 +3091,25 @@
       "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking.",
       "locationUnavailableAllowed": "Location unavailable — geofencing not required. You can clock in or out.",
       "retryCamera": "Try camera again",
-      "cameraBusy": "The camera is in use or could not start. Close other apps using it, then select Try camera again. You may still skip an optional photo."
+      "cameraBusy": "The camera is in use or could not start. Close other apps using it, then select Try camera again. You may still skip an optional photo.",
+      "elapsedToday": "Elapsed time today: {time}",
+      "elapsedHelp": "Elapsed clocked intervals, before break deductions and payroll rules.",
+      "remove": "Remove",
+      "requestRemoval": "Request removal",
+      "removalRequested": "Removal requested",
+      "removalRemark": "Removal remark",
+      "removalHelp": "This requests approval. The clocking stays active until final approval. The original record and photo remain in the audit history.",
+      "removalUnconfirmed": "The result is uncertain. Check submission to safely retry this same request.",
+      "geofenceEnforced": "Geofencing enforced",
+      "captureLocation": {
+        "denied": "Location permission denied",
+        "unavailable": "Location unavailable",
+        "timeout": "Location capture timed out",
+        "unsupported": "Location unsupported on this device",
+        "unknown": "Location not recorded"
+      },
+      "locationTimeout": "Location capture timed out. Retry location.",
+      "locationUnsupported": "This device does not support location capture."
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",
@@ -3490,7 +3508,15 @@
         "off_day": "Off Day",
         "rest_day": "Rest Day",
         "holiday": "Public Holiday"
-      }
+      },
+      "edit": "Edit",
+      "editSchedule": "Edit shift and day type",
+      "cancel": "Cancel",
+      "reject": "Reject",
+      "rejectedSaved": "Request rejected.",
+      "noApplications": "No irregularity requests for this employee and date.",
+      "detected": "Detected: {type}. This is a calculated condition, separate from submitted requests.",
+      "saveFailed": "The save could not be confirmed. Reload the day before trying again."
     }
   },
   "org": {
@@ -18536,7 +18562,33 @@
       "administratorAmended": "Administrator amendment"
     },
     "hrApprover": "HR administrators",
-    "administratorAmendment": "Administrator amendment"
+    "administratorAmendment": "Administrator amendment",
+    "subtype": "Subtype",
+    "subtypes": {
+      "absent": "Absent",
+      "short_hours": "Short Hours",
+      "incomplete_entry": "Incomplete Entry",
+      "self_overtime": "Self Overtime",
+      "other": "Other correction",
+      "unknown": "Subtype not recorded"
+    },
+    "attendanceFrom": "Attendance start date",
+    "attendanceTo": "Attendance end date",
+    "selected": "{count} selected",
+    "approveSelected": "Approve selected",
+    "rejectSelected": "Reject selected",
+    "selectPage": "Select all eligible on this page",
+    "selectEmployee": "Select request for {name}",
+    "ineligible": "Only pending requests for other employees can be selected. Permissions are checked again when submitted.",
+    "results": "Decision results",
+    "furtherApproval": "Stage approved; further approval required.",
+    "confirmSelected": "Process {count} selected requests independently at their current approval stage. Other pages are not included.",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close",
+    "bulkFailed": "The decisions could not be confirmed. Refresh the list before retrying.",
+    "hideFilters": "Hide filters",
+    "showFilters": "Show filters"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
