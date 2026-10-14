@@ -37,6 +37,11 @@ export async function applyDevelopmentSuggestionsAction(f:FormData,selected:impo
 
 const destination=(f:FormData,fallback:string)=>assessmentReturnPath(f.get('returnTo'),fallback);
 const withError=(url:string,error:unknown)=>`${url}${url.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(error))}`;
+export async function assessmentCompetencyInsightAction(reviewId:string,generate=false){
+ const s=await getSession();
+ try{return await perf.getAssessmentCompetencyInsight(s,z.uuid().parse(reviewId),{generate:z.boolean().parse(generate)});}
+ catch(error){return {error:publicErrorMessage(error)};}
+}
 export async function assessmentInsightAction(reviewId:string,contextId:string,generate=false){
  const s=await getSession();
  try{return await perf.getAssessmentPerformanceInsight(s,z.uuid().parse(reviewId),z.uuid().parse(contextId),{generate:z.boolean().parse(generate)});}

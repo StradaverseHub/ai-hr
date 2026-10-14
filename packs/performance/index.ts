@@ -122,6 +122,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_calibration_conversation', note: 'actor-private cohort conversation and held department edits' },
     { table: 'performance_assessment_ai_use', note: 'successful draft usage with per-actor field limits at Malaysia midnight' },
     { table: 'performance_assessment_file_text', note: 'derived file text cache; visibility always follows the native attachment' },
+    { table: 'performance_assessment_summary', note: 'reviewer-owned summary cache of submitted competency evidence' },
     { table: 'performance_assessment_insight', note: 'reviewer insight cache; live assignment and submitted-fact fingerprint are rechecked' },
     { table: 'performance_assessment_reviewer_remark', note: 'each approver owns their overall remark; confirmed authorship is retained' },
     { table: 'performance_kpi_library', note: 'scoped KPI definitions and scoring templates; ADR-0103' },

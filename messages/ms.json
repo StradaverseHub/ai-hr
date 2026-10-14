@@ -18329,6 +18329,11 @@
       "saveFirst": "Simpan dahulu untuk menukar jadual automatik. Pratonton dan Hantar sekarang menggunakan tugasan semasa.",
       "saved": "Jadual peringatan disimpan.",
       "result": "Dibariskan: {queued}; dilangkau: {skipped}; pratonton: {dry}."
+    },
+    "competencyInsight": {
+      "title": "Rumusan kompetensi",
+      "help": "Semak penilaian kendiri yang dihantar oleh pekerja dan alasan bagi jawapan mereka. Anda menentukan penilaian.",
+      "none": "Pekerja belum menghantar penilaian kompetensi mereka."
     }
   },
   "allowanceV2": {

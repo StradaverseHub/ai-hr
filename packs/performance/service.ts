@@ -45,3 +45,5 @@ export { suggestAssessmentCareerPlan,applyAssessmentCareerPlan } from './onehr/c
 export { getAssessmentReminders,saveAssessmentReminderRules,queueAssessmentReminders,assessmentReminderRecipientsTx,sweepAssessmentReminders } from './onehr/reminder-service';
 
 export { updateAssessmentFramework } from './onehr/service';
+
+export {getAssessmentCompetencyInsight} from './onehr/competency-insight-service';

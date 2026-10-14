@@ -1,0 +1,3429 @@
+[
+  {
+    "name": "0-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 4,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Planning, Delivery.",
+      "verdict": "not_justified",
+      "verdict_why": "They marked all of their answers Demonstrate with no reason for any of them.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level.",
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "1-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 4,
+      "n_reasoned": 4,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Planning, Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "2-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 4,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Planning, Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "not_justified",
+      "verdict_why": "They marked all of their answers Demonstrate with no reason for any of them.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate.",
+        "Ask Nadia for an example of Planning at the next level.",
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "3-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning"
+      ],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Planning. Still developing at the next level: Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "4-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 3,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Planning. Still developing at the next level: Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "5-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning"
+      ],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Planning. Still developing at the next level: Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "not_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate. The next-level claims for Planning come with no real reason.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate.",
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "6-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning"
+      ],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. At the next level too: Planning. Still developing: Delivery. Marked the next level but not their current one: Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "7-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 3,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. At the next level too: Planning. Still developing: Delivery. Marked the next level but not their current one: Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "8-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning"
+      ],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. At the next level too: Planning. Still developing: Delivery. Marked the next level but not their current one: Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "not_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate. The next-level claims for Planning come with no real reason.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate.",
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "9-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning"
+      ],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. At the next level too: Planning. Still developing: Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "10-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 2,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. At the next level too: Planning. Still developing: Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "11-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [
+        "Planning"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Planning"
+      ],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. At the next level too: Planning. Still developing: Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "not_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate. The next-level claims for Planning come with no real reason.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate.",
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "12-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Delivery. Still developing at the next level: Planning.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "13-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 3,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Delivery. Still developing at the next level: Planning. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "14-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. At the next level too: Delivery. Still developing at the next level: Planning. Their remark: “I am still developing Planning.”",
+      "verdict": "not_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate. The next-level claims for Delivery come with no real reason.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate.",
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "15-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [],
+      "next_dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. Still developing at the next level: Planning, Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": []
+    }
+  },
+  {
+    "name": "16-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [],
+      "next_dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 2,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. Still developing at the next level: Planning, Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "17-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 2,
+      "demo": [
+        "Planning",
+        "Delivery"
+      ],
+      "dev": [],
+      "both": [],
+      "next_dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 2 of 2 competencies at their current level. Demonstrate: Planning, Delivery. Still developing at the next level: Planning, Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate."
+      ]
+    }
+  },
+  {
+    "name": "18-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. Still developing at the next level: Planning. Still developing: Delivery. Marked the next level but not their current one: Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "19-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 2,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. Still developing at the next level: Planning. Still developing: Delivery. Marked the next level but not their current one: Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "20-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. Still developing at the next level: Planning. Still developing: Delivery. Marked the next level but not their current one: Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "not_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate. The next-level claims for Delivery come with no real reason.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate.",
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "21-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. Still developing at the next level: Planning. Still developing: Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": []
+    }
+  },
+  {
+    "name": "22-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 1,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. Still developing at the next level: Planning. Still developing: Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "23-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Planning"
+      ],
+      "dev": [
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [
+        "Planning"
+      ],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": [
+        "Planning"
+      ]
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Planning. Still developing at the next level: Planning. Still developing: Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "Their remark says they are still developing Planning, which they marked Demonstrate.",
+      "discuss": [
+        "Ask Nadia about Planning: their remark says they are still developing it, but they marked Demonstrate."
+      ]
+    }
+  },
+  {
+    "name": "24-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. At the next level too: Delivery. Still developing: Planning. Marked the next level but not their current one: Planning.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "25-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 3,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. At the next level too: Delivery. Still developing: Planning. Marked the next level but not their current one: Planning. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "26-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 3,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. At the next level too: Delivery. Still developing: Planning. Marked the next level but not their current one: Planning. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "27-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. Still developing at the next level: Delivery. Still developing: Planning. Marked the next level but not their current one: Planning.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "28-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 2,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. Still developing at the next level: Delivery. Still developing: Planning. Marked the next level but not their current one: Planning. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "29-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. Still developing at the next level: Delivery. Still developing: Planning. Marked the next level but not their current one: Planning. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "30-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Planning",
+        "Delivery"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Planning, Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning and Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level.",
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "31-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Planning",
+        "Delivery"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 2,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Planning, Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "32-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Planning",
+        "Delivery"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Planning",
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Planning, Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning and Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level.",
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "33-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Planning.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "34-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 1,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Planning. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "35-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Planning"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Planning"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Planning. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Planning come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": [
+        "Ask Nadia for an example of Planning at the next level."
+      ]
+    }
+  },
+  {
+    "name": "36-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. At the next level too: Delivery. Still developing: Planning.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "37-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 2,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. At the next level too: Delivery. Still developing: Planning. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "38-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [
+        "Delivery"
+      ],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 2,
+      "n_reasoned": 0,
+      "both_unreasoned": [
+        "Delivery"
+      ],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. At the next level too: Delivery. Still developing: Planning. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "39-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. Still developing at the next level: Delivery. Still developing: Planning.",
+      "verdict": "partly_justified",
+      "verdict_why": "Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": []
+    }
+  },
+  {
+    "name": "40-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 1,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. Still developing at the next level: Delivery. Still developing: Planning. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "41-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "yes",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 1,
+      "demo": [
+        "Delivery"
+      ],
+      "dev": [
+        "Planning"
+      ],
+      "both": [],
+      "next_dev": [
+        "Delivery"
+      ],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 1 of 2 competencies at their current level. Demonstrate: Delivery. Still developing at the next level: Delivery. Still developing: Planning. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": []
+    }
+  },
+  {
+    "name": "42-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is missing.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "43-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 1,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "44-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "yes",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [
+        "Delivery"
+      ],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 1,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [
+        "Delivery"
+      ],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Marked the next level but not their current one: Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "The next-level claims for Delivery come with no reason. Most of their Demonstrate answers have no reason behind them. Their overall remark is brief.",
+      "discuss": [
+        "Ask Nadia for an example of Delivery at the next level."
+      ]
+    }
+  },
+  {
+    "name": "45-none",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "",
+      "n_answers": 4,
+      "n_demo": 0,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery.",
+      "verdict": "partly_justified",
+      "verdict_why": "Their overall remark is missing.",
+      "discuss": []
+    }
+  },
+  {
+    "name": "46-reasoned",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": "I checked the agreed outcome each week."
+      }
+    ],
+    "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.",
+      "n_answers": 4,
+      "n_demo": 0,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Their remark: “I planned the delivery with the team and checked each outcome against our agreed needs throughout the period before discussing improvements.”",
+      "verdict": "well_justified",
+      "verdict_why": "Their Demonstrate claims come with reasons, and their remark covers the period.",
+      "discuss": [
+        "The claims are backed by their reasons -- you can confirm them as answered."
+      ]
+    }
+  },
+  {
+    "name": "47-contradiction",
+    "rows": [
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Planning behaviour",
+        "skillTitle": "Planning",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": false,
+        "self": "no",
+        "selfRemark": ""
+      },
+      {
+        "text": "Delivery behaviour",
+        "skillTitle": "Delivery",
+        "principle": "Technical",
+        "future": true,
+        "self": "no",
+        "selfRemark": ""
+      }
+    ],
+    "remark": "I am still developing Planning.",
+    "facts": {
+      "total": 2,
+      "demonstrated": 0,
+      "demo": [],
+      "dev": [
+        "Planning",
+        "Delivery"
+      ],
+      "both": [],
+      "next_dev": [],
+      "next_only": [],
+      "remark": "I am still developing Planning.",
+      "n_answers": 4,
+      "n_demo": 0,
+      "n_reasoned": 0,
+      "both_unreasoned": [],
+      "next_unreasoned": [],
+      "contradicted": []
+    },
+    "expected": {
+      "v": 2,
+      "paragraph": "By their own answers, Nadia demonstrates 0 of 2 competencies at their current level. Still developing: Planning, Delivery. Their remark: “I am still developing Planning.”",
+      "verdict": "partly_justified",
+      "verdict_why": "Their overall remark is brief.",
+      "discuss": []
+    }
+  }
+]

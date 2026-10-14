@@ -182,6 +182,31 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:2,achievementPct:100})).rejects.toThrow(/archived/);
   });
+  it('summarizes submitted competency self-claims only, caches explicitly and hides the cache from other actors',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Private competency draft'},'skill-2':{answer:'no',remark:''}},remark:'Private competency reflection'});
+    expect(await perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true})).toMatchObject({status:'pending',pending:false,data:null});expect(generateDraft).not.toHaveBeenCalled();
+    const [hidden]=await withTenant(mgr,tx=>tx.execute<{value:unknown}>(sql`select app.assessment_competency_source(${reviewId}::uuid) as value`));expect(hidden.value).toMatchObject({competencies:[],remark:''});
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work. Contact secret@fixture.test.');
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Manager-only assessment canary'},'skill-2':{answer:'yes',remark:'Manager-only assessment canary'}},true,'Manager-only overall canary');
+    expect(await perf.getAssessmentCompetencyInsight(mgr,reviewId)).toMatchObject({status:'reviewed',pending:true,data:null});expect(generateDraft).not.toHaveBeenCalled();
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({paragraph:'Their answers show they are still developing.',verdict:'well_justified',discuss:[]}));
+    const generated=await perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true});expect(generated).toMatchObject({source:'ai',pending:false,data:{verdict:'partly_justified'}});expect(generateDraft).toHaveBeenCalledOnce();
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).not.toContain('Manager-only');expect(prompt).not.toContain('Private competency');expect(prompt).not.toContain('secret@fixture.test');
+    expect(await perf.getAssessmentCompetencyInsight(mgr,reviewId)).toEqual(generated);expect(generateDraft).toHaveBeenCalledOnce();
+    for(const actor of [self,peers[0].ctx]){await expect(perf.getAssessmentCompetencyInsight(actor,reviewId)).rejects.toThrow(/not assigned/);expect(await withTenant(actor,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);}
+    const other=await seedBase();await setModule(other.tenantId,'performance','active');await expect(perf.getAssessmentCompetencyInsight(await entitledCtx(other),reviewId)).rejects.toThrow(/not assigned/);
+  });
+  it('uses a plain competency summary when assistance is off and refuses changed access during generation',async()=>{
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work.');
+    const group={...a,grants:[{role:'hr_admin',companyId:null}]};vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    await perf.setAssessmentAiSwitch(group,'tc',false);expect(await perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true})).toMatchObject({source:'plain',data:{verdict:'partly_justified'}});expect(generateDraft).not.toHaveBeenCalled();
+    await perf.setAssessmentAiSwitch(group,'tc',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(group,'tc',false);return JSON.stringify({paragraph:'Their answers show they are still developing.'});});
+    await expect(perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true})).rejects.toThrow(/facts or access changed/);
+    const [preserved]=await owner.db.select().from(schema.assessmentSummary).where(eq(schema.assessmentSummary.reviewId,reviewId));expect(preserved.source).toBe('plain');
+    await perf.setAssessmentAiSwitch(group,'tc',true);vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.performanceReview).set({reviewerEmploymentId:peers[0].employmentId}).where(eq(schema.performanceReview.id,reviewId));return JSON.stringify({paragraph:'Their answers show they are still developing.'});});
+    await expect(perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true})).rejects.toThrow(/not assigned/);expect(await withTenant(mgr,tx=>tx.select().from(schema.assessmentSummary))).toEqual([]);
+  });
   it('generates adjudicated insights explicitly, reuses current cache and discards a provider reply after reviewer access is revoked',async()=>{
     await complete();const source=await perf.getAssessmentInsightSource(mgr,reviewId),title=source.facts.rows[0].kpi;
     const raw=JSON.stringify({paragraph:'Their result met target, and their note explains the period.',overall:'Their note explains the result.',verdict:'well_justified',verdict_why:'Their note explains the result.',kpis:[{kpi:title,read:'The result met target.',evidence:'none',evidence_note:'',justified:'yes',why:'Their note explains the result.'}],discuss:[]});

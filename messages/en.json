@@ -18329,6 +18329,11 @@
       "saveFirst": "Save first to change the automatic schedule. Preview and Send now use current work.",
       "saved": "Reminder schedule saved.",
       "result": "Queued: {queued}; skipped: {skipped}; preview: {dry}."
+    },
+    "competencyInsight": {
+      "title": "Competency insight",
+      "help": "Review the employee’s submitted self-assessment and the reasons behind their answers. You decide the assessment.",
+      "none": "The employee has not submitted their competency assessment yet."
     }
   },
   "allowanceV2": {

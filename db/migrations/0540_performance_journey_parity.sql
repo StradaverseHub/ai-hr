@@ -1618,3 +1618,35 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_refresh_framework() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER assessment_framework_projection AFTER UPDATE OF policy ON performance_onehr_cycle FOR EACH ROW EXECUTE FUNCTION app.assessment_refresh_framework();
+
+--> statement-breakpoint
+-- Only submitted self-claims enter the manager's competency insight. No draft, manager call or rater identity.
+CREATE FUNCTION app.assessment_competency_source(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('name',p.full_name,'status',r.competency_status,
+  'remark',CASE WHEN r.competency_status IN ('submitted','reviewed') THEN r.competency_self_remark ELSE '' END,
+  'competencies',CASE WHEN r.competency_status IN ('submitted','reviewed') THEN coalesce((SELECT jsonb_agg(jsonb_build_object('text',s->>'text','skillTitle',coalesce(s->>'skillTitle',s->>'text'),'principle',s->>'principle','future',(s->>'future')::boolean,'self',s->'self','selfRemark',coalesce(s->>'selfRemark','')) ORDER BY ord) FROM jsonb_array_elements(r.competencies) WITH ORDINALITY q(s,ord)),'[]'::jsonb) ELSE '[]'::jsonb END)
+ FROM performance_onehr_review r JOIN performance_onehr_cycle c ON c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id
+ JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id)
+  AND app.onehr_manager(r.review_id) AND app.assessment_review_participates(r.review_id) AND coalesce((c.policy->'modules'->>'tm')::boolean,false)
+$$;
+REVOKE ALL ON FUNCTION app.assessment_competency_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_competency_source(uuid) TO ai_hr_app;
+CREATE TABLE performance_assessment_summary (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),review_id uuid NOT NULL REFERENCES performance_onehr_review(review_id),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind='tc'),fingerprint text NOT NULL CHECK(fingerprint ~ '^[a-f0-9]{64}$'),
+ source text NOT NULL CHECK(source IN ('plain','ai')),data jsonb NOT NULL CHECK(jsonb_typeof(data)='object' AND octet_length(data::text)<=40000),
+ updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(review_id,actor_user_id,kind)
+);
+ALTER TABLE performance_assessment_summary ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_summary FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON performance_assessment_summary TO ai_hr_app;
+CREATE POLICY assessment_summary_access ON performance_assessment_summary FOR ALL USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND kind='tc' AND (app.assessment_competency_source(review_id)->>'status') IN ('submitted','reviewed')) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND kind='tc' AND (app.assessment_competency_source(review_id)->>'status') IN ('submitted','reviewed'));
+CREATE FUNCTION app.assessment_summary_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_user_id IS DISTINCT FROM app.current_user_id() OR NEW.kind<>'tc' OR coalesce(app.assessment_competency_source(NEW.review_id)->>'status','') NOT IN ('submitted','reviewed') THEN RAISE EXCEPTION 'Invalid assessment summary actor or scope'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.kind IS DISTINCT FROM OLD.kind) THEN RAISE EXCEPTION 'Assessment summary identity is immutable'; END IF;
+ NEW.updated_at:=now();RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_summary_validate() FROM PUBLIC;
+CREATE TRIGGER assessment_summary_guard BEFORE INSERT OR UPDATE ON performance_assessment_summary FOR EACH ROW EXECUTE FUNCTION app.assessment_summary_validate();

@@ -18329,6 +18329,11 @@
       "saveFirst": "Lưu trước khi đổi lịch tự động. Xem trước và Gửi ngay dùng công việc hiện tại.",
       "saved": "Đã lưu lịch nhắc việc.",
       "result": "Xếp hàng: {queued}; bỏ qua: {skipped}; xem trước: {dry}."
+    },
+    "competencyInsight": {
+      "title": "Tóm tắt đánh giá năng lực",
+      "help": "Xem bản tự đánh giá đã nộp và lý do cho các câu trả lời của nhân viên. Bạn quyết định kết quả đánh giá.",
+      "none": "Nhân viên chưa nộp bản đánh giá năng lực."
     }
   },
   "allowanceV2": {
