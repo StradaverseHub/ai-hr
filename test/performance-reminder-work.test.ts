@@ -53,7 +53,7 @@ describe('current per-login assessment reminder summary',()=>{
  });
  it('hides a BG reviewer own assessment while keeping their pending colleague feedback',()=>{
   const g=graph();g.reviews[0].facts.resultsSubmitted=false;g.reviews[0].facts.competencyStatus='pending';
-  g.sessions=[{id:'bg',companyId:'company',tier:'bg',reviewerUserIds:['employee'],adminUserIds:[],lockedAt:null,performanceLockedAt:null,potentialLockedAt:null,entries:[{reviewId:'review',companyId:'company',personId:'employee-person',employmentId:'employee-job',performanceLocked:false,performanceReady:true}]}];
+  g.sessions=[{id:'bg',companyId:'company',tier:'bg',reviewerUserIds:['employee'],adminUserIds:[],lockedAt:null,performanceLockedAt:null,potentialLockedAt:null,entries:[{reviewId:'review',companyId:'company',personId:'employee-person',employmentId:'employee-job',performanceLocked:false,potentialLocked:false,frozen:false,decisions:[],performanceReady:true}]}];
   expect(assessmentReminderWork(g,companies,now).find(r=>r.userId==='employee')).toBeUndefined();
   g.reviews.push({...g.reviews[0],id:'other-review',personId:'other-person',employmentId:'other-job'});
   g.panels.push({id:'other-feedback',employmentId:'employee-job',reviewId:'other-review'});
@@ -61,7 +61,7 @@ describe('current per-login assessment reminder summary',()=>{
  });
  it('derives Group completion per person and independent HOD axes without emailing self-cohort names',()=>{
   const g=graph();g.reviews=[];g.panels=[];
-  const entry={reviewId:'review',companyId:'company',personId:'employee-person',employmentId:'employee-job',performanceLocked:true,performanceReady:true};
+  const entry={reviewId:'review',companyId:'company',personId:'employee-person',employmentId:'employee-job',performanceLocked:true,potentialLocked:false,frozen:false,decisions:[],performanceReady:true};
   g.sessions=[{id:'group',companyId:null,tier:'group',reviewerUserIds:['manager'],adminUserIds:[],lockedAt:null,performanceLockedAt:null,potentialLockedAt:null,entries:[entry]},{id:'hod',companyId:'company',tier:'hod',reviewerUserIds:['manager'],adminUserIds:[],lockedAt:null,performanceLockedAt:'confirmed',potentialLockedAt:null,entries:[entry,{...entry,reviewId:'own',personId:'manager-person'}]}];
   expect(assessmentReminderWork(g,companies,now).find(r=>r.userId==='manager')?.tasks).toEqual([{key:'hod_potential',count:1,closesAt:null}]);
   g.sessions[0].entries.push({...entry,reviewId:'remaining',performanceLocked:false});

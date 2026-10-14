@@ -3,7 +3,7 @@ import { getSession } from '@/lib/session';
 import { getAssessmentReminders } from '@/packs/performance/service';
 import { Button,Card,Field,inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { assessmentReminderAction } from '../assessment-reminder-actions';
+import { assessmentReminderAction,assessmentReminderPreviewAction } from '../assessment-reminder-actions';
 
 export async function AssessmentReminderAdmin({cycleId}:{cycleId:string}){
  const [ctx,t,locale]=await Promise.all([getSession(),getTranslations('onehr.reminders'),getLocale()]);const v=await getAssessmentReminders(ctx,cycleId);
@@ -23,10 +23,13 @@ export async function AssessmentReminderAdmin({cycleId}:{cycleId:string}){
    </fieldset>
   </form>
   <p className="text-sm text-muted-foreground">{t('saveFirst')}</p>
-  <div className="flex flex-wrap gap-3">
-   <form action={assessmentReminderAction}><input type="hidden" name="cycleId" value={cycleId}/><input type="hidden" name="action" value="dry"/><Button type="submit" variant="outline" disabled={!v.waiting}>{t('preview')}</Button></form>
-   <form action={assessmentReminderAction}><input type="hidden" name="cycleId" value={cycleId}/><input type="hidden" name="action" value="manual"/><ConfirmSubmit variant="secondary" description={t('confirm')} disabled={!v.mailEligible}>{t('send')}</ConfirmSubmit></form>
-  </div>
+  <form action={assessmentReminderAction} className="space-y-3"><input type="hidden" name="cycleId" value={cycleId}/><input type="hidden" name="action" value="manual"/>
+   <Field label={t('limit')}><input name="limit" type="number" min="0" max="100000" required defaultValue={0} className={inputCls}/></Field>
+   <div className="flex flex-wrap gap-3">
+    <Button type="submit" formAction={assessmentReminderPreviewAction} variant="outline" disabled={!v.waiting}>{t('preview')}</Button>
+    <ConfirmSubmit variant="secondary" description={t('confirm')} disabled={!v.mailEligible}>{t('send')}</ConfirmSubmit>
+   </div>
+  </form>
   {!!v.runs.length&&<div className="space-y-2"><h3 className="text-sm font-semibold">{t('runs')}</h3><ul className="space-y-2 text-sm">{v.runs.map(run=><li key={run.id} className="rounded-lg border border-border p-3"><p>{date(run.createdAt)}</p><p className="text-muted-foreground">{t('sent')}: {run.sent} · {t('failed')}: {run.failed} · {t('pending')}: {run.pending} · {t('skipped')}: {run.skipped} · {t('dry')}: {run.dry}</p></li>)}</ul></div>}
  </Card>;
 }

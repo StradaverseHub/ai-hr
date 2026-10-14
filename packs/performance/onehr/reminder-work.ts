@@ -1,5 +1,5 @@
 import type { Policy,Tier,WindowCell } from './model';
-import { assessmentWorkWindowOpen,leaderWorkspaceParts,reviewWorkspaceParts,type ReviewWorkFacts } from './workspace-model';
+import { assessmentWorkWindowOpen,leaderPendingEntries,leaderWorkspaceParts,reviewWorkspaceParts,type CalibrationWorkEntry,type ReviewWorkFacts } from './workspace-model';
 import { assessmentReminderMailSchema,assessmentReminderTaskKeys,type AssessmentReminderTask } from './reminder-model';
 
 export type ReminderWorkGraph={
@@ -7,7 +7,7 @@ export type ReminderWorkGraph={
  actors:{userId:string;personId:string;name:string;employmentIds:string[];cycleAdmin:boolean}[];
  reviews:{id:string;companyId:string;employmentId:string;personId:string;name:string;reviewerEmploymentId:string|null;moderatorIds:string[];frozen:boolean;facts:ReviewWorkFacts}[];
  panels:{id:string;employmentId:string;reviewId:string}[];
- sessions:{id:string;companyId:string|null;tier:Tier;reviewerUserIds:string[];adminUserIds:string[];lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown;entries:{reviewId:string;companyId:string;employmentId:string;personId:string;performanceLocked:boolean;performanceReady:boolean}[]}[];
+ sessions:{id:string;companyId:string|null;tier:Tier;reviewerUserIds:string[];adminUserIds:string[];lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown;entries:CalibrationWorkEntry[]}[];
 };
 type TaskKey=AssessmentReminderTask['key'];
 type TaskBucket={ids:Set<string>;closesAt:string|null;people:Map<string,string>};
@@ -60,13 +60,11 @@ export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:
    const entries=session.entries.filter(entry=>entry.personId!==actor.personId&&enabledCompanies.has(entry.companyId));
    if(!entries.length)continue;
    const parts=leaderWorkspaceParts(policy,session.tier,session);
-   // Group completes per person; a saved cohort with no remaining ready person is complete in the workspace.
-   if(session.tier==='group'&&!session.performanceLockedAt&&entries.some(entry=>entry.performanceLocked)&&!entries.some(entry=>!entry.performanceLocked&&entry.performanceReady))continue;
    for(const part of parts){
     if(part.state!=='open')continue;
     const key:TaskKey=session.tier==='bg'?'bg_talent':session.tier==='group'||session.tier==='final'?'group_performance':session.tier==='hod'?part.axis==='performance'?'hod_performance':'hod_potential':part.axis==='performance'?'bu_performance':'bu_potential';
     const cell:WindowCell|null=session.tier==='bg'?'tb_bgceo':session.tier==='group'||session.tier==='final'?null:session.tier==='hod'?part.axis==='performance'?'pm_hod':'pot_hod':part.axis==='performance'?'pm_buceo':'pot_buceo';
-    for(const entry of entries)add(userId,key,entry.reviewId,cell);
+    for(const entry of leaderPendingEntries(policy,session.tier,part.axis,entries))add(userId,key,entry.reviewId,cell);
    }
   }
  }

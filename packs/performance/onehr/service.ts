@@ -8,7 +8,7 @@ import { assessmentAiQuotaTx } from './ai-usage';
 import { emptyHeldCalibration,heldCalibrationSchema } from './calibration-command-model';
 import { defaultLibraryScoring,settingNumberSource,spreadScoring } from './setting-default-model';
 import { hasLibrarySpread } from './setting-suggestion-model';
-import { assessmentWorkWindowOpen,leaderWorkspaceParts,reviewWorkspaceParts, type WorkspaceAxis } from './workspace-model';
+import { assessmentWorkWindowOpen,calibrationPredecessorOpen,leaderPendingEntries,leaderWorkspaceParts,reviewWorkspaceParts,type CalibrationWorkEntry, type WorkspaceAxis } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
@@ -497,8 +497,7 @@ function calibrationWindows(policy:Policy,tier:Tier,axis:Axis) {
 }
 function needsAxes(policy:Policy,axis:Axis,_tier?:string){return {pm:ratedPerformance(policy)&&axis!=='potential',pot:policy.modules.tm&&axis!=='performance'};}
 function assertPrecedingTier(rows:Awaited<ReturnType<typeof decisions>>,tier:Tier,mode:string,pm:boolean,pot:boolean) {
- if(tier==='bu'&&rows.some(d=>d.tier==='bg'&&(pm&&d.performanceLocked||pot&&d.potentialLocked)))throw Error('BU calibration is closed after BG locks.');
- if(tier==='hod'&&rows.some(d=>['bu','bg'].includes(d.tier)&&(pm&&d.performanceLocked||pot&&d.potentialLocked)))throw Error('HOD calibration is closed after BU or BG locks.');
+ if(!calibrationPredecessorOpen(rows,tier,pm,pot))throw Error(tier==='bu'?'BU calibration is closed after BG locks.':'HOD calibration is closed after BU or BG locks.');
 }
 export async function saveOnehrCalibration(ctx:SessionContext,sessionId:string,expected:number,raw:unknown) {
  const p=z.object({reviewId:uuid,axis:z.enum(['performance','potential','both']).default('both'),performance:z.enum(pmBands).nullable(),potential:z.enum(potentialBands).nullable(),performanceNote:note,potentialNote:note,pip:z.boolean().default(false),promotion:z.boolean().default(false),specialReward:z.boolean().default(false),confirmTalentDecisions:z.boolean().default(false)}).parse(raw);
@@ -1239,12 +1238,9 @@ export async function performanceWorkspace(ctx:SessionContext) {
   for(const {session,cycle,policy:raw} of sessions){
    const view=session.tier==='hod'?'dept':session.tier==='final'?'group':session.tier as 'bu'|'bg'|'group';
    const policy=policySchema.parse(raw),parts=leaderWorkspaceParts(policy,session.tier as Tier,session);
-   if(session.tier==='group'&&!session.performanceLockedAt){
-    const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,session.id)).orderBy(asc(onehrCalibrationEntry.reviewId));
-    let anyLocked=false,open=0;
-    for(const entry of entries){if(await isSelf(tx,entry.employmentId))continue;const input=await assessment(tx,entry.reviewId,policy);if(entry.performanceLockedAt)anyLocked=true;else if(input.performance)open++;}
-    if(anyLocked&&!open)for(const part of parts)part.state='done';
-   }
+   const [work]=await tx.execute<{entries:CalibrationWorkEntry[]}>(sql`select app.assessment_calibration_work(${session.id}::uuid) as entries`);
+   const entries=(work?.entries??[]).filter(entry=>entry.personId!==ctx.personId);
+   for(const part of parts)if(entries.length&&!leaderPendingEntries(policy,session.tier as Tier,part.axis,entries).length)part.state=session.tier==='group'&&!entries.some(entry=>entry.performanceLocked)&&entries.some(entry=>!entry.frozen)?'waiting':'done';
    for(const part of parts)items.push({key:`${session.id}.${part.stage}`,id:session.id,kind:'calibration',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view,title:session.name,locked:false,...part});
   }
   const bgLeaderCycles=new Set<string>();

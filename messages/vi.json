@@ -18292,6 +18292,7 @@
       "sendTime": "Giờ gửi (Malaysia)",
       "save": "Lưu lịch",
       "preview": "Chỉ xem trước",
+      "limit": "Số người nhận tối đa (0 = tất cả người đủ điều kiện)",
       "send": "Gửi ngay",
       "runs": "Các lần chạy gần đây",
       "sent": "Đã gửi",

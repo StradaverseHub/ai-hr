@@ -1,5 +1,22 @@
 import { assertWindow,kpiApprovers,pendingKpiApprover,pendingSettingApprover,ratedPerformance,type KpiWork,type Policy,type Tier,type WindowCell } from './model';
 export type WorkspaceAxis='performance'|'potential'|'both';
+export type CalibrationWorkDecision={tier:Tier;performanceLocked:boolean;potentialLocked:boolean};
+export type CalibrationWorkEntry={reviewId:string;companyId:string;employmentId:string;personId:string;performanceLocked:boolean;potentialLocked:boolean;performanceReady:boolean;frozen:boolean;decisions:CalibrationWorkDecision[]};
+/** Same downstream-lock predicate used by the canonical calibration writer. */
+export function calibrationPredecessorOpen(rows:CalibrationWorkDecision[],tier:Tier,pm:boolean,pot:boolean){
+ if(tier==='bu')return !rows.some(row=>row.tier==='bg'&&(pm&&row.performanceLocked||pot&&row.potentialLocked));
+ if(tier==='hod')return !rows.some(row=>['bu','bg'].includes(row.tier)&&(pm&&row.performanceLocked||pot&&row.potentialLocked));
+ return true;
+}
+export function leaderPendingEntries(policy:Pick<Policy,'modules'|'kind'>,tier:Tier,axis:WorkspaceAxis,entries:CalibrationWorkEntry[]){
+ const pm=ratedPerformance(policy)&&axis!=='potential',pot=policy.modules.tm&&axis!=='performance';
+ return entries.filter(entry=>{
+  if(entry.frozen||!calibrationPredecessorOpen(entry.decisions,tier,pm,pot))return false;
+  // HOD person saves still need the separate department Submit. BG and Group person locks are final.
+  if(tier==='hod')return true;
+  return (pm&&!entry.performanceLocked&&(tier!=='group'&&tier!=='final'||entry.performanceReady))||pot&&!entry.potentialLocked;
+ });
+}
 export type ReviewWorkFacts={kpis:KpiWork[];competenciesAssigned:boolean;competencyStatus:string;resultsSubmitted:boolean;managerPerformance:string|null;planStatus:string|null};
 export type ReviewWorkActor={self:boolean;manager:boolean;employmentIds:string[]};
 export type ReviewWorkPart={module:'pm'|'tm'|'idp';stage:string;state:'open'|'waiting'|'done'|'later';locked:boolean;cell:WindowCell};
@@ -37,7 +54,7 @@ export function reviewerModerationState(kpis:KpiWork[],ownEmploymentIds:string[]
 export function leaderWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,tier:Tier,locks:{lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown}){
  if(policy.kind!=='year_end'||policy.modules.calibration===false)return [];
  const pm=ratedPerformance(policy),pot=policy.modules.tm;
- const part=(stage:string,axis:WorkspaceAxis,done:boolean)=>({stage,axis,module:'cal' as const,state:done?'done' as const:'open' as const});
+ const part=(stage:string,axis:WorkspaceAxis,done:boolean)=>({stage,axis,module:'cal' as const,state:(done?'done':'open') as 'done'|'open'|'waiting'});
  if(tier==='bg')return pm||pot?[part('talent_box','both',!!locks.lockedAt)]:[];
  if(tier==='group'||tier==='final')return pm?[part('group_calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[];
  return [...(pm?[part(tier==='hod'?'department_review':'calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[]),...(pot?[part(tier==='hod'?'department_potential_review':'potential_calibration','potential',!!(locks.potentialLockedAt||locks.lockedAt))]:[])];

@@ -18292,6 +18292,7 @@
       "sendTime": "Send time (Malaysia)",
       "save": "Save schedule",
       "preview": "Preview only",
+      "limit": "Maximum recipients (0 = all eligible people)",
       "send": "Send now",
       "runs": "Recent runs",
       "sent": "Sent",

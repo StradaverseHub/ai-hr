@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import { defaultPolicy,type KPI } from '../packs/performance/onehr/model';
-import { assessmentWorkWindowOpen,leaderWorkspaceParts,reviewerModerationState,reviewWorkspaceParts } from '../packs/performance/onehr/workspace-model';
+import { assessmentWorkWindowOpen,leaderPendingEntries,leaderWorkspaceParts,type CalibrationWorkEntry,reviewerModerationState,reviewWorkspaceParts } from '../packs/performance/onehr/workspace-model';
 import framework from '../packs/performance/onehr/framework.json';
 const policy=defaultPolicy(framework),open={lockedAt:null,performanceLockedAt:null,potentialLockedAt:null};
 describe('source leader workspace views',()=>{
@@ -69,5 +69,28 @@ describe('reviewer worklist completion',()=>{
   expect(reviewerModerationState([first,second],['manager'])).toBe('open');
   second.hrOwned=true;expect(reviewerModerationState([first,second],['manager'])).toBe('done');
   expect(reviewerModerationState([second],['manager'])).toBe('waiting');
+ });
+});
+
+
+describe('leader work completion from canonical locks',()=>{
+ const entry:CalibrationWorkEntry={reviewId:'review',companyId:'company',employmentId:'job',personId:'person',performanceLocked:false,potentialLocked:false,performanceReady:true,frozen:false,decisions:[]};
+ it('stops BG reminders after both unit axes are confirmed while retaining a pending independent axis',()=>{
+  expect(leaderPendingEntries(policy,'bg','both',[{...entry,performanceLocked:true,potentialLocked:true}])).toEqual([]);
+  expect(leaderPendingEntries(policy,'bg','both',[{...entry,performanceLocked:true}])).toHaveLength(1);
+  expect(leaderPendingEntries({...policy,modules:{...policy.modules,tm:false}},'bg','both',[{...entry,performanceLocked:true}])).toEqual([]);
+ });
+ it('keeps the separate HOD department submission after person saves and respects downstream axis locks',()=>{
+  const saved={...entry,performanceLocked:true,potentialLocked:true};
+  expect(leaderPendingEntries(policy,'hod','performance',[saved])).toHaveLength(1);
+  const downstream={...saved,decisions:[{tier:'bu' as const,performanceLocked:true,potentialLocked:false}]};
+  expect(leaderPendingEntries(policy,'hod','performance',[downstream])).toEqual([]);
+  expect(leaderPendingEntries(policy,'hod','potential',[downstream])).toHaveLength(1);
+ });
+ it('omits frozen people and waits for manager confirmation before Group review',()=>{
+  expect(leaderPendingEntries(policy,'bg','both',[{...entry,frozen:true}])).toEqual([]);
+  expect(leaderPendingEntries(policy,'group','performance',[{...entry,performanceReady:false}])).toEqual([]);
+  expect(leaderPendingEntries(policy,'group','performance',[entry])).toHaveLength(1);
+  expect(leaderPendingEntries(policy,'group','performance',[{...entry,performanceLocked:true}])).toEqual([]);
  });
 });

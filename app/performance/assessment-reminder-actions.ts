@@ -17,9 +17,13 @@ export async function assessmentReminderAction(form:FormData){
    await saveAssessmentReminderRules(ctx,{enabled:form.has('enabled'),onOpen:form.has('onOpen'),daysBefore:String(form.get('daysBefore')??'').split(',').map(s=>s.trim()).filter(Boolean).map(Number),everyDays:Number(form.get('everyDays')),sendTime:String(form.get('sendTime')??'')});
    toast=t('saved');
   }else{
-   const result=await queueAssessmentReminders(ctx,cycleId,action,Number(form.get('limit')??1000));
+   const result=await queueAssessmentReminders(ctx,cycleId,action,Number(form.get('limit')??0));
    toast=t('result',{queued:result.queued,skipped:result.skipped,dry:result.dry});
   }
  }catch(error){redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(error))}`);}
  revalidatePath(path);redirect(`${path}?toast=${encodeURIComponent(toast)}`);
+}
+
+export async function assessmentReminderPreviewAction(form:FormData){
+ form.set('action','dry');return assessmentReminderAction(form);
 }

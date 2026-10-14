@@ -223,6 +223,25 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));
     await expect(perf.getAssessmentInsightSource(calibrator,reviewId,sid)).rejects.toThrow(/not assigned/);await expect(perf.getAssessmentFileTexts(calibrator,reviewId,sid)).rejects.toThrow(/not assigned/);
   });
+  it('withdraws colleague feedback tasks when the subject leaves the cycle without granting the rater review access',async()=>{
+    await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(peer=>({employmentId:peer.employmentId,relationship:'peer'})));
+    const rater=peers[0].ctx,request=(await perf.onehrAssignments(rater)).feedback.find(f=>f.subject==='Assessment subject')!;
+    const card=await perf.getOnehrFeedback(rater,request.id);
+    expect(await withTenant(rater,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+    expect((await perf.performanceWorkspace(rater)).some(item=>item.id===request.id)).toBe(true);
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!,participation=cycle.participants.find(p=>p.employmentId===subject.employmentId)!;
+    await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,participation.revision,'remove');
+    expect((await perf.onehrAssignments(rater)).feedback.some(f=>f.id===request.id)).toBe(false);
+    expect((await perf.performanceWorkspace(rater)).some(item=>item.id===request.id)).toBe(false);
+    await expect(perf.getOnehrFeedback(rater,request.id)).rejects.toThrow(/removed/);
+    await expect(perf.submitOnehrFeedback(rater,request.id,Object.fromEntries(card.statements.map(s=>[s.id,'yes'])),'Observed delivery')).rejects.toThrow(/removed/);
+    const [preserved]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,request.id));expect(preserved.submittedAt).toBeNull();expect(preserved.archivedAt).toBeNull();
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;participation=cycle.participants.find(p=>p.employmentId===subject.employmentId)!;
+    await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,participation.revision,'add');
+    expect((await perf.getOnehrFeedback(rater,request.id)).statements).toEqual(card.statements);
+    expect(await withTenant(rater,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+  });
+
   it('keeps excluded staff available as raters and preserves inputs across HR roster changes',async()=>{
     const newcomer=await hireEmployee(a,{person:{fullName:'Unconfirmed rater',primaryEmail:`${randomUUID()}@assessment.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
     const [numericGrade]=await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId,b.tenantId),eq(schema.jobGrade.code,'12')));
@@ -703,7 +722,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     v=await view(self);expect(v.grade).toBe('12');expect(v.careerDirections.map(p=>p.id).sort()).toEqual([next,far].sort());
     await perf.saveAssessmentCareerProfile(self,reviewId,v.careerProfile!.revision,{...career,targetProfileId:far});
     // A later grade change narrows NEW choices but does not erase the person's existing aspiration.
-    const [original]=await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.code,'12'));
+    const [original]=await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId,b.tenantId),eq(schema.jobGrade.code,'12')));
     await owner.db.update(schema.employment).set({gradeId:original.id}).where(eq(schema.employment.id,subject.employmentId));
     v=await view(self);expect(v.careerDirections.map(p=>p.id)).toEqual([next]);
     await perf.saveAssessmentCareerProfile(self,reviewId,v.careerProfile!.revision,{...career,targetProfileId:far,aspiration:'Retain my chosen direction'});
@@ -1670,6 +1689,31 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.notificationDelivery).set({sentAt:new Date(Date.now()-21*3600000)}).where(eq(schema.notificationDelivery.id,delivery.id));
     expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(1);
     expect((await perf.getAssessmentReminders(a,cycleId)).runs.some(r=>r.sent===1)).toBe(true);
+  });
+
+  it('applies reminder limits to eligible attempts after skipped accounts and refreshes cached tasks within one dispatcher transaction',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);await saveNotificationEmailPolicy(a,['performance']);
+    const issuer='https://hr.test/identity/realms/ai-hr';
+    const candidates=[{ctx:self,employmentId:subject.employmentId},{ctx:mgr,employmentId:manager.employmentId},...peers].sort((x,y)=>x.ctx.userId!.localeCompare(y.ctx.userId!));
+    const eligible=candidates.slice(-2);
+    for(const actor of eligible){
+      const subjectId=randomUUID(),[person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,actor.ctx.personId!));
+      await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:subjectId,appUserId:actor.ctx.userId!});
+      await saveNotificationEmailPreferences({...actor.ctx,entitlements:a.entitlements},actor.employmentId,['performance'],'en',{issuer,subject:subjectId,email:person.primaryEmail,emailVerified:true});
+    }
+    const limited=await perf.queueAssessmentReminders(a,cycleId,'dry',1);expect(limited.dry).toBe(1);expect(limited.skipped).toBeGreaterThan(0);
+    expect((await perf.queueAssessmentReminders(a,cycleId,'dry',0)).dry).toBe(2);
+    const queued=await perf.queueAssessmentReminders(a,cycleId,'manual',1);expect(queued.queued).toBe(1);
+    const [recipient]=await owner.db.select().from(schema.assessmentReminderRecipient).where(and(eq(schema.assessmentReminderRecipient.runId,queued.runId!),eq(schema.assessmentReminderRecipient.outcome,'queued')));
+    expect(recipient.userId).toBe(eligible[0].ctx.userId);
+    const system={...a,userId:undefined,personId:undefined};
+    await withTenant(system,async tx=>{
+      expect(await perf.assessmentReminderRecipientsTx(tx,recipient.id)).toEqual([eligible[0].employmentId]);
+      // A real committed workflow change invalidates the transaction-local projection.
+      await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,eligible[0].employmentId)));
+      expect(await perf.assessmentReminderRecipientsTx(tx,recipient.id)).toEqual([]);
+    });
+    expect((await owner.db.select().from(schema.assessmentReminderRecipient).where(eq(schema.assessmentReminderRecipient.id,recipient.id)))[0].outcome).toBe('noPendingWork');
   });
 
   it('claims automatic reminder days once and isolates company-only notification dispatch from other categories',async()=>{

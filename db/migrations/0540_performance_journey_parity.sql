@@ -43,7 +43,9 @@ CREATE FUNCTION app.assessment_review_participates(wanted_review uuid) RETURNS b
   WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id()
    AND (c.status='closed' OR e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END
-   AND (app.assessment_dispatcher_scope() OR app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR app.onehr_moderator(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
+   AND (app.assessment_dispatcher_scope() OR app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR app.onehr_moderator(r.id)
+    OR EXISTS(SELECT 1 FROM performance_onehr_panel panel JOIN employment peer ON peer.id=panel.peer_employment_id AND peer.tenant_id=panel.tenant_id JOIN app_user actor ON actor.person_id=peer.person_id AND actor.tenant_id=peer.tenant_id WHERE panel.review_id=r.id AND panel.tenant_id=r.tenant_id AND panel.archived_at IS NULL AND actor.id=app.current_user_id() AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND (peer.terminated_on IS NULL OR peer.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))
+    OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
 $$;
 CREATE FUNCTION app.assessment_participation_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE c review_cycle;
@@ -366,7 +368,7 @@ GRANT EXECUTE ON FUNCTION app.assessment_skill_history(uuid) TO ai_hr_app;
 CREATE OR REPLACE FUNCTION app.onehr_feedback_card(wanted_request uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'guidedReview',coalesce((cfg.policy->'modules'->>'review')::boolean,true),'closed',cyc.status='closed','subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
  FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN performance_onehr_cycle cfg ON cfg.cycle_id=r.cycle_id AND cfg.tenant_id=r.tenant_id JOIN review_cycle cyc ON cyc.id=r.cycle_id AND cyc.tenant_id=r.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
- WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL AND (cfg.policy->'modules'->>'tm')::boolean=true
+ WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL AND (cfg.policy->'modules'->>'tm')::boolean=true AND app.assessment_review_participates(r.review_id)
 $$;
 
 --> statement-breakpoint
@@ -1398,6 +1400,23 @@ CREATE OR REPLACE FUNCTION app.onehr_admin(wanted_company uuid) RETURNS boolean 
 $$;
 
 --> statement-breakpoint
+-- Narrow leader routing facts: the canonical workflow consumes these same locks and readiness bits.
+CREATE FUNCTION app.assessment_calibration_work(wanted_session uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'reviewId',r.review_id,'companyId',r.company_id,'employmentId',r.employment_id,'personId',emp.person_id,
+  'performanceLocked',ce.performance_locked_at IS NOT NULL,'potentialLocked',ce.potential_locked_at IS NOT NULL,
+  'performanceReady',r.manager_performance IS NOT NULL,'frozen',pr.closed_at IS NOT NULL OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id AND f.tenant_id=r.tenant_id),
+  'decisions',(SELECT coalesce(jsonb_agg(jsonb_build_object('tier',up.tier,'performanceLocked',app.assessment_calibration_axis_confirmed(up.tier,ue.performance_locked_at,up.performance_locked_at),'potentialLocked',app.assessment_calibration_axis_confirmed(up.tier,ue.potential_locked_at,up.potential_locked_at)) ORDER BY up.tier,up.id),'[]'::jsonb)
+    FROM performance_onehr_calibration_entry ue JOIN performance_onehr_calibration up ON up.id=ue.session_id AND up.tenant_id=ue.tenant_id WHERE ue.review_id=r.review_id AND ue.tenant_id=r.tenant_id)
+ ) ORDER BY r.review_id),'[]'::jsonb)
+ FROM performance_onehr_calibration s JOIN performance_onehr_calibration_entry ce ON ce.session_id=s.id AND ce.tenant_id=s.tenant_id
+ JOIN performance_onehr_review r ON r.review_id=ce.review_id AND r.tenant_id=ce.tenant_id JOIN performance_review pr ON pr.id=r.review_id AND pr.tenant_id=r.tenant_id
+ JOIN employment emp ON emp.id=r.employment_id AND emp.tenant_id=r.tenant_id
+ WHERE s.id=wanted_session AND s.tenant_id=app.current_tenant_id() AND (app.assessment_dispatcher_scope() OR app.onehr_calibration_access(s.id)) AND app.assessment_review_participates(r.review_id)
+$$;
+REVOKE ALL ON FUNCTION app.assessment_calibration_work(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_calibration_work(uuid) TO ai_hr_app;
+--> statement-breakpoint
 -- Batched routing facts only: no answers, remarks, KPI amounts, files, salary or contact addresses.
 -- The dispatcher keeps its own identity. It never sets a recipient's GUCs or borrows their credentials.
 CREATE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -1419,10 +1438,6 @@ CREATE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb LAN
  ), sessions AS MATERIALIZED (
   SELECT s.* FROM cycle c JOIN performance_onehr_calibration s ON s.cycle_id=c.id AND s.tenant_id=c.tenant_id
   WHERE app.assessment_dispatcher_scope() OR app.onehr_admin(s.company_id)
- ), entries AS MATERIALIZED (
-  SELECT ce.session_id,ce.review_id,r.employment_id,r.person_id,ce.performance_locked_at,r.manager_performance IS NOT NULL AS performance_ready
-  FROM performance_onehr_calibration_entry ce JOIN sessions s ON s.id=ce.session_id AND s.tenant_id=ce.tenant_id
-  JOIN reviews r ON r.review_id=ce.review_id AND r.tenant_id=ce.tenant_id
  ), candidates AS (
   SELECT employment_id AS id FROM reviews UNION SELECT reviewer_employment_id FROM reviews
   UNION SELECT (m->>'id')::uuid FROM reviews r CROSS JOIN LATERAL jsonb_array_elements(r.moderators) m
@@ -1450,7 +1465,7 @@ CREATE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb LAN
   'panels',coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.request_id,'employmentId',p.peer_employment_id,'reviewId',p.review_id) ORDER BY p.request_id) FROM panels p),'[]'::jsonb),
   'sessions',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s.id,'companyId',s.company_id,'tier',s.tier,'reviewerUserIds',s.reviewer_user_ids,'adminUserIds',(SELECT coalesce(jsonb_agg(a.id ORDER BY a.id),'[]'::jsonb) FROM actors a WHERE app.assessment_admin_for(a.id,s.company_id)),
    'lockedAt',s.locked_at,'performanceLockedAt',s.performance_locked_at,'potentialLockedAt',s.potential_locked_at,
-   'entries',(SELECT coalesce(jsonb_agg(jsonb_build_object('reviewId',e.review_id,'companyId',(SELECT r.company_id FROM reviews r WHERE r.review_id=e.review_id),'employmentId',e.employment_id,'personId',e.person_id,'performanceLocked',e.performance_locked_at IS NOT NULL,'performanceReady',e.performance_ready) ORDER BY e.review_id),'[]'::jsonb) FROM entries e WHERE e.session_id=s.id)) ORDER BY s.id) FROM sessions s),'[]'::jsonb)) FROM cycle c
+   'entries',app.assessment_calibration_work(s.id)) ORDER BY s.id) FROM sessions s),'[]'::jsonb)) FROM cycle c
 $$;
 REVOKE ALL ON FUNCTION app.assessment_pending_work(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_pending_work(uuid) TO ai_hr_app;
@@ -1466,7 +1481,7 @@ CREATE TABLE performance_assessment_reminder_run (
 CREATE TABLE performance_assessment_reminder_recipient (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),run_id uuid NOT NULL REFERENCES performance_assessment_reminder_run(id),
  user_id uuid NOT NULL REFERENCES app_user(id),employment_id uuid REFERENCES employment(id),source_event_id uuid REFERENCES domain_event(id),
- outcome text NOT NULL CHECK(outcome IN ('queued','dry','cooldown','noConsent','noPendingWork')),tasks jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(tasks)='array' AND jsonb_array_length(tasks)<=16 AND octet_length(tasks::text)<=20000),
+ outcome text NOT NULL CHECK(outcome IN ('queued','dry','cooldown','noConsent','noPendingWork','changed')),tasks jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(tasks)='array' AND jsonb_array_length(tasks)<=16 AND octet_length(tasks::text)<=20000),
  prepared_at timestamptz,prepared_until timestamptz,tenant_epoch bigint,cycle_epoch bigint,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(run_id,user_id)
 );
 CREATE INDEX assessment_reminder_user_idx ON performance_assessment_reminder_recipient(tenant_id,user_id,created_at);
