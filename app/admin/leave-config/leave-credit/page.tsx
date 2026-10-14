@@ -319,7 +319,7 @@ export default async function LeaveConfigLeaveCreditPage({
                   <td className="px-3 py-2"><EmployeeName code={row.employeeCode} name={row.employeeName}/></td>
                   <td className="px-3 py-2 tabular-nums">{formatDays(row.earned)}</td>
                   <td className="px-3 py-2">{row.usage.length===0&&row.used===0?DAY_DASH:row.usage.map((use,i)=><div key={use.requestId+use.date+String(i)}>{tr('usageOn',{days:formatDays(use.days),date:fmtDate(use.date)})}</div>)}{row.unattributedUsed>0&&<p className="text-xs text-muted-foreground">{tr('legacyUsage',{days:formatDays(row.unattributedUsed)})}</p>}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatDays(row.available)}{row.expired>0&&<p className="text-xs text-destructive">{tr('expiredOn',{days:formatDays(row.expired),date:fmtDate(row.expiresOn)})}</p>}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatDays(row.available)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.expiresOn)}</td><td className="px-3 py-2 text-muted-foreground">{row.reason??DAY_DASH}{row.reversalReason&&<p>{row.reversalReason}</p>}</td>
                   <td className="px-3 py-2">{row.actorName??(row.actorIsSystem?t('bySystem'):DAY_DASH)}<span className="block text-xs text-muted-foreground">{fmtInstant(row.recordedAt)}</span></td>
                   <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${row.status==='available'?'bg-emerald-50 text-emerald-700':row.status==='partially_used'?'bg-amber-50 text-amber-700':row.status==='expired'?'bg-rose-50 text-rose-700':'bg-muted text-muted-foreground'}`}>{registerLabels[row.status]}</span></td>

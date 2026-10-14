@@ -18463,7 +18463,7 @@
     "name": "Tên quy trình",
     "description": "Mô tả",
     "assignment": "Phạm vi áp dụng quy trình",
-    "assignmentHelp": "Không chọn nghĩa là mọi nhân viên ở trường đó. Các điều kiện giữa các trường phải cùng thỏa mãn. Số ưu tiên nhỏ hơn áp dụng trước; các kết quả đồng hạng bị từ chối.",
+    "assignmentHelp": "Các giá trị trong cùng một trường là các lựa chọn thay thế. Phải khớp mọi trường đã điền; trường trống bao gồm mọi giá trị đủ điều kiện trong công ty này. Số ưu tiên thấp hơn được áp dụng trước; không chấp nhận số trùng nhau.",
     "priority": "Mức ưu tiên",
     "department": "Phòng ban",
     "businessUnit": "Đơn vị kinh doanh",
@@ -18508,7 +18508,16 @@
       "irregularity": "Bất thường chấm công",
       "self_overtime": "Tự đăng ký làm thêm giờ"
     },
-    "alternativeHelp": "Bước duyệt bất kỳ một người chỉ giữ các lựa chọn hợp lệ. Quản lý không khả dụng hoặc nhóm nhân sự chỉ có người nộp đơn bị loại khỏi luồng đã lưu; bước không có người duyệt hoạt động khác người nộp sẽ chặn kích hoạt và gửi đơn."
+    "alternativeHelp": "Bước duyệt bất kỳ một người chỉ giữ các lựa chọn hợp lệ. Quản lý không khả dụng hoặc nhóm nhân sự chỉ có người nộp đơn bị loại khỏi luồng đã lưu; bước không có người duyệt hoạt động khác người nộp sẽ chặn kích hoạt và gửi đơn.",
+    "companyHelp": "Chọn công ty để quản lý quy trình phê duyệt.",
+    "workflowCount": "Quy trình",
+    "viewEdit": "Xem / Sửa",
+    "noCompanies": "Không có công ty trong phạm vi của bạn.",
+    "backCompanies": "Quay lại công ty",
+    "unavailable": "Không khả dụng ({value})",
+    "orderedHelp": "Các cấp thực hiện theo thứ tự. Bất kỳ người phê duyệt thay thế đủ điều kiện nào đều có thể hoàn tất cấp hiện tại; các cấp sau phải chờ.",
+    "removeAlternative": "Xóa người thay thế",
+    "requestFailed": "Không thể hoàn tất yêu cầu. Các thay đổi của bạn được giữ lại; vui lòng thử lại."
   },
   "attendanceHistory": {
     "title": "Lịch sử đơn",

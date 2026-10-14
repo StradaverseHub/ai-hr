@@ -18463,7 +18463,7 @@
     "name": "流程名称",
     "description": "描述",
     "assignment": "流程适用范围",
-    "assignmentHelp": "未选择表示该字段适用于所有员工。各字段条件同时满足才适用。优先使用较小的优先级数值；优先级相同的重复匹配会被拒绝。",
+    "assignmentHelp": "同一字段内的值为任选其一。所有已填写字段均须匹配；空字段包括该公司内所有符合条件的值。优先级数值越小越先使用；不允许相同优先级的匹配。",
     "priority": "优先级",
     "department": "部门",
     "businessUnit": "业务单位",
@@ -18508,7 +18508,16 @@
       "irregularity": "考勤异常",
       "self_overtime": "自助加班"
     },
-    "alternativeHelp": "任选一人审批阶段仅保留可用的审批人。无法使用的经理或仅包含申请人本人的人事组不会加入保存的审批路线；若阶段没有其他有效审批人，则无法启用或提交。"
+    "alternativeHelp": "任选一人审批阶段仅保留可用的审批人。无法使用的经理或仅包含申请人本人的人事组不会加入保存的审批路线；若阶段没有其他有效审批人，则无法启用或提交。",
+    "companyHelp": "选择公司以管理其审批流程。",
+    "workflowCount": "审批流程",
+    "viewEdit": "查看 / 编辑",
+    "noCompanies": "您的权限范围内没有公司。",
+    "backCompanies": "返回公司列表",
+    "unavailable": "不可用（{value}）",
+    "orderedHelp": "各审批层级依次进行。当前层级任一符合条件的候选审批人均可完成该层级；后续层级必须等待。",
+    "removeAlternative": "移除候选审批人",
+    "requestFailed": "无法完成请求。您的更改已保留，请重试。"
   },
   "attendanceHistory": {
     "title": "申请历史",

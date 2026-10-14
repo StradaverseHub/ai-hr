@@ -11,6 +11,8 @@ export async function saveAttendanceWorkflowAction(lineageId: string | null, inp
     try {
         const row = await saveAttendanceWorkflow(s, input, lineageId ?? undefined);
         revalidatePath(LIST);
+        revalidatePath(`${LIST}/${row.lineageId}`);
+        revalidatePath(`${LIST}/${row.lineageId}/edit`);
         return { ok: true as const, lineageId: row.lineageId };
     }
     catch (e) {

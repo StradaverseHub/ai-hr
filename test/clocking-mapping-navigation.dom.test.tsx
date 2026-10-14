@@ -129,7 +129,9 @@ describe('mapping editor business snapshot and successful-save receipt', () => {
     expect(save).toHaveBeenCalledTimes(1); expect(save.mock.calls[0][1].name).toBe('Unsaved reader');
     expect(save.mock.calls[0][2]).toMatch(/^[a-f0-9]{32}$/);
     expect(form()).not.toHaveAttribute('data-attendance-saved-receipt');
-    expect(name()).toHaveValue('Unsaved reader'); expect(name()).not.toBeDisabled(); expect(hasUnsavedChanges()).toBe(true);
+    // Error feedback can commit before React finishes the async save transition.
+    await waitFor(() => expect(name()).not.toBeDisabled());
+    expect(name()).toHaveValue('Unsaved reader'); expect(hasUnsavedChanges()).toBe(true);
     fireEvent.click(screen.getByText('Back to settings')); expect(window.confirm).toHaveBeenCalledTimes(1); expect(push).not.toHaveBeenCalled();
   });
 

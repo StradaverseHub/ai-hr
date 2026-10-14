@@ -1,13 +1,46 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listAttendanceWorkflows, listAttendanceWorkflowSettings, attendanceApplicationFilterOptions } from '@/packs/attendance/service';
 import { PageHeader, Card, pageWideCls, tableWrapCls, theadCls, tbodyCls, thCls } from '@/components/ui';
+import { approversOf } from '@/lib/leave-approval-kinds';
+import { ATTENDANCE_APPLICATION_TYPES } from '@/lib/attendance-workflow';
 import { RoutingSwitch } from './workflow-form';
-export default async function AttendanceWorkflowPage() {
-    const { s, scopeIds } = await scopedAdmin(), t = await getTranslations('attendanceWorkflow');
-    const [rows, settings, options] = await Promise.all([listAttendanceWorkflows(s, scopeIds), listAttendanceWorkflowSettings(s, scopeIds), attendanceApplicationFilterOptions(s, scopeIds)]);
-    return <div className={pageWideCls}><PageHeader title={t('title')} description={t('subtitle')} back={{ href: '/admin/attendance/settings', label: t('backSettings') }} actions={<Link className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground" href="/admin/attendance/approval-workflow/new">{t('create')}</Link>}/>
- <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('routing')}</h2><p className="text-sm text-muted-foreground">{t('routingHelp')}</p><div className="grid gap-3 md:grid-cols-2">{options.companies.flatMap(c => (['irregularity', 'self_overtime'] as const).map(type => { const enabled = settings.some(v => v.companyId === c.id && v.applicationType === type && v.enabled); return <div key={c.id + type} className="rounded-lg border p-3 text-sm"><p className="font-medium">{c.name} · {t(`types.${type}`)}</p><p>{enabled ? t('routingEnabled') : t('legacyRouting')}</p><RoutingSwitch companyId={c.id} type={type} enabled={enabled}/></div>; }))}</div></Card>
- <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['code', 'name', 'company', 'applicationType', 'assignment', 'stages', 'priority', 'status', 'actions'].map(k => <th className={thCls} key={k}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(row => <tr key={row.id}><td className="p-3 font-mono">{row.code}</td><td className="p-3">{row.name}</td><td className="p-3">{options.companies.find(c => c.id === row.companyId)?.name}</td><td className="p-3">{t(`types.${row.applicationType}`)}</td><td className="p-3">{Object.entries(row.criteria).filter(([, ids]) => ids.length).map(([key, ids]) => { const items = key === 'departmentIds' ? options.departments : key === 'businessUnitIds' ? options.businessUnits : key === 'gradeIds' ? options.grades : options.divisions; return ids.map(id => items.find(item => item.id === id)?.name ?? id).join(', '); }).join(' · ') || t('all')}</td><td className="p-3">{row.stages.length}</td><td className="p-3">{row.priority}</td><td className="p-3">{row.active ? t('active') : t('inactive')}</td><td className="p-3"><Link className="text-primary underline" href={`/admin/attendance/approval-workflow/${row.lineageId}`}>{t('view')}</Link> · <Link className="text-primary underline" href={`/admin/attendance/approval-workflow/${row.lineageId}/edit`}>{t('edit')}</Link></td></tr>)}</tbody></table>{!rows.length && <p className="p-5 text-muted-foreground">{t('empty')}</p>}</div></div>;
+import { companyWorkflowHref, workflowContext, workflowRoot, type WorkflowQuery } from './navigation';
+export default async function AttendanceWorkflowPage({ searchParams }: { searchParams: Promise<WorkflowQuery> }) {
+  const { s, scopeIds } = await scopedAdmin(), t = await getTranslations('attendanceWorkflow');
+  let context;
+  try { context = workflowContext(await searchParams, scopeIds); } catch { notFound(); }
+  const ids = context ? [context.companyId] : scopeIds;
+  const [rows, settings, options] = await Promise.all([listAttendanceWorkflows(s, ids), listAttendanceWorkflowSettings(s, ids), attendanceApplicationFilterOptions(s, ids)]);
+  if (!context) return <div className={pageWideCls}>
+    <PageHeader title={t('title')} description={t('companyHelp')} back={{ href: '/admin/attendance/settings', label: t('backSettings') }}/>
+    <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['company', 'workflowCount', 'actions'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
+      <tbody className={tbodyCls}>{options.companies.map(company => <tr key={company.id}>
+        <td className="p-4 font-medium">{company.name}</td><td className="p-4">{rows.filter(row => row.companyId === company.id).length}</td>
+        <td className="p-4"><Link className="text-primary underline underline-offset-2" aria-label={`${t('viewEdit')} ${company.name}`} href={companyWorkflowHref(company.id, 'irregularity')}>{t('viewEdit')}</Link></td>
+      </tr>)}</tbody></table>{!options.companies.length && <p className="p-5 text-muted-foreground">{t('noCompanies')}</p>}</div>
+  </div>;
+  const { companyId, applicationType } = context;
+  const company = options.companies.find(company => company.id === companyId);
+  if (!company) notFound();
+  const workflows = rows.filter(row => row.applicationType === applicationType);
+  const enabled = settings.some(setting => setting.companyId === companyId && setting.applicationType === applicationType && setting.enabled);
+  const fields = [['departmentIds', 'department', options.departments], ['businessUnitIds', 'businessUnit', options.businessUnits], ['gradeIds', 'grade', options.grades], ['orgDivision', 'division', options.divisions]] as const;
+  return <div className={pageWideCls}>
+    <PageHeader title={company.name} description={t('title')} back={{ href: workflowRoot, label: t('backCompanies') }}/>
+    <nav aria-label={t('applicationType')} className="flex flex-wrap gap-2 border-b border-border pb-3">{ATTENDANCE_APPLICATION_TYPES.map(type => <Link key={type} href={companyWorkflowHref(companyId, type)} aria-current={applicationType === type ? 'page' : undefined} className={`rounded-md px-4 py-2 text-sm font-medium ${applicationType === type ? 'bg-primary text-primary-foreground' : 'border border-border bg-card hover:bg-muted'}`}>{t(`types.${type}`)}</Link>)}</nav>
+    <section aria-label={t(`types.${applicationType}`)} className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{t(`types.${applicationType}`)}</h2><Link className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground" href={companyWorkflowHref(companyId, applicationType, true)}>{t('create')}</Link></div>
+      <Card className="space-y-2 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-medium">{enabled ? t('routingEnabled') : t('legacyRouting')}</h3><RoutingSwitch companyId={companyId} type={applicationType} enabled={enabled}/></div><p className="text-sm text-muted-foreground">{t('routingHelp')}</p></Card>
+      <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['code', 'name', 'assignment', 'stages', 'priority', 'status', 'actions'].map(k => <th className={thCls} key={k}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{workflows.map(row => <tr key={row.id}>
+        <td className="p-3 font-mono">{row.code}</td><td className="p-3">{row.name}</td>
+        <td className="min-w-48 p-3">{fields.some(([key]) => row.criteria[key]?.length) ? <ul className="space-y-1">{fields.filter(([key]) => row.criteria[key]?.length).map(([key, label, items]) => <li key={key}><span className="font-medium">{t(label)}: </span>{row.criteria[key]!.map(id => items.find(item => item.id === id)?.name ?? t('unavailable', { value: id })).join(', ')}</li>)}</ul> : t('all')}</td>
+        <td className="min-w-56 p-3"><ol className="list-inside list-decimal space-y-2">{row.stages.map((stage, index) => <li key={index}><span className="font-medium">{stage.name}</span><span className="block text-muted-foreground">{approversOf(stage.level).map(a => a.kind === 'direct_manager' ? t('manager') : t('hr')).join(` ${t('or')} `)}</span></li>)}</ol></td>
+        <td className="p-3">{row.priority}</td><td className="p-3">{row.active ? t('active') : t('inactive')}</td>
+        <td className="p-3"><div className="flex gap-3"><Link className="text-primary underline" href={`${workflowRoot}/${row.lineageId}`}>{t('view')}</Link><Link className="text-primary underline" href={`${workflowRoot}/${row.lineageId}/edit`}>{t('edit')}</Link></div></td>
+      </tr>)}</tbody></table>{!workflows.length && <p className="p-5 text-muted-foreground">{t('empty')}</p>}</div>
+    </section>
+  </div>;
 }
