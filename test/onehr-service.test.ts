@@ -1644,6 +1644,25 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await view(self)).plans).toEqual([]);
   });
 
+  it('batches current pending metadata for authorized dispatchers without review text, amounts or peer answers',async()=>{
+    const id=randomUUID(),privateTitle='Routing must omit this KPI title',privateRemark='Routing must omit this submitted remark',privateAmount=12345678;
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:privateTitle,description:'Private KPI description',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,20000000,30000000,40000000,50000000]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Approved private review text');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:privateAmount,note:'Private submitted evidence'}],privateRemark);
+    await perf.assignOnehrPanel(mgr,reviewId,(await view(mgr)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    const read=(ctx:SessionContext,id=cycleId)=>withTenant(ctx,async tx=>(await tx.execute<{value:unknown}>(sql`select app.assessment_pending_work(${id}::uuid) as value`))[0].value);
+    const human=await read(a),system=await read({...a,userId:undefined,personId:undefined});expect(system).toEqual(human);
+    const data=system as {actors:{userId:string}[];reviews:{id:string;facts:{resultsSubmitted:boolean;kpis:{moderatorEmploymentId:string}[]}}[];panels:{employmentId:string}[]};
+    expect(data.actors.some(actor=>actor.userId===self.userId)).toBe(true);expect(data.actors.some(actor=>actor.userId===mgr.userId)).toBe(true);
+    expect(data.reviews.find(r=>r.id===reviewId)).toMatchObject({facts:{resultsSubmitted:true,kpis:[{moderatorEmploymentId:manager.employmentId}]}});
+    expect(data.panels.map(p=>p.employmentId).sort()).toEqual(peers.map(p=>p.employmentId).sort());
+    const text=JSON.stringify(data);for(const privateValue of [privateTitle,privateRemark,String(privateAmount),'Private submitted evidence','Private KPI description','Approved private review text'])expect(text).not.toContain(privateValue);
+    expect(await read(self)).toBeNull();expect(await read(peers[0].ctx)).toBeNull();expect(await read(a,randomUUID())).toBeNull();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_admin_for(${self.userId}::uuid,${b.companyId}::uuid)`))).rejects.toThrow();
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,cycle.participants.find(p=>p.employmentId===subject.employmentId)!.revision,'remove');
+    const withdrawn=await read({...a,userId:undefined,personId:undefined}) as typeof data;expect(withdrawn.reviews.some(r=>r.id===reviewId)).toBe(false);expect(withdrawn.panels).toEqual([]);
+  });
+
   it('reauthorizes delayed review notices from current work instead of event recipient lists',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);
     const matrix=peers[0],outsider=peers[1],id=randomUUID();

@@ -1,10 +1,10 @@
-import { assertWindow,kpiApprovers,pendingKpiApprover,pendingSettingApprover,ratedPerformance,type KPI,type Policy,type Tier,type WindowCell } from './model';
+import { assertWindow,kpiApprovers,pendingKpiApprover,pendingSettingApprover,ratedPerformance,type KpiWork,type Policy,type Tier,type WindowCell } from './model';
 export type WorkspaceAxis='performance'|'potential'|'both';
-export type ReviewWorkFacts={kpis:KPI[];competenciesAssigned:boolean;competencyStatus:string;resultsSubmitted:boolean;managerPerformance:string|null;planStatus:string|null};
+export type ReviewWorkFacts={kpis:KpiWork[];competenciesAssigned:boolean;competencyStatus:string;resultsSubmitted:boolean;managerPerformance:string|null;planStatus:string|null};
 export type ReviewWorkActor={self:boolean;manager:boolean;employmentIds:string[]};
 export type ReviewWorkPart={module:'pm'|'tm'|'idp';stage:string;state:'open'|'waiting'|'done'|'later';locked:boolean;cell:WindowCell};
 /** A shared derivation for the person's worklist and actor-neutral notification/reminder readers. */
-export function reviewWorkspaceParts(policy:Policy,facts:ReviewWorkFacts,actor:ReviewWorkActor):ReviewWorkPart[]{
+export function reviewWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,facts:ReviewWorkFacts,actor:ReviewWorkActor):ReviewWorkPart[]{
  const {kpis}=facts,{self,manager,employmentIds}=actor,parts:ReviewWorkPart[]=[];
  let state:ReviewWorkPart['state']='open',stage='results';
  if(!kpis.length||kpis.some(k=>['draft','returned'].includes(k.setting))){stage='setting';state=self?'open':'waiting';}
@@ -23,18 +23,18 @@ export function reviewWorkspaceParts(policy:Policy,facts:ReviewWorkFacts,actor:R
  }
  return parts;
 }
-export function assessmentWorkWindowOpen(policy:Policy,cell:WindowCell,now=new Date()){
+export function assessmentWorkWindowOpen(policy:Pick<Policy,'windows'>,cell:WindowCell,now=new Date()){
  try{assertWindow(policy,cell,now);return true;}catch{return false;}
 }
 /** Completion belongs to this approver's steps, even while a colleague still owes their review. */
-export function reviewerModerationState(kpis:KPI[],ownEmploymentIds:string[]):'open'|'waiting'|'done'{
+export function reviewerModerationState(kpis:KpiWork[],ownEmploymentIds:string[]):'open'|'waiting'|'done'{
  const mine=kpis.filter(k=>!k.hrOwned&&kpiApprovers(k).some(id=>ownEmploymentIds.includes(id)));
  if(mine.some(k=>ownEmploymentIds.includes(pendingKpiApprover(k)??'')))return 'open';
  const acted=mine.some(k=>k.approvalChain?.some(s=>ownEmploymentIds.includes(s.employmentId)&&!!s.at)||k.locked&&ownEmploymentIds.includes(k.moderatorEmploymentId??''));
  return acted?'done':'waiting';
 }
 /** Source journey modules: Dept/BU have independent parts in CAL; BG is the combined Talent Box. */
-export function leaderWorkspaceParts(policy:Policy,tier:Tier,locks:{lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown}){
+export function leaderWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,tier:Tier,locks:{lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown}){
  if(policy.kind!=='year_end'||policy.modules.calibration===false)return [];
  const pm=ratedPerformance(policy),pot=policy.modules.tm;
  const part=(stage:string,axis:WorkspaceAxis,done:boolean)=>({stage,axis,module:'cal' as const,state:done?'done' as const:'open' as const});

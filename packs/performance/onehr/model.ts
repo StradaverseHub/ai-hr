@@ -32,9 +32,10 @@ export const checkInAnswers = ['on_track','at_risk','off_track','nothing_yet'] a
 export const kpiSchema = z.object({ id:z.uuid(), category:text.optional(), hrOwned:z.boolean().optional(), moderatorSource:z.enum(['line','matrix']).optional(),libraryId:z.uuid().nullable().optional(), title:z.string().trim().min(1).max(300), description:text, weightBp:z.number().int().min(0).max(10000), unit:z.string().max(80), numberSource:z.enum(['history','spread','library','manual','ai']).optional(), scoring:draftScoringSchema, moderatorEmploymentId:z.uuid().nullable(), approvalChain:z.array(z.object({employmentId:z.uuid(),actual:finite.nullable(),remark:text,at:z.iso.datetime().nullable()})).max(10).optional(), setting:z.enum(['draft','proposed','approved','returned']), settingApprovals:z.array(z.object({employmentId:z.uuid(),action:z.enum(['approved','returned']),remark:text,at:z.iso.datetime()})).max(10).optional(), settingRemark:text, checkIn:z.object({answer:z.enum(checkInAnswers),note:text,at:z.iso.datetime(),userId:z.uuid()}).optional(), actual:finite.nullable(), note:text, approvedActual:finite.nullable(), moderationRemark:text, locked:z.boolean() });
 export type KPI = z.infer<typeof kpiSchema>;
 export const kpiSettingInputSchema=kpiSchema.pick({id:true,title:true,category:true,libraryId:true,description:true,weightBp:true,unit:true,numberSource:true,scoring:true,moderatorEmploymentId:true}).extend({approverEmploymentIds:z.array(z.uuid()).max(1).optional()});
-export function pendingKpiApprover(k:KPI):string|null {return k.locked?null:k.approvalChain?.length?k.approvalChain.find(s=>!s.at)?.employmentId??null:k.moderatorEmploymentId;}
-export function pendingSettingApprover(k:KPI):string|null {return k.setting==='proposed'?kpiApprovers(k)[(k.settingApprovals??[]).filter(s=>s.action==='approved').length]??null:null;}
-export function kpiApprovers(k:KPI):string[]{return k.approvalChain?.length?k.approvalChain.map(s=>s.employmentId):k.moderatorEmploymentId?[k.moderatorEmploymentId]:[];}
+export type KpiWork=Pick<KPI,'hrOwned'|'setting'|'locked'|'moderatorEmploymentId'>&{approvalChain?:{employmentId:string;at:string|null}[];settingApprovals?:{action:'approved'|'returned'}[];checkIn?:unknown};
+export function pendingKpiApprover(k:Pick<KpiWork,'locked'|'approvalChain'|'moderatorEmploymentId'>):string|null {return k.locked?null:k.approvalChain?.length?k.approvalChain.find(s=>!s.at)?.employmentId??null:k.moderatorEmploymentId;}
+export function pendingSettingApprover(k:Pick<KpiWork,'setting'|'settingApprovals'|'approvalChain'|'moderatorEmploymentId'>):string|null {return k.setting==='proposed'?kpiApprovers(k)[(k.settingApprovals??[]).filter(s=>s.action==='approved').length]??null:null;}
+export function kpiApprovers(k:Pick<KpiWork,'approvalChain'|'moderatorEmploymentId'>):string[]{return k.approvalChain?.length?k.approvalChain.map(s=>s.employmentId):k.moderatorEmploymentId?[k.moderatorEmploymentId]:[];}
 export const competencySchema = z.object({ ...statementSchema.shape, selfRemark:text.optional(), self:answer.nullable(), manager:answer.nullable(), managerRemark:text });
 export type Competency = z.infer<typeof competencySchema>;
 export const policySchema = z.object({
@@ -69,8 +70,8 @@ export type Policy = z.infer<typeof policySchema>;
 export function defaultPolicy(framework: Policy['framework']):Policy {
   return {extremes:{enabled:false,bonus:5,penalty:5},version:1,kind:'year_end',modules:{pm:true,tm:true,idp:true,evidence:false},windows:{},aBands:[1,1.51,2.51,3.51,4.51],bBands:[],lowMaxPct:40,midMaxPct:26/35*100,panelTarget:5,minValid:4,weights:Object.fromEntries([...Array.from({length:12},(_,i)=>String(i+12)),'H'].map(g=>[g,4000])),framework,profiles:[],idpMinGoals:1,idpMaxGoals:6,idpRequireAllActions:false,curveToleranceMode:'people',curveTolerancePct:10,curveTolerancePeople:1,curveStrict:true};
 }
-export function ratedPerformance(policy:Policy):boolean {return policy.modules.pm&&policy.kind!=='quarterly';}
-export function assertWindow(policy:Policy,cell:WindowCell,now=new Date()):void {
+export function ratedPerformance(policy:Pick<Policy,'modules'|'kind'>):boolean {return policy.modules.pm&&policy.kind!=='quarterly';}
+export function assertWindow(policy:Pick<Policy,'windows'>,cell:WindowCell,now=new Date()):void {
   const w=policy.windows[cell]; if(w?.opensAt&&now.getTime()<Date.parse(w.opensAt))throw Error('This step has not opened yet.');
   if(w?.closesAt&&now.getTime()>=Date.parse(w.closesAt))throw Error('This step is closed.');
 }

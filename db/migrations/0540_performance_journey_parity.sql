@@ -1384,3 +1384,73 @@ ON CONFLICT (key) DO NOTHING;
 CREATE POLICY assessment_review_dispatch_read ON performance_onehr_review FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_dispatcher_scope());
 CREATE POLICY assessment_plan_dispatch_read ON performance_onehr_plan FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_dispatcher_scope());
 CREATE POLICY assessment_result_dispatch_read ON performance_onehr_result FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.assessment_dispatcher_scope());
+
+--> statement-breakpoint
+-- One canonical human admin predicate, reused by actor-neutral pending-work readers.
+CREATE FUNCTION app.assessment_admin_for(wanted_user uuid,wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app_user u JOIN role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+ WHERE u.id=wanted_user AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND r.role::text IN ('hr_admin','super_admin','performance_comp_partner') AND (r.company_id IS NULL OR wanted_company IS NOT NULL AND (r.company_id=wanted_company OR app.is_company_descendant(wanted_company,r.company_id))))
+$$;
+REVOKE ALL ON FUNCTION app.assessment_admin_for(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_admin(wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT app.assessment_admin_for(app.current_user_id(),wanted_company)
+$$;
+
+--> statement-breakpoint
+-- Batched routing facts only: no answers, remarks, KPI amounts, files, salary or contact addresses.
+-- The dispatcher keeps its own identity. It never sets a recipient's GUCs or borrows their credentials.
+CREATE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH cycle AS MATERIALIZED (
+  SELECT c.*,cfg.policy FROM review_cycle c JOIN performance_onehr_cycle cfg ON cfg.cycle_id=c.id AND cfg.tenant_id=c.tenant_id
+  WHERE c.id=wanted_cycle AND c.tenant_id=app.current_tenant_id() AND c.status IN ('open','calibration')
+   AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(c.id))
+ ), reviews AS MATERIALIZED (
+  SELECT r.*,p.reviewer_employment_id,p.closed_at,e.person_id,person.full_name,
+   app.onehr_moderator_choices(r.review_id) AS moderators,
+   EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id AND f.tenant_id=r.tenant_id) AS frozen
+  FROM cycle c JOIN performance_onehr_review r ON r.cycle_id=c.id AND r.tenant_id=c.tenant_id
+  JOIN performance_review p ON p.id=r.review_id AND p.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person ON person.id=e.person_id AND person.tenant_id=e.tenant_id
+  WHERE app.assessment_review_participates(r.review_id) AND (app.assessment_dispatcher_scope() OR app.onehr_admin(r.company_id))
+ ), panels AS MATERIALIZED (
+  SELECT p.request_id,p.peer_employment_id,p.review_id FROM performance_onehr_panel p JOIN reviews r ON r.review_id=p.review_id AND r.tenant_id=p.tenant_id
+  WHERE p.archived_at IS NULL AND p.submitted_at IS NULL AND NOT r.frozen AND r.closed_at IS NULL
+ ), sessions AS MATERIALIZED (
+  SELECT s.* FROM cycle c JOIN performance_onehr_calibration s ON s.cycle_id=c.id AND s.tenant_id=c.tenant_id
+  WHERE app.assessment_dispatcher_scope() OR app.onehr_admin(s.company_id)
+ ), entries AS MATERIALIZED (
+  SELECT ce.session_id,ce.review_id,r.employment_id,r.person_id,ce.performance_locked_at,r.manager_performance IS NOT NULL AS performance_ready
+  FROM performance_onehr_calibration_entry ce JOIN sessions s ON s.id=ce.session_id AND s.tenant_id=ce.tenant_id
+  JOIN reviews r ON r.review_id=ce.review_id AND r.tenant_id=ce.tenant_id
+ ), candidates AS (
+  SELECT employment_id AS id FROM reviews UNION SELECT reviewer_employment_id FROM reviews
+  UNION SELECT (m->>'id')::uuid FROM reviews r CROSS JOIN LATERAL jsonb_array_elements(r.moderators) m
+  UNION SELECT peer_employment_id FROM panels
+  UNION SELECT e.id FROM sessions s CROSS JOIN LATERAL unnest(s.reviewer_user_ids) uid
+   JOIN app_user u ON u.id=uid AND u.tenant_id=s.tenant_id JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
+ ), actors AS MATERIALIZED (
+  SELECT u.id,u.person_id,p.full_name,array_agg(e.id ORDER BY e.id) AS employment_ids,
+   app.assessment_admin_for(u.id,(SELECT company_id FROM cycle)) AS cycle_admin
+  FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id JOIN employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
+  WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND e.blacklisted_at IS NULL AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=LEAST(e.resignation_date,e.last_working_date,e.terminated_on))
+   AND EXISTS(SELECT 1 FROM candidates candidate WHERE candidate.id=e.id)
+  GROUP BY u.id,u.person_id,p.full_name
+ )
+ SELECT jsonb_build_object(
+  'cycle',jsonb_build_object('id',c.id,'companyId',c.company_id,'name',c.name,'periodEnd',c.period_end,'policy',jsonb_build_object('kind',c.policy->'kind','modules',c.policy->'modules','windows',c.policy->'windows')),
+  'actors',coalesce((SELECT jsonb_agg(jsonb_build_object('userId',a.id,'personId',a.person_id,'name',a.full_name,'employmentIds',a.employment_ids,'cycleAdmin',a.cycle_admin) ORDER BY a.id) FROM actors a),'[]'::jsonb),
+  'reviews',coalesce((SELECT jsonb_agg(jsonb_build_object('id',r.review_id,'companyId',r.company_id,'employmentId',r.employment_id,'personId',r.person_id,'name',r.full_name,'reviewerEmploymentId',r.reviewer_employment_id,'moderatorIds',(SELECT coalesce(jsonb_agg(m->'id' ORDER BY m->>'id'),'[]'::jsonb) FROM jsonb_array_elements(r.moderators) m),'frozen',r.frozen OR r.closed_at IS NOT NULL,
+   'facts',jsonb_build_object('competenciesAssigned',jsonb_array_length(r.competencies)>0,'competencyStatus',r.competency_status,'resultsSubmitted',r.results_submitted_at IS NOT NULL,'managerPerformance',r.manager_performance,
+    'planStatus',(SELECT p.status FROM performance_onehr_plan p WHERE p.tenant_id=r.tenant_id AND p.employment_id=r.employment_id AND p.plan_year=extract(year from c.period_end)::integer+CASE WHEN c.policy->>'kind'='year_end' THEN 1 ELSE 0 END),
+    'kpis',(SELECT coalesce(jsonb_agg(jsonb_build_object('hrOwned',coalesce((k->>'hrOwned')::boolean,false),'setting',k->'setting','locked',k->'locked','moderatorEmploymentId',k->'moderatorEmploymentId','checkIn',k->'checkIn' IS NOT NULL AND k->'checkIn'<>'null'::jsonb,
+     'approvalChain',(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',step->'employmentId','at',step->'at') ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) WITH ORDINALITY q(step,i)),
+     'settingApprovals',(SELECT coalesce(jsonb_agg(jsonb_build_object('action',step->'action') ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(coalesce(k->'settingApprovals','[]'::jsonb)) WITH ORDINALITY q(step,i))) ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(r.kpis) WITH ORDINALITY q(k,i)))) ORDER BY r.review_id) FROM reviews r),'[]'::jsonb),
+  'panels',coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.request_id,'employmentId',p.peer_employment_id,'reviewId',p.review_id) ORDER BY p.request_id) FROM panels p),'[]'::jsonb),
+  'sessions',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s.id,'companyId',s.company_id,'tier',s.tier,'reviewerUserIds',s.reviewer_user_ids,'adminUserIds',(SELECT coalesce(jsonb_agg(a.id ORDER BY a.id),'[]'::jsonb) FROM actors a WHERE app.assessment_admin_for(a.id,s.company_id)),
+   'lockedAt',s.locked_at,'performanceLockedAt',s.performance_locked_at,'potentialLockedAt',s.potential_locked_at,
+   'entries',(SELECT coalesce(jsonb_agg(jsonb_build_object('reviewId',e.review_id,'companyId',(SELECT r.company_id FROM reviews r WHERE r.review_id=e.review_id),'employmentId',e.employment_id,'personId',e.person_id,'performanceLocked',e.performance_locked_at IS NOT NULL,'performanceReady',e.performance_ready) ORDER BY e.review_id),'[]'::jsonb) FROM entries e WHERE e.session_id=s.id)) ORDER BY s.id) FROM sessions s),'[]'::jsonb)) FROM cycle c
+$$;
+REVOKE ALL ON FUNCTION app.assessment_pending_work(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_pending_work(uuid) TO ai_hr_app;
