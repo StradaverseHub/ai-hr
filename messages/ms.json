@@ -18011,6 +18011,24 @@
       "differsBg": "Berbeza daripada CEO kumpulan perniagaan",
       "businessGroup": "Kumpulan perniagaan",
       "department": "Jabatan"
+    },
+    "developmentSuggestions": {
+      "title": "Cadangan matlamat",
+      "help": "Gunakan maklum balas yang diterbitkan dan jurang kompetensi yang disemak. Semak cadangan sebelum menambahnya ke pelan peribadi.",
+      "working": "Menyediakan…",
+      "generate": "Cadangkan matlamat pembangunan",
+      "unavailable": "Cadangan tidak dapat disediakan. Cuba lagi atau tambah matlamat sendiri.",
+      "quota": "Baki {remaining} daripada {limit} percubaan hari ini. Ditetapkan semula tengah malam waktu Malaysia.",
+      "empty": "Belum ada jurang penilaian yang diterbitkan atau disemak. Anda boleh menambah matlamat sendiri.",
+      "stretch": "Tiada kekurangan direkodkan. Cadangan ini membangunkan kompetensi tahap seterusnya yang ditugaskan.",
+      "preview": "Simpan cadangan yang dikehendaki. Anda menetapkan tarikh; penerapan menyimpan draf peribadi.",
+      "basedOn": "Berdasarkan",
+      "onJob": "Semasa kerja (70%)",
+      "fromOthers": "Belajar daripada orang lain (20%)",
+      "formalLearning": "Pembelajaran formal (10%)",
+      "noAction": "Tambah tindakan dengan kata-kata sendiri.",
+      "discard": "Buang cadangan",
+      "apply": "Tambah dipilih ke draf ({count})"
     }
   },
   "allowanceV2": {

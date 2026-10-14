@@ -8,6 +8,7 @@ import framework from '../packs/performance/onehr/framework.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 const ports=vi.hoisted(()=>({calibration:vi.fn(),session:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
+vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
 vi.mock('../app/performance/onehr-actions',()=>({assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
@@ -67,6 +68,11 @@ describe('OneHR native workflow controls',()=>{
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
   expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
   expect(screen.getByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
+ });
+ it('passes the current development allowance to the actual editable-plan suggestion control',async()=>{
+  const v={policy:defaultPolicy(framework),drafts:[],careerRoutes:[],moderators:[],choices:[],kpis:[],competencies:[],peers:[],attachments:[],evidence:[],attachmentLinks:[],kpiLibrary:[],reviewId:'review',revision:1,cycle:{id:'cycle',name:'Annual',status:'open'},admin:false,self:true,manager:false,moderator:false,planReviewer:false,planRemarkWriter:false,finalized:false,canApproveSettingIds:[],canModerateIds:[],careerProfile:null,planYear:Number(todayInKualaLumpur().slice(0,4))+1,plans:[],aiEnabled:true,developmentQuota:{remaining:0,limit:5}};
+  show(await OnehrReviewView({v:v as unknown as Parameters<typeof OnehrReviewView>[0]['v'],section:'idp'}));
+  expect((screen.getByRole('button',{name:en.onehr.developmentSuggestions.generate}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('status').textContent).toContain('0 of 5');
  });
  it('keeps talent decisions separate from an open calibration',async()=>{
   ports.calibration.mockResolvedValue({session:{name:'Group review',tier:'group',revision:2,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},cycle:{name:'Annual'},axes:{pm:true,pot:false},units:[],modules:{pm:true,tm:false},reference:null,rows:[{talent:{revision:0,promotionEligible:false,standingReason:null},name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:null,currentPerformance:'ME',currentPotential:null,entry:{...emptyTalentActions(),id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false}}]});

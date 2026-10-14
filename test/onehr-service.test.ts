@@ -1272,6 +1272,36 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [proposal]=await owner.db.select().from(schema.agentProposal);expect(proposal).toMatchObject({adjudication:'rejected',decision:null});
   });
 
+  it('suggests development goals only from released own feedback and applies kept goals as an unshared draft',async()=>{
+    await complete();vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    expect(await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).toMatchObject({empty:true,goals:[],remaining:5});expect(generateDraft).not.toHaveBeenCalled();
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{area:'Collaborative delivery',item_ids:['lp:0','foreign-subject'],experience:'Lead a cross-team retrospective',exposure:'Request feedback from a mentor',education:'Study facilitation methods',dueOn:'2099-01-01'},{area:'Invented source',item_ids:['foreign-subject']} ]));
+    const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());expect(result).toMatchObject({empty:false,remaining:4,goals:[{area:'Collaborative delivery',itemIds:['lp:0']}]});expect(result.goals).toHaveLength(1);expect((await view(self)).plans).toEqual([]);
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;for(const peer of peers)expect(prompt).not.toContain(peer.employmentId);expect(prompt).not.toContain('Peer 0');
+    const career={aspiration:'Develop practical facilitation',mobility:'stay',mobilityNote:'',targetProfileId:null},manual={id:randomUUID(),area:'My existing goal',dueOn:'',onJob:'Own practical assignment',fromOthers:'',formalLearning:'',status:'not_started'};
+    await perf.applyAssessmentDevelopmentGoals(self,reviewId,null,{careerRevision:null,career,goals:[manual]},result.goals,result.sourceDigest);
+    const plan=(await view(self)).plans[0];expect(plan.status).toBe('draft');expect(plan.goals.map(g=>g.area)).toEqual(['My existing goal','Collaborative delivery']);expect(plan.goals[1]).toMatchObject({dueOn:'',managerComment:'',status:'not_started'});
+    expect((await view(mgr)).plans).toEqual([]);expect((await owner.db.select().from(schema.assessmentAiUse))).toHaveLength(1);
+    await expect(perf.suggestAssessmentDevelopmentGoals(mgr,reviewId,randomUUID())).rejects.toThrow(/only for your/);
+    expect((await withTenant(mgr,tx=>tx.execute<{value:unknown}>(sql`select app.assessment_development_feedback(${reviewId}::uuid) as value`)))[0].value).toBeNull();
+  });
+  it('limits successful development suggestion runs to five per Malaysia day and never charges malformed proposals',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    vi.mocked(generateDraft).mockResolvedValueOnce('not JSON');await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/No usable goal/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{area:'Practical delivery',item_ids:['lp:0'],experience:'Lead a small review'}]));
+    for(let i=0;i<5;i++)expect((await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).remaining).toBe(4-i);
+    await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/All 5 development/);expect(generateDraft).toHaveBeenCalledTimes(6);expect((await view(self)).plans).toEqual([]);expect((await view(self)).developmentQuota).toMatchObject({remaining:0,limit:5});
+  });
+  it('discards development proposals when their released feedback is withdrawn and refuses stale keep/drop actions',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    const response=JSON.stringify([{area:'Practical delivery',item_ids:['lp:0'],experience:'Lead a small review'}]);
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.releaseOnehrResult(a,reviewId,'feedback',false);return response;});
+    await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/assessment or plan changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(generateDraft).mockResolvedValue(response);const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());
+    await perf.releaseOnehrResult(a,reviewId,'feedback',false);
+    await expect(perf.applyAssessmentDevelopmentGoals(self,reviewId,null,{careerRevision:null,career:{aspiration:'Develop delivery',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]},result.goals,result.sourceDigest)).rejects.toThrow(/released feedback or reviewed competencies changed/);expect((await view(self)).plans).toEqual([]);
+  });
   it('uses exactly one HR-assigned moderator and sends that person the task',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);
     const matrix=peers[0],id=randomUUID();

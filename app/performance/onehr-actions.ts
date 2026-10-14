@@ -15,6 +15,19 @@ const nullableNumber=(f:FormData,k:string)=>str(f,k)?num(f,k):null;
 const evidenceFields=(f:FormData)=>({...Object.fromEntries(['kind','body','occurredOn','title','impact','who','precision','metricUnit'].filter(k=>f.has(k)).map(k=>[k,str(f,k)])),...(f.has('metricValue')?{metricValue:nullableNumber(f,'metricValue')}:{}),...(f.has('raisedWithSubject')?{raisedWithSubject:str(f,'raisedWithSubject')||null}:{})});
 const ids=(f:FormData,k:string)=>f.getAll(k).map(v=>z.uuid().parse(String(v)));
 const readWindows=(f:FormData)=>Object.fromEntries(windowCells.map(cell=>[cell,{opensAt:str(f,`${cell}.opens`)?`${str(f,`${cell}.opens`)}:00+08:00`:null,closesAt:str(f,`${cell}.closes`)?`${str(f,`${cell}.closes`)}:00+08:00`:null}]));
+function planInput(f:FormData){
+ const career={aspiration:str(f,'aspiration'),mobility:str(f,'mobility')||null,aspirationNow:str(f,'aspirationNow'),aspirationLong:str(f,'aspirationLong'),strengths:str(f,'strengths'),preferences:str(f,'preferences'),mentor:str(f,'mentor'),selfProfileId:str(f,'selfProfileId')||null,mobilityNote:str(f,'mobilityNote'),targetProfileId:str(f,'targetProfileId')||null};
+ const careerRevision=str(f,'careerRevision')?num(f,'careerRevision'):null;
+ const goals=ids(f,'goalId').filter(k=>['area','onJob','fromOthers','formalLearning'].some(field=>str(f,`${k}.${field}`))).map(k=>({id:k,area:str(f,`${k}.area`),dueOn:str(f,`${k}.dueOn`),onJob:str(f,`${k}.onJob`),fromOthers:str(f,`${k}.fromOthers`),formalLearning:str(f,`${k}.formalLearning`),status:'not_started'}));
+ return {career,careerRevision,goals};
+}
+export async function developmentSuggestionsAction(reviewId:string){
+ const s=await getSession();try{return await perf.suggestAssessmentDevelopmentGoals(s,reviewId,crypto.randomUUID());}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function applyDevelopmentSuggestionsAction(f:FormData,selected:import('@/packs/performance/onehr/development-suggestion-model').SuggestedDevelopmentGoal[],sourceDigest:string){
+ const s=await getSession();try{const id=z.uuid().parse(str(f,'reviewId'));await perf.applyAssessmentDevelopmentGoals(s,id,str(f,'planRevision')?num(f,'planRevision'):null,planInput(f),selected,sourceDigest);revalidatePath('/performance/workspace');revalidatePath('/me/performance');revalidatePath(`/performance/assessment/${id}`);return {ok:true as const};}catch(error){return {error:publicErrorMessage(error)};}
+}
+
 
 const destination=(f:FormData,fallback:string)=>assessmentReturnPath(f.get('returnTo'),fallback);
 const withError=(url:string,error:unknown)=>`${url}${url.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(error))}`;
@@ -97,11 +110,9 @@ export async function onehrReviewAction(f:FormData){
       case 'freeze':await perf.freezeOnehrReview(s,id,expected);break;
       case 'release':await perf.releaseOnehrResult(s,id,str(f,'component') as 'performance'|'potential'|'talent'|'feedback',str(f,'release')==='true');break;
       case 'plan':{
-        const career={aspiration:str(f,'aspiration'),mobility:str(f,'mobility')||null,aspirationNow:str(f,'aspirationNow'),aspirationLong:str(f,'aspirationLong'),strengths:str(f,'strengths'),preferences:str(f,'preferences'),mentor:str(f,'mentor'),selfProfileId:str(f,'selfProfileId')||null,mobilityNote:str(f,'mobilityNote'),targetProfileId:str(f,'targetProfileId')||null};
-        const careerRevision=str(f,'careerRevision')?num(f,'careerRevision'):null;
-        if(f.has('careerOnly')){await perf.saveAssessmentCareerProfile(s,id,careerRevision,career);break;}
-        const goals=ids(f,'goalId').filter(k=>['area','onJob','fromOthers','formalLearning'].some(field=>str(f,`${k}.${field}`))).map(k=>({id:k,area:str(f,`${k}.area`),dueOn:str(f,`${k}.dueOn`),onJob:str(f,`${k}.onJob`),fromOthers:str(f,`${k}.fromOthers`),formalLearning:str(f,`${k}.formalLearning`),status:'not_started'}));
-        await perf.saveOnehrPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,{career,careerRevision,goals},f.has('share'));break;
+        const input=planInput(f);
+        if(f.has('careerOnly')){await perf.saveAssessmentCareerProfile(s,id,input.careerRevision,input.career);break;}
+        await perf.saveOnehrPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,input,f.has('share'));break;
       }
       case 'career-comment':await perf.commentAssessmentCareerProfile(s,id,str(f,'careerRevision')?num(f,'careerRevision'):null,str(f,'comment'));break;
       case 'plan-goal-edit':await perf.editAssessmentDevelopmentGoal(s,id,str(f,'planId'),num(f,'planRevision'),str(f,'goalId'),{area:str(f,'area'),dueOn:str(f,'dueOn'),onJob:str(f,'onJob'),fromOthers:str(f,'fromOthers'),formalLearning:str(f,'formalLearning'),managerComment:str(f,'managerComment')});break;

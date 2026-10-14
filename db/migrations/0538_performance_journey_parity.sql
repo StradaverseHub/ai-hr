@@ -1255,3 +1255,20 @@ CREATE POLICY calibration_conversation_read ON performance_calibration_conversat
 CREATE POLICY calibration_conversation_insert ON performance_calibration_conversation FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id));
 CREATE POLICY calibration_conversation_update ON performance_calibration_conversation FOR UPDATE USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND app.assessment_calibration_chat_access(session_id));
 CREATE TRIGGER calibration_conversation_links BEFORE INSERT OR UPDATE ON performance_calibration_conversation FOR EACH ROW EXECUTE FUNCTION app.assessment_calibration_chat_validate();
+--> statement-breakpoint
+-- Development suggestions read only the employee's latest expressly released anonymous report.
+CREATE FUNCTION app.assessment_development_feedback(wanted_review uuid) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT (
+  SELECT card.value->'result'->'anonymousFeedback'
+  FROM performance_onehr_review h JOIN review_cycle c ON c.id=h.cycle_id AND c.tenant_id=h.tenant_id
+  CROSS JOIN LATERAL (SELECT app.onehr_result_card(h.review_id) AS value) card
+  WHERE h.employment_id=r.employment_id AND h.tenant_id=r.tenant_id AND card.value->>'feedbackReleasedAt' IS NOT NULL
+   AND jsonb_typeof(card.value->'result'->'anonymousFeedback')='object'
+  ORDER BY c.period_end DESC,h.review_id LIMIT 1)
+ FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ JOIN performance_onehr_cycle cfg ON cfg.cycle_id=r.cycle_id AND cfg.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.is_self_person(e.person_id)
+  AND coalesce((cfg.policy->'modules'->>'idp')::boolean,false)
+$$;
+REVOKE ALL ON FUNCTION app.assessment_development_feedback(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_development_feedback(uuid) TO ai_hr_app;

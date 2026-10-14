@@ -18011,6 +18011,24 @@
       "differsBg": "Khác với CEO khối kinh doanh",
       "businessGroup": "Khối kinh doanh",
       "department": "Phòng ban"
+    },
+    "developmentSuggestions": {
+      "title": "Gợi ý mục tiêu",
+      "help": "Dựa trên phản hồi đã công bố và khoảng cách năng lực đã đánh giá. Xem lại trước khi thêm vào kế hoạch riêng tư.",
+      "working": "Đang chuẩn bị…",
+      "generate": "Gợi ý mục tiêu phát triển",
+      "unavailable": "Không thể tạo gợi ý. Thử lại hoặc tự thêm mục tiêu.",
+      "quota": "Còn {remaining} trên {limit} lượt hôm nay. Đặt lại lúc nửa đêm giờ Malaysia.",
+      "empty": "Chưa có khoảng cách đánh giá đã công bố hoặc xem xét. Bạn có thể tự thêm mục tiêu.",
+      "stretch": "Không ghi nhận thiếu hụt. Các đề xuất phát triển năng lực cấp tiếp theo đã được giao.",
+      "preview": "Giữ các đề xuất bạn muốn. Bạn tự đặt ngày; áp dụng sẽ lưu bản nháp riêng tư.",
+      "basedOn": "Dựa trên",
+      "onJob": "Tại công việc (70%)",
+      "fromOthers": "Học từ người khác (20%)",
+      "formalLearning": "Học chính quy (10%)",
+      "noAction": "Thêm hành động bằng lời của bạn.",
+      "discard": "Bỏ các gợi ý",
+      "apply": "Thêm lựa chọn vào bản nháp ({count})"
     }
   },
   "allowanceV2": {

@@ -18011,6 +18011,24 @@
       "differsBg": "与业务集团 CEO 不同",
       "businessGroup": "业务集团",
       "department": "部门"
+    },
+    "developmentSuggestions": {
+      "title": "发展目标建议",
+      "help": "根据已发布的反馈和已审核的能力差距生成建议。请先审核，再添加到个人计划。",
+      "working": "正在准备…",
+      "generate": "建议发展目标",
+      "unavailable": "无法生成建议。请重试或自行添加目标。",
+      "quota": "今日还可生成 {remaining} 次，共 {limit} 次。马来西亚时间午夜重置。",
+      "empty": "目前尚无已发布或已审核的评估差距可供参考。您可以自行添加目标。",
+      "stretch": "未发现已记录的差距。这些建议旨在发展分配给您的下一等级能力。",
+      "preview": "保留需要的建议。日期由您设置；添加建议会保存为个人草稿。",
+      "basedOn": "依据",
+      "onJob": "在岗实践（70%）",
+      "fromOthers": "向他人学习（20%）",
+      "formalLearning": "正式学习（10%）",
+      "noAction": "请用自己的话添加行动。",
+      "discard": "放弃建议",
+      "apply": "将所选建议加入草稿（{count}）"
     }
   },
   "allowanceV2": {

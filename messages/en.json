@@ -18011,6 +18011,24 @@
       "differsBg": "Differs from BG CEO",
       "businessGroup": "Business group",
       "department": "Department"
+    },
+    "developmentSuggestions": {
+      "title": "Goal suggestions",
+      "help": "Use released feedback and reviewed competency gaps. Review the proposals before adding them to your private plan.",
+      "working": "Preparing…",
+      "generate": "Suggest development goals",
+      "unavailable": "Could not prepare development suggestions. Try again or add your own goals.",
+      "quota": "{remaining} of {limit} suggestion runs left today. Resets at midnight Malaysia time.",
+      "empty": "There are no released or reviewed assessment gaps to build from yet. You can add your own goals.",
+      "stretch": "No recorded shortfall was found. These proposals develop your assigned next-level competencies.",
+      "preview": "Keep the proposals you want. Dates are yours to set; applying suggestions saves a private draft.",
+      "basedOn": "Based on",
+      "onJob": "On the job (70%)",
+      "fromOthers": "Learn from others (20%)",
+      "formalLearning": "Formal learning (10%)",
+      "noAction": "Add an action in your own words.",
+      "discard": "Discard suggestions",
+      "apply": "Add selected to draft ({count})"
     }
   },
   "allowanceV2": {
