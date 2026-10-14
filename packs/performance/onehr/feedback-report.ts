@@ -1,3 +1,4 @@
+import { currentPrincipleComments } from './framework-model';
 import { sourceRound } from './source-numeric';
 import type { Statement } from './model';
 
@@ -20,7 +21,7 @@ export function anonymousFeedbackReport(statements:Statement[],submissions:{answ
    return {id:s.id,principle:s.principle,text:s.text,future:s.future,agreementPct:answers.length?sourceRound(100*answers.filter(a=>a==='yes').length/answers.length):null};
   }),
   // Deliberate lexical ordering: source submission order must not reveal who wrote a comment.
-  comments:submissions.flatMap(r=>Object.entries(r.comments??{}).filter(([principle,text])=>text.trim()&&statements.some(s=>s.principle===principle)).map(([principle,text])=>({principle,text:text.trim()}))).sort((a,b)=>a.principle.localeCompare(b.principle)||a.text.localeCompare(b.text)),
+  comments:submissions.flatMap(r=>Object.entries(currentPrincipleComments(statements,r.comments??{})).filter(([principle,text])=>text.trim()&&statements.some(s=>s.principle===principle)).map(([principle,text])=>({principle,text:text.trim()}))).sort((a,b)=>a.principle.localeCompare(b.principle)||a.text.localeCompare(b.text)),
   remarks:submissions.map(r=>r.remark.trim()).filter(Boolean).sort(),
  };
 }

@@ -1,3 +1,4 @@
+import { currentPrincipleComments,editLeadershipFramework,frameworkEditSchema } from './framework-model';
 import { profitCurveFor } from './calibration-curve-model';
 import { lockProfitReferenceTx,profitAchievementsTx,seedCalibrationProfitTx } from './profit-service';
 import { talentBandTrail,potentialReviewReady } from './talent-trail-model';
@@ -170,6 +171,20 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
     else {if(expected!=null)throw Error('Reload before configuring this cycle.');await tx.insert(onehrCycle).values({tenantId:ctx.tenantId,cycleId,policy});}
     await audit(tx,ctx,cycleId,'policy-configured',{policyDigest:hash(policy)});
   });
+}
+
+/** Group HR can amend the active cycle's framework; the database refreshes only unfinished reviews. */
+export async function updateAssessmentFramework(ctx:SessionContext,cycleId:string,expected:number,raw:unknown){
+ const edit=frameworkEditSchema.parse(raw);
+ return withPerformanceTenant(ctx,async tx=>{
+  if(!ctx.userId)throw Error('Sign in to edit the leadership framework.');
+  const [scope]=await tx.execute<{ok:boolean}>(sql`select app.is_group_admin() as ok`);if(!scope?.ok)throw Error('Only group HR administrators may change the leadership framework.');
+  await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
+  if(!['draft','open','calibration'].includes(cycle.native.status))throw Error('The archived leadership framework is read-only.');
+  const next=editLeadershipFramework(cycle.policy,edit,()=>randomUUID());
+  await tx.update(onehrCycle).set({policy:next,revision:cycle.config.revision+1}).where(eq(onehrCycle.cycleId,cycleId));
+  await audit(tx,ctx,cycleId,'framework-updated',{edit,previous:{framework:cycle.policy.framework,principles:cycle.policy.leadershipPrinciples??null},next:{framework:next.framework,principles:next.leadershipPrinciples}});
+ });
 }
 
 /** Operational module switches preserve all inputs, approvals and historical results. */
@@ -407,15 +422,16 @@ export async function getOnehrFeedback(ctx:SessionContext,requestId:string){retu
  const card=await feedbackCard(tx,requestId);
  const [draft]=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.contextId,requestId),eq(assessmentDraft.kind,'feedback'),eq(assessmentDraft.actorUserId,ctx.userId!)));
  const ai=await assessmentAiStateTx(tx,ctx);
- return {...card,aiEnabled:ai.features['360'],commandAiEnabled:ai.moduleHeld&&ai.providerConfigured,draft:draft?{...draft,payload:assessmentDraftSchema.parse(draft.payload)}:null};
+ const payload=draft?assessmentDraftSchema.parse(draft.payload):null;
+ return {...card,aiEnabled:ai.features['360'],commandAiEnabled:ai.moduleHeld&&ai.providerConfigured,draft:draft&&payload?{...draft,payload:payload.kind==='feedback'?{...payload,comments:currentPrincipleComments(card.statements,payload.comments??{})}:payload}:null};
 });}
 export async function submitOnehrFeedback(ctx:SessionContext,requestId:string,raw:unknown,remark:string,comments:Record<string,string>={}) {
   const answers=z.record(z.string(),z.enum(['yes','no'])).parse(raw);note.parse(remark);
   const principleComments=z.record(z.string().max(200),z.string().trim().max(2000)).parse(comments);
   return withPerformanceTenant(ctx,async tx=>{
     // Serialize all writes and freezing for the review, including peer responses.
-    const card=await feedbackCard(tx,requestId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${card.reviewId},0))`);
-    const fresh=await feedbackCard(tx,requestId);if(fresh.submitted||fresh.frozen)throw Error('Feedback is already submitted or finalized.');
+    const initial=await feedbackCard(tx,requestId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${initial.reviewId},0))`);
+    const card=await feedbackCard(tx,requestId);if(card.submitted||card.frozen)throw Error('Feedback is already submitted or finalized.');
     const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
     if(Object.keys(principleComments).some(key=>!card.statements.some(s=>s.principle===key)))throw Error('Use only the assigned leadership principles.');
     const score=scoreAnswers(card.statements,answers);assertOverallRemark(remark,score.score/score.max*100>cycle.policy.midMaxPct);

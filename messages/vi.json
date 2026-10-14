@@ -17881,8 +17881,10 @@
       "level": "Cấp {level}"
     },
     "feedbackAnswers": {
-      "yes": "Có",
-      "no": "Chưa quan sát thấy"
+      "yes": "Thể hiện được",
+      "no": "Đang phát triển",
+      "yesHelp": "Thể hiện hành vi này ít nhất 70% thời gian",
+      "noHelp": "Vẫn đang phát triển hành vi này"
     },
     "cycleArchived": "Kỳ đánh giá này đã được lưu trữ.",
     "panelAdmin": {
@@ -18279,6 +18281,26 @@
       "preview": "Xem xét đề xuất. Nội dung giữ lại được lưu thành bản nháp riêng để bạn sửa trước khi chia sẻ.",
       "keepAspiration": "Giữ nguyện vọng dài hạn",
       "keep": "Giữ bản nháp đã chọn"
+    },
+    "frameworkAdmin": {
+      "title": "Khung năng lực lãnh đạo",
+      "help": "Thay đổi áp dụng cho các đánh giá chưa chốt trong kỳ này, kể cả phản hồi đã gửi. Hành vi bị loại bỏ không còn tính vào điểm hiện tại; câu trả lời gốc và kết quả đã chốt được giữ lại.",
+      "closed": "Khung đã lưu trữ chỉ được xem.",
+      "readonly": "Thay đổi khung yêu cầu quyền nhân sự cấp tập đoàn.",
+      "edit": "Sửa nguyên tắc và hành vi",
+      "name": "Tên nguyên tắc",
+      "description": "Mô tả",
+      "save": "Lưu thay đổi",
+      "tier": "Cấp {n} · Bậc {min}–{max}",
+      "empty": "Chưa có hành vi ở cấp này.",
+      "current": "Hành vi hiện tại",
+      "future": "Hành vi tương lai",
+      "addBehaviour": "Thêm hành vi",
+      "behaviour": "Hành vi",
+      "removeBehaviour": "Loại bỏ hành vi",
+      "removePrinciple": "Loại bỏ nguyên tắc",
+      "removeHelp": "Loại khỏi khung đang dùng? Điểm hiện tại có thể thay đổi. Câu trả lời đã lưu và kết quả đã chốt được giữ lại.",
+      "addPrinciple": "Thêm nguyên tắc"
     },
     "reminders": {
       "title": "Nhắc việc đánh giá",

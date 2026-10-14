@@ -17881,8 +17881,10 @@
       "level": "等级 {level}"
     },
     "feedbackAnswers": {
-      "yes": "是",
-      "no": "尚未观察到"
+      "yes": "已展现",
+      "no": "发展中",
+      "yesHelp": "至少在 70% 的情况下展现此行为",
+      "noHelp": "仍在培养此行为"
     },
     "cycleArchived": "此评估周期已归档。",
     "panelAdmin": {
@@ -18279,6 +18281,26 @@
       "preview": "请审核建议。保留的内容将保存为私人草稿，供您编辑后再分享。",
       "keepAspiration": "保留长期愿望",
       "keep": "保留所选草稿"
+    },
+    "frameworkAdmin": {
+      "title": "领导力框架",
+      "help": "更改适用于本周期尚未最终确认的评估，包括已提交的反馈。移除的行为将不再计入当前分数；原始回答和最终结果会保留。",
+      "closed": "已归档的框架仅供查看。",
+      "readonly": "修改框架需要集团人力资源权限。",
+      "edit": "编辑原则与行为",
+      "name": "原则名称",
+      "description": "说明",
+      "save": "保存更改",
+      "tier": "层级 {n} · 职级 {min}–{max}",
+      "empty": "此层级尚无行为。",
+      "current": "当前行为",
+      "future": "未来行为",
+      "addBehaviour": "添加行为",
+      "behaviour": "行为",
+      "removeBehaviour": "移除行为",
+      "removePrinciple": "移除原则",
+      "removeHelp": "从当前框架中移除？当前分数可能改变。已保存的回答和最终结果会保留。",
+      "addPrinciple": "添加原则"
     },
     "reminders": {
       "title": "评估提醒",

@@ -187,6 +187,25 @@ EXCEPTION WHEN others THEN RETURN false;
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_scoring_ready(jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- The cycle policy owns the active framework; review statements are its retained per-grade projection.
+CREATE FUNCTION app.assessment_framework_statements(policy jsonb,grade text) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $$
+DECLARE normalized text:=btrim(regexp_replace(grade,'^JG\s*','','i')); matches jsonb; n integer;
+BEGIN
+ SELECT jsonb_agg(t) INTO matches FROM jsonb_array_elements(policy->'framework') t WHERE
+ CASE WHEN normalized ~ '^\d+$' THEN normalized::numeric BETWEEN (t->>'gradeMin')::numeric AND (t->>'gradeMax')::numeric ELSE (t->'letters') ? normalized END;
+ IF normalized<>'' AND normalized !~ '^\d+$' AND matches IS NULL THEN SELECT jsonb_agg(t) INTO matches FROM jsonb_array_elements(policy->'framework') t WHERE (t->'letters') ? '*'; END IF;
+ n:=coalesce(jsonb_array_length(matches),0);IF n<>1 THEN RAISE EXCEPTION 'Assign exactly one leadership framework for this grade'; END IF;
+ RETURN matches->0->'statements';
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_framework_statements(jsonb,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.assessment_principle_comments(statements jsonb,comments jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_object_agg(principle,value) FILTER(WHERE value IS NOT NULL),'{}'::jsonb) FROM (
+  SELECT DISTINCT st->>'principle' principle,coalesce(comments->(st->>'principle'),(SELECT comments->alias FROM jsonb_array_elements_text(coalesce(st->'principleAliases','[]'::jsonb)) WITH ORDINALITY a(alias,n) WHERE comments ? alias ORDER BY n DESC LIMIT 1)) value
+  FROM jsonb_array_elements(statements) st
+ ) current_comments
+$$;
+REVOKE ALL ON FUNCTION app.assessment_principle_comments(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_validate_links() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r performance_review; s performance_onehr_calibration; n jsonb:=to_jsonb(NEW); o jsonb; rid uuid:=(n->>'review_id')::uuid; eid uuid:=(n->>'employment_id')::uuid; tid uuid:=(n->>'tenant_id')::uuid;
 BEGIN
@@ -247,9 +266,11 @@ BEGIN
    IF jsonb_typeof(n->'submitted_proof') IS DISTINCT FROM 'array' OR n->>'results_submitted_at' IS NULL THEN RAISE EXCEPTION 'Proof belongs to a confirmed result'; END IF;
    IF EXISTS(SELECT 1 FROM jsonb_array_elements(n->'submitted_proof') proof WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(app.assessment_kpi_file_links((n->>'review_id')::uuid)) available WHERE available->>'attachmentId'=proof->>'attachmentId' AND available->>'kpiId'=proof->>'kpiId')) THEN RAISE EXCEPTION 'Only available KPI proof can be confirmed'; END IF;
   END IF;
-  IF TG_TABLE_NAME='performance_onehr_review' AND (n->'company_id' IS DISTINCT FROM o->'company_id' OR n->'grade' IS DISTINCT FROM o->'grade' OR n->'statements' IS DISTINCT FROM o->'statements') THEN RAISE EXCEPTION 'assessment opening snapshot is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND (n->'company_id' IS DISTINCT FROM o->'company_id' OR n->'grade' IS DISTINCT FROM o->'grade') THEN RAISE EXCEPTION 'assessment opening snapshot is immutable'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_review' AND n->'statements' IS DISTINCT FROM o->'statements' AND (NOT app.is_group_admin() OR n->'statements' IS DISTINCT FROM (SELECT app.assessment_framework_statements(cfg.policy,n->>'grade') FROM performance_onehr_cycle cfg WHERE cfg.cycle_id=r.cycle_id AND cfg.tenant_id=tid)) THEN RAISE EXCEPTION 'Only the current cycle framework can update leadership questions'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_cycle' AND ((n->'policy'->'framework') IS DISTINCT FROM (o->'policy'->'framework') OR (n->'policy'->'leadershipPrinciples') IS DISTINCT FROM (o->'policy'->'leadershipPrinciples')) AND NOT app.is_group_admin() THEN RAISE EXCEPTION 'Only group HR may change the leadership framework'; END IF;
   IF TG_TABLE_NAME='performance_onehr_cycle' AND n->'participation_opened_on' IS DISTINCT FROM o->'participation_opened_on' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') THEN RAISE EXCEPTION 'Participation opening date is immutable'; END IF;
-  IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') AND ((n->'policy')-ARRAY['windows','modules','profiles','skills','careerRoutes'] IS DISTINCT FROM (o->'policy')-ARRAY['windows','modules','profiles','skills','careerRoutes'] OR EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status='closed')) THEN RAISE EXCEPTION 'An opened assessment policy is immutable; only active deadlines, module switches and job catalogues can change'; END IF;
+  IF TG_TABLE_NAME='performance_onehr_cycle' AND EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status<>'draft') AND ((n->'policy')-ARRAY['windows','modules','profiles','skills','careerRoutes','framework','leadershipPrinciples'] IS DISTINCT FROM (o->'policy')-ARRAY['windows','modules','profiles','skills','careerRoutes','framework','leadershipPrinciples'] OR EXISTS(SELECT 1 FROM review_cycle c WHERE c.id=(n->>'cycle_id')::uuid AND c.status='closed')) THEN RAISE EXCEPTION 'An opened assessment policy is immutable; only active deadlines, module switches, frameworks and job catalogues can change'; END IF;
   IF TG_TABLE_NAME='performance_onehr_plan' AND o->>'status'<>'draft' THEN
    IF (SELECT coalesce(jsonb_agg(g->'id' ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g->'id' ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) THEN RAISE EXCEPTION 'Shared goal identities are immutable'; END IF;
    IF o->>'status'='closed' AND ((SELECT coalesce(jsonb_agg(g-ARRAY['status','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(n->'goals') WITH ORDINALITY q(g,idx)) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(g-ARRAY['status','progressNote','progressAt','checkins'] ORDER BY idx),'[]'::jsonb) FROM jsonb_array_elements(o->'goals') WITH ORDINALITY q(g,idx)) OR n->'manager_comment' IS DISTINCT FROM o->'manager_comment') THEN RAISE EXCEPTION 'Closed plan definitions and remarks are immutable'; END IF;
@@ -366,7 +387,7 @@ GRANT EXECUTE ON FUNCTION app.assessment_skill_history(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.onehr_feedback_card(wanted_request uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'guidedReview',coalesce((cfg.policy->'modules'->>'review')::boolean,true),'closed',cyc.status='closed','subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',a.principle_comments,'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
+ SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'guidedReview',coalesce((cfg.policy->'modules'->>'review')::boolean,true),'closed',cyc.status='closed','subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',app.assessment_principle_comments(r.statements,a.principle_comments),'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
  FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN performance_onehr_cycle cfg ON cfg.cycle_id=r.cycle_id AND cfg.tenant_id=r.tenant_id JOIN review_cycle cyc ON cyc.id=r.cycle_id AND cyc.tenant_id=r.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
  WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL AND (cfg.policy->'modules'->>'tm')::boolean=true AND app.assessment_review_participates(r.review_id)
 $$;
@@ -606,7 +627,7 @@ BEGIN
  ) q),'[]'::jsonb),'statements',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s->>'id','principle',s->>'principle','text',s->>'text','future',(s->>'future')::boolean,'agreementPct',(
   SELECT app.assessment_source_round(100.0*count(*) FILTER(WHERE a.answers->>(s->>'id')='yes')/nullif(count(*) FILTER(WHERE a.answers->>(s->>'id') IN ('yes','no')),0)) FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL)) ORDER BY ord) FROM jsonb_array_elements(r.statements) WITH ORDINALITY q(s,ord)),'[]'::jsonb),
   'remarks',coalesce((SELECT jsonb_agg(btrim(a.remark) ORDER BY btrim(a.remark) COLLATE "C") FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(a.remark)<>''),'[]'::jsonb),
-  'comments',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',c.key,'text',btrim(c.value)) ORDER BY c.key COLLATE "C",btrim(c.value) COLLATE "C") FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_each_text(a.principle_comments) c WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(c.value)<>'' AND EXISTS(SELECT 1 FROM jsonb_array_elements(r.statements) s WHERE s->>'principle'=c.key)),'[]'::jsonb)) INTO report;
+  'comments',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',c.key,'text',btrim(c.value)) ORDER BY c.key COLLATE "C",btrim(c.value) COLLATE "C") FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_each_text(app.assessment_principle_comments(r.statements,a.principle_comments)) c WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL AND btrim(c.value)<>'' AND EXISTS(SELECT 1 FROM jsonb_array_elements(r.statements) s WHERE s->>'principle'=c.key)),'[]'::jsonb)) INTO report;
  SELECT coalesce(jsonb_agg(jsonb_build_object('principle',v.principle,'band',CASE WHEN v.pct<=(cfg->>'lowMaxPct')::numeric THEN 'Low' WHEN v.pct<=(cfg->>'midMaxPct')::numeric THEN 'Mid' ELSE 'High' END) ORDER BY v.principle),'[]'::jsonb) INTO legacy_feedback
  FROM (SELECT s->>'principle' principle,100*sum(CASE WHEN a.answers->>(s->>'id')='yes' THEN CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END)/nullif(sum(CASE WHEN (s->>'future')::boolean THEN 1.5 ELSE 1 END),0) pct FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_array_elements(r.statements) s WHERE a.review_id=r.review_id AND a.tenant_id=r.tenant_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL GROUP BY s->>'principle') v;
  RETURN jsonb_build_object('performance',pm,'potential',pot,'performanceSource',pm_source,'potentialSource',pot_source,
@@ -1580,3 +1601,20 @@ CREATE FUNCTION app.assessment_reminder_projected(wanted_event uuid,wanted_emplo
 $$;
 REVOKE ALL ON FUNCTION app.assessment_reminder_projected(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_reminder_projected(uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assessment_refresh_framework() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE review record; questions jsonb;
+BEGIN
+ IF NEW.policy->'framework' IS NOT DISTINCT FROM OLD.policy->'framework' THEN RETURN NEW; END IF;
+ FOR review IN SELECT r.review_id,r.grade,r.statements FROM performance_onehr_review r WHERE r.cycle_id=NEW.cycle_id AND r.tenant_id=NEW.tenant_id ORDER BY r.review_id FOR UPDATE LOOP
+  -- Same row-then-advisory order as finalization. Recheck after waiting for a concurrent writer.
+  PERFORM pg_advisory_xact_lock(hashtextextended(review.review_id::text,0));
+  IF EXISTS(SELECT 1 FROM performance_onehr_result result WHERE result.review_id=review.review_id AND result.tenant_id=NEW.tenant_id) OR EXISTS(SELECT 1 FROM performance_review r WHERE r.id=review.review_id AND r.closed_at IS NOT NULL) THEN CONTINUE; END IF;
+  questions:=app.assessment_framework_statements(NEW.policy,review.grade);
+  IF questions IS DISTINCT FROM review.statements THEN UPDATE performance_onehr_review SET statements=questions,revision=revision+1 WHERE review_id=review.review_id AND tenant_id=NEW.tenant_id; END IF;
+ END LOOP;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_refresh_framework() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assessment_framework_projection AFTER UPDATE OF policy ON performance_onehr_cycle FOR EACH ROW EXECUTE FUNCTION app.assessment_refresh_framework();

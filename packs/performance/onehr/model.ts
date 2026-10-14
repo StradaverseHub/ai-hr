@@ -14,7 +14,7 @@ export type WindowCell = typeof windowCells[number];
 const finite = z.number().finite();
 const text = z.string().trim().max(4000);
 const answer = z.enum(['yes','no']);
-export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), text: z.string().min(1).max(2000), future: z.boolean(), skillTitle:z.string().trim().min(1).max(300).optional(),skillLevel:z.number().int().min(0).max(100).optional(),skillCode:z.string().max(100).optional(),skillType:z.string().max(300).optional(),knowledge:z.string().max(10000).optional(),ability:z.string().max(10000).optional() });
+export const statementSchema = z.object({ id: z.string().min(1).max(100), principle: z.string().min(1).max(200), principleId:z.string().min(1).max(100).optional(),principleDescription:z.string().max(2000).optional(),principleAliases:z.array(z.string().min(1).max(200)).max(200).optional(), text: z.string().min(1).max(2000), future: z.boolean(), skillTitle:z.string().trim().min(1).max(300).optional(),skillLevel:z.number().int().min(0).max(100).optional(),skillCode:z.string().max(100).optional(),skillType:z.string().max(300).optional(),knowledge:z.string().max(10000).optional(),ability:z.string().max(10000).optional() });
 export type Statement = z.infer<typeof statementSchema>;
 export const scoringSchema = z.discriminatedUnion('mechanism', [
   z.object({ mechanism: z.literal('A'), method: z.enum(['more','less']), target:finite.nullable().optional(), rates: z.tuple([finite,finite,finite,finite,finite]) }).superRefine((v,c)=>{if(v.rates.some((n,i)=>i>0&&(v.method==='more'?n<v.rates[i-1]:n>v.rates[i-1])))c.addIssue({code:'custom',message:'Rate thresholds must follow the direction of the KPI.'});}),
@@ -47,7 +47,8 @@ export const policySchema = z.object({
   bBands:z.array(z.object({companyId:z.uuid(),variant:z.enum(['base','excellence']).optional(),minima:z.tuple([finite,finite,finite,finite,finite])})).max(200),
   lowMaxPct:finite.min(0).max(100),midMaxPct:finite.min(0).max(100),panelTarget:z.number().int().min(1).max(20).default(5),minValid:z.number().int().min(1).max(30),
   weights:z.record(z.string().min(1).max(30),z.number().int().min(0).max(10000)), // 360 basis points; rest is competency
-  framework:z.array(z.object({gradeMin:z.number().int(),gradeMax:z.number().int(),letters:z.array(z.string().min(1).max(30)),statements:z.array(statementSchema).min(1).max(200)})).min(1).max(30),
+  framework:z.array(z.object({gradeMin:z.number().int(),gradeMax:z.number().int(),letters:z.array(z.string().min(1).max(30)),statements:z.array(statementSchema).max(200)})).min(1).max(30),
+  leadershipPrinciples:z.array(z.object({id:z.string().min(1).max(100),name:z.string().trim().min(1).max(200),description:z.string().max(2000),archived:z.boolean().optional(),aliases:z.array(z.string().min(1).max(200)).max(200)})).max(200).optional(),
   profiles:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(300),jobTitle:z.string().max(300).optional(),department:z.string().max(300).optional(),track:z.string().max(300).optional(),sector:z.string().max(300).optional(),ssgJobRole:z.string().max(300).optional(),mappingConfidence:z.string().max(300).optional(),proficiencyLevel:z.number().int().min(1).max(100).nullable().optional(),active:z.boolean().optional(),companyId:z.uuid().nullable(),grade:z.string().max(30),employmentIds:z.array(z.uuid()).max(10000).optional(),competencies:z.array(statementSchema).max(200)})).max(1000),
   promotionRules:z.array(z.object({years:z.number().int().min(1).max(100),minimum:z.enum(['PIP/Improvement','Solid Core','Star','Super Star'])})).max(100).optional(),
   skills:z.array(statementSchema).max(10000).optional(),
@@ -65,6 +66,10 @@ export const policySchema = z.object({
   for(const route of v.careerRoutes??[])if(route.fromProfileId===route.toProfileId||!v.profiles.some(p=>p.id===route.fromProfileId)||!v.profiles.some(p=>p.id===route.toProfileId))c.addIssue({code:'custom',message:'Career routes must join distinct catalogue profiles.'});
   for(const p of v.profiles)if(new Set(p.competencies.map(s=>s.id)).size!==p.competencies.length)c.addIssue({code:'custom',message:'A profile contains duplicate competency IDs.'});
   for(const tier of v.framework)if(new Set(tier.statements.map(s=>s.id)).size!==tier.statements.length)c.addIssue({code:'custom',message:'A framework contains duplicate statement IDs.'});
+  if(v.leadershipPrinciples){
+   const principals=v.leadershipPrinciples;if(new Set(principals.map(p=>p.id)).size!==principals.length)c.addIssue({code:'custom',message:'Leadership principle identities must be unique.'});
+   for(const statement of v.framework.flatMap(t=>t.statements))if(!principals.some(p=>!p.archived&&p.id===statement.principleId&&p.name===statement.principle))c.addIssue({code:'custom',message:'A leadership behaviour must belong to its current principle.'});
+  }
 });
 export type Policy = z.infer<typeof policySchema>;
 export function defaultPolicy(framework: Policy['framework']):Policy {
@@ -105,7 +110,7 @@ export function scoreAnswers(statements:Statement[],answers:Record<string,'yes'|
 }
 export function potential(leadership:{score:number;max:number}[],tech:{score:number;max:number}|null,policy:Policy,grade:string):{pct:number|null;band:PotentialBand|null;valid:boolean} {
   const normalizedGrade=grade.replace(/^JG\s*/i,'').trim();const min=/^\d+$/.test(normalizedGrade)?policy.minValid:1;
-  if(leadership.length<min)return {pct:null,band:null,valid:false};
+  if(leadership.length<min||leadership.some(s=>!Number.isFinite(s.score)||!Number.isFinite(s.max)||s.max<=0))return {pct:null,band:null,valid:false};
   const pct360=leadership.reduce((n,s)=>n+s.score/s.max*100,0)/leadership.length;
   const w=policy.weights[normalizedGrade]??10000;
   const pct=tech&&tech.max>0&&w<10000?(pct360*w+(tech.score/tech.max*100)*(10000-w))/10000:pct360;

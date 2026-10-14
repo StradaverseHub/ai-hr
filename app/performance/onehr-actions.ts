@@ -68,11 +68,14 @@ export async function onehrCycleAction(f:FormData){
   try{
     const view=await perf.getOnehrCycle(s,id);if(!view)throw Error('Cycle not found.');
     if(str(f,'action')==='policy'){
-      let catalogue={framework:view.policy.framework,profiles:view.policy.profiles,skills:view.policy.skills??[],careerRoutes:view.policy.careerRoutes??[]};
+      let catalogue={framework:view.policy.framework,leadershipPrinciples:view.policy.leadershipPrinciples,profiles:view.policy.profiles,skills:view.policy.skills??[],careerRoutes:view.policy.careerRoutes??[]};
       const file=f.get('catalogue');if(file instanceof File&&file.size){if(file.size>750_000)throw Error('Choose an assessment catalogue smaller than 750 KB.');catalogue=JSON.parse(await file.text());}
       const bBands=view.companies.filter(c=>str(f,`b.${c.id}.0`)).map(c=>({companyId:c.id,variant:str(f,`b.${c.id}.variant`)||'base',minima:[0,1,2,3,4].map(i=>num(f,`b.${c.id}.${i}`))}));
       const windows=readWindows(f);
       await perf.configureOnehrCycle(s,id,num(f,'revision'),{...view.policy,...catalogue,kind:str(f,'kind'),extremes:{enabled:f.has('extremes'),bonus:num(f,'bonus'),penalty:num(f,'penalty')},weights:Object.fromEntries(Object.keys(view.policy.weights).map(g=>[g,Math.round(num(f,`weight.${g}`)*100)])),modules:Object.fromEntries(assessmentModuleKeys.map(k=>[k,f.has(k)])),windows,bBands,aBands:[0,1,2,3,4].map(i=>num(f,`a.${i}`)),lowMaxPct:num(f,'lowMaxPct'),midMaxPct:num(f,'midMaxPct'),minValid:num(f,'minValid'),panelTarget:num(f,'panelTarget'),idpMinGoals:num(f,'idpMinGoals'),idpMaxGoals:num(f,'idpMaxGoals'),idpRequireAllActions:f.has('idpRequireAllActions'),curveStrict:f.has('curveStrict'),curveToleranceMode:str(f,'curveToleranceMode')||view.policy.curveToleranceMode,curveTolerancePct:num(f,'curveTolerancePct'),curveTolerancePeople:num(f,'curveTolerancePeople')});
+    }else if(str(f,'action')==='framework'){
+      const edit={action:str(f,'edit'),principleId:str(f,'principleId'),statementId:str(f,'statementId'),name:str(f,'name'),description:str(f,'description'),text:str(f,'text'),tier:Number(str(f,'tier')),future:f.has('future')};
+      await perf.updateAssessmentFramework(s,id,num(f,'revision'),edit);
     }else if(str(f,'action')==='catalogue-profile'){
       const profile=view.policy.profiles.find(p=>p.id===str(f,'profileId')),available=[...new Map([...view.policy.profiles.flatMap(p=>p.competencies),...(view.policy.skills??[])].map(s=>[s.id,s])).values()];
       const chosen=f.getAll('skillId').map(String);if(chosen.some(id=>!available.some(s=>s.id===id)))throw Error('Choose current catalogue competencies.');

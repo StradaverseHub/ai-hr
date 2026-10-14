@@ -1,3 +1,4 @@
+import {leadershipPrinciples} from '../packs/performance/onehr/framework-model';
 import { kpiLibraryImportHeaders } from '../packs/performance/onehr/import-model';
 import { architectureHeaders } from '../packs/performance/onehr/architecture-model';
 import { recordLoginSucceeded } from '../core/auth';
@@ -326,6 +327,41 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
       const answer=i<2?'yes':'no';await perf.submitOnehrFeedback(peers[i].ctx,request.id,Object.fromEntries(card.statements.map(s=>[s.id,answer])),answer==='yes'?'Consistently observed these behaviours':'');
     }
   }
+  it('edits the active leadership framework after submission while preserving original answers and renamed comments',async()=>{
+    const group={...a,grants:[{role:'hr_admin',companyId:null}]};
+    await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(peers[0].ctx,request.id),originalAnswers=Object.fromEntries(card.statements.map(s=>[s.id,'yes' as const]));
+    const oldName=card.statements[0].principle,comment='Observed service follow-through.';
+    await perf.submitOnehrFeedback(peers[0].ctx,request.id,originalAnswers,'Consistently observed these behaviours',{[oldName]:comment});
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;const principle=leadershipPrinciples(cycle.policy).find(p=>p.name===oldName)!;
+    await expect(perf.updateAssessmentFramework(mgr,cycleId,cycle.revision,{action:'edit_principle',principleId:principle.id,name:'Customer practice',description:''})).rejects.toThrow(/group HR/);
+    await perf.updateAssessmentFramework(group,cycleId,cycle.revision,{action:'edit_principle',principleId:principle.id,name:'Customer practice',description:'Observable service outcomes'});
+    const renamed=await perf.getOnehrFeedback(peers[0].ctx,request.id);expect(renamed.submitted).toBe(true);expect(renamed.comments).toEqual({'Customer practice':comment});expect(renamed.statements.map(s=>s.id)).toEqual(card.statements.map(s=>s.id));
+    await expect(perf.updateAssessmentFramework(group,cycleId,cycle.revision,{action:'remove_behaviour',statementId:card.statements[0].id})).rejects.toThrow(/changed/);
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;
+    await perf.updateAssessmentFramework(group,cycleId,cycle.revision,{action:'remove_behaviour',statementId:card.statements[0].id});
+    expect((await perf.getOnehrFeedback(peers[0].ctx,request.id)).statements.some(s=>s.id===card.statements[0].id)).toBe(false);
+    const [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,request.id));expect(stored.answers).toEqual(originalAnswers);expect(stored.principleComments).toEqual({[oldName]:comment});
+    cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateAssessmentFramework(group,cycleId,cycle.revision,{action:'add_behaviour',principleId:principle.id,tier:0,text:'Checks the result with the customer',future:true});
+    const added=await perf.getOnehrFeedback(peers[0].ctx,request.id);expect(added.statements.some(s=>s.text==='Checks the result with the customer')).toBe(true);expect(added.answers).toEqual(originalAnswers);
+    const pending=(await perf.onehrAssignments(peers[1].ctx)).feedback.find(f=>f.subject==='Assessment subject')!;
+    await expect(perf.submitOnehrFeedback(peers[1].ctx,pending.id,originalAnswers,'A stale form with removed questions')).rejects.toThrow(/every assigned/);
+    expect((await perf.getOnehrFeedback(peers[1].ctx,pending.id)).submitted).toBe(false);
+    const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'onehr.framework-updated'));expect(events).toHaveLength(3);expect(events[0].payload).toHaveProperty('previous');
+    await expect(withTenant(group,tx=>tx.update(schema.onehrReview).set({statements:[]}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
+  });
+  it('keeps finalized framework inputs and published results fixed while updating other unfinished people',async()=>{
+    await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)),[result]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));
+    let cycle=(await perf.getOnehrCycle(a,cycleId))!;const statement=cycle.policy.framework[0].statements[0];
+    await perf.updateAssessmentFramework({...a,grants:[{role:'hr_admin',companyId:null}]},cycleId,cycle.revision,{action:'edit_behaviour',statementId:statement.id,text:'Updated current-cycle wording'});
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(after.statements).toEqual(before.statements);expect(after.revision).toBe(before.revision);
+    expect((await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId)))[0]).toEqual(result);
+    const peersNow=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));expect(peersNow[0].statements).toEqual(expect.arrayContaining([expect.objectContaining({id:statement.id,text:'Updated current-cycle wording'})]));
+    await perf.closeCycle(a,{cycleId});cycle=(await perf.getOnehrCycle(a,cycleId))!;
+    await expect(perf.updateAssessmentFramework(a,cycleId,cycle.revision,{action:'remove_behaviour',statementId:statement.id})).rejects.toThrow(/archived/);
+  });
+
   it('freezes reviewer authorship with the result and rejects changes to the underlying authored record',async()=>{
     await complete(true,'Verified delivery across the period.');
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);

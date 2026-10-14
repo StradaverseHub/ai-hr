@@ -17881,8 +17881,10 @@
       "level": "Level {level}"
     },
     "feedbackAnswers": {
-      "yes": "Yes",
-      "no": "Not yet"
+      "yes": "Demonstrate",
+      "no": "Developing",
+      "yesHelp": "Shows this at least 70% of the time",
+      "noHelp": "Still growing into this behaviour"
     },
     "cycleArchived": "This review cycle is archived.",
     "panelAdmin": {
@@ -18279,6 +18281,26 @@
       "preview": "Review the suggestions. Keeping them saves a private draft for you to edit before sharing.",
       "keepAspiration": "Keep longer-term aspiration",
       "keep": "Keep selected draft"
+    },
+    "frameworkAdmin": {
+      "title": "Leadership framework",
+      "help": "Changes apply to unfinished assessments in this cycle, including submitted feedback. Removed behaviours stop contributing to current scores; original answers and finalized results are retained.",
+      "closed": "This archived framework is read-only.",
+      "readonly": "Framework changes require group HR access.",
+      "edit": "Edit principles and behaviours",
+      "name": "Principle name",
+      "description": "Description",
+      "save": "Save changes",
+      "tier": "Tier {n} · Grades {min}–{max}",
+      "empty": "No behaviours in this tier.",
+      "current": "Current behaviour",
+      "future": "Future behaviour",
+      "addBehaviour": "Add behaviour",
+      "behaviour": "Behaviour",
+      "removeBehaviour": "Remove behaviour",
+      "removePrinciple": "Remove principle",
+      "removeHelp": "Remove this from the active framework? Current scores may change. Stored answers and finalized results are preserved.",
+      "addPrinciple": "Add principle"
     },
     "reminders": {
       "title": "Assessment reminders",

@@ -17881,8 +17881,10 @@
       "level": "Tahap {level}"
     },
     "feedbackAnswers": {
-      "yes": "Ya",
-      "no": "Belum lagi"
+      "yes": "Menunjukkan",
+      "no": "Sedang berkembang",
+      "yesHelp": "Menunjukkan tingkah laku ini sekurang-kurangnya 70% daripada masa",
+      "noHelp": "Masih membangunkan tingkah laku ini"
     },
     "cycleArchived": "Kitaran ulasan ini telah diarkibkan.",
     "panelAdmin": {
@@ -18279,6 +18281,26 @@
       "preview": "Semak cadangan. Pilihan yang disimpan menjadi draf peribadi untuk diedit sebelum dikongsi.",
       "keepAspiration": "Simpan aspirasi jangka panjang",
       "keep": "Simpan draf pilihan"
+    },
+    "frameworkAdmin": {
+      "title": "Rangka kerja kepimpinan",
+      "help": "Perubahan digunakan pada penilaian yang belum dimuktamadkan dalam kitaran ini, termasuk maklum balas yang dihantar. Tingkah laku yang dibuang tidak lagi menyumbang kepada skor semasa; jawapan asal dan keputusan muktamad dikekalkan.",
+      "closed": "Rangka kerja yang diarkibkan ini untuk bacaan sahaja.",
+      "readonly": "Perubahan rangka kerja memerlukan akses HR kumpulan.",
+      "edit": "Edit prinsip dan tingkah laku",
+      "name": "Nama prinsip",
+      "description": "Penerangan",
+      "save": "Simpan perubahan",
+      "tier": "Tahap {n} · Gred {min}–{max}",
+      "empty": "Tiada tingkah laku dalam tahap ini.",
+      "current": "Tingkah laku semasa",
+      "future": "Tingkah laku masa hadapan",
+      "addBehaviour": "Tambah tingkah laku",
+      "behaviour": "Tingkah laku",
+      "removeBehaviour": "Buang tingkah laku",
+      "removePrinciple": "Buang prinsip",
+      "removeHelp": "Buang daripada rangka kerja aktif? Skor semasa mungkin berubah. Jawapan tersimpan dan keputusan muktamad dikekalkan.",
+      "addPrinciple": "Tambah prinsip"
     },
     "reminders": {
       "title": "Peringatan penilaian",

@@ -1,3 +1,4 @@
+import { FrameworkAdmin } from './framework-admin';
 import { AssessmentProgressAdmin } from './progress-admin';
 import { AssessmentReminderAdmin } from './reminder-admin';
 import { PanelAdmin } from './panel-admin';
@@ -32,6 +33,7 @@ export async function OnehrCycleView({v,error}:{v:View;error?:string}){
     {['open','calibration'].includes(cycle.status)&&<Card className="p-5"><AssessmentParticipants cycleId={cycle.id} revision={v.revision} participants={v.participants} frozenEmploymentIds={v.reviews.filter(r=>r.frozenId).map(r=>r.employmentId)} labels={Object.fromEntries(['title','help','search','filter','out','changed','all','employee','status','actions','add','remove','clear','empty','previous','next','added','removed','confirmed','not_confirmed','confirmed_after_open','left','native_rule','existing_review','noReview'].map(k=>[k,t(`participants.${k}`)]))}/></Card>}
     {cycle.status!=='draft'&&<AssessmentProgressAdmin cycleId={cycle.id}/>}
     {['open','calibration'].includes(cycle.status)&&policy.modules.tm&&<PanelAdmin cycleId={cycle.id}/>}
+    <FrameworkAdmin cycleId={cycle.id} revision={v.revision} policy={policy} closed={cycle.status==='closed'}/>
     {cycle.status!=='closed'&&<CatalogueAdmin cycleId={cycle.id} revision={v.revision} policy={policy} companies={v.companies}/>}
     {cycle.status!=='closed'&&policy.modules.pm&&<AssessmentKpiImport cycleId={cycle.id}/>}
     {['open','calibration'].includes(cycle.status)&&ratedPerformance(policy)&&v.kpiNames.length>0&&<CompanyKpiFill cycleId={cycle.id} companies={v.companies} names={v.kpiNames}/>}
