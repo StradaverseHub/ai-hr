@@ -18355,6 +18355,11 @@
     "potentialInsight": {
       "title": "Gambaran potensi",
       "help": "Maklum balas kepimpinan tanpa nama dan bukti kompetensi yang telah disemak. Anda tetap menentukan penilaian."
+    },
+    "competencySections": {
+      "remark": "Ulasan tentang {category}",
+      "employee": "Ulasan bahagian pekerja",
+      "manager": "Ulasan bahagian pengurus"
     }
   },
   "allowanceV2": {

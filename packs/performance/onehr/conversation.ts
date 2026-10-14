@@ -32,7 +32,7 @@ function commandContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrRevie
  if(!kind||kind==='results'&&view.resultsSubmitted||kind==='moderation'&&!view.canModerateIds.length||kind==='competency_self'&&view.competencyStatus!=='pending'||kind==='competency_manager'&&view.competencyStatus!=='submitted')return null;
  const prior=view.drafts.find(d=>d.kind===kind);
  const kpis=view.kpis.filter(k=>!k.hrOwned&&(kind==='results'||view.canModerateIds.includes(k.id)));
- const draft=assessmentDraftSchema.parse(prior?.payload??(kind==='results'||kind==='moderation'?{kind,lines:kpis.map(k=>({id:k.id,actual:kind==='results'?k.actual:k.approvedActual??k.actual,note:kind==='results'?k.note:k.moderationRemark})),remark:kind==='results'?view.selfRemark:view.ownReviewerRemark}:{kind,answers:Object.fromEntries(view.competencies.map(c=>[c.id,{answer:kind==='competency_self'?c.self:c.manager??c.self,remark:kind==='competency_self'?c.selfRemark??'':c.managerRemark}])),remark:kind==='competency_self'?view.competencySelfRemark:view.competencyManagerRemark}));
+ const draft=assessmentDraftSchema.parse(prior?.payload??(kind==='results'||kind==='moderation'?{kind,lines:kpis.map(k=>({id:k.id,actual:kind==='results'?k.actual:k.approvedActual??k.actual,note:kind==='results'?k.note:k.moderationRemark})),remark:kind==='results'?view.selfRemark:view.ownReviewerRemark}:{kind,sections:kind==='competency_self'?view.competencySelfSections:view.competencyManagerSections,answers:Object.fromEntries(view.competencies.map(c=>[c.id,{answer:kind==='competency_self'?c.self:c.manager??c.self,remark:kind==='competency_self'?c.selfRemark??'':c.managerRemark}])),remark:kind==='competency_self'?view.competencySelfRemark:view.competencyManagerRemark}));
  const targets=(kind==='results'||kind==='moderation'?kpis.map(k=>({id:k.id,label:k.title})):view.competencies.map(c=>({id:c.id,label:c.text})));
  return {facts:{text,draft,targets},draftRevision:prior?.revision??null};
 }
@@ -77,7 +77,7 @@ async function applyHumanManagerCommand(tx:Tx,ctx:SessionContext,view:ReviewView
  if(command.action==='approve_competencies'){
   if(privateDraft?.kind!=='competency_manager')throw Error('This competency review is not awaiting your approval.');
   const answers=Object.fromEntries(view.competencies.map(c=>{const answer=privateDraft.answers[c.id];if(!answer?.answer)throw Error('Rate every competency before approving.');return [c.id,{answer:answer.answer,remark:answer.remark}];}));
-  await submitOnehrCompetenciesTx(tx,ctx,view.reviewId,view.revision,answers,true,privateDraft.remark);return 'The competency review is approved.';
+  await submitOnehrCompetenciesTx(tx,ctx,view.reviewId,view.revision,answers,true,privateDraft.remark,privateDraft.sections??{});return 'The competency review is approved.';
  }
  if(command.action==='comment_career'){
   await commentAssessmentCareerProfileTx(tx,ctx,view.reviewId,input.careerRevision,command.text);return 'Your career-profile comment is saved.';

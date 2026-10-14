@@ -18355,6 +18355,11 @@
     "potentialInsight": {
       "title": "Phân tích tiềm năng",
       "help": "Phản hồi lãnh đạo ẩn danh và bằng chứng năng lực đã được đánh giá. Bạn vẫn là người quyết định xếp loại."
+    },
+    "competencySections": {
+      "remark": "Nhận xét về {category}",
+      "employee": "Nhận xét nhóm năng lực của nhân viên",
+      "manager": "Nhận xét nhóm năng lực của quản lý"
     }
   },
   "allowanceV2": {

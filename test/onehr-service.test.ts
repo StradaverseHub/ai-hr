@@ -182,6 +182,27 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:2,achievementPct:100})).rejects.toThrow(/archived/);
   });
+  it('keeps competency category drafts private and submits each authors own remarks with the assessment',async()=>{
+    const answers={'skill-1':{answer:'no' as const,remark:''},'skill-2':{answer:'no' as const,remark:''}};
+    await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{},remark:'',sections:{Technical:'Private employee category remark.'}});
+    expect((await view(self)).drafts.find(d=>d.kind==='competency_self')?.payload).toMatchObject({sections:{Technical:'Private employee category remark.'}});expect((await view(mgr)).competencySelfSections).toEqual({});
+    const [started]=await withTenant(a,tx=>tx.execute<{ok:boolean}>(sql`select app.assessment_competency_started(${reviewId}::uuid) as ok`));expect(started.ok).toBe(true);
+    await expect(perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,answers,false,'Own overall reflection.',{Unassigned:'No.'})).rejects.toThrow(/assigned/);
+    await expect(withTenant(mgr,tx=>tx.update(schema.onehrReview).set({competencySelfSections:{Technical:'Manager overwrote employee'}}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,answers,false,'Own overall reflection.',{Technical:'Submitted employee category remark.'});expect((await view(mgr)).competencySelfSections).toEqual({Technical:'Submitted employee category remark.'});
+    await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers,remark:'Manager overall reflection.',sections:{Technical:'Private manager category remark.'}});
+    expect((await view(self)).competencyManagerSections).toEqual({});expect((await view(self)).drafts).toEqual([]);
+    await expect(perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,1,{kind:'competency_manager',answers,remark:'Manager overall reflection.',sections:{Unassigned:'No.'}})).rejects.toThrow(/assigned/);
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,answers,true,'Manager overall reflection.',{Technical:'Submitted manager category remark.'});
+    const mine=await perf.getAssessmentPersonalRecord(self,reviewId);expect(mine.current).toMatchObject({competencyOwnSections:{Technical:'Submitted employee category remark.'},competencyManagerSections:{Technical:'Submitted manager category remark.'}});
+    await expect(withTenant(self,tx=>tx.update(schema.onehrReview).set({competencyManagerSections:{Technical:'Overwritten'}}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
+    expect((await view()).drafts).toEqual([]);
+  });
+  it('freezes competency section remarks with the historical assessment and refuses later alteration',async()=>{
+    await complete(true,'',true);const resultId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [frozen]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.id,resultId));expect(frozen.result).toMatchObject({provenance:{competencySelfSections:{Technical:'Employee category history.'},competencyManagerSections:{Technical:'Manager category history.'}}});
+    await expect(withTenant(mgr,tx=>tx.update(schema.onehrReview).set({competencyManagerSections:{Technical:'Later words'}}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toThrow();
+  });
   it('withholds potential themes below threshold and exposes only anonymous submitted and reviewed evidence',async()=>{
     const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Potential evidence',companyId:b.companyId,tier:'hod',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'}),actor=peers[0].ctx;
     await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{'skill-1':{answer:'yes',remark:'Private skill canary'},'skill-2':{answer:'no',remark:''}},remark:'Private reflection canary'});
@@ -368,7 +389,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await withTenant(peers[2].ctx,tx=>tx.select().from(schema.assessmentReviewerRemark))).toEqual([]);
   });
 
-  async function complete(reviewCompetencies=true,overallRemark=''){
+  async function complete(reviewCompetencies=true,overallRemark='',sections=false){
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver agreed outcomes',description:'Evidence-led delivery',weightBp:10000,unit:'units',scoring,moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed objectives');
@@ -376,8 +397,8 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     if(overallRemark)await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:100,note:'Verified'}],remark:overallRemark});
     await perf.moderateOnehrKpi(mgr,reviewId,(await view()).revision,id,100,'Verified');
     await perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME',overallRemark);
-    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work.');
-    if(reviewCompetencies)await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true);
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work.',sections?{Technical:'Employee category history.'}:{});
+    if(reviewCompetencies)await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true,'',sections?{Technical:'Manager category history.'}:{});
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     for(let i=0;i<peers.length;i++){
       const requests=await perf.onehrAssignments(peers[i].ctx);const request=requests.feedback.find(r=>r.subject==='Assessment subject')!;const card=await perf.getOnehrFeedback(peers[i].ctx,request.id);

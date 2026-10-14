@@ -3,6 +3,7 @@
 -- Re-check the live watermark and merge the journal union before release.
 -- Apply strictly after 0531–0535. Historical assessment identifiers remain stable.
 ALTER TABLE performance_onehr_review ADD COLUMN profile_id uuid, ADD COLUMN profile_match text, ADD COLUMN self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_self_remark text NOT NULL DEFAULT '', ADD COLUMN competency_manager_remark text NOT NULL DEFAULT '';
+ALTER TABLE performance_onehr_review ADD COLUMN competency_self_sections jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(competency_self_sections)='object' AND octet_length(competency_self_sections::text)<=200000), ADD COLUMN competency_manager_sections jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(competency_manager_sections)='object' AND octet_length(competency_manager_sections::text)<=200000);
 ALTER TABLE performance_onehr_panel ADD COLUMN reset_at timestamptz, ADD COLUMN archive_reason text;
 ALTER TABLE performance_onehr_panel ADD COLUMN principle_comments jsonb NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(principle_comments)='object');
 ALTER TABLE performance_onehr_plan ADD COLUMN conversation_held_on date;
@@ -398,7 +399,7 @@ CREATE FUNCTION app.assessment_competency_started(wanted_review uuid) RETURNS bo
  SELECT EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(r.cycle_id)
   AND (r.competency_status<>'pending' OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id)
    OR EXISTS(SELECT 1 FROM jsonb_array_elements(r.competencies) c WHERE c->>'self' IS NOT NULL OR c->>'manager' IS NOT NULL)
-   OR EXISTS(SELECT 1 FROM performance_assessment_draft d WHERE d.review_id=r.review_id AND d.kind IN ('competency_self','competency_manager') AND (coalesce(d.payload->>'remark','')<>'' OR EXISTS(SELECT 1 FROM jsonb_each(coalesce(d.payload->'answers','{}'::jsonb)) a WHERE a.value->>'answer' IS NOT NULL OR coalesce(a.value->>'remark','')<>'')))))
+   OR EXISTS(SELECT 1 FROM performance_assessment_draft d WHERE d.review_id=r.review_id AND d.kind IN ('competency_self','competency_manager') AND (coalesce(d.payload->>'remark','')<>'' OR EXISTS(SELECT 1 FROM jsonb_each_text(coalesce(d.payload->'sections','{}'::jsonb)) section WHERE btrim(section.value)<>'') OR EXISTS(SELECT 1 FROM jsonb_each(coalesce(d.payload->'answers','{}'::jsonb)) a WHERE a.value->>'answer' IS NOT NULL OR coalesce(a.value->>'remark','')<>'')))))
 $$;
 REVOKE ALL ON FUNCTION app.assessment_competency_started(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_competency_started(uuid) TO ai_hr_app;
@@ -1696,6 +1697,7 @@ CREATE FUNCTION app.assessment_potential_source(wanted_review uuid,wanted_sessio
   'competencyStatus',CASE WHEN r.valid AND jsonb_array_length(r.competencies)>0 THEN r.competency_status ELSE NULL END,
   'competencyRemark',CASE WHEN r.valid AND r.competency_status IN ('submitted','reviewed') THEN r.competency_self_remark ELSE '' END,
   'managerRemark',CASE WHEN r.valid AND r.competency_status='reviewed' THEN r.competency_manager_remark ELSE '' END,
+  'managerSections',CASE WHEN r.valid AND r.competency_status='reviewed' THEN r.competency_manager_sections ELSE '{}'::jsonb END,
   'competencies',CASE WHEN r.valid AND r.competency_status='reviewed' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('text',s->>'text','skillTitle',coalesce(s->>'skillTitle',s->>'text'),'principle',s->>'principle','future',(s->>'future')::boolean,'self',s->'self','manager',s->'manager','managerRemark',coalesce(s->>'managerRemark','')) ORDER BY ord) FROM jsonb_array_elements(r.competencies) WITH ORDINALITY q(s,ord)),'[]'::jsonb) ELSE '[]'::jsonb END)
  FROM counted r
 $$;
@@ -1727,3 +1729,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_summary_validate() FROM PUBLIC;
 CREATE TRIGGER assessment_summary_guard BEFORE INSERT OR UPDATE ON performance_assessment_summary FOR EACH ROW EXECUTE FUNCTION app.assessment_summary_validate();
+
+--> statement-breakpoint
+-- Section comments are submitted by their author; draft writes use the existing actor-private draft table.
+CREATE FUNCTION app.assessment_competency_sections_validate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE sections jsonb; self_changed boolean; manager_changed boolean;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.competency_self_sections<>'{}'::jsonb OR NEW.competency_manager_sections<>'{}'::jsonb THEN RAISE EXCEPTION 'New competency sections must start empty'; END IF;RETURN NEW;
+ END IF;
+ self_changed:=NEW.competency_self_sections IS DISTINCT FROM OLD.competency_self_sections;
+ manager_changed:=NEW.competency_manager_sections IS DISTINCT FROM OLD.competency_manager_sections;
+ IF NOT self_changed AND NOT manager_changed THEN RETURN NEW; END IF;
+ IF NOT EXISTS(SELECT 1 FROM review_cycle c JOIN performance_onehr_cycle cfg ON cfg.cycle_id=c.id AND cfg.tenant_id=c.tenant_id WHERE c.id=NEW.cycle_id AND c.tenant_id=NEW.tenant_id AND c.status IN ('open','calibration') AND coalesce((cfg.policy->'modules'->>'tm')::boolean,false)) OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=NEW.review_id AND f.tenant_id=NEW.tenant_id) OR NOT app.assessment_review_participates(NEW.review_id) THEN RAISE EXCEPTION 'Competency section remarks are closed'; END IF;
+ IF self_changed AND (OLD.competency_status<>'pending' OR NEW.competency_status<>'submitted' OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND app.is_self_person(e.person_id))) THEN RAISE EXCEPTION 'Only the employee may submit their section remarks'; END IF;
+ IF manager_changed AND (OLD.competency_status<>'submitted' OR NEW.competency_status<>'reviewed' OR NOT app.onehr_manager(NEW.review_id)) THEN RAISE EXCEPTION 'Only the line manager may submit review section remarks'; END IF;
+ FOREACH sections IN ARRAY ARRAY[NEW.competency_self_sections,NEW.competency_manager_sections] LOOP
+  IF EXISTS(SELECT 1 FROM jsonb_each(sections) section WHERE jsonb_typeof(section.value)<>'string' OR length(section.value#>>'{}')>4000 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.competencies) c WHERE c->>'principle'=section.key)) THEN RAISE EXCEPTION 'Use only assigned competency section remarks'; END IF;
+ END LOOP;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_competency_sections_validate() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assessment_competency_sections_guard BEFORE INSERT OR UPDATE OF competency_self_sections,competency_manager_sections ON performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.assessment_competency_sections_validate();

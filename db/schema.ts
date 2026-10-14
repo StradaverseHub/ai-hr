@@ -10040,6 +10040,7 @@ export const onehrReview = pgTable('performance_onehr_review', {
   managerPerformance: text('manager_performance'), managerScore: numeric('manager_score',{precision:20,scale:8}),
   managerRemark: text('manager_remark').notNull().default(''), selfRemark:text('self_remark').notNull().default(''),
   managerRemarkByUserId:uuid('manager_remark_by_user_id').references(()=>appUser.id),
+  competencySelfSections:jsonb('competency_self_sections').$type<Record<string,string>>().notNull().default({}), competencyManagerSections:jsonb('competency_manager_sections').$type<Record<string,string>>().notNull().default({}),
   competencySelfRemark:text('competency_self_remark').notNull().default(''), competencyManagerRemark:text('competency_manager_remark').notNull().default(''),
   submittedProof:jsonb('submitted_proof').$type<{attachmentId:string;kpiId:string}[]>().notNull().default([]),
   revision: integer('revision').notNull().default(1), createdAt: createdAt(),

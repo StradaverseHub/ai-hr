@@ -2,7 +2,7 @@ import {z} from 'zod';
 import {competencySchema} from './model';
 import {insightTextGroundingError} from './insight-grounding';
 import reference from './potential-insight-source.json';
-export const potentialInsightSourceSchema=z.object({name:z.string(),valid:z.boolean(),raters:z.number().int(),minimum:z.number().int(),principles:z.array(z.object({name:z.string(),description:z.string(),yes:z.number(),total:z.number(),comments:z.array(z.string())})),remarks:z.array(z.string()),competencyStatus:z.string().nullable(),competencyRemark:z.string(),managerRemark:z.string(),competencies:z.array(competencySchema.pick({text:true,skillTitle:true,principle:true,future:true,self:true,manager:true,managerRemark:true}))});
+export const potentialInsightSourceSchema=z.object({name:z.string(),valid:z.boolean(),raters:z.number().int(),minimum:z.number().int(),principles:z.array(z.object({name:z.string(),description:z.string(),yes:z.number(),total:z.number(),comments:z.array(z.string())})),remarks:z.array(z.string()),competencyStatus:z.string().nullable(),competencyRemark:z.string(),managerRemark:z.string(),managerSections:z.record(z.string(),z.string()).optional(),competencies:z.array(competencySchema.pick({text:true,skillTitle:true,principle:true,future:true,self:true,manager:true,managerRemark:true}))});
 export type PotentialInsightSource=z.infer<typeof potentialInsightSourceSchema>;
 export type PotentialInsight={paragraph:string};
 const sorted=(xs:string[])=>[...xs].sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:a.toLowerCase()>b.toLowerCase()?1:0);
@@ -21,6 +21,7 @@ export function potentialInsightFacts(s:PotentialInsightSource){
     down.push(...dn);up.push(...upl);titles.push(...rows.map(c=>c.skillTitle??c.text));
     lines.push(`Competency ${category} (reviewed by their line manager): ${share>=.75?'demonstrated in most':share>=.4?'in some':'still developing'}${dn.length?`; their line manager's review moved ${dn.join(', ')} to still developing`:''}${upl.length?`; their line manager's review moved ${upl.join(', ')} up to demonstrated`:''}`);
     for(const c of rows)if(c.managerRemark?.trim())lines.push(`  their line manager's note on ${label(c)}: <<<${fence(c.managerRemark)}>>>`);
+    const sectionRemark=s.managerSections?.[category];if(sectionRemark?.trim())lines.push(`  their line manager's note on ${category}: <<<${fence(sectionRemark)}>>>`);
    }
   }else if(s.competencyStatus)lines.push('Competency assessment: not reviewed by their line manager yet.');
   if(s.competencyRemark)lines.push(`Their own competency remark: <<<${fence(s.competencyRemark)}>>>`);

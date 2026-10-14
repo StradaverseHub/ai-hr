@@ -1,4 +1,5 @@
 'use server';
+import {readCompetencySections} from '@/packs/performance/onehr/competency-section-model';
 import { readKpiSettingForm } from '@/packs/performance/onehr/setting-form-model';
 import { assessmentReturnPath } from '@/lib/performance-navigation';
 import { redirect } from 'next/navigation';
@@ -135,7 +136,7 @@ export async function onehrReviewAction(f:FormData){
       case 'performance':await perf.confirmOnehrPerformance(s,id,expected,str(f,'band') as PMBand,str(f,'remark'));break;
       case 'competencies':
         if(str(f,'intent')==='draft')await saveDraftForm(s,f);
-        else await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'),str(f,'overallRemark'));
+        else await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'),str(f,'overallRemark'),readCompetencySections(f));
         break;
       case 'profile':await perf.assignAssessmentProfile(s,id,expected,str(f,'profileId'));break;
       case 'panel':await perf.assignOnehrPanel(s,id,expected,ids(f,'peerIds').map(employmentId=>({employmentId,relationship:str(f,`relationship.${employmentId}`)||'peer'})));break;
@@ -208,7 +209,7 @@ async function saveDraftForm(s:Awaited<ReturnType<typeof getSession>>,f:FormData
   let payload:unknown;
   if(kind==='results'||kind==='moderation')payload={kind,lines:ids(f,'kpiId').map(id=>({id,actual:nullableNumber(f,`${id}.actual`),note:str(f,`${id}.note`)})),remark:str(f,'overallRemark')};
   else if(kind==='feedback')payload={kind,comments:Object.fromEntries(f.getAll('principle').map(p=>[String(p),str(f,`comment.${p}`)])),answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),str(f,`answer.${id}`)]).filter(([,answer])=>!!answer)),remark:str(f,'remark')};
-  else payload={kind,answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),{answer:str(f,`answer.${id}`)||null,remark:str(f,`remark.${id}`)}])),remark:str(f,'overallRemark')};
+  else payload={kind,sections:readCompetencySections(f),answers:Object.fromEntries(f.getAll('statementId').map(id=>[String(id),{answer:str(f,`answer.${id}`)||null,remark:str(f,`remark.${id}`)}])),remark:str(f,'overallRemark')};
   return perf.saveAssessmentDraft(s,reviewId,kind==='feedback'?0:num(f,'revision'),str(f,'draftRevision')?num(f,'draftRevision'):null,payload,kind==='feedback'?str(f,'requestId'):reviewId);
 }
 export async function saveAssessmentDraftAction(f:FormData) {

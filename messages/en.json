@@ -18355,6 +18355,11 @@
     "potentialInsight": {
       "title": "Potential insight",
       "help": "Anonymous leadership feedback and reviewed competency evidence. Ratings remain yours to decide."
+    },
+    "competencySections": {
+      "remark": "Remark on {category}",
+      "employee": "Employee section remark",
+      "manager": "Manager section remark"
     }
   },
   "allowanceV2": {

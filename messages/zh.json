@@ -18355,6 +18355,11 @@
     "potentialInsight": {
       "title": "潜力分析",
       "help": "匿名领导力反馈及已审核的能力证据。评级仍由您决定。"
+    },
+    "competencySections": {
+      "remark": "关于{category}的评语",
+      "employee": "员工类别评语",
+      "manager": "经理类别评语"
     }
   },
   "allowanceV2": {

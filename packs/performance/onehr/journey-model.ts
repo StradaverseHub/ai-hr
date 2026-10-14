@@ -1,3 +1,4 @@
+import {competencySectionsSchema} from './competency-section-model';
 import { sourceRound } from './source-numeric';
 export { sourceRound } from './source-numeric';
 import { z } from 'zod';
@@ -9,8 +10,8 @@ const remark = z.string().trim().max(4000);
 export const assessmentDraftSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('results'), lines:z.array(z.object({id:z.uuid(),actual:z.number().finite().nullable(),note:remark})).max(100),remark}),
   z.object({kind:z.literal('moderation'), lines:z.array(z.object({id:z.uuid(),actual:z.number().finite().nullable(),note:remark})).max(100),remark}),
-  z.object({kind:z.literal('competency_self'), answers:z.record(z.string().max(100),z.object({answer:z.enum(['yes','no']).nullable(),remark})),remark}),
-  z.object({kind:z.literal('competency_manager'), answers:z.record(z.string().max(100),z.object({answer:z.enum(['yes','no']).nullable(),remark})),remark}),
+  z.object({kind:z.literal('competency_self'), sections:competencySectionsSchema.optional(), answers:z.record(z.string().max(100),z.object({answer:z.enum(['yes','no']).nullable(),remark})),remark}),
+  z.object({kind:z.literal('competency_manager'), sections:competencySectionsSchema.optional(), answers:z.record(z.string().max(100),z.object({answer:z.enum(['yes','no']).nullable(),remark})),remark}),
   z.object({kind:z.literal('feedback'), comments:z.record(z.string().max(200),z.string().trim().max(2000)).optional(), answers:z.record(z.string().max(100),z.enum(['yes','no'])),remark}),
 ]);
 export type AssessmentDraft = z.infer<typeof assessmentDraftSchema>;
