@@ -13,7 +13,7 @@ it('loads full remarks without generating and only generates a summary after the
  vi.mocked(assessmentWrittenRemarksAction).mockResolvedValueOnce({entries,pending:true,source:null,data:null}).mockResolvedValueOnce({entries,pending:false,source:'plain',data:{paragraph:'They wrote about completed service requests.'}});
  render(show());expect(assessmentWrittenRemarksAction).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:en.onehr.writtenRemarks.read}));
  expect(await screen.findByText(entries[0].text)).toBeTruthy();expect(assessmentWrittenRemarksAction).toHaveBeenLastCalledWith('nadia','cohort','pot',false);
- fireEvent.click(screen.getByRole('button',{name:en.onehr.insight.generate}));expect(await screen.findByText('They wrote about completed service requests.')).toBeTruthy();expect(assessmentWrittenRemarksAction).toHaveBeenLastCalledWith('nadia','cohort','pot',true);
+ fireEvent.click(await screen.findByRole('button',{name:en.onehr.insight.generate}));expect(await screen.findByText('They wrote about completed service requests.')).toBeTruthy();expect(assessmentWrittenRemarksAction).toHaveBeenLastCalledWith('nadia','cohort','pot',true);
 });
 it('does not display a late response for a previous person after navigating to another person',async()=>{
  let finish!:(v:Awaited<ReturnType<typeof assessmentWrittenRemarksAction>>)=>void;vi.mocked(assessmentWrittenRemarksAction).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));

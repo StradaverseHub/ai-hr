@@ -1,3 +1,4 @@
+import {assessmentHelp} from './help';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext } from '../../../db/client';
@@ -39,9 +40,11 @@ export async function sendFeedbackMessage(ctx:SessionContext,reviewId:string,con
   if(!row)return null;const messages=reviewConversationMessages.parse(row.messages),index=messages.findIndex(m=>m.id===requestId);return index<0?null:{revision:row.revision,messages,draftUpdated:messages[index+1]?.kind==='update'};
  });
  if(previous)return previous;
+ const help=intent==='guide'?await assessmentHelp(ctx,words):null;
  const facts=context(card,words);let command:Awaited<ReturnType<typeof proposeReviewCommands>>=null;
  let reply='Rate only the behaviours assigned for this colleague. Yes means you have observed the behaviour; Not yet means you have not. Add your own examples by principle, review the overall remark, then submit through the form. Your draft and conversation stay private.';
- if(!card.submitted&&!card.frozen&&!card.closed){
+ if(help)reply=help;
+ if(!help&&!card.submitted&&!card.frozen&&!card.closed){
   try{
    if(intent==='guide')command=await proposeReviewCommands(ctx,reviewId,facts);
    else{

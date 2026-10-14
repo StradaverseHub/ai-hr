@@ -1313,5 +1313,32 @@
         ]
       }
     ]
+  },
+  "performanceJourney": {
+    "id": "performanceJourney",
+    "steps": [
+      {
+        "id": "performance-entry",
+        "target": "[data-tour=\"performance-journey-entry\"]",
+        "placement": "bottom",
+        "route": "/me/performance",
+        "text": {
+          "lang": "en",
+          "title": "Open your Performance workspace",
+          "body": "Your Performance workspace brings together the review work assigned to you. Open it to continue your scorecard, feedback, competency assessment or development plan."
+        }
+      },
+      {
+        "id": "performance-journey",
+        "target": null,
+        "placement": "center",
+        "route": "/performance/workspace",
+        "text": {
+          "lang": "en",
+          "title": "Follow your current review step",
+          "body": "Choose an available view and module, then select the person or review part. Your entries stay private drafts until you use the relevant save, submit or share control. The Record link shows your available results and development history."
+        }
+      }
+    ]
   }
 }

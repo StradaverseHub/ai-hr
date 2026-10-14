@@ -43,7 +43,7 @@ it('reads a rating history without selecting or writing the person, and reads th
  fireEvent.click(screen.getByRole('button',{name:'Read assessment for Alice Tan'}));expect(selected).toHaveBeenCalledExactlyOnceWith('a');
 });
 it('renders the first 100 rows and expands by 100 on demand',()=>{
- const rows=Array.from({length:205},(_,i)=>({...people[0],id:`person-${i}`,name:`Person ${i}`}));render(<Harness rows={rows}/>);expect(screen.getAllByRole('rowheader')).toHaveLength(100);fireEvent.click(screen.getByRole('button',{name:'Show 100 more'}));expect(screen.getAllByRole('rowheader')).toHaveLength(200);fireEvent.click(screen.getByRole('button',{name:'Show 5 more'}));expect(screen.getAllByRole('rowheader')).toHaveLength(205);
+ const rows=Array.from({length:205},(_,i)=>({...people[0],id:`person-${i}`,name:`Person ${i}`}));render(<Harness rows={rows}/>);expect(screen.getAllByRole('rowheader',{hidden:true})).toHaveLength(100);fireEvent.click(screen.getByText('Show 100 more',{selector:'button'}));expect(screen.getAllByRole('rowheader',{hidden:true})).toHaveLength(200);fireEvent.click(screen.getByText('Show 5 more',{selector:'button'}));expect(screen.getAllByRole('rowheader',{hidden:true})).toHaveLength(205);
 });
 it('refreshes an embedded band save in place and retains the human words if a retry is refused',async()=>{
  ports.save.mockResolvedValueOnce({ok:true}).mockResolvedValueOnce({error:'The calibration changed. Reload before saving.'});const legacy=vi.fn().mockResolvedValue(undefined);

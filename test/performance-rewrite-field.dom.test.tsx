@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import { afterEach,expect,it,vi } from 'vitest';
-import { cleanup,fireEvent,render,screen } from '@testing-library/react';
+import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 vi.mock('../app/performance/onehr/draft-form',()=>({flushAssessmentDrafts:vi.fn().mockResolvedValue(undefined)}));
@@ -19,7 +19,7 @@ it('keeps drafting separate from the actual field until the person explicitly ke
  fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.generate}));
  expect(await screen.findByRole('textbox',{name:en.onehr.rewrite.suggestion})).toBeTruthy();expect(input.value).toBe(original);
  expect(action).toHaveBeenCalledWith({kind:'pm_self_remark'},original,en.onehr.rewrite.polishInstruction,expect.any(String));
- fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));expect(input.value).toBe(proposed);expect(submitted).not.toHaveBeenCalled();
+ await waitFor(()=>expect((screen.getByRole('button',{name:en.onehr.rewrite.keep}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));expect(input.value).toBe(proposed);expect(submitted).not.toHaveBeenCalled();
 });
 it('leaves the original words intact when the person discards a draft and hides AI controls when switched off',async()=>{
  show();fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.title}));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.generate}));await screen.findByRole('textbox',{name:en.onehr.rewrite.suggestion});
@@ -28,13 +28,13 @@ it('leaves the original words intact when the person discards a draft and hides 
 });
 it('refuses to overwrite a field that changed while a suggestion was being prepared',async()=>{
  show();const field=screen.getByRole('textbox',{name:'Evidence wording'});fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.title}));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.generate}));await screen.findByRole('textbox',{name:en.onehr.rewrite.suggestion});
- fireEvent.input(field,{target:{value:'My newer wording.'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));
+ fireEvent.input(field,{target:{value:'My newer wording.'}});await waitFor(()=>expect((screen.getByRole('button',{name:en.onehr.rewrite.keep}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));
  expect(screen.getByRole('alert').textContent).toBe(en.onehr.rewrite.changed);expect((field as HTMLTextAreaElement).value).toBe('My newer wording.');
 });
 it('propagates the kept wording to a controlled form field and its autosave input listener',async()=>{
  const input=vi.fn(),action=response();
  function Controlled(){const [value,setValue]=useState(original);return <RewriteField enabled target={{kind:'pm_self_remark'}} rewriteAction={action}><label>Controlled wording<textarea value={value} onInput={input} onChange={event=>setValue(event.target.value)}/></label><output>{value}</output></RewriteField>;}
  render(<NextIntlClientProvider locale="en" messages={en}><Controlled/></NextIntlClientProvider>);
- fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.title}));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.generate}));await screen.findByRole('textbox',{name:en.onehr.rewrite.suggestion});fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));
+ fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.title}));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.generate}));await screen.findByRole('textbox',{name:en.onehr.rewrite.suggestion});await waitFor(()=>expect((screen.getByRole('button',{name:en.onehr.rewrite.keep}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));
  expect(screen.getByRole('status').textContent).toBe(proposed);expect(input).toHaveBeenCalledOnce();expect((screen.getByRole('textbox',{name:'Controlled wording'}) as HTMLTextAreaElement).value).toBe(proposed);
 });
