@@ -1923,4 +1923,17 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect((await owner.db.select().from(schema.assessmentSummary)).filter(r=>r.kind==='idp')).toHaveLength(1);
   });
 
+  it('keeps profile assignment rosters out of every review projection while HR configuration retains them',async()=>{
+    const cycle=(await perf.getOnehrCycle(a,cycleId))!,policy=cycle.policy,targetId=randomUUID(),current=policy.profiles[0];
+    const competencies=current.competencies.map((c,index)=>({...c,skillTitle:'Service',skillLevel:index+1}));
+    policy.profiles=[{...current,employmentIds:[subject.employmentId,peers[0].employmentId],competencies},{...current,id:targetId,name:'Advanced service',grade:'13',employmentIds:[peers[1].employmentId],competencies:competencies.map(c=>({...c,skillLevel:(c.skillLevel??1)+1}))}];
+    await owner.db.update(schema.onehrCycle).set({policy}).where(eq(schema.onehrCycle.cycleId,cycleId));
+    await perf.saveOnehrPlan(self,reviewId,null,{career:{aspiration:'Grow service skills',mobility:'stay',mobilityNote:'',targetProfileId:targetId},goals:[]});
+    for(const ctx of [self,mgr,a]){
+      const visible=await view(ctx);expect(visible.profile?.id).toBe(current.id);expect(visible.careerRoutes.length).toBeGreaterThan(0);expect(visible.careerDirections.length).toBeGreaterThan(0);expect(visible.careerTargetGap?.profile.id).toBe(targetId);
+      for(const profile of [...visible.policy.profiles,...visible.careerRoutes.map(r=>r.profile),...visible.careerDirections,visible.careerTargetGap!.profile,visible.profile!])expect(profile).not.toHaveProperty('employmentIds');
+    }
+    expect((await perf.getOnehrCycle(a,cycleId))!.policy.profiles.map(p=>p.employmentIds)).toEqual([[subject.employmentId,peers[0].employmentId],[peers[1].employmentId]]);
+  });
+
 });
