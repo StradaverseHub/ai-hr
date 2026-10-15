@@ -13,12 +13,12 @@ import {readOvertimeDurationDefinitionTx,readOvertimeSettlementForDayTx} from '.
 export class OvertimeToilEligibilityError extends Error {
   constructor(message='The recorded overtime duration is unavailable or changed. Recalculate and review this day before banking Leave Credit.') {super(message);this.name='OvertimeToilEligibilityError';}
 }
-export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string|null;dayType:'workday'|'rest_day'|'holiday';recordedWorkedDayKind:ToilWorkedDayKind;recordedDay:{shiftStart:string|null;shiftEnd:string|null;actualClockIn:string|null;actualClockOut:string|null};minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number;audit:{durationInputDigest:string;calculationId:string;sourceRevision:number;recordedShiftEndAbs:number|null;recordedShiftEndEpochSeconds:string|null;claimWindow:{start:string;end:string}|null;qualifyingMinutes:number|null;allocationPolicy:'earliest'|'latest'}};
-const unavailable=():never=>{throw new OvertimeToilEligibilityError();};
+export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string;dayType:'workday'|'rest_day'|'holiday';recordedWorkedDayKind:ToilWorkedDayKind;recordedDay:{shiftStart:string|null;shiftEnd:string|null;actualClockIn:string|null;actualClockOut:string|null};minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number;audit:{durationInputDigest:string;calculationId:string;sourceRevision:number;recordedShiftEndAbs:number|null;recordedShiftEndEpochSeconds:string|null;claimWindow:{start:string;end:string}|null;qualifyingMinutes:number|null;allocationPolicy:'earliest'|'latest'}};
+function unavailable():never {throw new OvertimeToilEligibilityError();}
 function integerMinutes(value:OvertimeExact):number {
   if(value.unit!=='minutes'||!/^\d{1,80}$/.test(value.numerator)||!/^\d{1,80}$/.test(value.denominator))unavailable();
   const numerator=BigInt(value.numerator),denominator=BigInt(value.denominator);
-  if(denominator<=0n||numerator%denominator!==0n||numerator/denominator>BigInt(Number.MAX_SAFE_INTEGER))unavailable();
+  if(denominator<=BigInt('0')||numerator%denominator!==BigInt('0')||numerator/denominator>BigInt(Number.MAX_SAFE_INTEGER))unavailable();
   return Number(numerator/denominator);
 }
 /** Caller holds the same employment advisory as Attendance and Payroll before this source read. */
@@ -39,29 +39,32 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
   if(!existing.source.currentCalculationId){if(marker?.status==='recorded')unavailable();return {kind:'legacy'};}
   const stored=await readOvertimeDurationDefinitionTx(tx,ctx,p);
   if(!stored||stored.source.id!==existing.source.id||stored.calculation.id!==existing.source.currentCalculationId||stored.calculation.durationOutcome!=='ready'||!stored.calculation.durationInputDigest)unavailable();
-  const snapshot=await canonicalOvertimeToilInputTx(tx,ctx,p),calculation=stored!.calculation,source=stored!.source;
-  const input:OvertimeInput={...snapshot.input,mode:'actual',patternVersionId:calculation.versionId!,assignmentId:calculation.assignmentId!};
+  const snapshot=await canonicalOvertimeToilInputTx(tx,ctx,p),calculation=stored.calculation,source=stored.source;
+  if(!calculation.versionId||!calculation.assignmentId)unavailable();
+  const input:OvertimeInput={...snapshot.input,mode:'actual',patternVersionId:calculation.versionId,assignmentId:calculation.assignmentId};
   const companyFact=input.facts.companyId;
-  if(input.source.tenantId!==ctx.tenantId||input.source.employmentId!==p.employmentId||input.source.date!==p.date||input.source.attendanceId!==source.attendanceId||companyFact?.state!=='known'||companyFact.value!==source.companyId||!stored!.companyIds.includes(source.companyId))unavailable();
-  const digest=createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(stored!.definition,input))).digest('hex');
+  if(input.source.tenantId!==ctx.tenantId||input.source.employmentId!==p.employmentId||input.source.date!==p.date||input.source.attendanceId!==source.attendanceId||companyFact?.state!=='known'||companyFact.value!==source.companyId||!stored.companyIds.includes(source.companyId))unavailable();
+  const digest=createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(stored.definition,input))).digest('hex');
   if(digest!==calculation.durationInputDigest)unavailable();
-  const duration=evaluateOvertimePatternDuration(stored!.definition,input);
-  if(duration.status!=='ready'||!duration.transferable||duration.payableMinutes.numerator!==calculation.payableNumerator||duration.payableMinutes.denominator!==calculation.payableDenominator)unavailable();
+  const duration=evaluateOvertimePatternDuration(stored.definition,input);
+  if(duration.status!=='ready')unavailable();
+  if(!duration.transferable||duration.payableMinutes.numerator!==calculation.payableNumerator||duration.payableMinutes.denominator!==calculation.payableDenominator)unavailable();
   const minutes=integerMinutes(duration.payableMinutes);
-  if(minutes<=0||!day?.dayType)unavailable();
+  if(!day||!day.dayType||minutes<=0)unavailable();
+  const dayType=day.dayType;
   let recordedWorkedDayKind:ToilWorkedDayKind;
   const schedule=object(trace)&&trace.v===1&&object(trace.schedule)?trace.schedule:null;
-  if(day!.dayType==='holiday')recordedWorkedDayKind='holiday';
-  else if(day!.dayType==='rest_day')recordedWorkedDayKind='rest_day';
+  if(dayType==='holiday')recordedWorkedDayKind='holiday';
+  else if(dayType==='rest_day')recordedWorkedDayKind='rest_day';
   else {
     if(!schedule||schedule.dayType!=='workday')unavailable();
-    const normal=schedule!.normalMinutesOverride??schedule!.scheduledMinutes;
-    if(schedule!.source==='default-shift-rest'&&normal===0)recordedWorkedDayKind='off_day';
-    else if(['policy','roster-shift','default-shift'].includes(String(schedule!.source))&&Number.isSafeInteger(normal)&&Number(normal)>0)recordedWorkedDayKind='workday';
+    const normal=schedule.normalMinutesOverride??schedule.scheduledMinutes;
+    if(schedule.source==='default-shift-rest'&&normal===0)recordedWorkedDayKind='off_day';
+    else if(['policy','roster-shift','default-shift'].includes(String(schedule.source))&&Number.isSafeInteger(normal)&&Number(normal)>0)recordedWorkedDayKind='workday';
     else unavailable();
   }
   const clockText=(value:unknown):string|null=>Number.isSafeInteger(value)&&Number(value)>=0&&Number(value)<=4320?`${String(Math.floor(Number(value)/60)%24).padStart(2,'0')}:${String(Number(value)%60).padStart(2,'0')}`:null;
-  const recordedDay={shiftStart:clockText(schedule?.startAbs),shiftEnd:clockText(schedule?.endAbs),actualClockIn:day!.checkInAt??null,actualClockOut:day!.checkOutAt??null};
+  const recordedDay={shiftStart:clockText(schedule?.startAbs),shiftEnd:clockText(schedule?.endAbs),actualClockIn:day.checkInAt??null,actualClockOut:day.checkOutAt??null};
   let afterShiftMinutes:number|null=null,recordedShiftEndAbs:number|null=null,recordedShiftEndEpochSeconds:string|null=null;
   if(recordedWorkedDayKind==='workday'&&object(trace)&&trace.v===1&&object(trace.schedule)&&Number.isSafeInteger(trace.schedule.endAbs)&&Number(trace.schedule.endAbs)>=0&&Number(trace.schedule.endAbs)<=4320) {
     const midnight=Date.parse(p.date+'T00:00:00+08:00')/1000;
@@ -82,6 +85,6 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
     }
   }
   const [entity]=await tx.select({country:company.country}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,source.companyId))).limit(1);
-  if(!entity)unavailable();
-  return {kind:'formula',companyId:source.companyId,country:entity!.country,dayType:day!.dayType!,recordedWorkedDayKind,recordedDay,minutes,afterShiftMinutes,calculationId:calculation.id,sourceRevision:source.revision,audit:{durationInputDigest:digest,calculationId:calculation.id,sourceRevision:source.revision,recordedShiftEndAbs,recordedShiftEndEpochSeconds,claimWindow:p.claimWindow?{start:p.claimWindow.start,end:p.claimWindow.end}:null,qualifyingMinutes:recordedWorkedDayKind==='workday'?afterShiftMinutes:minutes,allocationPolicy:stored!.definition.durationAllocation}};
+  if(!entity||typeof entity.country!=='string'||!entity.country.trim())unavailable();
+  return {kind:'formula',companyId:source.companyId,country:entity.country,dayType:dayType,recordedWorkedDayKind,recordedDay,minutes,afterShiftMinutes,calculationId:calculation.id,sourceRevision:source.revision,audit:{durationInputDigest:digest,calculationId:calculation.id,sourceRevision:source.revision,recordedShiftEndAbs,recordedShiftEndEpochSeconds,claimWindow:p.claimWindow?{start:p.claimWindow.start,end:p.claimWindow.end}:null,qualifyingMinutes:recordedWorkedDayKind==='workday'?afterShiftMinutes:minutes,allocationPolicy:stored.definition.durationAllocation}};
 }

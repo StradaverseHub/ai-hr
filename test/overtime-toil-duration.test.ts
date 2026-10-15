@@ -18,9 +18,9 @@ function fixture(){
  const calculation={id,versionId:id,assignmentId:id,durationOutcome:'ready',durationInputDigest:createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(definition,input))).digest('hex'),payableNumerator:'60',payableDenominator:'1'};
  return {definition,input,source,calculation};
 }
-function transaction(trace:unknown=null,dayType='rest_day',source:unknown=fixture().source){
+function transaction(trace:unknown=null,dayType='rest_day',source:unknown=fixture().source,country:unknown='MY'){
  const tx={execute:vi.fn().mockResolvedValue([]),select:vi.fn()};
- tx.select.mockImplementation(()=>({from:(table:unknown)=>({where:()=>({limit:()=>{const rows=table===attendance?[{calcTrace:trace,dayType}]:table===attendanceOvertimeSource?(source?[source]:[]):[{country:'MY'}];return Object.assign(Promise.resolve(rows),{for:()=>Promise.resolve(rows)});}})})}));
+ tx.select.mockImplementation(()=>({from:(table:unknown)=>({where:()=>({limit:()=>{const rows=table===attendance?[{calcTrace:trace,dayType}]:table===attendanceOvertimeSource?(source?[source]:[]):[{country}];return Object.assign(Promise.resolve(rows),{for:()=>Promise.resolve(rows)});}})})}));
  return tx as unknown as Tx;
 }
 const ctx={tenantId:id,userId:id} as SessionContext;
@@ -63,6 +63,9 @@ describe('actual TOIL uses fresh independent formula duration',()=>{
   if(kind==='fractional'){f.input.approval.minutes=fact('0.5');f.calculation.payableNumerator='1';f.calculation.payableDenominator='2';f.calculation.durationInputDigest=createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(f.definition,f.input))).digest('hex');}
   if(kind==='wrongCompany')f.input.facts.companyId=fact('00000000-0000-4000-8000-000000000002');
   install(f);await expect(resolveOvertimeToilDurationTx(transaction(),ctx,request)).rejects.toBeInstanceOf(OvertimeToilEligibilityError);
+ });
+ it('refuses an unknown source-company jurisdiction rather than substituting the current employment country',async()=>{
+  install();await expect(resolveOvertimeToilDurationTx(transaction(null,'rest_day',fixture().source,null),ctx,request)).rejects.toBeInstanceOf(OvertimeToilEligibilityError);
  });
  it('refuses a cash-first claim before any duration read',async()=>{
   install();mocks.existing.mockResolvedValue({source:fixture().source,settlement:{mode:'cash'}});

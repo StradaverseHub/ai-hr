@@ -70,9 +70,15 @@ async function provenToilDurationTx(tx:Tx,ctx:SessionContext,employmentId:string
 }
 
 
+function formulaAfterShiftMinutes(formula:Extract<Awaited<ReturnType<typeof provenToilDurationTx>>,{kind:'formula'}>):number {
+  const minutes=formula.afterShiftMinutes;
+  if(minutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
+  return minutes;
+}
+
 function recordedToilDayFacts(formula:Extract<Awaited<ReturnType<typeof provenToilDurationTx>>,{kind:'formula'}>) {
   if(formula.recordedWorkedDayKind==='workday'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
-  return {kind:formula.recordedWorkedDayKind,scheduleName:null,shiftCode:null,shiftName:null,attendanceRecordPresent:true,...formula.recordedDay,measuredExtendedMinutes:formula.recordedWorkedDayKind==='workday'?formula.afterShiftMinutes!:0};
+  return {kind:formula.recordedWorkedDayKind,scheduleName:null,shiftCode:null,shiftName:null,attendanceRecordPresent:true,...formula.recordedDay,measuredExtendedMinutes:formula.recordedWorkedDayKind==='workday'?formulaAfterShiftMinutes(formula):0};
 }
 
 
@@ -938,7 +944,7 @@ async function extendedWorkdayCreditTx(
   const kind = formula.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
   if (kind !== 'workday') throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
   if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded clock placement and scheduled shift end are required to bank extended ordinary-day formula overtime.');
-  const extendedMinutes = formula.kind==='formula'?formula.afterShiftMinutes!:extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
+  const extendedMinutes = formula.kind==='formula'?formulaAfterShiftMinutes(formula):extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
   const { countedMinutes, days } = extendedHoursCreditDays(extendedMinutes, policy);
   if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(p.workedDate, countedMinutes, policy.extendedHalfDayMinutes);
 
@@ -1482,7 +1488,7 @@ export async function accrueExtendedWorkdayToilTx(
   // r406 — Gates 3 and 4 run through `leaveCreditWindowCredit`, the one window → days step the employee
   // submit and HR's `grantLeaveCreditRows` share; Gate 2 above is what makes `ordinaryWorkingDay` true.
   if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('The claimed window requires recorded formula clock placement and shift end.');
-  const { countedMinutes, days } = formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,policy):leaveCreditWindowCredit({
+  const { countedMinutes, days } = formula.kind==='formula'?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),policy):leaveCreditWindowCredit({
     ordinaryWorkingDay: true,
     claimStart: p.claimStart,
     claimEnd: p.claimEnd,
@@ -2339,7 +2345,7 @@ export async function grantLeaveCredit(
       const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
       if (!policy?.extendedHoursEnabled) throw new ToilOrdinaryWorkingDayError([p.workedDate]);
       if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
-      const extended = formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,policy):await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
+      const extended = formula.kind==='formula'?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),policy):await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
       if (!extended || extended.days <= 0) {
         throw new ToilExtendedHoursBelowThresholdError(p.workedDate, extended?.countedMinutes ?? 0, policy.extendedHalfDayMinutes);
       }
@@ -2484,7 +2490,7 @@ export async function leaveCreditGrantDayFacts(
       .limit(1);
     return {
       ...day,
-      ...(formula.kind==='formula'?{measuredExtendedMinutes:day.kind==='workday'?formula.afterShiftMinutes!:formula.minutes}:{}),
+      ...(formula.kind==='formula'?{measuredExtendedMinutes:day.kind==='workday'?formulaAfterShiftMinutes(formula):formula.minutes}:{}),
       approvedOtPlan: await approvedOvertimeForDateTx(tx, p.employmentId, p.workedDate),
       overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
       alreadyCredited: dupe != null,
@@ -2632,7 +2638,7 @@ export async function grantLeaveCreditRows(
       if(workingDay&&!datedTiers.extendedHoursEnabled)throw new ToilOrdinaryWorkingDayError([r.workedDate]);
       if(workingDay&&formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('The claimed window requires recorded formula clock placement and shift end.');
       const day = workingDay ? formula.kind==='formula'?recordedToilDayFacts(formula):await extendedHoursDayForEmploymentTx(tx, p.employmentId, r.workedDate) : null;
-      const { countedMinutes, days } = workingDay&&formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,datedTiers):leaveCreditWindowCredit({
+      const { countedMinutes, days } = workingDay&&formula.kind==='formula'?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),datedTiers):leaveCreditWindowCredit({
         ordinaryWorkingDay: workingDay,
         claimStart: r.claimStart!,
         claimEnd: r.claimEnd!,

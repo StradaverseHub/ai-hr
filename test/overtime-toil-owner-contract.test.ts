@@ -30,6 +30,6 @@ describe('canonical TOIL source lifecycle',()=>{
  it('uses one shared allocation stage and salary-free metadata, never cash traces or another formula implementation',()=>{
   expect(adapter).toContain('canonicalOvertimeToilInputTx');expect(adapter).toContain('readOvertimeDurationDefinitionTx');expect(adapter).toContain('overtimeDurationProofInput');expect(adapter).toContain('evaluateOvertimePatternDuration');expect(adapter).toContain('intersectOvertimeDurationAfter');
   expect(adapter).not.toContain('readOvertimeCalculationTx');expect(adapter).not.toContain('compensation');expect(adapter).not.toContain('evaluation.trace');
-  expect(adapter).toContain("marker?.status==='refused'&&marker.reason==='sourceUnavailable'");expect(adapter).toContain("duration.status!=='ready'");expect(adapter).toContain('numerator%denominator!==0n');
+  expect(adapter).toContain("marker?.status==='refused'&&marker.reason==='sourceUnavailable'");expect(adapter).toContain("duration.status!=='ready'");expect(adapter).toContain("numerator%denominator!==BigInt('0')");
  });
 });
