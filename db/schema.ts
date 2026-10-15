@@ -666,6 +666,19 @@ export const appInvitation = pgTable(
   ],
 );
 
+export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
+
+/** Account-email intent and delivery only. Invitation tokens and reset links are never copied here. */
+export const accountEmailDelivery=pgTable('account_email_delivery',{
+ id:id(),tenantId:tenantId(),kind:text('kind').notNull(),
+ invitationId:uuid('invitation_id').references(()=>appInvitation.id),recoveryEmail:text('recovery_email'),
+ replacesDeliveryId:uuid('replaces_delivery_id').references(():AnyPgColumn=>accountEmailDelivery.id),
+ requestedBy:uuid('requested_by').references(()=>appUser.id),
+ status:notificationDeliveryStatusEnum('status').notNull().default('pending'),attempts:integer('attempts').notNull().default(0),lastError:text('last_error'),
+ leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),startedAt:timestamp('started_at',{withTimezone:true}),sentAt:timestamp('sent_at',{withTimezone:true}),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('account_email_invitation_uq').on(t.invitationId).where(sql`invitation_id is not null`),uniqueIndex('account_email_replaces_delivery_id_key').on(t.replacesDeliveryId),index('account_email_recent_idx').on(t.createdAt.desc(),t.id.desc()),index('account_email_recovery_rate_idx').on(t.recoveryEmail,t.createdAt.desc()).where(sql`kind='recovery'`)]);
+
 // ─────────────────────── Identity & Org (ADR-0003) ───────────────────────
 // person = the global human identity within a tenant (holds PII).
 
@@ -5316,7 +5329,6 @@ export const replacementLeaveRequestDate = pgTable(
 // notification_cursor are dispatcher-internal (app.is_admin). ────────────────────────────────────────────
 export const notificationSeverityEnum = pgEnum('notification_severity', ['info', 'action', 'warning']);
 export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'whatsapp', 'push']);
-export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
 export type NotificationSeverity = (typeof notificationSeverityEnum.enumValues)[number];
 export type NotificationChannel = (typeof notificationChannelEnum.enumValues)[number];
 export type NotificationDeliveryStatus = (typeof notificationDeliveryStatusEnum.enumValues)[number];
@@ -10355,3 +10367,15 @@ export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reass
     reason: text('reason').notNull(), actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id),
     actualPersonId: uuid('actual_person_id').references(() => person.id), actualActorName: text('actual_actor_name').notNull().default(''), occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [index('attendance_workflow_reassignment_stage').on(t.requestId, t.stageIndex, t.occurredAt, t.id)]);
+/** Governance telemetry contains no prompt, output, image, secret or employee field values. */
+export const aiControlPolicy=pgTable('ai_control_policy',{
+ id:id(),tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
+ enabled:boolean('enabled').notNull().default(true),dailyRequests:integer('daily_requests'),monthlyTokens:bigint('monthly_tokens',{mode:'number'}),
+ updatedByUserId:uuid('updated_by_user_id').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('ai_control_policy_scope_uq').on(t.tenantId,t.scopeKey)]);
+export const aiModelRun=pgTable('ai_model_run',{
+ id:id(),tenantId:tenantId(),userId:uuid('user_id').references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
+ featureId:text('feature_id').notNull(),operation:text('operation').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),
+ state:text('state').notNull(),reason:text('reason'),reservedTokens:bigint('reserved_tokens',{mode:'number'}).notNull(),
+ actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
+},t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);

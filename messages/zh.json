@@ -14057,10 +14057,10 @@
     },
     "reset": {
       "title": "重置密码",
-      "subtitle": "输入您的电子邮件，我们会发送设置新密码的链接。",
+      "subtitle": "输入邮箱以申请安全的恢复链接。能否发送取决于已配置的邮件服务。",
       "emailLabel": "电子邮件",
-      "submit": "发送重置链接",
-      "sent": "如果该电子邮件存在对应账户，密码重置链接即将送达。",
+      "submit": "申请恢复邮件",
+      "sent": "您的恢复请求已记录。如果邮件发送可用且存在符合条件的账户，身份服务会发送安全链接。如果没有收到邮件，可稍后重新请求。",
       "backToLogin": "返回登录"
     },
     "error": {
@@ -15550,7 +15550,8 @@
     "err_budget_monthly": "贵机构本月的 AI 额度已用完。",
     "err_budget_daily": "您今天的提问次数已用完。请明天再试。",
     "err_invalid_question": "请输入问题，并保持在 2000 字符以内。",
-    "err_provider_error": "无法连接助理。请重试。"
+    "err_provider_error": "无法连接助理。请重试。",
+    "err_ai_control": "AI 辅助已暂停或已达到额度。请联系管理员，或在额度重置后重试。"
   },
   "controlTower": {
     "howTitle": "控制塔的运作方式",
@@ -15733,7 +15734,7 @@
       "readiness": "员工资料",
       "exceptions": "薪资异常",
       "actions": "审批",
-      "agents": "自动化",
+      "agents": "AI 管理",
       "guide": "工作原理",
       "workTitle": "待完成工作",
       "workDescription": "跟踪缺失的员工资料、可处理的负责人以及人力资源引擎的核查结果。",
@@ -15742,7 +15743,7 @@
       "refreshed": "记录已检查。本次检查未发送提醒。",
       "openCount": "{count} 个待处理问题",
       "verifiedCount": "{count} 项已核实关闭",
-      "manage": "管理自动化",
+      "manage": "AI 管理",
       "runs": "执行历史",
       "observed": "最近检查：{date}",
       "empty": "最近一次检查未发现待处理问题。",
@@ -17128,8 +17129,25 @@
     "security": "加密",
     "tlsSecurity": "SSL/TLS（隐式 TLS）",
     "previewTitle": "SMTP 设置预览",
-    "demoSetup": "此演示展示 SMTP 连接字段供您查看。保存凭据、发送测试邮件和启用邮件发送需要经过验证的安装管理员登录。此处不会加载或保存邮件服务器信息。",
-    "restrictedSetup": "只有已注册的安装管理员才能查看或更改实际 SMTP 设置。请联系安装管理员完成设置。这些字段仅展示支持的配置。"
+    "demoSetup": "输入 SMTP 信息以检查安全连接和登录。此临时测试不会更改当前邮件服务器。",
+    "restrictedSetup": "只有已注册的安装管理员才能查看或更改实际 SMTP 设置。请联系安装管理员完成设置。这些字段仅展示支持的配置。",
+    "demoTestTitle": "测试 SMTP 连接",
+    "starttlsSecurity": "TLS（必须使用 STARTTLS）",
+    "testConnection": "测试连接",
+    "testingConnection": "正在测试连接…",
+    "demoTestHelp": "请对公共 SMTP 服务器使用 SSL/TLS（通常为 465 端口）或强制 STARTTLS（通常为 587 端口）。不会发送邮件。信息不会保存，每次测试后密码都会清空。",
+    "demoAuthenticated": "安全连接和 SMTP 登录成功。尚未测试邮件投递。",
+    "demoConnected": "安全连接成功。未请求身份验证，尚未测试邮件投递。",
+    "demoErrors": {
+      "forbidden": "仅演示环境中的 HR 管理员可以测试连接。",
+      "invalid": "请检查 SMTP 主机名和端口。选择密码验证时请输入用户名和密码。",
+      "blockedHost": "演示测试需要公共 SMTP 服务器。此处不支持本地、私有或特殊用途地址。",
+      "busy": "连接测试正忙或已达到测试次数限制。请等待一分钟后重试。",
+      "authenticationFailed": "SMTP 登录失败。请检查用户名、密码及提供商的 SMTP 访问设置，然后重新输入密码重试。",
+      "tlsFailed": "无法验证安全连接。请检查加密设置及服务器的 TLS 证书。",
+      "connectionFailed": "无法连接 SMTP 服务器。请检查主机名、端口、加密设置及提供商的网络访问规则。",
+      "unavailable": "无法完成连接测试。请重新输入密码后重试。"
+    }
   },
   "workflowEmail": {
     "title": "工作流程邮件通知",
@@ -17140,8 +17158,8 @@
     "consentHelp": "选择发送至员工资料中已验证邮箱的更新。偏好按每份雇佣关系分别保存，仅适用于未来事件。",
     "identityRequired": "启用邮件前，请使用已验证的内部账号登录，且邮箱须与员工资料一致。您仍可关闭所有邮件而不提供同意。",
     "relayReady": "托管 SMTP 中继已激活，可发送符合条件的通知。",
-    "relayOff": "托管 SMTP 中继尚未激活，目前无法发送工作流程邮件。",
-    "upgradeRequired": "私人邮件服务须安装工作流程通知升级后才能发送邮件。",
+    "relayOff": "SMTP 尚未配置或不可用。HR 流程仍可继续；符合条件的邮件发送尝试会记录为失败。配置 SMTP 后，可自行选择重试哪些失败邮件。",
+    "upgradeRequired": "邮件服务不可用或需要升级。HR 流程仍可继续；符合条件的邮件发送尝试会记录为失败。",
     "policyTitle": "组织允许的类别",
     "preferencesCategories": "通过邮件通知我以下类别",
     "notAllowed": "您的组织目前已禁用",
@@ -17152,7 +17170,7 @@
     "saved": "设置已保存。",
     "noEmployment": "此登录账号未关联员工资料。",
     "deliveries": "最近邮件发送记录",
-    "deliveriesHelp": "已发送表示中继已接受，并不证明收件人已收到。此处显示最近 50 条记录。发送结果不确定时将暂停，避免自动重复发送。",
+    "deliveriesHelp": "中继接受邮件并不代表收件人已收到。此处显示最近 50 条发送记录。失败邮件会保留，直到您选择重试；配置 SMTP 不会自动重新发送。发送结果不确定时会暂停，以免重复发送。",
     "noDeliveries": "暂无工作流程邮件进入队列。",
     "category": "类别",
     "status": "状态",
@@ -17170,14 +17188,14 @@
     "statuses": {
       "pending": "等待发送",
       "sent": "中继已接受",
-      "failed": "失败或结果不确定",
+      "failed": "失败",
       "skipped": "已跳过"
     },
     "errors": {
-      "relayUnavailable": "中继不可用",
+      "relayUnavailable": "SMTP 尚未配置或不可用。此邮件尚未发送；配置 SMTP 后，可按需选择重试发送。",
       "recipientUnavailable": "身份提供方不可用",
       "recipientChanged": "已验证邮箱或账号已变更",
-      "notEligible": "收件人或偏好不再符合条件",
+      "notEligible": "此更新已无需发送，或收件人或邮件偏好已更改。",
       "smtpTemporary": "中继暂时拒绝",
       "smtpRejected": "中继拒绝了邮件",
       "smtpAuthentication": "中继身份验证失败",
@@ -17233,7 +17251,9 @@
       }
     },
     "reportConsentHelp": "报表附件须按每份雇佣记录单独同意。更改个人档案邮箱后须重新同意。系统只会发送您当前有权访问的报表。",
-    "reportPolicyHelp": "员工主档附件默认关闭，须同时启用此政策并取得每位收件人的明确报表邮件同意。"
+    "reportPolicyHelp": "员工主档附件默认关闭，须同时启用此政策并取得每位收件人的明确报表邮件同意。",
+    "recipientCode": "员工编号",
+    "deliveryReference": "发送记录编号"
   },
   "onehr": {
     "back": "Back",
@@ -19463,5 +19483,144 @@
     "reasonCoverage": "按日期的公司任职记录缺失或不明确。请先确认员工的公司历史，再安排此补假。",
     "reasonTenure": "此日期超出员工记录的入职和离职日期范围。",
     "reasonHistoricalSchedule": "该公司和日期的历史工作排班政策不可用。人力资源部门须确认当时的排班，不能套用现雇主的工作日。"
+  },
+  "aiManagement": {
+    "title": "AI 管理",
+    "description": "查看所有 AI 功能、监控模型活动，并控制用户和公司的额度。",
+    "back": "控制中心",
+    "provider": "服务商：{provider} · {model}",
+    "noProvider": "尚未配置 AI 服务商，仍可使用手动流程。",
+    "configureProvider": "服务商设置",
+    "refresh": "刷新活动",
+    "inventory": "功能与代理",
+    "inventoryHelp": "在此暂停或启用共享 AI 功能。就绪的功能仍需调用者具备正常权限及可用额度。资料提醒可使用书面模板，无需模型。",
+    "scopedNotice": "共享功能开关由集团管理员管理。您可以编辑所管理公司的额度。",
+    "feature": "功能",
+    "state": "状态",
+    "activity": "本月用量",
+    "control": "控制",
+    "imagesIncluded": "含支持的图像读取",
+    "usage": "今日 {daily} 次请求 · 已记录 {tokens} 个令牌 · 已预留 {held} 个令牌",
+    "exceptions": "本月已拦截 {blocked} 次 · 失败 {failed} 次",
+    "pause": "暂停",
+    "enable": "启用",
+    "platformManaged": "由平台管理",
+    "readOnly": "只读",
+    "noHistory": "活动从安装此监控功能时开始记录；不补录以前的模型调用。",
+    "reservationHelp": "调用前按估算预留容量。已记录的令牌包含服务商报告的输入、缓存输入和输出。用量缺失或调用中断时保留预留量。单次调用完成时可能超出额度；已记录及预留用量耗尽额度后，停止后续调用。",
+    "companyLimits": "公司额度",
+    "userLimits": "用户额度",
+    "limitHelp": "每日请求于马来西亚时间午夜重置，每月令牌于每月首日重置。每次模型交互、草稿或图像读取算一次请求，包括失败的尝试。被拦截的调用不消耗额度。留空表示无额外上限；零表示阻止新调用。",
+    "attribution": "共享调用计入调用者授权范围内的每家公司，包括集团管理员及租户范围定时代理的所有公司。公司和用户上限同时适用，任一上限均可阻止调用。修改上限不会清除已记录用量。",
+    "daily": "每日请求数",
+    "monthly": "每月令牌数",
+    "access": "AI 访问",
+    "allowed": "允许",
+    "paused": "已暂停",
+    "unlimited": "无额外上限",
+    "save": "保存",
+    "userHelp": "按姓名或登录标识搜索用户。用户额度适用于其所有公司。 额度不会授予功能权限；HR 助手访问权限在下方单独管理。",
+    "searchUsers": "搜索用户",
+    "search": "搜索",
+    "noUsers": "没有匹配的用户。",
+    "moreUsers": "显示 50 个匹配项。请缩小搜索范围以查找其他用户。",
+    "noCompanies": "您的管理范围内没有公司。",
+    "inherited": "现有控制",
+    "businessLimits": "模块访问、功能权限以及 Performance 每位用户每日每个字段最多五次成功草稿的现有限制继续适用。",
+    "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，租户每月 {tokens} 个令牌。 此现有预算在马来西亚时间 08:00 重置。",
+    "humanDecisions": "AI 仅提供建议。薪酬、评级、招聘和访问权限仍须依照现有审批与人工决策。",
+    "orchestrator": "中央 HR 编排器",
+    "orchestratorHelp": "编排器协调资料准备、责任分配、审核与验证。其确定性检查不消耗模型令牌。在下方刷新协调证据；上方功能开关控制其 AI 代理。",
+    "recentRuns": "最近模型调用",
+    "runsHelp": "最近 50 次调用，包括被拦截和失败的尝试。仅显示元数据，不含提示词、回答、图像或凭证。刷新可查看新活动。",
+    "runsScoped": "上方显示公司合计。详细调用历史仅供集团管理员查看。",
+    "noRuns": "尚未记录模型调用。",
+    "time": "开始时间（马来西亚时间）",
+    "tokens": "令牌",
+    "held": "已预留 {tokens} · 未确认",
+    "saved": "AI 控制已保存。",
+    "invalid": "AI 控制无效。",
+    "features": {
+      "hr_assistant": "HR 助手",
+      "readiness_reminders": "资料准备提醒",
+      "claims_triage": "报销分流",
+      "payroll_hypotheses": "薪资异常假设",
+      "payroll_explanation": "薪资解释",
+      "pay_rule_draft": "薪资规则起草",
+      "report_insight": "报表设计器",
+      "performance_360": "360° 反馈",
+      "performance_tc": "能力与潜力评语",
+      "performance_pm": "绩效记分卡与证据",
+      "performance_review": "评审摘要与指导",
+      "performance_idp": "发展与职业计划",
+      "performance_calib": "校准辅助",
+      "performance_assistant": "绩效对话助手",
+      "feedback_planning": "改进计划起草"
+    },
+    "kinds": {
+      "assistant": "助手",
+      "agent": "定时或事件触发代理",
+      "feature": "AI 功能",
+      "platform": "平台工具"
+    },
+    "states": {
+      "ready": "就绪",
+      "paused": "已暂停",
+      "module": "模块不可用",
+      "provider": "需要服务商",
+      "restricted": "平台限制"
+    },
+    "runStates": {
+      "pending": "待处理／未确认",
+      "completed": "已完成",
+      "failed": "失败",
+      "blocked": "已拦截"
+    },
+    "operations": {
+      "draft": "草稿",
+      "conversation": "模型交互",
+      "image": "图像读取"
+    },
+    "reasons": {
+      "paused": "AI 访问已暂停",
+      "daily_limit": "每日请求上限",
+      "monthly_limit": "每月令牌上限"
+    },
+    "assistantGranted": "已授予 HR 助手访问权限",
+    "assistantNotGranted": "尚未授予 HR 助手访问权限",
+    "grantAssistant": "授予 HR 助手权限",
+    "revokeAssistant": "撤销 HR 助手权限",
+    "actor": "调用者",
+    "scheduledActor": "定时代理",
+    "required": "需要约 {tokens} 个令牌",
+    "sections": "AI 管理栏目"
+  },
+  "accountEmail": {
+    "title": "账户邮件发送记录",
+    "help": "即使邮件发送失败，邀请和恢复请求也会保存。配置 SMTP 不会自动重发失败邮件。可在下方逐条选择重试。 恢复记录仅对系统邮件管理员可见。",
+    "empty": "尚无账户邮件发送尝试。",
+    "attempts": "尝试次数",
+    "reissue": "重新发出邀请",
+    "retryRecovery": "重试恢复邮件",
+    "invitationAck": "我理解此操作会撤销旧邀请链接、发出新邀请，并可能产生重复邮件。",
+    "recoveryAck": "我希望请求一封新的恢复邮件。先前结果不确定的发送可能导致重复邮件。",
+    "retryError": "无法重试此邮件。请检查您的权限，以及邮件是否已被替代或邀请是否仍待处理。",
+    "retryProcessed": "重试已处理。请查看最新发送状态。",
+    "kinds": {
+      "invitation": "账户邀请",
+      "recovery": "密码恢复"
+    },
+    "statuses": {
+      "pending": "正在尝试发送",
+      "sent": "身份服务已接受",
+      "failed": "失败",
+      "skipped": "已跳过"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP 尚未配置或不可用。请求已保存，此邮件尚未发送。",
+      "providerUnavailable": "登录服务不可用或尚未配置。请求已保存。",
+      "notEligible": "邀请或恢复邮件收件人已不再符合条件。",
+      "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
+    }
   }
 }

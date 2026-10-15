@@ -7,6 +7,7 @@ export type AiProvider = 'anthropic' | 'openai' | 'google';
 
 /** Resolved, ready-to-use config for one generation — the decrypted key lives only in request memory. */
 export type ResolvedAiConfig = {
+  governance?: import('./governance').AiGovernance;
   provider: AiProvider;
   model: string;
   apiKey: string;
@@ -19,9 +20,10 @@ export type GenerateArgs = {
   /** Optional bounded operation; legacy callers retain their existing transport behaviour. */
   timeoutMs?: number;
   signal?: AbortSignal;
+  onUsage?: (usage: AiUsage) => void;
 };
 export type AiImageMime='image/png'|'image/jpeg'|'image/gif'|'image/webp';
-export type ImageReadArgs={data:Uint8Array;mimeType:AiImageMime;signal:AbortSignal;timeoutMs:number};
+export type ImageReadArgs={data:Uint8Array;mimeType:AiImageMime;signal:AbortSignal;timeoutMs:number;onUsage?:(usage:AiUsage)=>void};
 
 /** Result of a credential/model probe. `error` is a GENERIC reason — never raw SDK/provider text. */
 export type ValidateResult = { ok: boolean; error?: string };
@@ -49,6 +51,14 @@ export class AiGatewayError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AiGatewayError';
+  }
+}
+
+/** A control refusal is distinct from provider failure; it contains no tenant/company identifiers. */
+export class AiAllowanceError extends AiGatewayError {
+  constructor(readonly reason: 'paused' | 'daily_limit' | 'monthly_limit') {
+    super(reason === 'paused' ? 'This AI feature is paused.' : reason === 'daily_limit' ? 'The daily AI request allowance has been reached.' : 'The monthly AI token allowance has insufficient available capacity.');
+    this.name = 'AiAllowanceError';
   }
 }
 
@@ -172,6 +182,8 @@ export type ConverseResult = {
   toolCalls: AiToolCall[];
   stop: AiStop;
   usage: AiUsage;
+  /** False when counters were normalized from missing provider metadata. */
+  usageReported?: boolean;
   providerState?: AiProviderState;
 };
 

@@ -97,7 +97,7 @@ export async function saveNotificationEmailPreferences(ctx:SessionContext, emplo
 export async function readNotificationEmailDeliveries(ctx:SessionContext) {
   requireModule(ctx); if (!isAdmin(ctx)) throw new NotificationEmailSettingsError('forbidden');
   // No addresses, employee names, frozen notification text or raw relay responses in this log.
-  return withTenant(ctx,tx=>tx.select({id:notificationDelivery.id,category:notificationDelivery.category,status:notificationDelivery.status,attempts:notificationDelivery.attempts,error:notificationDelivery.lastError,createdAt:notificationDelivery.createdAt,sentAt:notificationDelivery.sentAt})
+  return withTenant(ctx,tx=>tx.select({id:notificationDelivery.id,recipientCode:sql<string|null>`app.notification_email_recipient_code(${notificationDelivery.id})`,category:notificationDelivery.category,status:notificationDelivery.status,attempts:notificationDelivery.attempts,error:notificationDelivery.lastError,createdAt:notificationDelivery.createdAt,sentAt:notificationDelivery.sentAt})
     .from(notificationDelivery).where(and(eq(notificationDelivery.tenantId,ctx.tenantId),eq(notificationDelivery.channel,'email')))
     .orderBy(sql`${notificationDelivery.createdAt} desc`,sql`${notificationDelivery.id} desc`).limit(50));
 }

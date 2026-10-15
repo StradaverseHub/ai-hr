@@ -1,3 +1,4 @@
+import { hasTokenCounts } from '../usage';
 /**
  * OpenAI adapter (ADR-0023). Per-call client; generic error mapping. Uses chat.completions with the
  * `developer` role for the system message and `max_completion_tokens` (current models reject the
@@ -29,8 +30,8 @@ function client(apiKey: string): OpenAI {
 /** Conversation client — separate from `client()` so the drafting path keeps the SDK defaults it has
  *  always run with. Defaults are `timeout` = 10 minutes and `maxRetries` = 2 (client.d.ts:171,174),
  *  which an 8-turn loop turns into hours. */
-function converseClient(apiKey: string, timeoutMs: number | undefined): OpenAI {
-  return new OpenAI({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: 1 });
+function converseClient(apiKey: string, timeoutMs: number | undefined, governed = false): OpenAI {
+  return new OpenAI({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: governed ? 0 : 1 });
 }
 
 export const openaiAdapter: AiAdapter = {
@@ -38,6 +39,7 @@ export const openaiAdapter: AiAdapter = {
   async readImage(cfg,args){
     try{
       const result=await new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).chat.completions.create({model:cfg.model,max_completion_tokens:2500,messages:[{role:'developer',content:imageReadInstruction},{role:'user',content:[{type:'image_url',image_url:{url:`data:${args.mimeType};base64,${Buffer.from(args.data).toString('base64')}`,detail:'high'}}]}]},{signal:args.signal});
+      if(hasTokenCounts(result.usage,['prompt_tokens','completion_tokens']))args.onUsage?.(usageFor(result.usage));
       if(result.choices[0]?.message.refusal)throw new AiImageReadError(false);
       return result.choices[0]?.message.content??'';
     }catch(error){throw imageReadError(error);}
@@ -45,7 +47,7 @@ export const openaiAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
+      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new OpenAI({apiKey:cfg.apiKey,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
@@ -53,6 +55,7 @@ export const openaiAdapter: AiAdapter = {
           { role: 'user', content: args.prompt },
         ],
       },args.signal?{signal:args.signal}:undefined);
+      if(hasTokenCounts(completion.usage,['prompt_tokens','completion_tokens']))args.onUsage?.(usageFor(completion.usage));
       if(args.signal&&(completion.choices[0]?.finish_reason==='length'||completion.choices[0]?.message.refusal))throw new AiGatewayError('No complete assessment was produced.');
       return (completion.choices[0]?.message?.content ?? '').trim();
     } catch (e) {
@@ -88,7 +91,7 @@ export const openaiAdapter: AiAdapter = {
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
       const tools = requestTools(args.tools);
-      const completion = await converseClient(cfg.apiKey, args.timeoutMs).chat.completions.create({
+      const completion = await converseClient(cfg.apiKey, args.timeoutMs, Boolean(cfg.governance)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
@@ -195,7 +198,7 @@ function readCompletion(completion: OpenAI.ChatCompletion): ConverseResult {
   // it is checked first.
   const raw: AiStop = message?.refusal ? 'refusal' : stopFor(choice?.finish_reason);
   const { stop, toolCalls } = normaliseStop(raw, calls);
-  return { text, toolCalls, stop, usage: usageFor(completion.usage) };
+  return { text, toolCalls, stop, usage: usageFor(completion.usage), usageReported: hasTokenCounts(completion.usage,['prompt_tokens','completion_tokens']) };
 }
 
 /** The SDK's own comment warns the model "does not always generate valid JSON, and may hallucinate

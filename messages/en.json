@@ -14057,10 +14057,10 @@
     },
     "reset": {
       "title": "Reset your password",
-      "subtitle": "Enter your email and we'll send you a link to set a new password.",
+      "subtitle": "Enter your email to request a secure recovery link. Delivery depends on the configured email service.",
       "emailLabel": "Email",
-      "submit": "Send reset link",
-      "sent": "If an account exists for that email, a password reset link is on its way.",
+      "submit": "Request recovery email",
+      "sent": "Your recovery request has been recorded. If delivery is available and an eligible account matches, the provider will send a secure link. If no email arrives, you can request another later.",
       "backToLogin": "Back to sign in"
     },
     "error": {
@@ -15550,7 +15550,8 @@
     "err_budget_monthly": "Your organisation has used its AI allowance for this month.",
     "err_budget_daily": "You have used your questions for today. Please try again tomorrow.",
     "err_invalid_question": "Please write a question, and keep it under 2000 characters.",
-    "err_provider_error": "The assistant could not be reached. Please try again."
+    "err_provider_error": "The assistant could not be reached. Please try again.",
+    "err_ai_control": "AI assistance is paused or has reached an allowance. Contact your administrator or try after the allowance resets."
   },
   "controlTower": {
     "howTitle": "How the Control Tower works",
@@ -15733,7 +15734,7 @@
       "readiness": "Employee data",
       "exceptions": "Payroll exceptions",
       "actions": "Approvals",
-      "agents": "Automation",
+      "agents": "AI management",
       "guide": "How it works",
       "workTitle": "Work to complete",
       "workDescription": "Track missing employee information, who can resolve it, and what the HR engine has verified.",
@@ -15742,7 +15743,7 @@
       "refreshed": "Records checked. No reminders were sent by this check.",
       "openCount": "{count} open issues",
       "verifiedCount": "{count} verified closures",
-      "manage": "Manage automation",
+      "manage": "AI management",
       "runs": "Execution history",
       "observed": "Last checked: {date}",
       "empty": "No open issues were found at the last check.",
@@ -17128,8 +17129,25 @@
     "security": "Encryption",
     "tlsSecurity": "SSL/TLS (implicit TLS)",
     "previewTitle": "SMTP setup preview",
-    "demoSetup": "This demo shows the SMTP connection fields for review. Saving credentials, sending test emails and activating delivery require a verified installation administrator login. No mail server details are loaded or saved here.",
-    "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only."
+    "demoSetup": "Enter SMTP details to check the secure connection and sign-in. This temporary test does not change the active mail server.",
+    "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only.",
+    "demoTestTitle": "Test SMTP connection",
+    "starttlsSecurity": "TLS (STARTTLS, required)",
+    "testConnection": "Test connection",
+    "testingConnection": "Testing connection…",
+    "demoTestHelp": "Use SSL/TLS (usually port 465) or required STARTTLS (usually port 587) with a public SMTP server. No email is sent. Details are not saved, and the password is cleared after each test.",
+    "demoAuthenticated": "Secure connection and SMTP sign-in succeeded. Email delivery has not been tested.",
+    "demoConnected": "Secure connection succeeded. Authentication was not requested; email delivery has not been tested.",
+    "demoErrors": {
+      "forbidden": "Connection testing is available only to HR administrators in the demo.",
+      "invalid": "Check the SMTP hostname and port. Enter a username and password when password authentication is selected.",
+      "blockedHost": "Demo tests require a public SMTP server. Local, private and special-purpose addresses are unavailable here.",
+      "busy": "Connection tests are busy or the test limit was reached. Wait a minute and try again.",
+      "authenticationFailed": "SMTP sign-in failed. Check the username, password and provider’s SMTP access settings, then re-enter the password and try again.",
+      "tlsFailed": "The secure connection could not be verified. Check the encryption setting and the server’s TLS certificate.",
+      "connectionFailed": "Could not connect to the SMTP server. Check the hostname, port, encryption and provider’s network access rules.",
+      "unavailable": "The connection test could not be completed. Re-enter the password and try again."
+    }
   },
   "workflowEmail": {
     "title": "Workflow email notifications",
@@ -17140,8 +17158,8 @@
     "consentHelp": "Choose the updates you want emailed to the verified address on your employee profile. Preferences apply separately to each employment and to future events only.",
     "identityRequired": "Sign in with a verified internal account whose email matches your employee profile to enable email notifications. You can turn all email notifications off without opting in.",
     "relayReady": "The managed SMTP relay is active. Eligible notifications can be delivered.",
-    "relayOff": "The managed SMTP relay is not active. No workflow email can be delivered yet.",
-    "upgradeRequired": "The private email service needs the workflow notification upgrade before email can be delivered.",
+    "relayOff": "SMTP is not configured or available. HR workflows continue; eligible email attempts are recorded as failed. After configuring SMTP, choose which failed emails to retry.",
+    "upgradeRequired": "The email service is unavailable or needs an upgrade. HR workflows continue; eligible email attempts are recorded as failed.",
     "policyTitle": "Categories allowed by your organisation",
     "preferencesCategories": "Email me about these categories",
     "notAllowed": "Currently disabled by your organisation",
@@ -17152,7 +17170,7 @@
     "saved": "Settings saved.",
     "noEmployment": "No employee profile is linked to this login.",
     "deliveries": "Recent email deliveries",
-    "deliveriesHelp": "Sent means accepted by the relay; it does not prove receipt. This list shows the latest 50 deliveries. Uncertain sends are held to avoid automatic duplicates.",
+    "deliveriesHelp": "Accepted by relay does not prove receipt. This list shows the latest 50 deliveries. Failed emails remain here until you choose to retry; configuring SMTP does not resend them automatically. Uncertain sends are held to avoid duplicates.",
     "noDeliveries": "No workflow email has been queued.",
     "category": "Category",
     "status": "Status",
@@ -17170,14 +17188,14 @@
     "statuses": {
       "pending": "Pending",
       "sent": "Accepted by relay",
-      "failed": "Failed or uncertain",
+      "failed": "Failed",
       "skipped": "Skipped"
     },
     "errors": {
-      "relayUnavailable": "Relay unavailable",
+      "relayUnavailable": "SMTP is not configured or available. This email was not sent; configure SMTP and choose Retry delivery when needed.",
       "recipientUnavailable": "Identity provider unavailable",
       "recipientChanged": "Verified email or account changed",
-      "notEligible": "Recipient or preferences no longer eligible",
+      "notEligible": "This update no longer needs delivery, or the recipient or email preferences changed.",
       "smtpTemporary": "Temporary relay rejection",
       "smtpRejected": "Relay rejected the message",
       "smtpAuthentication": "Relay authentication failed",
@@ -17233,7 +17251,9 @@
       }
     },
     "reportConsentHelp": "Report attachments need separate consent for each employment. Changing your profile email requires consent again. Only reports you can currently access may be sent.",
-    "reportPolicyHelp": "Employee Master attachments are off by default and require both this policy and each recipient’s explicit report consent."
+    "reportPolicyHelp": "Employee Master attachments are off by default and require both this policy and each recipient’s explicit report consent.",
+    "recipientCode": "Employee code",
+    "deliveryReference": "Delivery reference"
   },
   "onehr": {
     "back": "Back",
@@ -19463,5 +19483,144 @@
     "reasonCoverage": "Dated company assignment coverage is missing or unclear. Confirm the employee’s company history before assigning this replacement.",
     "reasonTenure": "This date falls outside the employee’s recorded hire and termination dates.",
     "reasonHistoricalSchedule": "Historical work-schedule policy is unavailable for this company/date. HR must confirm the schedule; the current employer’s weekdays cannot be substituted."
+  },
+  "aiManagement": {
+    "title": "AI management",
+    "description": "See every AI capability, monitor model activity and control user and company allowances.",
+    "back": "Control Tower",
+    "provider": "Provider: {provider} · {model}",
+    "noProvider": "No AI provider configured. Manual workflows remain available.",
+    "configureProvider": "Provider settings",
+    "refresh": "Refresh activity",
+    "inventory": "Features and agents",
+    "inventoryHelp": "Pause or enable shared AI capabilities here. A ready capability still requires the caller’s normal permissions and available allowances. Readiness reminders can use a written template without a model.",
+    "scopedNotice": "Shared feature switches are managed by a group administrator. You can edit allowances for companies you administer.",
+    "feature": "Capability",
+    "state": "Status",
+    "activity": "Usage this month",
+    "control": "Control",
+    "imagesIncluded": "Includes supported image reading",
+    "usage": "{daily} requests today · {tokens} recorded tokens · {held} reserved tokens",
+    "exceptions": "{blocked} blocked · {failed} failed this month",
+    "pause": "Pause",
+    "enable": "Enable",
+    "platformManaged": "Platform managed",
+    "readOnly": "Read only",
+    "noHistory": "Activity starts when this monitoring is installed; older model calls are not backfilled.",
+    "reservationHelp": "Reservations estimate capacity before calls. Recorded tokens include input, cached input and output reported by the provider. Missing usage or interrupted calls retain their reservation. Calls may finish above an allowance; further calls stop when recorded and reserved usage exhaust it.",
+    "companyLimits": "Company allowances",
+    "userLimits": "User allowances",
+    "limitHelp": "Daily requests reset at midnight and monthly tokens on the first day of the month, Malaysia time. Each model exchange, draft or image read counts as one request, including failed attempts. Blocked calls do not consume the allowance. Blank means no additional cap; zero blocks new calls.",
+    "attribution": "Shared calls count against every company in the caller’s authorized scope, including all companies for group administrators and tenant-wide scheduled agents. Both company and user caps apply; either can stop a call. Changing a cap preserves usage already recorded.",
+    "daily": "Daily requests",
+    "monthly": "Monthly tokens",
+    "access": "AI access",
+    "allowed": "Allowed",
+    "paused": "Paused",
+    "unlimited": "No extra cap",
+    "save": "Save",
+    "userHelp": "Search logins by person name or login identifier. User allowances apply across all their companies. Allowances do not grant feature permissions; HR assistant access is managed separately below.",
+    "searchUsers": "Search users",
+    "search": "Search",
+    "noUsers": "No matching users.",
+    "moreUsers": "Showing 50 matches. Narrow your search to find another user.",
+    "noCompanies": "No companies in your administrative scope.",
+    "inherited": "Existing controls",
+    "businessLimits": "Module access, feature permissions and the existing Performance limit of five successful drafts per field per user per day continue to apply.",
+    "legacyAssistant": "Additional Assistant budget: {daily} questions per user per day and {tokens} tokens per month for the tenant. This existing budget resets at 08:00 Malaysia time.",
+    "humanDecisions": "AI remains advisory. Existing approvals and human decisions for pay, ratings, hiring and access remain required.",
+    "orchestrator": "Central HR orchestrator",
+    "orchestratorHelp": "The orchestrator coordinates record readiness, ownership, review and verification. Its deterministic checks do not consume model tokens. Refresh coordination evidence below; the feature switches above control its AI agents.",
+    "recentRuns": "Recent model calls",
+    "runsHelp": "Latest 50 calls, including blocked and failed attempts. Metadata only; prompts, answers, images and credentials are excluded. Refresh to see new activity.",
+    "runsScoped": "Company totals appear above. Detailed run history is available to group administrators.",
+    "noRuns": "No model calls recorded yet.",
+    "time": "Started (Malaysia time)",
+    "tokens": "Tokens",
+    "held": "{tokens} reserved · unconfirmed",
+    "saved": "AI controls saved.",
+    "invalid": "Invalid AI control.",
+    "features": {
+      "hr_assistant": "HR assistant",
+      "readiness_reminders": "Readiness reminders",
+      "claims_triage": "Claims triage",
+      "payroll_hypotheses": "Payroll anomaly hypotheses",
+      "payroll_explanation": "Payroll explanations",
+      "pay_rule_draft": "Pay rule drafting",
+      "report_insight": "Report designer",
+      "performance_360": "360° feedback",
+      "performance_tc": "Competency and potential remarks",
+      "performance_pm": "Performance scorecards and evidence",
+      "performance_review": "Review summaries and guidance",
+      "performance_idp": "Development and career plans",
+      "performance_calib": "Calibration assistance",
+      "performance_assistant": "Performance conversation assistant",
+      "feedback_planning": "Improvement plan drafting"
+    },
+    "kinds": {
+      "assistant": "Assistant",
+      "agent": "Scheduled or event-driven agent",
+      "feature": "AI feature",
+      "platform": "Platform tooling"
+    },
+    "states": {
+      "ready": "Ready",
+      "paused": "Paused",
+      "module": "Module unavailable",
+      "provider": "Provider required",
+      "restricted": "Platform restriction"
+    },
+    "runStates": {
+      "pending": "Pending / unconfirmed",
+      "completed": "Completed",
+      "failed": "Failed",
+      "blocked": "Blocked"
+    },
+    "operations": {
+      "draft": "Draft",
+      "conversation": "Model exchange",
+      "image": "Image read"
+    },
+    "reasons": {
+      "paused": "AI access paused",
+      "daily_limit": "Daily request cap",
+      "monthly_limit": "Monthly token cap"
+    },
+    "assistantGranted": "HR assistant access granted",
+    "assistantNotGranted": "HR assistant access not granted",
+    "grantAssistant": "Grant HR assistant",
+    "revokeAssistant": "Revoke HR assistant",
+    "actor": "Caller",
+    "scheduledActor": "Scheduled agent",
+    "required": "Needs {tokens} estimated tokens",
+    "sections": "AI management sections"
+  },
+  "accountEmail": {
+    "title": "Account email deliveries",
+    "help": "Invitations and recovery requests are saved even when email fails. Configuring SMTP does not resend failures automatically. Choose individual retries below. Recovery history is visible only to the installation email administrator.",
+    "empty": "No account emails have been attempted.",
+    "attempts": "Attempts",
+    "reissue": "Reissue invitation",
+    "retryRecovery": "Retry recovery email",
+    "invitationAck": "I understand that this revokes the old invitation link, issues a new invitation and may send a duplicate email.",
+    "recoveryAck": "I want to request a fresh recovery email. An earlier uncertain delivery may cause a duplicate.",
+    "retryError": "This email could not be retried. Check your access and whether it has already been replaced or the invitation is no longer pending.",
+    "retryProcessed": "Retry processed. Check the latest delivery status.",
+    "kinds": {
+      "invitation": "Account invitation",
+      "recovery": "Password recovery"
+    },
+    "statuses": {
+      "pending": "Attempt in progress",
+      "sent": "Accepted by provider",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP is not configured or available. The request is saved and this email was not sent.",
+      "providerUnavailable": "The sign-in provider is unavailable or not configured. The request is saved.",
+      "notEligible": "The invitation or recovery recipient is no longer eligible.",
+      "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
+    }
   }
 }

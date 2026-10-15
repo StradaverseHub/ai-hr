@@ -1,3 +1,4 @@
+import { hasTokenCounts } from '../usage';
 /**
  * Google (Gemini) adapter (ADR-0023). Uses the current unified SDK `@google/genai` (Gemini Developer
  * API, not Vertex). Per-call client; generic error mapping. The system prompt goes in
@@ -31,6 +32,7 @@ export const googleAdapter: AiAdapter = {
   async readImage(cfg,args){
     try{
       const result=await new GoogleGenAI({apiKey:cfg.apiKey}).models.generateContent({model:cfg.model,contents:[{role:'user',parts:[{inlineData:{mimeType:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}],config:{systemInstruction:imageReadInstruction,maxOutputTokens:2500,abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}});
+      if(hasTokenCounts(result.usageMetadata,['promptTokenCount','candidatesTokenCount']))args.onUsage?.(usageFor(result.usageMetadata));
       if(result.promptFeedback?.blockReason||result.candidates?.some(candidate=>['SAFETY','IMAGE_SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??'')))throw new AiImageReadError(false);
       return result.text??'';
     }catch(error){throw imageReadError(error);}
@@ -41,8 +43,9 @@ export const googleAdapter: AiAdapter = {
       const response = await client(cfg.apiKey).models.generateContent({
         model: cfg.model,
         contents: args.prompt,
-        config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:{}) },
+        config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:cfg.governance?{httpOptions:{retryOptions:{attempts:1}}}:{}) },
       });
+      if(hasTokenCounts(response.usageMetadata,['promptTokenCount','candidatesTokenCount']))args.onUsage?.(usageFor(response.usageMetadata));
       if(args.signal&&(response.promptFeedback?.blockReason||response.candidates?.some(candidate=>['MAX_TOKENS','SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??''))))throw new AiGatewayError('No complete assessment was produced.');
       return (response.text ?? '').trim();
     } catch (e) {
@@ -88,7 +91,7 @@ export const googleAdapter: AiAdapter = {
           // The SDK will otherwise RUN the tools itself and hide the loop — the loop is where the turn
           // cap, the budget re-check and the audit live.
           automaticFunctionCalling: { disable: true },
-          httpOptions: { timeout: args.timeoutMs ?? 120_000 },
+          httpOptions: { timeout: args.timeoutMs ?? 120_000, ...(cfg.governance ? { retryOptions: { attempts: 1 } } : {}) },
           // toolConfig is omitted deliberately: the default mode is AUTO.
           ...(declarations.length > 0 ? { tools: [{ functionDeclarations: declarations }] } : {}),
         },
@@ -240,6 +243,7 @@ function readResponse(response: GenerateContentResponse): ConverseResult {
     toolCalls,
     stop,
     usage,
+    usageReported: hasTokenCounts(response.usageMetadata,['promptTokenCount','candidatesTokenCount']),
     // The WHOLE surviving parts array, not just the signature-bearing parts: a signature belongs to its
     // part, and that part is usually the one carrying the functionCall.
     ...(signed ? { providerState: { provider: 'google' as const, blocks } } : {}),

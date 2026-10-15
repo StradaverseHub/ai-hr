@@ -93,7 +93,7 @@ export async function draftReportSpec(
   const ds = getDataset(p.datasetId);
   if (!ds) throw new ReportDraftError('invalid_output');
 
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx));
+  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'report_insight'));
   if (!cfg) throw new ReportDraftError('not_configured');
 
   // Only the catalogue for the chosen dataset + the redacted request leaves the tenant. No employee data.

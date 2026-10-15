@@ -16,6 +16,7 @@ export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
   'custom_report_occurrence','custom_report_schedule','custom_report_run',
+  'ai_model_run', 'ai_control_policy',
   'performance_assessment_guide_use',
   'hr_orchestration_case',
   'performance_assessment_profit_achievement',
@@ -68,6 +69,7 @@ const ALL_TABLES = [
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).
   'employee_device', 'attendance_clock_capture', 'attendance_attention_review',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor', 'notification_email_policy',
+  'account_email_delivery',
   // 6e122302 — the Notice Board. `notice_recipient` cascades from `notice`, but BOTH are listed for the
   // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
   // stops being cleared the day the cascade path changes. A surviving notice would also make a later

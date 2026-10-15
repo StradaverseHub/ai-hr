@@ -14057,10 +14057,10 @@
     },
     "reset": {
       "title": "Đặt lại mật khẩu của bạn",
-      "subtitle": "Nhập email của bạn và chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.",
+      "subtitle": "Nhập email để yêu cầu liên kết khôi phục an toàn. Việc gửi phụ thuộc vào dịch vụ email đã cấu hình.",
       "emailLabel": "Email",
-      "submit": "Gửi liên kết đặt lại",
-      "sent": "Nếu có tài khoản cho email đó, liên kết đặt lại mật khẩu đang được gửi đến.",
+      "submit": "Yêu cầu email khôi phục",
+      "sent": "Yêu cầu khôi phục đã được ghi nhận. Nếu có thể gửi email và tài khoản đủ điều kiện khớp, nhà cung cấp sẽ gửi liên kết bảo mật. Nếu chưa nhận được email, bạn có thể yêu cầu lại sau.",
       "backToLogin": "Quay lại đăng nhập"
     },
     "error": {
@@ -15550,7 +15550,8 @@
     "err_budget_monthly": "Tổ chức của bạn đã dùng hết hạn mức AI trong tháng này.",
     "err_budget_daily": "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng thử lại vào ngày mai.",
     "err_invalid_question": "Vui lòng viết câu hỏi và giữ dưới 2000 ký tự.",
-    "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại."
+    "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại.",
+    "err_ai_control": "Hỗ trợ AI đã tạm dừng hoặc đạt hạn mức. Liên hệ quản trị viên hoặc thử sau khi hạn mức đặt lại."
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",
@@ -15733,7 +15734,7 @@
       "readiness": "Dữ liệu nhân viên",
       "exceptions": "Ngoại lệ bảng lương",
       "actions": "Phê duyệt",
-      "agents": "Tự động hóa",
+      "agents": "Quản lý AI",
       "guide": "Cách hoạt động",
       "workTitle": "Công việc cần hoàn thành",
       "workDescription": "Theo dõi thông tin nhân viên còn thiếu, người có thể xử lý và kết quả kiểm tra của hệ thống nhân sự.",
@@ -15742,7 +15743,7 @@
       "refreshed": "Đã kiểm tra hồ sơ. Lần kiểm tra này không gửi lời nhắc.",
       "openCount": "{count} vấn đề đang mở",
       "verifiedCount": "{count} lần đóng đã xác minh",
-      "manage": "Quản lý tự động hóa",
+      "manage": "Quản lý AI",
       "runs": "Lịch sử thực thi",
       "observed": "Kiểm tra gần nhất: {date}",
       "empty": "Không tìm thấy vấn đề đang mở trong lần kiểm tra gần nhất.",
@@ -17128,8 +17129,25 @@
     "security": "Mã hóa",
     "tlsSecurity": "SSL/TLS (TLS ngầm định)",
     "previewTitle": "Xem trước thiết lập SMTP",
-    "demoSetup": "Bản demo này hiển thị các trường kết nối SMTP để xem xét. Việc lưu thông tin xác thực, gửi email thử và kích hoạt gửi email yêu cầu đăng nhập bằng tài khoản quản trị cài đặt đã xác minh. Không có thông tin máy chủ thư nào được tải hoặc lưu tại đây.",
-    "restrictedSetup": "Chỉ quản trị viên cài đặt đã đăng ký mới có thể xem hoặc thay đổi thiết lập SMTP thực tế. Hãy yêu cầu quản trị viên cài đặt hoàn tất thiết lập. Các trường này chỉ hiển thị cấu hình được hỗ trợ."
+    "demoSetup": "Nhập thông tin SMTP để kiểm tra kết nối bảo mật và đăng nhập. Thử nghiệm tạm thời này không thay đổi máy chủ thư đang hoạt động.",
+    "restrictedSetup": "Chỉ quản trị viên cài đặt đã đăng ký mới có thể xem hoặc thay đổi thiết lập SMTP thực tế. Hãy yêu cầu quản trị viên cài đặt hoàn tất thiết lập. Các trường này chỉ hiển thị cấu hình được hỗ trợ.",
+    "demoTestTitle": "Kiểm tra kết nối SMTP",
+    "starttlsSecurity": "TLS (bắt buộc STARTTLS)",
+    "testConnection": "Kiểm tra kết nối",
+    "testingConnection": "Đang kiểm tra kết nối…",
+    "demoTestHelp": "Dùng SSL/TLS (thường là cổng 465) hoặc STARTTLS bắt buộc (thường là cổng 587) với máy chủ SMTP công khai. Không gửi email. Thông tin không được lưu và mật khẩu được xóa sau mỗi lần kiểm tra.",
+    "demoAuthenticated": "Kết nối bảo mật và đăng nhập SMTP thành công. Chưa kiểm tra việc gửi email.",
+    "demoConnected": "Kết nối bảo mật thành công. Không yêu cầu xác thực; chưa kiểm tra việc gửi email.",
+    "demoErrors": {
+      "forbidden": "Chỉ quản trị viên HR trong bản demo mới có thể kiểm tra kết nối.",
+      "invalid": "Kiểm tra tên máy chủ và cổng SMTP. Nhập tên người dùng và mật khẩu khi chọn xác thực bằng mật khẩu.",
+      "blockedHost": "Kiểm tra trong demo cần máy chủ SMTP công khai. Không hỗ trợ địa chỉ cục bộ, riêng tư hoặc dành cho mục đích đặc biệt.",
+      "busy": "Kiểm tra kết nối đang bận hoặc đã đạt giới hạn. Đợi một phút rồi thử lại.",
+      "authenticationFailed": "Đăng nhập SMTP thất bại. Kiểm tra tên người dùng, mật khẩu và quyền truy cập SMTP của nhà cung cấp, rồi nhập lại mật khẩu để thử lại.",
+      "tlsFailed": "Không thể xác minh kết nối bảo mật. Kiểm tra phương thức mã hóa và chứng chỉ TLS của máy chủ.",
+      "connectionFailed": "Không thể kết nối máy chủ SMTP. Kiểm tra tên máy chủ, cổng, mã hóa và quy tắc truy cập mạng của nhà cung cấp.",
+      "unavailable": "Không thể hoàn tất kiểm tra kết nối. Nhập lại mật khẩu và thử lại."
+    }
   },
   "workflowEmail": {
     "title": "Email thông báo quy trình",
@@ -17140,8 +17158,8 @@
     "consentHelp": "Chọn cập nhật gửi đến email đã xác minh trong hồ sơ nhân viên. Tùy chọn được lưu riêng theo từng quan hệ việc làm và chỉ áp dụng cho sự kiện mới.",
     "identityRequired": "Đăng nhập bằng tài khoản nội bộ đã xác minh có email khớp hồ sơ nhân viên để bật email. Bạn vẫn có thể tắt mọi email mà không cần đồng ý nhận.",
     "relayReady": "Máy chủ chuyển tiếp SMTP đang hoạt động. Thông báo đủ điều kiện có thể được gửi.",
-    "relayOff": "Máy chủ chuyển tiếp SMTP chưa hoạt động. Chưa thể gửi email quy trình.",
-    "upgradeRequired": "Dịch vụ email riêng cần bản nâng cấp thông báo quy trình trước khi có thể gửi email.",
+    "relayOff": "SMTP chưa được cấu hình hoặc không khả dụng. Quy trình HR vẫn tiếp tục; các lần gửi email đủ điều kiện được ghi nhận là thất bại. Sau khi cấu hình SMTP, chọn email thất bại cần gửi lại.",
+    "upgradeRequired": "Dịch vụ email không khả dụng hoặc cần nâng cấp. Quy trình HR vẫn tiếp tục; các lần gửi email đủ điều kiện được ghi nhận là thất bại.",
     "policyTitle": "Danh mục tổ chức cho phép",
     "preferencesCategories": "Gửi email cho tôi về các danh mục này",
     "notAllowed": "Tổ chức hiện đang tắt",
@@ -17152,7 +17170,7 @@
     "saved": "Đã lưu cài đặt.",
     "noEmployment": "Tài khoản này chưa liên kết hồ sơ nhân viên.",
     "deliveries": "Email gửi gần đây",
-    "deliveriesHelp": "Đã gửi nghĩa là máy chủ chuyển tiếp đã chấp nhận, không chứng minh người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Lần gửi chưa rõ kết quả được giữ lại để tránh tự động gửi trùng.",
+    "deliveriesHelp": "Máy chủ chuyển tiếp chấp nhận không có nghĩa người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Email thất bại được giữ lại đến khi bạn chọn gửi lại; cấu hình SMTP không tự động gửi lại. Các lần gửi chưa rõ kết quả được giữ để tránh gửi trùng.",
     "noDeliveries": "Chưa có email quy trình trong hàng đợi.",
     "category": "Danh mục",
     "status": "Trạng thái",
@@ -17170,14 +17188,14 @@
     "statuses": {
       "pending": "Đang chờ",
       "sent": "Máy chủ đã chấp nhận",
-      "failed": "Thất bại hoặc chưa rõ",
+      "failed": "Thất bại",
       "skipped": "Đã bỏ qua"
     },
     "errors": {
-      "relayUnavailable": "Máy chủ chuyển tiếp không khả dụng",
+      "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Email này chưa được gửi; cấu hình SMTP rồi chọn Gửi lại khi cần.",
       "recipientUnavailable": "Nhà cung cấp danh tính không khả dụng",
       "recipientChanged": "Email xác minh hoặc tài khoản đã thay đổi",
-      "notEligible": "Người nhận hoặc tùy chọn không còn đủ điều kiện",
+      "notEligible": "Thông báo này không còn cần gửi, hoặc người nhận hay tùy chọn email đã thay đổi.",
       "smtpTemporary": "Máy chủ tạm từ chối",
       "smtpRejected": "Máy chủ từ chối email",
       "smtpAuthentication": "Xác thực máy chủ thất bại",
@@ -17233,7 +17251,9 @@
       }
     },
     "reportConsentHelp": "Tệp báo cáo cần sự đồng ý riêng cho từng hồ sơ việc làm. Khi đổi email hồ sơ, bạn cần đồng ý lại. Chỉ gửi những báo cáo bạn hiện có quyền truy cập.",
-    "reportPolicyHelp": "Tệp báo cáo Hồ sơ nhân viên mặc định tắt và cần chính sách này cùng sự đồng ý rõ ràng của từng người nhận."
+    "reportPolicyHelp": "Tệp báo cáo Hồ sơ nhân viên mặc định tắt và cần chính sách này cùng sự đồng ý rõ ràng của từng người nhận.",
+    "recipientCode": "Mã nhân viên",
+    "deliveryReference": "Mã lần gửi"
   },
   "onehr": {
     "back": "Back",
@@ -19463,5 +19483,144 @@
     "reasonCoverage": "Thiếu hoặc chưa rõ lịch sử công ty theo ngày hiệu lực. Xác nhận lịch sử công ty của nhân viên trước khi xếp ngày nghỉ bù này.",
     "reasonTenure": "Ngày này nằm ngoài khoảng ngày vào làm và chấm dứt đã ghi nhận của nhân viên.",
     "reasonHistoricalSchedule": "Không có chính sách lịch làm việc trong quá khứ cho công ty/ngày này. Nhân sự phải xác nhận lịch; không được thay bằng ngày làm việc của công ty hiện tại."
+  },
+  "aiManagement": {
+    "title": "Quản lý AI",
+    "description": "Xem mọi chức năng AI, theo dõi hoạt động mô hình và kiểm soát hạn mức người dùng, công ty.",
+    "back": "Trung tâm điều hành",
+    "provider": "Nhà cung cấp: {provider} · {model}",
+    "noProvider": "Chưa cấu hình nhà cung cấp AI. Quy trình thủ công vẫn khả dụng.",
+    "configureProvider": "Cài đặt nhà cung cấp",
+    "refresh": "Làm mới hoạt động",
+    "inventory": "Chức năng và tác tử",
+    "inventoryHelp": "Tạm dừng hoặc bật các chức năng AI dùng chung tại đây. Chức năng sẵn sàng vẫn yêu cầu quyền thông thường và hạn mức khả dụng của người gọi. Nhắc nhở hồ sơ có thể dùng mẫu viết sẵn mà không cần mô hình.",
+    "scopedNotice": "Quản trị viên tập đoàn quản lý công tắc chức năng dùng chung. Bạn có thể sửa hạn mức công ty mình quản lý.",
+    "feature": "Chức năng",
+    "state": "Trạng thái",
+    "activity": "Sử dụng tháng này",
+    "control": "Điều khiển",
+    "imagesIncluded": "Bao gồm đọc ảnh được hỗ trợ",
+    "usage": "{daily} yêu cầu hôm nay · {tokens} token đã ghi · {held} token dự trữ",
+    "exceptions": "{blocked} bị chặn · {failed} thất bại tháng này",
+    "pause": "Tạm dừng",
+    "enable": "Bật",
+    "platformManaged": "Nền tảng quản lý",
+    "readOnly": "Chỉ đọc",
+    "noHistory": "Hoạt động được ghi từ khi cài đặt tính năng giám sát này; không bổ sung các lượt gọi cũ.",
+    "reservationHelp": "Dung lượng được dự trữ theo ước tính trước khi gọi. Token đã ghi gồm đầu vào, đầu vào lưu đệm và đầu ra do nhà cung cấp báo cáo. Thiếu dữ liệu hoặc gián đoạn vẫn giữ phần dự trữ. Một lượt gọi có thể kết thúc vượt hạn mức; lượt tiếp theo dừng khi mức sử dụng đã ghi và dự trữ dùng hết hạn mức.",
+    "companyLimits": "Hạn mức công ty",
+    "userLimits": "Hạn mức người dùng",
+    "limitHelp": "Yêu cầu ngày đặt lại lúc nửa đêm, token tháng vào ngày đầu tháng theo giờ Malaysia. Mỗi trao đổi mô hình, bản nháp hoặc đọc ảnh tính một yêu cầu, kể cả lần thất bại. Lượt bị chặn không dùng hạn mức. Để trống nghĩa là không thêm giới hạn; số không chặn lượt gọi mới.",
+    "attribution": "Lượt gọi chung tính cho mọi công ty trong phạm vi được phép của người gọi, gồm tất cả công ty cho quản trị viên tập đoàn và tác tử định kỳ toàn đơn vị thuê. Cả hạn mức công ty và người dùng đều áp dụng; một trong hai có thể dừng lượt gọi. Sửa hạn mức không xóa sử dụng đã ghi.",
+    "daily": "Yêu cầu mỗi ngày",
+    "monthly": "Token mỗi tháng",
+    "access": "Truy cập AI",
+    "allowed": "Cho phép",
+    "paused": "Tạm dừng",
+    "unlimited": "Không thêm giới hạn",
+    "save": "Lưu",
+    "userHelp": "Tìm tài khoản theo tên hoặc mã đăng nhập. Hạn mức người dùng áp dụng cho tất cả công ty của họ. Hạn mức không cấp quyền chức năng; quyền trợ lý HR được quản lý riêng bên dưới.",
+    "searchUsers": "Tìm người dùng",
+    "search": "Tìm",
+    "noUsers": "Không có người dùng phù hợp.",
+    "moreUsers": "Hiển thị 50 kết quả. Thu hẹp tìm kiếm để tìm người dùng khác.",
+    "noCompanies": "Không có công ty trong phạm vi quản trị.",
+    "inherited": "Kiểm soát hiện có",
+    "businessLimits": "Quyền mô-đun, quyền chức năng và giới hạn Performance hiện có là năm bản nháp thành công mỗi trường, mỗi người dùng, mỗi ngày vẫn áp dụng.",
+    "legacyAssistant": "Ngân sách Assistant bổ sung: {daily} câu hỏi mỗi người dùng mỗi ngày và {tokens} token mỗi tháng cho đơn vị thuê. Ngân sách hiện có này đặt lại lúc 08:00 giờ Malaysia.",
+    "humanDecisions": "AI chỉ tư vấn. Các quyết định về lương, xếp hạng, tuyển dụng và truy cập vẫn cần phê duyệt và con người quyết định.",
+    "orchestrator": "Bộ điều phối HR trung tâm",
+    "orchestratorHelp": "Bộ điều phối kết nối tình trạng hồ sơ, người phụ trách, xét duyệt và xác minh. Kiểm tra xác định không dùng token mô hình. Làm mới bằng chứng điều phối bên dưới; công tắc trên điều khiển tác tử AI.",
+    "recentRuns": "Lượt gọi mô hình gần đây",
+    "runsHelp": "50 lượt gần nhất, gồm lượt bị chặn và thất bại. Chỉ có siêu dữ liệu; không gồm lời nhắc, câu trả lời, ảnh hoặc thông tin xác thực. Làm mới để xem hoạt động mới.",
+    "runsScoped": "Tổng công ty ở trên. Lịch sử chi tiết dành cho quản trị viên tập đoàn.",
+    "noRuns": "Chưa ghi lượt gọi mô hình nào.",
+    "time": "Bắt đầu (giờ Malaysia)",
+    "tokens": "Token",
+    "held": "{tokens} dự trữ · chưa xác nhận",
+    "saved": "Đã lưu kiểm soát AI.",
+    "invalid": "Kiểm soát AI không hợp lệ.",
+    "features": {
+      "hr_assistant": "Trợ lý HR",
+      "readiness_reminders": "Nhắc nhở hồ sơ",
+      "claims_triage": "Phân loại yêu cầu chi phí",
+      "payroll_hypotheses": "Giả thuyết bất thường lương",
+      "payroll_explanation": "Giải thích bảng lương",
+      "pay_rule_draft": "Soạn quy tắc lương",
+      "report_insight": "Thiết kế báo cáo",
+      "performance_360": "Phản hồi 360°",
+      "performance_tc": "Nhận xét năng lực và tiềm năng",
+      "performance_pm": "Thẻ điểm và bằng chứng hiệu suất",
+      "performance_review": "Tóm tắt và hướng dẫn đánh giá",
+      "performance_idp": "Kế hoạch phát triển và nghề nghiệp",
+      "performance_calib": "Hỗ trợ hiệu chỉnh",
+      "performance_assistant": "Trợ lý hội thoại hiệu suất",
+      "feedback_planning": "Soạn kế hoạch cải tiến"
+    },
+    "kinds": {
+      "assistant": "Trợ lý",
+      "agent": "Tác tử định kỳ hoặc theo sự kiện",
+      "feature": "Chức năng AI",
+      "platform": "Công cụ nền tảng"
+    },
+    "states": {
+      "ready": "Sẵn sàng",
+      "paused": "Tạm dừng",
+      "module": "Mô-đun không khả dụng",
+      "provider": "Cần nhà cung cấp",
+      "restricted": "Hạn chế nền tảng"
+    },
+    "runStates": {
+      "pending": "Đang chờ / chưa xác nhận",
+      "completed": "Hoàn tất",
+      "failed": "Thất bại",
+      "blocked": "Bị chặn"
+    },
+    "operations": {
+      "draft": "Bản nháp",
+      "conversation": "Trao đổi mô hình",
+      "image": "Đọc ảnh"
+    },
+    "reasons": {
+      "paused": "Truy cập AI tạm dừng",
+      "daily_limit": "Giới hạn yêu cầu ngày",
+      "monthly_limit": "Giới hạn token tháng"
+    },
+    "assistantGranted": "Đã cấp quyền trợ lý HR",
+    "assistantNotGranted": "Chưa cấp quyền trợ lý HR",
+    "grantAssistant": "Cấp quyền trợ lý HR",
+    "revokeAssistant": "Thu hồi quyền trợ lý HR",
+    "actor": "Người gọi",
+    "scheduledActor": "Tác tử định kỳ",
+    "required": "Cần khoảng {tokens} token",
+    "sections": "Các phần quản lý AI"
+  },
+  "accountEmail": {
+    "title": "Lịch sử gửi email tài khoản",
+    "help": "Lời mời và yêu cầu khôi phục được lưu ngay cả khi gửi email thất bại. Cấu hình SMTP không tự động gửi lại email thất bại. Chọn từng lần gửi lại bên dưới. Chỉ quản trị viên email của hệ thống mới xem được lịch sử khôi phục.",
+    "empty": "Chưa có lần gửi email tài khoản nào.",
+    "attempts": "Số lần thử",
+    "reissue": "Cấp lại lời mời",
+    "retryRecovery": "Gửi lại email khôi phục",
+    "invitationAck": "Tôi hiểu thao tác này thu hồi liên kết mời cũ, cấp lời mời mới và có thể gửi email trùng.",
+    "recoveryAck": "Tôi muốn yêu cầu email khôi phục mới. Lần gửi trước chưa rõ kết quả có thể tạo email trùng.",
+    "retryError": "Không thể gửi lại email này. Kiểm tra quyền truy cập và liệu yêu cầu đã được thay thế hoặc lời mời không còn chờ xử lý.",
+    "retryProcessed": "Đã xử lý yêu cầu gửi lại. Kiểm tra trạng thái gửi mới nhất.",
+    "kinds": {
+      "invitation": "Lời mời tài khoản",
+      "recovery": "Khôi phục mật khẩu"
+    },
+    "statuses": {
+      "pending": "Đang thử gửi",
+      "sent": "Nhà cung cấp đã chấp nhận",
+      "failed": "Thất bại",
+      "skipped": "Đã bỏ qua"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Yêu cầu đã được lưu và email này chưa được gửi.",
+      "providerUnavailable": "Dịch vụ đăng nhập không khả dụng hoặc chưa được cấu hình. Yêu cầu đã được lưu.",
+      "notEligible": "Lời mời hoặc người nhận email khôi phục không còn đủ điều kiện.",
+      "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
+    }
   }
 }

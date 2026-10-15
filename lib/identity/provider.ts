@@ -1,5 +1,6 @@
 import { identityEmailRequest } from './email-ipc';
 import { keycloakConfig, keycloakSelected, safeReturnTo } from './config';
+import { AccountEmailDeliveryError,recoveryEmailSchema } from '../account-email-model';
 
 export async function currentProviderSession() {
   if (keycloakSelected()) return (await import('./session')).currentIdentitySession();
@@ -51,4 +52,33 @@ export async function sendIdentityInvitation(email: string, activationPath: stri
   const params = new URLSearchParams({ client_id: config.webClientId, redirect_uri: config.origin + activationPath, lifespan: String(7 * 86400) });
   await admin(`/users/${users[0].id}/execute-actions-email?${params}`, { method: 'PUT', body: JSON.stringify(created ? ['VERIFY_EMAIL', 'UPDATE_PASSWORD'] : ['VERIFY_EMAIL']) });
   return { invitationId: users[0].id };
+}
+
+/** Provider-owned one-time recovery. No password, reset token or action link returns to the app. */
+export async function sendIdentityPasswordReset(input:string):Promise<void>{
+  const email=recoveryEmailSchema.parse(input.trim());
+  if(process.env.KEYCLOAK_EMAIL_ENABLED!=='true'||!await identityEmailRequest<{ready:boolean}>({op:'readiness'}).then(result=>result.ready===true,()=>false))throw new AccountEmailDeliveryError('relayUnavailable');
+  const config=keycloakConfig(),clientId=process.env.KEYCLOAK_ADMIN_CLIENT_ID,secret=process.env.KEYCLOAK_ADMIN_CLIENT_SECRET;
+  if(!clientId||!secret)throw new AccountEmailDeliveryError('providerUnavailable');
+  const transport=(await import('./oidc')).identityFetch(config);
+  const response=await transport(`${config.issuer}/protocol/openid-connect/token`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'client_credentials',client_id:clientId,client_secret:secret})});
+  if(!response.ok)throw new AccountEmailDeliveryError('providerUnavailable');
+  const credential:unknown=await response.json();
+  if(!credential||typeof credential!=='object'||!('access_token' in credential)||typeof credential.access_token!=='string')throw new AccountEmailDeliveryError('providerUnavailable');
+  const base=config.issuer.replace('/realms/','/admin/realms/');
+  const admin=async(path:string,init:RequestInit={})=>{
+    const url=new URL(base+path),target=config.backchannel?new URL(url.pathname+url.search,config.backchannel):url;
+    return fetch(target,{...init,headers:{'content-type':'application/json',authorization:`Bearer ${credential.access_token}`},redirect:'error',signal:AbortSignal.timeout(10_000)});
+  };
+  const found=await admin(`/users?${new URLSearchParams({email,exact:'true'})}`);
+  if(!found.ok)throw new AccountEmailDeliveryError('providerUnavailable');
+  const users:unknown=await found.json();
+  if(!Array.isArray(users)||users.length!==1)throw new AccountEmailDeliveryError('notEligible');
+  const user=users[0] as {id?:unknown;email?:unknown;enabled?:unknown;emailVerified?:unknown;federationLink?:unknown;serviceAccountClientId?:unknown};
+  if(typeof user.id!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(user.id)||typeof user.email!=='string'||user.email.toLowerCase()!==email||user.enabled!==true||user.emailVerified!==true||user.federationLink||user.serviceAccountClientId)throw new AccountEmailDeliveryError('notEligible');
+  // Keycloak's configured action-token lifetime applies. Omit redirect/client overrides rather than
+  // adding a new redirect to the web client's restricted callback allowlist.
+  const sent=await admin(`/users/${user.id}/execute-actions-email`,{method:'PUT',body:JSON.stringify(['UPDATE_PASSWORD'])});
+  if(!sent.ok)throw new AccountEmailDeliveryError(sent.status>=400&&sent.status<500?'providerUnavailable':'uncertain');
 }

@@ -123,7 +123,22 @@ SMTP. Explicit temporary SMTP rejection may retry with bounded backoff (five att
 Unknown acknowledgements and abandoned started attempts become **uncertain** and are not automatically
 retried: SMTP does not offer exactly-once delivery. A group administrator can explicitly retry after
 acknowledging possible duplicate mail; eligibility is checked again. `sent` means accepted by the relay,
-not received or read by a human. Pre-send unavailability leaves the pending job for a later sweep.
+not received or read by a human.
+
+Missing or unavailable SMTP is a delivery failure, independent of the HR action. The dispatcher still
+projects the notification and resolves current work, then records an eligible unstarted email attempt
+as `failed` with `relayUnavailable`. A definite pre-send refusal from the private service is likewise
+terminal (`recipientUnavailable` when the relay is ready but recipient verification is unavailable).
+The atomic update requires the exact lease token and no started SMTP attempt; it cannot overwrite an
+accepted, in-flight or uncertain send. A lost IPC acknowledgement retains the existing lease/uncertainty
+handling because it does not prove non-delivery.
+
+Activating SMTP does not reopen failed deliveries. A group administrator chooses individual retries
+through the existing delivery log; leaving a failure unchanged sends nothing. Each retry resolves
+current recipient permission, consent, identity and pending Performance work again. Completed or
+ineligible work is skipped rather than sending a stale assessment reminder. Newly due events continue
+through the normal scheduler. No SMTP readiness check is added to an HR business writer, and no
+recipient consent or category permission is inferred from SMTP availability.
 
 ### Scope and activation
 
@@ -135,3 +150,25 @@ apply. A configured category, a user's consent and an active relay are all requi
 emailed merely because a switch was turned on. The delivery log reports sanitized outcome codes.
 Internal-auth cutover, owner MFA, relay activation and a real human receipt remain separate operator
 steps; this feature must not claim those were completed by shipping code.
+
+The administrator delivery log includes an employee code only through a narrow tenant-matched lookup
+using the existing company-scoped delivery authorization, plus the delivery reference, so individual failures can be
+distinguished. It does not copy addresses, employee names, message contents or relay responses.
+
+## Reminder invalidation ownership
+
+The assessment reminder epoch is a derived invalidation counter maintained by canonical database
+triggers. Its table and SECURITY DEFINER trigger share the migration owner, which is not a superuser
+and has no BYPASSRLS privilege in production. The counter retains enabled RLS and its tenant/admin
+SELECT policy for the application; it does not FORCE that policy onto the private table owner.
+PUBLIC and application table privileges are revoked before restoring application SELECT alone,
+including removal of bootstrap write/TRUNCATE grants. Migration refuses an inherited table or column
+write capability. Direct trigger execution remains revoked. Verify employee draft activation under a
+restricted table/function owner; a postgres-owned test cannot establish this production contract.
+
+The isolated Performance mail reader binds its dispatcher context to the tenant of an already
+validated delivery lease. Its function-scoped tenant/user/role/grant settings restore the caller on
+exit. Reminder run and recipient content retain FORCE RLS, and the application cannot execute the
+private reader. Verification must use a NOSUPERUSER/NOBYPASSRLS owner matching production; a
+postgres-owned helper can conceal missing private-worker context. Invalid leases, issuer changes,
+expired preparation and changed or completed work still produce no payload.

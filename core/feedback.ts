@@ -230,7 +230,7 @@ export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId:
     if (fb.status !== 'open' && fb.status !== 'contested') {
       throw new FeedbackError(`A plan can only be drafted while the item is open or contested (it is ${fb.status}).`);
     }
-    const aiCfg = await resolveActiveAiConfig(tx, ctx);
+    const aiCfg = await resolveActiveAiConfig(tx, ctx, 'feedback_planning');
     return { fb, aiCfg };
   });
   const { fb, aiCfg } = gathered;

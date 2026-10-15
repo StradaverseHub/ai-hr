@@ -12,6 +12,8 @@
  *  - Fail closed: a present-but-undecryptable active config errors; it does NOT silently fall through
  *    to the shared platform env key.
  */
+import { governedAiConfig } from './ai-governance';
+import type { AiFeatureId } from '../lib/ai/features';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -111,7 +113,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
  * only — the provider network call happens outside any tx). FAIL CLOSED: if an active tenant config
  * exists but cannot be decrypted, this throws rather than leaking through the shared env key.
  */
-export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext): Promise<ResolvedAiConfig | null> {
+export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext, feature: AiFeatureId = 'hr_assistant'): Promise<ResolvedAiConfig | null> {
   const rows = (await tx.execute(
     sql`select provider, model, api_key_ciphertext from app.ai_active_provider_config()`,
   )) as unknown as { provider: string; model: string; api_key_ciphertext: string }[];
@@ -119,9 +121,10 @@ export async function resolveActiveAiConfig(tx: Tx, ctx: SessionContext): Promis
   if (row) {
     if (!isProvider(row.provider)) throw new AiConfigError('Stored AI provider is unknown.');
     const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId); // throws on failure → fail closed
-    return { provider: row.provider, model: row.model, apiKey };
+    return governedAiConfig(ctx,{ provider: row.provider, model: row.model, apiKey },feature);
   }
-  return envFallbackConfig();
+  const fallback=envFallbackConfig();
+  return fallback?governedAiConfig(ctx,fallback,feature):null;
 }
 
 /** Cheap check for gating the "Draft with AI" affordance — active tenant config OR an env key. */
