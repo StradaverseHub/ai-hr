@@ -2,8 +2,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
-import { keycloakSelected } from '@/lib/identity/config';
-import { currentIdentitySession } from '@/lib/identity/session';
+import { currentProviderSession } from '@/lib/identity/provider';
 import { notificationEmailLocales } from '@/lib/notification-email-model';
 import { saveNotificationEmailPreferences } from '@/core/notification-email';
 export async function saveMyWorkflowEmailPreferences(form:FormData) {
@@ -11,7 +10,11 @@ export async function saveMyWorkflowEmailPreferences(form:FormData) {
   const locale=notificationEmailLocales.find(l=>l===form.get('locale'));
   if(!locale)redirect('/me/notifications?error=save');
   try {
-    const identity=keycloakSelected()?await currentIdentitySession():null;
+    // Missing provider proof cannot add consent; the owner still permits withdrawal without it.
+    const provider=await currentProviderSession().catch(()=>null);
+    const identity=provider?.emailVerified===true&&provider.issuer&&provider.subject
+      ? {issuer:provider.issuer,subject:provider.subject,email:provider.email,emailVerified:true}
+      : null;
     await saveNotificationEmailPreferences(session,String(form.get('employmentId')??''),form.getAll('category').map(String),locale,identity);
   }catch{redirect('/me/notifications?error=save');}
   revalidatePath('/me/notifications');redirect('/me/notifications?saved=1');
