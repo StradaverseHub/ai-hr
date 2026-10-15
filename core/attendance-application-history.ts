@@ -95,7 +95,8 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
         const workflow = await attendanceWorkflowForTx(tx, id);
         const events = await tx.select({ id: domainEvent.id, eventType: domainEvent.eventType, actorId: domainEvent.actorId, actorType: domainEvent.actorType, actorName: person.fullName, occurredAt: domainEvent.occurredAt, payload: domainEvent.payload }).from(domainEvent).leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(domainEvent.subjectEmploymentId, row.application.employmentId), sql `(${domainEvent.aggregateId}=${id} OR (${domainEvent.payload}->>'correctionId')=${id})`)).orderBy(asc(domainEvent.occurredAt), asc(domainEvent.sequence), asc(domainEvent.id));
         const self = !!ctx.personId && ctx.personId === row.personId;
-        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, canDecide: !self && row.application.status === 'pending', canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
+        const [v2Authority] = workflow?.routingVersion === 2 ? await tx.execute(sql`select app.attendance_workflow_v2_decide(${id}::uuid) as ok`) as unknown as { ok: boolean }[] : [];
+        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, canReassign: !self && row.application.status === 'pending' && workflow?.routingVersion === 2 && workflow.currentStage < workflow.stages.length, canDecide: !self && row.application.status === 'pending' && (workflow?.routingVersion !== 2 || v2Authority?.ok === true), canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
 export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[]) {

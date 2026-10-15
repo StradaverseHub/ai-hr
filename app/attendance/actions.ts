@@ -16,6 +16,7 @@ export async function decideCorrectionAction(formData: FormData) {
       correctionId: String(formData.get('correctionId')),
       decision: String(formData.get('decision')) as 'approved' | 'rejected',
       rejectReason: String(formData.get('rejectReason') ?? ''),
+      remarks: String(formData.get('remarks') ?? ''),
       expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined,
     });
     outcomeStatus = outcome.status;

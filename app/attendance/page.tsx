@@ -55,6 +55,7 @@ export default async function AttendancePage({
   }>;
 }) {
   const t = await getTranslations('attendance');
+  const tHistory = await getTranslations('attendanceHistory');
   // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
   // an explanation instead of the service error. NOT the control: the reads below refuse on their
   // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
@@ -126,7 +127,7 @@ export default async function AttendancePage({
               <tbody className="divide-y divide-border">
                 {corrPage.rows.map((c) => {
                   // No self-approval (the service enforces it too — this just hides the buttons).
-                  const canAct = s.personId == null || c.personId !== s.personId;
+                  const canAct = (s.personId == null || c.personId !== s.personId) && c.canDecide !== false;
                   // R45 3707cba9 — surface the "Actual vs Approved" OT the decide path already computes:
                   // Actual = the engine's system-calculated OT from the day's real clockings; Approved =
                   // that + the request run through the company's OT-approval rule (previewed pre-decision).
@@ -167,6 +168,7 @@ export default async function AttendancePage({
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="workflowStage" value={c.workflow?.currentStage ?? ''} />
                               <input type="hidden" name="decision" value="approved" />
+                              {c.workflow?.routingVersion === 2 && <label className="block text-xs">{tHistory('remarks')}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
                               <Button type="submit" size="sm">
                                 {t('approve')}
                               </Button>
@@ -182,7 +184,7 @@ export default async function AttendancePage({
                             </form>
                           </div>
                         ) : (
-                          <span className="flex justify-end text-xs text-muted-foreground">{t('yourRequest')}</span>
+                          <span className="flex justify-end text-xs text-muted-foreground">{c.canDecide === false && c.personId !== s.personId ? tHistory('pendingStage') : t('yourRequest')}</span>
                         )}
                       </td>
                     </tr>

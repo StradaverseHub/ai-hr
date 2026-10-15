@@ -104,6 +104,7 @@ function DecideButtons({
   nav,
   rejectReasonLabel,
   workflowStage,
+  remarksLabel,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
@@ -112,6 +113,7 @@ function DecideButtons({
   nav: NavParams;
   rejectReasonLabel?: string;
   workflowStage?: number;
+  remarksLabel?: string;
 }) {
   if (disabled) {
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
@@ -123,6 +125,7 @@ function DecideButtons({
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
+        {remarksLabel && <label className="block text-xs">{remarksLabel}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
         <Button type="submit" size="sm">
           {labels.approve}
         </Button>
@@ -202,6 +205,7 @@ export default async function ApprovalsPage({
   const category = parseApprovalCategory(categoryParam, { admin });
   const t = await getTranslations('approvals');
   const tClock = await getTranslations('attendance.clockData');
+  const tHistory = await getTranslations('attendanceHistory');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
   // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
@@ -419,7 +423,7 @@ export default async function ApprovalsPage({
       : []),
     ...(visible('corrections')
       ? visibleCorrections
-          .filter((c) => !mine(c.personId))
+          .filter((c) => !mine(c.personId) && c.canDecide !== false)
           .map((c) => ({
             id: c.id,
             type: 'attendance' as const,
@@ -1060,8 +1064,9 @@ export default async function ApprovalsPage({
                       action={approveCorrectionAction}
                       rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
-                      disabled={mine(c.personId)}
-                      labels={decideLabels}
+                      disabled={mine(c.personId) || c.canDecide === false}
+                      remarksLabel={c.workflow?.routingVersion === 2 ? tHistory('remarks') : undefined}
+                      labels={c.canDecide === false && !mine(c.personId) ? {...decideLabels, yourRequest: tHistory('pendingStage')} : decideLabels}
                       nav={nav}
                     />
                   </td>

@@ -19,7 +19,7 @@ export async function attendanceHistoryAction(form: FormData) {
         }
         else if (action === 'reassign_hr') {
             const stage = String(form.get('workflowStage') ?? '');
-            if (!detail.canDecide || detail.workflow?.routingVersion !== 2 || !/^\d+$/.test(stage)) throw new Error('This application has no pending level to reassign.');
+            if (!detail.canReassign || detail.workflow?.routingVersion !== 2 || !/^\d+$/.test(stage)) throw new Error('This application has no pending level to reassign.');
             await reassignAttendanceWorkflowStageToHr(s, { correctionId: id, expectedStageIndex: Number(stage), reason });
         }
         else if (action === 'cancelled' || action === 'withdrawn') {

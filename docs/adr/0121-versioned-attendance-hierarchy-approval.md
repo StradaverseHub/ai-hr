@@ -55,3 +55,12 @@ legacy configuration/snapshot behavior, all criteria and priority conflicts, inv
 explicit fallback, frozen history and authorized/unauthorized delegation/reassignment. The actual
 configuration/submission/decision experience, six locales, keyboard/mobile, runtime logs and centrally
 allocated migration rehearsal precede the parent's final release gate.
+
+The fresh-write proof checks an exclusive permanent transaction-ID lock held by the current backend
+for the visible row's xmin. This deliberately recognizes only the root transaction or an active
+writing savepoint. PostgreSQL 16 removes a subtransaction's XID lock at RELEASE SAVEPOINT; a decision
+whose writing savepoint has already been released is refused, even before the outer commit. The fixed
+approval pipeline checks its decision before releasing the outer/item savepoint and checks derived
+plan/attendance stamps before releasing its inner effect savepoint. It does not use a general-purpose
+same-top-transaction predicate. See [PostgreSQL 16 subtransactions](https://www.postgresql.org/docs/16/subxacts.html)
+and [CommitSubTransaction source](https://raw.githubusercontent.com/postgres/postgres/REL_16_STABLE/src/backend/access/transam/xact.c).

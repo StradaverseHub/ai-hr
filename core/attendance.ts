@@ -3801,8 +3801,9 @@ export async function decideAttendanceCorrection(
     if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
     // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
     const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
-    const actualDeciderEmploymentId = actualDecider?.id ?? null;
+    let actualDeciderEmploymentId = actualDecider?.id ?? null;
     const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex });
+    if (workflowStage.actualDeciderEmploymentId !== undefined) actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId;
     if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
 
 
@@ -4210,6 +4211,11 @@ export async function decideAttendanceCorrection(
       if (!isDeepStrictEqual(restored,restoreIdentity)) throw new Error('Delegated attendance authority was not restored. The decision was rolled back.');
     }
 
+    if (restoreEffectHint != null) {
+      const [restored] = await tx.execute(sql`select coalesce(current_setting('app.attendance_workflow_effect',true),'') as hint`) as unknown as { hint: string }[];
+      if (restored.hint !== restoreEffectHint) throw new Error('Attendance request authority was not restored. The decision was rolled back.');
+    }
+
     // Final approval emits its stage audit only after the effect, payroll/recalc work and delegated
     // identity restoration. The original actor and database decidedAt were frozen with the decision.
     if (workflowStage.finalApprovalEvent) await appendEvent(tx, workflowStage.finalApprovalEvent);
@@ -4315,11 +4321,11 @@ export function listAttendanceCorrections(
     // from the approver-facing list (a no-op for rows the caller sees in their own right).
     const genericVisible = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
     // Frozen v2 routing grants request visibility only; it does not add Personnel scope.
-    const v2Visible = rows.length ? await tx.execute(sql`select c.id from public.attendance_correction c where c.id in (${sql.join(rows.map(r => sql`${r.id}::uuid`), sql`,`)}) and app.attendance_workflow_v2_read(c.id)`) as unknown as { id: string }[] : [];
+    const v2Visible = rows.length ? await tx.execute(sql`select c.id,app.attendance_workflow_v2_decide(c.id) as "canDecide" from public.attendance_correction c where c.id in (${sql.join(rows.map(r => sql`${r.id}::uuid`), sql`,`)}) and app.attendance_workflow_v2_read(c.id)`) as unknown as { id: string; canDecide: boolean }[] : [];
     const visibleIds = new Set([...genericVisible, ...v2Visible].map(r => r.id));
     const visible = rows.filter(r => visibleIds.has(r.id));
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
-    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null }));
+    return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null, canDecide: workflows.get(r.id)?.routingVersion === 2 ? v2Visible.find(a => a.id === r.id)?.canDecide === true : true }));
   });
 }
 

@@ -3,6 +3,16 @@ ALTER TABLE public.attendance_workflow_template ADD COLUMN routing_version integ
 --> statement-breakpoint
 ALTER TABLE public.attendance_workflow_request ADD COLUMN routing_version integer NOT NULL DEFAULT 1 CHECK(routing_version IN (1,2));
 --> statement-breakpoint
+-- The fixed pipeline keeps the writing transaction/savepoint active through its proof checks.
+-- RELEASE SAVEPOINT removes its subxid lock: a released child's write is intentionally refused.
+-- This is an active-write proof, not a general same-top-transaction predicate (PG16 xact.c).
+CREATE FUNCTION app.attendance_workflow_active_write(written_xid xid) RETURNS boolean
+LANGUAGE sql STABLE STRICT SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_locks l WHERE l.locktype='transactionid'
+  AND l.transactionid=written_xid AND l.pid=pg_catalog.pg_backend_pid() AND l.mode='ExclusiveLock' AND l.granted);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_workflow_active_write(xid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Root-authorized, name/identity-only traversal. No Personnel policies are changed.
 CREATE FUNCTION app.attendance_workflow_hierarchy(subject_id uuid, wanted_depth integer)
 RETURNS TABLE(level_number integer, employment_id uuid, person_id uuid, user_id uuid, full_name text, problem text)
@@ -168,9 +178,11 @@ BEGIN
  IF NOT FOUND THEN RETURN false; END IF;
  IF w.current_stage>=jsonb_array_length(w.stages) THEN
   RETURN EXISTS(SELECT 1 FROM public.attendance_workflow_decision d WHERE d.request_id=w.id AND d.tenant_id=w.tenant_id AND d.actual_user_id=app.current_user_id()::text
-   AND d.xmin::text::bigint=(txid_current()%4294967296) AND d.resulting_status IN ('approved','rejected')
+   AND app.attendance_workflow_active_write(d.xmin) AND d.resulting_status IN ('approved','rejected')
    AND app.attendance_workflow_v2_assigned_allowed(p_correction_id,d.stage_index,d.assigned_kind,d.assigned_employment_id,d.acting_mode));
  END IF;
+ IF EXISTS(SELECT 1 FROM public.attendance_workflow_decision d JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=w.tenant_id
+  WHERE d.request_id=w.id AND d.tenant_id=w.tenant_id AND (d.actual_user_id=u.id::text OR (u.person_id IS NOT NULL AND d.actual_person_id=u.person_id))) THEN RETURN false; END IF;
  FOR a IN SELECT value FROM jsonb_array_elements(app.attendance_workflow_effective_approvers(w.id,w.current_stage)) LOOP
   IF app.attendance_workflow_v2_assigned_allowed(p_correction_id,w.current_stage,a->>'kind',(a->>'employmentId')::uuid,'assigned')
    OR app.attendance_workflow_v2_assigned_allowed(p_correction_id,w.current_stage,a->>'kind',(a->>'employmentId')::uuid,'delegate')
@@ -192,7 +204,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND c.status='pending' AND (wanted_date IS NULL OR wanted_date=c.attendance_date)
    AND w.current_stage=jsonb_array_length(w.stages) AND d.stage_index=jsonb_array_length(w.stages)-1
    AND d.decision='approved' AND d.resulting_status='approved' AND d.actual_user_id=app.current_user_id()::text
-   AND d.xmin::text::bigint=(txid_current()%4294967296)
+   AND app.attendance_workflow_active_write(d.xmin)
    AND app.attendance_workflow_v2_assigned_allowed(c.id,d.stage_index,d.assigned_kind,d.assigned_employment_id,d.acting_mode));
 $$;
 REVOKE ALL ON FUNCTION app.attendance_workflow_effect_scope(uuid,date) FROM PUBLIC;
@@ -222,7 +234,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT EXISTS(SELECT 1 FROM public.attendance_workflow_request w JOIN public.attendance_workflow_decision d ON d.request_id=w.id AND d.tenant_id=w.tenant_id
   JOIN public.attendance_correction c ON c.id=w.correction_id AND c.tenant_id=w.tenant_id
   WHERE w.id=wanted_request AND w.tenant_id=app.current_tenant_id() AND w.routing_version=2 AND c.status='pending'
-   AND d.actual_user_id=app.current_user_id()::text AND d.xmin::text::bigint=(txid_current()%4294967296)
+   AND d.actual_user_id=app.current_user_id()::text AND app.attendance_workflow_active_write(d.xmin)
    AND (w.current_stage=d.stage_index OR w.current_stage=d.stage_index+1 OR (d.decision='rejected' AND w.current_stage=jsonb_array_length(w.stages)))
    AND app.attendance_workflow_v2_assigned_allowed(c.id,d.stage_index,d.assigned_kind,d.assigned_employment_id,d.acting_mode));
 $$;
@@ -414,8 +426,20 @@ CREATE FUNCTION app.attendance_workflow_v2_correction_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE w public.attendance_workflow_request; allowed text[]:=ARRAY['status','reject_reason','decided_by_employment_id','decided_at','approved_ot_minutes','ot_approval_method','applied_at','cancelled_at','cancelled_by_user_id','cancellation_kind','cancellation_reason','admin_amendment'];
 BEGIN
- IF coalesce(current_setting('app.attendance_workflow_effect',true),'')<>'' AND current_setting('app.attendance_workflow_effect',true)<>OLD.id::text
-  THEN RAISE EXCEPTION 'A request effect cannot mutate another attendance application'; END IF;
+ IF coalesce(current_setting('app.attendance_workflow_effect',true),'')<>'' AND current_setting('app.attendance_workflow_effect',true)<>OLD.id::text THEN
+  -- Existing approved OT plans may land as a derived consequence of this exact day's clock correction.
+  -- No new approval or formula is introduced. Claim and value stamp are separate canonical writes.
+  IF OLD.status='approved' AND OLD.requested_ot_minutes IS NOT NULL AND OLD.proposed_check_in IS NULL AND OLD.proposed_check_out IS NULL AND OLD.clock_changes IS NULL
+   AND app.attendance_workflow_effect_scope(OLD.employment_id,OLD.attendance_date)
+   AND (to_jsonb(OLD)-ARRAY['applied_at','approved_ot_minutes']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['applied_at','approved_ot_minutes']) THEN
+   IF OLD.applied_at IS NULL AND NEW.applied_at=transaction_timestamp() AND NEW.approved_ot_minutes IS NOT DISTINCT FROM OLD.approved_ot_minutes THEN RETURN NEW; END IF;
+   IF OLD.applied_at IS NOT NULL AND NEW.applied_at=OLD.applied_at
+    AND EXISTS(SELECT 1 FROM public.attendance_correction c WHERE c.id=OLD.id AND c.tenant_id=OLD.tenant_id AND app.attendance_workflow_active_write(c.xmin))
+    AND EXISTS(SELECT 1 FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id AND a.attendance_date=OLD.attendance_date
+      AND app.attendance_workflow_active_write(a.xmin) AND a.calc_trace->'overtime'->'approvedMinutes'=to_jsonb(NEW.approved_ot_minutes)) THEN RETURN NEW; END IF;
+  END IF;
+  RAISE EXCEPTION 'A request effect cannot mutate another attendance application except the canonical same-day approved plan landing';
+ END IF;
  SELECT f.* INTO w FROM public.attendance_workflow_request f WHERE f.correction_id=OLD.id AND f.tenant_id=OLD.tenant_id AND f.routing_version=2;
  IF NOT FOUND THEN RETURN NEW; END IF;
  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status='cancelled' AND NOT app.is_admin_for(w.company_id)
@@ -428,7 +452,7 @@ BEGIN
   THEN RAISE EXCEPTION 'Only the verified final request effect may stamp approved overtime'; END IF;
  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status IN ('approved','rejected') THEN
   IF OLD.status<>'pending' OR NOT EXISTS(SELECT 1 FROM public.attendance_workflow_decision d WHERE d.request_id=w.id AND d.tenant_id=w.tenant_id
-   AND d.actual_user_id=app.current_user_id()::text AND d.resulting_status=NEW.status::text AND d.xmin::text::bigint=(txid_current()%4294967296)
+   AND d.actual_user_id=app.current_user_id()::text AND d.resulting_status=NEW.status::text AND app.attendance_workflow_active_write(d.xmin)
    AND w.current_stage=jsonb_array_length(w.stages) AND (NEW.status='rejected' OR d.stage_index=jsonb_array_length(w.stages)-1)
    AND app.attendance_workflow_v2_assigned_allowed(OLD.id,d.stage_index,d.assigned_kind,d.assigned_employment_id,d.acting_mode))
    THEN RAISE EXCEPTION 'A same-transaction final frozen workflow decision is required'; END IF;
@@ -450,7 +474,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 BEGIN
  IF OLD.routing_version=2 AND NOT EXISTS(SELECT 1 FROM public.attendance_workflow_decision d
   WHERE d.request_id=OLD.id AND d.tenant_id=OLD.tenant_id AND d.stage_index=OLD.current_stage
-   AND d.actual_user_id=app.current_user_id()::text AND d.xmin::text::bigint=(txid_current()%4294967296)
+   AND d.actual_user_id=app.current_user_id()::text AND app.attendance_workflow_active_write(d.xmin)
    AND ((d.decision='approved' AND NEW.current_stage=OLD.current_stage+1) OR (d.decision='rejected' AND NEW.current_stage=jsonb_array_length(OLD.stages)))
    AND app.attendance_workflow_v2_assigned_allowed(OLD.correction_id,d.stage_index,d.assigned_kind,d.assigned_employment_id,d.acting_mode))
   THEN RAISE EXCEPTION 'A same-transaction frozen current-level decision is required'; END IF;

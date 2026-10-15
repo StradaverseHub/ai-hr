@@ -180,7 +180,7 @@ export async function assertCanDecideAttendanceApplicationTx(tx: Tx, ctx: Sessio
     if (flow?.routingVersion === 2) {
         if (flow.employmentId !== employmentId) throw new AttendanceWorkflowError('scope', 'The application subject does not match its frozen workflow.');
         const [allowed] = await tx.execute(sql`select app.attendance_workflow_v2_decide(${correctionId}::uuid) as ok`) as unknown as { ok: boolean }[];
-        if (!allowed?.ok) throw new AttendanceWorkflowError('notApprover', 'Only the current frozen approver, their valid delegate or scoped HR may decide this level.');
+        if (!allowed?.ok) throw new AttendanceWorkflowError('notApprover', 'Only the current frozen approver, their valid delegate or scoped HR may decide this level. Each level requires a different authorized person.');
         return;
     }
     await assertCanDecide(tx, ctx, employmentId, 'attendance application', scopeOf('attendance.correction'));
@@ -198,6 +198,7 @@ export type AttendanceStageResult = {
     delegatedFinalStageIndex?: number;
     /** V2 final effects retain the real actor and install only a verified request-ID capability. */
     versionedFinalEffect?: boolean;
+    actualDeciderEmploymentId?: string | null;
     /** Fixed audit data only. The final caller emits it after effect/payroll locks and identity restoration. */
     finalApprovalEvent?: AppendEventArgs;
 };
@@ -280,6 +281,7 @@ export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContex
     // generation's batch -> audit order; carry immutable data to the fixed final-effect caller instead.
     if (!final || p.decision !== 'approved') await appendEvent(tx, stageEvent);
     return { routed: true, final, currentStage: flow.currentStage,
+        ...(flow.routingVersion === 2 ? { actualDeciderEmploymentId: actual?.id ?? null } : {}),
         ...(final && p.decision === 'approved' ? { finalApprovalEvent: stageEvent } : {}),
         ...(final && p.decision === 'approved' && flow.routingVersion === 2 ? { versionedFinalEffect: true } : {}),
         ...(final && p.decision === 'approved' && flow.routingVersion !== 2 && mode === 'delegate' ? { delegatedFinalStageIndex: flow.currentStage } : {}) };
