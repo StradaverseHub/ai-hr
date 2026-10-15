@@ -120,11 +120,14 @@ export async function canonicalOvertimeInputTx(tx: Tx, ctx: SessionContext, p: {
   const pending = otDecisions.find(row => row.status === 'pending');
   const rejected = otDecisions.find(row => row.status === 'rejected');
   const approvalProvenance: OvertimeProvenance = {owner: 'approval', reference: approved?.id ?? pending?.id ?? rejected?.id ?? day.id + ':noOtRequest', asOf: p.date, basis: 'recorded'};
-  const approvalStatus = approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
-  const approvalMinutes = approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
+  const legacyManualRows = day.calcTrace?.overtime?.rows?.filter(row => row.manual) ?? [];
+  // Legacy manual rate rows cannot be silently retiered by a different formula definition. The
+  // original path still consumes them; a new formula requires deliberate review/clearance first.
+  const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
+  const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
   facts.approvedMinutes = approvalMinutes;
   const approvalDigest = fingerprint(otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
-  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: day.calcTrace ? {v: day.calcTrace.v, schedule: day.calcTrace.schedule, punch: day.calcTrace.punch, lateness: day.calcTrace.lateness} : null}, assignment: assigned, salary, context, punches});
+  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: day.calcTrace ? {v: day.calcTrace.v, schedule: day.calcTrace.schedule, punch: day.calcTrace.punch, lateness: day.calcTrace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
