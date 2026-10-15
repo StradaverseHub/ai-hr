@@ -17079,6 +17079,8 @@
     "restrictedSetup": "只有已注册的安装管理员才能查看或更改实际 SMTP 设置。请联系安装管理员完成设置。这些字段仅展示支持的配置。"
   },
   "workflowEmail": {
+    "recipientCode": "员工编号",
+    "deliveryReference": "发送记录编号",
     "title": "工作流程邮件通知",
     "description": "选择允许通过邮件发送的工作流程更新。员工也可选择自己的邮件偏好。",
     "preferencesTitle": "我的邮件通知",
@@ -17124,7 +17126,7 @@
       "relayUnavailable": "SMTP 尚未配置或不可用。此邮件尚未发送；配置 SMTP 后，可按需选择重试发送。",
       "recipientUnavailable": "身份提供方不可用",
       "recipientChanged": "已验证邮箱或账号已变更",
-      "notEligible": "收件人或偏好不再符合条件",
+      "notEligible": "此更新已无需发送，或收件人或邮件偏好已更改。",
       "smtpTemporary": "中继暂时拒绝",
       "smtpRejected": "中继拒绝了邮件",
       "smtpAuthentication": "中继身份验证失败",

@@ -24,8 +24,8 @@ describe('workflow email configuration screens',()=>{
   m.group.mockReturnValue(false);render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.queryByRole('button',{name:en.workflowEmail.savePolicy})).toBeNull();expect((screen.getByRole('group') as HTMLFieldSetElement).disabled).toBe(true);
  });
  it('describes accepted mail honestly and requires duplicate acknowledgement before a failed send retry',async()=>{
-  m.relay.mockResolvedValue({version:1,ready:true});m.deliveries.mockResolvedValue([{id:'delivery',category:'payroll',status:'failed',attempts:1,error:'uncertain',createdAt:new Date(),sentAt:null}]);
-  render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.deliveriesHelp)).toBeTruthy();const checkbox=screen.getByRole('checkbox',{name:en.workflowEmail.retryAck}) as HTMLInputElement;expect(checkbox.required).toBe(true);expect(checkbox.checked).toBe(false);
+  m.relay.mockResolvedValue({version:1,ready:true});m.deliveries.mockResolvedValue([{id:'delivery',recipientCode:'EMP-009',category:'payroll',status:'failed',attempts:1,error:'uncertain',createdAt:new Date(),sentAt:null}]);
+  render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.deliveriesHelp)).toBeTruthy();expect(screen.getByText(en.workflowEmail.recipientCode+': EMP-009')).toBeTruthy();expect(screen.getByText(en.workflowEmail.deliveryReference+': delivery')).toBeTruthy();const checkbox=screen.getByRole('checkbox',{name:en.workflowEmail.retryAck}) as HTMLInputElement;expect(checkbox.required).toBe(true);expect(checkbox.checked).toBe(false);
  });
  it('shows missing SMTP as a failed delivery with an individual retry and explains that HR work continues',async()=>{
   m.relay.mockResolvedValue({version:1,ready:false});m.deliveries.mockResolvedValue([{id:'offline-delivery',category:'performance',status:'failed',attempts:1,error:'relayUnavailable',createdAt:new Date(),sentAt:null}]);

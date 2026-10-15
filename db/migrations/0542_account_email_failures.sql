@@ -133,3 +133,17 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.account_email_recent(text,text),app.account_email_retry_recovery(uuid,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.account_email_recent(text,text),app.account_email_retry_recovery(uuid,text,text) TO ai_hr_app;
+
+
+--> statement-breakpoint
+-- Workflow recipient code lookup retains the existing exact company-scoped delivery authorization.
+CREATE FUNCTION app.notification_email_recipient_code(p_id uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.employee_code FROM notification_delivery d
+ JOIN notification n ON n.id=d.notification_id AND n.tenant_id=d.tenant_id
+ JOIN employment e ON e.id=n.recipient_employment_id AND e.tenant_id=d.tenant_id
+ WHERE d.id=p_id AND d.tenant_id=app.current_tenant_id() AND d.channel='email'
+ AND app.notification_email_delivery_authorized(n.id)
+$$;
+REVOKE ALL ON FUNCTION app.notification_email_recipient_code(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.notification_email_recipient_code(uuid) TO ai_hr_app;

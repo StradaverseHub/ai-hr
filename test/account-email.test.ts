@@ -1,7 +1,8 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
-import {adminCtx,closeAll,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,entitledCtx,type Base} from './harness';
+import {isModuleEnabled} from '../core/entitlements';
 import {client,withTenant} from '../db/client';
 import {inviteUser,requestPasswordReset,retryAccountEmail,acceptInvitation,revokeInvitation,type AuthProvider} from '../core/auth';
 import {readAccountEmailDeliveries} from '../core/account-email';
@@ -49,6 +50,14 @@ describe('account requests independent of SMTP delivery',()=>{
   await expect(retryAccountEmail(scoped,job.id,true,undefined,provider)).rejects.toThrow();
   const foreign=await seedBase();await expect(retryAccountEmail({...adminCtx(foreign),entitlements:harnessSnapshot(foreign.tenantId)},job.id,true,undefined,provider)).rejects.toThrow();
   expect(provider.sendInvitation).not.toHaveBeenCalled();expect((await jobs())[0]).toMatchObject({status:'failed',attempts:1});
+ });
+ it('keeps invitation creation and selective reissue available when Notifications is absent',async()=>{
+  await setModule(b.tenantId,'notifications',null);const ctx=await entitledCtx(b),provider=fake();
+  expect(isModuleEnabled(ctx,'notifications')).toBe(false);
+  await inviteUser(ctx,{email:'without-notifications@example.test',role:'employee'},provider);
+  const [job]=await jobs();await retryAccountEmail(ctx,job.id,true,undefined,provider);
+  expect(await jobs()).toHaveLength(2);expect((await readAccountEmailDeliveries(ctx)).filter(item=>item.canRetry)).toHaveLength(1);
+  expect(provider.sendInvitation).not.toHaveBeenCalled();
  });
  it('never reissues accepted or revoked invitations even when their email attempt failed',async()=>{
   const provider=fake(),ctx=adminCtx(b);

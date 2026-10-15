@@ -150,3 +150,7 @@ apply. A configured category, a user's consent and an active relay are all requi
 emailed merely because a switch was turned on. The delivery log reports sanitized outcome codes.
 Internal-auth cutover, owner MFA, relay activation and a real human receipt remain separate operator
 steps; this feature must not claim those were completed by shipping code.
+
+The administrator delivery log includes an employee code only through a narrow tenant-matched lookup
+using the existing company-scoped delivery authorization, plus the delivery reference, so individual failures can be
+distinguished. It does not copy addresses, employee names, message contents or relay responses.
