@@ -17163,7 +17163,8 @@
       "readiness": "资料完整性",
       "review": "雇佣评审",
       "rewards": "奖励",
-      "toil": "补休"
+      "toil": "补休",
+      "employee_master_reports": "员工主档报表附件"
     },
     "groupAdminHelp": "只有集团管理员可更改整个组织的类别设置。",
     "assessmentReminder": {
@@ -17196,7 +17197,9 @@
         "bg_talent": "完成人才九宫格",
         "group_performance": "完成集团绩效评审"
       }
-    }
+    },
+    "reportConsentHelp": "报表附件须按每份雇佣记录单独同意。更改个人档案邮箱后须重新同意。系统只会发送您当前有权访问的报表。",
+    "reportPolicyHelp": "员工主档附件默认关闭，须同时启用此政策并取得每位收件人的明确报表邮件同意。"
   },
   "onehr": {
     "back": "Back",
@@ -19211,6 +19214,54 @@
       "department": "部门",
       "employmentType": "雇佣类型",
       "status": "状态"
-    }
+    },
+    "schedule": {
+      "title": "定时邮件",
+      "savedDefinition": "发送时使用已保存的报表、所选截至日期及收件人当前权限。请先保存报表更改，再审核发送计划。",
+      "consentHelp": "收件人须在“我的邮件通知”中同意接收员工主档附件。请为每个人明确选择一份接收邮件的雇佣记录。",
+      "enabled": "启用定时发送",
+      "frequency": "频率",
+      "weekly": "每周",
+      "monthly": "每月",
+      "day": "日期",
+      "hour": "小时（0–23）",
+      "minute": "分钟",
+      "timezone": "时区",
+      "monthEnd": "月份天数不足时，在该月最后一天发送。",
+      "recipients": "收件人",
+      "noRecipients": "暂无同时明确同意报表邮件且有权访问此报表的收件人。",
+      "unavailableRecipients": "{count} 位所选收件人已不符合条件。启用发送前请移除。",
+      "removeUnavailable": "移除不可用收件人",
+      "saving": "正在保存…",
+      "save": "保存发送计划",
+      "next": "下次发送：{date}",
+      "off": "定时发送已关闭",
+      "history": "发送历史",
+      "rows": "{count} 行",
+      "deliveryStopped": "资格或生成检查后已停止发送。",
+      "uncertainHelp": "发送状态不确定表示无法确认邮件服务器是否已接收。系统不会自动重试。",
+      "weekday": {
+        "0": "星期日",
+        "1": "星期一",
+        "2": "星期二",
+        "3": "星期三",
+        "4": "星期四",
+        "5": "星期五",
+        "6": "星期六"
+      },
+      "status": {
+        "pending": "等待发送",
+        "started": "发送中",
+        "sent": "已发送",
+        "failed": "失败",
+        "skipped": "已跳过",
+        "uncertain": "发送状态不确定"
+      },
+      "savedDate": "每次定时发送的文件均使用已保存的截至日期 {date}。",
+      "loadRecipients": "加载符合条件的收件人",
+      "refreshRecipients": "刷新符合条件的收件人",
+      "selectedCount": "已选择 {count} 位收件人"
+    },
+    "scheduledBadge": "已安排"
   }
 }

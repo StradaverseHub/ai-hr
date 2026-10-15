@@ -17163,7 +17163,8 @@
       "readiness": "Mức độ hoàn thiện",
       "review": "Đánh giá việc làm",
       "rewards": "Khen thưởng",
-      "toil": "Nghỉ bù"
+      "toil": "Nghỉ bù",
+      "employee_master_reports": "Tệp đính kèm báo cáo Hồ sơ nhân viên"
     },
     "groupAdminHelp": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
     "assessmentReminder": {
@@ -17196,7 +17197,9 @@
         "bg_talent": "Hoàn tất ma trận nhân tài",
         "group_performance": "Hoàn tất đánh giá hiệu suất Tập đoàn"
       }
-    }
+    },
+    "reportConsentHelp": "Tệp báo cáo cần sự đồng ý riêng cho từng hồ sơ việc làm. Khi đổi email hồ sơ, bạn cần đồng ý lại. Chỉ gửi những báo cáo bạn hiện có quyền truy cập.",
+    "reportPolicyHelp": "Tệp báo cáo Hồ sơ nhân viên mặc định tắt và cần chính sách này cùng sự đồng ý rõ ràng của từng người nhận."
   },
   "onehr": {
     "back": "Back",
@@ -19211,6 +19214,54 @@
       "department": "Phòng ban",
       "employmentType": "Loại hình việc làm",
       "status": "Trạng thái"
-    }
+    },
+    "schedule": {
+      "title": "Email theo lịch",
+      "savedDefinition": "Gửi báo cáo đã lưu với ngày chốt đã chọn và quyền truy cập hiện tại của người nhận. Lưu thay đổi báo cáo trước khi xem lại lịch.",
+      "consentHelp": "Người nhận phải đồng ý nhận tệp Hồ sơ nhân viên trong mục Thông báo email của tôi. Chọn một hồ sơ việc làm nhận thư cho mỗi người.",
+      "enabled": "Bật gửi theo lịch",
+      "frequency": "Tần suất",
+      "weekly": "Hàng tuần",
+      "monthly": "Hàng tháng",
+      "day": "Ngày",
+      "hour": "Giờ (0–23)",
+      "minute": "Phút",
+      "timezone": "Múi giờ",
+      "monthEnd": "Với tháng ngắn hơn, gửi vào ngày cuối tháng.",
+      "recipients": "Người nhận",
+      "noRecipients": "Chưa có người nhận vừa đồng ý rõ ràng vừa có quyền truy cập báo cáo này.",
+      "unavailableRecipients": "{count} người nhận đã chọn không còn đủ điều kiện. Xóa họ trước khi bật gửi.",
+      "removeUnavailable": "Xóa người nhận không khả dụng",
+      "saving": "Đang lưu…",
+      "save": "Lưu lịch",
+      "next": "Lần gửi tiếp theo: {date}",
+      "off": "Đã tắt gửi theo lịch",
+      "history": "Lịch sử gửi",
+      "rows": "{count} dòng",
+      "deliveryStopped": "Đã dừng gửi sau khi kiểm tra điều kiện hoặc tạo báo cáo.",
+      "uncertainHelp": "Trạng thái chưa rõ nghĩa là chưa xác nhận được máy chủ thư đã nhận. Hệ thống không tự động thử lại.",
+      "weekday": {
+        "0": "Chủ nhật",
+        "1": "Thứ hai",
+        "2": "Thứ ba",
+        "3": "Thứ tư",
+        "4": "Thứ năm",
+        "5": "Thứ sáu",
+        "6": "Thứ bảy"
+      },
+      "status": {
+        "pending": "Chờ gửi",
+        "started": "Đang gửi",
+        "sent": "Đã gửi",
+        "failed": "Thất bại",
+        "skipped": "Đã bỏ qua",
+        "uncertain": "Chưa rõ kết quả gửi"
+      },
+      "savedDate": "Mỗi tệp gửi theo lịch dùng ngày chốt đã lưu {date}.",
+      "loadRecipients": "Tải người nhận đủ điều kiện",
+      "refreshRecipients": "Làm mới người nhận đủ điều kiện",
+      "selectedCount": "Đã chọn {count} người nhận"
+    },
+    "scheduledBadge": "Theo lịch"
   }
 }

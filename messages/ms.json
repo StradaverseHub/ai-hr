@@ -17163,7 +17163,8 @@
       "readiness": "Kelengkapan rekod",
       "review": "Semakan pekerjaan",
       "rewards": "Ganjaran",
-      "toil": "Cuti gantian"
+      "toil": "Cuti gantian",
+      "employee_master_reports": "Lampiran laporan Induk Pekerja"
     },
     "groupAdminHelp": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
     "assessmentReminder": {
@@ -17196,7 +17197,9 @@
         "bg_talent": "Lengkapkan Kotak Bakat",
         "group_performance": "Lengkapkan penilaian prestasi Kumpulan"
       }
-    }
+    },
+    "reportConsentHelp": "Lampiran laporan memerlukan persetujuan berasingan bagi setiap pekerjaan. Jika e-mel profil berubah, berikan persetujuan semula. Hanya laporan yang masih boleh anda akses boleh dihantar.",
+    "reportPolicyHelp": "Lampiran Induk Pekerja dimatikan secara lalai dan memerlukan dasar ini serta persetujuan laporan yang jelas daripada setiap penerima."
   },
   "onehr": {
     "back": "Back",
@@ -19211,6 +19214,54 @@
       "department": "Jabatan",
       "employmentType": "Jenis Pekerjaan",
       "status": "Status"
-    }
+    },
+    "schedule": {
+      "title": "E-mel berjadual",
+      "savedDefinition": "Penghantaran menggunakan laporan tersimpan, tarikh setakat yang dipilih dan akses semasa penerima. Simpan perubahan laporan sebelum menyemak jadual.",
+      "consentHelp": "Penerima mesti memilih untuk menerima lampiran Induk Pekerja dalam pemberitahuan e-mel saya. Pilih satu pekerjaan penerima bagi setiap orang.",
+      "enabled": "Aktifkan penghantaran berjadual",
+      "frequency": "Kekerapan",
+      "weekly": "Mingguan",
+      "monthly": "Bulanan",
+      "day": "Hari",
+      "hour": "Jam (0–23)",
+      "minute": "Minit",
+      "timezone": "Zon waktu",
+      "monthEnd": "Bagi bulan yang lebih pendek, penghantaran dibuat pada hari terakhir bulan.",
+      "recipients": "Penerima",
+      "noRecipients": "Tiada penerima mempunyai persetujuan laporan yang jelas serta akses kepada laporan ini.",
+      "unavailableRecipients": "{count} penerima yang dipilih tidak lagi layak. Alih keluar mereka sebelum mengaktifkan penghantaran.",
+      "removeUnavailable": "Alih keluar penerima tidak tersedia",
+      "saving": "Menyimpan…",
+      "save": "Simpan jadual",
+      "next": "Penghantaran seterusnya: {date}",
+      "off": "Penghantaran berjadual dimatikan",
+      "history": "Sejarah penghantaran",
+      "rows": "{count} baris",
+      "deliveryStopped": "Penghantaran dihentikan selepas semakan kelayakan atau penjanaan.",
+      "uncertainHelp": "Penghantaran tidak pasti bermakna penerimaan pelayan e-mel tidak dapat disahkan. Ia tidak akan dicuba semula secara automatik.",
+      "weekday": {
+        "0": "Ahad",
+        "1": "Isnin",
+        "2": "Selasa",
+        "3": "Rabu",
+        "4": "Khamis",
+        "5": "Jumaat",
+        "6": "Sabtu"
+      },
+      "status": {
+        "pending": "Menunggu",
+        "started": "Menghantar",
+        "sent": "Dihantar",
+        "failed": "Gagal",
+        "skipped": "Dilangkau",
+        "uncertain": "Penghantaran tidak pasti"
+      },
+      "savedDate": "Setiap fail berjadual menggunakan tarikh setakat tersimpan {date}.",
+      "loadRecipients": "Muatkan penerima yang layak",
+      "refreshRecipients": "Segar semula penerima yang layak",
+      "selectedCount": "{count} penerima dipilih"
+    },
+    "scheduledBadge": "Berjadual"
   }
 }

@@ -17163,7 +17163,8 @@
       "readiness": "Readiness",
       "review": "Employment reviews",
       "rewards": "Rewards",
-      "toil": "Time off in lieu"
+      "toil": "Time off in lieu",
+      "employee_master_reports": "Employee Master report attachments"
     },
     "groupAdminHelp": "A group administrator is required to change categories for the whole organisation.",
     "assessmentReminder": {
@@ -17196,7 +17197,9 @@
         "bg_talent": "Complete the Talent Box",
         "group_performance": "Complete Group performance review"
       }
-    }
+    },
+    "reportConsentHelp": "Report attachments need separate consent for each employment. Changing your profile email requires consent again. Only reports you can currently access may be sent.",
+    "reportPolicyHelp": "Employee Master attachments are off by default and require both this policy and each recipient’s explicit report consent."
   },
   "onehr": {
     "back": "Back",
@@ -19211,6 +19214,54 @@
       "department": "Department",
       "employmentType": "Employment Type",
       "status": "Status"
-    }
+    },
+    "schedule": {
+      "title": "Scheduled email",
+      "savedDefinition": "Delivery uses the saved report, its selected as-at date and the recipient’s current access. Save report changes before reviewing the schedule.",
+      "consentHelp": "Recipients must opt in to Employee Master attachments in My email notifications. Select one receiving employment for each person.",
+      "enabled": "Enable scheduled delivery",
+      "frequency": "Frequency",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "day": "Day",
+      "hour": "Hour (0–23)",
+      "minute": "Minute",
+      "timezone": "Time zone",
+      "monthEnd": "For a short month, delivery uses its last day.",
+      "recipients": "Recipients",
+      "noRecipients": "No recipients have both explicit report consent and access to this report.",
+      "unavailableRecipients": "{count} selected recipients are no longer eligible. Remove them before enabling delivery.",
+      "removeUnavailable": "Remove unavailable recipients",
+      "saving": "Saving…",
+      "save": "Save schedule",
+      "next": "Next delivery: {date}",
+      "off": "Scheduled delivery is off",
+      "history": "Delivery history",
+      "rows": "{count} rows",
+      "deliveryStopped": "Delivery stopped after an eligibility or generation check.",
+      "uncertainHelp": "Uncertain delivery means the mail server’s acceptance could not be confirmed. It will not be retried automatically.",
+      "weekday": {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday"
+      },
+      "status": {
+        "pending": "Pending",
+        "started": "Sending",
+        "sent": "Sent",
+        "failed": "Failed",
+        "skipped": "Skipped",
+        "uncertain": "Delivery uncertain"
+      },
+      "savedDate": "Each scheduled file uses the saved as-at date {date}.",
+      "loadRecipients": "Load eligible recipients",
+      "refreshRecipients": "Refresh eligible recipients",
+      "selectedCount": "{count} recipients selected"
+    },
+    "scheduledBadge": "Scheduled"
   }
 }

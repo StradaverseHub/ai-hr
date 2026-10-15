@@ -5360,6 +5360,11 @@ export const notificationPref = pgTable(
     emailConsentUserId: uuid('email_consent_user_id').references(() => appUser.id),
     emailAfterSequence: bigint('email_after_sequence', { mode: 'number' }),
     emailLocale: text('email_locale').notNull().default('en'),
+    // Report-attachment consent only. Legacy workflow consent keeps its existing semantics.
+    reportConsentIssuer: text('report_consent_issuer'),
+    reportConsentSubject: text('report_consent_subject'),
+    reportConsentAddressHash: text('report_consent_address_hash'),
+    reportConsentVerifiedAt: timestamp('report_consent_verified_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -7892,11 +7897,12 @@ export const customReportRun = pgTable('custom_report_run',{
 },t=>[index('custom_report_run_report_idx').on(t.tenantId,t.reportId,t.ranAt)]);
 export const customReportSchedule = pgTable('custom_report_schedule',{
   id:id(),tenantId:tenantId(),reportId:uuid('report_id').notNull().references(()=>customReport.id,{onDelete:'cascade'}),
-  enabled:boolean('enabled').notNull().default(false),config:jsonb('config').$type<CustomReportScheduleConfig>().notNull(),recipientUserIds:uuid('recipient_user_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
-  reportVersion:integer('report_version').notNull(),reviewedDigest:text('reviewed_digest').notNull(),nextRunAt:timestamp('next_run_at',{withTimezone:true}),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+  enabled:boolean('enabled').notNull().default(false),config:jsonb('config').$type<CustomReportScheduleConfig>().notNull(),recipients:jsonb('recipients').$type<{userId:string;employmentId:string}[]>().notNull().default(sql`'[]'::jsonb`),
+  reportVersion:integer('report_version').notNull(),reviewedDigest:text('reviewed_digest').notNull(),reviewedRevision:uuid('reviewed_revision').notNull().defaultRandom(),nextRunAt:timestamp('next_run_at',{withTimezone:true}),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('custom_report_schedule_report_uq').on(t.reportId),index('custom_report_schedule_due_idx').on(t.enabled,t.nextRunAt)]);
 export const customReportOccurrence = pgTable('custom_report_occurrence',{
-  id:id(),tenantId:tenantId(),scheduleId:uuid('schedule_id').notNull(),reportId:uuid('report_id').notNull(),ownerUserId:uuid('owner_user_id').notNull(),recipientUserId:uuid('recipient_user_id').notNull(),recipientEmploymentId:uuid('recipient_employment_id').notNull(),
+  id:id(),tenantId:tenantId(),scheduleId:uuid('schedule_id').notNull(),reportId:uuid('report_id').notNull(),scheduleRevision:uuid('schedule_revision').notNull(),reviewedDigest:text('reviewed_digest').notNull(),ownerUserId:uuid('owner_user_id').notNull(),recipientUserId:uuid('recipient_user_id').notNull(),recipientEmploymentId:uuid('recipient_employment_id').notNull(),
+  consentAfterSequence:bigint('consent_after_sequence',{mode:'number'}).notNull(),policyAfterSequence:bigint('policy_after_sequence',{mode:'number'}).notNull(),consentUpdatedAt:timestamp('consent_updated_at',{withTimezone:true}).notNull(),policyUpdatedAt:timestamp('policy_updated_at',{withTimezone:true}).notNull(),consentVerifiedAt:timestamp('consent_verified_at',{withTimezone:true}).notNull(),
   scheduledFor:timestamp('scheduled_for',{withTimezone:true}).notNull(),reportVersion:integer('report_version').notNull(),status:text('status').notNull().default('pending'),
   leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),startedAt:timestamp('started_at',{withTimezone:true}),finishedAt:timestamp('finished_at',{withTimezone:true}),rowCount:integer('row_count'),reason:text('reason'),createdAt:createdAt(),
 },t=>[uniqueIndex('custom_report_occurrence_identity_uq').on(t.scheduleId,t.recipientUserId,t.scheduledFor),index('custom_report_occurrence_work_idx').on(t.status,t.scheduledFor,t.leaseUntil)]);

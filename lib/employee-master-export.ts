@@ -33,11 +33,11 @@ async function excel(result:EmployeeMasterResult,spec:EmployeeMasterSpec,fields:
   const book=XLSX.utils.book_new(),freezeCounts:number[]=[];
   for(const [index,section]of result.sections.entries()){
     const data=lines(section,fields),sheet=XLSX.utils.aoa_to_sheet([[title],['As at '+result.asAt+` · ${section.employeeCount} employments · ${section.personCount} people · ${section.draftCount} drafts · ${section.rowCount} rows`],...data]);
-    // Explicit strings preserve IDs/leading zeros and never become formulas. Numeric/date cells are real.
+    // Explicit strings preserve IDs/leading zeros and never become formulas. Month-only facts stay YYYY-MM text; no day is invented. Full dates/numbers are typed.
     let outputRow=3,lastGroup:string|null=null;
     for(const row of section.rows){const key=JSON.stringify(row.group.map(cell=>[cell.referenceId??cell.value,cell.unavailable??null]));if(section.groups.length&&key!==lastGroup){if(lastGroup!==null&&section.groups.find(group=>group.key===lastGroup)?.totals.length)outputRow+=2;outputRow++;lastGroup=key;}
       row.cells.forEach((cell,columnIndex)=>{const column=section.columns[columnIndex],field=fields.find(field=>field.id===column.field),address=XLSX.utils.encode_cell({r:outputRow,c:columnIndex});
-        if(!cell.unavailable&&cell.value!=null&&cell.value!==''&&column.format!=='text'&&field?.type==='date'&&(/^\d{4}-\d{2}-\d{2}(?:T.*Z)?$/.test(String(cell.value))||field.unit==='month'&&/^\d{4}-\d{2}$/.test(String(cell.value))))sheet[address]={t:'d',v:field.unit==='instant'?localExcelInstant(String(cell.value)):new Date(String(cell.value).length===7?String(cell.value)+'-01T00:00:00Z':String(cell.value).length===10?String(cell.value)+'T00:00:00Z':String(cell.value)),z:String(cell.value).length===7?'yyyy-mm':String(cell.value).length===10?'yyyy-mm-dd':'yyyy-mm-dd hh:mm'};
+        if(!cell.unavailable&&cell.value!=null&&cell.value!==''&&column.format!=='text'&&field?.type==='date'&&field.unit!=='month'&&/^\d{4}-\d{2}-\d{2}(?:T.*Z)?$/.test(String(cell.value)))sheet[address]={t:'d',v:field.unit==='instant'?localExcelInstant(String(cell.value)):new Date(String(cell.value).length===10?String(cell.value)+'T00:00:00Z':String(cell.value)),z:String(cell.value).length===10?'yyyy-mm-dd':'yyyy-mm-dd hh:mm'};
         else if(!cell.unavailable&&cell.value!=null&&cell.value!==''&&column.format!=='text'&&['number','currency'].includes(field?.type??''))sheet[address]={t:'n',v:Number(cell.value),z:column.decimals?'0.'+'0'.repeat(column.decimals):'0'};
         else sheet[address]={t:'s',v:masterCellText(cell)};
       });outputRow++;

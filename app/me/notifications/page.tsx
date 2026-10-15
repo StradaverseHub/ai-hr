@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { keycloakSelected } from '@/lib/identity/config';
 import { currentIdentitySession } from '@/lib/identity/session';
-import { notificationEmailCategories, notificationEmailLocales } from '@/lib/notification-email-model';
+import { notificationPreferenceCategories, notificationEmailLocales } from '@/lib/notification-email-model';
 import { readNotificationEmailPreferences } from '@/core/notification-email';
 import { PageHeader, Card, SectionHeader, ErrorBanner, Field, inputCls, btnPrimary } from '@/components/ui';
 import { saveMyWorkflowEmailPreferences } from './actions';
@@ -15,7 +16,7 @@ export default async function MyEmailNotificationsPage({searchParams}:{searchPar
   const verified=identity?.emailVerified===true,allowed=new Set(view.policy.filter(p=>p.enabled).map(p=>p.category));
   return <div className="max-w-3xl space-y-6"><PageHeader title={t('preferencesTitle')} description={t('preferencesDescription')}/>
     <ErrorBanner message={query.error?t('error'):undefined}/>{query.saved==='1'&&<p role="status" className="text-sm">{t('saved')}</p>}
-    <p data-tour="notification-consent" className="text-sm text-muted-foreground">{t('consentHelp')}</p>
+    <p data-tour="notification-consent" className="text-sm text-muted-foreground">{t('consentHelp')}</p><p className="text-sm text-muted-foreground">{t('reportConsentHelp')}</p>
     {!verified&&<p role="status" className="text-sm text-muted-foreground">{t('identityRequired')}</p>}
     {!view.employments.length&&<Card className="p-5"><p>{t('noEmployment')}</p></Card>}
     {view.employments.map(e=>{
@@ -23,7 +24,7 @@ export default async function MyEmailNotificationsPage({searchParams}:{searchPar
       return <Card key={e.id} className="p-5"><SectionHeader title={`${t('employment')}: ${e.code}`}/><form action={saveMyWorkflowEmailPreferences} className="space-y-4">
         <input type="hidden" name="employmentId" value={e.id}/>
         <fieldset className="space-y-3"><legend className="mb-3 text-sm font-medium">{t('preferencesCategories')}</legend>
-          {notificationEmailCategories.map(category=>{const pref=prefs.find(p=>p.category===category),checked=!!pref?.enabled&&pref.emailConsentUserId===s.userId&&pref.emailAfterSequence!=null;
+          {notificationPreferenceCategories.map(category=>{const pref=prefs.find(p=>p.category===category),checked=!!pref?.enabled&&pref.emailConsentUserId===s.userId&&pref.emailAfterSequence!=null&&(category!=='employee_master_reports'||!!pref.reportConsentVerifiedAt&&pref.reportConsentIssuer===identity?.issuer&&pref.reportConsentSubject===identity?.subject&&pref.reportConsentAddressHash===(identity?.email?createHash('sha256').update(identity.email.toLowerCase()).digest('hex'):null));
             return <label key={category} className="flex items-start gap-2 text-sm"><input type="checkbox" name="category" value={category} defaultChecked={checked} disabled={!verified&&!checked} className="mt-1"/><span>{t(`categories.${category}`)}{!allowed.has(category)&&<span className="block text-xs text-muted-foreground">{t('notAllowed')}</span>}</span></label>;
           })}
         </fieldset>

@@ -1,6 +1,7 @@
 /** Employee Master templates and execution. Every entry re-resolves scoped field access; a shared
  * definition grants no data. Stored projections use one explicit read-only Repeatable Read snapshot.
  */
+import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -12,7 +13,7 @@ import { masterSpecFields, runEmployeeMasterProjection, validateEmployeeMasterSp
 import { masterReportFieldsTx, MasterReportAccessError } from './employee-master-access';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 
-export type MasterTemplate={id:string;name:string;description:string;ownerUserId:string|null;ownerName:string|null;shared:boolean;sharedRoleIds:string[];version:number;lastRunAt:string|null;updatedAt:string;spec:EmployeeMasterSpec;canEdit:boolean};
+export type MasterTemplate={id:string;name:string;description:string;ownerUserId:string|null;ownerName:string|null;shared:boolean;sharedRoleIds:string[];version:number;lastRunAt:string|null;scheduleEnabled:boolean;updatedAt:string;spec:EmployeeMasterSpec;canEdit:boolean};
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const assertScope=(companies:string[],scope:readonly string[])=>{if(!companies.length||companies.some(id=>!scope.includes(id)))throw new MasterReportAccessError();};
 const templateSpec=(spec:EmployeeMasterSpec):CustomReportSpec=>({datasetId:'master',columns:spec.columns.map(column=>column.field),employeeMaster:spec});
@@ -20,9 +21,9 @@ async function visibleTx(tx:Tx,id:string){const [row]=await tx.select().from(cus
 async function editableTx(tx:Tx,ctx:SessionContext,row:{createdByUserId:string|null}){const [access]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];if(row.createdByUserId!==ctx.userId&&!access?.admin)throw new MasterReportAccessError();}
 async function checkedTx(tx:Tx,ctx:SessionContext,raw:unknown,scopeIds:readonly string[]){
   // Company UUIDs are schema-validated before they reach SQL. Full validation uses the scoped catalogue.
-  const input=raw as Partial<EmployeeMasterSpec>;if(!Array.isArray(input?.companyIds)||input.companyIds.some(id=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id)))throw new MasterReportAccessError();
-  assertScope(input.companyIds,scopeIds);
-  const catalogue=await masterReportFieldsTx(tx,ctx,input.companyIds);
+  const input=raw as Partial<EmployeeMasterSpec>;if(!z.array(z.uuid()).min(1).max(100).safeParse(input?.companyIds).success)throw new MasterReportAccessError();
+  assertScope(input.companyIds!,scopeIds);
+  const catalogue=await masterReportFieldsTx(tx,ctx,input.companyIds!);
   const spec=validateEmployeeMasterSpec(raw,catalogue,todayInKualaLumpur());
   return {spec,catalogue,fields:catalogue.filter(field=>masterSpecFields(spec).includes(field.id))};
 }
@@ -50,7 +51,8 @@ export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readon
   const row=await visibleTx(tx,id);const {spec}=await checkedTx(tx,ctx,legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()),scopeIds);
   const [admin]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];
   const names=await tx.execute(sql`select p.full_name as name from app_user u left join person p on p.id=u.person_id where u.id=${row.createdByUserId}::uuid`) as unknown as {name:string|null}[];
-  return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,updatedAt:row.updatedAt.toISOString(),spec,canEdit:row.createdByUserId===ctx.userId||!!admin?.admin};
+  const [schedule]=await tx.select({enabled:customReportSchedule.enabled}).from(customReportSchedule).where(eq(customReportSchedule.reportId,row.id)).limit(1);
+  return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,scheduleEnabled:schedule?.enabled??false,updatedAt:row.updatedAt.toISOString(),spec,canEdit:row.createdByUserId===ctx.userId||!!admin?.admin};
 });}
 export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string}={}):Promise<MasterTemplate[]>{
   const ids=await withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!input.search||row.name.toLocaleLowerCase().includes(input.search.toLocaleLowerCase())).map(row=>row.id));

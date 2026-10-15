@@ -20,6 +20,12 @@ describe('Employee Master complete typed exports',()=>{
   expect(XLSX.utils.decode_range(sheet['!ref']!).e.r).toBe(63);expect(sheet['!autofilter']?.ref).toBe('A3:D64');
   const zip=await JSZip.loadAsync(output.bytes),xml=await zip.file('xl/worksheets/sheet1.xml')!.async('string');expect(xml).toContain('xSplit="1" ySplit="3"');
  });
+ it('preserves month-only Qualification values without manufacturing a day in Excel',async()=>{
+  const month=field('qualification','fromYm'),definition={...spec,columns:[defaultMasterColumn(code),defaultMasterColumn(month)]};
+  const person={...subjects[0],owners:{...subjects[0].owners,qualification:[{id:'qualification-1',values:{fromYm:{value:'2023-09'}}}]}};
+  const output=await serializeEmployeeMaster(runEmployeeMasterProjection(definition,[code,month],[person],spec.asAt),definition,[code,month],'Month precision','xlsx');
+  const book=XLSX.read(output.bytes,{type:'array',cellDates:true});expect(book.Sheets[book.SheetNames[0]].B4).toMatchObject({t:'s',v:'2023-09'});
+ });
  it('neutralizes formula-looking CSV strings while keeping actual numeric measures and all rows',async()=>{
   const output=await serializeEmployeeMaster(result(),spec,fields,'Master export','csv'),text=Buffer.from(output.bytes).toString('utf8');
   expect(text).toContain('"\'=HYPERLINK');expect(text).toContain('"00000"');expect(text).toContain('"1200.5"');expect(text.split('\r\n')).toHaveLength(62);
