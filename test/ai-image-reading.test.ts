@@ -84,3 +84,17 @@ describe('governed requests do not hide provider retry loops',()=>{
   }
  });
 });
+
+
+it('does not reserve capacity for a known cancellation and reports zero when admission is followed by cancellation before transport',async()=>{
+ const admit=vi.fn();const early:ResolvedAiConfig={provider:'openai',model:'fixture',apiKey:'fixture-local-only',governance:{run:admit}};
+ await expect(generateDraft(early,{system:'Facts.',prompt:'Fictional case.',signal:AbortSignal.abort()})).rejects.toThrow('cancelled');
+ await expect(readImage(early,{data:png,mimeType:'image/png',signal:AbortSignal.abort()})).rejects.toThrow();expect(admit).not.toHaveBeenCalled();
+ for(const image of [false,true]){
+  const signal=new AbortController(),observed:unknown[]=[];
+  const cfg:ResolvedAiConfig={...early,governance:{async run(_request,call){signal.abort();return call(value=>observed.push(value));}}};
+  await expect(image?readImage(cfg,{data:png,mimeType:'image/png',signal:signal.signal}):generateDraft(cfg,{system:'Facts.',prompt:'Fictional case.',signal:signal.signal})).rejects.toThrow();
+  expect(observed).toEqual([{inputTokens:0,outputTokens:0,cachedInputTokens:0}]);
+ }
+ expect(transport).not.toHaveBeenCalled();
+});

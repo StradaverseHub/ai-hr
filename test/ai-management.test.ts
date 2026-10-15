@@ -93,6 +93,7 @@ describe('central AI allowance admission and durable accounting',()=>{
    const row=(await aiManagementView(group)).features.find(f=>f.id==='performance_360')!;expect(row.enabled).toBe(true);expect(row.state).toBe('ready');
    await owner.db.insert(schema.tenantSetting).values({tenantId:base.tenantId,key:'performance.ai_360_enabled',value:sql`'null'::jsonb`,source:'platform'});
    await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'performance_360').governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
+   await setModule(base.tenantId,'notifications','active');
    await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});
    vi.stubEnv('SETTING_KILL','notifications.readiness_nudge_enabled');
    expect((await aiManagementView(group)).features.find(f=>f.id==='readiness_reminders')?.state).toBe('restricted');
