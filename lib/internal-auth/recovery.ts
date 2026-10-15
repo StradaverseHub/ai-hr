@@ -27,7 +27,7 @@ export async function requestRecovery(organization: string, username: string, tr
       version: current.version, email: current.email, organization: current.organization, username: current.username } satisfies RecoveryContext, current.subject);
     return { id: job.id as string, lease: job.lease_token as string };
   });
-  if (delivery) await dispatch(() => attemptAccountEmail(delivery.id, delivery.lease, {
+  if (delivery) await dispatch(async () => attemptAccountEmail(delivery.id, delivery.lease, {
     sendInvitation: async () => { throw new AccountEmailDeliveryError('notEligible'); },
     sendPasswordReset: (email, context) => sendInternalRecovery(email, context, transport),
     emailReadiness: (await import('../identity/account-email-readiness')).accountEmailReadiness,

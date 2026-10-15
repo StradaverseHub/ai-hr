@@ -35,10 +35,17 @@ it('uses the internal credential and shared consent/lease rules, holds missing-S
  const jobs=await owner.client`select id,status,last_error from notification_delivery where tenant_id=${base.tenantId}::uuid and channel='email' order by created_at,id`;
  expect(jobs).toHaveLength(1);expect(jobs[0]).toMatchObject({status:'failed',last_error:'relayUnavailable'});
  await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'fixture',drafts:{}},null);
- const send=vi.fn(async()=>{}),transport:NotificationEmailTransport=(request)=>internalNotificationEmailRequest(request,send);
+ const send=vi.fn(async()=>{}),failures:string[]=[];
+ const transport:NotificationEmailTransport=async <T>(request:Parameters<NotificationEmailTransport>[0])=>{
+  try{return await internalNotificationEmailRequest<T>(request,send);}
+  catch(error){failures.push(error instanceof Error?error.message:String(error));throw error;}
+ };
  expect(await deliverNotificationEmails(adminCtx(base),transport)).toMatchObject({attempted:0});expect(send).not.toHaveBeenCalled();
  await retryNotificationEmail(adminCtx(base),jobs[0].id,true);
- expect(await deliverNotificationEmails(adminCtx(base),transport)).toMatchObject({attempted:1});expect(send).toHaveBeenCalledOnce();
+ expect(await deliverNotificationEmails(adminCtx(base),transport)).toMatchObject({attempted:1});
+ expect(failures).toEqual([]);
+ expect(await owner.client`select status,last_error from notification_delivery where id=${jobs[0].id}::uuid`).toEqual([{status:'sent',last_error:null}]);
+ expect(send).toHaveBeenCalledOnce();
  const message=send.mock.calls[0] as unknown as [unknown,{to:string;text:string}];expect(message[1].to).toBe(c.email);expect(message[1].text).toContain('https://hr.test/');expect(message[1].text).not.toContain('PRIVATE-PAY-FIXTURE-993');
  await event();await dispatchNotifications(adminCtx(base));await writeRecord(client,`credential:${c.subject}`,{...c,enabled:false},c.subject);
  expect(await deliverNotificationEmails(adminCtx(base),transport)).toMatchObject({attempted:1});expect(send).toHaveBeenCalledOnce();
