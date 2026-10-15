@@ -36,7 +36,7 @@ export default async function LeaveCreditDetailsPage({searchParams}:{searchParam
           {[th('col.dateWorked'),tr('earned'),tr('used'),tr('availableBalance'),th('col.expires'),th('col.reason'),tr('addedBy'),th('col.status')].map(label=><th key={label} scope="col" className={thCls}>{label}</th>)}
         </tr></thead><tbody className={tbodyCls}>{register.rows.length?register.rows.map(row=><tr className="align-top" key={row.accrualId}><EarnedCreditCells row={row}/></tr>):<tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">{t('empty')}</td></tr>}</tbody></table>
       </div>
-      <Pager state={state} basePath={PAGE} params={q.filters}/>
+      <Pager state={state} basePath={PAGE} params={q.filters} truncatedHint={t('truncatedHint')}/>
     </Card>
   </div>;
 }

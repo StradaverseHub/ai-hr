@@ -3249,7 +3249,7 @@ async function earnedCreditRegisterTx(tx:Tx,ctx:SessionContext,p:CreditRegisterR
     const all:EarnedLeaveCreditRow[]=accruals.map(({lot,name,code})=>{
       const facts=creditRegisterFigures({earned:Number(lot.daysCredited),taken:Number(lot.daysTaken),state:lot.status,expiresOn:lot.expiresOn,today});
       const credit=ledger.find(x=>x.id===lot.ledgerEntryId);
-      const actor=grantActors.find(x=>x.event.aggregateId===lot.id&&x.event.occurredAt.getTime()===(credit?.createdAt??lot.createdAt).getTime())??
+      const actor=grantActors.find(x=>x.event.aggregateId===lot.id&&x.event.subjectEmploymentId===lot.employmentId&&x.event.occurredAt.getTime()===(credit?.createdAt??lot.createdAt).getTime())??
         grantActors.find(x=>credit&&x.event.occurredAt.getTime()===credit.createdAt.getTime()&&x.event.subjectEmploymentId===lot.employmentId);
       const usage=usageByLot.get(lot.id)??[];
       return {accrualId:lot.id,employmentId:lot.employmentId,employeeName:name,employeeCode:code,workedDate:lot.workedDate,

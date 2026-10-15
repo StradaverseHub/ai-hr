@@ -103,9 +103,9 @@ describe('Personal earned-credit actor names and identity boundaries', () => {
     for (const forged of [{ employmentId: other.employmentId }, { companyIds: [company.id] }, { personId: other.personId }, { tenantId: randomUUID() }]) {
       await expect(listOwnEarnedLeaveCredits(ctx, forged as never)).rejects.toThrow(/cannot select another employee/);
     }
-    await setModule(b.tenantId, 'toil', 'suspended');
-    const suspendedEntitlements = (await entitledCtx(b)).entitlements;
-    expect((await listOwnEarnedLeaveCredits({ ...ctx, entitlements: suspendedEntitlements }, { today })).rows).toEqual(mine.rows);
+    await setModule(b.tenantId, 'toil', 'disabled');
+    const disabledEntitlements = (await entitledCtx(b)).entitlements;
+    expect((await listOwnEarnedLeaveCredits({ ...ctx, entitlements: disabledEntitlements }, { today })).rows).toEqual(mine.rows);
   });
 
   it('keeps unknown grant and usage provenance unknown, with identical owner figures', async () => {
