@@ -77,11 +77,13 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
  const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,ids)).orderBy(asc(employment.id)).for('update');
  if(employees.length!==ids.length)throw new Error('An employee is unavailable in your company scope.');
  const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id)).for('update');
+ const targetIds=[...new Set(changes.flatMap(c=>c.shiftId?[c.shiftId]:[]))];
+ const targetShifts=targetIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,targetIds)):[];
  const allDates=changes.map(c=>c.shiftDate).sort();const groupOn=await scheduleGroupLookupTx(tx,ids,allDates[0],allDates.reduce((a,b)=>a>b?a:b));
  for(const emp of employees){
   const [permission]=await tx.execute(sql`select app.can_admin_employment(${emp.id}::uuid) as allowed`) as unknown as {allowed:boolean}[];
   if(!permission?.allowed)throw new Error('You cannot administer this employee.');
-  const ownGroups=[...new Set(changes.filter(c=>c.employmentId===emp.id).map(c=>groupOn(emp.id,c.shiftDate)))];
+  const ownGroups=[...new Set(changes.filter(c=>c.employmentId===emp.id).flatMap(c=>[groupOn(emp.id,c.shiftDate),...(!emp.groupId&&c.shiftId?[targetShifts.find(sh=>sh.id===c.shiftId)?.ruleId??null]:[])]))];
   const group=rules.find(r=>r.id===ownGroups[0]);
   for(const id of ownGroups){const applicable=rules.find(r=>r.id===id);if(applicable&&!applicable.dutyRosterControl)throw new Error(`Duty Roster Control is Off for “${scheduleGroupDisplayName(applicable)}”. Enable it before changing an individual roster.`);}
   const own=changes.filter(c=>c.employmentId===emp.id);

@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
 import { DateField } from '@/components/ui/date-field';
+import {rotationVersionOn} from '@/core/week-pattern';
 
-type ShiftOption = { id: string; label: string };
+type ShiftOption = { id: string; label: string; archived?:boolean };
+type AllowedPool={baseShiftIds:string[];versions:{effectiveFrom:string;allowedShiftIds:string[]}[]};
 
 /**
  * R17 3e8350db — the employee-profile "Shift Type" control (the reporter's explicit ask). A client island
@@ -35,10 +37,12 @@ export function EmployeeShiftFields({
   shifts,
   defaultEffectiveFrom,
   dmyDisplay = false,
+  allowedPool,
 }: {
   defaultType: 'fixed' | 'roster';
   defaultShiftId: string | null;
   shifts: ShiftOption[];
+  allowedPool?:AllowedPool;
   /** Today in the tenant's calendar (todayInKualaLumpur), resolved on the server. */
   defaultEffectiveFrom: string;
   /** r422 — OPT-IN: draw the Effective date as DD-MMM-YYYY (components/ui/date-field.tsx), posting the same
@@ -47,6 +51,10 @@ export function EmployeeShiftFields({
 }) {
   const t = useTranslations('people.detail');
   const [type, setType] = useState<'fixed' | 'roster'>(defaultType);
+  const [effectiveFrom,setEffectiveFrom]=useState(defaultEffectiveFrom);
+  const [selectedShift,setSelectedShift]=useState(defaultShiftId??'');
+  const allowed=allowedPool?new Set(rotationVersionOn(allowedPool.versions,effectiveFrom)?.allowedShiftIds??allowedPool.baseShiftIds):null;
+  const options=shifts.filter(sh=>(!sh.archived&&(!allowed||allowed.has(sh.id)))||sh.id===selectedShift);
 
   return (
     <div className="space-y-2">
@@ -63,10 +71,10 @@ export function EmployeeShiftFields({
           </select>
         </Field>
         <Field label={t('backupShiftLabel')}>
-          <select name="shiftId" required defaultValue={defaultShiftId ?? ''} className={inputCls}>
+          <select name="shiftId" required value={selectedShift} onChange={e=>setSelectedShift(e.target.value)} className={inputCls}>
             <option value="">{t('defaultShiftChoose')}</option>
-            {shifts.map((sh) => (
-              <option key={sh.id} value={sh.id}>
+            {options.map((sh) => (
+              <option key={sh.id} value={sh.id} disabled={!!sh.archived||!!allowed&&!allowed.has(sh.id)}>
                 {sh.label}
               </option>
             ))}
@@ -84,7 +92,8 @@ export function EmployeeShiftFields({
             <DateField
               name="effectiveFrom"
               required
-              defaultValue={defaultEffectiveFrom}
+              value={effectiveFrom}
+              onChange={e=>setEffectiveFrom(e.target.value)}
               className={inputCls}
               label={t('shiftEffectiveDateLabel')}
             />
@@ -93,7 +102,8 @@ export function EmployeeShiftFields({
               name="effectiveFrom"
               type="date"
               required
-              defaultValue={defaultEffectiveFrom}
+              value={effectiveFrom}
+              onChange={e=>setEffectiveFrom(e.target.value)}
               className={inputCls}
             />
           )}

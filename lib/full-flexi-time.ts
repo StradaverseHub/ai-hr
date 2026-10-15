@@ -4,7 +4,7 @@ const minutes=(clock:string)=>{const [h,m]=clock.split(':').map(Number);return h
 export function fullFlexiIntervals(punches:readonly {punchAt:string;direction:'in'|'out'}[],firstIn:string|null,cutoff:number|null) {
  const ins=punches.filter(p=>p.direction==='in');
  if(!ins.length)return {complete:false as const,intervals:[] as ClosedClockInterval[],checkInAt:null,checkOutAt:null};
- const anchor=firstIn&&ins.some(p=>p.punchAt===firstIn)?minutes(firstIn):cutoff??Math.min(...ins.map(p=>minutes(p.punchAt)));
+ const anchor=cutoff??(firstIn&&ins.some(p=>p.punchAt===firstIn)?minutes(firstIn):Math.min(...ins.map(p=>minutes(p.punchAt))));
  const unique=[...new Map(punches.map(p=>[`${p.punchAt}:${p.direction}`,p])).values()];
  const ordered=unique.map(p=>({...p,at:minutes(p.punchAt)+(minutes(p.punchAt)<anchor?1440:0)})).sort((a,b)=>a.at-b.at||a.punchAt.localeCompare(b.punchAt)||a.direction.localeCompare(b.direction));
  const intervals:ClosedClockInterval[]=[];let pending:typeof ordered[number]|null=null;let invalid=false;

@@ -2,13 +2,13 @@ import {withTenant} from '../db/client';
 import {absenceBreakdownByEmployment} from '../core/absence-days';
 import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
-import {beforeAll,beforeEach,afterAll,describe,expect,it} from 'vitest';
+import {beforeAll,beforeEach,afterAll,describe,expect,it,vi} from 'vitest';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {createShift,updateShift,listShiftOtWindows,saveShiftPay,assignDefaultShift,assignShift,setRestDay,clearRoster,assignShiftBulk,setRestDayBulk,copyRoster,setEmploymentScheduleGroup} from '../core/roster';
-import {createAttendanceRule,getAttendanceRule,setRuleShifts,type AttendanceRuleInput} from '../core/attendance-rule';
+import {createAttendanceRule,copyAttendanceRule,getAttendanceRule,setRuleShifts,type AttendanceRuleInput} from '../core/attendance-rule';
 import {saveScheduleGroupControl} from '../core/schedule-group-controls';
 import {getScheduleRotation,saveScheduleRotation} from '../core/attendance-rotation';
-import {checkIn,checkOut} from '../core/attendance';
+import {assignPunchBusinessDays,checkIn,checkOut} from '../core/attendance';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import * as schema from '../db/schema';
@@ -86,4 +86,27 @@ it('freezes the full-day normal unit before half-day reduction for future shortf
  const ctx=adminCtx(b),sh=await createShift(ctx,{...shiftInput(),weeklyPattern:null,halfPattern:[1,2,3,4,5,6,7],normalMinutesOverride:480}),e=await hire(sh.id);
  await checkIn(ctx,{employmentId:e.employmentId,date:day(),time:'09:00'});await checkOut(ctx,{employmentId:e.employmentId,date:day(),time:'13:00'});
  expect((await attendanceOf(e.employmentId,day())).calcTrace?.schedule).toMatchObject({normalMinutesOverride:240,fullDayNormalMinutes:480,fixedClockApplicable:true});
+});
+
+it('Full Flexi imports use the real cutoff without fixed anchors, including nonworking days',async()=>{
+ const ctx=adminCtx(b),dow=new Date(day()+'T00:00:00Z').getUTCDay()||7;
+ const sh=await createShift(ctx,{...shiftInput(),type:'full_flexi',startTime:null,endTime:null,normalMinutesOverride:480,weeklyPattern:[dow===7?1:dow+1],dailyCutoffEnabled:true,dailyCutoffTime:'04:00'}),e=await hire(sh.id);
+ const dates=await withTenant(ctx,tx=>assignPunchBusinessDays(tx,[{employmentId:e.employmentId,date:day(),time:'02:00'},{employmentId:e.employmentId,date:day(),time:'04:00'},{employmentId:e.employmentId,date:day(),time:'23:00'}]));
+ expect(dates).toEqual([day(-1),day(),day()]);
+ for(const [direction,time] of [['in','09:00'],['out','10:00'],['in','12:00'],['out','13:00']] as const)await (direction==='in'?checkIn:checkOut)(ctx,{employmentId:e.employmentId,date:day(),time});
+ expect(await attendanceOf(e.employmentId,day())).toMatchObject({dayType:'rest_day',workedMinutes:120,lateMinutes:null,earlyOutMinutes:null,underMinutes:null});
+});
+it('a copied group keeps the current pool and forward cycle phase without copying past versions',async()=>{
+ const ctx=adminCtx(b),g=await createAttendanceRule(ctx,groupInput()),a=await createShift(ctx,shiftInput()),bShift=await createShift(ctx,shiftInput());
+ await setRuleShifts(ctx,{ruleId:g.id,shiftIds:[a.id]});const start=day(1),clock=day(2),copyStart=day(3);
+ await saveScheduleRotation(ctx,{ruleId:g.id,expectedRevision:(await getScheduleRotation(ctx,g.id)).revision,allowedShiftIds:[bShift.id],cycle:{effectiveFrom:start,anchorDate:start,unit:'day',length:2,days:[{kind:'full',shiftId:bShift.id},{kind:'rest',shiftId:null}]}});
+ vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(clock+'T12:00:00+08:00'));
+ try{const copy=await copyAttendanceRule(ctx,{ruleId:g.id}),state=await getScheduleRotation(ctx,copy.id);expect(state.memberships.map(m=>m.shiftId)).toEqual([bShift.id]);expect(state.versions).toHaveLength(1);expect(state.versions[0]).toMatchObject({effectiveFrom:copyStart,anchorDate:start,allowedShiftIds:[bShift.id]});expect((await getScheduleRotation(ctx,g.id)).versions[0].effectiveFrom).toBe(start);}
+ finally{vi.useRealTimers();}
+});
+it('an ungrouped employee cannot enter a Duty Off inherited group or select an archived shift',async()=>{
+ const ctx=adminCtx(b),g=await createAttendanceRule(ctx,groupInput()),plain=await createShift(ctx,shiftInput()),controlled=await createShift(ctx,{...shiftInput(),ruleId:g.id}),e=await hire(plain.id);
+ await expect(assignShift(ctx,{employmentId:e.employmentId,shiftDate:day(1),shiftId:controlled.id})).rejects.toThrow('Duty Roster Control is Off');
+ await owner.db.update(schema.shift).set({archivedAt:new Date()}).where(eq(schema.shift.id,plain.id));
+ await expect(assignShift(ctx,{employmentId:e.employmentId,shiftDate:day(1),shiftId:plain.id})).rejects.toThrow('archived shift');
 });
