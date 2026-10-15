@@ -14,7 +14,7 @@ import { createCompany, createDepartment } from '../core/admin';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setRestDay } from '../core/roster';
-import { grantLeaveCredit, listOwnEarnedLeaveCredits, reverseLeaveCredit, setToilPolicy } from '../packs/leave/service';
+import { decideLeave, grantLeaveCredit, listOwnEarnedLeaveCredits, requestLeave, reverseLeaveCredit, setLeaveApprovalPolicy, setToilPolicy } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const refusal = demoSeedRefusal(process.env);
@@ -93,15 +93,32 @@ async function main() {
   const [policy] = await owner.db.select().from(s.toilPolicy).where(eq(s.toilPolicy.companyId, company.id));
   if (!policy) await setToilPolicy(hr.ctx, { companyId: company.id, enabled: true, accrualBasis: 'hours_worked', expiryDays: 90, onExpiry: 'lapse', allowFirstScheduleEligible: false, autoAccrueOnApproval: false, carryForwardAtYearEnd: false, employeeRequestEnabled: true });
   // Stable reasons identify each canonical fixture grant without depending on today's date on reruns.
-  for (const [key, days, offset, reversed] of [['employee', 0.5, -20, false], ['employee', 1, -21, false], ['employee', 1.5, -22, true], ['manager', 1, -23, false], ['hr', 1, -24, false]] as const) {
+  for (const [key, days, offset, reversed, expiryOffset] of [['employee', 0.75, -20, false, 60], ['employee', 1.25, -21, false, 90], ['employee', 1, -22, false, 110], ['employee', 1.5, -23, true, 90], ['manager', 1, -24, false, 90], ['hr', 1, -25, false, 90]] as const) {
     const subject = people.get(key)!;
     const reason = `Credit15 fixture ${key} ${offset}`;
     let [lot] = await owner.db.select().from(s.toilAccrual).where(and(eq(s.toilAccrual.employmentId, subject.employmentId), eq(s.toilAccrual.note, reason))).orderBy(asc(s.toilAccrual.id));
     if (!lot) {
       await setRestDay(hr.ctx, { employmentId: subject.employmentId, shiftDate: day(offset) });
-      const created = await grantLeaveCredit(hr.ctx, { employmentId: subject.employmentId, workedDate: day(offset), days, reason, expiresOn: day(90), today });
+      const created = await grantLeaveCredit(hr.ctx, { employmentId: subject.employmentId, workedDate: day(offset), days, reason, expiresOn: day(expiryOffset), today });
       [lot] = await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id, created.accrualId));
       if (reversed) await reverseLeaveCredit(hr.ctx, { accrualId: lot.id, reason: 'Credit fixture correction', today });
+    }
+  }
+  const usageReason = 'Credit15 fixture approved usage';
+  const [existingUsage] = await owner.db.select().from(s.leaveRequest).where(and(eq(s.leaveRequest.employmentId, employee.employmentId), eq(s.leaveRequest.reason, usageReason)));
+  if (!existingUsage) {
+    const [approval] = await owner.db.select().from(s.leaveApprovalPolicy).where(eq(s.leaveApprovalPolicy.companyId, company.id));
+    if (!approval) await setLeaveApprovalPolicy(hr.ctx, { companyId: company.id, levels: ['direct_manager'] });
+    const [type] = await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId, tenantId), eq(s.leaveType.code, 'REPLACEMENT')));
+    if (!type) throw new Error('Canonical grant did not create the Replacement Leave type.');
+    let date = day(14);
+    while (new Date(`${date}T00:00:00Z`).getUTCDay() !== 1) date = new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    const request = await requestLeave(employee.ctx, { employmentId: employee.employmentId, leaveTypeId: type.id, startDate: date, endDate: date, reason: usageReason, today });
+    await decideLeave(manager.ctx, { leaveRequestId: request.leaveRequestId, decision: 'approved', deciderEmploymentId: manager.employmentId });
+    const register = await listOwnEarnedLeaveCredits(employee.ctx);
+    for (const expected of [{ reason: 'Credit15 fixture employee -20', used: 0.75, status: 'fully_used' }, { reason: 'Credit15 fixture employee -21', used: 0.25, status: 'partially_used' }, { reason: 'Credit15 fixture employee -22', used: 0, status: 'available' }]) {
+      const row = register.rows.find(row => row.reason === expected.reason);
+      if (!row || row.used !== expected.used || row.status !== expected.status || row.unattributedUsed !== 0) throw new Error(`Canonical leave did not produce ${expected.status}; preserving actual facts.`);
     }
   }
   const manifest = [];
