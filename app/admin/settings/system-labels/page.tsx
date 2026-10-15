@@ -1,15 +1,15 @@
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
-import { scopedAdmin } from '@/lib/scope';
+import {requireAdmin} from '@/lib/authz';
 import { isGroupAdmin } from '@/lib/authz';
-import { adminCompanies, listCompanies, listEmployees, listJobGrades } from '@/core/read';
+import { listJobGrades } from '@/core/read';
 import {
   listBusinessUnitsForLabels,
   listCostCentersForLabels,
   listDepartmentsForLabels,
   listPositionsForLabels,
 } from '@/core/admin';
-import { listLabelAssignments } from '@/core/system-labels';
+import {labelMaintenanceCompanies,labelMaintenanceHeadOptions} from '@/core/system-labels';
 import { EMPLOYMENT_PROFILE_CATEGORIES, listAllProfileOptions } from '@/core/profile-options';
 // 9a65f808 — grade groups, through the leave PACK FACADE. `listGradeGroups` lives in core/benefit-scheme
 // (a filename that is a leftover — see its header), which is a guarded leave-pack boundary module: the
@@ -23,7 +23,6 @@ import { GradeLabelsGrid } from '@/components/grade-labels-grid';
 import { GradeGroupConfig } from '@/components/leave/grade-group-config';
 import { ProfileOptionsGrid } from '@/components/profile-options-grid';
 import { SystemLabelsTabs } from '@/components/system-labels-tabs';
-import { labelsInCompanyScope, type CompanyScopedLabel } from '@/lib/system-label-scope';
 import { removeProfileOptionAction, saveProfileOptionsAction } from './profile-options/actions';
 import {
   assignLabelCompaniesAction,
@@ -37,7 +36,7 @@ import {
 } from '../actions';
 // 9a65f808 — the three grade-group writes, unchanged, from app/admin/actions.ts (NOT the settings actions
 // file above — the grade-group actions never moved, only their mount and their redirect did). Each calls
-// `requireAdmin()` itself, which is the same predicate this page's own `scopedAdmin()` guard applies, so
+// `requireAdmin()` itself, which is the same administrator guard this page applies, so
 // the move changes who can edit a grade group by nothing at all.
 import {
   createGradeGroupAction,
@@ -50,7 +49,7 @@ export default async function SystemLabelsPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { s } = await scopedAdmin();
+  const s=await requireAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
   // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
@@ -65,57 +64,29 @@ export default async function SystemLabelsPage({
   // ⚠️ A NAME ADDED TO THIS DESTRUCTURE MUST BE ADDED TO THE ARRAY BELOW IN THE SAME POSITION. Every
   // element is an array, so a mismatch shifts each later variable by one slot and NOTHING type-errors —
   // each catalogue silently becomes a different one.
-  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions, gradeGroups, writableCompanies, employees] =
+  const [companies, departments, positions, costCenters, businessUnits, grades, profileOptions, gradeGroups, employees] =
     await Promise.all([
-      listCompanies(s, { includeArchived: true }),
+      labelMaintenanceCompanies(s),
       listDepartmentsForLabels(s),
       listPositionsForLabels(s),
       listCostCentersForLabels(s),
       listBusinessUnitsForLabels(s),
-      listLabelAssignments(s, 'department'),
-      listLabelAssignments(s, 'position'),
-      listLabelAssignments(s, 'cost_center'),
-      listLabelAssignments(s, 'business_unit'),
       // b1b81a08 — Grades moved here from Leave Config. Archived rows load too so the grid can show and
-      // restore them. NOTE: grades are TENANT-WIDE, so they must NOT pass through inScope(...) below —
+      // restore them. NOTE: grades are TENANT-WIDE, so they must NOT pass through company Criteria —
       // job_grade has no company_id to narrow on.
       listJobGrades(s, { includeArchived: true }),
       // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
-      // here now. Like grades they are TENANT-WIDE, so they must NOT pass through inScope(...) below.
+      // here now. Like grades they are TENANT-WIDE, so they must NOT pass through company Criteria.
       listAllProfileOptions(s, { activeOnly: false }),
       // 9a65f808 — grade groups, maintained here now for the same reason grades are: they are the
       // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
-      // through inScope(...) below. Archived groups arrive too — the editor badges them and the editor is
+      // through company Criteria. Archived groups arrive too — the editor badges them and the editor is
       // the only surface that can un-archive one.
       listGradeGroups(s),
-      // f1bbc572 — the companies this admin may WRITE, resolved by the database's own `app.is_admin_for`
-      // (subtree grants included), NOT by the company switcher and NOT by the TS mirror in lib/authz. The
-      // grid renders every row outside this set read-only, because this is exactly the predicate the
-      // `tenant_isolation` WITH CHECK on these four tables applies to the UPDATE (0016:101-103).
-      adminCompanies(s),
-      // r285 — the Head (leave approver) options for the department / business-unit grids. Unpaginated
-      // and unfiltered on purpose: `resolveHeadEmploymentId` validates the chosen head against the unit's
-      // OWN company, so the grid buckets by company below, and a head already stored must be present in
-      // its bucket or its select would render blank and state "no head" about a unit that has one.
-      listEmployees(s),
+      // Head choices are database-admin scoped independently of the common workspace's company cookie.
+      labelMaintenanceHeadOptions(s),
     ]);
 
-
-  // Assignment map: labelId → [companyId, …]. The origin company is always included so the Scope cell can
-  // pre-check it (the origin is implicitly assigned; the backfill in 0157 wrote a self-assignment too).
-  const assignMap = (rows: { labelId: string; companyId: string }[]) => {
-    const m = new Map<string, string[]>();
-    for (const r of rows) {
-      const list = m.get(r.labelId) ?? [];
-      list.push(r.companyId);
-      m.set(r.labelId, list);
-    }
-    return m;
-  };
-  const deptMap = assignMap(deptAssign);
-  const posMap = assignMap(posAssign);
-  const ccMap = assignMap(ccAssign);
-  const buMap = assignMap(buAssign);
 
   const norm = (
     r: {
@@ -129,6 +100,7 @@ export default async function SystemLabelsPage({
       businessUnitId?: string | null;
       headEmploymentId?: string | null;
       description?: string | null;
+      assignedCompanyIds:string[];
       isGlobal: boolean;
       archivedAt: Date | null;
       inUse: boolean;
@@ -136,7 +108,6 @@ export default async function SystemLabelsPage({
       lastUpdatedAt: string | null;
       lastUpdatedBy: string | null;
     },
-    map: Map<string, string[]>,
   ): GridRecord => ({
     id: r.id,
     companyId: r.companyId,
@@ -151,24 +122,15 @@ export default async function SystemLabelsPage({
     isGlobal: r.isGlobal,
     archived: !!r.archivedAt,
     inUse: r.inUse,
-    assignedCompanyIds: [...(map.get(r.id) ?? [])],
+    assignedCompanyIds:[...r.assignedCompanyIds],
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
     lastUpdatedAt: r.lastUpdatedAt,
     lastUpdatedBy: r.lastUpdatedBy,
   });
 
-  // Common maintenance uses administered companies, independently of the current company switcher.
-  // Creation ownership remains visible even when that company is absent from a row's Criteria.
-  const maintenanceIds = new Set(writableCompanies.map(company => company.id));
-  const inScope = <T extends CompanyScopedLabel>(rows: T[]) => rows.filter(row =>
-    maintenanceIds.has(row.companyId) || labelsInCompanyScope([row], maintenanceIds).length > 0);
-
-  const data: Record<GridKind, GridRecord[]> = {
-    department: inScope(departments).map((r) => norm(r, deptMap)),
-    position: inScope(positions).map((r) => norm(r, posMap)),
-    cost_center: inScope(costCenters).map((r) => norm(r, ccMap)),
-    business_unit: inScope(businessUnits).map((r) => norm(r, buMap)),
-  };
+  // All four canonical reads apply database admin scope before bounds/counting; no switcher filter.
+  const maintenanceIds=new Set(companies.map(company=>company.id));
+  const data:Record<GridKind,GridRecord[]>={department:departments.map(norm),position:positions.map(norm),cost_center:costCenters.map(norm),business_unit:businessUnits.map(norm)};
 
   // 71bacb95: the Business Unit select was removed from the Department config grid (the BU link is now
   // maintained via the employee's organisation assignment), so the per-company BU option list it fed is no
@@ -188,7 +150,7 @@ export default async function SystemLabelsPage({
     });
   }
 
-  const gridCompanies = companies.filter(c => maintenanceIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
+  const gridCompanies = companies.filter(c => maintenanceIds.has(c.id)).map(c => ({ id: c.id, name: c.name,archived:!!c.archivedAt }));
 
   const actions = {
     save: saveLabelsGridAction,
@@ -273,6 +235,7 @@ export default async function SystemLabelsPage({
   return (
     <div className="w-full min-w-0 space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <p className="text-sm text-muted-foreground">{t('criteriaHelp')}</p>
       <SystemLabelsTabs active="organisation" />
       <SystemLabelImportTools />
       <ErrorBanner message={error} />
@@ -290,7 +253,7 @@ export default async function SystemLabelsPage({
       <SystemLabelsGrid
         data={data}
         companies={gridCompanies}
-        writableCompanyIds={writableCompanies.map((c) => c.id)}
+        writableCompanyIds={companies.map((c) => c.id)}
         headByCompany={headByCompany}
         isGroupAdmin={isGroupAdmin(s)}
         actions={actions}

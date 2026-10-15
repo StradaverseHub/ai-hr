@@ -708,7 +708,7 @@ export function listDepartments(
         and(
           opts.includeArchived ? undefined : isNull(department.archivedAt),
           // Shared System Labels (feedback 62de487d): filter by the resolver — origin ∪ shared-in ∪ global
-          // for companies whose shared_system_labels flag is ON — instead of raw origin company_id. With the
+          // for companies allowed by the saved per-code Criteria — instead of raw origin company_id. With the
           // flag OFF everywhere this collapses to inArray(company_id, companyIds): unchanged behaviour.
           opts.companyIds && opts.companyIds.length
             ? visibleLabelIdsCondition(department, 'department', opts.companyIds)

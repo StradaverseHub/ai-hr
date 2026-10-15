@@ -1,19 +1,4 @@
-/**
- * Shared System Labels — multi-company assignment (ADR-0073, feedback d356dec8). Phase 1+2 substrate:
- * the label_company_assignment junction, the is_global "All Companies" flag, the resolver, and the
- * assign/unassign/setGlobal mutations. Mirrors test/system-labels-relocation.test.ts for the admin-ctx /
- * RLS / substrate patterns.
- *
- * Covers:
- *   - Backfill: every existing label has a self-assignment (origin) after migration (implicitly via resolver).
- *   - Flag OFF ⇒ labelIdsForCompany returns ORIGIN-ONLY (byte-identical to today) even when a label is
- *     assigned/global — the phased-rollout safety guarantee.
- *   - Flag ON ⇒ a label assigned or made global surfaces in the target company.
- *   - Assign / unassign mutate the junction and append DomainEvents.
- *   - Data-integrity guard: unassign REFUSES a company that still uses the label via an employee assignment.
- *   - is_global write-gate: a GROUP admin may set it; a company-scoped admin is rejected by the DB trigger.
- *   - companiesForLabel unions origin ∪ junction ∪ (all-tenant when global).
- */
+/** System Labels compatibility consumers use the canonical explicit Criteria owner (ADR0122). */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -91,27 +76,25 @@ beforeEach(async () => {
   b = await seedBase();
 });
 
-describe('Shared System Labels — backfill + flag gating', () => {
+describe('System Labels — explicit origin backfill and retired flag independence', () => {
   it('backfills a self-assignment (origin) for every newly-created label', async () => {
     const a = adminCtx(b);
     const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Legal' });
-    // The create path does NOT write the junction (backfill is migration-only for pre-existing rows), but
-    // the resolver treats origin as implicit, so the origin company always resolves.
+    // The database seeds the explicit origin assignment for new scoped labels.
     const companies = await companiesForLabel(a, 'department', id);
     expect(companies).toContain(b.companyId);
   });
 
-  it('explicit OPT-OUT ⇒ labelIdsForCompany is ORIGIN-ONLY even when the label is assigned into the company', async () => {
+  it('retired flag OFF cannot hide a label explicitly assigned to the company', async () => {
     const a = adminCtx(b);
     const coB = await secondCompany();
     const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Shared Dept' });
     await assignLabelToCompanies(a, { kind: 'department', labelId: id, companyIds: [coB] });
 
-    // d61f0ff2: assigning auto-enabled coB's flag; the flag is now an explicit OPT-OUT. Opted out,
-    // the assigned label must NOT surface there (origin-only, byte-identical to the pre-share world).
+    // Existing flag data remains intact but no longer changes per-code availability.
     await setSharedFlag(coB, false);
     const idsOff = await labelIdsForCompany(a, 'department', coB);
-    expect(idsOff).not.toContain(id);
+    expect(idsOff).toContain(id);
   });
 
   it('flag ON ⇒ an assigned label surfaces in the target company', async () => {
@@ -159,9 +142,9 @@ describe('Shared System Labels — assign / unassign mutations + substrate', () 
       );
     expect(rows.length).toBe(1);
     expect(await eventTypesFor(b.tenantId, id)).toEqual(
-      expect.arrayContaining(['department.created', 'department.companies.assigned']),
+      expect.arrayContaining(['department.created', 'department.criteria.changed']),
     );
-    expect((await latestEventPayload(b.tenantId, id, 'department.companies.assigned'))?.companyIds).toEqual([coB]);
+    expect((await latestEventPayload(b.tenantId, id, 'department.criteria.changed'))?.companyIds).toEqual(expect.arrayContaining([b.companyId,coB]));
 
     await unassignLabelFromCompanies(a, { kind: 'department', labelId: id, companyIds: [coB] });
     rows = await owner.db
@@ -174,7 +157,8 @@ describe('Shared System Labels — assign / unassign mutations + substrate', () 
         ),
       );
     expect(rows.length).toBe(0);
-    expect(await eventTypesFor(b.tenantId, id)).toContain('department.companies.unassigned');
+    expect(await eventTypesFor(b.tenantId, id)).toContain('department.criteria.changed');
+    expect((await latestEventPayload(b.tenantId,id,'department.criteria.changed'))?.companyIds).toEqual([b.companyId]);
   });
 
   it('assign is idempotent (re-assigning the same company does not duplicate the junction row)', async () => {
@@ -245,7 +229,7 @@ describe('Shared System Labels — is_global write-gate (group-admin only)', () 
     await setLabelGlobal(a, { kind: 'department', labelId: id, isGlobal: true });
     const [row] = await owner.db.select().from(schema.department).where(eq(schema.department.id, id));
     expect(row.isGlobal).toBe(true);
-    expect(await eventTypesFor(b.tenantId, id)).toContain('department.made.global');
+    expect(await eventTypesFor(b.tenantId, id)).toContain('department.criteria.changed');
   });
 
   it('a COMPANY-scoped admin is rejected by the DB trigger when making a label global', async () => {
@@ -270,10 +254,10 @@ describe('Shared System Labels — Build 1: consumers read through the resolver 
     const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Resolver Dept' });
     await assignLabelToCompanies(a, { kind: 'department', labelId: id, companyIds: [coB] });
 
-    // Flag OFF everywhere → coB list must NOT contain the shared dept (byte-identical to today).
+    // Both legacy flag states resolve the same saved Criteria.
     await setSharedFlag(coB, false);
     const off = await listDepartments(a, { companyIds: [coB] });
-    expect(off.map((d) => d.id)).not.toContain(id);
+    expect(off.map((d) => d.id)).toContain(id);
 
     // Flag ON for coB → it now appears in coB's dropdown list.
     await setSharedFlag(coB, true);
@@ -355,11 +339,12 @@ describe('Shared System Labels — Build 2: bulkSaveLabels + company flag (62de4
     }
   });
 
-  it('setCompanySharedLabels flips the flag and appends a company event', async () => {
+  it('retired sharing mutation refuses without changing flag data or creating an event', async () => {
     const a = adminCtx(b);
-    await setCompanySharedLabels(a, { companyId: b.companyId, enabled: true });
+    const before=await eventTypesFor(b.tenantId,b.companyId);
+    await expect(setCompanySharedLabels(a, { companyId: b.companyId, enabled: true })).rejects.toThrow('sharing is automatic');
     const [co] = await owner.db.select().from(schema.company).where(eq(schema.company.id, b.companyId));
-    expect(co.sharedSystemLabels).toBe(true);
-    expect(await eventTypesFor(b.tenantId, b.companyId)).toContain('company.shared-labels.enabled');
+    expect(co.sharedSystemLabels).toBe(false);
+    expect(await eventTypesFor(b.tenantId,b.companyId)).toEqual(before);
   });
 });

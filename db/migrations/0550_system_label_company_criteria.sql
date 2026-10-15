@@ -14,6 +14,34 @@ INSERT INTO label_company_assignment(tenant_id,label_kind,label_id,company_id)
 SELECT tenant_id,'business_unit',id,company_id FROM business_unit WHERE NOT is_global
 ON CONFLICT DO NOTHING;--> statement-breakpoint
 
+-- Refuse ambiguous legacy data before activating the stricter owner. Never repair by renaming,
+-- deleting a code, or silently changing its criteria. The owner can reconcile a failed live rehearsal.
+DO $$
+DECLARE v_kind text;v_key text;v_conflict boolean;
+BEGIN
+ IF EXISTS(SELECT 1 FROM (SELECT tenant_id,id,company_id FROM department UNION ALL SELECT tenant_id,id,company_id FROM position UNION ALL SELECT tenant_id,id,company_id FROM cost_center UNION ALL SELECT tenant_id,id,company_id FROM business_unit) labels
+  LEFT JOIN company co ON co.id=labels.company_id AND co.tenant_id=labels.tenant_id WHERE co.id IS NULL) THEN
+  RAISE EXCEPTION 'Existing System Labels have invalid creation-company tenancy; reconcile before upgrading';
+ END IF;
+ IF EXISTS(SELECT 1 FROM label_company_assignment lca LEFT JOIN company co ON co.id=lca.company_id AND co.tenant_id=lca.tenant_id
+  LEFT JOIN (SELECT tenant_id,id,'department'::text AS kind FROM department UNION ALL SELECT tenant_id,id,'position' FROM position UNION ALL SELECT tenant_id,id,'cost_center' FROM cost_center UNION ALL SELECT tenant_id,id,'business_unit' FROM business_unit) labels
+   ON labels.id=lca.label_id AND labels.tenant_id=lca.tenant_id AND labels.kind=lca.label_kind
+  WHERE co.id IS NULL OR labels.id IS NULL) THEN
+  RAISE EXCEPTION 'Existing System Labels have invalid or orphan company Criteria; reconcile before upgrading';
+ END IF;
+ FOREACH v_kind IN ARRAY ARRAY['department','position','cost_center','business_unit'] LOOP
+  v_key:=CASE v_kind WHEN 'department' THEN 'name' WHEN 'position' THEN 'title' ELSE 'code' END;
+  EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I a JOIN public.%I b ON a.tenant_id=b.tenant_id AND a.id<b.id
+   WHERE a.archived_at IS NULL AND b.archived_at IS NULL AND lower(trim(a.%I))=lower(trim(b.%I))
+    AND (a.is_global OR b.is_global OR EXISTS(SELECT 1 FROM public.label_company_assignment x JOIN public.label_company_assignment y
+     ON x.tenant_id=y.tenant_id AND x.label_kind=y.label_kind AND x.company_id=y.company_id
+     WHERE x.tenant_id=a.tenant_id AND x.label_kind=$1 AND x.label_id=a.id AND y.label_id=b.id)))',v_kind,v_kind,v_key,v_key)
+   INTO v_conflict USING v_kind;
+  IF v_conflict THEN RAISE EXCEPTION 'Existing active System Label codes conflict under common Criteria; reconcile before upgrading';END IF;
+ END LOOP;
+END $$;
+--> statement-breakpoint
+
 -- A persistent coordination row makes concurrent writers restart even under REPEATABLE READ;
 -- advisory locks alone serialize timing but cannot refresh an already pinned MVCC snapshot.
 CREATE TABLE system_label_criteria_epoch (
@@ -53,6 +81,9 @@ BEGIN
     IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id;v_kind:=OLD.label_kind;
     ELSE v_tenant:=NEW.tenant_id;v_kind:=NEW.label_kind;END IF;
   ELSE
+    IF TG_OP='UPDATE' AND (NEW.id,NEW.tenant_id,NEW.company_id) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.company_id) THEN
+      RAISE EXCEPTION 'Label creation identity is immutable; change Criteria instead' USING ERRCODE='23514';
+    END IF;
     v_kind:=TG_TABLE_NAME;
     IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id;ELSE v_tenant:=NEW.tenant_id;END IF;
   END IF;
@@ -105,7 +136,7 @@ USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND app
 
 CREATE OR REPLACE FUNCTION app.check_label_company_criteria() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
-DECLARE v_tenant uuid;v_kind text;v_id uuid;v_key text;v_label record;v_collision boolean;v_cross boolean;
+DECLARE v_tenant uuid;v_kind text;v_id uuid;v_key text;v_label record;v_collision boolean;v_cross boolean;v_used boolean;v_fk text;
 BEGIN
   IF TG_TABLE_NAME='label_company_assignment' THEN
     IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id;v_kind:=OLD.label_kind;v_id:=OLD.label_id;
@@ -119,7 +150,7 @@ BEGIN
     RAISE EXCEPTION 'Invalid label criteria kind' USING ERRCODE='23514';
   END IF;
   v_key:=CASE v_kind WHEN 'department' THEN 'name' WHEN 'position' THEN 'title' ELSE 'code' END;
-  EXECUTE format('SELECT id,is_global,archived_at,lower(trim(%I)) AS code FROM public.%I WHERE tenant_id=$1 AND id=$2',v_key,v_kind)
+  EXECUTE format('SELECT id,company_id,is_global,archived_at,lower(trim(%I)) AS code FROM public.%I WHERE tenant_id=$1 AND id=$2',v_key,v_kind)
     INTO v_label USING v_tenant,v_id;
   IF v_label.id IS NULL THEN
     IF EXISTS(SELECT 1 FROM public.label_company_assignment WHERE tenant_id=v_tenant AND label_kind=v_kind AND label_id=v_id) THEN
@@ -127,6 +158,7 @@ BEGIN
     END IF;
     RETURN NULL;
   END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.company WHERE id=v_label.company_id AND tenant_id=v_tenant) THEN RAISE EXCEPTION 'Label creation company must belong to the same tenant' USING ERRCODE='23514';END IF;
   SELECT EXISTS(SELECT 1 FROM public.label_company_assignment lca LEFT JOIN public.company co
     ON co.id=lca.company_id AND co.tenant_id=lca.tenant_id
     WHERE lca.tenant_id=v_tenant AND lca.label_kind=v_kind AND lca.label_id=v_id AND co.id IS NULL) INTO v_cross;
@@ -134,6 +166,18 @@ BEGIN
   IF NOT v_label.is_global AND NOT EXISTS(SELECT 1 FROM public.label_company_assignment
     WHERE tenant_id=v_tenant AND label_kind=v_kind AND label_id=v_id) THEN
     RAISE EXCEPTION 'Scoped criteria require at least one company' USING ERRCODE='23514';
+  END IF;
+  IF NOT v_label.is_global THEN
+    v_fk:=CASE v_kind WHEN 'department' THEN 'department_id' WHEN 'position' THEN 'position_id' WHEN 'cost_center' THEN 'cost_center_id' ELSE 'business_unit_id' END;
+    EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.assignment a JOIN public.employment e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+      WHERE a.tenant_id=$1 AND a.%I=$2 AND a.superseded_at IS NULL AND NOT EXISTS(SELECT 1 FROM public.label_company_assignment lca
+        WHERE lca.tenant_id=$1 AND lca.label_kind=$3 AND lca.label_id=$2 AND lca.company_id=coalesce(a.company_id,e.company_id)))',v_fk)
+      INTO v_used USING v_tenant,v_id,v_kind;
+    IF v_used THEN RAISE EXCEPTION 'A company still uses this label; retain its Criteria' USING ERRCODE='23514';END IF;
+    IF v_kind='business_unit' AND EXISTS(SELECT 1 FROM public.department d WHERE d.tenant_id=v_tenant AND d.business_unit_id=v_id
+      AND NOT EXISTS(SELECT 1 FROM public.label_company_assignment lca WHERE lca.tenant_id=v_tenant AND lca.label_kind='business_unit' AND lca.label_id=v_id AND lca.company_id=d.company_id)) THEN
+      RAISE EXCEPTION 'A department still uses this business unit; retain its Criteria' USING ERRCODE='23514';
+    END IF;
   END IF;
   IF v_label.archived_at IS NOT NULL THEN RETURN NULL;END IF;
   EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I other WHERE other.tenant_id=$1 AND other.id<>$2
@@ -188,3 +232,75 @@ CREATE TRIGGER label_company_assignment_criteria_lock BEFORE INSERT OR UPDATE OR
 FOR EACH ROW EXECUTE FUNCTION app.lock_label_criteria_write();--> statement-breakpoint
 CREATE CONSTRAINT TRIGGER label_company_assignment_criteria_check AFTER INSERT OR UPDATE OR DELETE ON label_company_assignment
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.check_label_company_criteria();--> statement-breakpoint
+
+--> statement-breakpoint
+-- Reference writers participate in the same coordination order. A pinned MVCC writer cannot commit
+-- a reference validated before another transaction removed its company from the saved Criteria.
+CREATE FUNCTION app.lock_assignment_label_criteria() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+  PERFORM app.lock_system_label_criteria(NEW.tenant_id,'department');
+  PERFORM app.lock_system_label_criteria(NEW.tenant_id,'position');
+  PERFORM app.lock_system_label_criteria(NEW.tenant_id,'cost_center');
+  PERFORM app.lock_system_label_criteria(NEW.tenant_id,'business_unit');
+  RETURN NEW;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.check_assignment_label_criteria() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+DECLARE a public.assignment;e public.employment;v_company uuid;v_kind text;v_id uuid;v_allowed boolean;
+BEGIN
+ SELECT * INTO a FROM public.assignment WHERE id=NEW.id AND tenant_id=NEW.tenant_id;
+ IF NOT FOUND OR a.superseded_at IS NOT NULL THEN RETURN NULL;END IF;
+ SELECT * INTO e FROM public.employment WHERE id=a.employment_id AND tenant_id=a.tenant_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Assignment employment must belong to the same tenant' USING ERRCODE='23514';END IF;
+ v_company:=coalesce(a.company_id,e.company_id);
+ IF NOT EXISTS(SELECT 1 FROM public.company WHERE id=v_company AND tenant_id=a.tenant_id) THEN RAISE EXCEPTION 'Assignment company must belong to the same tenant' USING ERRCODE='23514';END IF;
+ FOR v_kind,v_id IN SELECT * FROM (VALUES('department',a.department_id),('position',a.position_id),('cost_center',a.cost_center_id),('business_unit',a.business_unit_id)) refs(kind,id) LOOP
+  IF v_id IS NULL THEN CONTINUE;END IF;
+  EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I label WHERE label.id=$1 AND label.tenant_id=$2 AND
+   (label.is_global OR EXISTS(SELECT 1 FROM public.label_company_assignment lca WHERE lca.label_id=label.id AND lca.tenant_id=label.tenant_id AND lca.label_kind=$3 AND lca.company_id=$4)))',v_kind)
+   INTO v_allowed USING v_id,a.tenant_id,v_kind,v_company;
+  IF NOT v_allowed THEN RAISE EXCEPTION 'Assignment label Criteria do not include its recorded company' USING ERRCODE='23514';END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.lock_assignment_label_criteria(),app.check_assignment_label_criteria() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER assignment_label_criteria_lock BEFORE INSERT OR UPDATE OF department_id,position_id,cost_center_id,business_unit_id,company_id,employment_id,superseded_at ON assignment
+FOR EACH ROW EXECUTE FUNCTION app.lock_assignment_label_criteria();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER assignment_label_criteria_check AFTER INSERT OR UPDATE OF department_id,position_id,cost_center_id,business_unit_id,company_id,employment_id,superseded_at ON assignment
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.check_assignment_label_criteria();
+
+--> statement-breakpoint
+CREATE FUNCTION app.lock_department_business_unit_criteria() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NEW.business_unit_id IS NOT NULL OR (TG_OP='UPDATE' AND OLD.business_unit_id IS NOT NULL) THEN
+  PERFORM app.lock_system_label_criteria(NEW.tenant_id,'business_unit');
+ END IF;
+ RETURN NEW;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.check_department_business_unit_criteria() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+DECLARE d public.department;
+BEGIN
+ SELECT * INTO d FROM public.department WHERE id=NEW.id AND tenant_id=NEW.tenant_id;
+ IF NOT FOUND OR d.business_unit_id IS NULL THEN RETURN NULL;END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.business_unit bu WHERE bu.id=d.business_unit_id AND bu.tenant_id=d.tenant_id AND
+  (bu.is_global OR EXISTS(SELECT 1 FROM public.label_company_assignment lca WHERE lca.tenant_id=bu.tenant_id AND lca.label_kind='business_unit' AND lca.label_id=bu.id AND lca.company_id=d.company_id))) THEN
+  RAISE EXCEPTION 'Department business-unit Criteria must include its creation company' USING ERRCODE='23514';
+ END IF;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.lock_department_business_unit_criteria(),app.check_department_business_unit_criteria() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER department_link_criteria_lock BEFORE INSERT OR UPDATE OF business_unit_id,company_id ON department
+FOR EACH ROW EXECUTE FUNCTION app.lock_department_business_unit_criteria();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER department_link_criteria_check AFTER INSERT OR UPDATE OF business_unit_id,company_id ON department
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.check_department_business_unit_criteria();

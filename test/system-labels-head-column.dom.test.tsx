@@ -132,7 +132,7 @@ function renderGrid(
     departments = [FINANCE, OPS],
     headByCompany = HEADS,
     writableCompanyIds = [CO],
-    companies = [{ id: CO, name: 'Acme Sdn Bhd', sharedSystemLabels: true }],
+    companies = [{ id: CO, name: 'Acme Sdn Bhd' }],
     locale = 'en',
     messages = en,
   } = opts;
@@ -145,11 +145,10 @@ function renderGrid(
       isGroupAdmin={false}
       actions={{
         save,
-        setGlobal: vi.fn(async () => ({ ok: true as const })),
+        setCriteria: vi.fn(async () => ({ ok: true as const })),
         assign: vi.fn(async () => ({ ok: true as const })),
         unassign: vi.fn(async () => ({ ok: true as const })),
         copyToCompanies: vi.fn(async () => ({ ok: true as const })),
-        setCompanyShared: vi.fn(async () => ({ ok: true as const })),
       }}
     />,
     locale,
@@ -240,6 +239,8 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
     const ops = heads(container)[1];
     expect(ops.value).toBe('emp-ravi');
     expect([...ops.options].map((o) => o.value)).toContain('emp-ravi');
+    expect(ops.selectedOptions[0].textContent).toBe(en.admin.systemLabels.headUnavailable);
+    expect(ops.selectedOptions[0].textContent).not.toContain('emp-ravi');
   });
 
   it('a text-only edit re-sends the loaded head unchanged — renaming a unit cannot unroute it', async () => {

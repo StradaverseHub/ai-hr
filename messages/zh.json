@@ -8622,7 +8622,7 @@
       "pageTitle": "系统标签",
       "pageDescription": "按公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元，以及全组织通用的职级。",
       "companies": "公司",
-      "noCompaniesInScope": "范围内没有公司。",
+      "noCompaniesInScope": "您的管理员权限范围内没有可用公司。",
       "countSummary": "{dept} 部门 · {pos} 职位 · {cc} 成本中心 · {bu} 业务单元",
       "fieldDescription": "描述",
       "descriptionPlaceholder": "简短备注（可选）",
@@ -8638,7 +8638,7 @@
       "bulkDeactivate": "停用",
       "copyToCompanies": "复制到公司",
       "cannotUnassignInUse": "无法取消指派：仍有公司在使用此标签。请先重新指派其员工。",
-      "globalGroupAdminOnly": "只有集团管理员才能将标签设为全局。",
+      "globalGroupAdminOnly": "只有集团管理员可以更改全局条件。",
       "notAdminForCompany": "该标签属于您无权管理的公司，因此无法在此修改。",
       "readOnlyRow": "只读 — 该标签属于您无权管理的公司。",
       "unexpectedError": "发生错误，未保存任何更改。请重试。",
@@ -8732,7 +8732,9 @@
           "skip": "跳过",
           "error": "错误"
         }
-      }
+      },
+      "headUnavailable": "已指定负责人，详情不可用",
+      "criteriaHelp": "全局代码自动适用于现有及以后新增的所有公司。每个代码也可指定公司列表。公司管理员保留现有权限限制，只有集团管理员可更改全局条件。"
     },
     "leave": {
       "typesSectionTitle": "休假类型设置",

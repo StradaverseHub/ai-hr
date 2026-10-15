@@ -17,7 +17,7 @@ const book=(data:Record<string,Record<string,string>[]>)=>{
   const wb=XLSX.utils.book_new();
   for(const [kind,rows]of Object.entries(data)){
     const d=LABEL_IMPORT_DEFINITIONS.find(x=>x.kind===kind)!;
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([d.columns,...rows.map(r=>d.columns.map(c=>r[c]??''))]),kind);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([d.columns,...rows.map(r=>d.columns.map(c=>(c==='Criteria'?(r.Criteria??(r.Scope==='global'?'global':'companies')):c==='Criteria Companies'?(r['Criteria Companies']??(r.Scope==='global'?'':[r.Company,r['Shared Companies']].filter(Boolean).join(';'))):r[c])??''))]),kind);
   }
   return XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;
 };
@@ -69,7 +69,7 @@ describe('reviewed System Labels imports',()=>{
     await expect(previewSystemLabelImport(other,book({division:[{Code:'FORBIDDEN'}]}),'add')).rejects.toThrow('administrator');
     await expect(downloadSystemLabelTemplate(other)).rejects.toThrow('administrator');
     const original=book({department:[{Company:b.companyId,Scope:'own',Code:'KEEP'}]});await apply(original);
-    expect((await previewSystemLabelImport(adminCtx(b),book({department:[{Company:b.companyId,Scope:'global',Code:'KEEP'}]}),'update')).valid).toBe(false);
+    expect((await previewSystemLabelImport(adminCtx(b),book({department:[{Company:b.companyId,Criteria:'companies','Criteria Companies':'',Code:'KEEP'}]}),'update')).valid).toBe(false);
   });
   it('uses the grade and grade-group services without detaching existing membership',async()=>{
     await apply(book({grades:[{Code:'EXCEL_G1',Label:'Excel grade',Rank:'4'}]}));

@@ -8622,7 +8622,7 @@
       "pageTitle": "System Labels",
       "pageDescription": "Set up the shared lists everyone else picks from — departments, positions, cost centers and business units per company, plus your organisation-wide grades.",
       "companies": "Companies",
-      "noCompaniesInScope": "No companies in scope.",
+      "noCompaniesInScope": "No companies are available within your administrator access.",
       "countSummary": "{dept} dept · {pos} pos · {cc} cc · {bu} bu",
       "fieldDescription": "Description",
       "descriptionPlaceholder": "Short note (optional)",
@@ -8638,7 +8638,7 @@
       "bulkDeactivate": "Deactivate",
       "copyToCompanies": "Copy to companies",
       "cannotUnassignInUse": "Cannot unassign: a company still uses this label. Reassign its employees first.",
-      "globalGroupAdminOnly": "Only a group admin can make a label global.",
+      "globalGroupAdminOnly": "Only a group administrator can change Global criteria.",
       "notAdminForCompany": "This label belongs to a company you do not administer, so it cannot be changed here.",
       "readOnlyRow": "Read-only — this label belongs to a company you do not administer.",
       "unexpectedError": "Something went wrong and nothing was saved. Please try again.",
@@ -8732,7 +8732,9 @@
           "skip": "Skip",
           "error": "Error"
         }
-      }
+      },
+      "headUnavailable": "Assigned head — details unavailable",
+      "criteriaHelp": "Global codes are available in every current and future company. Each code can instead use a selected company list. Company administrators retain their existing limits; only group administrators can change Global criteria."
     },
     "leave": {
       "typesSectionTitle": "Leave type settings",

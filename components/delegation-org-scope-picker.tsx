@@ -15,10 +15,7 @@ import { labelInCompanyScope, labelsInCompanyScope } from '@/lib/system-label-sc
  */
 
 export type OrgScopeMasters = {
-  /** f1bbc572 — `sharedSystemLabels` is the company's Shared System Labels opt-out (core/system-labels.ts).
-   *  It is carried so this picker can offer exactly what `labelUsableByCompany` on the server will ACCEPT:
-   *  a global label counts for a company only while that company's flag is on, and offering an option the
-   *  save then rejects would be worse than not offering it. */
+  /** Label availability comes from Global or each record's explicit company Criteria. */
   companies: { id: string; name: string }[];
   businessUnits: { id: string; name: string; companyId: string; isGlobal: boolean; assignedCompanyIds: string[] }[];
   departments: { id: string; name: string; companyId: string; businessUnitId: string | null; isGlobal: boolean; assignedCompanyIds: string[] }[];
