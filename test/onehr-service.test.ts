@@ -5,6 +5,7 @@ import { architectureHeaders } from '../packs/performance/onehr/architecture-mod
 import { recordLoginSucceeded } from '../core/auth';
 import { parseCsv,toCsv } from '../lib/csv';
 import { randomUUID } from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -42,8 +43,13 @@ async function restrictedReminderMailOwner(run:(role:string)=>Promise<void>){
     await owner.client.unsafe(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app,identity_email TO "${role}"`);
     for(const table of tables)await owner.client.unsafe(`ALTER TABLE ${table} OWNER TO "${role}"`);
     await owner.client.unsafe(`ALTER FUNCTION identity_email.assessment_tasks(uuid,uuid,text) OWNER TO "${role}"`);
-    const [flags]=await owner.client`select r.rolsuper,r.rolbypassrls,p.prosecdef,pg_has_role('ai_hr_app',r.oid,'USAGE') as app_member from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='identity_email.assessment_tasks(uuid,uuid,text)'::regprocedure`;
-    expect(flags).toEqual({rolsuper:false,rolbypassrls:false,prosecdef:true,app_member:false});
+    // Deployment must define the helper as the same restricted owner, not only invoke it later.
+    const migration=readFileSync(new URL('../db/migrations/0542_account_email_failures.sql',import.meta.url),'utf8');
+    const marker=migration.indexOf('CREATE OR REPLACE FUNCTION identity_email.assessment_tasks(');
+    expect(marker).toBeGreaterThanOrEqual(0);const definition=migration.slice(marker);expect(definition.length).toBeGreaterThan(1800);
+    await owner.client.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE "${role}"`);await tx.unsafe(definition);});
+    const [flags]=await owner.client`select r.rolsuper,r.rolbypassrls,p.prosecdef,pg_has_role('ai_hr_app',r.oid,'USAGE') as app_member,has_parameter_privilege(r.oid,'app.tenant_id','SET') as persistent_context_set from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='identity_email.assessment_tasks(uuid,uuid,text)'::regprocedure`;
+    expect(flags).toEqual({rolsuper:false,rolbypassrls:false,prosecdef:true,app_member:false,persistent_context_set:false});
     expect((await owner.client`select relforcerowsecurity from pg_class where oid in ('performance_assessment_reminder_run'::regclass,'performance_assessment_reminder_recipient'::regclass) order by relname`).map(r=>r.relforcerowsecurity)).toEqual([true,true]);
     await run(role);
   }finally{
@@ -2470,6 +2476,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
       });
       const [payload]=await owner.db.execute<{value:{tasks:{key:string}[];words:{subject:string;opening:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`);
       expect(payload.value).not.toBeNull();
+      expect((await owner.client`select app.current_tenant_id() as tenant,app.current_user_id() as actor,app.is_group_admin() as elevated`)[0]).toEqual({tenant:null,actor:null,elevated:false});
       expect(payload.value.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);expect(payload.value.words).toEqual({subject:'Assessment: review Native annual assessment',opening:'Please complete 1 task groups.'});
       for(const [id,nonce,who] of [[delivery.id,randomUUID(),issuer],[randomUUID(),token,issuer],[delivery.id,token,'https://foreign.fixture.test']])expect((await owner.client`select identity_email.assessment_tasks(${id}::uuid,${nonce}::uuid,${who}) as value`)[0].value).toBeNull();
       expect((await owner.client`select * from identity_email.delivery_summary(${delivery.id}::uuid,${token}::uuid,${issuer})`)[0]).toMatchObject({required:true,summary:payload.value});
@@ -2477,7 +2484,14 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
         const foreign=randomUUID(),actor=randomUUID(),grants=JSON.stringify([{role:'employee',companyId:randomUUID()}]);
         await tx`select set_config('app.tenant_id',${foreign},true),set_config('app.user_id',${actor},true),set_config('app.roles','employee',true),set_config('app.grants',${grants},true)`;
         expect((await tx`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`)[0].value).toEqual(payload.value);
-        expect((await tx`select current_setting('app.tenant_id') as tenant,current_setting('app.user_id') as actor,current_setting('app.roles') as roles,current_setting('app.grants') as grants`)[0]).toEqual({tenant:foreign,actor,roles:'employee',grants});
+        expect((await tx`select identity_email.assessment_tasks(${delivery.id}::uuid,${randomUUID()}::uuid,${issuer}) as value`)[0].value).toBeNull();
+      const [prepared]=await tx`select tasks from performance_assessment_reminder_recipient where id=${recipient.id}::uuid`;
+      await tx`update performance_assessment_reminder_recipient set tasks=jsonb_set(tasks,'{0,closesAt}',to_jsonb('not-a-timestamp'::text)) where id=${recipient.id}::uuid`;
+      // Exercise an actual payload-query exception after context was established. The caught
+      // statement rolls back through the helper and savepoint, retaining the caller's scope.
+      await expect(tx.savepoint(async sp=>{await sp`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer})`;})).rejects.toMatchObject({code:'22007'});
+      expect((await tx`select current_setting('app.tenant_id') as tenant,current_setting('app.user_id') as actor,current_setting('app.roles') as roles,current_setting('app.grants') as grants`)[0]).toEqual({tenant:foreign,actor,roles:'employee',grants});
+      await tx`update performance_assessment_reminder_recipient set tasks=${JSON.stringify(prepared.tasks)}::jsonb where id=${recipient.id}::uuid`;
       });
       const rollback=Error('Rollback the private start acceptance fixture');
       await expect(owner.client.begin(async tx=>{
