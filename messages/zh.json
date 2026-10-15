@@ -17074,8 +17074,25 @@
     "security": "加密",
     "tlsSecurity": "SSL/TLS（隐式 TLS）",
     "previewTitle": "SMTP 设置预览",
-    "demoSetup": "此演示展示 SMTP 连接字段供您查看。保存凭据、发送测试邮件和启用邮件发送需要经过验证的安装管理员登录。此处不会加载或保存邮件服务器信息。",
-    "restrictedSetup": "只有已注册的安装管理员才能查看或更改实际 SMTP 设置。请联系安装管理员完成设置。这些字段仅展示支持的配置。"
+    "demoSetup": "输入 SMTP 信息以检查安全连接和登录。此临时测试不会更改当前邮件服务器。",
+    "restrictedSetup": "只有已注册的安装管理员才能查看或更改实际 SMTP 设置。请联系安装管理员完成设置。这些字段仅展示支持的配置。",
+    "demoTestTitle": "测试 SMTP 连接",
+    "starttlsSecurity": "TLS（必须使用 STARTTLS）",
+    "testConnection": "测试连接",
+    "testingConnection": "正在测试连接…",
+    "demoTestHelp": "请对公共 SMTP 服务器使用 SSL/TLS（通常为 465 端口）或强制 STARTTLS（通常为 587 端口）。不会发送邮件。信息不会保存，每次测试后密码都会清空。",
+    "demoAuthenticated": "安全连接和 SMTP 登录成功。尚未测试邮件投递。",
+    "demoConnected": "安全连接成功。未请求身份验证，尚未测试邮件投递。",
+    "demoErrors": {
+      "forbidden": "仅演示环境中的 HR 管理员可以测试连接。",
+      "invalid": "请检查 SMTP 主机名和端口。选择密码验证时请输入用户名和密码。",
+      "blockedHost": "演示测试需要公共 SMTP 服务器。此处不支持本地、私有或特殊用途地址。",
+      "busy": "连接测试正忙或已达到测试次数限制。请等待一分钟后重试。",
+      "authenticationFailed": "SMTP 登录失败。请检查用户名、密码及提供商的 SMTP 访问设置，然后重新输入密码重试。",
+      "tlsFailed": "无法验证安全连接。请检查加密设置及服务器的 TLS 证书。",
+      "connectionFailed": "无法连接 SMTP 服务器。请检查主机名、端口、加密设置及提供商的网络访问规则。",
+      "unavailable": "无法完成连接测试。请重新输入密码后重试。"
+    }
   },
   "workflowEmail": {
     "recipientCode": "员工编号",
