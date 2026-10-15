@@ -10374,3 +10374,71 @@ export const aiModelRun=pgTable('ai_model_run',{
  state:text('state').notNull(),reason:text('reason'),reservedTokens:bigint('reserved_tokens',{mode:'number'}).notNull(),
  actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
 },t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);
+
+// fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
+export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {
+  tenantId: tenantId().primaryKey(), revision: bigint('revision',{mode:'number'}).notNull().default(0),
+});
+export const overtimePattern = pgTable('overtime_pattern', {
+  id:id(),tenantId:tenantId(),kind:text('kind').notNull().$type<'formula'|'legacy'>(),
+  code:text('code'),creationCompanyId:uuid('creation_company_id').references(()=>company.id),
+  legacyRuleRef:uuid('legacy_rule_ref'),legacyRuleId:uuid('legacy_rule_id').references(()=>attendanceRule.id,{onDelete:'set null'}),
+  revision:integer('revision').notNull().default(1),archivedAt:timestamp('archived_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_code_uq').on(t.tenantId,sql`lower(${t.code})`).where(sql`${t.kind}='formula' AND ${t.archivedAt} is null`),uniqueIndex('overtime_pattern_legacy_uq').on(t.tenantId,t.legacyRuleRef)]);
+export const overtimePatternVersion = pgTable('overtime_pattern_version', {
+  id:id(),tenantId:tenantId(),patternId:uuid('pattern_id').notNull().references(()=>overtimePattern.id,{onDelete:'restrict'}),
+  kind:text('kind').notNull().$type<'formula'|'legacy'>(),creationCompanyId:uuid('creation_company_id').references(()=>company.id),
+  ordinal:integer('ordinal').notNull(),revision:integer('revision').notNull().default(1),name:text('name').notNull(),description:text('description').notNull().default(''),
+  definition:jsonb('definition').notNull().$type<Record<string,unknown>>(),digest:text('digest').notNull(),
+  activatedAt:timestamp('activated_at',{withTimezone:true}),activatedBy:uuid('activated_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_version_ordinal_uq').on(t.patternId,t.ordinal)]);
+export const overtimePatternVersionCompany = pgTable('overtime_pattern_version_company', {
+  tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),
+},t=>[primaryKey({columns:[t.versionId,t.companyId]})]);
+export const overtimePatternVersionState = pgTable('overtime_pattern_version_state', {
+  id:id(),tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),
+  sequence:integer('sequence').notNull(),state:text('state').notNull().$type<'active'|'inactive'|'archived'>(),effectiveFrom:date('effective_from').notNull(),reason:text('reason').notNull(),createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_state_sequence_uq').on(t.versionId,t.sequence)]);
+export const overtimePatternLegacyBinding = pgTable('overtime_pattern_legacy_binding', {
+  id:id(),tenantId:tenantId(),legacyRuleRef:uuid('legacy_rule_ref').notNull(),ruleId:uuid('rule_id').references(()=>attendanceRule.id,{onDelete:'set null'}),
+  versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),effectiveFrom:date('effective_from').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_pattern_legacy_version_uq').on(t.legacyRuleRef,t.versionId)]);
+export const overtimePatternAssignment = pgTable('overtime_pattern_assignment', {
+  id:id(),tenantId:tenantId(),versionId:uuid('version_id').notNull().references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),
+  target:jsonb('target').notNull().$type<Record<string,unknown>>(),priority:integer('priority').notNull(),validFrom:date('valid_from').notNull(),validTo:date('valid_to'),
+  supersededAt:timestamp('superseded_at',{withTimezone:true}),closeReason:text('close_reason'),revision:integer('revision').notNull().default(1),createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[index('overtime_pattern_assignment_dates_idx').on(t.tenantId,t.validFrom,t.validTo)]);
+export const overtimePatternAssignmentEmployment = pgTable('overtime_pattern_assignment_employment', {
+  tenantId:tenantId(),assignmentId:uuid('assignment_id').notNull().references(()=>overtimePatternAssignment.id,{onDelete:'restrict'}),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'restrict'}),
+},t=>[primaryKey({columns:[t.assignmentId,t.employmentId]})]);
+export const attendanceOvertimeSource = pgTable('attendance_overtime_source', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'restrict'}),
+  attendanceId:uuid('attendance_id').notNull().references(()=>attendance.id,{onDelete:'restrict'}),attendanceDate:date('attendance_date').notNull(),currentCalculationId:uuid('current_calculation_id'),revision:integer('revision').notNull().default(0),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_overtime_day_uq').on(t.tenantId,t.employmentId,t.attendanceDate)]);
+export const attendanceOvertimeCalculation = pgTable('attendance_overtime_calculation', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
+  versionId:uuid('version_id').references(()=>overtimePatternVersion.id,{onDelete:'restrict'}),assignmentId:uuid('assignment_id').references(()=>overtimePatternAssignment.id,{onDelete:'restrict'}),
+  ordinal:integer('ordinal').notNull(),inputDigest:text('input_digest').notNull(),approvalDigest:text('approval_digest').notNull(),referenceDigest:text('reference_digest').notNull(),
+  outcome:text('outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),currency:text('currency').notNull(),minorScale:integer('minor_scale').notNull(),
+  durationInputDigest:text('duration_input_digest'),durationOutcome:text('duration_outcome').notNull().$type<'ready'|'ineligible'|'refused'>(),approvalStatus:text('approval_status').notNull(),transferable:boolean('transferable').notNull(),payableNumerator:text('payable_numerator'),payableDenominator:text('payable_denominator'),reason:text('reason').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_overtime_calculation_ordinal_uq').on(t.sourceId,t.ordinal),index('attendance_overtime_calculation_source_idx').on(t.tenantId,t.sourceId)]);
+export const attendanceOvertimeLine = pgTable('attendance_overtime_line', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),calculationId:uuid('calculation_id').notNull().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  lineKey:text('line_key').notNull(),sequence:integer('sequence').notNull(),componentId:uuid('component_id').notNull().references(()=>payComponent.id,{onDelete:'restrict'}),
+  amountMinorUnits:text('amount_minor_units').notNull(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_overtime_line_key_uq').on(t.calculationId,t.lineKey)]);
+export const overtimeSourceSettlement = pgTable('overtime_source_settlement', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
+  ownerReference:jsonb('owner_reference').notNull().$type<{type:'payroll_batch'|'toil_accrual';id:string}>(),mode:text('mode').notNull().$type<'cash'|'toil'>(),calculationId:uuid('calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
+  payrollBatchId:uuid('payroll_batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),toilAccrualId:uuid('toil_accrual_id').references(()=>toilAccrual.id,{onDelete:'set null'}),
+  revision:integer('revision').notNull().default(1),releasedAt:timestamp('released_at',{withTimezone:true}),releaseReason:text('release_reason'),createdAt:createdAt(),
+},t=>[uniqueIndex('overtime_source_active_settlement_uq').on(t.sourceId).where(sql`${t.releasedAt} is null`)]);
+export const attendanceOvertimePersonnelContext = pgTable('attendance_overtime_personnel_context', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
+  facts:jsonb('facts').notNull().$type<Record<string,unknown>>(),ownerReference:text('owner_reference').notNull(),recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('attendance_overtime_context_source_uq').on(t.sourceId)]);
+
+export const attendanceOvertimeCalculationEvidence = pgTable('attendance_overtime_calculation_evidence', {
+  calculationId:uuid('calculation_id').primaryKey().references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  inputs:jsonb('inputs').notNull().$type<Record<string,unknown>>(),evidence:jsonb('evidence').notNull().$type<Record<string,unknown>>(),
+});
