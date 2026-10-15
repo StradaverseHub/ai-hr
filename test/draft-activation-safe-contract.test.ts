@@ -7,7 +7,8 @@ import {
   type DraftActivationValidationCode, type DraftActivationProblem,
 } from '../core/employee-draft';
 import { DependentValidationError } from '../core/dependents';
-import { MissingBankForTransferError } from '../core/org';
+import { MissingBankForTransferError, PersonProfileCatalogError } from '../core/org';
+import {ProfileOptionValueError} from '../core/profile-options';
 import { IncompleteCustomHolderError } from '../lib/custom-holder';
 import { DRAFT_TABS } from '../lib/employee-draft-schema';
 
@@ -35,6 +36,13 @@ describe('safe Draft activation validation projection', () => {
     safe(draftActivationValidation(error));
   });
 
+  it('preserves existing catalog messages while projecting only actual finite field metadata',()=>{
+    const owner=new ProfileOptionValueError('state',privateValue),wrapped=new PersonProfileCatalogError('correspondenceState',owner);
+    expect(owner.message).toBe(`"${privateValue}" is not an active state option`);expect(wrapped.message).toBe(owner.message);
+    expect(draftActivationValidation(wrapped)).toEqual({code:'profile_invalid',fields:[{tab:'profile',field:'correspondenceState'}]});
+    const legacy=new PersonProfileCatalogError('state',owner);expect(draftActivationValidation(legacy)).toBeNull();
+  });
+
   it.each([
     [new DraftPayrollSetupError('policy_inactive'), 'payroll_invalid', 'payroll', 'payrollPolicyId'],
     [new DraftPayrollSetupError('payment_method_invalid'), 'payroll_invalid', 'payroll', 'paymentMethod'],
@@ -42,7 +50,9 @@ describe('safe Draft activation validation projection', () => {
     [new MissingBankForTransferError(), 'payroll_invalid', 'payroll', 'paymentMethodBank'],
     [new IncompleteCustomHolderError('id'), 'statutory_invalid', 'bankStatutory', 'customHolderId'],
     [new DependentValidationError(privateValue), 'family_invalid', 'family', 'familyMemberRelationship'],
-    [new Error(`"${privateValue}" is not an active salutation option`), 'profile_invalid', 'profile', 'salutation'],
+    [new PersonProfileCatalogError('salutation',new ProfileOptionValueError('salutation',privateValue)), 'profile_invalid', 'profile', 'salutation'],
+    [new PersonProfileCatalogError('correspondenceState',new ProfileOptionValueError('state',privateValue)), 'profile_invalid', 'profile', 'correspondenceState'],
+    [new PersonProfileCatalogError('correspondenceCountry',new ProfileOptionValueError('country',privateValue)), 'profile_invalid', 'profile', 'correspondenceCountry'],
     [new Error(`Employee ID "${privateValue}" is already in use`), 'employee_code_invalid', 'profile', 'employeeCode'],
   ])('maps owner refusal %s without exposing its message', (error, code, tab, field) => {
     const problem = draftActivationValidation(error);
@@ -65,6 +75,7 @@ describe('safe Draft activation validation projection', () => {
 
   it.each([
     new Error(privateValue),
+    new Error(`"${privateValue}" is not an active state option`),
     new Error('toString'),
     { code: '42501', message: privateValue },
     Object.assign(new Error(`Failed query: insert into person values (${privateValue})`), { name: 'DrizzleQueryError' }),
@@ -110,4 +121,16 @@ describe('activation transaction composition boundary', () => {
     expect(activation.slice(references)).toContain(".for('share')");
   });
 
+});
+
+
+describe('one action owns its exact saved Draft input',()=>{
+ it('delegates once and retains the Draft lock across save and the activation savepoint',()=>{
+  const action=readFileSync(new URL('../app/admin/personnel/new/actions.ts',import.meta.url),'utf8');
+  const start=action.indexOf('export async function createEmployeeAction(');expect(start).toBeGreaterThanOrEqual(0);const body=action.slice(start);expect(body.length).toBeGreaterThan(300);
+  expect(body).toContain('await saveAndCompleteEmployeeDraft(session,');expect(body).not.toContain('await saveEmployeeDraft(');expect(body).not.toContain('await completeEmployeeDraft(');
+  const source=readFileSync(new URL('../core/employee-draft.ts',import.meta.url),'utf8');const combined=source.indexOf('export async function saveAndCompleteEmployeeDraft('),next=source.indexOf('export async function completeEmployeeDraft(',combined);expect(combined).toBeGreaterThanOrEqual(0);expect(next).toBeGreaterThan(combined);const owner=source.slice(combined,next);expect(owner.length).toBeGreaterThan(800);
+  expect(owner).toContain('await saveEmployeeDraft(ctx,p,tx)');expect(owner).toContain('tx.transaction(activationTx=>completeEmployeeDraftTx(activationTx,ctx,saved.id))');expect(owner.indexOf('if(!outcome.ok)throw outcome.error')).toBeGreaterThan(owner.indexOf('return {ok:false as const,error}'));
+  const saveStart=source.indexOf('export async function saveEmployeeDraft('),saveEnd=source.indexOf('/**',saveStart);expect(saveStart).toBeGreaterThanOrEqual(0);expect(saveEnd).toBeGreaterThan(saveStart);const save=source.slice(saveStart,saveEnd);expect(save.length).toBeGreaterThan(1500);expect(save.indexOf(".for('update')")).toBeLessThan(save.indexOf('.update(employeeDraft)'));
+ });
 });

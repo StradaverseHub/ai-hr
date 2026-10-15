@@ -507,6 +507,13 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
   });
 }
 
+/** Typed owner refusal; message stays compatible, metadata contains only the catalog category. */
+export class ProfileOptionValueError extends Error {
+  constructor(readonly category:ProfileOptionCategory,value:string) {
+    super(`"${value}" is not an active ${category} option`);this.name='ProfileOptionValueError';
+  }
+}
+
 /**
  * Server-side validation for a person-profile save: the new value must be an ACTIVE catalog option — UNLESS
  * it equals the legacy value already stored (legacy-value tolerance: re-saving the profile must never blank
@@ -529,5 +536,5 @@ export async function assertProfileValueAllowed(
   // free-text behaviour — the dropdown only constrains input once the tenant actually has options.
   if (options.length === 0) return;
   if (options.some((o) => o.isActive && o.value === newValue)) return;
-  throw new Error(`"${newValue}" is not an active ${category} option`);
+  throw new ProfileOptionValueError(category,newValue);
 }
