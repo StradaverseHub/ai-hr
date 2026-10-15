@@ -1337,3 +1337,21 @@ export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, perso
       .limit(1);
     return row ?? null;
   }
+
+/** Partial registration-number write. Never routes a narrow import through the full statutory overwrite. */
+export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:string;epfNumber?:string|null;socsoNumber?:string|null},outerTx?:Tx) {
+  const values:{epfNumber?:string|null;socsoNumber?:string|null}={};
+  if(p.epfNumber!==undefined)values.epfNumber=p.epfNumber?.trim()||null;
+  if(p.socsoNumber!==undefined)values.socsoNumber=p.socsoNumber?.trim()||null;
+  if(!Object.keys(values).length)throw new Error('Nothing to change.');
+  const run=async(tx:Tx)=>{
+    const [before]=await tx.select({id:employeeStatutoryMy.id,epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,p.personId)).limit(1).for('update');
+    if(!before)throw new NoStatutoryProfileError();
+    const fields=Object.entries(values).filter(([field,value])=>before[field as 'epfNumber'|'socsoNumber']!==value).map(([field])=>field);
+    if(!fields.length)return {id:before.id};
+    await tx.update(employeeStatutoryMy).set({...values,updatedAt:sql`now()`}).where(eq(employeeStatutoryMy.id,before.id));
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employee-statutory',aggregateId:before.id,eventType:'employee.statutory-registration.updated',actor:actorOf(ctx),subjectEmploymentId:await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),payload:{fields}});
+    return {id:before.id};
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
+}

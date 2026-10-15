@@ -1,4 +1,5 @@
 'use client';
+import { PersonnelImportValues } from '@/components/personnel-import-values';
 
 import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -737,7 +738,7 @@ function PreviewTable({
           {preview.rows.map((r) => (
             <tr key={r.rowNum} className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
               <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
-              <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}</td>
+              <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}<PersonnelImportValues values={r.proposed} sheet="employee" /></td>
               <td className="px-4 py-2 text-muted-foreground">{r.email || '—'}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.company || '—'}</td>
               <td className="px-4 py-2">

@@ -44,7 +44,7 @@ describe('Personnel forms and file contract',()=>{
     expect(result.records.map(row=>row.employee_code)).toEqual(['A001','A001']);
   });
   it('adds ordinary Profile fields to both full and section templates from the declaration',()=>{
-    for(const field of PERSONNEL_FIELDS.filter(field=>field.import.writer)) {
+    for(const field of PERSONNEL_FIELDS.filter(field=>['person-profile','person-compliance'].includes(field.import.writer??''))) {
       expect(columns).toContain(field.import.column);
       expect(sectionColumns('profile')).toContain(field.import.column);
     }
@@ -71,6 +71,14 @@ it('keeps compound Employment headings distinct in every locale',()=>{
     const resolver=resolve(locale);
     expect(personnelColumnLabel('probation_value','employee',resolver)).not.toBe(personnelColumnLabel('probation_unit','employee',resolver));
     const parsed=parsePersonnelImportCsv(buildTemplateCsv(employeeTemplate,resolver),{columns,resolvers:[resolver]});
-    expect(parsed.records[0].probation_months).toBe('3');
+    expect(parsed.records[0].probation_value).toBe('3');
+    expect(parsed.records[0].probation_unit).toBe('month');
+    expect(parsed.headers).not.toContain('probation_months');
   }
+});
+
+it('removes old compound columns from downloads but accepts them for one warned generation',()=>{
+  expect(employeeTemplate.columns.map(column=>column.key)).not.toContain('probation_months');
+  expect(parsePersonnelImportCsv('Probation Period (month)\n3',{columns,generation:2}).warnings[0]).toContain('Older header');
+  expect(()=>parsePersonnelImportCsv('Probation Period (month)\n3',{columns,generation:3})).toThrow(/removed/);
 });

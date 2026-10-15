@@ -1965,7 +1965,8 @@
       "verdictCreate": "未找到",
       "verdictBlocked": "已阻止",
       "fieldValue": "数值",
-      "fieldUnit": "单位"
+      "fieldUnit": "单位",
+      "proposedValues": "拟导入值"
     },
     "wizard": {
       "fields": {

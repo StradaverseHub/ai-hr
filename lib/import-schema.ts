@@ -5,6 +5,7 @@ import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY } from './personnel-fi
 export type ImportRecord = Record<string, string>;
 
 export type RowResult = {
+  proposed?:{column:string;value:string}[];
   rowNum: number; // 1-based data row (header excluded)
   fullName: string;
   email: string;
@@ -175,3 +176,7 @@ export type DependentPreview = {
   rows: DependentRowResult[];
   missingColumns: string[];
 };
+
+/** Prior compound columns are read for one generation but never emitted by new templates. */
+export const RETIRED_PERSONNEL_TEMPLATE_COLUMNS:readonly string[]=['probation_months','probation_days','resignation_notice_months','resignation_notice_days'];
+export const EMPLOYEE_TEMPLATE_COLUMNS={required:IMPORT_COLUMNS.required,optional:IMPORT_COLUMNS.optional.filter(column=>!RETIRED_PERSONNEL_TEMPLATE_COLUMNS.includes(column))};

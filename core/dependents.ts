@@ -1,3 +1,5 @@
+import { dependentNaturalKey } from '../lib/dependent-identity';
+export { dependentNaturalKey } from '../lib/dependent-identity';
 /**
  * Personnel Information — Family / Dependents (phase 1). A per-PERSON register of a person's family
  * members / dependents (spouse, child, parent, sibling, other) for BENEFITS / INSURANCE records only.
@@ -976,13 +978,6 @@ export async function materialiseDependents(
   const childReliefSync =
     res.created.length > 0 ? await syncChildReliefFromFamily(ctx, p.personId) : NO_SYNC('unchanged');
   return { ...res, childReliefSync };
-}
-
-/** The idempotency key described on `materialiseDependents`. Name is compared case- and space-insensitively
- *  because "Aisyah  Binti Ali" and "aisyah binti ali" are the same child typed twice, not two children. */
-function dependentNaturalKey(r: { fullName: string; relationship: string; dateOfBirth?: string | null }): string {
-  const name = (r.fullName ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
-  return `${name}\u0000${(r.relationship ?? '').trim()}\u0000${(r.dateOfBirth ?? '').trim()}`;
 }
 
 async function loadDependent(tx: Tx, id: string) {

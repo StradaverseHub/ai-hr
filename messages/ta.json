@@ -1965,7 +1965,8 @@
       "verdictCreate": "கண்டறியப்படவில்லை",
       "verdictBlocked": "தடுக்கப்பட்டது",
       "fieldValue": "மதிப்பு",
-      "fieldUnit": "அலகு"
+      "fieldUnit": "அலகு",
+      "proposedValues": "முன்மொழியப்பட்ட மதிப்புகள்"
     },
     "wizard": {
       "fields": {

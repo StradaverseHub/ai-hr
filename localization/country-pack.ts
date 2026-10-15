@@ -386,6 +386,7 @@ export interface CountryPack {
     get: MyStatutoryModule['getStatutoryProfileMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
     setBank: MyStatutoryModule['setBankProfileMY'];
+    setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
     setIc: MyStatutoryModule['setIcProfileMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];

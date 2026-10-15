@@ -66,8 +66,11 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
   const aliases=new Map<string,Set<string>>();
   const register=(label:string,column:string)=> { const key=normalized(label); const values=aliases.get(key)??new Set<string>();values.add(column);aliases.set(key,values); };
   for(const column of options.columns) {
-    for(const label of currentPersonnelHeaders(column,sheet))register(label,column);
-    for(const resolve of options.resolvers??[])for(const label of currentPersonnelHeaders(column,sheet,resolve))register(label,column);
+    const retired=column in LEGACY_COMPOUND_COLUMNS;
+    if(!retired || (options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1) {
+      for(const label of currentPersonnelHeaders(column,sheet))register(label,column);
+      for(const resolve of options.resolvers??[])for(const label of currentPersonnelHeaders(column,sheet,resolve))register(label,column);
+    }
     if((options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1) {
       register(column,column);register(column.replaceAll('_',' '),column);
       for(const alias of personnelImportField(column,sheet)?.import.aliases??[])register(alias,column);
@@ -81,7 +84,7 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
     if(seen.has(column))throw new PersonnelImportHeaderError(`Column “${raw}” repeats “${personnelColumnLabel(column,sheet)}”. Keep one column; old and new headings cannot appear together.`);
     seen.add(column);
     const current=[...currentPersonnelHeaders(column,sheet),...(options.resolvers??[]).flatMap(resolve=>currentPersonnelHeaders(column,sheet,resolve))];
-    if(!current.some(label=>normalized(label)===normalized(raw))) warnings.push(`Older header “${raw}”: use “${personnelColumnLabel(column,sheet)}” in the next template generation.`);
+    if(column in LEGACY_COMPOUND_COLUMNS || !current.some(label=>normalized(label)===normalized(raw))) warnings.push(`Older header “${raw}”: use “${personnelColumnLabel(column,sheet)}” in the next template generation.`);
     return column;
   });
   const records=rows.slice(1).map((row,index)=>{
@@ -129,4 +132,11 @@ function normalizePersonnelImportValue(column:string,raw:string,sheet:PersonnelI
   const options=personnelFieldChoices(field);if(!options.length)return raw;
   const matches=options.filter(option=>normalized(option.value)===normalized(raw)||resolvers.some(resolve=>normalized(resolve(option.labelKey,option.value))===normalized(raw)));
   return matches.length===1?matches[0].value:raw;
+}
+
+export function personnelImportProposedValues(record:Record<string,string>,sheet:PersonnelImportSheet) {
+  const known=new Set(personnelImportFields(sheet).map(field=>field.import.column!));
+  if(sheet==='family')known.add('employee_code');
+  if(sheet==='employee')for(const adapter of PERSONNEL_IMPORT_COMPATIBILITY)known.add(adapter.column);
+  return Object.entries(record).filter(([column,value])=>known.has(column)&&value.trim()!=='').map(([column,value])=>({column,value}));
 }

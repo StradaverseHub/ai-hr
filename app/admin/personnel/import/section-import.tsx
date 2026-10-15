@@ -1,4 +1,5 @@
 'use client';
+import { PersonnelImportValues } from '@/components/personnel-import-values';
 
 import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -16,7 +17,7 @@ import {
   DEPENDENT_ENUM_VALUES,
 } from '@/lib/import-template-xlsx';
 import {
-  sectionColumns,
+  sectionColumns, sectionTemplateColumns,
   sectionTextColumnIndexes,
   SECTION_SHEET_NAMES,
   SECTION_TEMPLATE_FILENAMES,
@@ -69,7 +70,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
     family: t('sectionFamily'),
   };
   const label = SECTION_LABEL[section];
-  const columns = sectionColumns(section);
+  const columns = sectionTemplateColumns(section);
 
   const reset = () => {
     setPreview(null);
@@ -353,6 +354,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
               </ul>
             </div>
           )}
+          {!!result.warnings?.length && <p role="status" className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{result.warnings.join(' ')}</p>}
           {result.failed.length > 0 && (
             <ul className="divide-y divide-border text-sm">
               {result.failed.map((f) => (
@@ -506,6 +508,7 @@ function SectionPreview({
                 </td>
                 <td className="px-4 py-2 text-xs text-muted-foreground">
                   {r.changes.length > 0 ? r.changes.map(fieldLabel).join(', ') : '—'}
+                  <PersonnelImportValues values={r.proposed} sheet={preview.section==='family'?'family':'employee'} />
                 </td>
                 <td className="px-4 py-2 text-xs">
                   {r.errors.length > 0 ? (

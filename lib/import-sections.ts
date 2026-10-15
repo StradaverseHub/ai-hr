@@ -1,3 +1,4 @@
+import { PERSONNEL_FIELDS } from './personnel-field-registry';
 import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS } from './personnel-import-contract';
 /**
  * Item 2983802f — PER-SECTION IMPORT: the column contract, the fence, and the shared result shapes.
@@ -34,7 +35,7 @@ import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PE
  *     that the sections plus that list plus the key column account for EVERY main-sheet column. A
  *     column added to the wide template in future therefore cannot quietly fail to be considered.
  */
-import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS } from './import-schema';
+import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS, RETIRED_PERSONNEL_TEMPLATE_COLUMNS } from './import-schema';
 
 /** The four sections the reporter named. Ordered as they appear in the chooser. */
 export const IMPORT_SECTION_KEYS = ['profile', 'employment', 'bank_statutory', 'family'] as const;
@@ -95,6 +96,7 @@ const PROFILE_COLUMNS = [
   'emergency_contact_phone',
   'emergency_contact_home_phone',
   'emergency_contact_address',
+  ...PERSONNEL_FIELDS.filter(field=>['ic','passport'].includes(field.import.writer??'')).map(field=>field.import.column!),
   ...[...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_COMPLIANCE_IMPORT_FIELDS].map(field=>field.import.column!).filter(column=>!['address_line_1','address_line_2','address_line_3','postcode','city','state','country','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone','emergency_contact_home_phone','emergency_contact_address'].includes(column)),
 ] as const;
 
@@ -139,7 +141,7 @@ const EMPLOYMENT_COLUMNS = [
  * are fenced out rather than written through an unsafe setter. `setBank` and `setTax` are the two
  * narrow setters that DO exist, and this list is exactly what they cover.
  */
-const BANK_STATUTORY_COLUMNS = ['bank_name', 'bank_account_no', 'tax_number', 'tax_category', 'num_children'] as const;
+const BANK_STATUTORY_COLUMNS = ['tax_number', 'tax_category', 'num_children',...PERSONNEL_FIELDS.filter(field=>['statutory-registration','bank'].includes(field.import.writer??'')).map(field=>field.import.column!)] as const;
 
 export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
   profile: { key: 'profile', required: [], optional: PROFILE_COLUMNS, family: false },
@@ -178,19 +180,19 @@ export const UNSECTIONED_COLUMNS: Record<string, string> = {
   // basic salary it cannot see. It travels with the wide template, beside the amount it explains.
   salary_remarks:
     'the reason ONE salary revision has no basic amount; a section file carries no effective date, so it cannot name which revision it would be explaining (see basic_salary)',
-  epf_number: 'no partial writer — the only setter rewrites the whole statutory row',
-  socso_number: 'no partial writer — the only setter rewrites the whole statutory row',
   eis_eligible: 'no partial writer — the only setter rewrites the whole statutory row',
   epf_citizenship: 'no partial writer — the only setter rewrites the whole statutory row',
   is_resident:
     'tax residency is a four-way status (resident + three incentive statuses); a yes/no cell cannot express it',
 };
 
-/** Every column this section's template ships with, key first. */
+/** Every accepted column, including bounded previous-generation adapters, key first. */
 export function sectionColumns(section: ImportSection): string[] {
   const def = IMPORT_SECTION_DEFS[section];
   return [SECTION_KEY_COLUMN, ...def.required, ...def.optional];
 }
+
+export function sectionTemplateColumns(section:ImportSection):string[] {return sectionColumns(section).filter(column=>!RETIRED_PERSONNEL_TEMPLATE_COLUMNS.includes(column));}
 
 /**
  * THE FENCE, as a pure function so the server and a test can ask the same question.
@@ -244,6 +246,8 @@ export const SECTION_DISPLAY_NAMES: Record<ImportSection, string> = {
   family: 'Family',
 };
 
+export function sectionTemplateColumns(section:ImportSection):string[] {return sectionColumns(section).filter(column=>!RETIRED_PERSONNEL_TEMPLATE_COLUMNS.includes(column));}
+
 /**
  * THE FENCE, SPLIT INTO THE TWO ANSWERS A REFUSAL HAS TO GIVE.
  *
@@ -292,6 +296,7 @@ export function classifyForeignColumns(
 export type SectionRowVerdict = 'create' | 'update' | 'skip';
 
 export type SectionRowResult = {
+  proposed?:{column:string;value:string}[];
   /** 1-based data row (header excluded). */
   rowNum: number;
   employeeCode: string;
@@ -327,6 +332,7 @@ export type SectionImportPreview = {
 };
 
 export type SectionImportResult = {
+  warnings?:string[];
   section: ImportSection;
   /** Rows applied. */
   updated: number;
@@ -371,16 +377,16 @@ export const SECTION_TEMPLATE_FILENAMES: Record<ImportSection, string> = {
  */
 export const SECTION_TEXT_COLUMN_KEYS: readonly string[] = [
   SECTION_KEY_COLUMN,
-  'ic_number',
-  'phone',
-  'bank_account_no',
-  'tax_number',
-  'passport_number',
-  'ic_or_passport',
+  'ic_number','old_ic_number',
+  'phone','home_phone','emergency_contact_phone','emergency_contact_home_phone',
+  'bank_account_no','custom_holder_id',
+  'epf_number','socso_number','tax_number',
+  'postcode','correspondence_postcode',
+  'passport_number','ic_or_passport',
 ];
 
 /** 0-based positions of those columns within this section's header row. */
 export function sectionTextColumnIndexes(section: ImportSection): number[] {
-  const cols = sectionColumns(section);
+  const cols = sectionTemplateColumns(section);
   return SECTION_TEXT_COLUMN_KEYS.map((k) => cols.indexOf(k)).filter((i) => i >= 0);
 }

@@ -27,7 +27,7 @@
  */
 import { toCsv } from './csv';
 import { personnelColumnLabel, type PersonnelLabelResolver } from './personnel-import-contract';
-import { IMPORT_COLUMNS } from './import-schema';
+import { EMPLOYEE_TEMPLATE_COLUMNS as IMPORT_COLUMNS } from './import-schema';
 import { PAYROLL_HISTORY_COLUMNS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import { LEAVE_IMPORT_COLUMNS } from './leave-import-schema';
 import { LEAVE_HISTORY_COLUMNS } from './leave-history-import-schema';
@@ -105,11 +105,11 @@ const EMPLOYEE_TEMPLATE_SAMPLES:Record<string,string>[] = [
     "emergency_contact_home_phone": "",
     "emergency_contact_address": "",
     "probation_end_date": "2026-04-06",
-    "probation_months": "3",
-    "probation_days": "0",
+    "probation_value": "3",
+    "probation_unit": "month",
     "confirmation_date": "2026-04-06",
-    "resignation_notice_months": "1",
-    "resignation_notice_days": "0",
+    "notice_before_confirmation_value": "1",
+    "notice_before_confirmation_unit": "month",
     "direct_superior": "TMPL0002"
   },
   {

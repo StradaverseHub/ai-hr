@@ -1965,7 +1965,8 @@
       "verdictCreate": "Not found",
       "verdictBlocked": "Blocked",
       "fieldValue": "Value",
-      "fieldUnit": "Unit"
+      "fieldUnit": "Unit",
+      "proposedValues": "Proposed values"
     },
     "wizard": {
       "fields": {

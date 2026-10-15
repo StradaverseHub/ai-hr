@@ -1,5 +1,7 @@
+import { PersonnelImportLookup, addUniqueImportAlias } from '../lib/personnel-import-lookup';
+import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
 import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
-import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { personnelImportProposedValues, PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
@@ -95,9 +97,9 @@ const FALSY = new Set(['false', 'no', 'n', '0']);
 type CompanyContext = {
   id: string;
   name: string;
-  deptByName: Map<string, string>;
-  posByName: Map<string, string>;
-  ccByName: Map<string, string>;
+  deptByName: PersonnelImportLookup<string>;
+  posByName: PersonnelImportLookup<string>;
+  ccByName: PersonnelImportLookup<string>;
   pack: CountryPack;
 };
 
@@ -127,6 +129,8 @@ type ResolvedRow = {
    * existing file's import is unchanged.
    */
   profile?: Record<string, string | null>;
+  bankExtra?:PersonnelBankValues;
+  oldIcNumber?:string;
   compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   /** Item 2983802f — the passport block, written through the company pack's `setPassport`. Undefined
    *  unless the row supplied at least one passport cell (an all-blank block must not clear anything). */
@@ -135,6 +139,7 @@ type ResolvedRow = {
     passportIssueDate: string;
     passportExpiryDate: string;
     passportIssuingCountry?: string;
+    passportIssuingCountryCode?:string;passportRemark?:string;
   };
   /** Item 2983802f — probation + notice-period periods and the confirmation date, written through
    *  `setEmploymentInfo`. Undefined unless the row supplied at least one of them. */
@@ -243,17 +248,16 @@ async function loadCompanyContext(
     listPositions(ctx, { companyIds: [co.id] }),
     listCostCenters(ctx, { companyIds: [co.id] }),
   ]);
-  const ccByName = new Map<string, string>();
-  for (const c of costCenters) {
-    if (c.name) ccByName.set(c.name.toLowerCase(), c.id);
-    if (c.code) ccByName.set(c.code.toLowerCase(), c.id);
-  }
+  const deptByName=new PersonnelImportLookup<string>();
+  const posByName=new PersonnelImportLookup<string>();
+  const ccByName=new PersonnelImportLookup<string>();
+  for(const d of departments)deptByName.add(d.id,d.id,{names:[d.name]});
+  for(const p of positions)posByName.add(p.id,p.id,{names:[p.title]});
+  for(const c of costCenters)ccByName.add(c.id,c.id,{codes:[c.code],names:[c.name]});
   return {
     id: co.id,
     name: co.name,
-    deptByName: new Map(departments.map((d) => [d.name.toLowerCase(), d.id])),
-    posByName: new Map(positions.map((p) => [p.title.toLowerCase(), p.id])),
-    ccByName,
+    deptByName,posByName,ccByName,
     // Rung 5a (ADR-0080 D1/D6): IC rules come from the COMPANY'S country pack, fail-loud when the
     // country resolves nothing — so a per-row company change also changes the statutory rules applied.
     pack: requirePackFor(co.country),
@@ -273,15 +277,8 @@ async function analyze(
   // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
   // and registration number are accepted because those are what an HR spreadsheet usually carries.
   // The id is accepted too so a machine-generated file can be exact. All matched case-insensitively.
-  const companyByKey = new Map<string, (typeof allCompanies)[number]>();
-  const key = (v: string | null | undefined) => (v ?? '').trim().toLowerCase();
-  for (const c of allCompanies) {
-    for (const k of [c.id, c.name, c.companyLabel, c.registrationNo]) {
-      const kk = key(k);
-      // First writer wins: a duplicate label must never silently retarget an unrelated company.
-      if (kk && !companyByKey.has(kk)) companyByKey.set(kk, c);
-    }
-  }
+  const companyByKey=new PersonnelImportLookup<(typeof allCompanies)[number]>();
+  for(const c of allCompanies)companyByKey.add(c.id,c,{codes:[c.registrationNo],names:[c.name,c.companyLabel]});
   const defaultCompany = allCompanies.find((c) => c.id === companyId);
 
   const grants = leaveTypes
@@ -292,9 +289,9 @@ async function analyze(
   // synchronous; the unresolved ones are recorded and surface as a per-row error in pass 2.
   const rowCompanies = records.map((rec) => {
     const raw = norm(rec.company);
-    if (!raw) return { raw, co: defaultCompany, unknown: false };
+    if (!raw) return { raw, co: defaultCompany, unknown: false,ambiguous:false };
     const co = companyByKey.get(raw.toLowerCase());
-    return { raw, co, unknown: !co };
+    return { raw, co, unknown: !co,ambiguous:companyByKey.isAmbiguous(raw) };
   });
   const needed = new Map<string, (typeof allCompanies)[number]>();
   for (const rc of rowCompanies) if (rc.co) needed.set(rc.co.id, rc.co);
@@ -365,10 +362,10 @@ async function analyze(
       catalog.set(o.category, set);
     }
     const superiorByCode = new Map<string, string>();
-    const superiorByEmail = new Map<string, string>();
+    const superiorByEmail = new Map<string, string|null>();
     for (const e of superiorCandidates) {
       if (e.code) superiorByCode.set(normalizeEmployeeCode(e.code), e.id);
-      superiorByEmail.set(e.email.toLowerCase(), e.id);
+      addUniqueImportAlias(superiorByEmail,e.email.toLowerCase(),e.id);
     }
     return {
       catalog,
@@ -422,13 +419,14 @@ async function analyze(
     // PASS 2 begins with the company: every catalog lookup below is against THIS row's company, which
     // is what makes the reporter's "Department does not belong to selected company" a real check.
     const rc = rowCompanies[idx];
-    if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
+    if(rc.ambiguous)errors.push(`Ambiguous company "${rc.raw}" — use its exact company ID or registration number`);
+    else if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
     else if (!rc.co) errors.push('Missing company');
     const cctx = rc.co ? contexts.get(rc.co.id) : undefined;
     const { deptByName, posByName, ccByName } = cctx ?? {
-      deptByName: new Map<string, string>(),
-      posByName: new Map<string, string>(),
-      ccByName: new Map<string, string>(),
+      deptByName: new PersonnelImportLookup<string>(),
+      posByName: new PersonnelImportLookup<string>(),
+      ccByName: new PersonnelImportLookup<string>(),
     };
     const pack = cctx?.pack ?? normPack!;
 
@@ -459,6 +457,7 @@ async function analyze(
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
     if (!deptName) errors.push('Missing department');
+    else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — use its exact ID`);
     else if (!departmentId) errors.push(`Unknown department "${deptName}"`);
 
     // Position / cost-center (optional, resolved by name; unknown = error so it's never dropped silently)
@@ -466,13 +465,15 @@ async function analyze(
     let positionId: string | undefined;
     if (posName) {
       positionId = posByName.get(posName.toLowerCase());
-      if (!positionId) errors.push(`Unknown position "${posName}"`);
+      if(posByName.isAmbiguous(posName))errors.push(`Ambiguous position "${posName}" — use its exact ID`);
+      else if (!positionId) errors.push(`Unknown position "${posName}"`);
     }
     const ccName = norm(rec.cost_center);
     let costCenterId: string | undefined;
     if (ccName) {
       costCenterId = ccByName.get(ccName.toLowerCase());
-      if (!costCenterId) errors.push(`Unknown cost_center "${ccName}"`);
+      if(ccByName.isAmbiguous(ccName))errors.push(`Ambiguous cost_center "${ccName}" — use its exact ID or code`);
+      else if (!costCenterId) errors.push(`Unknown cost_center "${ccName}"`);
     }
 
     // Hire date
@@ -673,7 +674,7 @@ async function analyze(
       Boolean(passportNumber) ||
       norm(rec.passport_issue_date) !== '' ||
       norm(rec.passport_expiry_date) !== '' ||
-      norm(rec.passport_issuing_country) !== '';
+      norm(rec.passport_issuing_country) !== '' || norm(rec.passport_issuing_country_code)!=='' || norm(rec.passport_remark)!=='';
     let passport: ResolvedRow['passport'];
     if (passportTouched) {
       if (!passportNumber || !passportIssue || !passportExpiry) {
@@ -686,10 +687,12 @@ async function analyze(
           passportIssueDate: passportIssue,
           passportExpiryDate: passportExpiry,
           passportIssuingCountry: passportCountry.kind === 'ok' ? passportCountry.value : undefined,
+          passportIssuingCountryCode:norm(rec.passport_issuing_country_code)||undefined,passportRemark:norm(rec.passport_remark)||undefined,
         };
       }
     }
 
+    const bankExtra=personnelBankValues(rec);errors.push(...bankExtra.errors);
     // ADDRESS + EMERGENCY CONTACT — one `updatePerson` payload, because that writer saves the address and
     // routes the emergency block into the register inside ONE transaction. Only the cells the file
     // actually carries are put in the payload: `updatePerson` leaves an omitted field alone, so a
@@ -760,6 +763,7 @@ async function analyze(
 
     const ok = errors.length === 0;
     const result: RowResult = {
+      proposed:personnelImportProposedValues(rec,'employee'),
       rowNum: idx + 1,
       fullName,
       email,
@@ -785,6 +789,8 @@ async function analyze(
         provisionalEndOn: probationEnd,
       },
       profile: Object.keys(profile).length > 0 ? profile : undefined,
+      bankExtra:bankExtra.supplied.some(key=>!['bankName','bankAccountNo'].includes(key))?bankExtra.values:undefined,
+      oldIcNumber:norm(rec.old_ic_number)||undefined,
       compliance: Object.keys(compliance).length > 0 ? compliance : undefined,
       passport,
       employmentInfo: Object.keys(employmentInfo).length > 0 ? employmentInfo : undefined,
@@ -823,8 +829,9 @@ async function analyze(
     if (e && !emailToRow.has(e)) emailToRow.set(e, i);
   });
   /** Which row (or existing employment) does this cell name? */
-  const findSuperior = (raw: string): NonNullable<ResolvedRow['superior']> | 'unknown' => {
+  const findSuperior = (raw: string): NonNullable<ResolvedRow['superior']> | 'unknown' | 'ambiguous' => {
     const asCode = normalizeEmployeeCode(raw);
+    if(!superiorByCode.has(asCode) && superiorByEmail.get(raw.toLowerCase())===null)return 'ambiguous';
     const existingById = superiorByCode.get(asCode) ?? superiorByEmail.get(raw.toLowerCase());
     if (existingById) return { kind: 'existing', employmentId: existingById };
     const rowIndex = codeToRow.get(asCode) ?? emailToRow.get(raw.toLowerCase());
@@ -835,7 +842,8 @@ async function analyze(
     if (!raw) return;
     const row = resolved[idx];
     const found = findSuperior(raw);
-    if (found === 'unknown') {
+    if(found==='ambiguous')row.result.errors.push('Ambiguous direct_superior email — use the exact Employee ID for the intended employment');
+    else if (found === 'unknown') {
       row.result.errors.push(`Unknown direct_superior "${raw}" (no employee with that Employee ID or email)`);
     } else if (found.kind === 'row' && found.index === idx) {
       row.result.errors.push('direct_superior cannot be the employee themselves');
@@ -1126,6 +1134,8 @@ export async function commitEmployeeImport(
       const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
       let familyCount=0;
       await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
+      if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
+      if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
       // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
@@ -1151,9 +1161,6 @@ export async function commitEmployeeImport(
       // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and
       //    each skipped entirely when the file carried none of its columns. That is what keeps an
       //    existing file's import byte-identical to what it was before this change.
-      if (row.passport) {
-        await pack.statutory.setPassport(ctx, { personId, ...row.passport }, tx);
-      }
       if (row.profile) {
         // `updatePerson` re-writes the core trio, so the row's own values are passed through — omitting
         // `phone` would blank a phone number the file had just supplied.
@@ -1165,6 +1172,9 @@ export async function commitEmployeeImport(
           via: 'employee-import',
           ...row.profile,
         }, tx);
+      }
+      if (row.passport) {
+        await pack.statutory.setPassport(ctx, { personId, ...row.passport }, tx);
       }
       if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance}, tx);
       if (row.employmentInfo) {

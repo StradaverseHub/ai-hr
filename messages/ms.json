@@ -1965,7 +1965,8 @@
       "verdictCreate": "Tidak dijumpai",
       "verdictBlocked": "Disekat",
       "fieldValue": "Nilai",
-      "fieldUnit": "Unit"
+      "fieldUnit": "Unit",
+      "proposedValues": "Nilai yang dicadangkan"
     },
     "wizard": {
       "fields": {
