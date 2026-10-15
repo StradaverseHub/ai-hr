@@ -68,6 +68,7 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   // and who approves. DECLARED here rather than tolerated, which is the whole point of asserting the
   // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
   '/admin/settings/profile-requests',
+  '/admin/settings/email',
   '/admin/system-explorer',
   // e6be5a3b (r330) — System Testing, the test-case library. DECLARED here, and last: like System
   // Analysis directly above it, it is a vendor-facing reference surface rather than company setup, and
@@ -86,7 +87,6 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
 const ADMIN_GROUP_FLAT_HREFS = [
   // Workflow email category policy; separate from installation-wide SMTP settings.
   '/admin/settings/notifications',
-  '/admin/settings/email',
   '/admin/organization',
   // 639bf4a5 (r336) — '/admin/work-locations' (Physical Work Location) STOOD HERE, immediately after
   // Organization, having come from the attendance pack's settings node. rev 2 (r338) — IT IS GONE FROM

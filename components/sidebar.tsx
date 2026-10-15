@@ -23,6 +23,7 @@ import {
   Wand2,
   LayoutDashboard,
   ListChecks,
+  Mail,
   MessageSquareText,
   Megaphone,
   Network,
@@ -277,9 +278,8 @@ const REPORTS_NODE: CollapsibleGroupItem = {
 // Attendance and Reports nodes). Nav-only: hrefs, icons and route guards are carried over verbatim.
 // Future config screens (numbering rules, notification settings, email templates, …) slot in here
 // when they are actually requested; none are built by a4e49748.
-// Per-child adminOnly flags are REDUNDANT today (the admin group is gated adminOnly wholesale before
-// per-child filtering runs); they are kept purely for consistency with REPORTS_NODE and are deliberately
-// not asserted in test/sidebar-system-settings-group.test.ts so a future cleanup can drop them.
+// Per-child adminOnly flags keep the other settings hidden from an enrolled installation email
+// operator without an HR role. That operator reaches only Email delivery in this node.
 const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'systemSettings',
@@ -331,6 +331,8 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // setup step). UserRoundCog is unused elsewhere in this node, so the collapsed rail has no glyph
     // collision with UserRoundPlus (Hiring Defaults).
     { href: '/admin/settings/profile-requests', labelKey: 'profileRequestSettings', icon: UserRoundCog, adminOnly: true },
+    // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
+    { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Mail, identityEmailOnly: true },
     // deec1691: System Analysis & Dependency Explorer. Alone among the rows of this node it is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed
@@ -429,7 +431,6 @@ const GROUPS: Group[] = [
     adminOnly: true,
     items: [
       { href: '/admin/settings/notifications', labelKey: 'workflowEmail', icon: Bell, adminOnly: true },
-      { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Settings2, identityEmailOnly: true },
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       /**
        * 639bf4a5 rev 2 (r338) — THE PHYSICAL WORK LOCATION ROW STOOD HERE and is DELIBERATELY GONE.
@@ -508,6 +509,7 @@ const GROUPS: Group[] = [
 export function Sidebar({
   isAdmin,
   canConfigureIdentityEmail = false,
+  canPreviewIdentityEmail = false,
   canApprove = false,
   canAccessTeam = false,
   approvalCount = 0,
@@ -518,6 +520,8 @@ export function Sidebar({
 }: {
   isAdmin: boolean;
   canConfigureIdentityEmail?: boolean;
+  /** Actual HR administrator access, independent of the broader partner administration rail. */
+  canPreviewIdentityEmail?: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
@@ -608,7 +612,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.identityEmailOnly ? canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+    moduleAllows(c.href) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail : g.managerUp ? isAdmin || canApprove : true))
@@ -616,7 +620,7 @@ export function Sidebar({
     // (Personnel) with manager-up rows (Approvals/Performance).
     .map((g) => ({
       ...g,
-      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (!isCollapsible(r) && r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
+      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (isCollapsible(r) ? r.children.some(c => c.identityEmailOnly && canSeeChild(c)) : r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
     }))
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);

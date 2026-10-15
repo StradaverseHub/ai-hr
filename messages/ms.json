@@ -9601,7 +9601,7 @@
         "duplicatePersonRecords": "Menyenaraikan hanya pekerja dalam syarikat yang anda uruskan, jadi separuh daripada pasangan yang merentas dua syarikat mungkin tidak kelihatan kepada anda. Baca sahaja — tiada rekod boleh diubah dari skrin ini.",
         "childReliefReview": "Menyenaraikan hanya pekerja semasa dalam syarikat yang anda uruskan, jadi jumlah ringgit ialah jumlah bagi apa yang boleh anda lihat. Baca sahaja — tiada tetapan cukai boleh diubah dari skrin ini.",
         "myTeam": "Pengurus melihat pekerja seliaan langsung atau tidak langsung semasa. Pentadbir HR boleh memilih jabatan dalam syarikat yang dibenarkan.",
-        "identityEmail": "Memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan; peranan HR sahaja tidak memberi akses.",
+        "identityEmail": "Pentadbir HR boleh melihat pratonton borang SMTP. Melihat atau mengubah tetapan sebenar memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
       },
@@ -17070,7 +17070,13 @@
       "save": "Draf disimpan. Geganti aktif tidak berubah.",
       "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
       "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya."
-    }
+    },
+    "connectionTitle": "Sambungan SMTP",
+    "security": "Penyulitan",
+    "tlsSecurity": "SSL/TLS (TLS tersirat)",
+    "previewTitle": "Pratonton tetapan SMTP",
+    "demoSetup": "Demo ini memaparkan medan sambungan SMTP untuk semakan. Menyimpan kelayakan, menghantar e-mel ujian dan mengaktifkan penghantaran memerlukan log masuk pentadbir pemasangan yang disahkan. Tiada butiran pelayan e-mel dimuatkan atau disimpan di sini.",
+    "restrictedSetup": "Hanya pentadbir pemasangan yang berdaftar boleh melihat atau mengubah tetapan SMTP sebenar. Minta pentadbir pemasangan melengkapkan persediaan. Medan ini hanya menunjukkan konfigurasi yang disokong."
   },
   "workflowEmail": {
     "title": "Pemberitahuan e-mel aliran kerja",

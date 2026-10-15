@@ -9601,7 +9601,7 @@
         "duplicatePersonRecords": "Lists only employees in companies you administer, so half of a pair spanning two companies may not be visible to you. Read-only — no record can be changed from this screen.",
         "childReliefReview": "Lists only current employees in companies you administer, so the ringgit totals are the totals of what you can see. Read-only — no tax setting can be changed from this screen.",
         "myTeam": "Managers see their current direct or indirect reports. HR administrators can choose departments within their authorized companies.",
-        "identityEmail": "Requires separate installation identity-administrator enrollment; HR roles alone do not grant access.",
+        "identityEmail": "HR administrators can preview the SMTP form. Viewing or changing live settings requires separate installation identity-administrator enrollment.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
       },
@@ -17070,7 +17070,13 @@
       "save": "Draft saved. The active relay is unchanged.",
       "test": "The relay accepted the test message. Check the inbox before activation.",
       "apply": "Relay activated. Invitations and password recovery can now use it."
-    }
+    },
+    "connectionTitle": "SMTP connection",
+    "security": "Encryption",
+    "tlsSecurity": "SSL/TLS (implicit TLS)",
+    "previewTitle": "SMTP setup preview",
+    "demoSetup": "This demo shows the SMTP connection fields for review. Saving credentials, sending test emails and activating delivery require a verified installation administrator login. No mail server details are loaded or saved here.",
+    "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only."
   },
   "workflowEmail": {
     "title": "Workflow email notifications",
