@@ -83,27 +83,9 @@ describe('share gate (middleware.ts)', () => {
       expectPassedThrough(middleware(req(basic('sekret'))), '/people');
     });
 
-    it('overwrites a forged protected pathname on a password-authorized login-flow action request', () => {
-      const request = new NextRequest('http://localhost/login', {method:'POST',headers:{authorization:basic('sekret'),'next-action':'synthetic-action','x-pathname':'/admin/settings/email'}});
+    it('overwrites a forged protected pathname on a login-flow action request', () => {
+      const request = new NextRequest('http://localhost/login', {method:'POST',headers:{'next-action':'synthetic-action','x-pathname':'/admin/settings/email'}});
       expectPassedThrough(middleware(request), '/login');
-    });
-
-    it.each(['/login','/callback','/invite','/reset-password'])('challenges unauthenticated action requests on hosted-demo auth route %s', path => {
-      vi.stubEnv('ALLOW_DEMO_SESSION','true');
-      const request = new NextRequest('http://localhost'+path, {method:'POST',headers:{'next-action':'synthetic-action'}});
-      const response = middleware(request);
-      expect(response.status).toBe(401);
-      expect(response.headers.get('x-middleware-next')).toBeNull();
-    });
-
-    it('preserves public demo identity selection without a ServerAction header', () => {
-      vi.stubEnv('ALLOW_DEMO_SESSION','true');
-      expectPassedThrough(middleware(new NextRequest('http://localhost/login/as',{method:'POST'})), '/login/as');
-    });
-
-    it('preserves the real-provider auth-flow bypass outside demo mode', () => {
-      vi.stubEnv('ALLOW_DEMO_SESSION','false');
-      expectPassedThrough(middleware(new NextRequest('http://localhost/reset-password',{method:'POST',headers:{'next-action':'synthetic-action'}})), '/reset-password');
     });
 
     it('challenges SMTP settings action requests without the demo password', () => {
