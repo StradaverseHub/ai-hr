@@ -1367,6 +1367,7 @@ export async function qualifyingChildReliefFor(
     /** Kuala Lumpur "today" the ruleset is resolved as of, and the date child ages are taken against. */
     asOf: string;
   },
+  outerTx?: Tx,
 ): Promise<QualifyingChildRelief | null> {
   const pack = packFor(p.country ?? 'MY');
   // Captured OUT of the optional properties: both are optional on the pack surface (a jurisdiction with no
@@ -1376,7 +1377,7 @@ export async function qualifyingChildReliefFor(
   const childReliefFor = pack?.payroll?.childReliefFor;
   const childReliefPrices = pack?.payroll?.childReliefPrices;
   if (!pack || !childReliefFor || !childReliefPrices) return null;
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx): Promise<QualifyingChildRelief | null> => {
     const rules = await pack.payroll.loadRuleset(tx, { asOf: p.asOf });
     const reliefs = rules.pcb?.reliefs;
     if (!reliefs) return null;
@@ -1628,5 +1629,6 @@ export async function qualifyingChildReliefFor(
       ruleUnits: rule.units,
       ruleReliefRM: rule.amountRM,
     };
-  });
+  };
+  return outerTx ? read(outerTx) : withTenant(ctx, read);
 }

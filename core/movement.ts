@@ -209,6 +209,9 @@ export type MovementSnapshot = {
   employmentType: string | null;
   manager: string | null;
   salary: string | null;
+  /** Typed canonical salary for report comparisons; display salary remains unchanged. */
+  salaryAmount?: string | null;
+  currency?: string | null;
 };
 
 /**
@@ -1153,7 +1156,11 @@ export async function lastAppliedPromotionOnTx(tx: Tx, tenantId: string, employm
 
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
@@ -1198,8 +1205,7 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
       };
     });
-  });
-}
+  }
 
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
  *  a flat column, so as-of reconstruction must come from the ledger). `bound` is the row's sequence;
@@ -1318,6 +1324,8 @@ async function snapshotAt(
     employmentType: asg?.employmentType ?? null,
     manager: managerName,
     salary: comp ? `${comp.currency} ${comp.basicSalary}` : null,
+    salaryAmount: comp?.basicSalary ?? null,
+    currency: comp?.currency ?? null,
   };
 }
 
@@ -1331,7 +1339,15 @@ export function movementDetail(
   employmentId: string,
   movementId: string,
 ): Promise<MovementDetail | null> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => movementDetailTx(tx, ctx, employmentId, movementId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function movementDetailTx(tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  movementId: string,
+): Promise<MovementDetail | null> {
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
@@ -1388,8 +1404,7 @@ export function movementDetail(
           ? await hireCorrectionTraceTx(tx, events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT))
           : null,
     };
-  });
-}
+  }
 
 /**
  * 08913328 — the employee's CURRENT employment + pay values, as raw ids. This is the read behind the left

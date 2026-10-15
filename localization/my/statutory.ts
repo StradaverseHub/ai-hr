@@ -5,7 +5,7 @@ import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionCont
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
  */
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
-import { type Tx, withTenant, type SessionContext } from '../../db/client';
+import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
@@ -1324,13 +1324,16 @@ export function taxNumberSharedWithMY(
   });
 }
 
-export function getStatutoryProfileMY(ctx: SessionContext, personId: string) {
-  return withTenant(ctx, async (tx) => {
+export function getStatutoryProfileMY(ctx: SessionContext, personId: string, outerTx?: Tx) {
+  return outerTx ? getStatutoryProfileMYTx(outerTx, ctx, personId) : withTenant(ctx, tx => getStatutoryProfileMYTx(tx, ctx, personId));
+}
+
+/** Explicit owner read seam for a caller-held scoped report snapshot. */
+export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, personId: string) {
     const [row] = await tx
       .select()
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, personId))
       .limit(1);
     return row ?? null;
-  });
-}
+  }
