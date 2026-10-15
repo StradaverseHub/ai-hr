@@ -847,6 +847,7 @@
         "partiallyApproved": "partially approved"
       },
       "epfContribTitle": "EPF contribution",
+      "epfStoredModeLabel": "EPF calculation mode (stored)",
       "epfMode": "EPF Category",
       "epfCitizenship": "EPF citizenship",
       "epfCitizenshipCitizen": "Malaysian citizen",
@@ -4404,6 +4405,7 @@
       "calibrationCode": "Code"
     },
     "review": {
+    "typeLabel": "Review type",
       "backMyWorkspace": "My Profile",
       "backPerformance": "Performance",
       "reviewerLabel": "Reviewer: {reviewer}",

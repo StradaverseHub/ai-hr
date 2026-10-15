@@ -847,6 +847,7 @@
         "partiallyApproved": "diluluskan sebahagian"
       },
       "epfContribTitle": "Caruman KWSP",
+      "epfStoredModeLabel": "Mod pengiraan KWSP (disimpan)",
       "epfMode": "Kategori KWSP",
       "epfCitizenship": "Kewarganegaraan KWSP",
       "epfCitizenshipCitizen": "Warganegara Malaysia",
@@ -4404,6 +4405,7 @@
       "calibrationCode": "Kod"
     },
     "review": {
+    "typeLabel": "Jenis semakan",
       "backMyWorkspace": "Profil Saya",
       "backPerformance": "Prestasi",
       "reviewerLabel": "Penilai: {reviewer}",

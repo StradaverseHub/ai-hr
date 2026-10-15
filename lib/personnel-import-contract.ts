@@ -1,3 +1,4 @@
+import { EPF_UI_MODE_OPTIONS } from './epf-mode-map';
 import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS,PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES } from './personnel-choice-vocabulary';
 import { DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, CHILD_RELIEF_PERCENTAGES } from './dependent-vocabulary';
 import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
@@ -15,6 +16,7 @@ export const PERSONNEL_TEMPLATE_GENERATION = 2;
 export const PERSONNEL_LEGACY_HEADER_GENERATION = 1;
 const normalized = (value: string) => value.replace(/^\uFEFF/, '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 export function personnelFieldLabel(field: PersonnelFieldDescriptor, resolve?: PersonnelLabelResolver): string {
+  if(field.labelParts?.length && resolve)return field.labelParts.map(key=>resolve(key,field.label)).join(' — ');
   return field.labelKey && resolve ? resolve(field.labelKey, field.label) : field.label;
 }
 export function personnelImportFields(sheet: PersonnelImportSheet): PersonnelFieldDescriptor[] {
@@ -118,6 +120,7 @@ export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet
 }
 
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
+  if(field.allowedValuesOwner==='statutory.epfUiMode')return EPF_UI_MODE_OPTIONS;
   if(field.allowedValuesOwner==='statutory.socsoCategory')return PERSONNEL_SOCSO_CATEGORIES.map(value=>({value,labelKey:`people.detail.socsoCategory${value[0].toUpperCase()+value.slice(1)}`}));
   if(field.allowedValuesOwner==='statutory.eisCategory')return PERSONNEL_EIS_CATEGORIES.map(value=>({value,labelKey:`people.detail.eisCategory${value[0].toUpperCase()+value.slice(1)}`}));
   if(field.allowedValuesOwner==='statutory.childReliefMode')return PERSONNEL_CHILD_RELIEF_MODES.map(value=>({value,labelKey:`people.detail.${{manual:'childReliefModeManual',auto:'childReliefModeAuto',auto_table:'childReliefModeAutoTable'}[value]}`}));

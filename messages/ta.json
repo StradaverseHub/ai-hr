@@ -847,6 +847,7 @@
         "partiallyApproved": "பகுதியளவில் அங்கீகரிக்கப்பட்டது"
       },
       "epfContribTitle": "EPF பங்களிப்பு",
+      "epfStoredModeLabel": "EPF கணக்கீட்டு முறை (சேமிக்கப்பட்டது)",
       "epfMode": "EPF வகை",
       "epfCitizenship": "EPF குடியுரிமை",
       "epfCitizenshipCitizen": "மலேசியக் குடிமகன்",
@@ -4404,6 +4405,7 @@
       "calibrationCode": "குறியீடு"
     },
     "review": {
+    "typeLabel": "மதிப்பாய்வு வகை",
       "backMyWorkspace": "எனது சுயவிவரம்",
       "backPerformance": "செயல்திறன்",
       "reviewerLabel": "மதிப்பாய்வாளர்: {reviewer}",

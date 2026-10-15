@@ -847,6 +847,7 @@
         "partiallyApproved": "อนุมัติบางส่วน"
       },
       "epfContribTitle": "การสมทบ EPF",
+      "epfStoredModeLabel": "โหมดการคำนวณ EPF (ที่บันทึกไว้)",
       "epfMode": "หมวดหมู่ EPF",
       "epfCitizenship": "สัญชาติ EPF",
       "epfCitizenshipCitizen": "พลเมืองมาเลเซีย",
@@ -4404,6 +4405,7 @@
       "calibrationCode": "รหัส"
     },
     "review": {
+    "typeLabel": "ประเภทการทบทวน",
       "backMyWorkspace": "โปรไฟล์ของฉัน",
       "backPerformance": "ผลงาน",
       "reviewerLabel": "ผู้ประเมิน: {reviewer}",

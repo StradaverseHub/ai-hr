@@ -847,6 +847,7 @@
         "partiallyApproved": "部分批准"
       },
       "epfContribTitle": "EPF（公积金）缴纳",
+      "epfStoredModeLabel": "公积金计算模式（已保存）",
       "epfMode": "EPF 类别",
       "epfCitizenship": "EPF 公民身份",
       "epfCitizenshipCitizen": "马来西亚公民",
@@ -4404,6 +4405,7 @@
       "calibrationCode": "编号"
     },
     "review": {
+    "typeLabel": "审核类型",
       "backMyWorkspace": "我的资料",
       "backPerformance": "绩效",
       "reviewerLabel": "评估人：{reviewer}",

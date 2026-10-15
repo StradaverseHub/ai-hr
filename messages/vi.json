@@ -847,6 +847,7 @@
         "partiallyApproved": "duyệt một phần"
       },
       "epfContribTitle": "Đóng góp EPF",
+      "epfStoredModeLabel": "Chế độ tính EPF (đã lưu)",
       "epfMode": "Danh mục EPF",
       "epfCitizenship": "Quốc tịch EPF",
       "epfCitizenshipCitizen": "Công dân Malaysia",
@@ -4404,6 +4405,7 @@
       "calibrationCode": "Mã"
     },
     "review": {
+    "typeLabel": "Loại đánh giá",
       "backMyWorkspace": "Hồ sơ của tôi",
       "backPerformance": "Hiệu suất",
       "reviewerLabel": "Người đánh giá: {reviewer}",

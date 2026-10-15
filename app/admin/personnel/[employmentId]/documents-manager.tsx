@@ -16,6 +16,7 @@ import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { Button } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
+import { personnelInput, personnelFormLabel } from '@/lib/personnel-form-contract';
 import {
   deleteEmployeeDocumentAction,
   replaceEmployeeDocumentAction,
@@ -102,10 +103,10 @@ export function DocumentsManager({
       <input type="hidden" name="tab" value="documents" data-tab-tracker="" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className={labelCls}>
-          {t('fieldTitle')} <span className="text-destructive">*</span>
+          {personnelFormLabel('documents.employee_documents.title',(key,fallback)=>t.has(key.slice(24))?t(key.slice(24)):fallback)} <span className="text-destructive">*</span>
           <input
-            name="title"
-            required
+            {...personnelInput('documents.employee_documents.title','record')}
+
             maxLength={200}
             defaultValue={d?.title ?? ''}
             placeholder={t('fieldTitlePlaceholder')}
@@ -113,9 +114,9 @@ export function DocumentsManager({
           />
         </label>
         <label className={labelCls}>
-          {t('fieldCategory')}
+          {personnelFormLabel('documents.employee_documents.category',(key,fallback)=>t.has(key.slice(24))?t(key.slice(24)):fallback)}
           <input
-            name="category"
+            {...personnelInput('documents.employee_documents.category','record')}
             list="employee-doc-categories"
             defaultValue={d?.category ?? ''}
             placeholder={t('fieldCategoryPlaceholder')}
@@ -124,9 +125,9 @@ export function DocumentsManager({
         </label>
       </div>
       <label className={labelCls}>
-        {t('fieldDescription')}
+        {personnelFormLabel('documents.employee_documents.description',(key,fallback)=>t.has(key.slice(24))?t(key.slice(24)):fallback)}
         <input
-          name="description"
+          {...personnelInput('documents.employee_documents.description','record')}
           defaultValue={d?.description ?? ''}
           placeholder={t('fieldDescriptionPlaceholder')}
           className={inputCls}
@@ -137,8 +138,8 @@ export function DocumentsManager({
       {!d && (
         <>
           <label className={labelCls}>
-            {t('fieldFile')} <span className="text-destructive">*</span>
-            <input type="file" name="file" accept={ACCEPT} required className={fileCls} />
+            {personnelFormLabel('documents.employee_documents.content',(key,fallback)=>t.has(key.slice(24))?t(key.slice(24)):fallback)} <span className="text-destructive">*</span>
+            <input {...personnelInput('documents.employee_documents.content','record')} accept={ACCEPT} required className={fileCls} />
           </label>
           <p className="text-xs text-muted-foreground">{t('supportedTypes')}</p>
         </>
@@ -156,7 +157,7 @@ export function DocumentsManager({
       <input type="hidden" name="tab" value="documents" data-tab-tracker="" />
       <label className={labelCls}>
         {t('replaceHint')}
-        <input type="file" name="file" accept={ACCEPT} required className={fileCls} />
+        <input {...personnelInput('documents.employee_documents.content','record')} accept={ACCEPT} required className={fileCls} />
       </label>
       <p className="text-xs text-muted-foreground">{t('supportedTypes')}</p>
       <div className="flex justify-end">
