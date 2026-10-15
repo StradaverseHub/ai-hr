@@ -222,8 +222,9 @@ The server still owns exact identity-to-tenant binding and all HR permissions. C
 create a membership or adopt another tenant's user by email. The existing Me picker selects authorized
 employments within the resolved tenant; a new cross-tenant identity-adoption flow is not included.
 Private installations require reachable DNS, trusted HTTPS certificates and Wi-Fi/VPN access to both
-servers. A private CA must be provisioned through the OS/customer management system; there is no TLS
-bypass. QR scanning and a hosted company directory are not part of this setup-file slice.
+servers. Private certificate authorities require OS/customer provisioning and verification on each
+supported OS/app; provisioning alone does not prove the app trusts that CA. There is no TLS bypass.
+QR scanning and a hosted company directory are not part of this setup-file slice.
 
 ### Installable test builds
 
@@ -231,6 +232,8 @@ bypass. QR scanning and a hosted company directory are not part of this setup-fi
 The preview app is `AI HR Test` / `ai.stradaverse.aihr.test`; it bundles JavaScript and does not need a
 Metro server to run. Its existing `aihr://auth/callback` must be registered by the deployment operator.
 Do not install another AI HR binary using that same custom scheme alongside it during callback tests.
+Preserve a locally signed Android build's operator keystore outside source/build inputs and reuse its
+certificate for updates. A new EAS signing key cannot update an APK signed by a different key.
 
 ```sh
 cd mobile
