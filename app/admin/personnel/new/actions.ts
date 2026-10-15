@@ -9,9 +9,12 @@
  * everything (`missingForCreation`, then each writer's own gates), so nothing here is trusted.
  */
 import { revalidatePath } from 'next/cache';
+import {randomBytes} from 'node:crypto';
+import type {DraftActivateActionResult,DraftDeleteActionResult} from '@/lib/draft-action-result';
 import { requireAdmin } from '@/lib/authz';
 import {
   completeEmployeeDraft,
+  draftActivationValidation,
   createEmployeeDraftWithReservedCode,
   discardEmployeeDraft,
   isEmployeeCodeTaken,
@@ -67,12 +70,25 @@ export async function checkEmployeeCodeAction(code: string): Promise<{ code: str
   return { code: normalized, taken: normalized === '' ? false : await isEmployeeCodeTaken(s, normalized) };
 }
 
-export async function discardDraftAction(id: string): Promise<void> {
-  const s = await requireAdmin();
-  await discardEmployeeDraft(s, id);
-  // The employee list too (item 06f0cb8f): a Draft is a ROW there now, not a card above the table.
-  revalidatePath('/admin/personnel');
-  revalidatePath('/admin/personnel/new');
+/** Unknown failures are private server diagnostics; the browser receives only a reportable reference. */
+function draftFailure(operation: 'activate' | 'delete', error: unknown): {ok:false;kind:'system';reference:string} {
+  const reference = `DRAFT-${randomBytes(4).toString('hex').toUpperCase()}`;
+  console.error(`[Draft ${operation} failure ${reference}]`, error);
+  return {ok:false,kind:'system',reference};
+}
+function refreshDraftRoutes(): void {
+  // Persistence already committed. A cache-refresh fault must not turn a completed action into a
+  // reported rollback; the client navigates and refreshes its destination after ok:true.
+  try { revalidatePath('/admin/personnel'); revalidatePath('/admin/personnel/new'); }
+  catch (error) { console.error('[Draft committed; route refresh failed]',error); }
+}
+export async function discardDraftAction(id: string): Promise<DraftDeleteActionResult> {
+  const session = await requireAdmin();
+  try {
+    await discardEmployeeDraft(session, id);
+    refreshDraftRoutes();
+    return {ok:true};
+  } catch(error) { return draftFailure('delete',error); }
 }
 
 /**
@@ -84,11 +100,15 @@ export async function createEmployeeAction(
   id: string | undefined,
   data: EmployeeDraftData,
   currentStep: number,
-): Promise<{ employmentId: string }> {
-  const s = await requireAdmin();
-  const saved = await saveEmployeeDraft(s, { id: id || undefined, data, currentStep });
-  const out = await completeEmployeeDraft(s, saved.id);
-  revalidatePath('/admin/personnel');
-  revalidatePath('/admin/personnel/new');
-  return out;
+): Promise<DraftActivateActionResult> {
+  const session = await requireAdmin();
+  try {
+    const saved = await saveEmployeeDraft(session, {id:id || undefined,data,currentStep});
+    const result = await completeEmployeeDraft(session,saved.id);
+    refreshDraftRoutes();
+    return {ok:true,...result};
+  } catch(error) {
+    const validation = draftActivationValidation(error);
+    return validation ? {ok:false,kind:'validation',...validation} : draftFailure('activate',error);
+  }
 }

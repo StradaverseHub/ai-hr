@@ -32,8 +32,7 @@ import {
   restoreJobGradeGridAction,
   saveJobGradesGridAction,
   saveLabelsGridAction,
-  setCompanySharedLabelsAction,
-  setLabelGlobalAction,
+  setLabelCriteriaAction,
   unassignLabelCompaniesAction,
 } from '../actions';
 // 9a65f808 — the three grade-group writes, unchanged, from app/admin/actions.ts (NOT the settings actions
@@ -51,7 +50,7 @@ export default async function SystemLabelsPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const { s } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
   // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
@@ -101,8 +100,6 @@ export default async function SystemLabelsPage({
       listEmployees(s),
     ]);
 
-  const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
-  const scopedIdSet = new Set(scopedCompanies.map((c) => c.id));
 
   // Assignment map: labelId → [companyId, …]. The origin company is always included so the Scope cell can
   // pre-check it (the origin is implicitly assigned; the backfill in 0157 wrote a self-assignment too).
@@ -154,30 +151,17 @@ export default async function SystemLabelsPage({
     isGlobal: r.isGlobal,
     archived: !!r.archivedAt,
     inUse: r.inUse,
-    assignedCompanyIds: Array.from(new Set([r.companyId, ...(map.get(r.id) ?? [])])),
+    assignedCompanyIds: [...(map.get(r.id) ?? [])],
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
     lastUpdatedAt: r.lastUpdatedAt,
     lastUpdatedBy: r.lastUpdatedBy,
   });
 
-  // f1bbc572 — WHAT A ROW'S SCOPE IS. A label carries an ORIGIN company (the company it happened to be
-  // added from) and an `is_global` flag meaning "All Companies". This filter used to test the origin
-  // alone, so a Global label behaved like a company label belonging to whichever company created it: on
-  // the live tenant 59 global rows had been created under six of twelve companies, and no company saw
-  // the whole global set. The union below is the SAME rule every consumer already reads through
-  // (core/system-labels.ts visibleLabelIdsCondition: origin ∪ shared-in ∪ global) — this screen was the
-  // odd one out, which is also why `assignedCompanyIds` two lines up was already richer than the filter
-  // that preceded it.
-  //
-  // GATED ON THE SHARING FLAG, exactly as the resolver's own global branch is
-  // (`is_global = true AND exists (… co2.shared_system_labels = true)`). Without the gate this list and
-  // every picker fed by the resolver disagree the moment a company turns Shared System Labels OFF: the
-  // label would be listed here and refused by `labelUsableByCompany` in the hire wizard — "visible in the
-  // maintenance list and unavailable in the picker", the state the plan calls out as WORSE than the
-  // defect. `shared_system_labels` is ON tenant-wide today (0298's backfill + setLabelGlobal's
-  // autoEnableSharedLabels), so this changes nothing until an admin deliberately opts a company out.
-  const globalUsable = scopedCompanies.some((c) => c.sharedSystemLabels);
-  const inScope = <T extends CompanyScopedLabel>(rows: T[]) => labelsInCompanyScope(rows, scopedIdSet, globalUsable);
+  // Common maintenance uses administered companies, independently of the current company switcher.
+  // Creation ownership remains visible even when that company is absent from a row's Criteria.
+  const maintenanceIds = new Set(writableCompanies.map(company => company.id));
+  const inScope = <T extends CompanyScopedLabel>(rows: T[]) => rows.filter(row =>
+    maintenanceIds.has(row.companyId) || labelsInCompanyScope([row], maintenanceIds).length > 0);
 
   const data: Record<GridKind, GridRecord[]> = {
     department: inScope(departments).map((r) => norm(r, deptMap)),
@@ -204,15 +188,14 @@ export default async function SystemLabelsPage({
     });
   }
 
-  const gridCompanies = scopedCompanies.map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels }));
+  const gridCompanies = companies.filter(c => maintenanceIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
 
   const actions = {
     save: saveLabelsGridAction,
-    setGlobal: setLabelGlobalAction,
+    setCriteria: setLabelCriteriaAction,
     assign: assignLabelCompaniesAction,
     unassign: unassignLabelCompaniesAction,
     copyToCompanies: copyLabelsToCompaniesAction,
-    setCompanyShared: setCompanySharedLabelsAction,
   };
 
   // b1b81a08 — the Grades body. Rows go in exactly as core/read.ts returns them (id, code, name, rank,
@@ -288,7 +271,7 @@ export default async function SystemLabelsPage({
   }));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <SystemLabelsTabs active="organisation" />
       <SystemLabelImportTools />

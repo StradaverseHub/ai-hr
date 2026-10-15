@@ -19,7 +19,7 @@ import { pgErrorChain, pgSqlState, isDatabaseError } from '../lib/db-error';
 // f1bbc572 — the tokens a label refusal may travel as, so the client can say it in the reader's language
 // instead of forwarding the driver's SQL. Pure module (the lib/leave-visual precedent above).
 import type { LabelErrorToken } from '../lib/label-error-token';
-import { visibleLabelIdsCondition } from './system-labels';
+import { visibleLabelIdsCondition, labelCompanyIdsSql, assertLabelCriteriaCodeTx, setLabelCriteria } from './system-labels';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type, shared with
 // listLeaveTypes' inUse predicate. Two hand-written lists are what drifted into the reported bug.
 //
@@ -1345,6 +1345,7 @@ export function listPositions(
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
         isGlobal: position.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(position, 'position'),
         archivedAt: position.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
       })
@@ -1377,6 +1378,7 @@ export function listCostCenters(
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
         isGlobal: costCenter.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(costCenter, 'cost_center'),
         archivedAt: costCenter.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
       })
@@ -1411,6 +1413,7 @@ export function listBusinessUnits(
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
         isGlobal: businessUnit.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(businessUnit, 'business_unit'),
         archivedAt: businessUnit.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
       })
@@ -1489,6 +1492,7 @@ export function listDepartmentsForLabels(
         description: department.description,
         archivedAt: department.archivedAt,
         isGlobal: department.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(department, 'department'),
         createdAt: department.createdAt,
         lastUpdatedAt: lastUpdatedAtSql('department', department.id),
         lastUpdatedBy: lastUpdatedBySql('department', department.id),
@@ -1518,6 +1522,7 @@ export function listPositionsForLabels(
         description: position.description,
         archivedAt: position.archivedAt,
         isGlobal: position.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(position, 'position'),
         createdAt: position.createdAt,
         lastUpdatedAt: lastUpdatedAtSql('position', position.id),
         lastUpdatedBy: lastUpdatedBySql('position', position.id),
@@ -1547,6 +1552,7 @@ export function listCostCentersForLabels(
         description: costCenter.description,
         archivedAt: costCenter.archivedAt,
         isGlobal: costCenter.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(costCenter, 'cost_center'),
         createdAt: costCenter.createdAt,
         lastUpdatedAt: lastUpdatedAtSql('cost-center', costCenter.id),
         lastUpdatedBy: lastUpdatedBySql('cost-center', costCenter.id),
@@ -1578,6 +1584,7 @@ export function listBusinessUnitsForLabels(
         description: businessUnit.description,
         archivedAt: businessUnit.archivedAt,
         isGlobal: businessUnit.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(businessUnit, 'business_unit'),
         createdAt: businessUnit.createdAt,
         lastUpdatedAt: lastUpdatedAtSql('business-unit', businessUnit.id),
         lastUpdatedBy: lastUpdatedBySql('business-unit', businessUnit.id),
@@ -2686,6 +2693,7 @@ export type LabelKindStr = 'department' | 'position' | 'cost_center' | 'business
 
 /** One new row to create. `key` is the client's row key, echoed back on any error for row highlighting. */
 export type LabelCreateInput = {
+  companyIds?: string[];
   key: string;
   companyId: string;
   isGlobal?: boolean;
@@ -2814,6 +2822,7 @@ export async function bulkSaveLabels(
 ): Promise<{ created: number; updated: number; createdIds: { key: string; id: string }[] }> {
   const agg = KIND_AGG[kind];
   return tenantMutation(ctx, existingTx, async (tx) => {
+    await tx.execute(sql`select app.lock_system_label_criteria(${ctx.tenantId}::uuid, ${kind})`);
     const errors: LabelRowError[] = [];
     // Maps each created draft's client key → its new server id so the grid can convert the draft row
     // into a persisted row in place (instead of leaving it as a dirty draft that re-inserts on next Save).
@@ -2883,6 +2892,9 @@ export async function bulkSaveLabels(
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
         }
+        const savedId = createdIds.find(row => row.key === c.key)!.id;
+        await setLabelCriteria(ctx, { kind, labelId: savedId, isGlobal: c.isGlobal ?? false, companyIds: c.companyIds ?? [c.companyId] }, tx);
+        await assertLabelCriteriaCodeTx(tx, ctx.tenantId, kind, savedId);
         created++;
       } catch (e) {
         const rowErr = labelRowError(e, c.key, kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code');
@@ -2942,6 +2954,7 @@ export async function bulkSaveLabels(
           await tx.update(businessUnit).set(set).where(eq(businessUnit.id, u.id));
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
         }
+        await assertLabelCriteriaCodeTx(tx, ctx.tenantId, kind, u.id);
         updated++;
       } catch (e) {
         const rowErr = labelRowError(e, u.key, kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code');
@@ -2963,23 +2976,9 @@ export async function bulkSaveLabels(
   });
 }
 
-/**
- * Turn a company's Shared System Labels feature ON/OFF (the resolver switch). OFF (default) = origin-only
- * for that company; ON = it also sees global + labels shared into it. RLS on `company` already requires
- * admin-for-company to write. Substrate: append a company-level event.
- */
-export async function setCompanySharedLabels(ctx: SessionContext, p: { companyId: string; enabled: boolean }) {
-  return withTenant(ctx, async (tx) => {
-    await tx.update(company).set({ sharedSystemLabels: p.enabled }).where(eq(company.id, p.companyId));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'company',
-      aggregateId: p.companyId,
-      eventType: p.enabled ? 'company.shared-labels.enabled' : 'company.shared-labels.disabled',
-      actor: actorOf(ctx),
-      payload: { enabled: p.enabled },
-    });
-  });
+/** Legacy entry point is retired. Criteria is now the only configuration owner. */
+export async function setCompanySharedLabels(_ctx: SessionContext, _p: {companyId:string;enabled:boolean}): Promise<never> {
+  throw new Error('System Labels sharing is automatic. Change the individual code’s Criteria instead.');
 }
 
 /**

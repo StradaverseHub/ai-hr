@@ -159,7 +159,7 @@ import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
-import { visibleLabelIdsCondition } from './system-labels';
+import { visibleLabelIdsCondition, labelCompanyIdsSql } from './system-labels';
 import { resolveEssView, type ResolvedEssView } from './ess-view';
 // 00307068: `resolveLeaveFormula` (the fixed nine-key resolver) is no longer imported here — every call site
 // in this file now resolves BY LEAVE TYPE CODE. The function itself is unchanged and still exported for the
@@ -699,6 +699,7 @@ export function listDepartments(
         // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
         // above already admits it; a picker that re-filtered on company_id alone threw it away again).
         isGlobal: department.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(department, 'department'),
         archivedAt: department.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })

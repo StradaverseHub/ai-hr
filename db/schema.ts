@@ -870,13 +870,8 @@ export const costCenter = pgTable(
   (t) => [index('cost_center_company_idx').on(t.companyId)],
 );
 
-// Shared System Labels junction (ADR-0073, feedback d356dec8) — gives an org label (department / position /
-// cost_center / business_unit) ADDITIONAL companies that may use it, ON TOP OF its origin company_id (which
-// is never touched). `label_kind` + `label_id` is a polymorphic key into one of the four tables; there is no
-// DB FK on label_id (it spans four tables) — the service validates it. Uniqueness on
-// (tenant_id, label_kind, label_id, company_id). "All Companies" is the is_global flag on the label row, NOT
-// N rows here, so adding a company later needs no backfill. Backfilled 1:1 with each existing label's origin,
-// so pre-flag behaviour is identical to today.
+// System Labels criteria (ADR-0122): explicit company availability, independent of creation ownership.
+// is_global supersedes this set. The append-only0550 backfill preserves old implicit origin access.
 export const LABEL_KINDS = ['department', 'position', 'cost_center', 'business_unit'] as const;
 export type LabelKind = (typeof LABEL_KINDS)[number];
 
@@ -898,6 +893,12 @@ export const labelCompanyAssignment = pgTable(
     index('label_company_assignment_label_idx').on(t.labelKind, t.labelId),
   ],
 );
+
+/** Derived concurrency coordination only; not configurable System Label data. */
+export const systemLabelCriteriaEpoch = pgTable('system_label_criteria_epoch', {
+  tenantId: tenantId(), labelKind: text('label_kind').$type<LabelKind>().notNull(),
+  revision: bigint('revision', {mode:'number'}).notNull().default(0),
+}, table => [primaryKey({columns:[table.tenantId,table.labelKind]})]);
 
 // Termination classification (Wave 4A) — powers the Terminations + Turnover analytics breakdown.
 // Nullable: legacy/active employments have none; set when an employment is terminated.

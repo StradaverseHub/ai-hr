@@ -1,4 +1,5 @@
 'use client';
+import {labelsInCompanyScope,type CompanyScopedLabel} from '@/lib/system-label-scope';
 import { useActionState, useState } from 'react';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { useTranslations } from 'next-intl';
@@ -29,12 +30,13 @@ export function AttendanceAllowanceEditor({options,components,policy,action}:{op
   const [reviewed,setReviewed]=useState(false);
   const update=(next:AllowanceRules)=>{setRules(next);setReviewed(false);};
   const company=options.companies.find(c=>c.id===companyId);
-  const scoped=<T extends {companyId:string|null;isGlobal?:boolean}>(rows:T[])=>rows.filter(r=>r.companyId==null||r.companyId===companyId||r.isGlobal);
+  const scoped=<T extends {companyId:string|null}>(rows:T[])=>rows.filter(r=>r.companyId==null||r.companyId===companyId);
+  const orgScoped=<T extends CompanyScopedLabel>(rows:T[])=>labelsInCompanyScope(rows,new Set([companyId]));
   const employeeOptions=(field:AllowanceEmployeeField):{id:string;label:string}[]=>{
     if(field==='companyId')return options.companies.filter(c=>c.id===companyId);
-    if(field==='departmentId')return scoped(options.departments);
-    if(field==='businessUnitId')return scoped(options.businessUnits);
-    if(field==='positionId')return scoped(options.positions);
+    if(field==='departmentId')return orgScoped(options.departments);
+    if(field==='businessUnitId')return orgScoped(options.businessUnits);
+    if(field==='positionId')return orgScoped(options.positions);
     if(field==='gradeId')return options.grades;
     if(field==='employmentCategory')return options.categories.map(c=>({id:c,label:c}));
     if(field==='status')return ['active','terminated'].map(id=>({id,label:t(`status.${id}`)}));
