@@ -32,7 +32,11 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "ai.stradaverse.aihr.test",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -70,6 +74,13 @@
     "platforms": [
       "ios",
       "android"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7f580e1e-293f-4ad7-9c57-bd8f992a882f"
+      }
+    },
+    "owner": "stradaverse"
   }
 }
