@@ -60,11 +60,11 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
           const file = new Blob([`AI HR recovery codes\n${state.recoveryCodes!.join('\n')}\n`], { type: 'text/plain' });
           const url = URL.createObjectURL(file), link = document.createElement('a'); link.href = url; link.download = 'aihr-recovery-codes.txt'; link.click(); URL.revokeObjectURL(url);
         }}>{t('download')}</button>
-        <form onSubmit={event => { event.preventDefault(); window.location.assign(returnTo); }} className="space-y-4">
+        <form method="post" onSubmit={event => { event.preventDefault(); window.location.assign(returnTo); }} className="space-y-4">
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" required className="mt-1"/>{t('codesSaved')}</label>
           <button className={button}>{t('continue')}</button>
         </form>
-      </div> : <form onSubmit={submit} className="space-y-4">
+      </div> : <form method="post" onSubmit={submit} className="space-y-4">
         {['login','recovery'].includes(state.step) && <>
           <label className="block space-y-1.5"><span className="text-sm font-medium">{t('organization')}</span><input className={field} name="organization" required defaultValue={organization} maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="organization"/></label>
           <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input className={field} name="username" required maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="username"/></label>

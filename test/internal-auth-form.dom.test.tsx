@@ -15,6 +15,7 @@ describe('embedded browser forms', () => {
   it('submits organization + username without exposing credentials in the URL and renders a safe refusal', async () => {
     fetcher.mockResolvedValue(Response.json({ error: 'invalidLogin' }, { status: 401 }));
     view(); const user = userEvent.setup();
+    expect(screen.getByLabelText(en.internalAuth.password).closest('form')).toHaveAttribute('method','post');
     await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
     await user.type(screen.getByLabelText(en.internalAuth.password), 'Private fixture password');
     await user.click(screen.getByRole('button', { name: en.internalAuth.signIn }));
