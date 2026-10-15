@@ -1,6 +1,6 @@
 # ADR-0116: Central AI inventory and allowances
 
-Status: proposed; requires execution and experience verification before release.
+Status: accepted. Local acceptance and experience verified on 2026-10-15; release checks remain separately required.
 
 ## Request and graph
 
@@ -74,3 +74,20 @@ the template fallback for readiness reminders. Current switches are rechecked on
 Verification is incomplete until each row has direct evidence. The release gate remains separate
 from acceptance. Historical model usage is not reconstructed. Exact provider invoices, retrospective
 attribution, a new model scheduler and new autonomous HR decision powers are outside this increment.
+
+## Acceptance observation, 2026-10-15
+
+The local app journey demonstrated the inventory, canonical Assistant grant, company/user allowance
+persistence, pre-transport quota and pause refusals, scoped company edits, forged-target refusal,
+employee access refusal, orchestrator refresh, search, and populated/empty/error/provider-missing
+states. All six locales rendered at 1440, 1024, 768 and 390 pixels without document overflow or
+application runtime errors. Desktop and mobile screens were visually reviewed, including Tamil
+allowance labels and the section navigation. Fixtures ran twice and exited cleanly.
+
+Focused checks cover the AI management service and database policies, all three provider adapters,
+the gateway, existing configuration, Assistant access, Performance and downstream agent/proposal
+consumers. The expanded run had one incorrectly licensed readiness fixture; correcting that fixture
+produced a passing 16-case management run, with the other fourteen consumer files already passing.
+Actual external provider connectivity was intentionally untested: the local journey used fictional
+data and denied model network calls, proving control refusals before transport. These observations
+do not substitute for the final candidate's gate, production build or live-schema migration rehearsal.
