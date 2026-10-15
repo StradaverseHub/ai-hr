@@ -290,8 +290,10 @@ CREATE TRIGGER toil_accrual_overtime_owner_delete BEFORE DELETE ON toil_accrual 
 -- No app-callable bypass: exact raw business-input changes inherit the existing Attendance subject
 -- policy and private Payroll coverage lock owner. This function returns no salary/Payroll payload.
 CREATE FUNCTION app.guard_overtime_cash_source_write() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE olddoc jsonb;newdoc jsonb;doc jsonb;tenant_value uuid;emp uuid;on_date date;claim record;batch_status text;request_value uuid;seen text[]:='{}';source_key text;
+DECLARE olddoc jsonb;newdoc jsonb;doc jsonb;tenant_value uuid;emp uuid;on_date date;claim record;batch_status text;request_value uuid;seen text[]:='{}';source_key text;full_source_visibility boolean;requested_minutes integer;
 BEGIN
+ -- FORCE RLS makes an empty owner read inconclusive unless this EFFECTIVE reader truly bypasses RLS.
+ -- This is absence proof only: a protected source still requires its normal context and guards.
  olddoc:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;newdoc:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
  IF TG_OP='UPDATE' THEN
   IF TG_TABLE_NAME='attendance' THEN
@@ -303,17 +305,25 @@ BEGIN
   IF TG_TABLE_NAME='attendance_punch' AND (olddoc->'employment_id',olddoc->'attendance_date',olddoc->'punch_at',olddoc->'direction',olddoc->'attendance_id',olddoc->'voided_at') IS NOT DISTINCT FROM(newdoc->'employment_id',newdoc->'attendance_date',newdoc->'punch_at',newdoc->'direction',newdoc->'attendance_id',newdoc->'voided_at') THEN RETURN NEW;END IF;
   IF TG_TABLE_NAME='attendance_correction' AND (olddoc-'reason'-'remarks') IS NOT DISTINCT FROM(newdoc-'reason'-'remarks') THEN RETURN NEW;END IF;
  END IF;
+ SELECT rolsuper OR rolbypassrls INTO full_source_visibility FROM pg_catalog.pg_roles WHERE rolname=current_user;
  FOR doc IN SELECT value FROM jsonb_array_elements(jsonb_build_array(olddoc,newdoc)) WHERE value<>'null'::jsonb LOOP
   tenant_value:=(doc->>'tenant_id')::uuid;
-  IF tenant_value IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Overtime input tenant mismatch' USING ERRCODE='42501';END IF;
+  -- Non-OT requests/decisions are not formula approval inputs. Their actual clock effects still
+  -- pass through Attendance/punch guards; OLD and NEW docs retain protection for removed OT inputs.
+  IF TG_TABLE_NAME='attendance_correction' AND doc->>'requested_ot_minutes' IS NULL THEN CONTINUE;END IF;
   IF TG_TABLE_NAME='attendance_workflow_decision' THEN
-   SELECT c.employment_id,c.attendance_date INTO emp,on_date FROM public.attendance_workflow_request r JOIN public.attendance_correction c ON c.id=r.correction_id AND c.tenant_id=r.tenant_id WHERE r.id=(doc->>'request_id')::uuid AND r.tenant_id=tenant_value;
+   SELECT c.employment_id,c.attendance_date,c.requested_ot_minutes INTO emp,on_date,requested_minutes FROM public.attendance_workflow_request r JOIN public.attendance_correction c ON c.id=r.correction_id AND c.tenant_id=r.tenant_id WHERE r.id=(doc->>'request_id')::uuid AND r.tenant_id=tenant_value;
+   IF FOUND AND requested_minutes IS NULL THEN CONTINUE;END IF;
   ELSE emp:=(doc->>'employment_id')::uuid;on_date:=(doc->>'attendance_date')::date;END IF;
+  IF full_source_visibility AND emp IS NOT NULL AND on_date IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.attendance_overtime_source d WHERE d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date) THEN CONTINUE;END IF;
+  IF tenant_value IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Overtime input tenant mismatch' USING ERRCODE='42501';END IF;
   IF emp IS NULL OR on_date IS NULL THEN CONTINUE;END IF;source_key:=emp::text||':'||on_date::text;IF source_key=ANY(seen) THEN CONTINUE;END IF;seen:=array_append(seen,source_key);
   IF NOT(emp=ANY(app.visible_employment_ids()) OR app.can_admin_payroll_employment(emp)) THEN RAISE EXCEPTION 'Canonical Attendance subject authority is required' USING ERRCODE='42501';END IF;
   -- Raw input is already Attendance-row locked. Serialize source claims BEFORE batch locks; do not
   -- acquire employee advisory here (actual calculation takes employee -> Attendance -> source).
   PERFORM d.id FROM public.attendance_overtime_source d WHERE d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date ORDER BY d.id FOR UPDATE;
+  -- Tenant plus subject authority makes the matching source visible even under FORCE RLS.
+  IF NOT FOUND THEN CONTINUE;END IF;
   IF EXISTS(SELECT 1 FROM public.overtime_source_settlement st JOIN public.attendance_overtime_source d ON d.id=st.source_id WHERE st.tenant_id=tenant_value AND d.tenant_id=tenant_value AND d.employment_id=emp AND d.attendance_date=on_date AND st.mode='toil' AND st.released_at IS NULL) THEN RAISE EXCEPTION 'Reverse and release canonical TOIL before changing its overtime source' USING ERRCODE='23514';END IF;
   -- The existing private owner locks every relevant batch in stable ID order, including draft runs.
   PERFORM * FROM app.attendance_payroll_protection_rows(emp);

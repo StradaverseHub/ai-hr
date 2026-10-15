@@ -1,13 +1,14 @@
 /** Canonical storage/lifecycle regressions. Source-only until the shared release hold is lifted. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {eq,sql} from 'drizzle-orm';
+import {asc,eq,sql} from 'drizzle-orm';
 import {db,withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
 import {activateOvertimePattern,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
+import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 let b:Base,employmentId:string,attendanceId:string,earningId:string;const day=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(day()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const yes=(id:string)=>({id,type:'constant' as const,value:true});
@@ -93,4 +94,47 @@ describe('Referenced Attendance identity cannot retarget',()=>{
  });
  it('protects context-only source identity and permits an unchanged identity/ordinary metadata update',async()=>{await withTenant(adminCtx(b),tx=>captureOvertimePersonnelContextTx(tx,adminCtx(b),{employmentId,date:day(),facts:{}}));await expect(appIdentityUpdate(sql`attendance_date=${plus(1)}::date`)).rejects.toMatchObject({cause:expect.objectContaining({code:'23514',message:expect.stringContaining('Referenced overtime Attendance identity is immutable')})});await expect(appIdentityUpdate(sql`id=id,tenant_id=tenant_id,employment_id=employment_id,attendance_date=attendance_date,remarks='Ordinary metadata update'`)).resolves.toHaveLength(1);expect((await owner.db.select().from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0].remarks).toBe('Ordinary metadata update');});
  it('does not add a blanket identity rule to an unreferenced legacy Attendance day',async()=>{await expect(appIdentityUpdate(sql`attendance_date=${plus(1)}::date`)).resolves.toHaveLength(1);expect(await owner.db.select().from(s.attendanceOvertimeSource)).toHaveLength(0);});
+});
+
+
+describe('raw input guard proves source absence',()=>{
+ it('permits a no-context legacy owner write only with effective full visibility and no source',async()=>{
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`select set_config('app.tenant_id','',true),set_config('app.user_id','',true)`);
+   const [visibility]=await tx.execute(sql`select r.rolsuper or r.rolbypassrls as full from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='app.guard_overtime_cash_source_write()'::regprocedure`) as unknown as {full:boolean}[];expect(visibility.full).toBe(true);
+   expect(await tx.update(s.attendance).set({workedMinutes:481}).where(eq(s.attendance.id,attendanceId)).returning()).toHaveLength(1);
+  });
+ });
+ it('preserves ordinary app-context legacy writes without any overtime source',async()=>{
+  await expect(withTenant(adminCtx(b),tx=>tx.update(s.attendance).set({workedMinutes:482}).where(eq(s.attendance.id,attendanceId)).returning())).resolves.toHaveLength(1);
+  expect(await owner.db.select().from(s.attendanceOvertimeSource)).toHaveLength(0);
+ });
+ it('does not let a full-visibility no-context owner bypass an actual cash-protected source',async()=>{
+  const result=await recorded();if(result.status!=='recorded')throw new Error('Expected formula');const ctx=adminCtx(b),run=await batch();
+  await withTenant(ctx,tx=>reserveOvertimeSettlementTx(tx,ctx,{employmentId,date:day(),mode:'cash',calculationId:result.calculationId,payrollBatchId:run.id}));
+  await expect(owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('app.tenant_id','',true),set_config('app.user_id','',true)`);await tx.update(s.attendance).set({workedMinutes:999}).where(eq(s.attendance.id,attendanceId));})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:'Overtime input tenant mismatch'})});
+  expect((await owner.db.select().from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0].workedMinutes).not.toBe(999);
+ });
+});
+
+
+describe('only actual formula inputs are protected by a TOIL claim',()=>{
+ it('allows a non-OT pending/rejected workflow, but blocks clock application and OT-bearing input',async()=>{
+  await recorded();await setModule(b.tenantId,'toil','active');const ctx=adminCtx(b);
+  const [credit]=await owner.db.insert(s.toilAccrual).values({tenantId:b.tenantId,employmentId,workedDate:day(),otMinutes:120,daysCredited:'0.25',accrualBasis:'hours_worked',expiresOn:plus(30)}).returning();
+  await withTenant(ctx,tx=>reserveOvertimeSettlementTx(tx,ctx,{employmentId,date:day(),mode:'toil',toilAccrualId:credit.id}));
+  await saveAttendanceWorkflow(ctx,{companyId:b.companyId,code:'CLOCK_TOIL',name:'Non-OT correction review',description:'Fictional',applicationType:'irregularity',priority:100,criteria:{},stages:[{name:'HR review',level:{kind:'hr_admin',employmentId:null,alternates:[]}}],active:true});
+  await setAttendanceWorkflowEnabled(ctx,b.companyId,'irregularity',true);
+  const p={employmentId,date:day(),checkIn:'10:00',checkOut:'18:00',reason:'Review clock evidence without changing overtime approval'};
+  const rejected=await requestAttendanceCorrection(ctx,p);
+  expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,rejected.correctionId)))[0]).toMatchObject({status:'pending',requestedOtMinutes:null});
+  await expect(decideAttendanceCorrection(ctx,{correctionId:rejected.correctionId,decision:'rejected',rejectReason:'Original clocks confirmed',expectedStageIndex:0})).resolves.toMatchObject({status:'rejected'});
+  expect((await owner.db.select().from(s.attendanceWorkflowDecision).orderBy(asc(s.attendanceWorkflowDecision.stageIndex))).map(row=>row.decision)).toEqual(['rejected']);
+  const pending=await requestAttendanceCorrection(ctx,p);
+  await expect(decideAttendanceCorrection(ctx,{correctionId:pending.correctionId,decision:'approved',expectedStageIndex:0})).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/TOIL/)})});
+  expect((await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,pending.correctionId)))[0].status).toBe('pending');
+  expect((await owner.db.select().from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0].checkInAt).toBe('09:00:00');
+  await expect(withTenant(ctx,tx=>tx.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId,attendanceDate:day(),requestedOtMinutes:60,status:'rejected',reason:'Raw OT input remains protected'}))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/TOIL/)})});
+  expect((await withTenant(ctx,tx=>readOvertimeSettlementForDayTx(tx,ctx,{employmentId,date:day()})))?.settlement).toMatchObject({mode:'toil',toilAccrualId:credit.id});
+ });
 });

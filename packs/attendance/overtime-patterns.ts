@@ -281,11 +281,16 @@ export async function readOvertimeDurationsTx(tx:Tx,ctx:SessionContext,p:{entrie
 }
 
 /** Retained immutable definition for an existing cash obligation; never today's assignment selector. */
-export async function readOvertimeCashDefinitionTx(tx:Tx,ctx:SessionContext,p:{versionId:string;assignmentId:string;companyId:string;date:string}):Promise<{definition:OvertimePattern;versionId:string;assignmentId:string;companyIds:string[]}>{
- assertModuleGate(ctx,'payroll');uuid(p.versionId);uuid(p.assignmentId);uuid(p.companyId);date(p.date);
+export async function readOvertimeCashDefinitionTx(tx:Tx,ctx:SessionContext,p:{versionId:string;assignmentId:string;companyId:string;employmentId:string;date:string;facts:OvertimeFacts}):Promise<{definition:OvertimePattern;versionId:string;assignmentId:string;companyIds:string[]}>{
+ assertModuleGate(ctx,'payroll');uuid(p.versionId);uuid(p.assignmentId);uuid(p.companyId);uuid(p.employmentId);date(p.date);
  const proof=await tx.execute(sql`select app.can_admin_payroll_for(${p.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];if(!proof[0]?.allowed)fail('permission','The recorded company is outside your financial authority.');
  const version=await versionRow(tx,ctx,p.versionId),companyIds=await companiesForVersion(tx,version.id);const [assignment]=await tx.select().from(s.overtimePatternAssignment).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternAssignment.id,p.assignmentId),eq(s.overtimePatternAssignment.versionId,p.versionId),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)))).limit(1);
- if(version.kind!=='formula'||!version.activatedAt||!assignment||!companyIds.includes(p.companyId))fail('unavailable','The immutable cash definition does not match the recorded assignment/date/company.');return {definition:validateOvertimePattern(version.definition),versionId:version.id,assignmentId:assignment.id,companyIds};
+ if(version.kind!=='formula'||!version.activatedAt||!assignment||!companyIds.includes(p.companyId))fail('unavailable','The immutable cash definition does not match the recorded assignment/date/company.');
+ const company=p.facts.companyId,employee=p.facts.employmentId;if(company?.state!=='known'||company.value!==p.companyId||employee?.state!=='known'||employee.value!==p.employmentId)fail('unavailable','Canonical assignment subject facts are unavailable.');
+ // Check only this retained assignment's membership. Do not reselect today's winning policy.
+ const membership=resolveOvertimePattern([{assignmentId:assignment.id,patternVersionId:version.id,priority:assignment.priority,from:assignment.validFrom,to:assignment.validTo,companyIds,target:validateOvertimeAssignmentTarget(assignment.target)}],p.facts,p.date);
+ if(membership.status!=='selected'||membership.assignmentId!==assignment.id||membership.patternVersionId!==version.id)fail('unavailable','The recorded overtime assignment does not match this employee.');
+ return {definition:validateOvertimePattern(version.definition),versionId:version.id,assignmentId:assignment.id,companyIds};
 }
 
 /** Cheap canonical OT-stage detection. No salary/currency reader and no source creation.

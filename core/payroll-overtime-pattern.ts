@@ -12,7 +12,7 @@ import {
   readOvertimeCashDefinitionTx, canonicalOvertimePayrollInputTx,
 } from '../packs/attendance/service';
 import { parseRecordedOvertimeEvaluation } from '../lib/overtime-pattern-result';
-import { validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
+import { evaluateOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
 import { type OvertimeEvaluation, type OvertimeExact, type OvertimeLine } from '../lib/overtime-pattern-model';
 import { compensationEffectiveOn } from './comp';
 import { packFor } from '../localization/registry';
@@ -63,7 +63,7 @@ export type PayrollOvertimePatternLine={sourceId:string;calculationId:string;sou
 export type PayrollOvertimePatternCash={lines:PayrollOvertimePatternLine[];byEmployment:Map<string,PayrollOvertimePatternLine[]>};
 
 type CalculationRead=NonNullable<Awaited<ReturnType<typeof readOvertimeCalculationTx>>>;
-/** Read immutable evidence and compare independently persisted rows; no current formula re-evaluation. */
+/** Verify the original immutable definition against matched canonical inputs; never reprice with today's policy. */
 async function boundCalculationTx(tx:Tx,ctx:SessionContext,r:CalculationRead){
  const c=r.calculation,e=r.evidence;
  if(!c||!e||!c.versionId||!c.assignmentId||c.id!==r.source.currentCalculationId||c.ordinal!==r.source.revision||c.sourceId!==r.source.id)fail('stale');
@@ -74,7 +74,13 @@ async function boundCalculationTx(tx:Tx,ctx:SessionContext,r:CalculationRead){
  if(e.calculationId!==c.id||e.companyId!==r.source.companyId||e.tenantId!==ctx.tenantId)fail('unavailable');
  const fresh=await canonicalOvertimePayrollInputTx(tx,ctx,{employmentId:r.source.employmentId,date:r.source.attendanceDate});
  if(fresh.input.source.inputDigest!==c.inputDigest||fresh.input.source.approvalDigest!==c.approvalDigest||fresh.referenceDigest!==c.referenceDigest||fresh.input.source.attendanceId!==r.source.attendanceId||fresh.input.approval.status!==c.approvalStatus)fail('stale');
- const definition=await readOvertimeCashDefinitionTx(tx,ctx,{versionId:c.versionId,assignmentId:c.assignmentId,companyId:r.source.companyId,date:r.source.attendanceDate});
+ const canonical=validateOvertimeInput({...fresh.input,mode:'actual',patternVersionId:c.versionId,assignmentId:c.assignmentId});
+ if(stableJSON(stored)!==stableJSON(canonical))fail('stale');
+ const definition=await readOvertimeCashDefinitionTx(tx,ctx,{versionId:c.versionId,assignmentId:c.assignmentId,companyId:r.source.companyId,employmentId:r.source.employmentId,date:r.source.attendanceDate,facts:canonical.facts});
+ // Digests establish freshness, not computation authenticity. Verify the entire recorded result
+ // with the one shared engine and the EXACT recorded version; mismatch refuses, never rewrites.
+ const verified=evaluateOvertimePattern(definition.definition,canonical);
+ if(verified.status!=='ready'||!verified.transferable||stableJSON(verified)!==stableJSON(evaluation))fail('stale');
  if(evaluation.currency.code!==c.currency||evaluation.currency.minorScale!==c.minorScale||definition.definition.currency.code!==c.currency||definition.definition.currency.minorScale!==c.minorScale||fresh.input.currency.code!==c.currency||fresh.input.currency.minorScale!==c.minorScale||c.minorScale!==2)fail('currency');
  if(r.lines.length!==evaluation.lines.length)fail('unavailable');
  for(let i=0;i<r.lines.length;i++){const line=r.lines[i],proof=evaluation.lines[i];if(line.tenantId!==ctx.tenantId||line.companyId!==r.source.companyId||line.calculationId!==c.id||line.sequence!==i||line.lineKey!==proof.id||line.componentId!==proof.mapping.earningItemId||line.amountMinorUnits!==proof.amountMinorUnits||stableJSON(line.evidence)!==stableJSON(proof))fail('unavailable');}
