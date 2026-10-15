@@ -78,8 +78,7 @@ describe('source-owned allowance periods', () => {
     expect(period).toMatchObject({qualified:true,amount:'4.05'});
     expect(period.sourceDays[0].v3Facts).toMatchObject({shortMinutes:0,attendanceEvidence:{recordedUnderMinutes:240,fullDayNormalMinutes:480,leaveMinutes:240,reasons:{shortfall:'approved-partial-leave-adjustment'}}});
     const [after]=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.id,record.id));expect(after).toEqual(record);
-    const trace=record.calcTrace as {schedule:Record<string,unknown>};
-    const legacy=structuredClone(trace);delete legacy.schedule.fullDayNormalMinutes;
+    const legacy=structuredClone(record.calcTrace!);delete legacy.schedule.fullDayNormalMinutes;
     await owner.db.update(schema.attendance).set({calcTrace:legacy}).where(eq(schema.attendance.id,record.id));
     const unknown=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
     expect(unknown.rows[0].periods.find(period=>period.from===date)?.reasons).toContain('unknownMeasurements');
