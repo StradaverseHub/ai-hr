@@ -10,7 +10,7 @@ export type MasterScalar = string | number | boolean | null;
 export type MasterUnavailableReason = 'historical-unavailable'|'not-recorded'|'not-applicable'|'draft-unfinished'|'unknown-currency'|'mixed-currency'|'incompatible-units';
 export type MasterCell = { value:MasterScalar; display?:string; unavailable?:MasterUnavailableReason; currency?:string|null; unit?:string; sourceRecordId?:string; labelIsCurrent?:boolean; referenceId?:string|null };
 export type MasterOwnerRecord = { id:string; effectiveFrom?:string|null; effectiveTo?:string|null; createdAt?:string|null; values:Record<string,MasterCell>; currency?:string|null };
-export type MasterSubject = { id:string; kind:'employment'|'draft'; personId:string|null; companyId:string|null; owners:Record<string,MasterOwnerRecord[]> };
+export type MasterSubject = { id:string; kind:'employment'|'draft'; personId:string|null; companyId:string|null; owners:Record<string,MasterOwnerRecord[]>; scopeUnavailable?:'historical-company-unavailable'; historyScopeUnavailable?:boolean };
 export type MasterOperator = 'eq'|'ne'|'contains'|'in'|'between'|'before'|'after'|'blank'|'notBlank';
 export type MasterCondition = {id:string;type:'condition';field:string;operator:MasterOperator;value?:MasterScalar;upper?:MasterScalar;values?:MasterScalar[]};
 export type MasterExpression = MasterCondition|{id:string;type:'group';logic:'and'|'or';children:MasterExpression[]};
@@ -79,7 +79,7 @@ export type MasterOutputRow={subjectId:string;personId:string|null;kind:'employm
 export type MasterTotal={field:string;side?:'before'|'after';value:string|null;currency:string|null;unit:string|null;unavailable?:MasterUnavailableReason};
 export type MasterGroup={key:string;values:MasterCell[];rowCount:number;employeeCount:number;personCount:number;draftCount:number;totals:MasterTotal[]};
 export type MasterSection={id:string;grain:string;columns:MasterColumn[];rows:MasterOutputRow[];rowCount:number;employeeCount:number;personCount:number;draftCount:number;groups:MasterGroup[];totals:MasterTotal[]};
-export type EmployeeMasterResult={asAt:string;employeeCount:number;personCount:number;draftCount:number;unknownMatchCount:number;totalRows:number;sections:MasterSection[]};
+export type EmployeeMasterResult={asAt:string;employeeCount:number;personCount:number;draftCount:number;unknownMatchCount:number;unknownScopeCount:number;historyScopeUnavailable:boolean;totalRows:number;sections:MasterSection[]};
 
 /** Every owner row has a stable identity. Dated latest ties use effective date, creation time, then ID. */
 export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],subjects:readonly MasterSubject[],today:string):EmployeeMasterResult{
@@ -122,10 +122,11 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
     }
     return pass?'true':'false';
   };
-  let unknownMatchCount=0;
+  let unknownMatchCount=0,unknownScopeCount=0;
   if(new Set(subjects.map(subject=>subject.kind+':'+subject.id)).size!==subjects.length)throw new Error('Duplicate report subject identity.');
   const selected=subjects.filter(subject=>{
     if(subject.kind==='draft'&&!spec.includeDrafts||subject.companyId!=null&&!spec.companyIds.includes(subject.companyId))return false;
+    if(subject.scopeUnavailable){unknownScopeCount++;return false;}
     const state=matches(spec.expression,subject);if(state==='unknown')unknownMatchCount++;return state==='true';
   });
   const allOwners=[...new Set(spec.columns.filter(c=>c.records==='all').map(c=>descriptor(c.field).owner))];
@@ -169,5 +170,5 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
   });
   const totalRows=sections.reduce((sum,section)=>sum+section.rowCount,0);
   if(totalRows>MASTER_EXPORT_MAX_ROWS||sections.reduce((sum,section)=>sum+section.rowCount*section.columns.length,0)>MASTER_EXPORT_MAX_CELLS)throw new Error('This report is too large. Narrow the company/date/employee conditions or select fewer columns before exporting.');
-  return {asAt:spec.asAt,employeeCount:selected.filter(subject=>subject.kind==='employment').length,personCount:new Set(selected.flatMap(subject=>subject.personId?[subject.personId]:[])).size,draftCount:selected.filter(subject=>subject.kind==='draft').length,unknownMatchCount,totalRows,sections};
+  return {asAt:spec.asAt,employeeCount:selected.filter(subject=>subject.kind==='employment').length,personCount:new Set(selected.flatMap(subject=>subject.personId?[subject.personId]:[])).size,draftCount:selected.filter(subject=>subject.kind==='draft').length,unknownMatchCount,unknownScopeCount,historyScopeUnavailable:subjects.some(subject=>!!subject.historyScopeUnavailable&&subject.companyId!=null&&spec.companyIds.includes(subject.companyId)),totalRows,sections};
 }

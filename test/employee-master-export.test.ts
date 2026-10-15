@@ -26,6 +26,11 @@ describe('Employee Master complete typed exports',()=>{
   const output=await serializeEmployeeMaster(runEmployeeMasterProjection(definition,[code,month],[person],spec.asAt),definition,[code,month],'Month precision','xlsx');
   const book=XLSX.read(output.bytes,{type:'array',cellDates:true});expect(book.Sheets[book.SheetNames[0]].B4).toMatchObject({t:'s',v:'2023-09'});
  });
+ it('carries unavailable historical-scope notices in Excel notes and a CSV companion file',async()=>{
+  const incomplete={...result(),unknownScopeCount:2,historyScopeUnavailable:true};
+  const workbook=XLSX.read((await serializeEmployeeMaster(incomplete,spec,fields,'Incomplete history','xlsx')).bytes,{type:'array'});expect(workbook.SheetNames).toContain('Report notes');expect(JSON.stringify(workbook.Sheets['Report notes'])).toContain('2 currently visible employments excluded');
+  const output=await serializeEmployeeMaster(incomplete,spec,fields,'Incomplete history','csv');expect(output.ext).toBe('zip');const zip=await JSZip.loadAsync(output.bytes);expect(await zip.file('Report-notes.txt')!.async('string')).toContain('dated company membership');expect(Object.keys(zip.files).filter(name=>name.endsWith('.csv'))).toHaveLength(1);
+ });
  it('neutralizes formula-looking CSV strings while keeping actual numeric measures and all rows',async()=>{
   const output=await serializeEmployeeMaster(result(),spec,fields,'Master export','csv'),text=Buffer.from(output.bytes).toString('utf8');
   expect(text).toContain('"\'=HYPERLINK');expect(text).toContain('"00000"');expect(text).toContain('"1200.5"');expect(text.split('\r\n')).toHaveLength(62);

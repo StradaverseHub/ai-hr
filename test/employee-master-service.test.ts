@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
+import { provenCompanyDatesTx,provenCompanySegmentsForPeriodBulkTx } from '../core/employment-company';
 import { hireEmployee } from '../core/org';
 import { setPayrollPermissionGrant } from '../core/payroll-permissions-admin';
 import { masterReportCatalogue } from '../core/employee-master-access';
@@ -43,6 +44,23 @@ describe('Employee Master authorization and persistence',()=>{
  });
  it('keeps ended employments in the Resigned starter under their last employer',async()=>{
   const end=new Date(todayInKualaLumpur()+'T00:00:00Z');end.setUTCDate(end.getUTCDate()-1);await owner.db.update(schema.employment).set({terminatedOn:end.toISOString().slice(0,10)}).where(eq(schema.employment.id,employee.employmentId));const fields=await masterReportCatalogue(ctx,[b.companyId]),spec=employeeMasterStarter(fields,[b.companyId],todayInKualaLumpur(),'resigned');const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec});expect(run.result.employeeCount).toBe(1);expect(run.result.sections[0].rows[0].subjectId).toBe(employee.employmentId);
+ });
+ it('uses authentic old-company history across a transfer and ignores superseded assignment mistakes',async()=>{
+  const transfer=new Date(todayInKualaLumpur()+'T00:00:00Z');transfer.setUTCDate(transfer.getUTCDate()-1);const transferDate=transfer.toISOString().slice(0,10),oldDate=new Date(transfer.getTime()-86_400_000).toISOString().slice(0,10);
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Historical transfer destination'}).returning();const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:other.id,name:'Destination department'}).returning();
+  const [initial]=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,employee.employmentId)).orderBy(schema.assignment.validFrom,schema.assignment.id);
+  await owner.db.update(schema.assignment).set({companyId:b.companyId,validTo:transferDate}).where(eq(schema.assignment.id,initial.id));
+  await owner.db.insert(schema.assignment).values({...initial,id:randomUUID(),companyId:other.id,departmentId:department.id,validFrom:transferDate,validTo:null,supersededAt:null});await owner.db.update(schema.employment).set({companyId:other.id}).where(eq(schema.employment.id,employee.employmentId));
+  await owner.db.insert(schema.assignment).values({...initial,id:randomUUID(),companyId:b.companyId,validTo:null,supersededAt:new Date()});
+  const evidence=await withTenant(ctx,async tx=>({dates:await provenCompanyDatesTx(tx,[{employmentId:employee.employmentId,date:oldDate},{employmentId:employee.employmentId,date:transferDate}]),segments:await provenCompanySegmentsForPeriodBulkTx(tx,[employee.employmentId],oldDate,todayInKualaLumpur())}));
+  expect(evidence.dates.get(employee.employmentId+'|'+oldDate)).toEqual({companyId:b.companyId,reason:null});expect(evidence.dates.get(employee.employmentId+'|'+transferDate)).toEqual({companyId:other.id,reason:null});expect(evidence.segments.get(employee.employmentId)?.map(segment=>segment.companyId)).toEqual([b.companyId,other.id]);
+  expect((await runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),asAt:oldDate}})).result).toMatchObject({employeeCount:1,unknownScopeCount:0});
+ });
+ it('excludes a legacy unproven past company without substituting today’s company, while preserving current reads',async()=>{
+  await owner.db.update(schema.assignment).set({companyId:null}).where(eq(schema.assignment.employmentId,employee.employmentId));
+  const past=new Date(todayInKualaLumpur()+'T00:00:00Z');past.setUTCDate(past.getUTCDate()-1);
+  const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),asAt:past.toISOString().slice(0,10)}});expect(run.result).toMatchObject({employeeCount:0,totalRows:0,unknownScopeCount:1});
+  expect((await runEmployeeMasterReport(ctx,[b.companyId],{spec:basic()})).result.employeeCount).toBe(1);
  });
  it('records structural run metadata and last-success time without row payloads',async()=>{
   const saved=await save(),run=await runEmployeeMasterReport(ctx,[b.companyId],{id:saved.id});await recordEmployeeMasterRun(ctx,run,'export','xlsx');const rows=await withTenant(ctx,tx=>tx.select().from(schema.customReportRun));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({reportId:saved.id,rowCount:1,outcome:'success',actorUserId:ctx.userId});expect(JSON.stringify(rows)).not.toContain('Synthetic report employee');expect((await getEmployeeMasterReport(ctx,[b.companyId],saved.id)).lastRunAt).not.toBeNull();

@@ -18,6 +18,10 @@ describe('Employee Master report contract',()=>{
     expect(PERSONNEL_FIELDS.filter(field=>!field.report.enabled).every(field=>!!field.report.disabledReason)).toBe(true);
     expect(PERSONNEL_FIELDS.filter(field=>field.scope==='draft')).toHaveLength(5);
   });
+  it('excludes historical-scope unknowns from rows/totals and counts only subjects already within the selected scope',()=>{
+    const selected=subject('missing',{scopeUnavailable:'historical-company-unavailable'}),foreign=subject('foreign',{companyId:'22222222-2222-4222-8222-222222222222',scopeUnavailable:'historical-company-unavailable'});
+    expect(runEmployeeMasterProjection(definition(),fields,[selected,foreign],today)).toMatchObject({employeeCount:0,personCount:0,totalRows:0,unknownScopeCount:1,unknownMatchCount:0});
+  });
   it('refuses hidden fields in columns, conditions, sorts and groups without echoing their identity',()=>{
     const permitted=fields.filter(field=>field.id!=='salary');
     const attempts=[definition({columns:[defaultMasterColumn(fields[1])]}),definition({sorts:[{field:'salary',dir:'asc'}]}),definition({groups:['salary']}),definition({expression:{id:'root',type:'group',logic:'and',children:[{id:'hidden',type:'condition',field:'salary',operator:'eq',value:1000}]}})];

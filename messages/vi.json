@@ -19262,6 +19262,9 @@
       "refreshRecipients": "Làm mới người nhận đủ điều kiện",
       "selectedCount": "Đã chọn {count} người nhận"
     },
-    "scheduledBadge": "Theo lịch"
+    "scheduledBadge": "Theo lịch",
+    "unknownScopeCount": "Đã loại {count} hồ sơ việc làm hiện có quyền xem vì chưa ghi nhận công ty tại ngày đã chọn.",
+    "unknownHistoryScope": "Không thể đưa vào một số lịch sử của nhân viên hiện có quyền xem vì chưa ghi nhận công ty tại thời điểm đó.",
+    "scopeExportNotes": "Tệp xuất kèm các ghi chú phạm vi này. CSV được tải dưới dạng ZIP gồm dữ liệu và tệp ghi chú."
   }
 }

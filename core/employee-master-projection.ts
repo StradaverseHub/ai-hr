@@ -11,7 +11,7 @@ import type { EmployeeMasterSpec, MasterCell, MasterOwnerRecord, MasterSubject }
 import { draftFamily, draftProvisionalEndOn, withSameAsPermanent, type EmployeeDraftData } from '../lib/employee-draft-schema';
 import { completedYearsAt } from '../lib/completed-years';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { companyOnDate, companySegmentsForPeriodBulk, employedByCompanyDuring } from './employment-company';
+import { companyOnDate, provenCompanySegmentsForPeriodBulkTx, employedByCompanyDuring, provenCompanyDatesTx } from './employment-company';
 import { deriveEmploymentStatus } from './employment-status';
 import { hireCorrectionViewTx } from './hire-correction';
 import { movementHistoryTx, movementDetailTx } from './movement';
@@ -43,11 +43,23 @@ async function rowsFor(tx:Tx,table:AnyPgTable,key:AnyPgColumn,ids:string[],extra
 export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],catalogue:readonly PersonnelFieldDescriptor[],options:{includeWithoutCompany?:boolean}={}):Promise<MasterSubject[]>{
   const today=todayInKualaLumpur(),started=Date.now();
   const needed=new Set(fields.filter(f=>spec.asAt===today||f.history!=='current'&&f.history!=='none').map(f=>f.owner));
-  const employments=await tx.select().from(schema.employment).where(and(lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT+1);
-  if(employments.length>SUBJECT_LIMIT)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
+  const candidates=await tx.select().from(schema.employment).where(and(lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT+1);
+  if(candidates.length>SUBJECT_LIMIT)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
+  const scopeDates=new Map(candidates.map(row=>[row.id,row.terminatedOn&&row.terminatedOn<spec.asAt?row.terminatedOn:spec.asAt]));
+  const proofs=await provenCompanyDatesTx(tx,candidates.map(row=>({employmentId:row.id,date:scopeDates.get(row.id)!})));
+  const unknownScope:MasterSubject[]=[];
+  const employments=candidates.filter(row=>{
+    const date=scopeDates.get(row.id)!,proof=proofs.get(row.id+'|'+date);
+    // Today's mutable company is a current fact. A past date or ended employment needs dated proof.
+    if(date===today||proof?.companyId)return true;
+    // Only count an already-visible CURRENT member of a selected/read-authorized company. Other
+    // companies' unknown historical membership cannot leak through an excluded-scope count.
+    if(spec.companyIds.includes(row.companyId))unknownScope.push({id:row.id,kind:'employment',personId:row.personId,companyId:row.companyId,owners:{},scopeUnavailable:'historical-company-unavailable'});
+    return false;
+  });
   const ids=employments.map(e=>e.id),personIds=[...new Set(employments.map(e=>e.personId))];
   const earliest=employments.reduce((value,row)=>row.hiredOn<value?row.hiredOn:value,spec.asAt);
-  const companySegments=await companySegmentsForPeriodBulk(tx,ids,earliest,spec.asAt,new Map(employments.map(row=>[row.id,row.companyId])));
+  const companySegments=await provenCompanySegmentsForPeriodBulkTx(tx,ids,earliest,spec.asAt);
   const load=(owner:string,table:AnyPgTable,key:AnyPgColumn,keys:string[],extra?:SQL,omit:string[]=[])=>needed.has(owner)?rowsFor(tx,table,key,keys,extra,omit):Promise.resolve([] as Row[]);
   const [people,assignments,compensations,dependents,emergency,superiors,payItems,cp38,qualifications,documents,shiftHistory,recalc,leaveRequests,reviews,reviewDocuments,events]=await Promise.all([
     needed.has('person')?rowsFor(tx,schema.person,schema.person.id,personIds):Promise.resolve([]),
@@ -84,10 +96,10 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
   const actors=needed.has('document')||needed.has('movement')||needed.has('movementComparison')||needed.has('audit')||needed.has('shiftHistory')?await tx.select({id:schema.appUser.id,name:schema.person.fullName}).from(schema.appUser).leftJoin(schema.person,eq(schema.person.id,schema.appUser.personId)):[];
   const actorName=(id:unknown)=>actors.find(actor=>actor.id===id)?.name??null;
   const clockLinks=needed.has('clockingLocation')?await tx.select({employmentId:schema.employeeClockingLocation.employmentId,site:schema.clockingLocation}).from(schema.employeeClockingLocation).innerJoin(schema.clockingLocation,eq(schema.clockingLocation.id,schema.employeeClockingLocation.clockingLocationId)).where(inArray(schema.employeeClockingLocation.employmentId,ids.length?ids:['00000000-0000-0000-0000-000000000000'])):[];
-  const results:MasterSubject[]=[];
+  const results:MasterSubject[]=[...unknownScope];
   for(const employment of employments){
     if(Date.now()-started>30_000)throw new Error('This report took too long. Narrow its companies/conditions before running it again.');
-    const companyId=await companyOnDate(tx,employment.id,employment.terminatedOn&&employment.terminatedOn<spec.asAt?employment.terminatedOn:spec.asAt);if(!companyId||!spec.companyIds.includes(companyId))continue;
+    const scopeDate=scopeDates.get(employment.id)!,companyId=proofs.get(employment.id+'|'+scopeDate)?.companyId??(scopeDate===today?await companyOnDate(tx,employment.id,scopeDate):null);if(!companyId||!spec.companyIds.includes(companyId))continue;
     const subject:MasterSubject={id:employment.id,kind:'employment',personId:employment.personId,companyId,owners:{}};
     const e=employment as unknown as Row;
     const own=(rows:Row[],key='employmentId')=>rows.filter(row=>row[key]===employment.id);
@@ -97,12 +109,16 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
       const ownerFields=fields.filter(field=>field.owner===owner);
       const scopedRows=rows.filter(row=>{
         if(!['assignment','compensation','payItem','cp38','shiftHistory','movement','movementComparison','leaveRecalc','leaveRequest','hireCorrection'].includes(owner))return true;
-        const start=date(row.validFrom??row.effectiveFrom??row.effectiveDate??row.startDate??row.changeEffectiveOn??row.effectiveOn);
+        const rawStart=date(row.validFrom??row.effectiveFrom??row.effectiveDate??row.startDate??row.changeEffectiveOn??row.effectiveOn),start=owner==='cp38'&&rawStart?.length===7?rawStart+'-01':rawStart;
         if(!start)return true;
         const point=['movement','movementComparison','leaveRecalc','hireCorrection'].includes(owner);
         const rawEnd=date(row.reportEffectiveTo??row.validTo??row.endDate);
-        const end=point?start:rawEnd&&['assignment','compensation','payItem'].includes(owner)?new Date(new Date(rawEnd+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd??spec.asAt;
-        return (companySegments.get(employment.id)??[]).some(segment=>spec.companyIds.includes(segment.companyId)&&segment.from<=end&&segment.to>=start);
+        const end=point?start:owner==='cp38'&&rawEnd?.length===7?new Date(new Date(nextMonth(rawEnd)!+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd&&['assignment','compensation','payItem'].includes(owner)?new Date(new Date(rawEnd+'T00:00:00Z').getTime()-86_400_000).toISOString().slice(0,10):rawEnd??spec.asAt;
+        // Current open facts may use the recorded CURRENT employer; this never proves earlier history.
+        if(!point&&spec.asAt===today&&spec.companyIds.includes(employment.companyId)&&start<=today&&end>=today)return true;
+        const allowed=(companySegments.get(employment.id)??[]).some(segment=>segment.companyId!=null&&spec.companyIds.includes(segment.companyId)&&segment.from<=end&&segment.to>=start);
+        if(!allowed&&spec.companyIds.includes(employment.companyId)&&(companySegments.get(employment.id)??[]).some(segment=>segment.companyId==null&&segment.from<=end&&segment.to>=start))subject.historyScopeUnavailable=true;
+        return allowed;
       });
       subject.owners[owner]=scopedRows.map((row,index,all)=>{
         const merged={...row,...overrides(row,index,all)},values:Record<string,MasterCell>={};

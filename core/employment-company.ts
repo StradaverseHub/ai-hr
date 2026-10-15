@@ -363,3 +363,79 @@ export function segmentForCompany(
   if (mine.length === 0) return null;
   return { from: mine[0].from, to: mine[0].to, split: mine.length > 1 };
 }
+
+/** Strict evidence for an employee/date. Unlike payroll compatibility segments, this never fills a
+ * missing or NULL entity history from today's company. A projection that needs proof stays Unknown. */
+export type ProvenCompanyDate = {
+  companyId: string | null;
+  reason: 'assignment_missing' | 'assignment_ambiguous' | 'outside_tenure' | 'employment_unavailable' | null;
+};
+export async function provenCompanyDatesTx(
+  tx: Tx,
+  requested: readonly { employmentId: string; date: string }[],
+): Promise<Map<string, ProvenCompanyDate>> {
+  const out = new Map<string, ProvenCompanyDate>();
+  if (!requested.length) return out;
+  const ids = [...new Set(requested.map(row => row.employmentId))];
+  const from = requested.reduce((date, row) => row.date < date ? row.date : date, requested[0].date);
+  const to = requested.reduce((date, row) => row.date > date ? row.date : date, requested[0].date);
+  const [people, versions] = await Promise.all([
+    tx.select({ id: employment.id, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+      .from(employment).where(inArray(employment.id, ids)),
+    tx.select({ employmentId: assignment.employmentId, companyId: assignment.companyId, from: assignment.validFrom, to: assignment.validTo })
+      .from(assignment).where(and(inArray(assignment.employmentId, ids), isNull(assignment.supersededAt),
+        lte(assignment.validFrom, to), or(isNull(assignment.validTo), gt(assignment.validTo, from))))
+      .orderBy(asc(assignment.employmentId), asc(assignment.validFrom), asc(assignment.id)),
+  ]);
+  const byEmployee = new Map(people.map(row => [row.id, row]));
+  const versionsByEmployee = new Map<string, typeof versions>();
+  for (const version of versions) { const list=versionsByEmployee.get(version.employmentId)??[];list.push(version);versionsByEmployee.set(version.employmentId,list); }
+  for (const row of requested) {
+    const employee = byEmployee.get(row.employmentId);
+    const applicable = (versionsByEmployee.get(row.employmentId)??[]).filter(version => version.from <= row.date && (!version.to || version.to > row.date));
+    const proof: ProvenCompanyDate = !employee ? { companyId: null, reason: 'employment_unavailable' }
+      : row.date < employee.hiredOn || employee.terminatedOn && row.date > employee.terminatedOn
+        ? { companyId: null, reason: 'outside_tenure' }
+        : applicable.length > 1 ? { companyId: null, reason: 'assignment_ambiguous' }
+          : applicable.length !== 1 || !applicable[0].companyId ? { companyId: null, reason: 'assignment_missing' }
+            : { companyId: applicable[0].companyId, reason: null };
+    out.set(`${row.employmentId}|${row.date}`, proof);
+  }
+  return out;
+}
+
+/** Strict dated intervals. Unknown intervals are retained explicitly and never filled from a mutable
+ * current company. The input versions are the same nonsuperseded assignment facts as date proof. */
+export type ProvenCompanySegment={companyId:string|null;from:string;to:string;reason:ProvenCompanyDate['reason']};
+export function proveCompanySegments(
+  versions:readonly {companyId:string|null;from:string;to:string|null}[],
+  tenure:{hiredOn:string;terminatedOn:string|null},from:string,to:string,
+):ProvenCompanySegment[]{
+  const first=maxDate(from,tenure.hiredOn),last=tenure.terminatedOn?minDate(to,tenure.terminatedOn):to;
+  if(first>last)return [];
+  const after=dayAfter(last),boundaries=new Set([first,after]);
+  for(const version of versions){if(version.from>first&&version.from<after)boundaries.add(version.from);if(version.to&&version.to>first&&version.to<after)boundaries.add(version.to);}
+  const ordered=[...boundaries].sort(),result:ProvenCompanySegment[]=[];
+  for(let index=0;index<ordered.length-1;index++){
+    const start=ordered[index],end=dayBefore(ordered[index+1]),applicable=versions.filter(version=>version.from<=start&&(!version.to||version.to>start));
+    const proof:ProvenCompanyDate=applicable.length>1?{companyId:null,reason:'assignment_ambiguous'}:applicable.length!==1||!applicable[0].companyId?{companyId:null,reason:'assignment_missing'}:{companyId:applicable[0].companyId,reason:null};
+    const previous=result.at(-1);
+    if(previous&&previous.companyId===proof.companyId&&previous.reason===proof.reason&&dayAfter(previous.to)===start)previous.to=end;
+    else result.push({...proof,from:start,to:end});
+  }
+  return result;
+}
+export async function provenCompanySegmentsForPeriodBulkTx(tx:Tx,employmentIds:readonly string[],from:string,to:string):Promise<Map<string,ProvenCompanySegment[]>>{
+  const out=new Map<string,ProvenCompanySegment[]>(),ids=[...new Set(employmentIds)];
+  if(!ids.length||from>to)return out;
+  const [people,versions]=await Promise.all([
+    tx.select({id:employment.id,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn}).from(employment).where(inArray(employment.id,ids)),
+    tx.select({employmentId:assignment.employmentId,companyId:assignment.companyId,from:assignment.validFrom,to:assignment.validTo}).from(assignment)
+      .where(and(inArray(assignment.employmentId,ids),isNull(assignment.supersededAt),lte(assignment.validFrom,to),or(isNull(assignment.validTo),gt(assignment.validTo,from))))
+      .orderBy(asc(assignment.employmentId),asc(assignment.validFrom),asc(assignment.id)),
+  ]);
+  const byEmployee=new Map(people.map(row=>[row.id,row])),byVersion=new Map<string,typeof versions>();
+  for(const version of versions){const rows=byVersion.get(version.employmentId)??[];rows.push(version);byVersion.set(version.employmentId,rows);}
+  for(const id of ids){const tenure=byEmployee.get(id);out.set(id,tenure?proveCompanySegments(byVersion.get(id)??[],tenure,from,to):[{companyId:null,from,to,reason:'employment_unavailable'}]);}
+  return out;
+}

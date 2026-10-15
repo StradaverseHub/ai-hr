@@ -19262,6 +19262,9 @@
       "refreshRecipients": "Segar semula penerima yang layak",
       "selectedCount": "{count} penerima dipilih"
     },
-    "scheduledBadge": "Berjadual"
+    "scheduledBadge": "Berjadual",
+    "unknownScopeCount": "{count} pekerjaan yang boleh dilihat kini dikecualikan kerana syarikatnya pada tarikh yang dipilih tidak direkodkan.",
+    "unknownHistoryScope": "Sebahagian sejarah pekerja yang kini boleh dilihat tidak dapat disertakan kerana keahlian syarikat pada tarikh tersebut tidak direkodkan.",
+    "scopeExportNotes": "Eksport menyertakan nota skop ini. CSV dimuat turun sebagai ZIP yang mengandungi data dan fail nota."
   }
 }
