@@ -40,8 +40,9 @@ export async function takeRate(scope: string, limit: number, window = 15 * 60_00
 export async function assertActiveCredential(tx: AuthSql, c: Credential) {
   if (!c.enabled || !c.password || c.mustChange || !c.totpSecret || !c.emailVerified) throw new InternalAuthError('invalidLogin');
   const rows = await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
-  if (!rows[0] || rows[0].tenant_id !== c.tenantId) throw new InternalAuthError('invalidLogin');
-  return rows[0] as { app_user_id: string; tenant_id: string };
+  const principal = rows[0];
+  if (!principal || typeof principal.app_user_id !== 'string' || principal.tenant_id !== c.tenantId) throw new InternalAuthError('invalidLogin');
+  return { app_user_id: principal.app_user_id, tenant_id: c.tenantId };
 }
 async function audit(tx: AuthSql, c: Credential, event: string, refused = false) {
   const rows = await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
@@ -128,9 +129,9 @@ export async function changeInitialPassword(raw: string, password: string, nativ
 async function checkFactor(c: Credential, code: string, secret = c.totpSecret): Promise<{ step?: number; recovery?: number } | null> {
   if (!secret) return null;
   if (/^\d{6}$/.test(code)) {
-    const match = await verify({ secret, token: code, epochTolerance: 30 });
-    if (!match.valid) return null;
-    const step = Math.floor(match.epoch / 30);
+    const match = await verify({ strategy: 'totp', secret, token: code, epochTolerance: 30 });
+    if (!match.valid || !('timeStep' in match) || !Number.isSafeInteger(match.timeStep)) return null;
+    const step = match.timeStep;
     return step > c.lastStep ? { step } : null;
   }
   const cleaned = code.replace(/[-\s]/g, '').toUpperCase();

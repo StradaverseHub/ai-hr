@@ -4,7 +4,6 @@ const service = vi.hoisted(() => ({ startLogin: vi.fn(), changeInitialPassword: 
 vi.mock('../lib/internal-auth/service', () => ({ ...service, InternalAuthError: class extends Error { constructor(public code: string) { super(code); } } }));
 vi.mock('../lib/internal-auth/recovery', () => ({ requestRecovery: vi.fn(), completeRecovery: vi.fn() }));
 vi.mock('../lib/internal-auth/invitations', () => ({ startInvitation: vi.fn(), acceptInternalInvitation: vi.fn() }));
-vi.mock('../lib/internal-auth/mail', () => ({ flushAuthMail: vi.fn() }));
 import { POST } from '../app/login/api/[operation]/route';
 const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(43);
 function request(operation: string, body: unknown, headers: Record<string, string> = {}) {
@@ -14,7 +13,8 @@ beforeEach(() => { vi.stubEnv('AUTH_PROVIDER', 'internal'); vi.stubEnv('AUTH_PUB
 afterEach(() => vi.unstubAllEnvs());
 describe('embedded auth HTTP trust and credential carriers', () => {
   it('refuses missing or foreign browser Origin before attempting a password check', async () => {
-    for (const headers of [{}, { origin: 'https://other.test' }, { origin: 'null' }, { origin: 'https://other.test', 'x-aihr-client': 'native' }]) {
+    const variants: Record<string, string>[] = [{}, { origin: 'https://other.test' }, { origin: 'null' }, { origin: 'https://other.test', 'x-aihr-client': 'native' }];
+    for (const headers of variants) {
       expect((await request('login', { username: 'user', password: 'secret' }, headers)).status).toBe(403);
     }
     expect(service.startLogin).not.toHaveBeenCalled();

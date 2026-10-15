@@ -20,7 +20,7 @@ export async function requireIdentityEmailAdmin(): Promise<{session:SessionConte
   const session=await getSession();
   if(!await canConfigureIdentityEmail(session)) redirect('/');
   const identity=await currentProviderSession();
-  if(!identity?.emailVerified || !session.userId) throw new EmailSettingsError('forbidden');
+  if(!identity?.emailVerified || !identity.issuer || !session.userId) throw new EmailSettingsError('forbidden');
   return {session,actor:{userId:session.userId,tenantId:session.tenantId,issuer:identity.issuer,subject:identity.subject}};
 }
 export async function readIdentityEmailSettings(actor: IdentityEmailActor) {
