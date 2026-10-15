@@ -6,10 +6,10 @@ Status: source preparation only. No fixture, migration, server, browser, type, t
 
 Use the clean integrated candidate in the worktree containing these scripts. Parent must first release both test slots and the dev DB lock, provision a real local node_modules directory (no symlink) and the worktree's own .env.local. Do not copy credentials into this document or browser evidence. The coordinator accepts only localhost/127.0.0.1/::1 port 5433, retargets both connections to ai_hr_board16_overtime_browser, requires restricted ai_hr_app plus a distinct migration username, and uses namespace board16overtimebrowser and app port 3210. The fixture checks the actual connected roles before business work. Worktree/migration owner credentials are never given to browser operations.
 
-From mainwt, launch only after the explicit shared-resource handoff:
+The integrated candidate is /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15. Its own real node_modules and .env.local must be provisioned after handoff; the isolated records worktree is not a runnable candidate. From mainwt, launch the integrated candidate only after the explicit shared-resource handoff:
 
 ```sh
-node --env-file=/Users/zenlam/Projects/ai-hr/.claude/worktrees/board16-overtime-records/.env.local --import tsx /Users/zenlam/Projects/ai-hr/.claude/worktrees/board16-overtime-records/scripts/dev-browser-overtime-patterns.mjs
+node --env-file=/Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15/.env.local --import tsx /Users/zenlam/Projects/ai-hr/.claude/worktrees/board-oct15/scripts/dev-browser-overtime-patterns.mjs
 ```
 
 The coordinator acquires both named test slots and the dev DB lock itself. Do not nest an outer both-slot wrapper. Its worker proves the live ancestor lock holders, clean candidate pin and unused reserved port. Fixture children also prove all three locks, their exact parent and candidate. A migration or fixture failure prevents Next startup. The runner never installs dependencies, creates an environment file, edits application code, sends mail, resets a populated fixture or kills another process on a port.
