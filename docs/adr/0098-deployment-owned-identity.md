@@ -58,7 +58,7 @@ Required adversarial cases include forged/expired connection profiles, wrong iss
 
 Self-hosting gives deployment control and removes a mandatory hosted identity dependency. It transfers identity-service uptime, security updates, key management, recovery delivery and incident response to us or the customer's operator. It is not inherently safer than managed identity. App-store identity stays shared; supported tenant presentation changes do not require separate customer binaries, while a new authentication capability requires shipping that capability in a shared binary first.
 
-This ADR records the approved migration direction. The Keycloak adapter, additive identity mapping, native exchange and installation package are being implemented under the approved work. Their existence in source is not evidence of a completed production cutover. Trusted runtime connection enrollment, private-network/device acceptance and WorkOS retirement remain explicit delivery stages. The visual composer remains a separate implementation workstream and must not control authentication endpoints or credentials.
+This ADR records the approved migration direction. The Keycloak adapter, additive identity mapping, native exchange and installation package exist in source; that is not evidence of a completed production cutover. Signed runtime company enrollment is implemented for the shared test binary below. Customer production trust provisioning, private-network/device acceptance and WorkOS retirement remain explicit delivery stages. The visual composer remains separate and must not control authentication endpoints or credentials.
 
 ## Runtime mobile company setup — 2026-10-15
 

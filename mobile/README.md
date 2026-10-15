@@ -1,7 +1,12 @@
 # Native app foundation
 
+Run EAS commands from `mobile/`. EAS uploads from the Git root; the root `.easignore`
+admits only this app and its four shared contracts. The mobile `.easignore` also protects
+standalone copies. Inspect the EAS archive before a cloud build; deployment settings,
+server code, local credentials and generated native/build folders must be absent.
+
 The app uses Expo SDK 57, deployment-owned Keycloak sign-in with PKCE and the shared `/api/mobile/v1` contract. The legacy build-time WorkOS adapter remains for controlled migration.
-For the legacy WorkOS build, run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set the HTTPS API origin and the
+For the legacy WorkOS build, run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set `EXPO_PUBLIC_RUNTIME_CONNECTIONS=0`, `EXPO_PUBLIC_AUTH_PROVIDER=workos`, the HTTPS API origin and the
 matching public WorkOS client id, then use an iOS/Android development build. No API key or client
 secret belongs in the app. Root TypeScript/build commands exclude this directory; run
 `npm --prefix mobile run typecheck` separately under the repository test locks.
