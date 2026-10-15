@@ -1,5 +1,5 @@
 /** Deterministic OT arithmetic only. No database, current profile, jurisdiction or settlement mutation. */
-import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
+import { OVERTIME_LIMITS as L, OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_INPUT_FACT_FIELDS, OvertimePatternError, type OvertimeCandidate, type OvertimeClockSpan, type OvertimeCondition, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeExact, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimeIssue, type OvertimeLine, type OvertimePattern, type OvertimeProvenance, type OvertimeRate, type OvertimeResolution, type OvertimeRoundingMode, type OvertimeSource, type OvertimeTrace, type OvertimeUnit, type OvertimeValue } from './overtime-pattern-model';
 import { overtimeCurrency, overtimeDate, overtimeDecimal, overtimeId, overtimeInteger, overtimeKeys, overtimeList, overtimeObject, overtimeRefuse as fail, overtimeUuid, overtimeSourceId, validateOvertimeAssignmentTarget, validateOvertimePattern } from './overtime-pattern-schema';
 type Q = {
     n: bigint;
@@ -387,9 +387,9 @@ function scopedFacts(work: Work[]): OvertimeFacts {
         return { dayType: first };
     return { dayType: { state: 'unknown', reason: 'mixedOrUnknownCanonicalDayTypes' } };
 }
-function allocate(work: Work[], amount: Q, capacity: (w: Work) => Q, write: (w: Work, value: Q) => void) {
+function allocate(work: Work[], amount: Q, capacity: (w: Work) => Q, write: (w: Work, value: Q) => void, direction: 'earliest' | 'latest') {
     let remaining = amount;
-    for (const w of work) {
+    for (const w of (direction === 'latest' ? [...work].reverse() : work)) {
         const value = min(remaining, capacity(w));
         write(w, value);
         remaining = sub(remaining, value);
@@ -416,184 +416,204 @@ function safeIdentity(input: OvertimeInput) {
     return { source, patternVersionId, assignmentId };
 }
 /** Output is a calculation proposal. Actual transfer still needs canonical auth, freshness and policy owners. */
+/** The single duration algorithm shared by cash and TOIL projections; never reads price-only fields. */
+function runDurationStage(rawPattern: OvertimePattern, rawInput: OvertimeInput, observe: (engine: Engine) => void) {
+    const pattern = validateOvertimePattern(rawPattern), input = validateOvertimeInput(rawInput);
+    if (input.sessionGranularity === 'dayAggregate' && (pattern.eligibilityBasis === 'session' || pattern.deductions.some(d => d.unit === 'minutes' && d.basis === 'session')))
+        fail('source', 'sessionGranularity', 'A day aggregate cannot establish actual session eligibility, accumulation, charges or deductions.');
+    const identity = { source: input.source, patternVersionId: input.patternVersionId, assignmentId: input.assignmentId };
+    if (pattern.currency.code !== input.currency.code || pattern.currency.minorScale !== input.currency.minorScale)
+        fail('currency', 'currency', 'Definition and canonical source currency must agree.');
+    const e = new Engine(pattern, input.mode, input.facts, input.source.date);
+    observe(e);
+    if (input.facts.employmentId && e.field('employmentId', {}) !== input.source.employmentId)
+        fail('source', 'employmentId', 'Canonical employee facts disagree with the day source.');
+    if (input.mode === 'actual' && (input.approval.provenance.basis === 'sample' || input.approval.provenance.owner === 'sample'))
+        fail('source', 'approval', 'Actual approval must have canonical provenance.');
+    if (!['approved', 'notRequired'].includes(input.approval.status))
+        fail('approval', 'approval', 'The canonical approval requirement is not satisfied.');
+    const dayApproval = decimal(e.value(input.approval.minutes, 'approval.minutes'));
+    if (input.layer === 'finalLegacy' && (pattern.eligibleMinutes || pattern.durationCap || pattern.durationRounding || pattern.deductions.length))
+        fail('legacyLayer', 'pattern', 'Final legacy minutes cannot be recalculated, rounded or deducted again.');
+    let lastEnd: bigint | null = null;
+    const work: Work[] = input.segments.map((segment, index) => {
+        const original = input.layer === 'raw' ? decimal(e.value((segment as typeof input.segments[number] & {
+            rawMinutes: OvertimeFact<string>;
+        }).rawMinutes, segment.id + '.rawMinutes')) : null;
+        const approved = input.layer === 'raw' ? decimal(e.value((segment as typeof input.segments[number] & {
+            approvedMinutes: OvertimeFact<string>;
+        }).approvedMinutes, segment.id + '.approvedMinutes')) : decimal(e.value((segment as typeof input.segments[number] & {
+            finalMinutes: OvertimeFact<string>;
+        }).finalMinutes, segment.id + '.finalMinutes'));
+        if (segment.clock.state === 'known') {
+            const clock = e.value(segment.clock, segment.id + '.clock'), start = BigInt(clock.startEpochSeconds);
+            if (lastEnd !== null && start < lastEnd)
+                fail('source', segment.id, 'Recorded intervals must be ordered and disjoint.');
+            lastEnd = start + BigInt(clock.elapsedSeconds);
+            const dateDifference = (Date.parse(clock.localDate + 'T00:00:00Z') - Date.parse(input.source.date + 'T00:00:00Z')) / 86400000;
+            if (dateDifference < 0 || dateDifference > 2)
+                fail('source', segment.id, 'Recorded local date lies outside the bounded attendance session.');
+            if (original && compare(original, q(BigInt(clock.elapsedSeconds), 60n)) !== 0)
+                fail('source', segment.id, 'Precise placement requires a raw count equal to the recorded interval.');
+        }
+        return { index, id: segment.id, sessionId: segment.sessionId, raw: original, eligible: input.layer === 'raw' ? ZERO : null, approved, approvalAllocated: ZERO, payable: input.layer === 'raw' ? ZERO : approved, allowed: true, dayType: segment.dayType, clock: segment.clock };
+    });
+    const rawTotal = input.layer === 'raw' ? sum(work.map(w => w.raw!)) : null, canonicalApproved = input.layer === 'raw' ? min(dayApproval, sum(work.map(w => min(w.approved, w.raw!)))) : sum(work.map(w => w.approved));
+    if (input.layer === 'finalLegacy' && compare(canonicalApproved, dayApproval) > 0)
+        fail('approval', 'approval.minutes', 'Fresh approval no longer covers the recorded final legacy duration.');
+    e.emit('duration', 'input', { layer: input.layer, sessionGranularity: input.sessionGranularity, source: input.source, approval: input.approval, facts: input.facts, segments: input.segments, resources: input.resources, rawMinutes: rawTotal ? exact(rawTotal, 'minutes') : null, allocationPolicy: pattern.durationAllocation + 'CountsOverRecordedPartitions', physicalApprovedIntervals: false });
+    const contexts = pattern.eligibilityBasis === 'day' ? [work] : [...new Set(work.map(w => w.sessionId))].map(id => work.filter(w => w.sessionId === id));
+    const capByScope = new Map<Work[], Q>();
+    for (const group of contexts) {
+        e.clockScope = group;
+        const raw = rawTotal === null ? null : sum(group.map(w => w.raw!)), approved = min(dayApproval, sum(group.map(w => min(w.approved, w.raw ?? w.approved))));
+        e.computed = { ...(raw ? { rawMinutes: raw } : {}), approvedMinutes: approved };
+        const facts = pattern.eligibilityBasis === 'day' ? {} : scopedFacts(group);
+        let eligible = input.layer === 'raw' ? raw! : sum(group.map(w => w.payable));
+        if (!e.condition(pattern.eligibility, facts)) {
+            eligible = ZERO;
+            for (const w of group)
+                w.allowed = false;
+        }
+        else if (input.layer === 'raw' && pattern.eligibleMinutes)
+            eligible = max(ZERO, e.expression(pattern.eligibleMinutes, facts));
+        if (input.layer === 'raw') {
+            eligible = min(eligible, raw!);
+            e.computed.eligibleMinutes = eligible;
+            if (pattern.durationCap) {
+                const cap = nonnegative(e.expression(pattern.durationCap, facts), 'durationCap');
+                capByScope.set(group, cap);
+                eligible = min(eligible, cap);
+            }
+            allocate(group, eligible, w => w.raw!, (w, v) => { w.eligible = v; w.payable = min(v, w.approved); }, pattern.durationAllocation);
+        }
+        else if (eligible.n === 0n)
+            for (const w of group)
+                w.payable = ZERO;
+        e.emit('duration', 'eligibility-' + group[0].id, { basis: pattern.eligibilityBasis, segmentIds: group.map(w => w.id), eligible: exact(eligible, 'minutes'), raw: raw ? exact(raw, 'minutes') : null });
+    }
+    // The aggregate decision is consumed once, after eligibility excludes any earlier ineligible session.
+    const beforeApproval = sum(work.map(w => w.payable));
+    allocate(work, min(beforeApproval, dayApproval), w => w.payable, (w, v) => { w.payable = v; }, pattern.durationAllocation);
+    for (const w of work)
+        w.approvalAllocated = w.payable;
+    e.emit('duration', 'dayApproval', { before: exact(beforeApproval, 'minutes'), bound: exact(dayApproval, 'minutes'), after: exact(sum(work.map(w => w.payable)), 'minutes'), allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.payable, 'minutes') })) });
+    const eligibleTotal = input.layer === 'raw' ? sum(work.map(w => w.eligible!)) : null;
+    const setComputed = (group: Work[]) => { e.clockScope = group; e.computed = { ...(rawTotal ? { rawMinutes: sum(group.map(w => w.raw!)) } : {}), ...(eligibleTotal ? { eligibleMinutes: sum(group.map(w => w.eligible!)) } : {}), approvedMinutes: min(dayApproval, sum(group.map(w => w.approved))), payableMinutes: sum(group.map(w => w.payable)) }; };
+    const consumed = new Map<string, {
+        unit: 'minutes' | 'money';
+        requested: Q;
+        target: string | null;
+        keys: string[];
+    }>();
+    function deductions(unit: 'minutes' | 'money', lines: OvertimeLine[]) {
+        for (const rule of pattern.deductions.filter(d => d.unit === unit)) {
+            const scopes = rule.basis === 'day' ? [work] : [...new Set(work.map(w => w.sessionId))].map(id => work.filter(w => w.sessionId === id));
+            for (const group of scopes) {
+                setComputed(group);
+                const over = rule.basis === 'day' ? {} : scopedFacts(group);
+                const resources = input.resources.filter(r => r.resource === rule.resource && r.basis === rule.basis && (rule.basis === 'day' || r.sessionId === group[0].sessionId));
+                if (!resources.length) {
+                    if (e.condition(rule.when, over))
+                        fail('unknown', rule.id, 'The configured deduction resource has no canonical evidence.');
+                    continue;
+                }
+                for (const resource of resources) {
+                    delete e.computed.resourceMinutes;
+                    delete e.computed.resourceMoney;
+                    if (resource.measure.quantity.state === 'unknown' && !e.condition(rule.when, over)) {
+                        e.emit('deduction', rule.id, { resourceId: resource.id, applied: false, quantityUnknownButConditionFalse: true });
+                        continue;
+                    }
+                    const measure = decimal(e.value(resource.measure.quantity, resource.id));
+                    delete e.computed.resourceMinutes;
+                    delete e.computed.resourceMoney;
+                    e.computed[resource.measure.unit === 'minutes' ? 'resourceMinutes' : 'resourceMoney'] = measure;
+                    if (!e.condition(rule.when, over) || measure.n === 0n) {
+                        e.emit('deduction', rule.id, { resourceId: resource.id, applied: false });
+                        continue;
+                    }
+                    const requested = nonnegative(e.expression(rule.amount, over), rule.id), prior = resource.sourceKeys.map(key => consumed.get(key)).filter((v): v is NonNullable<typeof v> => !!v), target = rule.targetEarningItemId ?? null;
+                    if (prior.length) {
+                        const same = prior.length === resource.sourceKeys.length && prior.every(p => p.unit === unit && p.target === target && compare(p.requested, requested) === 0 && p.keys.length === resource.sourceKeys.length && p.keys.every(k => resource.sourceKeys.includes(k)));
+                        if (!same)
+                            fail('deductionConflict', rule.id, 'The same deduction source has conflicting amounts, units, targets or overlapping identities.');
+                        e.emit('deduction', rule.id, { resourceId: resource.id, sourceKeys: resource.sourceKeys, deduplicated: true, requested: exact(requested, unit) });
+                        continue;
+                    }
+                    for (const key of resource.sourceKeys)
+                        consumed.set(key, { unit, requested, target, keys: resource.sourceKeys });
+                    let applied: Q;
+                    if (unit === 'minutes') {
+                        const available = sum(group.map(w => w.payable));
+                        applied = min(available, requested);
+                        allocate(group, sub(available, applied), w => w.payable, (w, v) => { w.payable = v; }, pattern.durationAllocation);
+                        setComputed(group);
+                    }
+                    else {
+                        const selected = lines.filter(l => l.mapping.earningItemId === target && (rule.basis === 'day' || l.sessionId === group[0].sessionId));
+                        if (!selected.length && requested.n > 0n)
+                            fail('uncovered', rule.id, 'The money deduction target has no matched earning line.');
+                        const quantities = selected.map(l => q(BigInt(l.adjusted.numerator), BigInt(l.adjusted.denominator))), available = sum(quantities);
+                        applied = min(available, requested);
+                        const factor = available.n ? div(sub(available, applied), available) : ZERO;
+                        for (let i = 0; i < selected.length; i++)
+                            selected[i].adjusted = exact(mul(quantities[i], factor), 'money');
+                    }
+                    e.emit('deduction', rule.id, { resourceId: resource.id, basis: rule.basis, sessionId: rule.basis === 'session' ? group[0].sessionId : null, appliedSourceKeys: resource.sourceKeys, evidence: resource.evidence, quantity: resource.measure, requested: exact(requested, unit), applied: exact(applied, unit), unit, target });
+                }
+            }
+        }
+    }
+    deductions('minutes', []);
+    if (pattern.durationRounding) {
+        for (const group of contexts) {
+            setComputed(group);
+            const before = sum(group.map(w => w.payable)), step = decimal(pattern.durationRounding.step), rounded = mul(q(roundInteger(div(before, step), pattern.durationRounding.mode)), step), capacity = sum(group.map(w => w.allowed ? min(w.raw!, w.approved) : ZERO)), cap = capByScope.get(group) ?? capacity;
+            const bounded = min(min(rounded, capacity), cap);
+            allocate(group, bounded, w => w.allowed ? min(w.raw!, w.approved) : ZERO, (w, v) => { w.payable = v; }, pattern.durationAllocation);
+            e.emit('rounding', 'duration-' + group[0].id, { basis: pattern.eligibilityBasis, before: exact(before, 'minutes'), step: exact(step, 'minutes'), mode: pattern.durationRounding.mode, rounded: exact(rounded, 'minutes'), bounded: exact(bounded, 'minutes') });
+        }
+    }
+    const roundedTotal = sum(work.map(w => w.payable));
+    allocate(work, min(roundedTotal, dayApproval), w => w.payable, (w, v) => { w.payable = v; }, pattern.durationAllocation);
+    e.emit('duration', 'finalApprovalBound', { bound: exact(dayApproval, 'minutes'), after: exact(sum(work.map(w => w.payable)), 'minutes') });
+    for (const w of work)
+        w.approvalAllocated = w.payable;
+    let unusedApproval = max(ZERO, sub(dayApproval, sum(work.map(w => w.payable))));
+    for (const w of (pattern.durationAllocation === 'latest' ? [...work].reverse() : work).filter(w => w.payable.n > 0n)) {
+        const extra = min(unusedApproval, max(ZERO, sub(min(w.approved, w.raw ?? w.approved), w.payable)));
+        w.approvalAllocated = add(w.approvalAllocated, extra);
+        unusedApproval = sub(unusedApproval, extra);
+    }
+    e.emit('duration', 'lineApprovalAllocation', { policy: 'payableBoundFirstThen' + pattern.durationAllocation + 'Remainder', physicalApproval: false, allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.approvalAllocated, 'minutes') })) });
+    return { pattern, input, identity, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions };
+}
+/** Duration evidence cannot be mistaken for a cash result: it has no rate, mapping or amount. */
+export function evaluateOvertimePatternDuration(pattern: OvertimePattern, rawInput: OvertimeInput): OvertimeDurationEvaluation {
+    let engine: Engine | undefined;
+    const identity = safeIdentity(rawInput);
+    try {
+        const stage = runDurationStage(pattern, rawInput, e => { engine = e; }), { input, e, work, rawTotal, eligibleTotal, canonicalApproved } = stage;
+        const payable = sum(work.map(w => w.payable));
+        const result: OvertimeDurationEvaluation = { status: payable.n > 0n ? 'ready' : 'ineligible', ...stage.identity, mode: input.mode, transferable: input.mode === 'actual' && payable.n > 0n, rawMinutes: rawTotal ? known(rawTotal, 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: eligibleTotal ? known(eligibleTotal, 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(canonicalApproved, 'minutes'), payableMinutes: exact(payable, 'minutes'), trace: e.trace };
+        if (new TextEncoder().encode(JSON.stringify(result)).length > L.evidenceBytes)
+            fail('limit', 'evidence', 'Complete duration evidence exceeds its supported size.');
+        return result;
+    }
+    catch (error) {
+        return { status: 'refused', ...identity, transferable: false, issues: [issueOf(error)], trace: engine?.trace ?? [] };
+    }
+}
 export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: OvertimeInput): OvertimeEvaluation {
     let engine: Engine | undefined;
     let identity = safeIdentity(rawInput);
     try {
-        const pattern = validateOvertimePattern(rawPattern), input = validateOvertimeInput(rawInput);
-        if (input.sessionGranularity === 'dayAggregate' && (pattern.eligibilityBasis === 'session' || pattern.deductions.some(d => d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
-            fail('source', 'sessionGranularity', 'A day aggregate cannot establish actual session eligibility, accumulation, charges or deductions.');
-        identity = { source: input.source, patternVersionId: input.patternVersionId, assignmentId: input.assignmentId };
-        if (pattern.currency.code !== input.currency.code || pattern.currency.minorScale !== input.currency.minorScale)
-            fail('currency', 'currency', 'Definition and canonical source currency must agree.');
-        engine = new Engine(pattern, input.mode, input.facts, input.source.date);
-        const e = engine;
-        if (input.facts.employmentId && e.field('employmentId', {}) !== input.source.employmentId)
-            fail('source', 'employmentId', 'Canonical employee facts disagree with the day source.');
-        if (input.mode === 'actual' && (input.approval.provenance.basis === 'sample' || input.approval.provenance.owner === 'sample'))
-            fail('source', 'approval', 'Actual approval must have canonical provenance.');
-        if (!['approved', 'notRequired'].includes(input.approval.status))
-            fail('approval', 'approval', 'The canonical approval requirement is not satisfied.');
-        const dayApproval = decimal(e.value(input.approval.minutes, 'approval.minutes'));
-        if (input.layer === 'finalLegacy' && (pattern.eligibleMinutes || pattern.durationCap || pattern.durationRounding || pattern.deductions.length))
-            fail('legacyLayer', 'pattern', 'Final legacy minutes cannot be recalculated, rounded or deducted again.');
-        let lastEnd: bigint | null = null;
-        const work: Work[] = input.segments.map((segment, index) => {
-            const original = input.layer === 'raw' ? decimal(e.value((segment as typeof input.segments[number] & {
-                rawMinutes: OvertimeFact<string>;
-            }).rawMinutes, segment.id + '.rawMinutes')) : null;
-            const approved = input.layer === 'raw' ? decimal(e.value((segment as typeof input.segments[number] & {
-                approvedMinutes: OvertimeFact<string>;
-            }).approvedMinutes, segment.id + '.approvedMinutes')) : decimal(e.value((segment as typeof input.segments[number] & {
-                finalMinutes: OvertimeFact<string>;
-            }).finalMinutes, segment.id + '.finalMinutes'));
-            if (segment.clock.state === 'known') {
-                const clock = e.value(segment.clock, segment.id + '.clock'), start = BigInt(clock.startEpochSeconds);
-                if (lastEnd !== null && start < lastEnd)
-                    fail('source', segment.id, 'Recorded intervals must be ordered and disjoint.');
-                lastEnd = start + BigInt(clock.elapsedSeconds);
-                const dateDifference = (Date.parse(clock.localDate + 'T00:00:00Z') - Date.parse(input.source.date + 'T00:00:00Z')) / 86400000;
-                if (dateDifference < 0 || dateDifference > 2)
-                    fail('source', segment.id, 'Recorded local date lies outside the bounded attendance session.');
-                if (original && compare(original, q(BigInt(clock.elapsedSeconds), 60n)) !== 0)
-                    fail('source', segment.id, 'Precise placement requires a raw count equal to the recorded interval.');
-            }
-            return { index, id: segment.id, sessionId: segment.sessionId, raw: original, eligible: input.layer === 'raw' ? ZERO : null, approved, approvalAllocated: ZERO, payable: input.layer === 'raw' ? ZERO : approved, allowed: true, dayType: segment.dayType, clock: segment.clock };
-        });
-        const rawTotal = input.layer === 'raw' ? sum(work.map(w => w.raw!)) : null, canonicalApproved = input.layer === 'raw' ? min(dayApproval, sum(work.map(w => min(w.approved, w.raw!)))) : sum(work.map(w => w.approved));
-        if (input.layer === 'finalLegacy' && compare(canonicalApproved, dayApproval) > 0)
-            fail('approval', 'approval.minutes', 'Fresh approval no longer covers the recorded final legacy duration.');
-        e.emit('duration', 'input', { layer: input.layer, sessionGranularity: input.sessionGranularity, source: input.source, approval: input.approval, facts: input.facts, segments: input.segments, resources: input.resources, rawMinutes: rawTotal ? exact(rawTotal, 'minutes') : null, allocationPolicy: 'chronologicalCountsOverRecordedPartitions', physicalApprovedIntervals: false });
-        const contexts = pattern.eligibilityBasis === 'day' ? [work] : [...new Set(work.map(w => w.sessionId))].map(id => work.filter(w => w.sessionId === id));
-        const capByScope = new Map<Work[], Q>();
-        for (const group of contexts) {
-            e.clockScope = group;
-            const raw = rawTotal === null ? null : sum(group.map(w => w.raw!)), approved = min(dayApproval, sum(group.map(w => min(w.approved, w.raw ?? w.approved))));
-            e.computed = { ...(raw ? { rawMinutes: raw } : {}), approvedMinutes: approved };
-            const facts = pattern.eligibilityBasis === 'day' ? {} : scopedFacts(group);
-            let eligible = input.layer === 'raw' ? raw! : sum(group.map(w => w.payable));
-            if (!e.condition(pattern.eligibility, facts)) {
-                eligible = ZERO;
-                for (const w of group)
-                    w.allowed = false;
-            }
-            else if (input.layer === 'raw' && pattern.eligibleMinutes)
-                eligible = max(ZERO, e.expression(pattern.eligibleMinutes, facts));
-            if (input.layer === 'raw') {
-                eligible = min(eligible, raw!);
-                e.computed.eligibleMinutes = eligible;
-                if (pattern.durationCap) {
-                    const cap = nonnegative(e.expression(pattern.durationCap, facts), 'durationCap');
-                    capByScope.set(group, cap);
-                    eligible = min(eligible, cap);
-                }
-                allocate(group, eligible, w => w.raw!, (w, v) => { w.eligible = v; w.payable = min(v, w.approved); });
-            }
-            else if (eligible.n === 0n)
-                for (const w of group)
-                    w.payable = ZERO;
-            e.emit('duration', 'eligibility-' + group[0].id, { basis: pattern.eligibilityBasis, segmentIds: group.map(w => w.id), eligible: exact(eligible, 'minutes'), raw: raw ? exact(raw, 'minutes') : null });
-        }
-        // The aggregate decision is consumed once, after eligibility excludes any earlier ineligible session.
-        const beforeApproval = sum(work.map(w => w.payable));
-        allocate(work, min(beforeApproval, dayApproval), w => w.payable, (w, v) => { w.payable = v; });
-        for (const w of work)
-            w.approvalAllocated = w.payable;
-        e.emit('duration', 'dayApproval', { before: exact(beforeApproval, 'minutes'), bound: exact(dayApproval, 'minutes'), after: exact(sum(work.map(w => w.payable)), 'minutes'), allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.payable, 'minutes') })) });
-        const eligibleTotal = input.layer === 'raw' ? sum(work.map(w => w.eligible!)) : null;
-        const setComputed = (group: Work[]) => { e.clockScope = group; e.computed = { ...(rawTotal ? { rawMinutes: sum(group.map(w => w.raw!)) } : {}), ...(eligibleTotal ? { eligibleMinutes: sum(group.map(w => w.eligible!)) } : {}), approvedMinutes: min(dayApproval, sum(group.map(w => w.approved))), payableMinutes: sum(group.map(w => w.payable)) }; };
-        const consumed = new Map<string, {
-            unit: 'minutes' | 'money';
-            requested: Q;
-            target: string | null;
-            keys: string[];
-        }>();
-        function deductions(unit: 'minutes' | 'money', lines: OvertimeLine[]) {
-            for (const rule of pattern.deductions.filter(d => d.unit === unit)) {
-                const scopes = rule.basis === 'day' ? [work] : [...new Set(work.map(w => w.sessionId))].map(id => work.filter(w => w.sessionId === id));
-                for (const group of scopes) {
-                    setComputed(group);
-                    const over = rule.basis === 'day' ? {} : scopedFacts(group);
-                    const resources = input.resources.filter(r => r.resource === rule.resource && r.basis === rule.basis && (rule.basis === 'day' || r.sessionId === group[0].sessionId));
-                    if (!resources.length) {
-                        if (e.condition(rule.when, over))
-                            fail('unknown', rule.id, 'The configured deduction resource has no canonical evidence.');
-                        continue;
-                    }
-                    for (const resource of resources) {
-                        delete e.computed.resourceMinutes;
-                        delete e.computed.resourceMoney;
-                        if (resource.measure.quantity.state === 'unknown' && !e.condition(rule.when, over)) {
-                            e.emit('deduction', rule.id, { resourceId: resource.id, applied: false, quantityUnknownButConditionFalse: true });
-                            continue;
-                        }
-                        const measure = decimal(e.value(resource.measure.quantity, resource.id));
-                        delete e.computed.resourceMinutes;
-                        delete e.computed.resourceMoney;
-                        e.computed[resource.measure.unit === 'minutes' ? 'resourceMinutes' : 'resourceMoney'] = measure;
-                        if (!e.condition(rule.when, over) || measure.n === 0n) {
-                            e.emit('deduction', rule.id, { resourceId: resource.id, applied: false });
-                            continue;
-                        }
-                        const requested = nonnegative(e.expression(rule.amount, over), rule.id), prior = resource.sourceKeys.map(key => consumed.get(key)).filter((v): v is NonNullable<typeof v> => !!v), target = rule.targetEarningItemId ?? null;
-                        if (prior.length) {
-                            const same = prior.length === resource.sourceKeys.length && prior.every(p => p.unit === unit && p.target === target && compare(p.requested, requested) === 0 && p.keys.length === resource.sourceKeys.length && p.keys.every(k => resource.sourceKeys.includes(k)));
-                            if (!same)
-                                fail('deductionConflict', rule.id, 'The same deduction source has conflicting amounts, units, targets or overlapping identities.');
-                            e.emit('deduction', rule.id, { resourceId: resource.id, sourceKeys: resource.sourceKeys, deduplicated: true, requested: exact(requested, unit) });
-                            continue;
-                        }
-                        for (const key of resource.sourceKeys)
-                            consumed.set(key, { unit, requested, target, keys: resource.sourceKeys });
-                        let applied: Q;
-                        if (unit === 'minutes') {
-                            const available = sum(group.map(w => w.payable));
-                            applied = min(available, requested);
-                            let remaining = applied;
-                            for (const w of group) {
-                                const take = min(w.payable, remaining);
-                                w.payable = sub(w.payable, take);
-                                remaining = sub(remaining, take);
-                            }
-                            setComputed(group);
-                        }
-                        else {
-                            const selected = lines.filter(l => l.mapping.earningItemId === target && (rule.basis === 'day' || l.sessionId === group[0].sessionId));
-                            if (!selected.length && requested.n > 0n)
-                                fail('uncovered', rule.id, 'The money deduction target has no matched earning line.');
-                            const quantities = selected.map(l => q(BigInt(l.adjusted.numerator), BigInt(l.adjusted.denominator))), available = sum(quantities);
-                            applied = min(available, requested);
-                            const factor = available.n ? div(sub(available, applied), available) : ZERO;
-                            for (let i = 0; i < selected.length; i++)
-                                selected[i].adjusted = exact(mul(quantities[i], factor), 'money');
-                        }
-                        e.emit('deduction', rule.id, { resourceId: resource.id, basis: rule.basis, sessionId: rule.basis === 'session' ? group[0].sessionId : null, appliedSourceKeys: resource.sourceKeys, evidence: resource.evidence, quantity: resource.measure, requested: exact(requested, unit), applied: exact(applied, unit), unit, target });
-                    }
-                }
-            }
-        }
-        deductions('minutes', []);
-        if (pattern.durationRounding) {
-            for (const group of contexts) {
-                setComputed(group);
-                const before = sum(group.map(w => w.payable)), step = decimal(pattern.durationRounding.step), rounded = mul(q(roundInteger(div(before, step), pattern.durationRounding.mode)), step), capacity = sum(group.map(w => w.allowed ? min(w.raw!, w.approved) : ZERO)), cap = capByScope.get(group) ?? capacity;
-                const bounded = min(min(rounded, capacity), cap);
-                allocate(group, bounded, w => w.allowed ? min(w.raw!, w.approved) : ZERO, (w, v) => { w.payable = v; });
-                e.emit('rounding', 'duration-' + group[0].id, { basis: pattern.eligibilityBasis, before: exact(before, 'minutes'), step: exact(step, 'minutes'), mode: pattern.durationRounding.mode, rounded: exact(rounded, 'minutes'), bounded: exact(bounded, 'minutes') });
-            }
-        }
-        const roundedTotal = sum(work.map(w => w.payable));
-        allocate(work, min(roundedTotal, dayApproval), w => w.payable, (w, v) => { w.payable = v; });
-        e.emit('duration', 'finalApprovalBound', { bound: exact(dayApproval, 'minutes'), after: exact(sum(work.map(w => w.payable)), 'minutes') });
-        for (const w of work)
-            w.approvalAllocated = w.payable;
-        let unusedApproval = max(ZERO, sub(dayApproval, sum(work.map(w => w.payable))));
-        for (const w of work.filter(w => w.payable.n > 0n)) {
-            const extra = min(unusedApproval, max(ZERO, sub(min(w.approved, w.raw ?? w.approved), w.payable)));
-            w.approvalAllocated = add(w.approvalAllocated, extra);
-            unusedApproval = sub(unusedApproval, extra);
-        }
-        e.emit('duration', 'lineApprovalAllocation', { policy: 'payableBoundFirstThenChronologicalRemainder', physicalApproval: false, allocation: work.map(w => ({ segmentId: w.id, minutes: exact(w.approvalAllocated, 'minutes') })) });
+        const stage = runDurationStage(rawPattern, rawInput, e => { engine = e; });
+        const { pattern, input, e, work, rawTotal, eligibleTotal, canonicalApproved, dayApproval, setComputed, deductions } = stage;
+        identity = stage.identity;
+        if (input.sessionGranularity === 'dayAggregate' && (pattern.deductions.some(d => d.unit === 'money' && d.basis === 'session') || pattern.rates.some(r => r.accumulation === 'session' || r.tiers.some(t => t.payment.method !== 'hourly' && t.payment.basis === 'session'))))
+            fail('source', 'sessionGranularity', 'A day aggregate cannot establish session-based pricing or money deductions.');
         const lines: OvertimeLine[] = [], counters = new Map<string, Q>(), charges = new Map<string, {
             amount: Q;
             mapping: string;
@@ -668,15 +688,22 @@ export function evaluateOvertimePattern(rawPattern: OvertimePattern, rawInput: O
             }
             const sorted = [...new Set(points)].sort((a, b) => a - b);
             let remaining = w.payable;
-            for (let i = 0; i < sorted.length - 1 && remaining.n > 0n; i++) {
+            const selectedSlices: typeof slices = [];
+            const indexes = Array.from({ length: sorted.length - 1 }, (_, i) => i);
+            if (pattern.durationAllocation === 'latest')
+                indexes.reverse();
+            for (const i of indexes) {
+                if (remaining.n === 0n)
+                    break;
                 const count = min(remaining, q(BigInt(sorted[i + 1] - sorted[i]), 60n));
                 if (count.n > 0n)
-                    slices.push({ w, rate: selectRate(w, start + sorted[i]), minutes: count, ordinal: i });
+                    selectedSlices.push({ w, rate: selectRate(w, start + sorted[i]), minutes: count, ordinal: i });
                 remaining = sub(remaining, count);
             }
+            slices.push(...selectedSlices.sort((a, b) => a.ordinal - b.ordinal));
             if (remaining.n > 0n)
                 fail('source', w.id, 'Payable count exceeds the precisely placed recorded span.');
-            e.emit('duration', 'bands-' + w.id, { rawClock: w.clock, allocatedMinutes: exact(w.payable, 'minutes'), policy: 'chronologicalCountAttribution', physicalApproval: false });
+            e.emit('duration', 'bands-' + w.id, { rawClock: w.clock, allocatedMinutes: exact(w.payable, 'minutes'), policy: pattern.durationAllocation + 'CountAttribution', physicalApproval: false });
         }
         const rateTotals = new Map<string, Q>();
         for (const s of slices) {

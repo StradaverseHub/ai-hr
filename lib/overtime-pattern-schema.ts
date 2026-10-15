@@ -62,7 +62,17 @@ const UNITS: OvertimeUnit[] = ['scalar', 'minutes', 'money', 'moneyPerHour'];
 const SELECTION: readonly string[] = OVERTIME_SELECTION_FIELDS;
 const PERSONNEL = new Set<string>(OVERTIME_ASSIGNMENT_SELECTION_FIELDS);
 function decimalCompare(a: string, b: string) { const scaled = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * 1000000n + BigInt(f.padEnd(6, '0')); }; return scaled(a) < scaled(b) ? -1 : scaled(a) > scaled(b) ? 1 : 0; }
-function state(currency: OvertimeCurrency, definitionUnits: Map<string, OvertimeUnit>) {
+function controlString(raw: unknown, path: string, max = 200): string {
+    if (typeof raw !== 'string' || raw.length > max)
+        overtimeRefuse('invalid', path, 'Expected bounded control text.');
+    return raw;
+}
+function draftNumber(raw: unknown, path: string): number {
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || Math.abs(raw) > 999999)
+        overtimeRefuse('invalid', path, 'Expected a bounded numeric control.');
+    return raw;
+}
+function state(currency: OvertimeCurrency, definitionUnits: Map<string, OvertimeUnit>, draft = false) {
     let nodes = 0;
     const ids = new Set<string>(), objects = new WeakSet<object>();
     function enter(raw: unknown, path: string, depth: number) {
@@ -89,26 +99,26 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
             overtimeRefuse('type', path, 'Choose a supported dimensional unit.');
         const unit = r.unit as OvertimeUnit;
         const same = (a: OvertimeExpression, b: OvertimeExpression) => {
-            if (a.unit !== unit || b.unit !== unit)
+            if (!draft && (a.unit !== unit || b.unit !== unit))
                 overtimeRefuse('type', path, 'Operands must have the same dimensional unit.');
         };
         if (r.type === 'literal') {
             overtimeKeys(r, ['id', 'unit', 'type', 'value', 'currency'], path);
             const monetary = unit === 'money' || unit === 'moneyPerHour';
-            if (monetary ? r.currency !== currency.code : r.currency !== undefined)
+            if (!draft && (monetary ? r.currency !== currency.code : r.currency !== undefined))
                 overtimeRefuse('currency', path, 'Money literals must declare the pattern currency.');
-            return { id: identifier, unit, type: 'literal', value: overtimeDecimal(r.value, path + '.value'), ...(monetary ? { currency: currency.code } : {}) };
+            return { id: identifier, unit, type: 'literal', value: draft ? controlString(r.value, path + '.value', 64) : overtimeDecimal(r.value, path + '.value'), ...(draft ? (r.currency === undefined ? {} : { currency: controlString(r.currency, path + '.currency', 16) }) : (monetary ? { currency: currency.code } : {})) };
         }
         if (r.type === 'field') {
             overtimeKeys(r, ['id', 'unit', 'type', 'field'], path);
-            if (typeof r.field !== 'string' || !Object.hasOwn(OVERTIME_NUMERIC_FIELDS, r.field) || OVERTIME_NUMERIC_FIELDS[r.field as keyof typeof OVERTIME_NUMERIC_FIELDS] !== unit)
+            if (typeof r.field !== 'string' || !Object.hasOwn(OVERTIME_NUMERIC_FIELDS, r.field) || !draft && OVERTIME_NUMERIC_FIELDS[r.field as keyof typeof OVERTIME_NUMERIC_FIELDS] !== unit)
                 overtimeRefuse('type', path, 'Field and expression dimensions must agree.');
             return { id: identifier, unit, type: 'field', field: r.field as keyof typeof OVERTIME_NUMERIC_FIELDS };
         }
         if (r.type === 'ref') {
             overtimeKeys(r, ['id', 'unit', 'type', 'definitionId'], path);
-            const definitionId = overtimeId(r.definitionId, path + '.definitionId');
-            if (definitionUnits.get(definitionId) !== unit)
+            const definitionId = draft ? controlString(r.definitionId, path + '.definitionId', 64) : overtimeId(r.definitionId, path + '.definitionId');
+            if (!draft && definitionUnits.get(definitionId) !== unit)
                 overtimeRefuse('type', path, 'Reference must name a definition with the same dimension.');
             return { id: identifier, unit, type: 'ref', definitionId };
         }
@@ -127,25 +137,25 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
         if (r.type === 'hourlyRate') {
             overtimeKeys(r, ['id', 'unit', 'type', 'base', 'divisorMinutes'], path);
             const base = expression(r.base, path + '.base', depth + 1), divisorMinutes = expression(r.divisorMinutes, path + '.divisorMinutes', depth + 1);
-            if (unit !== 'moneyPerHour' || base.unit !== 'money' || divisorMinutes.unit !== 'minutes')
+            if (!draft && (unit !== 'moneyPerHour' || base.unit !== 'money' || divisorMinutes.unit !== 'minutes'))
                 overtimeRefuse('type', path, 'Hourly rate requires money divided by a duration.');
             return { id: identifier, unit, type: 'hourlyRate', base, divisorMinutes };
         }
         if (r.type === 'hourlyAmount') {
             overtimeKeys(r, ['id', 'unit', 'type', 'rate', 'minutes'], path);
             const rate = expression(r.rate, path + '.rate', depth + 1), minutes = expression(r.minutes, path + '.minutes', depth + 1);
-            if (unit !== 'money' || rate.unit !== 'moneyPerHour' || minutes.unit !== 'minutes')
+            if (!draft && (unit !== 'money' || rate.unit !== 'moneyPerHour' || minutes.unit !== 'minutes'))
                 overtimeRefuse('type', path, 'Hourly payment requires a rate and a duration.');
             return { id: identifier, unit, type: 'hourlyAmount', rate, minutes };
         }
         if (['add', 'subtract', 'multiply', 'divide', 'min', 'max'].includes(r.type as string)) {
             overtimeKeys(r, ['id', 'unit', 'type', 'left', 'right'], path);
             const left = expression(r.left, path + '.left', depth + 1), right = expression(r.right, path + '.right', depth + 1);
-            if (r.type === 'multiply') {
+            if (!draft && r.type === 'multiply') {
                 if (!((left.unit === 'scalar' && right.unit === unit) || (right.unit === 'scalar' && left.unit === unit)))
                     overtimeRefuse('type', path, 'Multiplication requires a dimensionless scalar.');
             }
-            else if (r.type === 'divide') {
+            else if (!draft && r.type === 'divide') {
                 if (!((right.unit === 'scalar' && left.unit === unit) || (unit === 'scalar' && left.unit === right.unit)))
                     overtimeRefuse('type', path, 'Division requires a scalar divisor or matching dimensions.');
             }
@@ -168,7 +178,7 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
             if (r.logic !== 'and' && r.logic !== 'or')
                 overtimeRefuse('invalid', path, 'Choose All or Any for a group.');
             const children = overtimeList(r.children, 32, path + '.children');
-            if (!children.length)
+            if (!draft && !children.length)
                 overtimeRefuse('invalid', path, 'Use an explicit constant for an unrestricted condition.');
             return { id: identifier, type: 'group', logic: r.logic, children: children.map((c, i) => condition(c, `${path}.children.${i}`, depth + 1, assignment)) };
         }
@@ -186,7 +196,7 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
             if (r.operator !== 'in' && r.operator !== 'notIn')
                 overtimeRefuse('invalid', path, 'Choose In or Not In.');
             const values = overtimeList(r.values, 500, path + '.values');
-            if (!values.length || values.some(v => typeof v !== 'string' || !v.length || v.length > 200) || new Set(values).size !== values.length)
+            if ((!draft && !values.length) || values.some(v => typeof v !== 'string' || v.length > 200 || !draft && !v.length) || !draft && new Set(values).size !== values.length)
                 overtimeRefuse('invalid', path, 'Select a nonempty bounded set of distinct values.');
             return { id: identifier, type: 'selection', field: field as OvertimeSelectionField, operator: r.operator, values: values as string[] };
         }
@@ -194,9 +204,9 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
             overtimeKeys(r, ['id', 'type', 'boundary', 'operator', 'value', 'upper'], path);
             if (!['start', 'end'].includes(r.boundary as string) || !['before', 'after', 'between'].includes(r.operator as string))
                 overtimeRefuse('invalid', path, 'Choose a clock boundary and comparison.');
-            const boundary = (raw: unknown) => { const b = overtimeObject(raw, path); overtimeKeys(b, ['dayOffset', 'minute'], path); return { dayOffset: overtimeInteger(b.dayOffset, 0, 2, path) as 0 | 1 | 2, minute: overtimeInteger(b.minute, 0, 1439, path) }; };
-            const value = boundary(r.value), upper = r.operator === 'between' ? boundary(r.upper) : undefined;
-            if (r.operator !== 'between' && r.upper !== undefined || upper && upper.dayOffset * 1440 + upper.minute < value.dayOffset * 1440 + value.minute)
+            const boundary = (raw: unknown) => { const b = overtimeObject(raw, path); overtimeKeys(b, ['dayOffset', 'minute'], path); return { dayOffset: overtimeInteger(b.dayOffset, 0, 2, path) as 0 | 1 | 2, minute: draft ? draftNumber(b.minute, path) : overtimeInteger(b.minute, 0, 1439, path) }; };
+            const value = boundary(r.value), upper = (draft ? r.upper !== undefined : r.operator === 'between') ? boundary(r.upper) : undefined;
+            if (!draft && (r.operator !== 'between' && r.upper !== undefined || upper && upper.dayOffset * 1440 + upper.minute < value.dayOffset * 1440 + value.minute))
                 overtimeRefuse('invalid', path, 'Choose an ordered explicit clock range.');
             return { id: identifier, type: 'clock', boundary: r.boundary as 'start' | 'end', operator: r.operator as 'before' | 'after' | 'between', value, ...(upper ? { upper } : {}) };
         }
@@ -204,10 +214,10 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
             overtimeKeys(r, ['id', 'type', 'operator', 'left', 'right', 'upper'], path);
             if (!['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'between'].includes(r.operator as string))
                 overtimeRefuse('invalid', path, 'Choose a supported comparison.');
-            const left = expression(r.left, path + '.left', depth + 1), right = expression(r.right, path + '.right', depth + 1), upper = r.operator === 'between' ? expression(r.upper, path + '.upper', depth + 1) : undefined;
-            if (left.unit !== right.unit || upper && upper.unit !== left.unit)
+            const left = expression(r.left, path + '.left', depth + 1), right = expression(r.right, path + '.right', depth + 1), upper = (draft ? r.upper !== undefined : r.operator === 'between') ? expression(r.upper, path + '.upper', depth + 1) : undefined;
+            if (!draft && (left.unit !== right.unit || upper && upper.unit !== left.unit))
                 overtimeRefuse('type', path, 'Compare matching dimensions.');
-            if (r.operator !== 'between' && r.upper !== undefined)
+            if (!draft && r.operator !== 'between' && r.upper !== undefined)
                 overtimeRefuse('invalid', path, 'Only Between accepts an upper bound.');
             return { id: identifier, type: 'compare', operator: r.operator as 'eq', left, right, ...(upper ? { upper } : {}) };
         }
@@ -216,12 +226,14 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
     return { expression, condition, id };
 }
 /** Strict whole-tree validation; inactive branches and unused definitions are still checked. */
-export function validateOvertimePattern(raw: unknown): OvertimePattern {
+function parseOvertimePattern(raw: unknown, draft: boolean): OvertimePattern {
     const r = overtimeObject(raw, 'pattern');
-    overtimeKeys(r, ['v', 'currency', 'definitions', 'eligibilityBasis', 'eligibility', 'eligibleMinutes', 'durationCap', 'durationRounding', 'deductions', 'rates', 'paymentCap', 'moneyRounding'], 'pattern');
+    overtimeKeys(r, ['v', 'currency', 'definitions', 'eligibilityBasis', 'durationAllocation', 'eligibility', 'eligibleMinutes', 'durationCap', 'durationRounding', 'deductions', 'rates', 'paymentCap', 'moneyRounding'], 'pattern');
     if (r.v !== 1)
         overtimeRefuse('invalid', 'pattern.v', 'Unsupported overtime schema version.');
-    const currency = overtimeCurrency(r.currency, 'currency');
+    const currencyRaw = overtimeObject(r.currency, 'currency');
+    overtimeKeys(currencyRaw, ['code', 'minorScale'], 'currency');
+    const currency = draft ? { code: controlString(currencyRaw.code, 'currency.code', 16), minorScale: overtimeInteger(currencyRaw.minorScale, 0, 6, 'currency.minorScale') } : overtimeCurrency(r.currency, 'currency');
     const definitionsRaw = overtimeList(r.definitions, L.definitions, 'definitions'), units = new Map<string, OvertimeUnit>();
     for (const [i, d] of definitionsRaw.entries()) {
         const def = overtimeObject(d, `definitions.${i}`);
@@ -231,12 +243,12 @@ export function validateOvertimePattern(raw: unknown): OvertimePattern {
             overtimeRefuse('invalid', `definitions.${i}`, 'Definitions require unique identifiers and dimensions.');
         units.set(id, unit as OvertimeUnit);
     }
-    const s = state(currency, units), definitions = definitionsRaw.map((d, i) => { const def = d as Record<string, unknown>; return { id: s.id(def.id, `definitions.${i}.id`), expression: s.expression(def.expression, `definitions.${i}.expression`) }; });
+    const s = state(currency, units, draft), definitions = definitionsRaw.map((d, i) => { const def = d as Record<string, unknown>; return { id: s.id(def.id, `definitions.${i}.id`), expression: s.expression(def.expression, `definitions.${i}.expression`) }; });
     const minutes = (raw: unknown, path: string) => {
         if (raw === null)
             return null;
         const expr = s.expression(raw, path);
-        if (expr.unit !== 'minutes')
+        if (!draft && expr.unit !== 'minutes')
             overtimeRefuse('type', path, 'Duration stages require minutes.');
         return expr;
     };
@@ -244,7 +256,7 @@ export function validateOvertimePattern(raw: unknown): OvertimePattern {
         if (raw === null)
             return null;
         const expr = s.expression(raw, path);
-        if (expr.unit !== 'money')
+        if (!draft && expr.unit !== 'money')
             overtimeRefuse('type', path, 'Payment stages require money.');
         return expr;
     };
@@ -252,79 +264,79 @@ export function validateOvertimePattern(raw: unknown): OvertimePattern {
     if (r.durationRounding !== null) {
         const round = overtimeObject(r.durationRounding, 'durationRounding');
         overtimeKeys(round, ['step', 'mode'], 'durationRounding');
-        const step = overtimeDecimal(round.step, 'durationRounding.step', true);
-        if (decimalCompare(step, '0') <= 0 || !MODES.includes(round.mode as string))
+        const step = draft ? controlString(round.step, 'durationRounding.step', 64) : overtimeDecimal(round.step, 'durationRounding.step', true);
+        if ((!draft && decimalCompare(step, '0') <= 0) || !MODES.includes(round.mode as string))
             overtimeRefuse('invalid', 'durationRounding', 'Choose a positive duration step and rounding mode.');
         durationRounding = { step, mode: round.mode as OvertimeRoundingMode };
     }
     const deductions = overtimeList(r.deductions, L.deductions, 'deductions').map((raw, i) => {
         const path = `deductions.${i}`, d = overtimeObject(raw, path);
         overtimeKeys(d, ['id', 'resource', 'basis', 'unit', 'when', 'amount', 'targetEarningItemId'], path);
-        const id = s.id(d.id, path + '.id'), resource = overtimeId(d.resource, path + '.resource');
-        if (!['day', 'session'].includes(d.basis as string) || !['minutes', 'money'].includes(d.unit as string) || resource === 'lateIn' && d.basis !== 'day')
+        const id = s.id(d.id, path + '.id'), resource = draft ? controlString(d.resource, path + '.resource', 64) : overtimeId(d.resource, path + '.resource');
+        if (!['day', 'session'].includes(d.basis as string) || !['minutes', 'money'].includes(d.unit as string) || !draft && resource === 'lateIn' && d.basis !== 'day')
             overtimeRefuse('invalid', path, 'Choose a supported deduction resource and basis.');
         const amount = s.expression(d.amount, path + '.amount');
-        if (amount.unit !== d.unit)
+        if (!draft && amount.unit !== d.unit)
             overtimeRefuse('type', path, 'Deduction expression must match its unit.');
-        if (d.unit === 'money' ? d.targetEarningItemId === undefined : d.targetEarningItemId !== undefined)
+        if (!draft && (d.unit === 'money' ? d.targetEarningItemId === undefined : d.targetEarningItemId !== undefined))
             overtimeRefuse('invalid', path, 'Money deductions require an explicit earning-item target.');
-        return { id, resource, basis: d.basis as 'day' | 'session', unit: d.unit as 'minutes' | 'money', when: s.condition(d.when, path + '.when'), amount, ...(d.unit === 'money' ? { targetEarningItemId: overtimeUuid(d.targetEarningItemId, path + '.targetEarningItemId') } : {}) };
+        return { id, resource, basis: d.basis as 'day' | 'session', unit: d.unit as 'minutes' | 'money', when: s.condition(d.when, path + '.when'), amount, ...(draft ? (d.targetEarningItemId === undefined ? {} : { targetEarningItemId: controlString(d.targetEarningItemId, path + '.targetEarningItemId') }) : (d.unit === 'money' ? { targetEarningItemId: overtimeUuid(d.targetEarningItemId, path + '.targetEarningItemId') } : {})) };
     });
     const rates = overtimeList(r.rates, L.rates, 'rates').map((raw, i) => {
         const path = `rates.${i}`, rate = overtimeObject(raw, path);
         overtimeKeys(rate, ['id', 'name', 'description', 'priority', 'when', 'timeBand', 'accumulation', 'tierMode', 'tiers'], path);
-        if (typeof rate.name !== 'string' || !rate.name.trim() || rate.name.length > 120 || typeof rate.description !== 'string' || rate.description.length > 1000)
+        if (typeof rate.name !== 'string' || !draft && !rate.name.trim() || rate.name.length > 120 || typeof rate.description !== 'string' || rate.description.length > 1000)
             overtimeRefuse('invalid', path, 'Enter a bounded rate name and description.');
-        const id = s.id(rate.id, path + '.id'), priority = overtimeInteger(rate.priority, 0, 9999, path + '.priority');
+        const id = s.id(rate.id, path + '.id'), priority = draft ? draftNumber(rate.priority, path + '.priority') : overtimeInteger(rate.priority, 0, 9999, path + '.priority');
         if (!['day', 'session'].includes(rate.accumulation as string) || !['marginal', 'whole'].includes(rate.tierMode as string))
             overtimeRefuse('invalid', path, 'Choose tier accumulation and marginal or whole-duration rates.');
         let timeBand: OvertimePattern['rates'][number]['timeBand'] = null;
         if (rate.timeBand !== null) {
             const b = overtimeObject(rate.timeBand, path + '.timeBand');
             overtimeKeys(b, ['fromMinute', 'toMinute', 'endDayOffset'], path + '.timeBand');
-            const fromMinute = overtimeInteger(b.fromMinute, 0, 1439, path + '.fromMinute'), toMinute = overtimeInteger(b.toMinute, 0, 1440, path + '.toMinute'), endDayOffset = overtimeInteger(b.endDayOffset, 0, 1, path + '.endDayOffset') as 0 | 1;
-            if (endDayOffset === 0 ? toMinute <= fromMinute : toMinute > fromMinute || toMinute === 1440)
+            const fromMinute = draft ? draftNumber(b.fromMinute, path + '.fromMinute') : overtimeInteger(b.fromMinute, 0, 1439, path + '.fromMinute'), toMinute = draft ? draftNumber(b.toMinute, path + '.toMinute') : overtimeInteger(b.toMinute, 0, 1440, path + '.toMinute'), endDayOffset = overtimeInteger(b.endDayOffset, 0, 1, path + '.endDayOffset') as 0 | 1;
+            if (!draft && (endDayOffset === 0 ? toMinute <= fromMinute : toMinute > fromMinute || toMinute === 1440))
                 overtimeRefuse('invalid', path + '.timeBand', 'Use a positive band no longer than one day with explicit overnight offset.');
             timeBand = { fromMinute, toMinute, endDayOffset };
         }
         const tiers = overtimeList(rate.tiers, L.tiers, path + '.tiers').map((raw, j) => {
             const p = `${path}.tiers.${j}`, tier = overtimeObject(raw, p);
             overtimeKeys(tier, ['id', 'from', 'to', 'payment', 'mapping'], p);
-            const tierId = s.id(tier.id, p + '.id'), from = overtimeDecimal(tier.from, p + '.from', true), to = tier.to === null ? null : overtimeDecimal(tier.to, p + '.to', true);
-            if (to !== null && decimalCompare(to, from) <= 0)
+            const tierId = s.id(tier.id, p + '.id'), from = draft ? controlString(tier.from, p + '.from', 64) : overtimeDecimal(tier.from, p + '.from', true), to = tier.to === null ? null : draft ? controlString(tier.to, p + '.to', 64) : overtimeDecimal(tier.to, p + '.to', true);
+            if (!draft && to !== null && decimalCompare(to, from) <= 0)
                 overtimeRefuse('invalid', p, 'Tier bounds must form a positive half-open range.');
             const pay = overtimeObject(tier.payment, p + '.payment');
             let payment: OvertimePayment;
             if (pay.method === 'hourly') {
                 overtimeKeys(pay, ['method', 'rate', 'multiplier'], p + '.payment');
                 const rate = s.expression(pay.rate, p + '.payment.rate'), multiplier = s.expression(pay.multiplier, p + '.payment.multiplier');
-                if (rate.unit !== 'moneyPerHour' || multiplier.unit !== 'scalar')
+                if (!draft && (rate.unit !== 'moneyPerHour' || multiplier.unit !== 'scalar'))
                     overtimeRefuse('type', p, 'Hourly payments require a rate and scalar multiplier.');
                 payment = { method: 'hourly', rate, multiplier };
             }
             else {
                 overtimeKeys(pay, ['method', 'amount', 'basis', 'chargeId'], p + '.payment');
-                if (!['flat', 'formula'].includes(pay.method as string) || !['day', 'session', 'tier', 'slice'].includes(pay.basis as string) || pay.method === 'flat' && pay.basis === 'slice')
+                if (!['flat', 'formula'].includes(pay.method as string) || !['day', 'session', 'tier', 'slice'].includes(pay.basis as string) || !draft && pay.method === 'flat' && pay.basis === 'slice')
                     overtimeRefuse('invalid', p, 'Flat payments require an explicit day, session or tier charge basis.');
                 const amount = s.expression(pay.amount, p + '.payment.amount');
-                if (amount.unit !== 'money')
+                if (!draft && amount.unit !== 'money')
                     overtimeRefuse('type', p, 'Payment formula must produce money.');
-                payment = { method: pay.method as 'flat' | 'formula', basis: pay.basis as 'day', chargeId: overtimeId(pay.chargeId, p + '.payment.chargeId'), amount };
+                payment = { method: pay.method as 'flat' | 'formula', basis: pay.basis as 'day', chargeId: draft ? controlString(pay.chargeId, p + '.payment.chargeId', 64) : overtimeId(pay.chargeId, p + '.payment.chargeId'), amount };
             }
             const m = overtimeObject(tier.mapping, p + '.mapping');
             overtimeKeys(m, ['earningItemId', 'currency'], p + '.mapping');
-            if (m.currency !== currency.code)
+            if (!draft && m.currency !== currency.code)
                 overtimeRefuse('currency', p, 'Every mapping must use the declared currency.');
-            return { id: tierId, from, to, payment, mapping: { earningItemId: overtimeUuid(m.earningItemId, p + '.mapping.earningItemId'), currency: currency.code } };
+            return { id: tierId, from, to, payment, mapping: { earningItemId: draft ? controlString(m.earningItemId, p + '.mapping.earningItemId') : overtimeUuid(m.earningItemId, p + '.mapping.earningItemId'), currency: draft ? controlString(m.currency, p + '.mapping.currency', 16) : currency.code } };
         });
-        if (!tiers.length || decimalCompare(tiers[0].from, '0') !== 0)
+        if (!draft && (!tiers.length || decimalCompare(tiers[0].from, '0') !== 0))
             overtimeRefuse('invalid', path, 'Tier coverage starts at zero.');
-        for (let j = 1; j < tiers.length; j++)
+        for (let j = 1; !draft && j < tiers.length; j++)
             if (tiers[j - 1].to === null || decimalCompare(tiers[j - 1].to!, tiers[j].from) !== 0)
                 overtimeRefuse('conflict', path, 'Tiers must be ordered, contiguous and nonoverlapping.');
         return { id, name: rate.name, description: rate.description, priority, when: s.condition(rate.when, path + '.when'), timeBand, accumulation: rate.accumulation as 'day' | 'session', tierMode: rate.tierMode as 'marginal' | 'whole', tiers };
     });
-    if (!rates.length)
+    if (!draft && !rates.length)
         overtimeRefuse('invalid', 'rates', 'Configure at least one rate.');
     const round = overtimeObject(r.moneyRounding, 'moneyRounding');
     overtimeKeys(round, ['stage', 'mode'], 'moneyRounding');
@@ -332,15 +344,22 @@ export function validateOvertimePattern(raw: unknown): OvertimePattern {
         overtimeRefuse('invalid', 'moneyRounding', 'Choose an explicit money rounding stage and mode.');
     if (r.eligibilityBasis !== 'day' && r.eligibilityBasis !== 'session')
         overtimeRefuse('invalid', 'eligibilityBasis', 'Choose day or session eligibility explicitly.');
-    const pattern: OvertimePattern = { v: 1, currency, definitions, eligibilityBasis: r.eligibilityBasis, eligibility: s.condition(r.eligibility, 'eligibility'), eligibleMinutes: minutes(r.eligibleMinutes, 'eligibleMinutes'), durationCap: minutes(r.durationCap, 'durationCap'), durationRounding, deductions, rates, paymentCap: money(r.paymentCap, 'paymentCap'), moneyRounding: { stage: round.stage as 'line' | 'dayMapping', mode: round.mode as OvertimeRoundingMode } };
-    const analysis = analyzeValidatedPattern(pattern);
-    const error = analysis.issues.find(i => i.severity === 'error');
+    if (r.durationAllocation !== 'earliest' && r.durationAllocation !== 'latest')
+        overtimeRefuse('invalid', 'durationAllocation', 'Choose earliest or latest policy count allocation explicitly.');
+    const pattern: OvertimePattern = { v: 1, currency, definitions, eligibilityBasis: r.eligibilityBasis, durationAllocation: r.durationAllocation, eligibility: s.condition(r.eligibility, 'eligibility'), eligibleMinutes: minutes(r.eligibleMinutes, 'eligibleMinutes'), durationCap: minutes(r.durationCap, 'durationCap'), durationRounding, deductions, rates, paymentCap: money(r.paymentCap, 'paymentCap'), moneyRounding: { stage: round.stage as 'line' | 'dayMapping', mode: round.mode as OvertimeRoundingMode } };
+    const error = draft ? undefined : analyzeValidatedPattern(pattern).issues.find(i => i.severity === 'error');
     if (error)
         throw new OvertimePatternError(error);
     if (new TextEncoder().encode(JSON.stringify(pattern)).length > L.jsonBytes)
         overtimeRefuse('limit', 'pattern', 'Configuration exceeds the serialized size limit.');
     return pattern;
 }
+/** Activation remains the only semantic validation authority. */
+export function validateOvertimePattern(raw: unknown): OvertimePattern { return parseOvertimePattern(raw, false); }
+/** Save/Reopen permits incomplete control values, never incomplete typed node shapes or executable properties.
+ * Known variant/unit/operator tags and stable editor IDs are structural; blanks belong to text/decimal/ID
+ * controls, not discriminator tags. Nothing is defaulted, normalized, deduplicated, activated or evaluated. */
+export function validateOvertimePatternDraft(raw: unknown): OvertimePattern { return parseOvertimePattern(raw, true); }
 /** Assignments use this same condition model, restricted to the Personnel catalogue. */
 export function validateOvertimeAssignmentTarget(raw: unknown): OvertimeAssignmentTarget {
     const t = overtimeObject(raw, 'target');
