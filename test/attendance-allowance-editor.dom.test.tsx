@@ -1,6 +1,6 @@
 /** Real editor and shared navigation guard. No service imports or mocked policy arithmetic. */
 import { describe, expect, it, vi as vitest } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { AttendanceAllowanceEditor } from '../components/attendance-allowance-editor';
@@ -35,6 +35,38 @@ const form = () => document.getElementById('attendance-allowance-editor') as HTM
 const submittedRules = () => JSON.parse(String(new FormData(form()).get('rules')));
 
 describe('four-section allowance editor', () => {
+  it('keeps current flat draft edits when explicitly switching to grouped conditions and requires review again',async()=>{
+    const rules=emptyAllowanceRules();rules.attendance.criteria=[{field:'actualMinutes',operator:'gte',value:'8',unit:'hours'}];
+    const policy={id:'66666666-6666-4666-8666-666666666666',tenantId:companyId,companyId,code:'V2',name:'Existing flat policy',method:'daily',amount:'20.00',payComponentId:earningId,effectiveFrom:'2025-01-01',status:'active',policyType:'earning',version:2,rules,criteria:{},scope:{},archivedAt:null,createdAt:new Date('2025-01-01T00:00:00Z')};
+    mount('en',policy);const user=userEvent.setup(),t=en.allowanceV2;
+    expect(submittedRules().v).toBe(2);
+    fireEvent.change(screen.getByLabelText(t.threshold),{target:{value:'9.5'}});
+    await user.click(screen.getByRole('checkbox',{name:t.reviewConfirm}));
+    await user.click(screen.getByRole('button',{name:en.allowanceV3.upgrade}));
+    expect(submittedRules()).toMatchObject({v:3,attendance:{expression:{type:'group',children:[{field:'actualMinutes',value:'9.5',unit:'hours'}]}}});
+    expect(screen.getByRole('checkbox',{name:t.reviewConfirm})).not.toBeChecked();
+    expect(screen.getByRole('button',{name:en.allowanceV3.savePreview})).toBeDisabled();
+    expect(rules.attendance.criteria[0].value).toBe('8');
+  });
+
+  it('serializes nested Any groups, preserves stable condition identities when reordered, and clears review after removal',async()=>{
+    mount();const user=userEvent.setup(),t=en.allowanceV2,v=en.allowanceV3;
+    await user.click(screen.getByRole('button',{name:v.addGroup}));
+    const nested=screen.getByRole('group',{name:v.nestedGroup});
+    await user.selectOptions(within(nested).getByLabelText(v.match),'or');
+    await user.selectOptions(within(nested).getByLabelText(t.field),'lateCount');
+    await user.click(within(nested).getByRole('button',{name:t.addAttendanceCriterion}));
+    const before=submittedRules().attendance.expression.children[0];
+    expect(before).toMatchObject({logic:'or',children:[{field:'lateCount',unit:'occurrences'},{field:'actualMinutes',unit:'hours'}]});
+    await user.click(within(nested).getByRole('button',{name:'Move condition 1 down'}));
+    const moved=submittedRules().attendance.expression.children[0];
+    expect(moved.children.map((child:{id:string})=>child.id)).toEqual([before.children[1].id,before.children[0].id]);
+    await user.click(screen.getByRole('checkbox',{name:t.reviewConfirm}));
+    await user.click(within(nested).getByRole('button',{name:'Remove condition 1'}));
+    expect(submittedRules().attendance.expression.children[0].children.map((child:{id:string})=>child.id)).toEqual([before.children[0].id]);
+    expect(screen.getByRole('checkbox',{name:t.reviewConfirm})).not.toBeChecked();
+  });
+
   it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('renders real rule controls and review wording in %s without unresolved messages', async locale => {
     const errors=mount(locale), t=catalogs[locale].allowanceV2;
     expect(screen.getByRole('heading',{name:t.sections.information})).toBeInTheDocument();
