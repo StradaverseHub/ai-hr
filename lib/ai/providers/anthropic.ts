@@ -1,3 +1,4 @@
+import { hasTokenCounts } from '../usage';
 /**
  * Anthropic (Claude) adapter (ADR-0023). Client is constructed PER CALL from the resolved key — never
  * memoized at module scope (a singleton would pin one tenant's key process-wide). Provider errors are
@@ -35,8 +36,8 @@ function client(apiKey: string): Anthropic {
  * about four hours pinned inside one server action. Per-call ceilings do not bound the LOOP; the caller
  * must also enforce a whole-exchange deadline.
  */
-function converseClient(apiKey: string, timeoutMs: number | undefined): Anthropic {
-  return new Anthropic({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: 1 });
+function converseClient(apiKey: string, timeoutMs: number | undefined, governed = false): Anthropic {
+  return new Anthropic({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: governed ? 0 : 1 });
 }
 
 export const anthropicAdapter: AiAdapter = {
@@ -44,6 +45,7 @@ export const anthropicAdapter: AiAdapter = {
   async readImage(cfg,args){
     try{
       const result=await new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).messages.create({model:cfg.model,max_tokens:2500,system:imageReadInstruction,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}]},{signal:args.signal});
+      if(hasTokenCounts(result.usage,['input_tokens','output_tokens']))args.onUsage?.(usageFor(result.usage));
       if(result.stop_reason==='refusal')throw new AiImageReadError(false);
       return result.content.filter((part):part is Anthropic.TextBlock=>part.type==='text').map(part=>part.text).join('\n');
     }catch(error){throw imageReadError(error);}
@@ -51,13 +53,14 @@ export const anthropicAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).messages.create({
+      const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new Anthropic({apiKey:cfg.apiKey,maxRetries:0}):client(cfg.apiKey)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
         thinking: { type: 'adaptive' },
         system: args.system,
         messages: [{ role: 'user', content: args.prompt }],
       },args.signal?{signal:args.signal}:undefined);
+      if(hasTokenCounts(message.usage,['input_tokens','output_tokens']))args.onUsage?.(usageFor(message.usage));
       if(args.signal&&(message.stop_reason==='max_tokens'||message.stop_reason==='refusal'))throw new AiGatewayError('No complete assessment was produced.');
       return message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -85,7 +88,7 @@ export const anthropicAdapter: AiAdapter = {
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
       const tools = requestTools(args.tools);
-      const message = await converseClient(cfg.apiKey, args.timeoutMs).messages.create({
+      const message = await converseClient(cfg.apiKey, args.timeoutMs, Boolean(cfg.governance)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
         thinking: { type: 'adaptive' },
@@ -204,6 +207,7 @@ function readMessage(message: Anthropic.Message): ConverseResult {
     toolCalls,
     stop,
     usage: usageFor(message.usage),
+    usageReported: hasTokenCounts(message.usage,['input_tokens','output_tokens']),
     // Opaque to everyone above this line. `stop_details.category` is a closed enum and would be safe to
     // record, but `stop_details.explanation` is free provider prose — so NO refusal detail crosses the
     // boundary at all, and the loop renders one localised refusal string for all three providers.

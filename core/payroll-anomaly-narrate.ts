@@ -142,7 +142,7 @@ export async function narrateVerdict(
   );
   if (findings.length === 0) return { narrated: 0, rejected: 0, notConfigured: false };
 
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx));
+  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'payroll_explanation'));
   // NOT an error. A tenant with no provider gets the queue it has always had, which is a working queue.
   if (!cfg) return { narrated: 0, rejected: 0, notConfigured: true };
 

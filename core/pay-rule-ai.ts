@@ -80,7 +80,7 @@ export async function draftPayRule(
   p: { description: string; componentCode?: string | null; componentProrates?: boolean },
 ): Promise<DraftResult> {
   // Short read-tx: resolve the tenant's active AI config. Null ⇒ the feature is OFF (unconfigured).
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx));
+  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'pay_rule_draft'));
   if (!cfg) throw new PayRuleDraftError('not_configured');
 
   // Redact PII from the admin's free text before it leaves the tenant (a description could name an employee).

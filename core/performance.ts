@@ -2765,7 +2765,7 @@ export async function draftManagerReview(
 
     // The tenant's active AI provider/model + decrypted key (or platform env fallback). Fail closed
     // when an active config is present but undecryptable — never fall through to a shared env key.
-    const aiCfg = await resolveActiveAiConfig(tx, ctx);
+    const aiCfg = await resolveActiveAiConfig(tx, ctx, 'performance_pm');
     if (!aiCfg) throw new PerfError('AI drafting is not configured for this tenant.');
 
     return { review, cycle, scale, goals, prior, peers, aiCfg };

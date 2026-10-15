@@ -340,7 +340,7 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
   if (todo.length === 0) return out;
 
   // Resolved ONCE, and only when there is something to ask about.
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).catch(() => null);
+  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'claims_triage')).catch(() => null);
   // NOT an error, and nothing is recorded: a tenant with no provider proposed nothing, and counting that
   // as a model failure would drag the pass rate down measuring the absence of a subscription.
   if (!cfg) return { ...out, notConfigured: true };

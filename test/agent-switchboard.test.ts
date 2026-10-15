@@ -115,9 +115,10 @@ describe('what the screen refuses to let an admin believe', () => {
     // The state production has been in for three rounds: switched on and inert, with nothing saying so.
     expect(code(SERVICE), 'effective is on AND the gates').toContain('effective: on && moduleHeld && !providerMissing');
     const p = code(PAGE);
-    expect(p, 'three states rendered, not two').toContain("a.effective ? t('stateOn') : a.on ? t('stateBlocked') : t('stateOff')");
-    expect(p, 'and the reason when it cannot act').toContain("!a.moduleHeld ? t('blockedModule'");
-    expect(p).toContain("t('blockedProvider')");
+    expect(p, 'all readiness states are rendered').toContain('t(`states.${feature.state}`)');
+    const management = code(read('core/ai-management.ts'));
+    expect(management).toContain("!enabled ? 'paused' : !moduleHeld ? 'module'");
+    expect(management).toContain("? 'provider' : 'ready'");
   });
 
   it('prints NO accuracy rate while the ledger is empty', () => {
@@ -132,9 +133,10 @@ describe('what the screen refuses to let an admin believe', () => {
 
   it('a read-only admin is told the switch is not theirs, rather than handed one that fails', () => {
     const p = code(PAGE);
-    expect(p).toContain('const mayWrite = isGroupAdmin(s)');
-    expect(p).toContain("{!mayWrite && (");
-    expect(p, 'the form is only rendered to somebody who may use it').toContain('{mayWrite ? (');
+    expect(p).toContain("!isGroupAdmin(s)&&<p");
+    expect(p).toContain("t('scopedNotice')");
+    expect(p, 'feature controls require permission').toContain('{feature.mayWrite?');
+    expect(code(read('core/ai-management.ts'))).toContain("mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'");
   });
 });
 

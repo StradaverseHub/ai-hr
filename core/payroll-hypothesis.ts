@@ -676,7 +676,7 @@ export async function proposeHypotheses(
     }
 
     if (!cfgResolved) {
-      cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).catch(() => null);
+      cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'payroll_hypotheses')).catch(() => null);
       cfgResolved = true;
     }
     // NOT an error, and nothing is recorded: a tenant with no provider proposed nothing, and counting

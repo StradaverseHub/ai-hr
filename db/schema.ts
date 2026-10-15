@@ -10274,3 +10274,16 @@ export const assessmentGuideUse = pgTable('performance_assessment_guide_use', {
  id:id(),tenantId:tenantId(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
  status:text('status').notNull().default('reserved'),question:text('question'),createdAt:createdAt(),
 },t=>[index('assessment_guide_actor_time').on(t.tenantId,t.actorUserId,t.createdAt)]);
+
+/** Governance telemetry contains no prompt, output, image, secret or employee field values. */
+export const aiControlPolicy=pgTable('ai_control_policy',{
+ id:id(),tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
+ enabled:boolean('enabled').notNull().default(true),dailyRequests:integer('daily_requests'),monthlyTokens:bigint('monthly_tokens',{mode:'number'}),
+ updatedByUserId:uuid('updated_by_user_id').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('ai_control_policy_scope_uq').on(t.tenantId,t.scopeKey)]);
+export const aiModelRun=pgTable('ai_model_run',{
+ id:id(),tenantId:tenantId(),userId:uuid('user_id').references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
+ featureId:text('feature_id').notNull(),operation:text('operation').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),
+ state:text('state').notNull(),reason:text('reason'),reservedTokens:bigint('reserved_tokens',{mode:'number'}).notNull(),
+ actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
+},t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);
