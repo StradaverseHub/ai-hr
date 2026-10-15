@@ -1,3 +1,4 @@
+import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
 import { applyPersonnelOperationalValuesTx } from './personnel-import-operations';
 import { assertCardIdFree } from './attendance-card';
@@ -547,9 +548,10 @@ async function analyze(
     const epfCitizenship = ((): 'citizen' | 'pr' | 'non_citizen' | undefined => {
       const c = norm(rec.epf_citizenship).toLowerCase().replace(/[\s-]+/g, '_');
       if (!c) return undefined;
-      if (c === 'citizen' || c === 'malaysian') return 'citizen';
-      if (c === 'pr' || c === 'permanent_resident') return 'pr';
-      if (['non_citizen', 'noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
+      if ((PERSONNEL_EPF_CITIZENSHIPS as readonly string[]).includes(c)) return c as (typeof PERSONNEL_EPF_CITIZENSHIPS)[number];
+      if (c === 'malaysian') return 'citizen';
+      if (c === 'permanent_resident') return 'pr';
+      if (['noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
       errors.push(`Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`);
       return undefined;
     })();
@@ -565,15 +567,15 @@ async function analyze(
     const payMode = ((): 'monthly' | 'daily' | 'hourly' | 'custom_period' | undefined => {
       const m = lc(rec.pay_mode).replace(/[\s-]+/g, '_');
       if (!m) return undefined;
-      if (['monthly', 'daily', 'hourly', 'custom_period'].includes(m)) return m as 'monthly';
+      if ((PERSONNEL_PAY_MODES as readonly string[]).includes(m)) return m as (typeof PERSONNEL_PAY_MODES)[number];
       errors.push(`Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`);
       return undefined;
     })();
     const paymentTerm = ((): 'monthly' | 'weekly' | 'biweekly' | undefined => {
       const f = lc(rec.payment_term).replace(/[\s-]+/g, '_');
       if (!f) return undefined;
-      if (f === 'bi_weekly' || f === 'biweekly') return 'biweekly';
-      if (f === 'monthly' || f === 'weekly') return f;
+      if ((PERSONNEL_PAYMENT_TERMS as readonly string[]).includes(f)) return f as (typeof PERSONNEL_PAYMENT_TERMS)[number];
+      if (f === 'bi_weekly') return 'biweekly';
       errors.push(`Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`);
       return undefined;
     })();

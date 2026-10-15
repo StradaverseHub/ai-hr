@@ -1,3 +1,4 @@
+import {PERSONNEL_PAYMENT_TERMS} from '../lib/personnel-choice-vocabulary';
 /**
  * 2.1.1 Payroll Policy — Monthly "General Settings" typed config + cleanX validation (ADR-0064). This is the
  * ONE blob stored as `payroll_policy.config jsonb`. A NULL config (no policy, inactive policy, or a policy
@@ -67,7 +68,7 @@ export const CUT_OFF_PER_TYPES: Exclude<CutOffType, 'salary'>[] = ['claim', 'ove
 
 // c7fdfcf6 (Payroll Schedule) — the supported payroll frequencies. 'monthly' is the default (byte-identical);
 // an unknown/absent value falls back to it.
-export const PAYROLL_FREQUENCIES: PayrollFrequency[] = ['monthly', 'weekly', 'biweekly'];
+export const PAYROLL_FREQUENCIES: PayrollFrequency[] = [...PERSONNEL_PAYMENT_TERMS];
 const cleanFrequency = (v: unknown): PayrollFrequency =>
   PAYROLL_FREQUENCIES.includes(v as PayrollFrequency) ? (v as PayrollFrequency) : 'monthly';
 

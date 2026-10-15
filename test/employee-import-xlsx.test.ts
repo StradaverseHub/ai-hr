@@ -24,6 +24,7 @@ import { DEPENDENT_IMPORT_COLUMNS, EMPLOYEE_TEMPLATE_COLUMNS, IMPORT_COLUMNS } f
 import { employeeTemplate } from '../lib/import-template';
 import { parsePersonnelImportCsv, personnelColumnLabel } from '../lib/personnel-import-contract';
 import { toCsv } from '../lib/csv';
+import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import {
   employeeColumnLabel,
   employeeTextColumnIndexes,
@@ -240,14 +241,14 @@ describe('§4 labels and contract cannot drift', () => {
   });
 
   it('the Reference sheet enumerations match what core/import actually accepts', () => {
-    // The enums are hardcoded in BOTH files because they are code-level, not configuration. This
-    // reads the validator's source so a change there fails here instead of shipping a template that
-    // advertises a value the importer rejects.
+    // Template and production validation consume the same closed vocabulary. This contract pins the
+    // production consumer as well as the advertised values, rather than accepting a duplicate list.
     const src = readFileSync(new URL('../core/import.ts', import.meta.url), 'utf8');
     for (const v of EMPLOYEE_ENUM_VALUES.employment_type) expect(src).toContain(`'${v}'`);
-    for (const v of EMPLOYEE_ENUM_VALUES.pay_mode) expect(src).toContain(`'${v}'`);
-    for (const v of EMPLOYEE_ENUM_VALUES.epf_citizenship) expect(src).toContain(`'${v}'`);
-    expect(src).toContain("['monthly', 'daily', 'hourly', 'custom_period']");
+    expect(EMPLOYEE_ENUM_VALUES.pay_mode).toEqual(PERSONNEL_PAY_MODES);
+    expect(EMPLOYEE_ENUM_VALUES.payment_term).toEqual(PERSONNEL_PAYMENT_TERMS);
+    expect(EMPLOYEE_ENUM_VALUES.epf_citizenship).toEqual(PERSONNEL_EPF_CITIZENSHIPS);
+    for(const name of ['PERSONNEL_PAY_MODES','PERSONNEL_PAYMENT_TERMS','PERSONNEL_EPF_CITIZENSHIPS']) expect(src).toContain(`${name} as readonly string[]).includes`);
     expect(src).toContain('tax_category must be 1, 2 or 3');
   });
 

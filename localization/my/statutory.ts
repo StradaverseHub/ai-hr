@@ -1,3 +1,4 @@
+import {PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES} from '../../lib/personnel-choice-vocabulary';
 import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
 import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
 /**
@@ -129,10 +130,10 @@ export { defaultSocsoEisNumber } from './socso-eis';
 
 // SOCSO / EIS contribution-category override (item a7271737). The category is the single per-scheme control on
 // the SOCSO & EIS card; the setter derives the legacy subject_to_socso / eis_eligible booleans from it.
-export const SOCSO_CATEGORIES = ['auto', 'first', 'second', 'none'] as const;
+export const SOCSO_CATEGORIES = PERSONNEL_SOCSO_CATEGORIES;
 export type SocsoCategory = (typeof SOCSO_CATEGORIES)[number];
 export const isSocsoCategory = (v: string): v is SocsoCategory => (SOCSO_CATEGORIES as readonly string[]).includes(v);
-export const EIS_CATEGORIES = ['auto', 'none'] as const;
+export const EIS_CATEGORIES = PERSONNEL_EIS_CATEGORIES;
 export type EisCategory = (typeof EIS_CATEGORIES)[number];
 export const isEisCategory = (v: string): v is EisCategory => (EIS_CATEGORIES as readonly string[]).includes(v);
 
@@ -824,7 +825,7 @@ export async function correctAccidentalHrdfOptOutsMY(
 // ── Item 8b5334db — Identification & Tax card ──────────────────────────────────────────────────────────
 /** Legacy person tax classification. Approved incentives require a scoped employer-period declaration.
  * C-Suite is declared only on that employment-scoped surface, never as a global person privilege. */
-export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'] as const;
+export const TAX_RESIDENCIES = PERSONNEL_TAX_RESIDENCIES;
 export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 
@@ -851,7 +852,7 @@ export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES
  *  the EA statement — read num_children as a plain head count, which is why the derived weighting is never
  *  written to that column. The one gate every consumer asks is core/dependents.ts
  *  `pricesChildReliefFromGrid`; no consumer carries its own copy, and a test pins that. */
-export const CHILD_RELIEF_MODES = ['manual', 'auto', 'auto_table'] as const;
+export const CHILD_RELIEF_MODES = PERSONNEL_CHILD_RELIEF_MODES;
 export type ChildReliefMode = (typeof CHILD_RELIEF_MODES)[number];
 export const isChildReliefMode = (v: string): v is ChildReliefMode => (CHILD_RELIEF_MODES as readonly string[]).includes(v);
 

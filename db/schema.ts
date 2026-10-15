@@ -1,3 +1,4 @@
+import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 /**
@@ -143,7 +144,7 @@ export const perfAbcClassEnum = pgEnum('perf_abc_class', ['A', 'B', 'C']);
 // 2.1 Payroll Policy — how an employee's payroll is processed. All four values exist now (no later
 // migration to add one); only `monthly` is wired to calculation in this slice (it is the existing
 // behaviour). daily/hourly/custom_period are reserved for a follow-up gated on the rate-storage decision.
-export const payrollPolicyTypeEnum = pgEnum('payroll_policy_type', ['monthly', 'daily', 'hourly', 'custom_period']);
+export const payrollPolicyTypeEnum = pgEnum('payroll_policy_type', PERSONNEL_PAY_MODES);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -2854,7 +2855,7 @@ export type CutOffType = 'salary' | 'claim' | 'overtime' | 'leave' | 'attendance
 // aggregate into ONE statutory month for EPF/SOCSO/EIS/PCB (Malaysian statutory contributions are computed
 // per calendar month BY LAW — LHDN MTD, PERKESO Act 4 s.6, monthly EPF returns), so the frequency changes the
 // operational cut-off cadence + which transactions fall in each cycle, never the statutory month they contribute in.
-export type PayrollFrequency = 'monthly' | 'weekly' | 'biweekly';
+export type PayrollFrequency = (typeof PERSONNEL_PAYMENT_TERMS)[number];
 // c7fdfcf6 (Payroll Schedule) — the four per-type cut-off anchor days (each 1..28; 'salary' has none, it uses
 // the base/frequency anchorDay). Absent ⇒ inherit the base anchor. Reused by both the base cutOff.perType and
 // the per-frequency override blocks (cutOff.perFrequency.{weekly,biweekly}.perType).
@@ -3215,7 +3216,7 @@ export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exem
 // EPF citizenship status — selects the contribution rule (Third Schedule). 'citizen'/'pr' < 60 use
 // Part A; 'citizen' 60–<75 uses Part E (0%/4%); 'non_citizen' uses the new mandatory 2%/2% (eff 1 Oct
 // 2025). Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026).
-export const epfCitizenshipEnum = pgEnum('epf_citizenship', ['citizen', 'pr', 'non_citizen']);
+export const epfCitizenshipEnum = pgEnum('epf_citizenship', PERSONNEL_EPF_CITIZENSHIPS);
 
 // 1.2.4 Zakat — a per-employee zakat-via-salary election. 'percent_of_pcb' = a fraction of the NORMAL
 // monthly MTD (derived live during payroll, never frozen); 'fixed' = a flat monthly RM amount. Null

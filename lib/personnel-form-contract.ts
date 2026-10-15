@@ -1,6 +1,3 @@
-import { ATTENDANCE_PHOTO_SETTINGS,ATTENDANCE_PHOTO_LABEL_KEYS } from './attendance-photo-setting';
-import { EMERGENCY_CONTACT_PRIORITIES } from './emergency-contact-vocabulary';
-import { PAYMENT_METHODS } from './payment-methods';
 /** Client-safe Personnel form presentation. Domain owners retain authorization and cross-field rules. */
 import { personnelField, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { personnelFieldChoices, personnelFieldLabel, personnelScalarIssue, type PersonnelLabelResolver } from './personnel-import-contract';
@@ -31,11 +28,7 @@ export function personnelInput(id:string,mode:PersonnelFormMode='edit',context:P
   return {...personnelControl(id,mode,context),type:widget, ...(field.form!.min==null?{}:{min:field.form!.min}), ...(field.form!.step==null?{}:{step:field.form!.step})};
 }
 export function personnelFormChoices(id:string) {
-  const field=personnelFormField(id);
-  if(field.allowedValuesOwner==='attendance.photoSetting')return ATTENDANCE_PHOTO_SETTINGS.map(value=>({value,labelKey:ATTENDANCE_PHOTO_LABEL_KEYS[value]}));
-  if(field.allowedValuesOwner==='employment.paymentMethod')return PAYMENT_METHODS.map(value=>({value,labelKey:`people.detail.paymentMethod_${value}`}));
-  if(field.allowedValuesOwner==='emergency.priority')return EMERGENCY_CONTACT_PRIORITIES.map(value=>({value,labelKey:`people.detail.emergency.${{primary:'priorityPrimary',secondary:'prioritySecondary',other:'priorityOther'}[value]}`}));
-  return personnelFieldChoices(field);
+  return personnelFieldChoices(personnelFormField(id));
 }
 export function personnelFormIssue(id:string,value:string,mode:PersonnelFormMode='edit') {
   const field=personnelFormField(id);
