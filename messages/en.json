@@ -11495,7 +11495,7 @@
         "extendedShort": "This is an ordinary working day. Only {minutes} minute(s) past the scheduled shift end counted for this employee, which is below the company’s half-day threshold, so this date cannot earn a Leave Credit.",
         "extendedEarned": "This employee worked {minutes} counted minute(s) past the scheduled shift end, which earns {days} day. The credit amount is fixed at that figure and cannot be changed here.",
         "descriptionRows": "Credit a day an employee worked. The credit is added immediately.",
-        "help": "Add one row for each date worked, with the times. Four eligible hours earn half a day, eight a full day, by the employee’s company rule. View shows the attendance on record. The credit is added immediately — there is no manager step.",
+        "help": "Enter each date and time worked. Check the duration review and company rule below; recorded formula limits apply where shown. A successful grant adds credit immediately, without a manager step.",
         "pickEmployeeFirst": "Choose the employee first.",
         "checkingEmployee": "Checking this employee…",
         "ownRecord": "You cannot add a Leave Credit on your own record. Another HR administrator must do it."
@@ -15245,7 +15245,7 @@
       "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
     },
     "table": {
-      "help": "Add one row for each date you worked, with the times. Four eligible hours earn half a day, eight a full day. View shows the attendance on record; it does not limit what you can claim. Nothing is credited until your manager approves.",
+      "help": "Enter each date and time worked. View shows attendance. Check the duration review and company rule below; recorded formula limits apply where shown. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "An ordinary working day cannot earn a credit at this company.",
@@ -15272,8 +15272,8 @@
       "attendanceClockInOut": "Clock-in / clock-out",
       "attendanceNoShift": "No scheduled shift",
       "attendanceNothingRecorded": "Nothing recorded",
-      "attendanceNoRecordNote": "No clock-in or clock-out was recorded for this date. You can still make the claim.",
-      "attendanceReferenceOnly": "For reference only. It does not limit what you can claim.",
+      "attendanceNoRecordNote": "No clock-in or clock-out was recorded. Check the duration review before submitting.",
+      "attendanceReferenceOnly": "Attendance details are for reference. Recorded formula duration limits still apply.",
       "attendanceOtPlan": "Approved OT plan",
       "attendanceOtPlanNone": "None for this date",
       "attendanceOtPlanApproved": "Approved for this date",
@@ -15285,7 +15285,7 @@
       "detailShift": "Shift",
       "detailHours": "Hours after shift",
       "noAttendanceRecord": "No attendance record for this date.",
-      "companyRule": "Company credit rule: {half} = 0.5 day · {full} = 1 day",
+      "companyRule": "Current company rule (reference): {half} = 0.5 day · {full} = 1 day",
       "duplicateDate": "This date is already in the request.",
       "reasonRequired": "Add a reason to continue.",
       "completeRows": "Complete the eligible rows to continue.",

@@ -34,6 +34,17 @@ describe('formula bound never silently becomes a legacy promise',()=>{
   expect(screen.getByTestId('leave-credit-row-credit')).not.toHaveTextContent('1.0');expect(screen.getByTestId('leave-credit-submit')).toBeDisabled();
   expect(action).toHaveBeenCalledWith('2026-10-16','09:00','19:01',isHr?hr.employmentId:undefined);
  });
+ it('keeps the dated refusal and calculation reference outside the horizontal input table',async()=>{
+  const calculationId='a-long-recorded-calculation-identity-without-spaces-to-wrap-on-a-narrow-screen';
+  const {container}=mount(async()=>({...over,calculationId}));await fill(container);
+  await waitFor(()=>expect(screen.getByText(en.replacementRequest.formulaReview.errors.exceedsBound)).toBeVisible());
+  const reviews=screen.getByTestId('leave-credit-claim-reviews'),alert=screen.getByRole('alert');
+  expect(reviews.closest('table')).toBeNull();expect(reviews.closest('.overflow-x-auto')).toBeNull();
+  expect(reviews).toContainElement(alert);expect(reviews).toHaveTextContent('2026-10-16');expect(reviews).toHaveTextContent(calculationId);
+  expect(alert).toHaveClass('min-w-0','max-w-full','whitespace-normal','[overflow-wrap:anywhere]');
+  expect(screen.getByTestId('leave-credit-table')).not.toContainElement(alert);
+  expect(screen.getByTestId('leave-credit-submit')).toBeDisabled();
+ });
  it('preserves the uncapped legacy self-declared window only after explicit owner proof',async()=>{
   const {container}=mount(async()=>({basis:'legacy'}));await fill(container);
   await waitFor(()=>expect(screen.getByTestId('leave-credit-submit')).not.toBeDisabled());
@@ -67,6 +78,18 @@ describe('formula bound never silently becomes a legacy promise',()=>{
   render(<NextIntlClientProvider locale={locale} messages={messages}><LeaveCreditClaimReviewNotice review={over}/></NextIntlClientProvider>);
   expect(screen.getByRole('alert')).toHaveTextContent('601');expect(screen.getByRole('alert')).toHaveTextContent('60');expect(screen.getByRole('alert')).toHaveTextContent(messages.replacementRequest.formulaReview.errors.exceedsBound);
   expect(screen.getByRole('alert').textContent).not.toMatch(/MYR|basicSalary|amountMinorUnits/);
+ });
+ it('keeps all six locale helpers honest about formula limits and configured tiers',()=>{
+  for(const messages of Object.values({en,ms,zh,ta,th,vi:viMessages})){
+   expect(messages.replacementRequest.table.help.trim()).not.toBe('');
+   expect(messages.replacementRequest.table.attendanceReferenceOnly.trim()).not.toBe('');
+   expect(messages.admin.leaveCredit.add.help.trim()).not.toBe('');
+   expect(messages.replacementRequest.table.companyRule).toContain('{half}');expect(messages.replacementRequest.table.companyRule).toContain('{full}');
+  }
+  expect(en.replacementRequest.table.help).toContain('recorded formula limits apply');
+  expect(en.replacementRequest.table.attendanceReferenceOnly).toContain('duration limits still apply');
+  expect(en.replacementRequest.table.help).not.toMatch(/does not limit|Four eligible hours|eight a full day/);
+  expect(en.admin.leaveCredit.add.help).not.toMatch(/Four eligible hours|eight a full day/);
  });
  it('treats pending and every finite unavailable reason as unresolved for approver controls',()=>{
   expect(leaveCreditClaimReviewBlocks(undefined)).toBe(true);

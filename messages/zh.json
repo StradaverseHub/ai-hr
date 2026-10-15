@@ -11495,7 +11495,7 @@
         "extendedShort": "这是普通工作日。该员工在排班下班时间之后仅计入 {minutes} 分钟，低于公司的半天阈值，因此该日期无法获得假期额度。",
         "extendedEarned": "该员工在排班下班时间之后计入 {minutes} 分钟，可获得 {days} 天。额度数量已按该数字固定，在此无法更改。",
         "descriptionRows": "为员工已工作的日子记入假期额度。额度将立即添加。",
-        "help": "每个工作日期添加一行，并填写时间。按员工所属公司的规则，4 个合格小时计半天，8 个小时计一天。“查看”显示已记录的考勤。额度将立即添加——无需经理审批。",
+        "help": "填写工作日期及时间。请核查下方时长及公司规则；若显示已记录的公式上限，该上限适用。成功发放后立即记入额度，无需经理审批。",
         "pickEmployeeFirst": "请先选择员工。",
         "checkingEmployee": "正在检查该员工…",
         "ownRecord": "您不能在自己的记录上添加假期额度。必须由其他 HR 管理员操作。"
@@ -15245,7 +15245,7 @@
       "belowThreshold": "少于 {minutes} 分钟，不符合额度资格。"
     },
     "table": {
-      "help": "为每个工作日添加一行并填写时间。四个合格小时可得半天，八个小时可得一整天。查看按钮显示已记录的考勤，不会限制您的申报。经理批准后才会记入积分。",
+      "help": "填写工作日期及时间。查看可显示考勤。请核查下方时长及公司规则；若显示已记录的公式上限，该上限适用。经理批准后才会记入额度。",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "在本公司，普通工作日无法获得积分。",
@@ -15272,8 +15272,8 @@
       "attendanceClockInOut": "上班 / 下班打卡",
       "attendanceNoShift": "无排定班次",
       "attendanceNothingRecorded": "没有任何记录",
-      "attendanceNoRecordNote": "此日期没有上班或下班打卡记录。您仍然可以提出申请。",
-      "attendanceReferenceOnly": "仅供参考，不会限制您可以申报的内容。",
+      "attendanceNoRecordNote": "没有上班或下班打卡记录。提交前请核查时长。",
+      "attendanceReferenceOnly": "考勤详情供参考。已记录的公式时长上限仍然适用。",
       "attendanceOtPlan": "已批准的加班计划",
       "attendanceOtPlanNone": "此日期没有",
       "attendanceOtPlanApproved": "此日期已批准",
@@ -15285,7 +15285,7 @@
       "detailShift": "班次",
       "detailHours": "班后工时",
       "noAttendanceRecord": "该日期没有考勤记录。",
-      "companyRule": "公司补休规则：{half} = 0.5 天 · {full} = 1 天",
+      "companyRule": "当前公司规则（参考）：{half} = 0.5 天 · {full} = 1 天",
       "duplicateDate": "申请中已有此日期。",
       "reasonRequired": "请填写原因后继续。",
       "completeRows": "请完成符合条件的日期行后继续。",

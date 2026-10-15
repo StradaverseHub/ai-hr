@@ -11495,7 +11495,7 @@
         "extendedShort": "Đây là một ngày làm việc bình thường. Nhân viên này chỉ được tính {minutes} phút sau giờ kết thúc ca theo lịch, thấp hơn ngưỡng nửa ngày của công ty, nên ngày này không thể nhận tín dụng nghỉ phép.",
         "extendedEarned": "Nhân viên này đã làm {minutes} phút được tính sau giờ kết thúc ca theo lịch, được hưởng {days} ngày. Số tín dụng được cố định theo con số đó và không thể thay đổi ở đây.",
         "descriptionRows": "Ghi có cho một ngày nhân viên đã làm việc. Khoản ghi có được thêm ngay lập tức.",
-        "help": "Thêm một dòng cho mỗi ngày làm việc, kèm thời gian. Bốn giờ hợp lệ được nửa ngày, tám giờ được cả ngày, theo quy tắc của công ty nhân viên. Xem hiển thị dữ liệu chấm công đã ghi. Khoản ghi có được thêm ngay — không cần quản lý duyệt.",
+        "help": "Nhập ngày và giờ làm việc. Kiểm tra thời lượng và quy tắc công ty bên dưới; giới hạn công thức đã ghi nhận áp dụng khi được hiển thị. Cấp thành công sẽ ghi có ngay, không qua bước quản lý.",
         "pickEmployeeFirst": "Hãy chọn nhân viên trước.",
         "checkingEmployee": "Đang kiểm tra nhân viên này…",
         "ownRecord": "Bạn không thể thêm Tín dụng nghỉ phép vào hồ sơ của chính mình. Một quản trị viên HR khác phải thực hiện."
@@ -15245,7 +15245,7 @@
       "belowThreshold": "Dưới {minutes} phút. Không đủ điều kiện nhận tín dụng."
     },
     "table": {
-      "help": "Thêm một dòng cho mỗi ngày bạn đã làm, kèm giờ làm. Bốn giờ hợp lệ được nửa ngày, tám giờ được trọn ngày. Nút Xem hiển thị dữ liệu chấm công đã ghi nhận; nó không giới hạn những gì bạn yêu cầu. Chưa có gì được ghi có cho đến khi quản lý phê duyệt.",
+      "help": "Nhập ngày và giờ làm việc. Xem hiển thị chấm công. Kiểm tra thời lượng và quy tắc công ty bên dưới; giới hạn công thức đã ghi nhận áp dụng khi được hiển thị. Chưa có ghi có cho đến khi quản lý phê duyệt.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Ngày làm việc bình thường không thể nhận tín dụng tại công ty này.",
@@ -15272,8 +15272,8 @@
       "attendanceClockInOut": "Giờ vào / giờ ra",
       "attendanceNoShift": "Không có ca theo lịch",
       "attendanceNothingRecorded": "Không ghi nhận gì",
-      "attendanceNoRecordNote": "Không có giờ vào hoặc giờ ra được ghi nhận cho ngày này. Bạn vẫn có thể gửi yêu cầu.",
-      "attendanceReferenceOnly": "Chỉ để tham khảo. Nó không giới hạn những gì bạn có thể yêu cầu.",
+      "attendanceNoRecordNote": "Không có giờ vào hoặc giờ ra được ghi nhận. Kiểm tra thời lượng trước khi gửi.",
+      "attendanceReferenceOnly": "Chi tiết chấm công để tham khảo. Giới hạn thời lượng công thức đã ghi nhận vẫn áp dụng.",
       "attendanceOtPlan": "Kế hoạch tăng ca đã duyệt",
       "attendanceOtPlanNone": "Không có cho ngày này",
       "attendanceOtPlanApproved": "Đã duyệt cho ngày này",
@@ -15285,7 +15285,7 @@
       "detailShift": "Ca",
       "detailHours": "Giờ sau ca",
       "noAttendanceRecord": "Không có hồ sơ chấm công cho ngày này.",
-      "companyRule": "Quy tắc của công ty: {half} = 0.5 ngày · {full} = 1 ngày",
+      "companyRule": "Quy tắc công ty hiện tại (tham khảo): {half} = 0.5 ngày · {full} = 1 ngày",
       "duplicateDate": "Ngày này đã có trong yêu cầu.",
       "reasonRequired": "Thêm lý do để tiếp tục.",
       "completeRows": "Hoàn thành các dòng đủ điều kiện để tiếp tục.",
