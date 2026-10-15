@@ -15,7 +15,7 @@ import {PERSONNEL_EMPLOYMENT_TYPES} from '../../lib/personnel-choice-vocabulary'
 import {validateOvertimePattern,validateOvertimePatternDraft,analyzeOvertimePattern,validateOvertimeAssignmentTarget} from '../../lib/overtime-pattern-schema';
 import {resolveOvertimePattern,evaluateOvertimePattern,evaluateOvertimePatternDuration} from '../../lib/overtime-pattern-evaluate';
 import {overtimeDurationProofInput} from '../../lib/overtime-duration-input';
-import {OVERTIME_LIMITS,type OvertimePattern,type OvertimeAssignmentTarget,type OvertimeCandidate,type OvertimeFacts,type OvertimeInput,type OvertimeEvaluation,type OvertimeDurationEvaluation,type OvertimeField,type OvertimeResolution,type OvertimeIssue} from '../../lib/overtime-pattern-model';
+import {OVERTIME_LIMITS,OvertimePatternError,type OvertimePattern,type OvertimeAssignmentTarget,type OvertimeCandidate,type OvertimeFacts,type OvertimeInput,type OvertimeEvaluation,type OvertimeDurationEvaluation,type OvertimeField,type OvertimeResolution,type OvertimeIssue} from '../../lib/overtime-pattern-model';
 
 export type OvertimePatternDraft={code:string;creationCompanyId:string;name:string;description?:string;companyIds:string[];definition:OvertimePattern};
 export type OvertimePatternStatus='draft'|'active'|'inactive'|'archived';
@@ -184,7 +184,13 @@ async function selectedInput(tx:Tx,ctx:SessionContext,snapshot:CanonicalOvertime
  const resolution=await resolveOvertimePatternTx(tx,ctx,{...p,recordedFacts:snapshot.input.facts,resolvedLegacyRuleId:snapshot.resolvedLegacyRuleId});
  if(resolution.status!=='selected')return {resolution,input:null,version:null,evaluation:null,duration:null,durationInputDigest:null};
  const version=await versionRow(tx,ctx,resolution.patternVersionId),input={...snapshot.input,mode,patternVersionId:version.id,assignmentId:resolution.assignmentId} as OvertimeInput;let evaluation:OvertimeEvaluation,duration:OvertimeDurationEvaluation|null=null,durationInputDigest:string|null=null;
- try{const definition=validateOvertimePattern(version.definition);durationInputDigest=createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(definition,input))).digest('hex');duration=evaluateOvertimePatternDuration(definition,input);await validateReferencesTx(tx,ctx,definition,await companiesForVersion(tx,version.id),true);evaluation=evaluateOvertimePattern(definition,input);}catch(error){evaluation={status:'refused',source:input.source,patternVersionId:input.patternVersionId,assignmentId:input.assignmentId,transferable:false,issues:[{code:'invalid',path:'references',severity:'error',detail:error instanceof Error?error.message:'Overtime configuration is unavailable.'}],trace:resolution.trace};}
+ try{const definition=validateOvertimePattern(version.definition);durationInputDigest=createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(definition,input))).digest('hex');duration=evaluateOvertimePatternDuration(definition,input);await validateReferencesTx(tx,ctx,definition,await companiesForVersion(tx,version.id),true);evaluation=evaluateOvertimePattern(definition,input);}catch(error){
+  // Only finite domain refusals become reviewable evidence. Database/system failures must reach the
+  // action's private incident logger, never a saved issue exposing raw SQL or internal error text.
+  if(!(error instanceof OvertimePatternError)&&!(error instanceof OvertimeOwnerError))throw error;
+  const issue:OvertimeIssue=error instanceof OvertimePatternError?error.issue:{code:'invalid',path:'references',severity:'error',detail:error.code==='permission'?'A required overtime reference is outside the current authority.':'A required overtime reference is unavailable or changed.'};
+  evaluation={status:'refused',source:input.source,patternVersionId:input.patternVersionId,assignmentId:input.assignmentId,transferable:false,issues:[issue],trace:resolution.trace};
+ }
  return {resolution,input,version,evaluation,duration,durationInputDigest};
 }
 export type OvertimeRecordOutcome={status:'legacy';sourceId:string;revision:number;resolution:Extract<StoredOvertimeResolution,{status:'legacy'}>}|{status:'recorded';sourceId:string;calculationId:string;revision:number;evaluation:OvertimeEvaluation|null;duration:OvertimeDurationEvaluation|null;resolution:Exclude<StoredOvertimeResolution,{status:'legacy'}>};

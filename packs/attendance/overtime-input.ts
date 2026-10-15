@@ -5,6 +5,7 @@ import type {SessionContext, Tx} from '../../db/client';
 import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
+import {isAttendanceTrace} from '../../core/attendance-trace';
 import {assertModuleGate} from '../../core/module-gate';
 import {currencyMinorScale, isCurrencyCode} from '../../lib/currencies';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -49,8 +50,8 @@ export async function captureCanonicalOvertimePersonnelContextTx(tx: Tx, ctx: Se
 
 /** Only captured calculation intervals with canonical punch corroboration can establish placement. */
 function recordedIntervals(day: typeof attendance.$inferSelect, punches: (typeof attendancePunch.$inferSelect)[]): RecordedWorkInterval[] | null {
-  const trace = day.calcTrace;
-  if (!trace || trace.v !== 1 || !trace.punch.calculationIntervals?.length || !day.checkOutAt) return null;
+  const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
+  if (!trace || !Array.isArray(trace.punch.calculationIntervals) || !trace.punch.calculationIntervals.length || !day.checkOutAt) return null;
   const intervals = trace.punch.calculationIntervals;
   // An old elapsed-envelope calculation does not become multiple physical sessions by inference.
   if (trace.punch.intervalSource !== 'closedPunchPairs' && (punches.length !== 2 || punches.filter(row => row.direction === 'in').length !== 1)) return null;
@@ -109,18 +110,19 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   ]);
   if (assignments.length !== 1 || assignments[0].companyId !== proof!.companyId || punches.length > 128 || decisions.length > 500) unavailable();
   const assigned = assignments[0], salary = salaries.length === 1 ? salaries[0] : null;
+  const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
   const attendanceProvenance = (field: string): OvertimeProvenance => ({owner: 'attendance', reference: day.id + ':' + field, asOf: p.date, basis: 'recorded'});
   const assignmentProvenance = (field: string): OvertimeProvenance => ({owner: 'personnel', reference: assigned.id + ':' + field, asOf: p.date, basis: 'effectiveDated'});
   const facts: OvertimeFacts = {};
   for (const field of MUTABLE_AXES) facts[field] = context?.facts[field] ?? unknown('recordedPersonnelContextUnavailable');
   for (const field of ['companyId', 'departmentId', 'businessUnitId', 'positionId', 'employmentType'] as const) facts[field] = known(assigned[field], assignmentProvenance(field));
   facts.employmentId = known(p.employmentId, assignmentProvenance('employmentId'));
-  facts.shiftId = day.calcTrace?.schedule.shiftId === undefined ? unknown('recordedShiftUnavailable') : known(day.calcTrace.schedule.shiftId, attendanceProvenance('shiftId'));
-  facts.scheduleGroupId = day.calcTrace?.v === 1 ? known(day.calcTrace.schedule.ruleId, attendanceProvenance('scheduleGroupId')) : unknown('recordedScheduleGroupUnavailable');
+  facts.shiftId = trace?.schedule.shiftId === undefined ? unknown('recordedShiftUnavailable') : known(trace.schedule.shiftId, attendanceProvenance('shiftId'));
+  facts.scheduleGroupId = trace ? known(trace.schedule.ruleId, attendanceProvenance('scheduleGroupId')) : unknown('recordedScheduleGroupUnavailable');
   facts.attendanceStatus = known(day.status, attendanceProvenance('status'));
   facts.dayType = day.dayType ? known(day.dayType, attendanceProvenance('dayType')) : unknown('recordedDayTypeUnavailable');
   facts.actualWorkingMinutes = minute(day.workedMinutes, attendanceProvenance('workedMinutes'));
-  facts.requiredWorkingMinutes = minute(day.calcTrace?.v === 1 ? day.calcTrace.schedule.normalMinutesOverride ?? day.calcTrace.schedule.scheduledMinutes : null, attendanceProvenance('requiredWorkingMinutes'));
+  facts.requiredWorkingMinutes = minute(trace ? trace.schedule.normalMinutesOverride ?? trace.schedule.scheduledMinutes : null, attendanceProvenance('requiredWorkingMinutes'));
   facts.lateMinutes = minute(day.lateMinutes, attendanceProvenance('lateMinutes'));
   if (salary && salary.currency === entity.currency) {
     const provenance: OvertimeProvenance = {owner: 'payroll', reference: salary.id, asOf: p.date, basis: 'effectiveDated'};
@@ -138,13 +140,15 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const pending = otDecisions.find(row => row.status === 'pending');
   const rejected = otDecisions.find(row => row.status === 'rejected');
   const approvalProvenance: OvertimeProvenance = {owner: 'approval', reference: approved?.id ?? pending?.id ?? rejected?.id ?? day.id + ':noOtRequest', asOf: p.date, basis: 'recorded'};
-  const legacyManualRows = day.calcTrace?.overtime?.rows?.filter(row => row.manual) ?? [];
+  const legacyRows = trace?.overtime?.rows;
+  if (legacyRows != null && (!Array.isArray(legacyRows) || legacyRows.some(row => !row || typeof row !== 'object'))) unavailable();
+  const legacyManualRows = legacyRows?.filter(row => row.manual) ?? [];
   // Legacy manual rate rows cannot be silently retiered by a different formula definition. The
   // original path still consumes them; a new formula requires deliberate review/clearance first.
   const approvalStatus = legacyManualRows.length ? 'unknown' : approved ? 'approved' : pending ? 'pending' : rejected ? 'rejected' : 'notRequired';
   const approvalMinutes = legacyManualRows.length ? unknown<string>('legacyManualOvertimeNeedsReview') : approved ? minute(approved.approvedOtMinutes, approvalProvenance) : approvalStatus === 'notRequired' ? work.rawMinutes : unknown<string>('approvalNotComplete');
   const approvalDigest = fingerprint(otDecisions.map(row => ({id: row.id, status: row.status, requested: row.requestedOtMinutes, approved: row.approvedOtMinutes, decidedAt: row.decidedAt, appliedAt: row.appliedAt, method: row.otApprovalMethod})));
-  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: day.calcTrace ? {v: day.calcTrace.v, schedule: day.calcTrace.schedule, punch: day.calcTrace.punch, lateness: day.calcTrace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches});
+  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {
     input: {source, currency: {code: entity.currency, minorScale: currencyMinorScale(entity.currency)}, facts,
@@ -159,7 +163,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
         {id: day.id + ':postOtBreak', resource: 'postOtBreak', evidence: 'policyCapacity', basis: 'day', sessionId: null, sourceKeys: [day.id + ':configuredPostOtBreak'], measure: {unit: 'minutes', quantity: work.rawMinutes}},
       ],
     },
-    resolvedLegacyRuleId: day.calcTrace?.v === 1 ? day.calcTrace.schedule.ruleId : null,
+    resolvedLegacyRuleId: trace ? trace.schedule.ruleId : null,
     referenceDigest: fingerprint({assignmentId: assigned.id, salaryId: salary?.id ?? null, contextReference: context?.ownerReference ?? null, entity, readerContract: 1}),
   };
 }

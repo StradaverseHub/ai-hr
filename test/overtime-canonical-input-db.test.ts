@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {eq, sql} from 'drizzle-orm';
 import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -75,6 +75,20 @@ describe('canonical formula inputs consume recorded owners instead of final lega
     const before = await read(p, date);
     await owner.db.update(attendance).set({otMinutes: 0, otFlatMinutes: 0, ot00Minutes: 0, ot10Minutes: 0, ot15Minutes: 0, ot20Minutes: 0, ot30Minutes: 0}).where(eq(attendance.employmentId, p.employmentId));
     expect((await read(p, date)).input.source.inputDigest).toBe(before.input.source.inputDigest);
+  });
+  it('treats a marker-only historical trace as unknown inputs without throwing or changing the raw digest', async () => {
+    const p = await employee(), date = todayInKualaLumpur();
+    await checkIn(p.ctx, {employmentId:p.employmentId,date,time:'09:00'});
+    await checkOut(p.ctx, {employmentId:p.employmentId,date,time:'19:00'});
+    await owner.db.update(attendance).set({calcTrace:null}).where(eq(attendance.employmentId,p.employmentId));
+    const before = await read(p,date);
+    const marker = {overtimePattern:{status:'refused',reason:'sourceUnavailable'}};
+    await owner.db.update(attendance).set({calcTrace:sql`${JSON.stringify(marker)}::jsonb`}).where(eq(attendance.employmentId,p.employmentId));
+    const after = await read(p,date);
+    expect(after.input.facts.shiftId?.state).toBe('unknown');
+    expect(after.input.facts.requiredWorkingMinutes?.state).toBe('unknown');
+    expect(after.input.sessionGranularity).toBe('dayAggregate');
+    expect(after.input.source.inputDigest).toBe(before.input.source.inputDigest);
   });
   it('reports legacy manual rate rows for deliberate review instead of silently repricing them', async () => {
     const p = await employee(), date = todayInKualaLumpur();
