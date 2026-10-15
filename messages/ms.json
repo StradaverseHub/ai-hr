@@ -5639,6 +5639,9 @@
       "pendingMoney": {
         "title": "Transaksi belum diproses",
         "hint": "Semua yang beratur untuk larian ini selain gaji pokok, tidak kira skrin mana ia dimasukkan. Dua belas titik kemasukan menulis ke lima jadual berbeza; di sinilah kesemuanya kelihatan sebelum anda menjana.",
+        "formulaUnavailable": "Kerja lebih masa berformula tidak dapat disemak. Jumlah tertunda mungkin tidak lengkap.",
+        "formulaReviewHint": "Semak hari Kehadiran yang direkodkan, kelulusan dan item pendapatan. Betulkan isu yang dilaporkan dan muat semula semakan ini sebelum memproses.",
+        "formulaRecordedHint": "Sumbangan kerja lebih masa berformula yang direkodkan dipaparkan sebelum had gabungan polisi Gaji. Pemprosesan menyemak semula setiap sumber; ini bukan amaun slip gaji akhir.",
         "empty": "Tiada apa-apa dalam barisan. Larian ini hanya akan membayar gaji pokok dan pengiraan berkanun.",
         "employees": "Pekerja terlibat",
         "earnings": "Pendapatan",

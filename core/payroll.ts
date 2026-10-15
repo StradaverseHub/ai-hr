@@ -10846,6 +10846,31 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
   });
 }
 
+/** Read-only population fence for a persisted run. Compensation is deliberately not part of it. */
+async function batchScopePopulationTx(tx: Tx, batch: {companyId: string; payPeriod: string; scope: unknown}) {
+  const [year, month] = batch.payPeriod.split('-').map(Number);
+  const periodStart = `${batch.payPeriod}-01`;
+  const periodEnd = `${batch.payPeriod}-${String(daysInMonth(year, month)).padStart(2, '0')}`;
+  const {filter: scopeFilter} = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
+  return {periodStart, periodEnd, filter: and(
+    employedByCompanyDuring(batch.companyId, periodStart, periodEnd), scopeFilter,
+    lte(employment.hiredOn, periodEnd),
+    or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+  )};
+}
+
+/** Selected, period-active headcount includes people whose missing salary blocks processing. */
+export function batchScopeHeadcount(ctx: SessionContext, batchId: string): Promise<number | null> {
+  return withTenant(ctx, async tx => {
+    const [batch] = await tx.select({companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, scope: payrollBatch.scope})
+      .from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    if (!batch) return null;
+    const population = await batchScopePopulationTx(tx, batch);
+    const [count] = await tx.select({total: sql<number>`count(*)::int`}).from(employment).where(population.filter);
+    return count.total;
+  });
+}
+
 /**
  * Rows for the draft-batch input editor: each active-in-period employee with their current manual
  * overtime and the auto-derived unpaid-leave days (read-only preview of what generation will apply).
@@ -10853,15 +10878,13 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
 export function batchInputRows(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, country: company.country })
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, scope: payrollBatch.scope, country: company.country })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) return [];
-    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
-    const periodStart = `${batch.payPeriod}-01`;
-    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+    const {periodStart, periodEnd, filter: populationFilter} = await batchScopePopulationTx(tx, batch);
     // Fix-5 (#4/#29): resolve the OT engine + statutory ruleset so we can surface each employee's
     // s.60I(1A) ORP (wages/26) + hourly (ORP/8) basis and the RM4,000 eligibility — READ-ONLY, computed
     // from the same overtimePay/compensation source the kernel uses. Pack may be absent (non-MY) ⇒ skip.
@@ -10885,16 +10908,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
           compensationEffectiveOn(periodEnd),
         ),
       )
-      .where(
-        and(
-          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
-          // and the history there is exactly the drift this helper exists to prevent: an employee the
-          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
-          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
-        ),
-      )
+      .where(populationFilter)
       .orderBy(person.fullName);
     const inputs = await tx
       .select({
