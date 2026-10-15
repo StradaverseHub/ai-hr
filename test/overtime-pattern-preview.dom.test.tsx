@@ -11,7 +11,7 @@ import {OvertimePreviewPanel} from '../components/overtime-patterns/preview-pane
 const words=en.overtimePatterns;
 const id='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002',batchId='00000000-0000-4000-8000-000000000003';
 const date=todayInKualaLumpur();
-const pattern:OvertimePattern={v:1,currency:{code:'MYR',minorScale:2},definitions:[],eligibilityBasis:'day',eligibility:{id:'eligible',type:'constant',value:true},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}};
+const pattern:OvertimePattern={v:1,currency:{code:'MYR',minorScale:2},definitions:[],eligibilityBasis:'day',durationAllocation:'earliest',eligibility:{id:'eligible',type:'constant',value:true},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}};
 const evaluation:OvertimeEvaluation={status:'ready',source:{tenantId:id,employmentId:id,attendanceId:id,date,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64)},patternVersionId:versionId,assignmentId:id,transferable:false,currency:pattern.currency,rawMinutes:{state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}},eligibleMinutes:{state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}},approvedMinutes:{state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}},payableMinutes:{unit:'minutes',numerator:'120',denominator:'1'},amountMinorUnits:'12345',lines:[],trace:[]};
 const review={options:{companyId:id,currency:'MYR',employmentId:id,date,calculation:{id:'saved-calculation',sourceRevision:4,status:'ready',approvalStatus:'approved',transferable:true,amountMinorUnits:'12345',minorScale:2},runs:[{id:batchId,payPeriod:date.slice(0,7),runType:'regular',batchDate:date,cycleName:'Fictional cycle',status:'draft'}],settlement:null},recorded:{sourceId:id,sourceRevision:4,calculationId:'saved-calculation',status:'ready',approvalStatus:'approved',evaluation:{...evaluation,transferable:true},recordedAt:new Date().toISOString()}};
 function mount(disabled=false){render(<NextIntlClientProvider locale="en" messages={en}><OvertimePreviewPanel patternId={id} versionId={versionId} pattern={pattern} employees={[{id,companyId:id,name:'Fictional Employee',employeeCode:'SYNTH-01'}]} choices={{dayType:[{id:'workday',label:'Workday'}]}} disabled={disabled}/></NextIntlClientProvider>);}
@@ -44,6 +44,14 @@ describe('preview and actual Payroll are separate operations',()=>{
   mocks.review.mockResolvedValue({ok:true,value:{...review,options:{...review.options,settlement:{id:'toil-claim',mode:'toil',batchId:null}}}});
   mount();chooseEmployee();fireEvent.click(screen.getByRole('button',{name:words.reviewActual}));await waitFor(()=>expect(screen.getByText(new RegExp(words.toilClaimed))).toBeVisible());
   expect(screen.getByRole('button',{name:words.transfer})).toBeDisabled();expect(mocks.transfer).not.toHaveBeenCalled();
+ });
+ it('shows ready recorded duration separately when cash pricing is refused, without enabling transfer',async()=>{
+  const duration={status:'ready',source:evaluation.source,patternVersionId:versionId,assignmentId:id,mode:'actual',transferable:true,rawMinutes:evaluation.rawMinutes,eligibleMinutes:evaluation.eligibleMinutes,approvedMinutes:evaluation.approvedMinutes,payableMinutes:evaluation.payableMinutes,trace:[]};
+  const refused={status:'refused',source:evaluation.source,patternVersionId:versionId,assignmentId:id,transferable:false,issues:[{code:'unknown',path:'facts.basicSalary',severity:'error',detail:'Missing recorded salary'}],trace:[]};
+  mocks.review.mockResolvedValue({ok:true,value:{...review,options:{...review.options,calculation:{...review.options.calculation,status:'refused',transferable:false,amountMinorUnits:null}},recorded:{...review.recorded,status:'refused',durationStatus:'ready',duration,evaluation:refused}}});
+  mount();chooseEmployee();fireEvent.click(screen.getByRole('button',{name:words.reviewActual}));
+  expect(await screen.findByRole('region',{name:words.durationResult})).toBeVisible();expect(screen.getByText(words.cashResult)).toBeVisible();
+  expect(screen.getByText(words.errors.unknown)).toBeVisible();expect(screen.getByRole('button',{name:words.transfer})).toBeDisabled();expect(mocks.transfer).not.toHaveBeenCalled();
  });
  it('keeps preview and financial buttons unavailable for unsaved changes',()=>{
   mount(true);expect(screen.getByText(words.saveBeforePreview)).toBeVisible();expect(screen.getByRole('button',{name:words.runPreview})).toBeDisabled();expect(screen.getByRole('button',{name:words.reviewActual})).toBeDisabled();

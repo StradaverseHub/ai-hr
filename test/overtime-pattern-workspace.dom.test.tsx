@@ -24,7 +24,7 @@ const companyId='00000000-0000-4000-8000-000000000001';
 const patternId='00000000-0000-4000-8000-000000000002';
 const versionId='00000000-0000-4000-8000-000000000003';
 const employeeId='00000000-0000-4000-8000-000000000004';
-const pattern:OvertimePattern={v:1,currency:{code:'MYR',minorScale:2},eligibilityBasis:'day',definitions:[],eligibility:{id:'eligibility',type:'constant',value:true},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}};
+const pattern:OvertimePattern={v:1,currency:{code:'MYR',minorScale:2},eligibilityBasis:'day',durationAllocation:'earliest',definitions:[],eligibility:{id:'eligibility',type:'constant',value:true},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}};
 const setup:OvertimePatternSetup={companies:[{id:companyId,name:'Fictional Company',currency:'MYR',minorScale:2}],employees:[{id:employeeId,companyId,name:'Fictional Employee',employeeCode:'SYNTH-01'}],employeeNextCursor:null,earningItems:[],choices:{companyId:[{id:companyId,label:'Fictional Company'}]},readerLimitations:[]};
 function detail(activated=false):OvertimePatternDetail {
  const createdAt=new Date();
@@ -42,20 +42,30 @@ describe('typed Overtime Pattern editing',()=>{
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('shows all seven translated sections in %s',locale=>{
   const errors:unknown[]=[];
   render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup}/></NextIntlClientProvider>);
+  const words=catalogues[locale].overtimePatterns;
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'day'}});fireEvent.change(screen.getByLabelText(words.durationAllocation),{target:{value:'earliest'}});fireEvent.click(screen.getByRole('button',{name:words.prepareDraft}));
   expect(screen.getAllByRole('tab')).toHaveLength(7);
   for(const label of Object.values(catalogues[locale].overtimePatterns.sections))expect(screen.getByRole('tab',{name:label})).toBeTruthy();
   expect(errors).toEqual([]);
  });
- it('requires explicit day/session scope and uses canonical read-only currency precision',async()=>{
+ it('constructs a policy only after explicit scope and direction choices and uses canonical read-only currency precision',async()=>{
   wrap(<OvertimeWorkspace detail={null} setup={setup}/>);
+  expect(screen.getByLabelText(words.eligibilityBasis)).toHaveValue('');expect(screen.getByLabelText(words.durationAllocation)).toHaveValue('');
+  expect(screen.getByRole('button',{name:words.prepareDraft})).toBeDisabled();expect(document.getElementById('overtime-definition')).toBeNull();
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'day'}});expect(screen.getByRole('button',{name:words.prepareDraft})).toBeDisabled();expect(mocks.save).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText(words.eligibilityBasis),{target:{value:'day'}});fireEvent.change(screen.getByLabelText(words.durationAllocation),{target:{value:'latest'}});fireEvent.click(screen.getByRole('button',{name:words.prepareDraft}));
   const basic=screen.getByRole('tabpanel',{name:words.sections.basic});
-  expect(within(basic).getByLabelText(words.eligibilityBasis)).toHaveValue('');
+  expect(within(basic).getByLabelText(words.durationAllocation)).toHaveValue('latest');
   fireEvent.change(within(basic).getByLabelText(words.creationCompany),{target:{value:companyId}});
   fireEvent.change(within(basic).getByLabelText(words.currency),{target:{value:'MYR'}});
   expect(within(basic).getByLabelText(words.minorScale)).toHaveValue('2');
   expect(within(basic).getByLabelText(words.minorScale)).toHaveAttribute('readonly');
-  fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
-  await waitFor(()=>expect(screen.getByRole('alert')).toBeTruthy());expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+ });
+ it('refuses a malformed saved draft without substituting a new policy',()=>{
+  const item=detail();item.versions[0].definition={rates:null};
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);
+  expect(screen.getByText(words.malformedDraft)).toBeVisible();expect(screen.queryByRole('button',{name:words.saveDraft})).toBeNull();expect(mocks.save).not.toHaveBeenCalled();
  });
  it('retains incomplete blank rate values in drafts without fabricating a policy amount',async()=>{
   editor();

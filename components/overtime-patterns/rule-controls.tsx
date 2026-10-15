@@ -1,6 +1,7 @@
 'use client';
 
 import {useTranslations} from 'next-intl';
+import {useOvertimeChoiceText} from './choice-label';
 import {Field, inputCls} from '@/components/ui';
 import {
   OVERTIME_NUMERIC_FIELDS, OVERTIME_SELECTION_FIELDS, OVERTIME_LIMITS, OVERTIME_ASSIGNMENT_SELECTION_FIELDS, OVERTIME_ASSIGNMENT_CONDITION_TYPES,
@@ -69,6 +70,7 @@ export function ConditionControl({value,onChange,currency,choices={},definitions
   choices?:OvertimeChoices;definitions?:string[];depth?:number;assignment?:boolean;
 }) {
   const t=useTranslations('overtimePatterns');
+  const choiceText=useOvertimeChoiceText();
   if(depth>=OVERTIME_LIMITS.depth) return <p role="alert">{t('errors.limit')}</p>;
   const types=assignment?OVERTIME_ASSIGNMENT_CONDITION_TYPES:['constant','group','selection','null','compare','clock'] as const;
   function changeType(type:typeof types[number]) {
@@ -97,12 +99,12 @@ export function ConditionControl({value,onChange,currency,choices={},definitions
     {value.type==='selection'||value.type==='null'?<Field label={t('field')}><select className={inputCls} value={value.field} onChange={event=>{const field=event.target.value as OvertimeSelectionField;onChange(value.type==='selection'?{...value,field,values:[]}:{...value,field});}}>{(assignment?OVERTIME_ASSIGNMENT_SELECTION_FIELDS:OVERTIME_SELECTION_FIELDS).map(field=><option key={field} value={field}>{t(`fields.${field}`)}</option>)}</select></Field>:null}
     {value.type==='selection'?<>
       <Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>onChange({...value,operator:event.target.value as 'in'|'notIn'})}><option value="in">{t('operators.in')}</option><option value="notIn">{t('operators.notIn')}</option></select></Field>
-      <Field label={t('values')}><select className={`${inputCls} min-h-24`} multiple value={value.values} onChange={event=>onChange({...value,values:Array.from(event.target.selectedOptions,option=>option.value)})}>{(choices[value.field]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}{value.values.filter(id=>!(choices[value.field]??[]).some(option=>option.id===id)).map(id=><option key={id} value={id}>{t('unavailableReference',{id})}</option>)}</select></Field>
+      <Field label={t('values')}><select className={`${inputCls} min-h-24`} multiple value={value.values} onChange={event=>onChange({...value,values:Array.from(event.target.selectedOptions,option=>option.value)})}>{(choices[value.field]??[]).map(option=><option key={option.id} value={option.id}>{choiceText(value.field,option)}</option>)}{value.values.filter(id=>!(choices[value.field]??[]).some(option=>option.id===id)).map(id=><option key={id} value={id}>{t('unavailableReference',{id})}</option>)}</select></Field>
       {!(choices[value.field]?.length)?<p className="text-xs text-muted-foreground">{t('noChoices')}</p>:null}
     </>:null}
     {value.type==='null'?<Field label={t('operator')}><select className={inputCls} value={String(value.isNull)} onChange={event=>onChange({...value,isNull:event.target.value==='true'})}><option value="true">{t('isMissing')}</option><option value="false">{t('isPresent')}</option></select></Field>:null}
     {value.type==='clock'?<>
-      <div className="grid gap-3 sm:grid-cols-2"><Field label={t('clockBoundary')}><select className={inputCls} value={value.boundary} onChange={event=>onChange({...value,boundary:event.target.value as 'start'|'end'})}><option value="start">{t('fromMinute')}</option><option value="end">{t('toMinute')}</option></select></Field><Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>{const operator=event.target.value as typeof value.operator;onChange({...value,operator,...(operator==='between'?{upper:value.upper??{...value.value}}:{upper:undefined})});}}>{['before','after','between'].map(operator=><option key={operator} value={operator}>{t(`clockOperators.${operator}`)}</option>)}</select></Field></div>
+      <div className="grid gap-3 sm:grid-cols-2"><Field label={t('clockBoundary')}><select className={inputCls} value={value.boundary} onChange={event=>onChange({...value,boundary:event.target.value as 'start'|'end'})}><option value="start">{t('recordedWorkStart')}</option><option value="end">{t('recordedWorkEnd')}</option></select></Field><Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>{const operator=event.target.value as typeof value.operator;onChange({...value,operator,...(operator==='between'?{upper:value.upper??{...value.value}}:{upper:undefined})});}}>{['before','after','between'].map(operator=><option key={operator} value={operator}>{t(`clockOperators.${operator}`)}</option>)}</select></Field></div>
       <div className="grid gap-3 sm:grid-cols-2">{(['value',...(value.operator==='between'?['upper']:[])] as ('value'|'upper')[]).map(key=>{const clock=value[key];if(!clock)return null;return <fieldset key={key} className="space-y-3 rounded-lg border border-border p-3"><legend className="px-1 text-sm">{t(key==='value'?'clockValue':'upper')}</legend><Field label={t('clockDay')}><select className={inputCls} value={clock.dayOffset} onChange={event=>onChange({...value,[key]:{...clock,dayOffset:Number(event.target.value) as 0|1|2}})}>{[0,1,2].map(offset=><option key={offset} value={offset}>{t(`clockDays.day${offset}`)}</option>)}</select></Field><Field label={t('clockValue')}><input type="time" className={inputCls} value={`${String(Math.floor(clock.minute/60)).padStart(2,'0')}:${String(clock.minute%60).padStart(2,'0')}`} onChange={event=>{const [hours,minutes]=event.target.value.split(':').map(Number);onChange({...value,[key]:{...clock,minute:hours*60+minutes}});}}/></Field></fieldset>;})}</div>
       <p className="text-xs text-muted-foreground">{t('clockConditionHelp')}</p>
     </>:null}

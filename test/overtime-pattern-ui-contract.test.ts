@@ -51,6 +51,14 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
   expect(controls).not.toContain('<textarea');expect(controls).not.toMatch(/\beval\s*\(|new Function/);
   expect(workspace).toContain('savedRevision={savedRevision}');expect(workspace).toContain('data-attendance-saved-receipt={assignmentReceipt}');
  });
+ it('uses the canonical incomplete Draft parser and constructs a new policy only after explicit required choices',()=>{
+  expect(workspace).toContain('validateOvertimePatternDraft(props.version.definition)');
+  expect(workspace).toContain("useState<OvertimePattern['durationAllocation']|''>('')");
+  expect(workspace).toContain('setPrepared(newPattern(basis,direction))');
+  expect(workspace).not.toContain("durationAllocation:'earliest'");
+  expect(existsSync(resolve(root,'lib/overtime-pattern-ui-shape.ts'))).toBe(false);
+  const controls=read('components/overtime-patterns/rule-controls.tsx');expect(controls).toContain("t('recordedWorkStart')");expect(controls).toContain("t('recordedWorkEnd')");
+ });
  it.each(['en','ms','ta','th','vi','zh'])('has every selectable field and section label in %s',locale=>{
   const catalogue=JSON.parse(read(`messages/${locale}.json`));const words=catalogue.overtimePatterns;
   for(const field of [...OVERTIME_SELECTION_FIELDS,...Object.keys(OVERTIME_NUMERIC_FIELDS)])expect(words.fields[field],`${locale} ${field}`).toBeTruthy();

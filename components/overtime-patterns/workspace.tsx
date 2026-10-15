@@ -5,7 +5,8 @@ import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Field,inputCls,btnPrimary} from '@/components/ui';
 import {AttendanceSettingsNavigation} from '@/components/attendance-settings-navigation';
-import {canRenderOvertimeDraft} from '@/lib/overtime-pattern-ui-shape';
+import {validateOvertimePatternDraft} from '@/lib/overtime-pattern-schema';
+import {OvertimePatternError} from '@/lib/overtime-pattern-model';
 import type {OvertimePattern,OvertimeAssignmentTarget,OvertimeIssue} from '@/lib/overtime-pattern-model';
 import type {OvertimePatternDetail,OvertimePatternSetup,OvertimePatternVersionView,OvertimePatternDraft} from '@/packs/attendance/service';
 import {saveOvertimeDraftAction,forkOvertimeDraftAction,validateOvertimeAction,activateOvertimeAction,stopOvertimeAction,archiveOvertimeAction,saveOvertimeAssignmentAction,closeOvertimeAssignmentAction,overtimeChoicesAction,type OvertimeActionFailure} from '@/app/admin/attendance/settings/overtime-patterns/actions';
@@ -18,21 +19,39 @@ export const OVERTIME_WORKSPACE_SECTIONS=['basic','assignment','eligibility','ra
 type Section=typeof OVERTIME_WORKSPACE_SECTIONS[number];
 const PAGE='/admin/attendance/settings/overtime-patterns';
 const button='min-h-10 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50';
-const newPattern=():OvertimePattern=>({v:1,currency:{code:'',minorScale:0},eligibilityBasis:'day',definitions:[],eligibility:{id:'eligibility',type:'group',logic:'and',children:[]},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}});
-const definitionOf=(version:OvertimePatternVersionView|undefined):OvertimePattern|null=>version?.kind==='formula'?version.definition as unknown as OvertimePattern:null;
+const newPattern=(eligibilityBasis:OvertimePattern['eligibilityBasis'],durationAllocation:OvertimePattern['durationAllocation']):OvertimePattern=>({v:1,currency:{code:'',minorScale:0},eligibilityBasis,durationAllocation,definitions:[],eligibility:{id:'eligibility',type:'group',logic:'and',children:[]},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}});
 
 type WorkspaceProps={detail:OvertimePatternDetail|null;version?:OvertimePatternVersionView;setup:OvertimePatternSetup};
 export function OvertimeWorkspace(props:WorkspaceProps) {
   const t=useTranslations('overtimePatterns');
-  if(props.version?.kind==='formula'&&!canRenderOvertimeDraft(props.version.definition))return <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm">{t('malformedDraft')}</p>;
-  return <EditableOvertimeWorkspace {...props}/>;
+  if(props.detail?.pattern.kind==='legacy')return <p className="rounded-lg border border-border p-4 text-sm">{t('legacyHelp')} <a className="text-primary underline" href="/admin/attendance/schedule">{t('legacyLink')}</a></p>;
+  if(!props.version)return <NewOvertimePreparation {...props}/>;
+  let initialDefinition:OvertimePattern;
+  try {initialDefinition=validateOvertimePatternDraft(props.version.definition);}
+  catch {return <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm">{t('malformedDraft')}</p>;}
+  return <EditableOvertimeWorkspace {...props} initialDefinition={initialDefinition}/>;
 }
-function EditableOvertimeWorkspace({detail,version,setup}:WorkspaceProps) {
+/** No typed policy exists until HR makes both required choices. Preparing does not create a record. */
+function NewOvertimePreparation(props:WorkspaceProps) {
+  const t=useTranslations('overtimePatterns');
+  const [basis,setBasis]=useState<OvertimePattern['eligibilityBasis']|''>('');
+  const [direction,setDirection]=useState<OvertimePattern['durationAllocation']|''>('');
+  const [prepared,setPrepared]=useState<OvertimePattern|null>(null);
+  if(prepared)return <EditableOvertimeWorkspace {...props} initialDefinition={prepared}/>;
+  return <section className="space-y-4 rounded-xl border border-border bg-card p-5" aria-label={t('sections.basic')}>
+    <h2 className="font-semibold">{t('sections.basic')}</h2>
+    <Field label={t('eligibilityBasis')}><select className={inputCls} value={basis} onChange={event=>setBasis(event.target.value as typeof basis)}><option value="">{t('choose')}</option><option value="day">{t('bases.day')}</option><option value="session">{t('bases.session')}</option></select></Field><p className="text-sm text-muted-foreground">{t('eligibilityBasisHelp')}</p>
+    <Field label={t('durationAllocation')}><select className={inputCls} value={direction} onChange={event=>setDirection(event.target.value as typeof direction)}><option value="">{t('choose')}</option><option value="earliest">{t('earliest')}</option><option value="latest">{t('latest')}</option></select></Field><p className="text-sm text-muted-foreground">{t('durationAllocationHelp')}</p>
+    <button type="button" className={btnPrimary} disabled={!basis||!direction} onClick={()=>{if(basis&&direction)setPrepared(newPattern(basis,direction));}}>{t('prepareDraft')}</button>
+  </section>;
+}
+function EditableOvertimeWorkspace({detail,version,setup,initialDefinition}:WorkspaceProps&{initialDefinition:OvertimePattern}) {
   const t=useTranslations('overtimePatterns');
   const router=useRouter();
-  const initial=definitionOf(version);
-  const [pattern,setPattern]=useState<OvertimePattern>(()=>initial??newPattern());
+  const initial=initialDefinition;
+  const [pattern,setPattern]=useState<OvertimePattern>(()=>initial);
   const [basisChosen,setBasisChosen]=useState(Boolean(initial?.eligibilityBasis));
+  const [allocationChosen,setAllocationChosen]=useState(Boolean(initial?.durationAllocation));
   const [code,setCode]=useState(detail?.pattern.code??'');
   const [name,setName]=useState(version?.name??'');
   const [description,setDescription]=useState(version?.description??'');
@@ -75,7 +94,8 @@ function EditableOvertimeWorkspace({detail,version,setup}:WorkspaceProps) {
   function moveTab(next:Section) {setSection(next);}
   const save=()=>perform(async()=>{
     if(companyIds.length>100){setFailure({ok:false,code:'limit'});setSection('basic');return;}
-    if(!basisChosen||!pattern.currency.code){setFailure({ok:false,code:'invalid'});setSection('basic');return;}
+    if(!basisChosen||!allocationChosen||!pattern.currency.code){setFailure({ok:false,code:'invalid'});setSection('basic');return;}
+    try {validateOvertimePatternDraft(pattern);}catch(error){setFailure({ok:false,code:'invalid',issues:error instanceof OvertimePatternError?[error.issue]:undefined});return;}
     const result=await saveOvertimeDraftAction({patternId:detail?.pattern.id,versionId:version?.id,expectedRevision:version?.revision,draft});
     if(!succeeded(result)||!result.ok)return;
     baseline.current=fingerprint;setSavedRevision(value=>value+1);setNotice('saved');
@@ -110,7 +130,7 @@ function EditableOvertimeWorkspace({detail,version,setup}:WorkspaceProps) {
     if(succeeded(result)){setNotice('archived');router.refresh();}
   });
   const assign=()=>perform(async()=>{
-    if(!checkSaved()||!Number.isSafeInteger(Number(priority))||priority.trim()===''){setFailure({ok:false,code:'invalid'});return;}
+    if(!checkSaved()||!Number.isSafeInteger(Number(priority))||Number(priority)<0||Number(priority)>9999||priority.trim()===''){setFailure({ok:false,code:'invalid'});return;}
     const result=await saveOvertimeAssignmentAction({versionId:version!.id,target,priority:Number(priority),from:assignmentFrom,to:assignmentTo||null});
     if(succeeded(result)){const nonce=document.querySelector<HTMLInputElement>('#overtime-assignment input[name=__attendanceSaveNonce]')?.value;if(nonce)setAssignmentReceipt(nonce);setNotice('assignmentSaved');router.refresh();}
   });
@@ -123,7 +143,7 @@ function EditableOvertimeWorkspace({detail,version,setup}:WorkspaceProps) {
   const isLegacy=detail?.pattern.kind==='legacy';
   return <div className="space-y-5">
     <AttendanceSettingsNavigation formId="overtime-definition" savedRevision={savedRevision}/>
-    {failure?<div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm"><p>{t(`errors.${failure.code}`)}</p>{failure.reference?<p className="mt-1 text-xs">{t('reference',{reference:failure.reference})}</p>:null}{failure.code==='stale'?<button type="button" className={button} onClick={()=>{if(!dirty||window.confirm(t('leaveUnsaved')))router.refresh();}}>{t('reload')}</button>:null}</div>:null}
+    {failure?<div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm"><p>{t(`errors.${failure.code}`)}</p><OvertimeIssues issues={failure.issues??[]}/>{failure.reference?<p className="mt-1 text-xs">{t('reference',{reference:failure.reference})}</p>:null}{failure.code==='stale'?<button type="button" className={button} onClick={()=>{if(!dirty||window.confirm(t('leaveUnsaved')))router.refresh();}}>{t('reload')}</button>:null}</div>:null}
     {notice?<p role="status" className="text-sm">{t(notice)}</p>:null}
     {setup.readerLimitations.length?<details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm font-medium">{t('readerLimitations')}</summary><ul className="mt-2 space-y-2 text-sm text-muted-foreground">{setup.readerLimitations.map((field,index)=><li key={index}>{t.has(`limitations.${field}`)?t(`limitations.${field}`):t('unknownHelp')}</li>)}</ul><p className="mt-2 text-sm text-muted-foreground">{t('unknownHelp')}</p></details>:null}
     {version?<details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm font-medium">{t('versionHistory')} · {version.ordinal} · {t(`status.${version.status}`)}</summary><p className="mt-2 break-all text-xs text-muted-foreground">{t('versionId',{id:version.id})}</p><ol className="mt-3 space-y-2 text-sm">{version.states.map(state=><li key={state.id}>{state.effectiveFrom} · {t(`status.${state.state}`)} · {state.reason}</li>)}</ol></details>:null}
@@ -138,10 +158,11 @@ function EditableOvertimeWorkspace({detail,version,setup}:WorkspaceProps) {
         <fieldset disabled={pending||!editable} className="min-w-0">
           <div role="tabpanel" id="ot-panel-basic" aria-labelledby="ot-tab-basic" hidden={section!=='basic'} className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="grid gap-4 sm:grid-cols-2"><Field label={t('code')}><input className={inputCls} maxLength={64} value={code} readOnly={Boolean(detail)} onChange={event=>setCode(event.target.value)}/></Field><Field label={t('name')}><input className={inputCls} maxLength={160} value={name} onChange={event=>setName(event.target.value)}/></Field></div>
-            <Field label={t('description')}><textarea className={inputCls} rows={3} maxLength={1000} value={description} onChange={event=>setDescription(event.target.value)}/></Field>
+            <Field label={t('description')}><textarea className={inputCls} rows={3} maxLength={2000} value={description} onChange={event=>setDescription(event.target.value)}/></Field>
             <div className="grid gap-4 sm:grid-cols-2"><Field label={t('creationCompany')}><select className={inputCls} value={creationCompanyId} disabled={Boolean(detail)} onChange={event=>{setCreationCompanyId(event.target.value);setCompanyIds(event.target.value?[event.target.value]:[]);}}><option value="">{t('choose')}</option>{setup.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></Field><Field label={t('companies')}><select multiple className={`${inputCls} min-h-24`} value={companyIds} onChange={event=>setCompanyIds(Array.from(event.target.selectedOptions,option=>option.value))}>{setup.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></Field></div>
             <div className="grid gap-4 sm:grid-cols-3"><Field label={t('currency')}><select className={inputCls} value={pattern.currency.code} onChange={event=>{const company=setup.companies.find(item=>item.currency===event.target.value);if(company)update({...pattern,currency:{code:company.currency,minorScale:company.minorScale}});}}><option value="">{t('choose')}</option>{[...new Set(setup.companies.filter(company=>companyIds.includes(company.id)).map(company=>company.currency))].map(currency=><option key={currency} value={currency}>{currency}</option>)}</select></Field><Field label={t('minorScale')}><input className={inputCls} readOnly value={pattern.currency.code?String(pattern.currency.minorScale):''}/></Field><Field label={t('eligibilityBasis')}><select className={inputCls} value={basisChosen?pattern.eligibilityBasis:''} onChange={event=>{setBasisChosen(Boolean(event.target.value));update({...pattern,eligibilityBasis:event.target.value as 'day'|'session'});}}><option value="">{t('choose')}</option><option value="day">{t('bases.day')}</option><option value="session">{t('bases.session')}</option></select></Field></div>
             <p className="text-xs text-muted-foreground">{t('eligibilityBasisHelp')}</p>
+            <Field label={t('durationAllocation')}><select className={inputCls} value={allocationChosen?pattern.durationAllocation:''} onChange={event=>{setAllocationChosen(Boolean(event.target.value));update({...pattern,durationAllocation:event.target.value as 'earliest'|'latest'});}}><option value="">{t('choose')}</option><option value="earliest">{t('earliest')}</option><option value="latest">{t('latest')}</option></select></Field><p className="text-xs text-muted-foreground">{t('durationAllocationHelp')}</p>
           </div>
           <div role="tabpanel" id="ot-panel-eligibility" aria-labelledby="ot-tab-eligibility" hidden={section!=='eligibility'} className="rounded-xl border border-border bg-card p-5"><OvertimeEligibilitySection pattern={pattern} onChange={update} choices={choices}/></div>
           <div role="tabpanel" id="ot-panel-rates" aria-labelledby="ot-tab-rates" hidden={section!=='rates'} className="rounded-xl border border-border bg-card p-5"><OvertimeRatesSection pattern={pattern} onChange={update} choices={choices}/></div>
