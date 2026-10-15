@@ -27,12 +27,12 @@ const minute = (value: number | null | undefined, provenance: OvertimeProvenance
 function sumRecordedMoney(first: string, second: string): string | null {
   const minor = (value: string): bigint | null => {
     const match = /^(\d{1,12})(?:\.(\d{1,2}))?$/.exec(value);
-    return match ? BigInt(match[1]) * 100n + BigInt((match[2] ?? '').padEnd(2, '0')) : null;
+    return match ? BigInt(match[1]) * BigInt('100') + BigInt((match[2] ?? '').padEnd(2, '0')) : null;
   };
   const a = minor(first), b = minor(second);
   if (a == null || b == null) return null;
   const value = a + b;
-  return String(value / 100n) + '.' + String(value % 100n).padStart(2, '0');
+  return String(value / BigInt('100')) + '.' + String(value % BigInt('100')).padStart(2, '0');
 }
 
 /** Called at the actual first current-day check-in, never by a client preview or historical import. */
@@ -157,7 +157,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
       // independently evidenced day approval cap above is applied once after eligibility by the engine.
       segments: work.segments.map(segment => ({...segment, approvedMinutes: segment.rawMinutes})),
       resources: [
-        {id: day.id + ':lateIn', resource: 'lateIn', evidence: 'measured', basis: 'day', sessionId: null, sourceKeys: [day.id + ':lateMinutes'], measure: {unit: 'minutes', quantity: facts.lateMinutes!}},
+        {id: day.id + ':lateIn', resource: 'lateIn', evidence: 'measured', basis: 'day', sessionId: null, sourceKeys: [day.id + ':lateMinutes'], measure: {unit: 'minutes', quantity: minute(day.lateMinutes, attendanceProvenance('lateMinutes'))}},
         // Capacity for an explicitly configured additional policy deduction; this is not an actual
         // scheduled break, which has already been removed from the canonical worked duration.
         {id: day.id + ':postOtBreak', resource: 'postOtBreak', evidence: 'policyCapacity', basis: 'day', sessionId: null, sourceKeys: [day.id + ':configuredPostOtBreak'], measure: {unit: 'minutes', quantity: work.rawMinutes}},

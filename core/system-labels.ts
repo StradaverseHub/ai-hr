@@ -276,7 +276,8 @@ export async function setLabelCriteria(ctx:SessionContext,p:LabelCriteriaChange,
  const [result]=await setLabelCriteriaBatch(ctx,[p],existingTx);return {isGlobal:result.isGlobal,companyIds:result.companyIds};
 }
 export async function setLabelCriteriaBatch(ctx:SessionContext,changes:readonly LabelCriteriaChange[],existingTx?:Tx):Promise<{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]>{
- if(!Array.isArray(changes)||changes.some(change=>!change||typeof change.isGlobal!=='boolean'||!Array.isArray(change.companyIds)))throw new Error('Choose valid label Criteria.');
+ const rawChanges:unknown=changes;
+ if(!Array.isArray(rawChanges)||rawChanges.some(change=>!change||typeof change.kind!=='string'||typeof change.labelId!=='string'||typeof change.isGlobal!=='boolean'||!Array.isArray(change.companyIds)||change.companyIds.some((id:unknown)=>typeof id!=='string')))throw new Error('Choose valid label Criteria.');
  if(changes.length>1000||new Set(changes.map(change=>change.kind+':'+change.labelId)).size!==changes.length)throw new Error('Choose each label once within the supported batch size.');
  for(const p of changes){assertKind(p.kind);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.labelId))throw new UnknownLabelError();const ids=[...new Set(p.companyIds)];if(ids.length>1000||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new Error('Choose valid companies from the available list.');if(!p.isGlobal&&!ids.length)throw new Error('Select at least one company, or choose Global.');}
  return tenantMutation(ctx,existingTx,async tx=>{

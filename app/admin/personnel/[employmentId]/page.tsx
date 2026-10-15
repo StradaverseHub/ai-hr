@@ -4412,10 +4412,10 @@ export default async function EmployeePage({
             {readOnlyValue("employment.organisation_assignment.positionname", current?.position)}
           </PersonnelField>
           <Field label={t('employmentInfo.jobGrade')}>
-            {readOnlyValue(gradeName)}
+            {readOnlyValue("employment.organisation_assignment.gradename", gradeName)}
           </Field>
           <Field label={t('employmentInfo.employmentType')}>
-            {readOnlyValue(employmentTypeLabel)}
+            {readOnlyValue("employment.organisation_assignment.employmenttype", employmentTypeLabel)}
           </Field>
           {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
               The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
@@ -4507,13 +4507,13 @@ export default async function EmployeePage({
               movement tag, so a forged submit cannot set them either. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t('employmentInfo.groupJoinDate')}>
-              {readOnlyValue(emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
+              {readOnlyValue("employment.employment_dates_and_service.hiredon", emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
               </p>
             </Field>
             <Field label={t('employmentInfo.joinDate')}>
-              {readOnlyValue(emp.joinDate ? formatDmy(emp.joinDate) : null)}
+              {readOnlyValue("employment.employment_dates_and_service.joindate", emp.joinDate ? formatDmy(emp.joinDate) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
               </p>

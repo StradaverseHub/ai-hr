@@ -31,7 +31,7 @@ export type CanonicalOvertimeReader=(tx:Tx,ctx:SessionContext,p:{employmentId:st
 declare const preparedBrand:unique symbol;
 export type PreparedOvertimeCalculation={readonly [preparedBrand]:true};
 export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit',message:string){super(message);this.name='OvertimeOwnerError';}}
-const fail=(code:OvertimeOwnerError['code'],message:string):never=>{throw new OvertimeOwnerError(code,message);};
+function fail(code:OvertimeOwnerError['code'],message:string):never{throw new OvertimeOwnerError(code,message);}
 const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Record<string,unknown>;
 const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>[key,canonical(v)])):value;
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');

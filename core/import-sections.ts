@@ -75,7 +75,7 @@ import {
   person,
   profileOption,
 } from '../db/schema';
-import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields } from './org';
+import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields, type EmploymentInfoInput } from './org';
 import { primaryEmergencyContactSql } from './emergency-contacts';
 import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type DependentInput, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { requirePackFor, type CountryPack } from '../localization/registry';
@@ -187,6 +187,8 @@ type TaxPatch = {
 type DependentPatch = DependentInput;
 
 /** Everything one valid row will do at commit. Built in the dry run; applied verbatim afterwards. */
+type EmploymentInfoPatch = Omit<EmploymentInfoInput,'employmentId'|'movement'>;
+
 type ResolvedSectionRow = {
   result: SectionRowResult;
   subject?: Subject;
@@ -776,7 +778,7 @@ function buildEmployment(
     const issue=personnelScalarIssue(field,value);if(issue){errors.push(`${column}: invalid ${issue} value`);continue;}
     const checked=catalogValue(value,column,x.catalog,errors);if(checked===undefined)continue;
     (info as Record<string,string>)[field.import.writerField!]=checked;
-    if(checked!==String(stored[field.import.writerField!]??''))changes.push(column);
+    if(checked!==String((stored as Record<string,unknown>)[field.import.writerField!]??''))changes.push(column);
   }
   for(const [legacyA,legacyB,valueColumn,unitColumn] of [
     ['probation_months','probation_days','probation_value','probation_unit'],

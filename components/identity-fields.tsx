@@ -175,6 +175,7 @@ export function IdentityNumberField(
           // SEPARATE server-action form, found by DOM id — a coordination only the Personnel page needs.
           <IcDobAutofill
             {...personnelInput('profile.identity_and_passport.icnumber','edit',{localIdentity:true})}
+            name={personnelFormName('profile.identity_and_passport.icnumber')}
             defaultValue={props.icNumber}
             placeholder={IC_PLACEHOLDER}
             className={inputCls}

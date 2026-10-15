@@ -20,6 +20,8 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelFormLabel } from '@/lib/personnel-form-contract';
 
 // Inlined from components/ui (server module) so this stays a clean client island — the same copy
 // components/bank-info-card.tsx carried before the extraction (the classes are part of the pinned markup).

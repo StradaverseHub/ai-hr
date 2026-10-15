@@ -196,6 +196,6 @@ export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = CUR
 export function currencyMinorScale(code: string): number {
   if (!isCurrencyCode(code)) throw new Error('Unknown currency');
   const scale = new Intl.NumberFormat('en', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits;
-  if (!Number.isInteger(scale) || scale < 0 || scale > 6) throw new Error('Unsupported currency precision');
+  if (typeof scale !== 'number' || !Number.isInteger(scale) || scale < 0 || scale > 6) throw new Error('Unsupported currency precision');
   return scale;
 }

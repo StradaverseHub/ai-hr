@@ -132,7 +132,7 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
   });
   const allOwners=[...new Set(spec.columns.filter(c=>c.records==='all').map(c=>descriptor(c.field).owner))];
   const grains=allOwners.length?allOwners:['employment'];
-  const totals=(rows:MasterOutputRow[],columns:MasterColumn[]):MasterTotal[]=>columns.flatMap((c,i)=>{
+  const totals=(rows:MasterOutputRow[],columns:MasterColumn[]):MasterTotal[]=>columns.flatMap<MasterTotal>((c,i)=>{
     if(!c.sum)return [];
     const f=descriptor(c.field),seen=new Set<string>(),cells:MasterCell[]=[];
     for(const row of rows){if(row.kind==='draft'||seen.has(row.sourceKeys[i]))continue;seen.add(row.sourceKeys[i]);cells.push(row.cells[i]);}

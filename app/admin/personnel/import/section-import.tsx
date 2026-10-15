@@ -506,7 +506,7 @@ function SectionPreview({
                 </td>
                 <td className="px-4 py-2 text-xs text-muted-foreground">
                   {r.changes.length > 0 ? r.changes.map(fieldLabel).join(', ') : '—'}
-                  <PersonnelImportValues values={r.proposed} sheet={preview.isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee'} />
+                  <PersonnelImportValues values={r.proposed} sheet={isPersonnelRegisterKind(preview.section)?preview.section:preview.section==='family'?'family':'employee'} />
                 </td>
                 <td className="px-4 py-2 text-xs">
                   {r.errors.length > 0 ? (

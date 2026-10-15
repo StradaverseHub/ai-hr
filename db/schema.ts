@@ -10343,7 +10343,7 @@ export const replacementHoliday=pgTable('replacement_holiday',{
  policyId:uuid('policy_id').references(()=>replacementHolidayPolicy.id),inputDigest:text('input_digest').notNull(),
  status:text('status').$type<'allocated'|'review'|'not_required'>().notNull(),replacementDate:date('replacement_date'),proposedDate:date('proposed_date'),
  reason:text('reason').notNull(),manual:boolean('manual').notNull().default(false),manualReason:text('manual_reason'),
- createdAt:createdAt(),updatedAt:updatedAt(),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('replacement_holiday_source_uq').on(t.tenantId,t.employmentId,t.sourceHolidayId),uniqueIndex('replacement_holiday_employee_date_uq').on(t.tenantId,t.employmentId,t.replacementDate).where(sql`${t.replacementDate} IS NOT NULL`)]);
 export const replacementHolidayRevision=pgTable('replacement_holiday_revision',{
  id:id(),tenantId:tenantId(),allocationId:uuid('allocation_id').notNull().references(()=>replacementHoliday.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
@@ -10351,7 +10351,7 @@ export const replacementHolidayRevision=pgTable('replacement_holiday_revision',{
 });
 export const replacementHolidayQueue=pgTable('replacement_holiday_queue',{
  tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'cascade'}),generation:bigint('generation',{mode:'number'}).notNull().default(1),
- requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),lastError:text('last_error'),calendarConflicts:jsonb('calendar_conflicts').$type<{date:string;recorded:string;holiday:boolean}[]>().notNull().default([]),
+ requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),lastError:text('last_error'),calendarConflicts:jsonb('calendar_conflicts').$type<{date:string;recorded:string|null;holiday:boolean}[]>().notNull().default([]),
 },t=>[primaryKey({columns:[t.tenantId,t.employmentId]})]);
 // Immutable, reasoned overrides keep the original submitted chain and decisions intact.
 export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reassignment', {
