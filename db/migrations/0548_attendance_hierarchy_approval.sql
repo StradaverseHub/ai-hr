@@ -201,7 +201,11 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   JOIN public.attendance_workflow_decision d ON d.request_id=w.id AND d.tenant_id=w.tenant_id
   WHERE w.tenant_id=app.current_tenant_id() AND w.routing_version=2 AND w.employment_id=subject_id
    AND w.correction_id::text=current_setting('app.attendance_workflow_effect',true)
-   AND c.status='pending' AND (wanted_date IS NULL OR wanted_date=c.attendance_date)
+   -- Finalization independently verifies the raw effect before changing status. The same active
+   -- writing transaction may then record formula OT and bank its approved TOIL. Both correction
+   -- and decision must remain fresh; a committed/released-savepoint hint grants no authority.
+   AND (c.status='pending' OR (c.status='approved' AND app.attendance_workflow_active_write(c.xmin)))
+   AND (wanted_date IS NULL OR wanted_date=c.attendance_date)
    AND w.current_stage=jsonb_array_length(w.stages) AND d.stage_index=jsonb_array_length(w.stages)-1
    AND d.decision='approved' AND d.resulting_status='approved' AND d.actual_user_id=app.current_user_id()::text
    AND app.attendance_workflow_active_write(d.xmin)

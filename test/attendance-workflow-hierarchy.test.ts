@@ -196,6 +196,35 @@ describe('797ba70b: untrusted request hints and current-transaction final-effect
     });
     expect((await readDay(f.d.employmentId)).checkInAt).toBe('08:00:00');
   });
+  it('retains only the fresh finalized day capability for downstream OT writes, never a replayed approved hint',async()=>{
+    const f=await fixture();await enable(f.a);const id=await submit(f.self,f.d.employmentId);await approveFirstTwo(f,id);
+    const day=await readDay(f.d.employmentId);
+    await withTenant(f.actors[2],async tx=>{
+      await tx.execute(sql`savepoint downstream_overtime_effect`);
+      await rawFinal(tx,f.actors[2],id,f.d.employmentId);
+      await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
+      await tx.update(schema.attendancePunch).set({voidedAt:new Date()}).where(eq(schema.attendancePunch.attendanceId,day.id));
+      await tx.insert(schema.attendancePunch).values([
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'web'},
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'web'},
+      ]);
+      await tx.update(schema.attendance).set({checkInAt:'09:00:00',checkOutAt:'18:00:00',workedMinutes:540}).where(eq(schema.attendance.id,day.id));
+      await tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id));
+      const [scope]=await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${date}::date) as own,app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${addDays(date,-1)}::date) as other_date`) as unknown as {own:boolean;other_date:boolean}[];
+      expect(scope).toEqual({own:true,other_date:false});
+      expect(await tx.update(schema.attendance).set({remarks:'Canonical post-approval overtime stage'}).where(eq(schema.attendance.id,day.id)).returning()).toHaveLength(1);
+      await tx.execute(sql`release savepoint downstream_overtime_effect`);
+      const [released]=await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${date}::date) as ok`) as unknown as {ok:boolean}[];
+      expect(released.ok).toBe(false);
+    });
+    await withTenant(f.actors[2],async tx=>{
+      await tx.execute(sql`select set_config('app.attendance_workflow_effect',${id},true)`);
+      const [replayed]=await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${date}::date) as ok`) as unknown as {ok:boolean}[];
+      expect(replayed.ok).toBe(false);
+      expect(await tx.update(schema.attendance).set({remarks:'Replayed finalized hint'}).where(eq(schema.attendance.id,day.id)).returning()).toEqual([]);
+    });
+    expect((await readDay(f.d.employmentId)).remarks).toBe('Canonical post-approval overtime stage');
+  });
   it('keeps processed Payroll money/history intact, marks only the canonical covered subject, and refuses a closed run', async () => {
     const f = await fixture(); await enable(f.a); const id = await submit(f.self,f.d.employmentId); await approveFirstTwo(f,id);
     await setCompensation(f.a,{employmentId:f.d.employmentId,basicSalary:4000,monthlyAllowance:0,effectiveFrom:'2020-01-01'});
