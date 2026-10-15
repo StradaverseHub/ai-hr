@@ -1,4 +1,5 @@
 'use client';
+import type {LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -56,6 +57,7 @@ export function LeaveCreditGrantDialog({
   submitAction,
   contextAction,
   dayFactsAction,
+  claimReviewAction,
 }: {
   employees: { id: string; label: string }[];
   /** Today in the tenant's zone: the latest selectable date worked. */
@@ -64,6 +66,7 @@ export function LeaveCreditGrantDialog({
   submitAction: Action;
   contextAction: (employmentId: string) => Promise<LeaveCreditGrantContextView | null>;
   dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFacts | null>;
+  claimReviewAction?:LeaveCreditClaimReviewAction;
 }) {
   const t = useTranslations('admin.leaveCredit');
   const [open, setOpen] = useState(false);
@@ -177,6 +180,7 @@ export function LeaveCreditGrantDialog({
             today={today}
             requiresFirstScheduleConsent={context != null && context.firstSchedule && context.allowFirstSchedule}
             dayFactsAction={dayFactsAction}
+              claimReviewAction={claimReviewAction}
             tiers={context?.tiers ?? null}
             ordinaryDayAllowed={context?.ordinaryDayAllowed ?? false}
             onSubmitted={() => setOpen(false)}

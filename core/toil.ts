@@ -61,12 +61,13 @@ import { approvedOvertimeForDateTx, assertNoPendingClaimForGrantTx, type Approve
 import type { ExtendedHoursTiers } from '../lib/extended-hours';
 import type { LeaveCreditRowInput } from './leave-credit-request';
 import {OvertimePatternError} from '../lib/overtime-pattern-model';
+import type {LeaveCreditClaimReview,LeaveCreditFormulaReason} from '../lib/leave-credit-claim-review';
 
 /** Translate formula evidence refusals into the existing TOIL eligibility contract. */
 async function provenToilDurationTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string,claimWindow?:{start:string;end:string}) {
   const {resolveOvertimeToilDurationTx,OvertimeToilEligibilityError,OvertimeOwnerError}=await import('../packs/attendance/service');
   try{return await resolveOvertimeToilDurationTx(tx,ctx,{employmentId,date,claimWindow});}
-  catch(error){if(error instanceof OvertimeToilEligibilityError||error instanceof OvertimeOwnerError||error instanceof OvertimePatternError)throw new ToilNotEligibleError(error.message);throw error;}
+  catch(error){if(error instanceof OvertimeToilEligibilityError||error instanceof OvertimeOwnerError||error instanceof OvertimePatternError)throw new ToilNotEligibleError(error.message,error instanceof OvertimeToilEligibilityError?error.code:error instanceof OvertimeOwnerError&&error.code==='stale'?'stale':'unavailable');throw error;}
 }
 
 
@@ -89,7 +90,7 @@ export class ToilDisabledError extends Error {
   }
 }
 export class ToilNotEligibleError extends Error {
-  constructor(msg: string) {
+  constructor(msg: string,readonly formulaReason?:LeaveCreditFormulaReason) {
     super(msg);
     this.name = 'ToilNotEligibleError';
   }
@@ -2452,6 +2453,38 @@ export async function leaveCreditGrantContext(
       ownRecord: ctx.personId != null && emp.personId != null && ctx.personId === emp.personId,
     };
   });
+}
+
+/** Canonical duration-only review; no ledger, request, pricing or source mutation. */
+export async function leaveCreditClaimReviewTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;workedDate:string;claimStart?:string;claimEnd?:string}):Promise<LeaveCreditClaimReview> {
+  if(!ISO_DATE.test(p.workedDate)||[p.claimStart,p.claimEnd].some(value=>value&&!/^([01]\d|2[0-3]):[0-5]\d(?::00)?$/.test(value)))return {basis:'unavailable',reason:'unavailable'};
+  const [visible]=await tx.select({id:employment.id}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
+  if(!visible)return {basis:'unavailable',reason:'unavailable'};
+  try {
+    const window=p.claimStart&&p.claimEnd?{start:p.claimStart,end:p.claimEnd}:undefined;
+    const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,window);
+    if(formula.kind==='legacy')return {basis:'legacy'};
+    const base={basis:'formula' as const,workedDayKind:formula.recordedWorkedDayKind,boundMinutes:formula.minutes,calculationId:formula.calculationId,sourceRevision:formula.sourceRevision};
+    if(!window)return {...base,status:'incomplete',reason:null,claimedMinutes:null,eligibleMinutes:null,creditDays:null};
+    const tiers=await extendedHoursPolicyForCompanyTx(tx,formula.companyId);
+    const ordinary=formula.recordedWorkedDayKind==='workday';
+    const claimed=leaveCreditWindowCredit({ordinaryWorkingDay:ordinary,claimStart:window.start,claimEnd:window.end,shiftEnd:formula.recordedDay.shiftEnd,actualClockOut:formula.recordedDay.actualClockOut,tiers});
+    if(ordinary&&!tiers.extendedHoursEnabled)return {...base,status:'refused',reason:'ordinaryDisabled',claimedMinutes:claimed.countedMinutes,eligibleMinutes:null,creditDays:null};
+    if(ordinary&&formula.afterShiftMinutes===null)return {basis:'unavailable',reason:'unavailable'};
+    const assessed=ordinary?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),tiers):claimed;
+    if(assessed.countedMinutes>formula.minutes)return {...base,status:'refused',reason:'exceedsBound',claimedMinutes:claimed.countedMinutes,eligibleMinutes:null,creditDays:null};
+    if(assessed.days<=0)return {...base,status:'refused',reason:'belowThreshold',claimedMinutes:claimed.countedMinutes,eligibleMinutes:assessed.countedMinutes,creditDays:null};
+    return {...base,status:'ready',reason:null,claimedMinutes:claimed.countedMinutes,eligibleMinutes:assessed.countedMinutes,creditDays:assessed.days};
+  }catch(error){if(error instanceof ToilNotEligibleError)return {basis:'unavailable',reason:error.formulaReason??'unavailable'};throw error;}
+}
+export function leaveCreditClaimReview(ctx:SessionContext,p:{employmentId:string;workedDate:string;claimStart?:string;claimEnd?:string}) {
+  if(!ISO_DATE.test(p.workedDate))return Promise.resolve<LeaveCreditClaimReview>({basis:'unavailable',reason:'unavailable'});
+  return withTenant(ctx,tx=>leaveCreditClaimReviewTx(tx,ctx,p));
+}
+export function leaveCreditGrantClaimReview(ctx:SessionContext,p:{employmentId:string;workedDate:string;claimStart?:string;claimEnd?:string}) {
+  if(!isAdminCtx(ctx))throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  if(!ISO_DATE.test(p.workedDate))return Promise.resolve<LeaveCreditClaimReview>({basis:'unavailable',reason:'unavailable'});
+  return withTenant(ctx,async tx=>{await assertAdminForEmploymentTx(tx,p.employmentId,'review a Leave Credit');return leaveCreditClaimReviewTx(tx,ctx,p);});
 }
 
 /**

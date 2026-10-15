@@ -15149,6 +15149,27 @@
     "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
   },
   "replacementRequest": {
+    "formulaReview": {
+      "reviewedCredit": "Ước tính theo bậc thời lượng: {days} ngày",
+      "reading": "Đang kiểm tra thời lượng đã ghi…",
+      "incomplete": "Nhập khoảng thời gian yêu cầu.",
+      "bound": "Giới hạn công thức đã ghi: {minutes} phút",
+      "claimed": "Yêu cầu đã nhập: {minutes} phút",
+      "reviewed": "Thời lượng đã kiểm tra: {minutes} phút",
+      "reference": "Phép tính {id} · phiên bản {revision}",
+      "subjectToApproval": "Chỉ kiểm tra thời lượng và bậc. Vẫn phải được phê duyệt và đáp ứng mọi kiểm tra tín dụng nghỉ.",
+      "creditUnavailable": "Chưa xác định tín dụng",
+      "requestedCredit": "Tín dụng được yêu cầu",
+      "errors": {
+        "unavailable": "Không có thời lượng công thức đã ghi. Kiểm tra chấm công.",
+        "stale": "Dữ liệu đã ghi thay đổi. Tính lại và kiểm tra chấm công.",
+        "fractional": "Không thể ghi nhận phần lẻ của phút thành tín dụng nghỉ.",
+        "cashConflict": "Ngày này đã được giữ để trả tiền. Kiểm tra khoản Lương chưa chốt.",
+        "exceedsBound": "Yêu cầu vượt giới hạn công thức. Chưa cam kết tín dụng nào.",
+        "belowThreshold": "Thời lượng đã kiểm tra thấp hơn ngưỡng tín dụng được cấu hình.",
+        "ordinaryDisabled": "Công ty nguồn chưa bật tín dụng nghỉ cho ngày làm việc thông thường."
+      }
+    },
     "trigger": "Yêu cầu tín dụng nghỉ phép",
     "title": "Yêu cầu tín dụng nghỉ phép",
     "description": "Yêu cầu tín dụng cho ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc, hoặc cho số giờ làm thêm sau khi kết thúc ca trong ngày làm việc. Chưa có tín dụng nào được ghi cho đến khi quản lý của bạn phê duyệt.",

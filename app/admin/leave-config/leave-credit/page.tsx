@@ -22,7 +22,7 @@ import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config
 import { LeaveCreditGrantDialog } from '@/components/leave/leave-credit-grant-dialog';
 import { LeaveCreditReverseDialog } from '@/components/leave/leave-credit-reverse-dialog';
 import { closeReplacementLeaveYearAction, runToilExpiryAction } from '../../actions';
-import { grantLeaveCreditRowsAction, leaveCreditGrantContextAction, leaveCreditGrantDayFactsAction, reverseLeaveCreditAction } from './actions';
+import { leaveCreditGrantClaimReviewAction, grantLeaveCreditRowsAction, leaveCreditGrantContextAction, leaveCreditGrantDayFactsAction, reverseLeaveCreditAction } from './actions';
 
 /** Not exported: Next refuses unknown exports from a page module. */
 const PAGE = '/admin/leave-config/leave-credit';
@@ -198,6 +198,7 @@ export default async function LeaveConfigLeaveCreditPage({
               submitAction={grantLeaveCreditRowsAction}
               contextAction={leaveCreditGrantContextAction}
               dayFactsAction={leaveCreditGrantDayFactsAction}
+              claimReviewAction={leaveCreditGrantClaimReviewAction}
             />
           ) : undefined
         }

@@ -1,5 +1,6 @@
 /** Fresh duration proof for the canonical TOIL executor. No cash evidence or new ledger. */
 import {createHash} from 'node:crypto';
+import type {LeaveCreditFormulaReason} from '../../lib/leave-credit-claim-review';
 import {and,eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {attendance,company,attendanceOvertimeSource,type ToilWorkedDayKind} from '../../db/schema';
@@ -11,14 +12,15 @@ import {canonicalOvertimeToilInputTx} from './overtime-input';
 import {readOvertimeDurationDefinitionTx,readOvertimeSettlementForDayTx} from './overtime-patterns';
 
 export class OvertimeToilEligibilityError extends Error {
-  constructor(message='The recorded overtime duration is unavailable or changed. Recalculate and review this day before banking Leave Credit.') {super(message);this.name='OvertimeToilEligibilityError';}
+  constructor(message='The recorded overtime duration is unavailable or changed. Recalculate and review this day before banking Leave Credit.',readonly code:LeaveCreditFormulaReason='unavailable') {super(message);this.name='OvertimeToilEligibilityError';}
 }
 export type OvertimeToilDuration={kind:'legacy'}|{kind:'formula';companyId:string;country:string;dayType:'workday'|'rest_day'|'holiday';recordedWorkedDayKind:ToilWorkedDayKind;recordedDay:{shiftStart:string|null;shiftEnd:string|null;actualClockIn:string|null;actualClockOut:string|null};minutes:number;afterShiftMinutes:number|null;calculationId:string;sourceRevision:number;audit:{durationInputDigest:string;calculationId:string;sourceRevision:number;recordedShiftEndAbs:number|null;recordedShiftEndEpochSeconds:string|null;claimWindow:{start:string;end:string}|null;qualifyingMinutes:number|null;allocationPolicy:'earliest'|'latest'}};
-function unavailable():never {throw new OvertimeToilEligibilityError();}
+function unavailable(code:LeaveCreditFormulaReason='unavailable'):never {throw new OvertimeToilEligibilityError(undefined,code);}
 function integerMinutes(value:OvertimeExact):number {
   if(value.unit!=='minutes'||!/^\d{1,80}$/.test(value.numerator)||!/^\d{1,80}$/.test(value.denominator))unavailable();
   const numerator=BigInt(value.numerator),denominator=BigInt(value.denominator);
-  if(denominator<=BigInt('0')||numerator%denominator!==BigInt('0')||numerator/denominator>BigInt(Number.MAX_SAFE_INTEGER))unavailable();
+  if(denominator<=BigInt('0')||numerator/denominator>BigInt(Number.MAX_SAFE_INTEGER))unavailable();
+  if(numerator%denominator!==BigInt('0'))unavailable('fractional');
   return Number(numerator/denominator);
 }
 /** Caller holds the same employment advisory as Attendance and Payroll before this source read. */
@@ -35,7 +37,7 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
   const existing=await readOvertimeSettlementForDayTx(tx,ctx,p);
   if(!existing){if(lockedSource||marker?.status==='recorded')unavailable();return {kind:'legacy'};}
   if(!lockedSource||existing.source.id!==lockedSource.id)unavailable();
-  if(existing.settlement?.mode==='cash')throw new OvertimeToilEligibilityError('This overtime day is already reserved for cash. Release its unfinalized Payroll contribution before electing Leave Credit.');
+  if(existing.settlement?.mode==='cash')throw new OvertimeToilEligibilityError('This overtime day is already reserved for cash. Release its unfinalized Payroll contribution before electing Leave Credit.','cashConflict');
   if(!existing.source.currentCalculationId){if(marker?.status==='recorded')unavailable();return {kind:'legacy'};}
   const stored=await readOvertimeDurationDefinitionTx(tx,ctx,p);
   if(!stored||stored.source.id!==existing.source.id||stored.calculation.id!==existing.source.currentCalculationId||stored.calculation.durationOutcome!=='ready'||!stored.calculation.durationInputDigest)unavailable();
@@ -45,7 +47,7 @@ export async function resolveOvertimeToilDurationTx(tx:Tx,ctx:SessionContext,p:{
   const companyFact=input.facts.companyId;
   if(input.source.tenantId!==ctx.tenantId||input.source.employmentId!==p.employmentId||input.source.date!==p.date||input.source.attendanceId!==source.attendanceId||companyFact?.state!=='known'||companyFact.value!==source.companyId||!stored.companyIds.includes(source.companyId))unavailable();
   const digest=createHash('sha256').update(JSON.stringify(overtimeDurationProofInput(stored.definition,input))).digest('hex');
-  if(digest!==calculation.durationInputDigest)unavailable();
+  if(digest!==calculation.durationInputDigest)unavailable('stale');
   const duration=evaluateOvertimePatternDuration(stored.definition,input);
   if(duration.status!=='ready')unavailable();
   if(!duration.transferable||duration.payableMinutes.numerator!==calculation.payableNumerator||duration.payableMinutes.denominator!==calculation.payableDenominator)unavailable();

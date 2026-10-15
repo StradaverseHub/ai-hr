@@ -1,4 +1,5 @@
 'use client';
+import type {LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -73,6 +74,7 @@ export function ReplacementLeaveRequestDialog({
   today,
   requiresFirstScheduleConsent,
   dayFactsAction,
+  claimReviewAction,
   tiers,
   ordinaryDayAllowed,
 }: {
@@ -88,6 +90,7 @@ export function ReplacementLeaveRequestDialog({
    * adjudicated against, and that adjudication is the contest's new validation.
    */
   dayFactsAction: (workedDate: string) => Promise<LeaveCreditDayFacts | null>;
+  claimReviewAction?:LeaveCreditClaimReviewAction;
   /**
    * The company's tier figures. NULL when extended hours are not switched on — which is every company at
    * release. The Day Type dropdown still offers all four options then (r343 fix pass); what null changes is
@@ -132,6 +135,7 @@ export function ReplacementLeaveRequestDialog({
               today={today}
               requiresFirstScheduleConsent={requiresFirstScheduleConsent}
               dayFactsAction={dayFactsAction}
+              claimReviewAction={claimReviewAction}
               tiers={tiers}
               ordinaryDayAllowed={ordinaryDayAllowed}
               // The dialog closes as the submission leaves; the action redirects back to My Leave with the

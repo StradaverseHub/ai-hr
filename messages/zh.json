@@ -15149,6 +15149,27 @@
     "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
   },
   "replacementRequest": {
+    "formulaReview": {
+      "reviewedCredit": "按时长计算的档位预估：{days} 天",
+      "reading": "正在核查已记录时长…",
+      "incomplete": "请输入申报时段。",
+      "bound": "已记录公式上限：{minutes} 分钟",
+      "claimed": "输入的申报：{minutes} 分钟",
+      "reviewed": "已核查时长：{minutes} 分钟",
+      "reference": "计算 {id} · 修订 {revision}",
+      "subjectToApproval": "仅核查时长及额度档位。仍须审批并通过所有假期额度核查。",
+      "creditUnavailable": "额度不可用",
+      "requestedCredit": "申报额度",
+      "errors": {
+        "unavailable": "已记录公式时长不可用，请核查考勤。",
+        "stale": "已记录输入已变更，请重新计算并核查考勤。",
+        "fractional": "不足整分钟的部分无法存入假期额度。",
+        "cashConflict": "此日已预留现金支付，请核查尚未最终确定的薪资金额。",
+        "exceedsBound": "申报超过公式上限，不承诺任何额度。",
+        "belowThreshold": "已核查时长低于配置的额度门槛。",
+        "ordinaryDisabled": "来源公司未启用普通工作日假期额度。"
+      }
+    },
     "trigger": "假期额度申请",
     "title": "假期额度申请",
     "description": "为您在休息日、休假日或公共假期工作的日子申请额度，或为工作日下班时间之后的延长工时申请额度。在经理批准之前不会记入任何额度。",
