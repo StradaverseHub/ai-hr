@@ -183,7 +183,7 @@ is still required before customer distribution.
 Runtime company connection enrollment is separate from the visual composer. Set
 `EXPO_PUBLIC_RUNTIME_CONNECTIONS=1` for the shared test binary. It verifies an operator-signed company
 setup file against `connections/trust.json` before adopting any API or identity address. The public
-profile pins installation ID, display name, cloud/on-premise hosting, HTTPS API origin, Keycloak issuer,
+profile pins installation ID, display name, cloud/on-premise hosting, HTTPS API origin, authentication provider and issuer,
 public mobile client, API audience, API version and validity window. The same binary can import another
 approved private installation without recompilation. It does not accept caller-supplied tenant IDs,
 arbitrary JWKS or an untrusted key embedded in a file.
@@ -212,10 +212,11 @@ one year. Current app anchors provide offline authenticity, **not instant revoca
 lifetimes, remove an affected key in a new binary after compromise, and revoke affected identity/client
 access on the server. Device clock and certificate trust remain platform/operator dependencies.
 
-Employees import the file once, review the organization and both domains, and confirm. The selected
+Employees import the file once, review the organization and installation addresses, and confirm. The selected
 signed file is reverified on cold launch; expired or corrupt setup closes the connection gate. Before
-sign-in, the app compares `/login/mobile-connection` and the issuer's OIDC discovery against the pinned
-profile, including S256 support. The public metadata route reads only operator-owned configuration,
+sign-in, the app compares `/login/mobile-connection` against the pinned profile. Embedded mode then
+uses the same HR origin; only the legacy Keycloak adapter checks OIDC discovery and S256 support.
+The public metadata route reads only operator-owned configuration,
 contains no HR/tenant data, and returns unavailable while internal authentication is disabled/demo.
 Profile changes hide private screens first, invalidate authentication, delete refresh/device credentials
 and local capture/draft files, then persist and install the new connection. Cleanup failure keeps the
@@ -224,14 +225,15 @@ gate closed. Cookies are omitted from token/API/bootstrap requests and redirects
 The server still owns exact identity-to-tenant binding and all HR permissions. Company setup does not
 create a membership or adopt another tenant's user by email. The existing Me picker selects authorized
 employments within the resolved tenant; a new cross-tenant identity-adoption flow is not included.
-Private installations require reachable DNS, trusted HTTPS certificates and Wi-Fi/VPN access to both
-servers. Private certificate authorities require OS/customer provisioning and verification on each
+Private installations require reachable DNS, trusted HTTPS certificates and Wi-Fi/VPN access to the
+HR server (and a separate identity server only when using a legacy adapter). Private certificate authorities require OS/customer provisioning and verification on each
 supported OS/app; provisioning alone does not prove the app trusts that CA. There is no TLS bypass.
 QR scanning and a hosted company directory are not part of this setup-file slice.
 
 ### Installable test builds
 
-`eas.json` defines a standalone preview APK and an ad hoc iPhone build, plus an iOS simulator profile.
+`eas.json` defines a standalone preview APK and an ad hoc iPhone build, an Android cloud-compilation
+profile without signing credentials, and an iOS simulator profile.
 The preview app is `AI HR Test` / `ai.stradaverse.aihr.test`; it bundles JavaScript and does not need a
 Metro server to run. Its existing `aihr://auth/callback` must be registered by the deployment operator.
 Do not install another AI HR binary using that same custom scheme alongside it during callback tests.
@@ -242,10 +244,17 @@ certificate for updates. A new EAS signing key cannot update an APK signed by a 
 cd mobile
 npx eas-cli@24.10.0 login
 npx eas-cli@24.10.0 init
-npx eas-cli@24.10.0 build --platform android --profile preview
+npx eas-cli@24.10.0 build --platform android --profile android-local-signing --freeze-credentials --non-interactive
 npx eas-cli@24.10.0 device:create
 npx eas-cli@24.10.0 build --platform ios --profile preview
 ```
+
+The `android-local-signing` output is an intermediate compilation artifact. Align it with Android
+`zipalign -P 16 4`, sign it locally with the existing operator key using `apksigner`, and verify the
+signature and certificate against the previous installed APK before distributing it. Keep signing
+passwords in protected local files, outside shell arguments and upload inputs. Do not distribute the
+intermediate Expo Android artifact. The `preview` Android profile instead uses EAS-managed signing;
+switching signing keys prevents an in-place update of an existing locally signed test installation.
 
 EAS cloud builds use the account's plan resources. iPhone installation requires Apple signing and an
 ad hoc profile containing the test device UDID. Local SDK 57 iOS builds require Xcode 26.4+; Xcode 16
