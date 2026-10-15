@@ -52,11 +52,14 @@ type PagerTarget =
 export async function Pager({
   state,
   exportHref,
+  truncatedHint,
   ...target
 }: PagerTarget & {
   state: PageState;
   /** Optional link to this screen's own export, shown when "All" truncates. */
   exportHref?: string;
+  /** Screen-specific guidance when this audience has no complete-set export. Already translated. */
+  truncatedHint?: string;
 }) {
   if (!showPager(state)) return null;
   const t = await getTranslations('pagination');
@@ -95,7 +98,7 @@ export async function Pager({
               {t('truncatedExport')}
             </Link>
           ) : (
-            t('truncatedHint')
+            truncatedHint ?? t('truncatedHint')
           )}
         </p>
       )}
