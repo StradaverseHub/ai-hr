@@ -1,0 +1,1 @@
+Your KPI results give a performance rating on a five-level scale: Unacceptable, Below Expectation, Meets Expectation, Above Expectation, and Outstanding. It reflects how your results compared with the targets that were agreed. After you submit, leaders review these ratings together at calibration to keep them fair across teams, so a rating can be adjusted with a reason.

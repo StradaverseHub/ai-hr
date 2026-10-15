@@ -15,12 +15,15 @@ export async function readNotificationEmailTransport(transport:NotificationEmail
 /** Short atomic leases permit multiple schedulers without duplicate sends. No traffic or tenant uses a fake entitlement snapshot. */
 export async function deliverNotificationEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc) {
   if (!isAdmin(ctx)) throw new Error('Notification dispatcher required');
-  if (!isModuleEnabled(ctx,'notifications')) return {attempted:0,skipped:0,unavailable:false};
+  const allCategories=isModuleEnabled(ctx,'notifications');
+  if(!allCategories&&!(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))return {attempted:0,skipped:0,unavailable:false};
   const due=await withTenant(ctx,async tx=>tx.execute(sql`select * from app.notification_email_due(50)`)) as unknown as {id:string;recipient_employment_id:string;source_event_id:string;kind:string;category:string}[];
   const status=await readNotificationEmailTransport(transport);
   if (!status?.ready) return {attempted:0,skipped:0,unavailable:true};
-  let attempted=0,skipped=0;
+  let attempted=0,skipped=0,unavailable=false;
   for (const job of due) {
+    if(!allCategories&&job.kind!=='performance.reminder')continue;
+    if(job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
     const leaseToken=randomUUID();
     const claimed=await withTenant(ctx,async tx=>{
       if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id)) {
@@ -40,5 +43,5 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
       // are held as uncertain; an unstarted expired lease may be claimed by a later sweep.
     }
   }
-  return {attempted,skipped,unavailable:false,cappedOut:due.length===50};
+  return {attempted,skipped,unavailable,cappedOut:due.length===50};
 }

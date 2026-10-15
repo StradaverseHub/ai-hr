@@ -1,0 +1,522 @@
+{
+  "source": "app.py::_tb_band_trails (AST-isolated function with synthetic read stubs; no app startup)",
+  "cases": [
+    {
+      "name": "unassigned defaults",
+      "source": {
+        "self": {
+          "performance": null,
+          "potential": null
+        },
+        "manager": {
+          "performance": null,
+          "potential": null
+        },
+        "decisions": [],
+        "current": {
+          "performance": "UA",
+          "potential": "Low"
+        },
+        "adjusted": {
+          "performance": false,
+          "potential": false
+        },
+        "sources": {
+          "performance": "default",
+          "potential": "default"
+        }
+      },
+      "expected": {
+        "performance": [
+          {
+            "tier": "self",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "manager",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "na"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "na"
+          }
+        ],
+        "potential": [
+          {
+            "tier": "self",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "manager",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "na"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "na"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pending drafts remain private",
+      "source": {
+        "self": {
+          "performance": "ME",
+          "potential": "Low"
+        },
+        "manager": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "decisions": [
+          {
+            "tier": "hod",
+            "performance": "OU",
+            "potential": "High",
+            "performanceLocked": false,
+            "potentialLocked": false
+          },
+          {
+            "tier": "bu",
+            "performance": "BE",
+            "potential": "Low",
+            "performanceLocked": false,
+            "potentialLocked": false
+          }
+        ],
+        "current": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "adjusted": {
+          "performance": false,
+          "potential": false
+        },
+        "sources": {
+          "performance": "manager",
+          "potential": "manager"
+        }
+      },
+      "expected": {
+        "performance": [
+          {
+            "tier": "self",
+            "band": "ME",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "ME",
+            "state": "kept"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "wait"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "wait"
+          }
+        ],
+        "potential": [
+          {
+            "tier": "self",
+            "band": "Low",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "Mid",
+            "state": "moved"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "wait"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "wait"
+          }
+        ]
+      }
+    },
+    {
+      "name": "independent locked axes and own PM move",
+      "source": {
+        "self": {
+          "performance": "ME",
+          "potential": "Low"
+        },
+        "manager": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "decisions": [
+          {
+            "tier": "hod",
+            "performance": "OU",
+            "potential": "Mid",
+            "performanceLocked": false,
+            "potentialLocked": true
+          },
+          {
+            "tier": "bu",
+            "performance": "BE",
+            "potential": "Low",
+            "performanceLocked": true,
+            "potentialLocked": false
+          }
+        ],
+        "current": {
+          "performance": "AE",
+          "potential": "High"
+        },
+        "adjusted": {
+          "performance": true,
+          "potential": false
+        },
+        "sources": {
+          "performance": "bg",
+          "potential": "bg"
+        }
+      },
+      "expected": {
+        "performance": [
+          {
+            "tier": "self",
+            "band": "ME",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "ME",
+            "state": "kept"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "wait"
+          },
+          {
+            "tier": "bu",
+            "band": "BE",
+            "state": "moved"
+          },
+          {
+            "tier": "you",
+            "band": "AE",
+            "state": "moved"
+          }
+        ],
+        "potential": [
+          {
+            "tier": "self",
+            "band": "Low",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "Mid",
+            "state": "moved"
+          },
+          {
+            "tier": "hod",
+            "band": "Mid",
+            "state": "kept"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "wait"
+          },
+          {
+            "tier": "bg",
+            "band": "High",
+            "state": "moved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "kept lower calls with higher final",
+      "source": {
+        "self": {
+          "performance": "UA",
+          "potential": "Low"
+        },
+        "manager": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "decisions": [
+          {
+            "tier": "hod",
+            "performance": "ME",
+            "potential": "Mid",
+            "performanceLocked": true,
+            "potentialLocked": true
+          },
+          {
+            "tier": "bu",
+            "performance": null,
+            "potential": null,
+            "performanceLocked": true,
+            "potentialLocked": true
+          }
+        ],
+        "current": {
+          "performance": "AE",
+          "potential": "High"
+        },
+        "adjusted": {
+          "performance": false,
+          "potential": false
+        },
+        "sources": {
+          "performance": "final",
+          "potential": "group"
+        }
+      },
+      "expected": {
+        "performance": [
+          {
+            "tier": "self",
+            "band": "UA",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "ME",
+            "state": "moved"
+          },
+          {
+            "tier": "hod",
+            "band": "ME",
+            "state": "kept"
+          },
+          {
+            "tier": "bu",
+            "band": "ME",
+            "state": "kept"
+          },
+          {
+            "tier": "final",
+            "band": "AE",
+            "state": "moved"
+          }
+        ],
+        "potential": [
+          {
+            "tier": "self",
+            "band": "Low",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "Mid",
+            "state": "moved"
+          },
+          {
+            "tier": "hod",
+            "band": "Mid",
+            "state": "kept"
+          },
+          {
+            "tier": "bu",
+            "band": "Mid",
+            "state": "kept"
+          },
+          {
+            "tier": "group",
+            "band": "High",
+            "state": "moved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "first bands set without manager",
+      "source": {
+        "self": {
+          "performance": "UA",
+          "potential": null
+        },
+        "manager": {
+          "performance": null,
+          "potential": null
+        },
+        "decisions": [
+          {
+            "tier": "hod",
+            "performance": "BE",
+            "potential": "Mid",
+            "performanceLocked": true,
+            "potentialLocked": true
+          },
+          {
+            "tier": "bu",
+            "performance": "AE",
+            "potential": "Mid",
+            "performanceLocked": true,
+            "potentialLocked": true
+          }
+        ],
+        "current": {
+          "performance": "AE",
+          "potential": "Low"
+        },
+        "adjusted": {
+          "performance": false,
+          "potential": true
+        },
+        "sources": {
+          "performance": "bu",
+          "potential": "bg"
+        }
+      },
+      "expected": {
+        "performance": [
+          {
+            "tier": "self",
+            "band": "UA",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "hod",
+            "band": "BE",
+            "state": "set"
+          },
+          {
+            "tier": "bu",
+            "band": "AE",
+            "state": "moved"
+          }
+        ],
+        "potential": [
+          {
+            "tier": "self",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "manager",
+            "band": null,
+            "state": "none"
+          },
+          {
+            "tier": "hod",
+            "band": "Mid",
+            "state": "set"
+          },
+          {
+            "tier": "bu",
+            "band": "Mid",
+            "state": "kept"
+          },
+          {
+            "tier": "you",
+            "band": "Low",
+            "state": "moved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a pinned manager band adds no own move",
+      "source": {
+        "self": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "manager": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "decisions": [],
+        "current": {
+          "performance": "ME",
+          "potential": "Mid"
+        },
+        "adjusted": {
+          "performance": false,
+          "potential": false
+        },
+        "sources": {
+          "performance": "manager",
+          "potential": "manager"
+        }
+      },
+      "expected": {
+        "performance": [
+          {
+            "tier": "self",
+            "band": "ME",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "ME",
+            "state": "kept"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "na"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "na"
+          }
+        ],
+        "potential": [
+          {
+            "tier": "self",
+            "band": "Mid",
+            "state": "set"
+          },
+          {
+            "tier": "manager",
+            "band": "Mid",
+            "state": "kept"
+          },
+          {
+            "tier": "hod",
+            "band": null,
+            "state": "na"
+          },
+          {
+            "tier": "bu",
+            "band": null,
+            "state": "na"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -45,6 +45,7 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'calibration_session',
       'calibration_entry',
       'performance_attachment',
+      'performance_assessment_catalogue',
       'performance_onehr_cycle',
       'performance_onehr_review',
       'performance_onehr_panel',
@@ -53,6 +54,25 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_onehr_plan',
       'performance_onehr_evidence',
       'performance_onehr_result',
+      'performance_assessment_participation',
+      'performance_assessment_draft',
+      'performance_assessment_conversation',
+      'performance_calibration_conversation',
+      'performance_assessment_guide_use',
+      'performance_assessment_ai_use',
+      'performance_assessment_file_text',
+      'performance_assessment_summary',
+      'performance_assessment_insight',
+      'performance_assessment_talent_remark',
+      'performance_assessment_reviewer_remark',
+      'performance_kpi_library',
+      'performance_assessment_attachment_link',
+      'performance_assessment_talent',
+      'performance_assessment_talent_history',
+      'performance_assessment_career_profile',
+      'performance_assessment_rating_record',
+      'performance_assessment_release',
+
     ]);
   });
 
@@ -74,12 +94,13 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
   // whole-group flag was dropped):
   //   manage group: { href: '/performance', labelKey: 'performance', icon: Target, managerUp: true }
   const EXPECTED = [
+    { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
     { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
   ] as const;
 
   const links = performancePack.navLinks!;
 
-  it('carries exactly the pre-retrofit row, with identical icon ref and gate', () => {
+  it('exposes the employee workspace and the manager administration row with their own gates', () => {
     expect(links).toHaveLength(EXPECTED.length);
     EXPECTED.forEach((want, i) => {
       const got = links[i];
@@ -87,9 +108,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
       expect(got.href, `row ${i} href`).toBe(want.href);
       expect(got.labelKey, `${want.href} labelKey`).toBe(want.labelKey);
       expect(got.icon, `${want.href} icon ref`).toBe(want.icon);
-      // The pre-rung-4 row was manager-up (managers/admins see Manage → Performance) and never
-      // adminOnly — employees reach their own reviews via /me, not this row.
-      expect(got.managerUp, `${want.href} managerUp`).toBe(true);
+      expect(got.managerUp, `${want.href} managerUp`).toBe('managerUp' in want?want.managerUp:undefined);
       expect(got.adminOnly, `${want.href} adminOnly`).toBeUndefined();
     });
   });

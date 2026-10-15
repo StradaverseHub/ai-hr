@@ -64,6 +64,10 @@ const notifications=createNotificationEmailService({
   const rows=await database<WorkflowMailTarget[]>`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''})`;
   return rows.length===1?rows[0]:null;
  },
+ assessmentTasks:async(id,token)=>{
+  const rows=await database<{required:boolean;summary:unknown}[]>`select * from identity_email.delivery_summary(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''})`;
+  return rows.length===1&&!rows[0].required?undefined:rows[0]?.summary??null;
+ },
  verifyRecipient:verifyWorkflowRecipient,
  start:async(id,token,target)=>(await database`select identity_email.start_delivery(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${database.json(target)}::jsonb) as started`)[0]?.started===true,
  finish:async(id,token,outcome,error)=>(await database`select identity_email.finish_delivery(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0]?.finished===true,

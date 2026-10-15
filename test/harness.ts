@@ -15,7 +15,11 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'performance_assessment_guide_use',
   'hr_orchestration_case',
+  'performance_assessment_profit_achievement',
+  'performance_assessment_summary',
+  'performance_assessment_catalogue','performance_assessment_reminder_run','performance_assessment_reminder_recipient','performance_assessment_reminder_epoch',
   'performance_onehr_cycle', 'performance_onehr_review', 'performance_onehr_panel', 'performance_onehr_calibration', 'performance_onehr_calibration_entry', 'performance_onehr_plan', 'performance_onehr_evidence', 'performance_onehr_result',
   'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
   'reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision',

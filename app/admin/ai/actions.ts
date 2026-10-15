@@ -12,6 +12,20 @@ import {
   testConnection,
 } from '@/core/ai-config';
 import { SecretConfigError } from '@/lib/ai';
+import { getTranslations } from 'next-intl/server';
+import { ASSESSMENT_AI_FEATURES, setAssessmentAiSwitch, type AssessmentAiFeature } from '@/packs/performance/service';
+
+export async function setAssessmentAiSwitchAction(formData: FormData) {
+  const s = await getSession();
+  const t = await getTranslations('admin.ai.assessment');
+  const feature = String(formData.get('feature')) as AssessmentAiFeature;
+  const on = String(formData.get('on'));
+  if (!ASSESSMENT_AI_FEATURES.includes(feature) || !['true', 'false'].includes(on)) back(t('failed'));
+  try { await setAssessmentAiSwitch(s, feature, on === 'true'); }
+  catch { back(t('failed')); }
+  revalidatePath('/performance', 'layout');
+  back(undefined, t('saved'));
+}
 
 const str = (v: FormDataEntryValue | null) => {
   const s = String(v ?? '').trim();

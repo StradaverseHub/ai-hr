@@ -81,10 +81,11 @@ import { registerPack, type ModulePack, type NavLinkDescriptor } from '../regist
 // Manage group (which is why rung 4 added 'manage' to NavLinkDescriptor's group union):
 //   - the row sat in the Manage group after Approvals (1b35f17b: the group's whole-group gate was
 //     dropped when Personnel became every-employee, so the row carries its own managerUp flag —
-//     managers/admins see Manage → Performance; employees reach their own reviews via /me).
+//     managers/admins see Manage → Performance; employees use My Performance in Home).
 // href, labelKey, the Target icon ref and the managerUp flag are the sidebar's verbatim; only the
 // mounting moved (the sidebar places the row via the registry).
 const PERFORMANCE_NAV_LINKS: NavLinkDescriptor[] = [
+  { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
   { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
 ];
 
@@ -107,14 +108,34 @@ export const performancePack: ModulePack = {
     { table: 'calibration_session', note: 'per-cycle calibration session (open → committed)' },
     { table: 'calibration_entry', note: 'proposed/committed rating adjustments within a session' },
     { table: 'performance_attachment', note: 'evidence files behind a review (per stage)' },
-    { table: 'performance_onehr_cycle', note: 'native OneHR cycle aggregate; ADR-0103' },
-    { table: 'performance_onehr_review', note: 'native OneHR review aggregate; ADR-0103' },
-    { table: 'performance_onehr_panel', note: 'native OneHR panel aggregate; ADR-0103' },
-    { table: 'performance_onehr_calibration', note: 'native OneHR calibration aggregate; ADR-0103' },
-    { table: 'performance_onehr_calibration_entry', note: 'native OneHR calibration_entry aggregate; ADR-0103' },
-    { table: 'performance_onehr_plan', note: 'native OneHR plan aggregate; ADR-0103' },
-    { table: 'performance_onehr_evidence', note: 'native OneHR evidence aggregate; ADR-0103' },
-    { table: 'performance_onehr_result', note: 'native OneHR result aggregate; ADR-0103' },
+    { table: 'performance_assessment_catalogue', note: 'scoped defaults for new cycles; existing review snapshots remain independent' },
+    { table: 'performance_onehr_cycle', note: 'native performance cycle aggregate; ADR-0103' },
+    { table: 'performance_onehr_review', note: 'native performance review aggregate; ADR-0103' },
+    { table: 'performance_onehr_panel', note: 'native performance panel aggregate; ADR-0103' },
+    { table: 'performance_onehr_calibration', note: 'native performance calibration aggregate; ADR-0103' },
+    { table: 'performance_onehr_calibration_entry', note: 'native performance calibration_entry aggregate; ADR-0103' },
+    { table: 'performance_onehr_plan', note: 'native performance plan aggregate; ADR-0103' },
+    { table: 'performance_onehr_evidence', note: 'native performance evidence aggregate; ADR-0103' },
+    { table: 'performance_onehr_result', note: 'native performance result aggregate; ADR-0103' },
+    { table: 'performance_assessment_participation', note: 'opening eligibility snapshot and HR cycle overrides; ADR-0103' },
+    { table: 'performance_assessment_draft', note: 'actor-private working copies of assessment answers; ADR-0103' },
+    { table: 'performance_assessment_conversation', note: 'actor-private review journey conversation; ADR-0103' },
+    { table: 'performance_calibration_conversation', note: 'actor-private cohort conversation and held department edits' },
+    { table: 'performance_assessment_guide_use', note: 'personal guide rate reservations and anonymous HR usage projection; no conversation storage' },
+    { table: 'performance_assessment_ai_use', note: 'successful draft usage with per-actor field limits at Malaysia midnight' },
+    { table: 'performance_assessment_file_text', note: 'derived file text cache; visibility always follows the native attachment' },
+    { table: 'performance_assessment_summary', note: 'reviewer-owned summary cache of submitted competency evidence' },
+    { table: 'performance_assessment_insight', note: 'reviewer insight cache; live assignment and submitted-fact fingerprint are rechecked' },
+    { table: 'performance_assessment_talent_remark', note: 'shared optional BG overall remark, independently revised and locked with its person/cohort' },
+    { table: 'performance_assessment_reviewer_remark', note: 'each approver owns their overall remark; confirmed authorship is retained' },
+    { table: 'performance_kpi_library', note: 'scoped KPI definitions and scoring templates; ADR-0103' },
+    { table: 'performance_assessment_attachment_link', note: 'KPI attachment provenance using the native attachment store; ADR-0103' },
+    { table: 'performance_assessment_talent', note: 'shared human talent decisions across calibration tiers; ADR-0103' },
+    { table: 'performance_assessment_talent_history', note: 'locked yearly talent history for standing promotion rules; ADR-0103' },
+    { table: 'performance_assessment_career_profile', note: 'current career profile with yearly plan snapshots retained separately; ADR-0103' },
+    { table: 'performance_assessment_rating_record', note: 'sign-off and calibration record sealed at cycle archive; ADR-0103' },
+    { table: 'performance_assessment_release', note: 'component visibility grants independent of finalization; ADR-0103' },
+
 
   ],
   serviceFacade: 'packs/performance/service',

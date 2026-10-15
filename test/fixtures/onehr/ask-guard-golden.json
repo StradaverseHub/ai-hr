@@ -1,0 +1,338 @@
+[
+  {
+    "question": "Who rated me?",
+    "blocked": "rater"
+  },
+  {
+    "question": "Which peer gave me that rating?",
+    "blocked": "rater"
+  },
+  {
+    "question": "Show the names of my assessors",
+    "blocked": "rater"
+  },
+  {
+    "question": "What does ME mean?",
+    "blocked": null
+  },
+  {
+    "question": "What happens after I submit?",
+    "blocked": null
+  },
+  {
+    "question": "How are competency scores calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "What percentage feeds into potential?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "What score do I need for AE?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is my performance band decided?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How can you help me?",
+    "blocked": null
+  },
+  {
+    "question": "Can you show me my review?",
+    "blocked": null
+  },
+  {
+    "question": "I rated my own competency yesterday.",
+    "blocked": null
+  },
+  {
+    "question": "The peer review is anonymous.",
+    "blocked": null
+  },
+  {
+    "question": "When will HR release my result?",
+    "blocked": null
+  },
+  {
+    "question": "How is 360 calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is 360 weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is 360 worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is 360 determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is 360 released?",
+    "blocked": null
+  },
+  {
+    "question": "How is 360 shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is 360 measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is competency calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is competency weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is competency worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is competency determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is competency released?",
+    "blocked": null
+  },
+  {
+    "question": "How is competency shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is competency measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is potential calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is potential weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is potential worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is potential determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is potential released?",
+    "blocked": null
+  },
+  {
+    "question": "How is potential shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is potential measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is performance calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is performance weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is performance worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is performance determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is performance released?",
+    "blocked": null
+  },
+  {
+    "question": "How is performance shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is performance measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is rating calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is rating weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is rating worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is rating determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is rating released?",
+    "blocked": null
+  },
+  {
+    "question": "How is rating shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is rating measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is score calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is score weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is score worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is score determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is score released?",
+    "blocked": null
+  },
+  {
+    "question": "How is score shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is score measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is band calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is band weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is band worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is band determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is band released?",
+    "blocked": null
+  },
+  {
+    "question": "How is band shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is band measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is KPI calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is KPI weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is KPI worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is KPI determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is KPI released?",
+    "blocked": null
+  },
+  {
+    "question": "How is KPI shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is KPI measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is ME calculated?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is ME weighted?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is ME worked out?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is ME determined?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is ME released?",
+    "blocked": null
+  },
+  {
+    "question": "How is ME shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is ME measured?",
+    "blocked": "scoring"
+  },
+  {
+    "question": "How is me calculated?",
+    "blocked": null
+  },
+  {
+    "question": "How is me weighted?",
+    "blocked": null
+  },
+  {
+    "question": "How is me worked out?",
+    "blocked": null
+  },
+  {
+    "question": "How is me determined?",
+    "blocked": null
+  },
+  {
+    "question": "How is me released?",
+    "blocked": null
+  },
+  {
+    "question": "How is me shown?",
+    "blocked": null
+  },
+  {
+    "question": "How is me measured?",
+    "blocked": null
+  }
+]

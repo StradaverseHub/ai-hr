@@ -1,0 +1,30 @@
+import React from 'react';
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,render,screen} from '@testing-library/react';
+import {createTranslator} from 'next-intl';
+import en from '../messages/en.json';
+vi.mock('next-intl/server',()=>({getTranslations:async()=>createTranslator({locale:'en',messages:en,namespace:'onehr'})}));
+vi.mock('../app/performance/onehr-actions',()=>({onehrFeedbackAction:vi.fn()}));
+vi.mock('../app/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
+vi.mock('../app/performance/onehr/rewrite-field',()=>({RewriteField:({children,enabled}:{children:React.ReactNode;enabled:boolean})=><>{children}{enabled&&<button>Rewrite</button>}</>}));
+vi.mock('../app/performance/onehr/draft-form',()=>({AssessmentDraftForm:({children}:{children:React.ReactNode})=><form data-testid="autosave">{children}</form>}));
+import {FeedbackView} from '../app/performance/onehr/feedback-view';
+afterEach(cleanup);
+type Card=Parameters<typeof FeedbackView>[0]['v'];
+const fixture=():Card=>({requestId:'request',reviewId:'review',cycleId:'cycle',subject:'Colleague',guidedReview:true,closed:false,frozen:false,submitted:true,aiEnabled:true,commandAiEnabled:true,resetAt:null,statements:[{id:'question',principle:'Customer practice',principleDescription:'Follow through on commitments',text:'Checks the customer outcome',future:false}],answers:{question:'yes'},comments:{'Customer practice':'Original submitted comment'},remark:'Original submitted remark',draft:{id:"draft",tenantId:"tenant",reviewId:"review",actorUserId:"actor",kind:"feedback",contextId:"request",reviewRevision:1,updatedAt:new Date(),revision:2,payload:{kind:'feedback',answers:{question:'no'},comments:{'Customer practice':'Later private draft'},remark:'Later private draft'}}});
+it('shows submitted answers and comments read-only without substituting a private draft or mounting autosave',async()=>{
+ render(await FeedbackView({v:fixture()}));
+ expect(screen.getByRole('heading',{name:'1. Follow through on commitments'})).toBeTruthy();
+ expect(screen.getByText('Customer practice')).toBeTruthy();
+ const yes=screen.getByRole('radio',{name:'Demonstrate'}) as HTMLInputElement;
+ expect(yes.checked).toBe(true);expect(yes.matches(':disabled')).toBe(true);
+ const comment=screen.getByRole('textbox',{name:en.onehr.principleComment}) as HTMLTextAreaElement;
+ expect(comment.value).toBe('Original submitted comment');expect(comment.readOnly).toBe(true);expect(comment.closest('details')?.open).toBe(true);
+ expect((screen.getByRole('textbox',{name:en.onehr.overallRemark}) as HTMLTextAreaElement).value).toBe('Original submitted remark');
+ expect(screen.queryByTestId('autosave')).toBeNull();expect(screen.queryByRole('button')).toBeNull();
+});
+it.each(['closed','frozen'] as const)('retains the readable answers when the assessment is %s',async state=>{
+ const v=fixture();v.submitted=false;v[state]=true;render(await FeedbackView({v}));
+ expect((screen.getByRole('radio',{name:'Demonstrate'}) as HTMLInputElement).checked).toBe(true);
+ expect(screen.queryByTestId('autosave')).toBeNull();expect(screen.queryByRole('button')).toBeNull();
+});

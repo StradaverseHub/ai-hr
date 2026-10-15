@@ -36,3 +36,12 @@ describe('brief workflow email contracts',()=>{
   expect(bodies.size).toBe(6);
  });
 });
+
+ describe('bounded unified assessment email',()=>{
+  it('renders all six locales, groups tasks, formats Malaysia dates and escapes authorized names',()=>{
+   for(const locale of ['en','ms','zh','vi','ta','th'] as const){
+    const message=workflowEmailMessage({category:'performance',locale,link:'https://hr.test/me/performance',action:true,messageId:'stable',assessmentTasks:[{key:'team_results',count:4,closesAt:'2026-10-14T20:00:00Z',people:['<script>employee</script>','Aina','Siti']},{key:'own_plan',count:1,closesAt:null}]});
+    expect(message.subject).not.toMatch(/OneHR|undefined|\{/);expect(message.html).toContain('&lt;script&gt;employee&lt;/script&gt;');expect(message.html).not.toContain('<script>');expect(message.text).toContain(locale==='th'?'2569':'2026');expect(message.text).toContain('https://hr.test/me/performance');
+   }
+  });
+ });

@@ -1,0 +1,102 @@
+{
+  "source": "a644fd6 app.py AST-isolated _rewrite_grounding_error; no application import or startup",
+  "sourceSha256": "f0201b7df23a1a56e696671a8e13eab81cef412913351c58d9cb57e55dc776a4",
+  "cases": [
+    {
+      "name": "empty",
+      "draft": "",
+      "instruction": "Improve.",
+      "context": "",
+      "text": "A fabricated accomplishment.",
+      "ok": false
+    },
+    {
+      "name": "same",
+      "draft": "I completed the delivery.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "I completed the delivery.",
+      "ok": true
+    },
+    {
+      "name": "shorter",
+      "draft": "I completed the delivery with the project team.",
+      "instruction": "Shorter.",
+      "context": "",
+      "text": "Completed the delivery.",
+      "ok": true
+    },
+    {
+      "name": "new-digit",
+      "draft": "I completed the delivery.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "I completed 42 deliveries.",
+      "ok": false
+    },
+    {
+      "name": "new-spelled",
+      "draft": "I helped the team.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "I helped two teams.",
+      "ok": false
+    },
+    {
+      "name": "new-clause",
+      "draft": "I helped the team.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "I transformed international logistics operations and negotiated exceptional customer retention gains.",
+      "ok": false
+    },
+    {
+      "name": "tidy",
+      "draft": "I completed the delivery.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "I successfully completed the delivery.",
+      "ok": true
+    },
+    {
+      "name": "comma-normalisation",
+      "draft": "I delivered 1,200 units.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "I delivered 1200.0 units.",
+      "ok": true
+    },
+    {
+      "name": "instruction-figure",
+      "draft": "I delivered units.",
+      "instruction": "Mention the 20 units.",
+      "context": "",
+      "text": "I delivered 20 units.",
+      "ok": true
+    },
+    {
+      "name": "context-label",
+      "draft": "I delivered the outcome.",
+      "instruction": "Polish.",
+      "context": "about Service quality",
+      "text": "I delivered the service quality outcome.",
+      "ok": true
+    },
+    {
+      "name": "decimal-figure",
+      "draft": "The result was 3.14159.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "The result was 3.1416.",
+      "ok": true
+    },
+    {
+      "name": "changed-number",
+      "draft": "The result was 15.9.",
+      "instruction": "Polish.",
+      "context": "",
+      "text": "The result was 15.8.",
+      "ok": false
+    }
+  ]
+}

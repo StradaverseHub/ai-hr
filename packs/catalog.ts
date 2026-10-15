@@ -204,6 +204,15 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
  * tenant provisioned before the setting existed, so the two mechanisms are not interchangeable.
  */
 export const SETTING_CATALOG: SettingCatalogEntry[] = [
+  { key: 'performance.reminder_words', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: 'null', defaultOnInstall: null, customerVisible: true, description: 'Optional assessment reminder subject and opening templates. Validated by Performance.', sortOrder: 217 },
+  { key: 'performance.reminder_rules', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: '{"enabled":false,"onOpen":true,"daysBefore":[7,3,1],"everyDays":0,"sendTime":"09:00"}', defaultOnInstall: null, customerVisible: true, description: 'Assessment reminder schedule in Malaysia time. Validated by the Performance settings writer.', sortOrder: 216 },
+  // Assisted drafting is on by default, as in the migrated source; a configured provider is still required.
+  { key: 'performance.ai_360_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft colleague feedback comments.', sortOrder: 210 },
+  { key: 'performance.ai_tc_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft technical competency and potential review remarks.', sortOrder: 211 },
+  { key: 'performance.ai_pm_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft performance results, scorecards and supporting insights.', sortOrder: 212 },
+  { key: 'performance.ai_review_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Prepare guided review summaries and record trends.', sortOrder: 213 },
+  { key: 'performance.ai_idp_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Suggest development goals and career plan drafts.', sortOrder: 214 },
+  { key: 'performance.ai_calib_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Assist calibration summaries, conversations and curve fit.', sortOrder: 215 },
   { key: 'payroll.reset_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow reverting a processed payroll run to draft. Weakens payroll controls; enabling is an audited platform action.', sortOrder: 10 },
   { key: 'payroll.unlock_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow unlocking a closed payroll run back to processed. Reverses the statutory freeze; enabling is an audited platform action.', sortOrder: 20 },
   // `defaultOnInstall: true` — the ONLY entry that differs from its bare default, and deliberately so
@@ -424,6 +433,15 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */
 export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> = {
+  'performance.reminder_rules': null,
+  'performance.reminder_words': null,
+  'performance.ai_360_enabled': null,
+  'performance.ai_tc_enabled': null,
+  'performance.ai_pm_enabled': null,
+  'performance.ai_review_enabled': null,
+  'performance.ai_idp_enabled': null,
+  'performance.ai_calib_enabled': null,
+
   'payroll.reset_enabled': 'PAYROLL_RESET_ENABLED',
   'payroll.unlock_enabled': 'PAYROLL_UNLOCK_ENABLED',
   'payroll.individual_txn_pay_enabled': 'INDIVIDUAL_TXN_PAY_ENABLED',

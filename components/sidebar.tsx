@@ -153,6 +153,7 @@ const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 
 // contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
 // it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
 // tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
+const PERSONAL_PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main')!;
 const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
@@ -366,6 +367,7 @@ const GROUPS: Group[] = [
       // a324a4b3 rev3: My Attendance carries the two self-service rows (Clock in/out, Records). The
       // Attendance CONFIG menu moved into Administration — see the admin group below.
       MY_ATTENDANCE_NODE,
+      PERSONAL_PERFORMANCE_ROW,
       CLAIMS_ROW,
       LIFECYCLE_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
@@ -828,6 +830,9 @@ export function Sidebar({
       )}
     </>
   );
+
+  // The review journey owns its 224px navigator and floating route back to the dashboard.
+  if (pathname === modulePackById('performance')?.navLinks?.find(link => link.labelKey === 'myPerformance')?.href) return null;
 
   // Current uses the same authorized navigation graph, arranged as workspace tabs.
   // Browsing another workspace never changes scope or grants access to a destination.

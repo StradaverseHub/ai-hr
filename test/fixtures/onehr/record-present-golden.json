@@ -1,0 +1,1238 @@
+[
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is still to submit. HR releases your 360 after calibration. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is still to submit. HR releases your 360 after calibration. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is still to submit. Your 360 report is released. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is still to submit. Your 360 report is released. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is with your line manager. HR releases your 360 after calibration. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is with your line manager. HR releases your 360 after calibration. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is with your line manager. Your 360 report is released. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency self-assessment is with your line manager. Your 360 report is released. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": null,
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency review is back: 1 of 2 demonstrated. HR releases your 360 after calibration. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency review is back: 1 of 2 demonstrated. HR releases your 360 after calibration. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency review is back: 1 of 2 demonstrated. Your 360 report is released. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": false,
+            "moderated": null,
+            "label": null
+          }
+        ],
+        "overall": null
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your 1 KPI lines are with your line manager. Your competency review is back: 1 of 2 demonstrated. Your 360 report is released. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Waiting for your line manager's approval.\nYour line manager has approved 0 (zero) of your 1 (one) KPI lines.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is still to submit. HR releases your 360 after calibration. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is still to submit. HR releases your 360 after calibration. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is still to submit. Your 360 report is released. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "pending",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is still to submit. Your 360 report is released. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is not submitted yet: 2 (two) of 2 (two) answered.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is with your line manager. HR releases your 360 after calibration. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is with your line manager. HR releases your 360 after calibration. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is with your line manager. Your 360 report is released. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "submitted",
+        "reviewed": false,
+        "total": 2,
+        "lm_yes": null,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": []
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency self-assessment is with your line manager. Your 360 report is released. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nYour competency self-assessment is submitted and waiting for your line manager's review.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": null,
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency review is back: 1 of 2 demonstrated. HR releases your 360 after calibration. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency review is back: 1 of 2 demonstrated. HR releases your 360 after calibration. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 report for this cycle is released by HR after calibration.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": null,
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency review is back: 1 of 2 demonstrated. Your 360 report is released. Your 2027 plan isn't started yet.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is not started yet."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "perf": {
+        "lines": [
+          {
+            "name": "Delivery",
+            "unit": "units",
+            "weightage": 100,
+            "self": 100,
+            "locked": true,
+            "moderated": 80,
+            "label": "ME"
+          }
+        ],
+        "overall": {
+          "label_name": "Meet Expectation"
+        }
+      },
+      "competency": {
+        "status": "reviewed",
+        "reviewed": true,
+        "total": 2,
+        "lm_yes": 1,
+        "items": [
+          {
+            "title": "Service",
+            "you": [
+              "yes",
+              "no"
+            ],
+            "lm": [
+              "yes",
+              "no"
+            ]
+          }
+        ]
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery"
+          }
+        ]
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ]
+      },
+      "plan_year": 2027
+    },
+    "plain": "Your line manager has approved 1 of your 1 KPI lines. Your competency review is back: 1 of 2 demonstrated. Your 360 report is released. Your 2027 plan is shared with your manager, with 1 goal.",
+    "source": "Cycle in progress: Annual review.\nKPI 'Delivery' (weight 100%): you entered 100 units. Your line manager approved 80 units, rating Meet Expectation.\nYour line manager has approved 1 (one) of your 1 (one) KPI lines.\nThe overall your line manager approved: Meet Expectation.\nCompetency review by your line manager: 1 (one) of 2 (two) demonstrated; to develop: Service.\nYour 360 (released to you): colleagues saw these as your strengths: Trust.\nWhere colleagues would like to see more: Delivery.\nYour 2027 development plan is shared with your manager, with 1 (one) goal(s): Service."
+  }
+]

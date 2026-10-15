@@ -15,6 +15,10 @@
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
+import { AiImageReadError,imageReadError,validImageBytes } from './image-protocol';
+import type { ImageReadArgs } from './types';
+export { AiImageReadError } from './image-protocol';
+export type { AiImageMime,ImageReadArgs } from './types';
 import {
   AiGatewayError,
   type AiAdapter,
@@ -58,9 +62,29 @@ function adapterFor(provider: AiProvider): AiAdapter {
  *  the provider returns no text (e.g. the whole budget was spent on thinking, or a safety block) so a
  *  caller never silently receives an empty draft. */
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
-  const text = await adapterFor(cfg.provider).generate(cfg, args);
-  if (!text) throw new AiGatewayError('No draft was produced — please try again.');
-  return text;
+  const adapter=adapterFor(cfg.provider);
+  if(args.timeoutMs==null&&!args.signal){const text=await adapter.generate(cfg,args);if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
+  const controller=new AbortController(),abort=()=>controller.abort(),timeoutMs=Math.min(22000,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:22000));
+  if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
+  args.signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
+  try{const text=await adapter.generate(cfg,{...args,signal:controller.signal,timeoutMs});if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
+  finally{clearTimeout(timer);args.signal?.removeEventListener('abort',abort);}
+}
+
+export function supportsImageReading(provider:AiProvider){return typeof ADAPTERS[provider]?.readImage==='function';}
+/** This operation never changes the existing text/conversation paths. Callers authorize the bytes before using it. */
+export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
+ if(!validImageBytes(args.data,args.mimeType))throw new AiImageReadError(false);
+ const adapter=adapterFor(cfg.provider);if(!adapter.readImage)throw new AiImageReadError(false);
+ const timeoutMs=Math.min(20000,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:20000)),controller=new AbortController();
+ const abort=()=>controller.abort();if(args.signal?.aborted)abort();else args.signal?.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(abort,timeoutMs);
+ try{
+  if(controller.signal.aborted)throw new AiImageReadError(true);
+  const text=await adapter.readImage(cfg,{...args,signal:controller.signal,timeoutMs});
+  if(controller.signal.aborted)throw new AiImageReadError(true);
+  return Array.from(text.trim()).slice(0,6000).join('');
+ }catch(error){throw imageReadError(error);}finally{clearTimeout(timer);args.signal?.removeEventListener('abort',abort);}
 }
 
 /** Cheapest credential+model probe. Returns ok/false + a generic reason; never throws. */

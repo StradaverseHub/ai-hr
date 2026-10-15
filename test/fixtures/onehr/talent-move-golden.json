@@ -1,0 +1,34 @@
+[
+  {
+    "move": "kept ME",
+    "words": "kept their band"
+  },
+  {
+    "move": "set Low",
+    "words": "set their band"
+  },
+  {
+    "move": "moved AE \u2192 ME",
+    "words": "moved them down a band"
+  },
+  {
+    "move": "moved UA \u2192 OU",
+    "words": "moved them up more than one band"
+  },
+  {
+    "move": "moved High \u2192 Low",
+    "words": "moved them down more than one band"
+  },
+  {
+    "move": "moved X \u2192 Low",
+    "words": "moved their band"
+  },
+  {
+    "move": "150 \u2192 100",
+    "words": "150 \u2192 100"
+  },
+  {
+    "move": "",
+    "words": ""
+  }
+]

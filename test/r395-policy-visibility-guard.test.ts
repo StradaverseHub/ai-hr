@@ -12,7 +12,7 @@
  *      inserted/updated row, which is the right cost), and does on 34 policies.
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
- *      its WITH CHECK text UNCHANGED from before 0515.
+ *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file extension.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -24,6 +24,12 @@ type Policy = { table: string; policy: string; cmd: string; calls: number; oldQu
 const FIXTURE = JSON.parse(readFileSync('test/fixtures/r395-policy-quals.json', 'utf8')) as { policies: Policy[] };
 const MIGRATION = readFileSync('db/migrations/0515_set_based_visibility.sql', 'utf8');
 const key = (t: string, p: string) => `${t}.${p}`;
+// 0540 deliberately adds assigned assessment-file readers and author-owned proof writes.
+// Keep 0515's historical fixture intact; pin the exact current policy instead of skipping it.
+const assessmentAttachment = {
+ qual: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_read(review_id, evidence_id, id, uploaded_by_user_id, removed_at), false)))',
+ withCheck: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_write(review_id, evidence_id, uploaded_by_user_id), false)))',
+};
 
 afterAll(async () => {
   await closeAll();
@@ -45,7 +51,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     expect(inCheck.length).toBeGreaterThan(0);
   });
 
-  it('the 57 rewritten policies carry the fixture USING text and an UNCHANGED WITH CHECK', async () => {
+  it('the 57 rewritten policies retain their set visibility with the explicit assessment-file extension', async () => {
     expect(FIXTURE.policies.length).toBe(57);
     expect(FIXTURE.policies.filter((p) => /app\.can_see_person\(/.test(p.oldQual)).length, 'six person policies').toBe(6);
     const live = new Map(
@@ -54,8 +60,9 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     for (const p of FIXTURE.policies) {
       const r = live.get(key(p.table, p.policy));
       expect(r, `${key(p.table, p.policy)} exists`).toBeTruthy();
-      expect(r!.qual, `${key(p.table, p.policy)} USING`).toBe(p.newQual);
-      expect(r!.with_check ?? null, `${key(p.table, p.policy)} WITH CHECK unchanged`).toBe(p.withCheck);
+      const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
+      expect(r!.qual, `${key(p.table, p.policy)} USING`).toBe(attachment?assessmentAttachment.qual:p.newQual);
+      expect(r!.with_check ?? null, `${key(p.table, p.policy)} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       expect(p.oldQual, `${key(p.table, p.policy)} old USING called a per-row function`).toMatch(/app\.can_see_(employment|person)\(/);
       expect(p.newQual).toMatch(/visible_(employment|person)_ids\(\)/);
       // can_see_person's admin arm is TRUE for any id (another tenant's person; the row an INSERT … RETURNING
@@ -84,7 +91,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
       await tx.unsafe(`select set_config('app.tenant_id', gen_random_uuid()::text, true), set_config('app.user_id', gen_random_uuid()::text, true)`);
       await tx.unsafe(`set local role ai_hr_app`);
       for (const t of ['feedback_request', 'leave_request', 'person', 'employment',
-        'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision']) {
+        'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision', 'performance_kpi_library']) {
         const rows = (await tx.unsafe(`explain (costs off) select * from "${t}"`)) as unknown as Row[];
         plans.push(rows.map((r) => r['QUERY PLAN']).join('\n'));
       }

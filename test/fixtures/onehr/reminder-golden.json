@@ -1,0 +1,256 @@
+{
+  "source": "Isolated AST reminder_reasons/_lc_first; no source application import or startup",
+  "cases": [
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {},
+      "modules": {},
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "no part dates uses cycle target",
+      "expected": [
+        {
+          "cell": null,
+          "kind": "closing",
+          "days": 3
+        }
+      ]
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {},
+      "modules": {},
+      "rules": {
+        "enabled": false,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "default off",
+      "expected": []
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {
+        "pm_results": {
+          "opensAt": "2026-10-14T10:00:00+08:00",
+          "closesAt": "2026-10-21T18:00:00+08:00"
+        }
+      },
+      "modules": {},
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "opening and closing in one run",
+      "expected": [
+        {
+          "cell": "pm_results",
+          "kind": "opening",
+          "days": 0
+        },
+        {
+          "cell": "pm_results",
+          "kind": "closing",
+          "days": 7
+        }
+      ]
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {
+        "tc_self": {
+          "opensAt": "2026-10-10T08:00:00+08:00",
+          "closesAt": "2026-10-20T18:00:00+08:00"
+        }
+      },
+      "modules": {},
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "repeat while open",
+      "expected": [
+        {
+          "cell": "tc_self",
+          "kind": "repeat",
+          "days": 2
+        }
+      ]
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {
+        "pm_results": {
+          "opensAt": null,
+          "closesAt": "2026-10-13T18:00:00+08:00"
+        },
+        "tc_self": {
+          "opensAt": "2026-10-15T08:00:00+08:00",
+          "closesAt": "2026-10-17T18:00:00+08:00"
+        }
+      },
+      "modules": {},
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "closed and future parts are excluded",
+      "expected": []
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {
+        "tc_self": {
+          "opensAt": "2026-10-14T08:00:00+08:00",
+          "closesAt": "2026-10-17T18:00:00+08:00"
+        }
+      },
+      "modules": {
+        "tm": false
+      },
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "module off does not contribute dates",
+      "expected": [
+        {
+          "cell": null,
+          "kind": "closing",
+          "days": 3
+        }
+      ]
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {
+        "pm_hod": {
+          "opensAt": "2026-10-14T08:00:00+08:00",
+          "closesAt": "2026-10-17T18:00:00+08:00"
+        },
+        "pot_hod": {
+          "opensAt": "2026-10-14T08:00:00+08:00",
+          "closesAt": "2026-10-17T18:00:00+08:00"
+        }
+      },
+      "modules": {},
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "duplicate department reason is shown once",
+      "expected": [
+        {
+          "cell": "pm_hod",
+          "kind": "opening",
+          "days": 0
+        },
+        {
+          "cell": "pm_hod",
+          "kind": "closing",
+          "days": 3
+        }
+      ]
+    },
+    {
+      "day": "2026-10-14",
+      "cycleEnd": "2026-10-17",
+      "windows": {
+        "idp_self": {
+          "opensAt": "2026-10-13T16:00:00+00:00",
+          "closesAt": "2026-10-17T15:00:00+00:00"
+        }
+      },
+      "modules": {},
+      "rules": {
+        "enabled": true,
+        "onOpen": true,
+        "daysBefore": [
+          7,
+          3,
+          1,
+          0
+        ],
+        "everyDays": 2,
+        "sendTime": "09:00"
+      },
+      "name": "Malaysia day differs from UTC date",
+      "expected": [
+        {
+          "cell": "idp_self",
+          "kind": "opening",
+          "days": 0
+        },
+        {
+          "cell": "idp_self",
+          "kind": "closing",
+          "days": 3
+        }
+      ]
+    }
+  ]
+}

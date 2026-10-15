@@ -1,3 +1,4 @@
+import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
 /**
  * Performance & talent — Phase A (ADR-0013). The first config-driven, statute-free module.
  *
@@ -52,7 +53,7 @@ import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { onehrAttachmentSubjectTx, assertStandardCycleTx, assertOnehrClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
+import { onehrAttachmentSubjectTx, assertStandardCycleTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -237,6 +238,7 @@ export async function createCycle(
     meritBudget?: MeritBudget;
     eligibilityRules?: EligibilityRules | null;
     stages?: CycleStage[];
+    assessmentWorkflow?: boolean;
   },
 ) {
   // Admin or a perf-comp partner scoped to the cycle's company (group-wide cycles need a group grant).
@@ -277,6 +279,7 @@ export async function createCycle(
         stages,
       })
       .returning({ id: reviewCycle.id });
+    if(p.assessmentWorkflow)await configureAssessmentCycleTx(tx,ctx,row.id);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'review-cycle',
@@ -375,7 +378,9 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
     const rules = (cycle.eligibilityRules ?? null) as EligibilityRules | null;
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, cycle.companyId, asOf);
-    const members = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
+    const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
+    const memberIds = await snapshotAssessmentParticipantsTx(tx, ctx, cycle.id, candidates.map(c=>c.employmentId), nativeEligible.map(c=>c.employmentId), asOf);
+    const members = candidates.filter(c=>memberIds.includes(c.employmentId));
 
     let spawned = 0;
     for (const e of members) {
@@ -404,6 +409,19 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
   });
 }
 
+/** Kernel roster owner: an explicit HR addition creates the same native review as cycle opening. */
+export async function ensureAssessmentCycleReviewTx(tx:Tx,ctx:SessionContext,cycleId:string,employmentId:string):Promise<string> {
+  const cycle=await loadCycle(tx,cycleId);
+  if(!canAdminPerfCtx(ctx,cycle.companyId)||!['open','calibration'].includes(cycle.status))throw new PerfError('An authorized open review cycle is required');
+  const [subject]=await tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId)));
+  if(!subject||!canAdminPerfCtx(ctx,subject.companyId)||cycle.companyId&&subject.companyId!==cycle.companyId||subject.terminatedOn&&subject.terminatedOn<=todayInKualaLumpur())throw new PerfError('Employee outside this cycle or your authorized scope');
+  const [existing]=await tx.select({id:performanceReview.id}).from(performanceReview).where(and(eq(performanceReview.cycleId,cycleId),eq(performanceReview.employmentId,employmentId)));
+  if(existing)return existing.id;
+  const reviewerEmploymentId=await currentAdminManager(tx,ctx.tenantId,employmentId);
+  const [review]=await tx.insert(performanceReview).values({tenantId:ctx.tenantId,cycleId,employmentId,reviewerEmploymentId,status:'self_review'}).returning({id:performanceReview.id});
+  return review.id;
+}
+
 /**
  * Point-in-time preview of how many employees a rule set would snapshot — the "Preview eligible
  * employees" button. Runs the EXACT same candidate query + evaluateEligibility openCycle uses (via the
@@ -413,7 +431,7 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
  */
 export async function previewEligibleCount(
   ctx: SessionContext,
-  p: { companyId?: string | null; eligibilityRules?: EligibilityRules | null },
+  p: { companyId?: string | null; eligibilityRules?: EligibilityRules | null; assessmentWorkflow?: boolean },
 ): Promise<{ count: number }> {
   // Same authorization as createCycle: only an admin / scoped partner may preview a company's roster.
   if (!canAdminPerfCtx(ctx, p.companyId ?? null)) {
@@ -432,7 +450,8 @@ export async function previewEligibleCount(
   return withTenant(ctx, async (tx) => {
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
-    const count = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).length;
+    const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).map(c=>c.employmentId);
+    const count = p.assessmentWorkflow ? (await previewAssessmentParticipantsTx(tx,nativeEligible,asOf)).length : nativeEligible.length;
     return { count };
   });
 }
@@ -484,7 +503,7 @@ async function transitionCycle(
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }
-    if (to === 'closed') await assertOnehrClosureTx(tx, cycle.id);
+    if (to === 'closed') await prepareAssessmentClosureTx(tx, cycle.id);
     await tx.update(reviewCycle).set({ status: to }).where(eq(reviewCycle.id, cycle.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -992,13 +1011,15 @@ export async function closeReview(
  *  review's subject, so RLS admits the subject + manager + admin, not peers). */
 export async function addPerformanceAttachment(
   ctx: SessionContext,
-  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer },
+  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer; kpiId?: string; evidenceId?: string },
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new PerfError('Empty file');
   if (p.content.byteLength > 10 * 1024 * 1024) throw new PerfError('File exceeds 10 MB');
   if (p.stageKind != null && !ALL_STAGE_KINDS.includes(p.stageKind)) throw new PerfError('Unknown stage');
   return withTenant(ctx, async (tx) => {
-    const review = await onehrAttachmentSubjectTx(tx,p.reviewId) ?? (await loadReview(tx, p.reviewId)).review;
+    if(p.evidenceId&&p.kpiId)throw new PerfError('Choose one place for the supporting file.');
+    const evidence=p.evidenceId?await prepareAssessmentEvidenceFileTx(tx,ctx,p.reviewId,p.evidenceId,p.fileName,p.content.byteLength):p.kpiId?await prepareAssessmentKpiFileTx(tx,ctx,p.reviewId,p.kpiId,p.fileName,p.content.byteLength):null;
+    const review = evidence ?? await onehrAttachmentSubjectTx(tx,p.reviewId) ?? (await loadReview(tx, p.reviewId)).review;
     const [row] = await tx
       .insert(performanceAttachment)
       .values({
@@ -1011,16 +1032,18 @@ export async function addPerformanceAttachment(
         mimeType: p.mimeType,
         sizeBytes: p.content.byteLength,
         uploadedByUserId: ctx.userId ?? null,
+        evidenceId:evidence?.evidenceId??null,
       })
       .returning({ id: performanceAttachment.id });
+    if(p.kpiId&&!evidence)await linkAssessmentAttachmentTx(tx,ctx,p.reviewId,row.id,p.kpiId);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'performance-review',
       aggregateId: review.id,
       eventType: 'performance-attachment.added',
       actor: actorOf(ctx),
-      subjectEmploymentId: review.employmentId,
-      payload: { stageKind: p.stageKind, fileName: p.fileName, sizeBytes: p.content.byteLength },
+      subjectEmploymentId: !evidence||evidence.auditSubject?review.employmentId:undefined,
+      payload: evidence?{evidenceId:evidence.evidenceId,sizeBytes:p.content.byteLength}:{ stageKind: p.stageKind, fileName: p.fileName, sizeBytes: p.content.byteLength },
     });
     return { id: row.id };
   });
@@ -2241,7 +2264,7 @@ export async function submitPeerFeedback(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the OneHR feedback form for this request.'); }
+    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
     if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.insert(peerFeedback).values({
@@ -2268,7 +2291,7 @@ export async function submitPeerFeedback(
 export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the OneHR feedback form for this request.'); }
+    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
     if (!rq) throw new PerfError('Feedback request not found');
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));

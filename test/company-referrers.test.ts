@@ -524,12 +524,35 @@ describe('§2 the panel and the delete guard give the same answer, for every dis
     const original = await bare();
     const [cycle] = await owner.db.insert(schema.reviewCycle).values({ tenantId: b.tenantId, name: 'Group calibration', periodStart: '2026-01-01', periodEnd: '2026-12-31', ratingScale: [] }).returning();
     await owner.db.insert(schema.onehrCycle).values({ tenantId: b.tenantId, cycleId: cycle.id, policy: {} });
-    await owner.db.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId: cycle.id, companyId: original, name: 'Retained cohort scope', tier: 'bu', reviewerUserIds: [b.adminUserId] });
+    await withTenant(ADMIN(), tx => tx.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId: cycle.id, companyId: original, name: 'Retained cohort scope', tier: 'bu', reviewerUserIds: [b.adminUserId] }));
     expect(await companyDeleteStatus(ADMIN(), original)).toEqual({ canDelete: true, blockedBy: 'other' });
     expect(await attempt(ADMIN(), original)).toBe('other');
     expect(await exists(original)).toBe(true);
     const [outside] = await withTenant(scopedAdmin(b.companyId), tx => tx.execute(sql`select app.onehr_calibration_company_in_use(${original}::uuid) as used`));
     expect(outside.used).toBe(false);
+  });
+
+  it.each(['catalogue','profit'] as const)('retains a company used only by a group-cycle %s without exposing its data', async kind => {
+    const original=await bare(),day=todayInKualaLumpur();
+    const [cycle]=await owner.db.insert(schema.reviewCycle).values({tenantId:b.tenantId,name:'Group assessment setup',periodStart:day,periodEnd:day,ratingScale:[]}).returning();
+    await owner.db.insert(schema.onehrCycle).values({tenantId:b.tenantId,cycleId:cycle.id,policy:{}});
+    if(kind==='catalogue')await withTenant(ADMIN(),tx=>tx.insert(schema.assessmentCatalogue).values({tenantId:b.tenantId,scopeKey:original,companyId:original,catalogue:{profiles:[],skills:[],careerRoutes:[]},sourceCycleId:cycle.id,updatedBy:b.adminUserId}));
+    else await withTenant(ADMIN(),tx=>tx.insert(schema.assessmentProfitAchievement).values({tenantId:b.tenantId,cycleId:cycle.id,companyId:original,achievementPct:'95',updatedBy:b.adminUserId}));
+    const context=scopedAdmin(original);
+    expect(await companyDeleteStatus(context,original)).toEqual({canDelete:true,blockedBy:'other'});
+    expect(await attempt(context,original)).toBe('other');expect(await exists(original)).toBe(true);
+    const query=kind==='catalogue'?sql`select app.assessment_catalogue_company_in_use(${original}::uuid) as used`:sql`select app.assessment_profit_company_in_use(${original}::uuid) as used`;
+    for(const ctx of [scopedAdmin(b.companyId),member()]){const [outside]=await withTenant(ctx,tx=>tx.execute(query));expect(outside.used).toBe(false);}
+  });
+
+  it.each(['company','group'] as const)('retains the KPI library %s scope without exposing it outside admin scope',async kind=>{
+    const original=await bare();
+    await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,name:'Retained KPI',template:{},...(kind==='company'?{companyId:original}:{groupCompanyId:original})});
+    const context=scopedAdmin(original);
+    expect(await companyDeleteStatus(context,original)).toEqual({canDelete:true,blockedBy:'other'});
+    expect(await attempt(context,original)).toBe('other');expect(await exists(original)).toBe(true);
+    const query=kind==='company'?sql`select app.performance_kpi_library_company_in_use(${original}::uuid) as used`:sql`select app.performance_kpi_library_group_in_use(${original}::uuid) as used`;
+    for(const ctx of [scopedAdmin(b.companyId),member()]){const [outside]=await withTenant(ctx,tx=>tx.execute(query));expect(outside.used).toBe(false);}
   });
 
   it('the org structure goes with the company when nothing outside uses it', async () => {

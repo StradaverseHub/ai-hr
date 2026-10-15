@@ -1,0 +1,1104 @@
+{
+  "source": "Isolated tbLPass/tbColValues/tbSortVal and tbPaintList comparator",
+  "sourceSha256": "99de6223726ec5df9296368e8c84bce2629d5cc1d84721410621f2994a04b68c",
+  "cases": [
+    {
+      "filters": {},
+      "category": "",
+      "sort": {
+        "column": "box",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "a",
+        "f",
+        "c",
+        "e",
+        "b",
+        "d"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 2",
+          "Alice 10",
+          "Cara Lee",
+          "Dan Tan",
+          "Eve Lim",
+          "Fara Amin"
+        ],
+        "department": [
+          "Finance",
+          "Operations",
+          ""
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12",
+          ""
+        ],
+        "performance": [
+          "UA",
+          "BE",
+          "ME",
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "Low",
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star",
+          "Star",
+          "Solid Core",
+          "PIP"
+        ]
+      }
+    },
+    {
+      "filters": {},
+      "category": "",
+      "sort": {
+        "column": "grade",
+        "direction": 1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "b",
+        "c",
+        "f",
+        "a",
+        "e",
+        "d"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 2",
+          "Alice 10",
+          "Cara Lee",
+          "Dan Tan",
+          "Eve Lim",
+          "Fara Amin"
+        ],
+        "department": [
+          "Finance",
+          "Operations",
+          ""
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12",
+          ""
+        ],
+        "performance": [
+          "UA",
+          "BE",
+          "ME",
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "Low",
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star",
+          "Star",
+          "Solid Core",
+          "PIP"
+        ]
+      }
+    },
+    {
+      "filters": {},
+      "category": "",
+      "sort": {
+        "column": "grade",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "a",
+        "e",
+        "c",
+        "f",
+        "b",
+        "d"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 2",
+          "Alice 10",
+          "Cara Lee",
+          "Dan Tan",
+          "Eve Lim",
+          "Fara Amin"
+        ],
+        "department": [
+          "Finance",
+          "Operations",
+          ""
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12",
+          ""
+        ],
+        "performance": [
+          "UA",
+          "BE",
+          "ME",
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "Low",
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star",
+          "Star",
+          "Solid Core",
+          "PIP"
+        ]
+      }
+    },
+    {
+      "filters": {},
+      "category": "",
+      "sort": {
+        "column": "name",
+        "direction": 1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "b",
+        "a",
+        "c",
+        "d",
+        "e",
+        "f"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 2",
+          "Alice 10",
+          "Cara Lee",
+          "Dan Tan",
+          "Eve Lim",
+          "Fara Amin"
+        ],
+        "department": [
+          "Finance",
+          "Operations",
+          ""
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12",
+          ""
+        ],
+        "performance": [
+          "UA",
+          "BE",
+          "ME",
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "Low",
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star",
+          "Star",
+          "Solid Core",
+          "PIP"
+        ]
+      }
+    },
+    {
+      "filters": {
+        "department": [
+          "Finance"
+        ]
+      },
+      "category": "",
+      "sort": {
+        "column": "potential",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "a",
+        "f",
+        "b"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 2",
+          "Alice 10",
+          "Fara Amin"
+        ],
+        "department": [
+          "Finance",
+          "Operations",
+          ""
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12"
+        ],
+        "performance": [
+          "ME",
+          "AE"
+        ],
+        "potential": [
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star",
+          "Star",
+          "Solid Core"
+        ]
+      }
+    },
+    {
+      "filters": {
+        "department": [
+          "Finance"
+        ],
+        "grade": [
+          "12"
+        ]
+      },
+      "category": "",
+      "sort": {
+        "column": "box",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "a"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 10"
+        ],
+        "department": [
+          "Finance",
+          "Operations"
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12"
+        ],
+        "performance": [
+          "AE"
+        ],
+        "potential": [
+          "High"
+        ],
+        "box": [
+          "Super Star"
+        ]
+      }
+    },
+    {
+      "filters": {
+        "department": [
+          "Finance"
+        ],
+        "grade": [
+          "2",
+          "12"
+        ]
+      },
+      "category": "Star",
+      "sort": {
+        "column": "box",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [],
+      "expectedValues": {
+        "name": [],
+        "department": [
+          "Finance"
+        ],
+        "grade": [
+          "2",
+          "10",
+          "12"
+        ],
+        "performance": [],
+        "potential": [],
+        "box": []
+      }
+    },
+    {
+      "filters": {},
+      "category": "Moved",
+      "sort": {
+        "column": "box",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "a",
+        "f",
+        "c"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 10",
+          "Cara Lee",
+          "Fara Amin"
+        ],
+        "department": [
+          "Finance",
+          "Operations"
+        ],
+        "grade": [
+          "10",
+          "12"
+        ],
+        "performance": [
+          "ME",
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star",
+          "Star"
+        ]
+      }
+    },
+    {
+      "filters": {
+        "grade": []
+      },
+      "category": "",
+      "sort": {
+        "column": "box",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [],
+      "expectedValues": {
+        "name": [],
+        "department": [],
+        "grade": [
+          "2",
+          "10",
+          "12",
+          ""
+        ],
+        "performance": [],
+        "potential": [],
+        "box": []
+      }
+    },
+    {
+      "filters": {
+        "department": [
+          ""
+        ]
+      },
+      "category": "PIP/Improvement",
+      "sort": {
+        "column": "performance",
+        "direction": 1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "d"
+      ],
+      "expectedValues": {
+        "name": [
+          "Dan Tan"
+        ],
+        "department": [
+          ""
+        ],
+        "grade": [
+          ""
+        ],
+        "performance": [
+          "UA"
+        ],
+        "potential": [
+          "Low"
+        ],
+        "box": [
+          "PIP"
+        ]
+      }
+    },
+    {
+      "filters": {
+        "performance": [
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "High"
+        ]
+      },
+      "category": "",
+      "sort": {
+        "column": "name",
+        "direction": -1
+      },
+      "rows": [
+        {
+          "id": "a",
+          "name": "Alice 10",
+          "department": "Finance",
+          "grade": "12",
+          "performance": "AE",
+          "potential": "High",
+          "moved": true
+        },
+        {
+          "id": "b",
+          "name": "Alice 2",
+          "department": "Finance",
+          "grade": "2",
+          "performance": "ME",
+          "potential": "Mid",
+          "moved": false
+        },
+        {
+          "id": "c",
+          "name": "Cara Lee",
+          "department": "Operations",
+          "grade": "10",
+          "performance": "OU",
+          "potential": "Mid",
+          "moved": true
+        },
+        {
+          "id": "d",
+          "name": "Dan Tan",
+          "department": "",
+          "grade": "",
+          "performance": "UA",
+          "potential": "Low",
+          "moved": false
+        },
+        {
+          "id": "e",
+          "name": "Eve Lim",
+          "department": "Operations",
+          "grade": "12",
+          "performance": "BE",
+          "potential": "High",
+          "moved": false
+        },
+        {
+          "id": "f",
+          "name": "Fara Amin",
+          "department": "Finance",
+          "grade": "10",
+          "performance": "ME",
+          "potential": "High",
+          "moved": true
+        }
+      ],
+      "expectedIds": [
+        "a"
+      ],
+      "expectedValues": {
+        "name": [
+          "Alice 10"
+        ],
+        "department": [
+          "Finance"
+        ],
+        "grade": [
+          "12"
+        ],
+        "performance": [
+          "BE",
+          "ME",
+          "AE",
+          "OU"
+        ],
+        "potential": [
+          "Mid",
+          "High"
+        ],
+        "box": [
+          "Super Star"
+        ]
+      }
+    }
+  ]
+}

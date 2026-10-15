@@ -18,6 +18,22 @@ afterEach(async () => {
   document.body.style.width = '';
   await page.viewport(1280, 720);
 });
+for(const navigation of [false,true])for(const width of [390,1440]){
+ it(`keeps the Current workspace header above usable content at ${width}px with navigation=${navigation}`,async()=>{
+  await page.viewport(width,900);html.setAttribute('data-ui-theme','current');document.body.style.width=`${width}px`;
+  render(<div data-app-shell className="flex h-full gap-3 lg:gap-4" style={{height:700,width:'100%'}}>
+   {navigation&&<nav data-current-navigation aria-label="Global navigation">My HR · My Team</nav>}
+   <div data-app-content className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
+    <header data-app-header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)]"><div>Company context</div><div>Search</div><div>Account</div></header>
+    <main className="relative min-w-0 flex-1 overflow-y-auto"><h1>Performance</h1><label>Career aspiration<textarea defaultValue="Develop my practice"/></label></main>
+   </div>
+  </div>);
+  const main=screen.getByRole('main').getBoundingClientRect(),header=document.querySelector('[data-app-header]')!.getBoundingClientRect();
+  expect(main.width).toBeGreaterThan(width*.9);expect(main.left).toBeGreaterThanOrEqual(0);expect(main.right).toBeLessThanOrEqual(width);
+  expect(main.top).toBeGreaterThanOrEqual(header.bottom);
+  expect(screen.getByRole('textbox',{name:'Career aspiration'})).toBeVisible();
+ });
+}
 for (const dark of [false, true]) {
   for (const width of [390, 1440]) {
     describe(`Current at ${width}px, dark=${dark}`, () => {

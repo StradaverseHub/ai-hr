@@ -1,0 +1,1 @@
+Calibration is where leaders review everyone's performance and potential ratings side by side, so the same standard is applied across teams and one manager isn't harsher or softer than another. Your band can move up or down there, and a reason is recorded when it does. There is nothing you need to do for it -- it happens after you submit.

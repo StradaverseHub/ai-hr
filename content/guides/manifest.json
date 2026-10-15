@@ -189,6 +189,132 @@
       "audience": "hr_admin",
       "category": "communications",
       "order": 27
+    },
+    {
+      "slug": "performance-faq-kpi-justification",
+      "title": "How to write a KPI result justification",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 100
+    },
+    {
+      "slug": "performance-faq-good-360-comment",
+      "title": "What makes a good 360 feedback comment",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 101
+    },
+    {
+      "slug": "performance-faq-star-justification",
+      "title": "Writing a strong justification (STAR)",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 102
+    },
+    {
+      "slug": "performance-faq-smart-development-goal",
+      "title": "Writing a SMART development goal",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 103
+    },
+    {
+      "slug": "performance-faq-mobility-preference",
+      "title": "Choosing a mobility preference",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 104
+    },
+    {
+      "slug": "performance-faq-review-overview",
+      "title": "What this review covers",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 105
+    },
+    {
+      "slug": "performance-faq-kpi-check-in",
+      "title": "What the KPI check-in is",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 106
+    },
+    {
+      "slug": "performance-faq-performance-band",
+      "title": "What your performance rating means",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 107
+    },
+    {
+      "slug": "performance-faq-360-feedback-about",
+      "title": "What the 360 feedback is",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 108
+    },
+    {
+      "slug": "performance-faq-competency-assessment-about",
+      "title": "What the competency self-assessment is",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 109
+    },
+    {
+      "slug": "performance-faq-potential-band",
+      "title": "What your potential rating means",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 110
+    },
+    {
+      "slug": "performance-faq-calibration-about",
+      "title": "What calibration is",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 111
+    },
+    {
+      "slug": "performance-faq-development-plan-about",
+      "title": "What the development plan is",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 112
+    },
+    {
+      "slug": "performance-faq-career-profile-about",
+      "title": "What the career profile is",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 113
+    },
+    {
+      "slug": "performance-faq-after-submit",
+      "title": "What happens after you submit",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 114
+    },
+    {
+      "slug": "performance-faq-confidentiality",
+      "title": "Who can see my review, and is the 360 anonymous",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 115
+    },
+    {
+      "slug": "performance-faq-rating-scale",
+      "title": "How the ratings work",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 116
+    },
+    {
+      "slug": "performance-faq-rating-distribution",
+      "title": "What rating should I expect (why Outstanding is rare)",
+      "audience": "employee",
+      "category": "performance-faq",
+      "order": 117
     }
   ],
   "reviewedOn": "2026-10-12"

@@ -4,6 +4,7 @@
  * mapped to the generic AiGatewayError so no key fragment or raw SDK body escapes.
  */
 import Anthropic from '@anthropic-ai/sdk';
+import { AiImageReadError,imageReadError,imageReadInstruction } from '../image-protocol';
 import {
   AiGatewayError,
   finiteOrZero,
@@ -40,16 +41,24 @@ function converseClient(apiKey: string, timeoutMs: number | undefined): Anthropi
 
 export const anthropicAdapter: AiAdapter = {
   provider: 'anthropic',
+  async readImage(cfg,args){
+    try{
+      const result=await new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).messages.create({model:cfg.model,max_tokens:2500,system:imageReadInstruction,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}]},{signal:args.signal});
+      if(result.stop_reason==='refusal')throw new AiImageReadError(false);
+      return result.content.filter((part):part is Anthropic.TextBlock=>part.type==='text').map(part=>part.text).join('\n');
+    }catch(error){throw imageReadError(error);}
+  },
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const message = await client(cfg.apiKey).messages.create({
+      const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
         thinking: { type: 'adaptive' },
         system: args.system,
         messages: [{ role: 'user', content: args.prompt }],
-      });
+      },args.signal?{signal:args.signal}:undefined);
+      if(args.signal&&(message.stop_reason==='max_tokens'||message.stop_reason==='refusal'))throw new AiGatewayError('No complete assessment was produced.');
       return message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)

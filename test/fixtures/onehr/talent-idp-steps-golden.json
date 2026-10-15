@@ -1,0 +1,41 @@
+[
+  {
+    "steps": [
+      "Agree the support you'll give and check progress mid-year."
+    ],
+    "expected": [
+      "Their line manager agrees the support they'll give and checks progress mid-year."
+    ]
+  },
+  {
+    "steps": [
+      "Talk through where your view and Nadia's differ."
+    ],
+    "expected": [
+      "Their line manager talks through where their view and Nadia's differ."
+    ]
+  },
+  {
+    "steps": [
+      "Check your evidence.",
+      "You should decide.",
+      "You'll review it.",
+      "Ask Nadia where they want to be.",
+      "Add a goal on Service."
+    ],
+    "expected": [
+      "Ask Nadia where they want to be.",
+      "Add a goal on Service."
+    ]
+  },
+  {
+    "steps": [
+      "Discuss the results.",
+      "Check Yorkshire delivery."
+    ],
+    "expected": [
+      "Discuss the results.",
+      "Check Yorkshire delivery."
+    ]
+  }
+]
