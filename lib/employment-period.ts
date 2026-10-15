@@ -1,3 +1,4 @@
+export const EMPLOYMENT_PERIOD_UNITS = ['month','week','day'] as const;
 /**
  * A DATE PLUS AN EMPLOYMENT PERIOD — the one piece of calendar arithmetic behind every "probation ends on"
  * figure (r392, item 685d2380 step 1).

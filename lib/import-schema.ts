@@ -38,6 +38,7 @@ export type ImportPreview = {
 };
 
 export type ImportResult = {
+  warnings?:string[];
   companyId: string;
   imported: number;
   failed: { rowNum: number; email: string; message: string }[];
@@ -115,7 +116,7 @@ export function importRunOutcome(r: {
   return (r.totalRows ?? 0) > 0 ? 'succeeded' : 'failed';
 }
 
-/** Columns the importer recognises. Required ones must be present and non-empty per row.
+/** Columns the importer recognises. Required columns come from the shared Personnel declaration. Conditional salary/identity rules are validated by their owners.
  *  employee_code is OPTIONAL (38668d9b gives HR the ABILITY to key in an Employee ID, not an
  *  obligation): when the column is absent or a cell is blank, hireEmployee auto-generates the
  *  next code; when supplied it is validated (format + file/tenant uniqueness). */

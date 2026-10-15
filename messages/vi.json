@@ -1963,7 +1963,9 @@
       "verdictUpdate": "Cập nhật",
       "verdictSkip": "Không đổi",
       "verdictCreate": "Không tìm thấy",
-      "verdictBlocked": "Bị chặn"
+      "verdictBlocked": "Bị chặn",
+      "fieldValue": "Giá trị",
+      "fieldUnit": "Đơn vị"
     },
     "wizard": {
       "fields": {

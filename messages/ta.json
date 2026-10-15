@@ -1963,7 +1963,9 @@
       "verdictUpdate": "புதுப்பிப்பு",
       "verdictSkip": "மாற்றம் இல்லை",
       "verdictCreate": "கண்டறியப்படவில்லை",
-      "verdictBlocked": "தடுக்கப்பட்டது"
+      "verdictBlocked": "தடுக்கப்பட்டது",
+      "fieldValue": "மதிப்பு",
+      "fieldUnit": "அலகு"
     },
     "wizard": {
       "fields": {

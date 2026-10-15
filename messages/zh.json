@@ -1963,7 +1963,9 @@
       "verdictUpdate": "更新",
       "verdictSkip": "无改动",
       "verdictCreate": "未找到",
-      "verdictBlocked": "已阻止"
+      "verdictBlocked": "已阻止",
+      "fieldValue": "数值",
+      "fieldUnit": "单位"
     },
     "wizard": {
       "fields": {

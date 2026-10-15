@@ -1,4 +1,4 @@
-import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS } from './personnel-import-contract';
+import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS } from './personnel-import-contract';
 /**
  * Item 2983802f — PER-SECTION IMPORT: the column contract, the fence, and the shared result shapes.
  *
@@ -125,6 +125,7 @@ const EMPLOYMENT_COLUMNS = [
   'resignation_notice_months',
   'resignation_notice_days',
   'direct_superior',
+  ...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>field.import.column!).filter(column=>column!=='confirmation_date'),
 ] as const;
 
 /**

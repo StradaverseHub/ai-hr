@@ -1,4 +1,4 @@
-import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 import { setPersonComplianceFields } from './profile';
 /**
@@ -190,20 +190,7 @@ type DependentPatch = {
  * legacy column, as this importer first did, produced a run that reported success and changed nothing
  * the user could see for any employee whose Employment tab had been saved once.
  */
-type EmploymentInfoPatch = Partial<
-  Record<
-    | 'probationMonths'
-    | 'probationDays'
-    | 'confirmationDate'
-    | 'resignationNoticeMonths'
-    | 'resignationNoticeDays'
-    | 'probationValue'
-    | 'probationUnit'
-    | 'noticeBeforeConfirmationValue'
-    | 'noticeBeforeConfirmationUnit',
-    string
-  >
->;
+type EmploymentInfoPatch = Partial<Record<keyof import('./org').EmploymentInfoInput,string>>;
 
 /** Everything one valid row will do at commit. Built in the dry run; applied verbatim afterwards. */
 type ResolvedSectionRow = {
@@ -230,7 +217,7 @@ type ResolvedSectionRow = {
  *  are rollback history only). */
 const PROFILE_PERSON_COLUMNS = Object.fromEntries(PERSONNEL_PROFILE_IMPORT_FIELDS.map(field=>[field.import.column!,field.import.writerField!])) as Record<string,keyof PersonProfileFields>;
 const PROFILE_CATALOG_CATEGORY: Record<string,string> = {
-  ...Object.fromEntries(PERSONNEL_PROFILE_IMPORT_FIELDS.filter(field=>field.import.catalog).map(field=>[field.import.column!,field.import.catalog!])),
+  ...Object.fromEntries([...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS].filter(field=>field.import.catalog).map(field=>[field.import.column!,field.import.catalog!])),
   passport_issuing_country:'nationality',
 };
 
@@ -363,7 +350,7 @@ async function analyze(
           changes,
         });
       else if (section === 'employment')
-        buildEmployment(cell, subject, row, { superiorByCode, superiorByEmail, errors, changes });
+        buildEmployment(cell, subject, row, { catalog,superiorByCode, superiorByEmail, errors, changes });
       else if (section === 'bank_statutory') buildBankStatutory(cell, subject, row, { errors, changes });
       else buildFamily(rec, cell, subject, row, { catalog, errors, warnings, changes });
     }
@@ -378,7 +365,7 @@ async function analyze(
     // handful of rows that really do move. `changes` is the truth here — every section pushes a column
     // onto it only when the cell DIFFERS from what is stored.
     const willWrite =
-      row.personPatch || row.ic || row.passport || row.bank || row.tax || row.employmentInfo ||
+      row.personPatch || row.compliance || row.ic || row.passport || row.bank || row.tax || row.employmentInfo ||
       row.superiorEmploymentId || row.dependent;
     if (subject && errors.length === 0 && (!willWrite || changes.length === 0)) {
       row.result.verdict = 'skip';
@@ -423,6 +410,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         primaryEmail: person.primaryEmail,
         phone: person.phone,
         country: company.country,
+        ...Object.fromEntries(PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>[field.import.writerField!, employment[field.import.writerField! as keyof typeof employment] as typeof employment.contractStartDate])),
         salutation:person.salutation,firstName:person.firstName,lastName:person.lastName,preferredName:person.preferredName,nationality:person.nationality,religion:person.religion,race:person.race,homePhone:person.homePhone,personalEmail:person.personalEmail,
         correspondenceAddressLine1:person.correspondenceAddressLine1,correspondenceAddressLine2:person.correspondenceAddressLine2,correspondenceAddressLine3:person.correspondenceAddressLine3,correspondencePostcode:person.correspondencePostcode,correspondenceCity:person.correspondenceCity,correspondenceState:person.correspondenceState,correspondenceCountry:person.correspondenceCountry,correspondenceMobilePhone:person.correspondenceMobilePhone,correspondenceHomePhone:person.correspondenceHomePhone,
         dateOfBirth:person.dateOfBirth,gender:person.gender,maritalStatus:person.maritalStatus,
@@ -520,6 +508,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
           emergencyContactAddress: r.emergencyContactAddress,
         },
         employmentRow: {
+          ...Object.fromEntries(PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>[field.import.writerField!, (r as unknown as Record<string,string|number|null>)[field.import.writerField!]??null])),
           probationValue: r.probationValue,
           probationUnit: r.probationUnit,
           probationMonths: r.probationMonths,
@@ -753,11 +742,23 @@ function buildEmployment(
   cell: (c: string) => string | undefined,
   subject: Subject,
   row: ResolvedSectionRow,
-  x: BuildCtx & { superiorByCode: Map<string, string>; superiorByEmail: Map<string, string> },
+  x: BuildCtx & { catalog:Map<string,Set<string>>;superiorByCode: Map<string, string>; superiorByEmail: Map<string, string> },
 ) {
   const { errors, changes } = x;
   const info: EmploymentInfoPatch = {};
   const stored = subject.employmentRow;
+  for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
+    const column=field.import.column!;const value=cell(column);if(value===undefined)continue;
+    const issue=personnelScalarIssue(field,value);if(issue){errors.push(`${column}: invalid ${issue} value`);continue;}
+    const checked=catalogValue(value,column,x.catalog,errors);if(checked===undefined)continue;
+    (info as Record<string,string>)[field.import.writerField!]=checked;
+    if(checked!==String(stored[field.import.writerField!]??''))changes.push(column);
+  }
+  for(const [legacyA,legacyB,valueColumn,unitColumn] of [
+    ['probation_months','probation_days','probation_value','probation_unit'],
+    ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],
+  ])if((cell(legacyA)!==undefined||cell(legacyB)!==undefined)&&(cell(valueColumn)!==undefined||cell(unitColumn)!==undefined))errors.push(`Use the current ${valueColumn}/${unitColumn} columns or the older month/day columns, not both`);
+
 
   /** A whole number of months or days, or a named error. `undefined` when the cell is blank/absent. */
   const period = (column: string): number | undefined => {

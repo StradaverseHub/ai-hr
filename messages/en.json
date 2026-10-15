@@ -1963,7 +1963,9 @@
       "verdictUpdate": "Update",
       "verdictSkip": "No change",
       "verdictCreate": "Not found",
-      "verdictBlocked": "Blocked"
+      "verdictBlocked": "Blocked",
+      "fieldValue": "Value",
+      "fieldUnit": "Unit"
     },
     "wizard": {
       "fields": {

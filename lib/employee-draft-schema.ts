@@ -38,7 +38,7 @@ import { isCalendarDate } from './calendar-date';
  */
 import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
 import { copyPermanentToCorrespondence } from './address-blocks';
-import { addEmploymentPeriod } from './employment-period';
+import { addEmploymentPeriod, EMPLOYMENT_PERIOD_UNITS } from './employment-period';
 import { bankTransferLacksBank } from './payment-methods';
 import { customHolderGaps, type CustomHolder } from './custom-holder';
 
@@ -211,7 +211,7 @@ export type EmployeeDraftEmployment = {
 /** The period units `setEmploymentInfo` accepts (core/org.ts `EMPLOYMENT_PERIOD_UNITS`), restated here
  *  so the client-side rule below and the shared field group can both read them without importing a
  *  server module. `test/draft-activation-field-survival.test.ts` pins the two lists equal. */
-export const DRAFT_PERIOD_UNITS = ['month', 'week', 'day'] as const;
+export const DRAFT_PERIOD_UNITS = EMPLOYMENT_PERIOD_UNITS;
 
 export type EmployeeDraftStatutory = {
   bankName?: string;

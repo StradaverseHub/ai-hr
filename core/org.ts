@@ -1,3 +1,4 @@
+import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Organizational lifecycle services (ADR-0003). Each mutation runs inside `withTenant`
  * (one transaction, RLS scoped to the session) and appends a domain event before returning.
@@ -36,7 +37,7 @@ import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile
 // 23ad620e — the emergency contact is a per-person register now, not five person columns.
 import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { addEmploymentPeriod } from '../lib/employment-period';
+import { addEmploymentPeriod, EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 import { PAYMENT_METHODS, bankTransferLacksBank, type PaymentMethod } from '../lib/payment-methods';
 import {
   person,
@@ -2579,7 +2580,7 @@ const EMPLOYMENT_INFO_UNIT_FIELDS = [
   'noticeAfterConfirmationUnit',
 ] as const;
 
-export const EMPLOYMENT_PERIOD_UNITS = ['month', 'week', 'day'] as const;
+export { EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 
 const EMPLOYMENT_INFO_DATE_FIELDS = [
   // 89ea527b — joinDate is NOT in this list any more: it is movement-only (accepted above solely under the
@@ -2720,7 +2721,7 @@ export async function setEmploymentInfo(
   // extendedConfirmationDate) rather than rejected, so a stale/tampered form cannot mutate it either.
   if (p.hiredOn !== undefined && p.movement?.type === 'groupJoinDateCorrection') {
     const v = String(p.hiredOn).trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Hire date is required and must be a valid date.');
+    if (!isCalendarDate(v)) throw new Error('Hire date is required and must be a valid date.');
     set.hiredOn = v;
   }
   // 89ea527b — the current-company Join Date is MOVEMENT-ONLY too (`joinDateChange`): it is what changes when
@@ -2740,14 +2741,14 @@ export async function setEmploymentInfo(
     (p.movement?.type === 'joinDateChange' || p.movement?.type === 'entityTransfer')
   ) {
     const v = p.joinDate == null ? null : String(p.joinDate).trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.joinDate = v || null;
   }
   for (const f of EMPLOYMENT_INFO_DATE_FIELDS) {
     const raw = p[f];
     if (raw === undefined) continue;
     const v = raw == null ? null : String(raw).trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set[f] = v || null;
   }
   // d27961e3 — Extended Confirmation Date left the Employment Dates form: probation extensions are managed
@@ -2756,7 +2757,7 @@ export async function setEmploymentInfo(
   // so the movement writer stays the single mutator. Derivation + ordering guards below are unchanged.
   if (p.extendedConfirmationDate !== undefined && p.movement?.type === 'probationExtension') {
     const v = p.extendedConfirmationDate == null ? null : String(p.extendedConfirmationDate).trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.extendedConfirmationDate = v || null;
   }
   for (const f of EMPLOYMENT_INFO_PERIOD_FIELDS) {

@@ -514,6 +514,7 @@ export function EmployeeImport({
           {/* Item 2983802f — the file was refused whole; nothing was written. Shown here as well as on the
               preview because a stale preview could have been confirmed against a file the server then
               re-checked and rejected. */}
+          {!!result.warnings?.length && <p role="status" className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{result.warnings.join(' ')}</p>}
           {result.fileErrors.length > 0 && (
             <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
               <div className="mb-1 font-semibold">{t('fileRejected')}</div>

@@ -1,4 +1,4 @@
-import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
@@ -750,6 +750,18 @@ async function analyze(
     period('resignation_notice_days', 'resignationNoticeDays');
     if (confirmationDate) employmentInfo.confirmationDate = confirmationDate;
 
+    for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
+      const {column,writerField,catalog:category}=field.import;const value=norm(rec[column!]);if(!value)continue;
+      const issue=personnelScalarIssue(field,value);if(issue){errors.push(`${column}: invalid ${issue} value`);continue;}
+      const checked=category?catalogField(value,category,column!):undefined;
+      if(checked?.kind==='refused')continue;
+      employmentInfo[writerField!]=checked?.kind==='ok'?checked.value:value;
+    }
+    for(const [legacyA,legacyB,valueColumn,unitColumn] of [
+      ['probation_months','probation_days','probation_value','probation_unit'],
+      ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],
+    ]) if((norm(rec[legacyA])||norm(rec[legacyB])) && (norm(rec[valueColumn])||norm(rec[unitColumn])))errors.push(`Use the current ${valueColumn}/${unitColumn} columns or the older month/day columns, not both`);
+
     // DIRECT SUPERIOR — recorded now, RESOLVED LATER (see the pass after this loop). Resolving here would
     // fail a perfectly valid file purely because the manager's row happens to come after the subordinate's.
     superiorRaw.push(norm(rec.direct_superior));
@@ -1097,13 +1109,20 @@ export async function commitEmployeeImport(
   // subordinate to a manager who was created by the SAME run.
   const employmentByRow = new Map<number, string>();
 
+  // The validated subset and its forward reporting links form one import operation. Domain
+  // writers share this explicit transaction; no failed file can leave a half-created employee.
+  const familySyncPersonIds=new Set<string>();
+  const writeFileErrors:string[]=[];
+  const writeWarnings:string[]=[];
+  try {
+    await withTenant(ctx,async tx=>{
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
     try {
-      const saved = await withTenant(ctx,async tx=>{
+      const saved = await (async()=>{
       const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
       let familyCount=0;
       await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
@@ -1156,13 +1175,14 @@ export async function commitEmployeeImport(
         familyCount++;
       }
       return {employmentId,personId,familyCount};
-      });
+      })();
       employmentByRow.set(index,saved.employmentId);
       dependentsImported+=saved.familyCount;
-      if(saved.familyCount)await syncChildReliefFromFamily(ctx,saved.personId);
+      if(saved.familyCount)familySyncPersonIds.add(saved.personId);
       imported++;
     } catch (e) {
       failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: publicErrorMessage(e) });
+      throw e;
     }
   }
 
@@ -1185,7 +1205,7 @@ export async function commitEmployeeImport(
         email: row.result.email,
         message: 'the direct superior named on this row was not imported',
       });
-      continue;
+      throw new Error('The direct superior named on this row was not imported.');
     }
     try {
       await setReportingLine(ctx, {
@@ -1193,19 +1213,19 @@ export async function commitEmployeeImport(
         managerEmploymentId: manager,
         lineType: 'administrative',
         validFrom: row.hire.hiredOn,
-      });
+      },tx);
     } catch (e) {
-      // The employee EXISTS — only the link failed. Reported apart from `failed` for exactly that reason.
+      // A reporting-link refusal aborts the enclosing import transaction as well.
       superiorFailed.push({
         rowNum: row.result.rowNum,
         email: row.result.email,
         message: publicErrorMessage(e),
       });
+      throw e;
     }
   }
 
-  await withTenant(ctx, (tx) =>
-    appendEvent(tx, {
+  await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-import',
       aggregateId: p.companyId,
@@ -1223,9 +1243,22 @@ export async function commitEmployeeImport(
         // Item 2983802f — the family sheet's contribution, so the audit trail describes the whole run.
         dependents: dependentsImported,
       },
-    }),
-  );
+    });
 
+    });
+  } catch(error) {
+    const first=failed[0]??superiorFailed[0];
+    const reason=first?.message??publicErrorMessage(error);
+    writeFileErrors.push(`No employee rows were written. The import was rolled back${first?` after row ${first.rowNum} was refused`:''}. ${reason}`);
+    failed.splice(0,failed.length,...valid.map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:first?.rowNum===row.result.rowNum?reason:'Not written because the import was rolled back.'})));
+    superiorFailed.splice(0);imported=0;dependentsImported=0;employmentByRow.clear();
+  }
+
+  // A post-commit refresh failure must never be described as a rolled-back employee import.
+  if(!writeFileErrors.length) for(const personId of familySyncPersonIds) {
+    try { const result=await syncChildReliefFromFamily(ctx,personId);if(result.skipped==='error')writeWarnings.push('Family records were saved; review the tax child-relief refresh on the Personnel record.'); }
+    catch { writeWarnings.push('Family records were saved; review the tax child-relief refresh on the Personnel record.'); }
+  }
   const runId = await recordImportRun(ctx, {
     companyId: p.companyId,
     fileName: p.fileName ?? '',
@@ -1242,7 +1275,8 @@ export async function commitEmployeeImport(
     skipped: resolved.length - valid.length,
     dependentsImported,
     superiorFailed,
-    fileErrors: [],
+    fileErrors: writeFileErrors,
+    warnings: [...new Set(writeWarnings)],
     runId,
   };
 }

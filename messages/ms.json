@@ -1963,7 +1963,9 @@
       "verdictUpdate": "Kemas kini",
       "verdictSkip": "Tiada perubahan",
       "verdictCreate": "Tidak dijumpai",
-      "verdictBlocked": "Disekat"
+      "verdictBlocked": "Disekat",
+      "fieldValue": "Nilai",
+      "fieldUnit": "Unit"
     },
     "wizard": {
       "fields": {

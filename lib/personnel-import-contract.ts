@@ -1,3 +1,4 @@
+import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
 import { isCalendarDate } from './calendar-date';
 import { GENDERS, MARITAL_STATUSES, PERSON_GENDER_LABEL_KEYS, PERSON_MARITAL_LABEL_KEYS } from './person-vocabulary';
 /** Client-safe presentation and file boundary for the authoritative Personnel descriptors.
@@ -33,7 +34,8 @@ const LEGACY_COMPOUND_COLUMNS: Record<string,{id:string;unit:string}> = {
 export function personnelColumnLabel(column: string, sheet: PersonnelImportSheet = 'employee', resolve?: PersonnelLabelResolver): string {
   const field = personnelImportField(column,sheet);
   if (field) {
-    const label=personnelFieldLabel(field,resolve);
+    const base=personnelFieldLabel(field,resolve);
+    const label=field.import.qualifier ? `${base} — ${resolve?.(`people.import.field${field.import.qualifier==='unit'?'Unit':'Value'}`,field.import.qualifier==='unit'?'Unit':'Value')??(field.import.qualifier==='unit'?'Unit':'Value')}` : base;
     const collisions=personnelImportFields(sheet).filter(other => personnelFieldLabel(other,resolve) === label);
     return collisions.length > 1 ? `${label} (${field.section})` : label;
   }
@@ -81,12 +83,14 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
   });
   return {headers,records,warnings};
 }
+export const PERSONNEL_EMPLOYMENT_IMPORT_FIELDS = PERSONNEL_FIELDS.filter(field=>field.import.writer==='employment-info');
 export const PERSONNEL_PROFILE_IMPORT_FIELDS = PERSONNEL_FIELDS.filter(f=>f.import.writer==='person-profile');
 export const PERSONNEL_COMPLIANCE_IMPORT_FIELDS = PERSONNEL_FIELDS.filter(f=>f.import.writer==='person-compliance');
 
 /** Scalar validation shared by Personnel and import. Cross-field decisions remain with owners. */
 export function personnelScalarIssue(field:PersonnelFieldDescriptor,value:string):string|null {
   if(!value.trim())return null;
+  if(field.import.writer==='employment-info' && field.type==='number' && (!Number.isSafeInteger(Number(value)) || Number(value)<0))return 'non-negative whole number';
   if(field.type==='date' && !isCalendarDate(value.trim()))return 'date';
   if(['primaryEmail','personalEmail'].includes(field.ownerField) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()))return 'email';
   const choices=personnelFieldChoices(field);
@@ -103,6 +107,7 @@ export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet
 }
 
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
+  if(field.allowedValuesOwner==='employment.periodUnit')return EMPLOYMENT_PERIOD_UNITS.map(value=>({value,labelKey:`people.detail.employmentInfo.unit_${value}`}));
   if(field.allowedValuesOwner==='person.gender')return GENDERS.map(value=>({value,labelKey:PERSON_GENDER_LABEL_KEYS[value]}));
   if(field.allowedValuesOwner==='person.maritalStatus')return MARITAL_STATUSES.map(value=>({value,labelKey:PERSON_MARITAL_LABEL_KEYS[value]}));
   return [];
