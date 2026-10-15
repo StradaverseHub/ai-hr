@@ -52,6 +52,16 @@ describe('grouped allowance decisions',()=>{
     expect(evaluate(group('and',[criterion('knownCount','leaveCount','1')]),ambiguous).state).toBe('true');
     expect(evaluate(group('and',[criterion('unknownDuration','leaveDays','0','eq','days')]),ambiguous).state).toBe('unknown');
   });
+  it('keeps an absent selected leave type at known zero while unrelated duration is ambiguous',()=>{
+    const days=[day({v3Facts:{...day().v3Facts!,leave:null,leaveTypesPresent:[typeId,otherType]}})],absent='33333333-3333-4333-8333-333333333333';
+    expect(evaluate(group('and',[{...criterion('absent','leaveDays','0','eq','days'),leaveTypeIds:[absent]}]),days).state).toBe('true');
+    expect(evaluate(group('and',[{...criterion('unknown','leaveDays','0','eq','days'),leaveTypeIds:[typeId]}]),days).state).toBe('unknown');
+    const legacy=[day({v3Facts:{...day().v3Facts!,leave:null,leaveTypesPresent:[],leaveUnknownTypeIds:[typeId],absenceKnown:false}})];
+    expect(evaluate(group('and',[criterion('count','leaveCount','0')]),legacy).state).toBe('unknown');
+    expect(evaluate(group('and',[criterion('absence','absenceCount','0')]),legacy).state).toBe('unknown');
+    expect(evaluate(group('and',[{...criterion('absent','leaveDays','0','eq','days'),leaveTypeIds:[absent]}]),legacy).state).toBe('true');
+  });
+
   it('compares exact hour thresholds and inclusive bounds with every operator',()=>{
     for(const [operator,value,expected] of [['eq','0.1','true'],['ne','0.1','false'],['gt','0.09','true'],['gte','0.1','true'],['lt','0.11','true'],['lte','0.1','true']] as const){
       expect(evaluate(group('and',[criterion('time','lateMinutes',value,operator,'hours')]),[day({lateMinutes:6})]).state).toBe(expected);
