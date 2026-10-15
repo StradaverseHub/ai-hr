@@ -119,11 +119,14 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other company'}).returning();
   const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Other department'}).returning();
   const own=await employee(),other=await employee('other-company@example.test',company.id,department.id);
+  await owner.db.update(schema.employment).set({employeeCode:'OWN-001'}).where(eq(schema.employment.id,own.employmentId));
+  await owner.db.update(schema.employment).set({employeeCode:'FOREIGN-001'}).where(eq(schema.employment.id,other.employmentId));
   await consent(own);await consent(other);await event(own.employmentId);const foreignEvent=await event(other.employmentId);await dispatchNotifications(adminCtx(b));
   const jobs=await deliveries(),ownJob=jobs.find(d=>d.recipientUserId===own.ctx.userId)!,foreignJob=jobs.find(d=>d.recipientUserId===other.ctx.userId)!;
   expect(jobs).toHaveLength(2);
   const scoped={...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:b.companyId}]};
-  expect((await readNotificationEmailDeliveries(scoped)).map(d=>d.id)).toEqual([ownJob.id]);
+  expect((await readNotificationEmailDeliveries(scoped)).map(d=>({id:d.id,code:d.recipientCode}))).toEqual([{id:ownJob.id,code:'OWN-001'}]);
+  expect((await withTenant(scoped,tx=>tx.execute(sql`select app.notification_email_recipient_code(${foreignJob.id}::uuid) as code`)))[0].code).toBeNull();
   const due=await withTenant(scoped,tx=>tx.execute(sql`select * from app.notification_email_due(50)`)) as unknown as {id:string}[];
   expect(due.map(d=>d.id)).toEqual([ownJob.id]);
   const offline:NotificationEmailTransport=async<T>()=>({version:1,ready:false} as T);

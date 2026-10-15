@@ -17078,6 +17078,8 @@
     "restrictedSetup": "Chỉ quản trị viên cài đặt đã đăng ký mới có thể xem hoặc thay đổi thiết lập SMTP thực tế. Hãy yêu cầu quản trị viên cài đặt hoàn tất thiết lập. Các trường này chỉ hiển thị cấu hình được hỗ trợ."
   },
   "workflowEmail": {
+    "recipientCode": "Mã nhân viên",
+    "deliveryReference": "Mã lần gửi",
     "title": "Email thông báo quy trình",
     "description": "Chọn cập nhật quy trình có thể gửi qua email. Mỗi nhân viên cũng chọn tùy chọn email riêng.",
     "preferencesTitle": "Email thông báo của tôi",

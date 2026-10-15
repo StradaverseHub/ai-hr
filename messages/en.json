@@ -17078,6 +17078,8 @@
     "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only."
   },
   "workflowEmail": {
+    "recipientCode": "Employee code",
+    "deliveryReference": "Delivery reference",
     "title": "Workflow email notifications",
     "description": "Choose which workflow updates may be emailed. Each employee also chooses their own email preferences.",
     "preferencesTitle": "My email notifications",

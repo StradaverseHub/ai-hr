@@ -17078,6 +17078,8 @@
     "restrictedSetup": "Hanya pentadbir pemasangan yang berdaftar boleh melihat atau mengubah tetapan SMTP sebenar. Minta pentadbir pemasangan melengkapkan persediaan. Medan ini hanya menunjukkan konfigurasi yang disokong."
   },
   "workflowEmail": {
+    "recipientCode": "Kod pekerja",
+    "deliveryReference": "Rujukan penghantaran",
     "title": "Pemberitahuan e-mel aliran kerja",
     "description": "Pilih kemas kini aliran kerja yang boleh dihantar melalui e-mel. Setiap pekerja juga memilih keutamaan e-mel sendiri.",
     "preferencesTitle": "Pemberitahuan e-mel saya",
