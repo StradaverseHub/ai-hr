@@ -65,6 +65,7 @@ import { packFor } from '../localization/registry';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isReplacementRequestEligibleTx } from './replacement-eligibility';
 import {
+  leaveCreditClaimReview,
   accrueExtendedWorkdayToilTx,
   accrueSelfDeclaredToilTx,
   extendedHoursDayForEmploymentTx,
@@ -85,6 +86,7 @@ import {
 // r219 — the reason union lives in lib/ so the service and the screens that EXPLAIN it share one list. A
 // reason this file can return that the notice map has no entry for fails to typecheck; see that file's
 // header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
+import type {LeaveCreditClaimReview} from '../lib/leave-credit-claim-review';
 import type { ReplacementUnavailableReason } from '../lib/replacement-availability';
 import { leaveCreditWindowCredit, type ExtendedHoursTiers } from '../lib/extended-hours';
 
@@ -1179,6 +1181,7 @@ export type PendingReplacementRequestRow = {
  * out rather than left null, so no screen has to carry a third case that means the same as the first.
  */
 export type ReplacementClaimLineView = {
+  claimReview?:LeaveCreditClaimReview;
   workedDate: string;
   days: number | null;
   fromTime: string | null;
@@ -1195,7 +1198,7 @@ export async function listPendingReplacementLeaveRequests(
   ctx: SessionContext,
   opts: { companyIds?: string[] } = {},
 ): Promise<PendingReplacementRequestRow[]> {
-  return withTenant(ctx, async (tx) => {
+  const pending=await withTenant(ctx, async (tx) => {
     const heads = await tx
       .select({
         id: replacementLeaveRequest.id,
@@ -1226,7 +1229,8 @@ export async function listPendingReplacementLeaveRequests(
       .select()
       .from(replacementLeaveRequestDate)
       .where(inArray(replacementLeaveRequestDate.requestId, heads.map((h) => h.id)))
-      .orderBy(replacementLeaveRequestDate.workedDate);
+      .orderBy(replacementLeaveRequestDate.workedDate).limit(5001);
+    if(lines.length>5000)throw new ReplacementRequestInvalidError('Narrow the pending Leave Credit review.');
     const byRequest = new Map<string, ReplacementClaimLineView[]>();
     for (const l of lines) {
       const arr = byRequest.get(l.requestId) ?? [];
@@ -1241,6 +1245,23 @@ export async function listPendingReplacementLeaveRequests(
       dates: byRequest.get(h.id) ?? [],
     }));
   });
+  const lineCount=pending.reduce((count,request)=>count+request.dates.length,0);
+  if(lineCount>5000)throw new ReplacementRequestInvalidError('Narrow the pending Leave Credit review.');
+  const exactReviews=new Map<string,LeaveCreditClaimReview>(),legacyDays=new Set<string>();
+  // Explicit concurrency bound = 1. No Promise.all or queued per-line pool transactions.
+  // Cache only owner-proven results; the adapter's legacy early exit never evaluates a formula.
+  for(const request of pending)for(const line of request.dates){
+    const dayKey=JSON.stringify([request.employmentId,line.workedDate]);
+    const key=JSON.stringify([request.employmentId,line.workedDate,line.fromTime,line.toTime]);
+    let review=exactReviews.get(key);
+    if(!review){
+      review=legacyDays.has(dayKey)?{basis:'legacy'}:await leaveCreditClaimReview(ctx,{employmentId:request.employmentId,workedDate:line.workedDate,claimStart:line.fromTime??undefined,claimEnd:line.toTime??undefined});
+      exactReviews.set(key,review);if(review.basis==='legacy')legacyDays.add(dayKey);
+    }
+    const routeMismatch=review.basis==='formula'&&((line.sourceType==='extended_hours')!==(review.workedDayKind==='workday'));
+    line.claimReview=review.basis==='formula'&&(routeMismatch||line.workedDayKind!==null&&review.workedDayKind!==line.workedDayKind)?{basis:'unavailable',reason:'stale'}:review;
+  }
+  return pending;
 }
 
 export type ReplacementRequestRow = {

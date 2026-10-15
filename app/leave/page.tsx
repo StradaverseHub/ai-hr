@@ -72,7 +72,7 @@ import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-le
 // and became Leave Credit History. The two actions still live beside it, in ./credit/actions, because the
 // Leave Credit actions (submit, the per-date facts, and the history's Cancel) are one module; the submit
 // lands back HERE with the confirmation.
-import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './credit/actions';
+import { leaveCreditClaimReviewAction, leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './credit/actions';
 // r219 (7966ee35) — …and, when that availability read says NO, the sentence saying why. The read has always
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
 // round changing Leave config settings against a cause that sits above Leave config.
@@ -705,6 +705,7 @@ export default async function LeavePage({
                   // Type is adjudicated against) plus the scheduled shift end and the actual clock-out. It
                   // replaces r336's pair of actions, one of which answered only for ordinary-day rows.
                   dayFactsAction={leaveCreditDayFactsAction}
+                  claimReviewAction={leaveCreditClaimReviewAction}
                   // r358 — the ladder applies to every day type; `ordinaryDayAllowed` is the switch, and
                   // it now decides one thing only: whether an Ordinary Day row can earn a credit here.
                   tiers={leaveCreditOffer?.tiers ?? null}

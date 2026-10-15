@@ -126,6 +126,7 @@ function mount(
         replacementType={{ id: 'lt-1', name: 'Replacement Leave' }}
         submitAction={() => {}}
         today="2026-09-24"
+        claimReviewAction={async()=>({basis:'legacy'})}
         dayFactsAction={vitestVi.fn(async (d: string) =>
           opts.factsFor ? opts.factsFor(d) : opts.facts === undefined ? REST_DAY_VIEW : opts.facts,
         )}

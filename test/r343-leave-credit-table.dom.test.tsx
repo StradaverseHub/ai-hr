@@ -128,6 +128,7 @@ function mount(
         replacementType={{ id: 'lt-1', name: 'Replacement Leave' }}
         submitAction={() => {}}
         today="2026-09-24"
+        claimReviewAction={async()=>({basis:'legacy'})}
         dayFactsAction={vitestVi.fn(opts.action ?? (async () => (opts.facts === undefined ? REST_DAY : opts.facts)))}
         // r358 — opts.tiers === null used to mean "extended hours off"; it is the SWITCH now, and
         // the ladder is always present because every day type uses it.
@@ -580,7 +581,8 @@ describe('r343 · the roster adjudicates — and after r360 the screen cannot be
           replacementType={{ id: 'lt-1', name: 'Replacement Leave' }}
           submitAction={() => {}}
           today="2026-09-24"
-          dayFactsAction={vitestVi.fn(async (d: string) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY))}
+          claimReviewAction={async()=>({basis:'legacy'})}
+        dayFactsAction={vitestVi.fn(async (d: string) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY))}
           tiers={TIERS}
           ordinaryDayAllowed
         />

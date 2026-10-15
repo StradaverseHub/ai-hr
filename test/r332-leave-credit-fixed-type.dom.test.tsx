@@ -52,6 +52,7 @@ function openDialog(locale: Locale) {
         replacementType={TENANT_TYPE}
         submitAction={vi.fn()}
         today="2026-09-17"
+        claimReviewAction={async()=>({basis:'legacy'})}
         dayFactsAction={NO_FACTS}
         // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
         // day earns nothing here". Those are two facts now: the ladder applies to every day type,
@@ -170,7 +171,8 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
           replacementType={other}
           submitAction={vi.fn()}
           today="2026-09-17"
-          dayFactsAction={NO_FACTS}
+          claimReviewAction={async()=>({basis:'legacy'})}
+        dayFactsAction={NO_FACTS}
           // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
           // day earns nothing here". Those are two facts now: the ladder applies to every day type,
           // and the switch governs the ordinary one alone.

@@ -27,6 +27,7 @@ import {
   isLeaveCreditDayType,
   leaveCreditGrantContext,
   leaveCreditGrantDayFacts,
+  leaveCreditGrantClaimReview,
   reverseLeaveCredit,
   type LeaveCreditGrantContext,
   type LeaveCreditRowInput,
@@ -60,6 +61,12 @@ export async function leaveCreditGrantContextAction(employmentId: string): Promi
  * this is the server→client boundary (test/server-client-boundary.test.ts). Rejects rather than returning
  * null on a server failure, so the table's retry is offered — the employee action's contract.
  */
+export async function leaveCreditGrantClaimReviewAction(workedDate:string,claimStart:string,claimEnd:string,employmentId?:string) {
+  const session=await requireAdmin();
+  if(!employmentId)return {basis:'unavailable' as const,reason:'unavailable' as const};
+  return leaveCreditGrantClaimReview(session,{employmentId,workedDate,claimStart,claimEnd});
+}
+
 export async function leaveCreditGrantDayFactsAction(workedDate: string, employmentId?: string) {
   const s = await requireAdmin();
   if (!employmentId || !/^\d{4}-\d{2}-\d{2}$/.test(workedDate)) return null;

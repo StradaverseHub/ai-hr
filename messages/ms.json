@@ -15149,6 +15149,27 @@
     "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
   },
   "replacementRequest": {
+    "formulaReview": {
+      "reviewedCredit": "Anggaran peringkat berdasarkan tempoh: {days} hari",
+      "reading": "Menyemak tempoh direkodkan…",
+      "incomplete": "Masukkan waktu tuntutan.",
+      "bound": "Had formula direkodkan: {minutes} minit",
+      "claimed": "Tuntutan dimasukkan: {minutes} minit",
+      "reviewed": "Tempoh disemak: {minutes} minit",
+      "reference": "Pengiraan {id} · semakan {revision}",
+      "subjectToApproval": "Semakan tempoh dan peringkat sahaja. Kelulusan dan semua semakan Kredit Cuti masih terpakai.",
+      "creditUnavailable": "Kredit tidak tersedia",
+      "requestedCredit": "Kredit dimohon",
+      "errors": {
+        "unavailable": "Tempoh formula direkodkan tidak tersedia. Semak Kehadiran.",
+        "stale": "Input direkodkan berubah. Kira semula dan semak Kehadiran.",
+        "fractional": "Pecahan minit tidak boleh dibankkan sebagai Kredit Cuti.",
+        "cashConflict": "Hari ini diperuntukkan untuk tunai. Semak sumbangan Gaji yang belum dimuktamadkan.",
+        "exceedsBound": "Tuntutan melebihi had formula. Tiada kredit dijanjikan.",
+        "belowThreshold": "Tempoh disemak di bawah ambang kredit yang dikonfigurasi.",
+        "ordinaryDisabled": "Syarikat sumber belum mengaktifkan Kredit Cuti hari biasa."
+      }
+    },
     "trigger": "Permohonan Kredit Cuti",
     "title": "Permohonan Kredit Cuti",
     "description": "Mohon kredit bagi hari rehat, hari cuti atau cuti umum yang anda bekerja, atau bagi jam lanjutan selepas syif anda pada hari bekerja. Tiada kredit diberikan sehingga pengurus anda meluluskannya.",

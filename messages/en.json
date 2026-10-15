@@ -15149,6 +15149,27 @@
     "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
   },
   "replacementRequest": {
+    "formulaReview": {
+      "reviewedCredit": "Duration-based tier estimate: {days} day(s)",
+      "reading": "Checking recorded duration…",
+      "incomplete": "Enter the claim window.",
+      "bound": "Recorded formula bound: {minutes} minutes",
+      "claimed": "Entered claim: {minutes} minutes",
+      "reviewed": "Reviewed duration: {minutes} minutes",
+      "reference": "Calculation {id} · revision {revision}",
+      "subjectToApproval": "Duration and tier review only. Approval and all Leave Credit checks still apply.",
+      "creditUnavailable": "Credit unavailable",
+      "requestedCredit": "Requested credit",
+      "errors": {
+        "unavailable": "Recorded formula duration is unavailable. Review Attendance.",
+        "stale": "Recorded inputs changed. Recalculate and review Attendance.",
+        "fractional": "Fractional minutes cannot be banked as Leave Credit.",
+        "cashConflict": "This day is reserved for cash. Review its unfinalized Payroll contribution.",
+        "exceedsBound": "The claim exceeds the formula bound. No credit is promised.",
+        "belowThreshold": "Reviewed duration is below the configured credit threshold.",
+        "ordinaryDisabled": "The source company has not enabled ordinary-day Leave Credit."
+      }
+    },
     "trigger": "Leave Credit request",
     "title": "Leave Credit request",
     "description": "Claim a credit for a rest day, off day or public holiday you worked, or for extended hours after your shift on a working day. Nothing is credited until your manager approves.",

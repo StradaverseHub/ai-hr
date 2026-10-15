@@ -8,6 +8,7 @@ import { getTranslations } from 'next-intl/server';
 import { myEmployment } from '@/core/read';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
+  leaveCreditClaimReview,
   cancelOwnReplacementLeaveRequest,
   extendedHoursDayForEmployment,
   isLeaveCreditDayType,
@@ -59,6 +60,13 @@ export async function leaveCreditDayFactsAction(workedDate: string) {
     measuredExtendedMinutes: day.measuredExtendedMinutes,
     approvedOtPlan: day.approvedOtPlan,
   };
+}
+
+/** Subject authority is derived from the current account, never a client employment ID. */
+export async function leaveCreditClaimReviewAction(workedDate:string,claimStart:string,claimEnd:string) {
+  const session=await getSession(),me=await myEmployment(session);
+  if(!me)return {basis:'unavailable' as const,reason:'unavailable' as const};
+  return leaveCreditClaimReview(session,{employmentId:me.employmentId,workedDate,claimStart,claimEnd});
 }
 
 /**

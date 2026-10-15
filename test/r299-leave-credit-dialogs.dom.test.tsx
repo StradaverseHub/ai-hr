@@ -77,6 +77,7 @@ function renderGrant(locale: Locale, context: LeaveCreditGrantContextView, overt
         replacementType={{ id: 'rl', name: 'Replacement Leave' }}
         submitAction={vi.fn()}
         contextAction={contextAction}
+        claimReviewAction={async()=>({basis:'legacy'})}
         dayFactsAction={dayFactsAction}
       />
     </NextIntlClientProvider>,
@@ -236,7 +237,8 @@ describe('The employee’s Leave Credit request', () => {
             replacementType={{ id: 'rl', name: 'Replacement Leave' }}
             submitAction={vi.fn()}
             today="2026-09-17"
-            dayFactsAction={dayFactsAction}
+            claimReviewAction={async()=>({basis:'legacy'})}
+        dayFactsAction={dayFactsAction}
             // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
             // day earns nothing here". Those are two facts now: the ladder applies to every day type,
             // and the switch governs the ordinary one alone.
