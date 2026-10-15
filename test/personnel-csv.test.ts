@@ -5,6 +5,7 @@ import {buildPersonnelCsv,parsePersonnelCsv,parseStrictPersonnelCsv,PERSONNEL_CS
 import {parsePersonnelImportCsv,personnelColumnLabel} from '../lib/personnel-import-contract';
 import {buildPersonnelRegisterCsv,personnelRegisterColumns} from '../lib/personnel-register-import';
 import {buildTemplateCsv,employeeTemplate} from '../lib/import-template';
+import {IMPORT_COLUMNS} from '../lib/import-schema';
 const values=['+601234','-0012','−0012','@Name','=literal',"'genuine",PERSONNEL_CSV_CELL_PREFIX+'literal','\t=literal','line1\r\nline2','one,"two"'];
 describe('Personnel versioned safe CSV transport',()=>{
  it('preserves protected prefixes, genuine apostrophes and embedded bytes with one explicit decode',()=>{
@@ -43,6 +44,16 @@ describe('Personnel versioned safe CSV transport',()=>{
   const parsed=parsePersonnelImportCsv(text,{columns});expect(parsed.headers).toEqual(columns);
   expect(parsed.records[0].phone).toBe('+60 12-345 6789');
   expect(parsed.records[0].full_name).toBe('Aisyah Binti Rahman');
+ });
+ it('qualifies a generated emergency Home phone heading without choosing between ambiguous stale aliases',()=>{
+  const columns=[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional];
+  const heading=personnelColumnLabel('emergency_contact_home_phone');
+  expect(heading).toBe('Home phone (Emergency contact)');
+  const current=parsePersonnelImportCsv(buildPersonnelCsv('employee',[[heading],['+601234']]),{columns});
+  expect(current.headers).toEqual(['emergency_contact_home_phone']);expect(current.records[0].emergency_contact_home_phone).toBe('+601234');
+  expect(()=>parsePersonnelImportCsv('Home phone\n+601234',{columns,generation:2})).toThrow(/Ambiguous column/);
+  expect(()=>parsePersonnelImportCsv('home_phone,Home phone\n+601234,+609999',{columns,generation:2})).toThrow(/Ambiguous column/);
+  expect(()=>parsePersonnelImportCsv('Home phone\n+601234',{columns,generation:3})).toThrow(/Unrecognized or removed/);
  });
  it('old aliases remain bounded by template generation, independently of transport framing',()=>{
   const text=buildPersonnelCsv('employee',[['employee_code','first_name'],['E001',"'Literal"]]);

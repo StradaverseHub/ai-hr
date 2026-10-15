@@ -42,8 +42,14 @@ export function personnelColumnLabel(column: string, sheet: PersonnelImportSheet
   const field = personnelImportField(column,sheet);
   if (field) {
     const label=personnelFieldLabel(field,resolve);
-    const collisions=personnelImportFields(sheet).filter(other => personnelFieldLabel(other,resolve) === label);
-    return collisions.length > 1 ? `${label} (${field.section})` : label;
+    // A current download must not collide with another field's accepted older technical heading.
+    // Example: emergency 'Home phone' versus the person's legacy home_phone alias. Qualify the
+    // downloaded heading instead of prioritizing current labels and silently reinterpreting old files.
+    const key=normalized(label);
+    const collision=personnelImportFields(sheet).some(other=>other.import.column!==column &&
+      [personnelFieldLabel(other,resolve),other.import.column!,other.import.column!.replaceAll('_',' '),
+        ...other.import.aliases??[]].some(candidate=>normalized(candidate)===key));
+    return collision ? `${label} (${field.section})` : label;
   }
   const adapter=LEGACY_COMPOUND_COLUMNS[column];
   if(adapter) {
@@ -78,7 +84,11 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
     }
     if((options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1) {
       register(column,column);register(column.replaceAll('_',' '),column);
-      for(const alias of personnelImportField(column,sheet)?.import.aliases??[])register(alias,column);
+      const field=personnelImportField(column,sheet);
+      for(const alias of field?.import.aliases??[])register(alias,column);
+      // Former unqualified display labels are also bounded aliases. Keep all possible identities so
+      // an ambiguous stale heading refuses; never select the first or silently prefer a new label.
+      if(field){register(personnelFieldLabel(field),column);for(const resolve of options.resolvers??[])register(personnelFieldLabel(field,resolve),column);}
     }
   }
   const warnings:string[]=[];const seen=new Set<string>();

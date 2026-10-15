@@ -207,7 +207,7 @@ describe('f1bbc572 — a label whose company this admin does not administer is r
 describe('approved common System Labels editing experience',()=>{
   it('prepends and focuses each draft while preserving earlier unsaved input',async()=>{
     const user=userEvent.setup(),{container}=renderGrid();await user.click(screen.getByRole('button',{name:en.admin.systemLabels.addRow}));
-    const first=codeInput(rows(container)[0]);expect(first).toHaveFocus();await user.type(first,'Unsaved draft');
+    const first=codeInput(rows(container)[0]);expect(first).toHaveFocus();expect(within(rows(container)[0]).getByRole('checkbox')).not.toHaveFocus();await user.type(first,'Unsaved draft');
     await user.click(screen.getByRole('button',{name:en.admin.systemLabels.addRow}));expect(codeInput(rows(container)[0])).toHaveFocus();expect(codeInput(rows(container)[0]).value).toBe('');expect(codeInput(rows(container)[1]).value).toBe('Unsaved draft');expect(codeInput(rows(container)[2]).value).toBe(OWN.name);
   });
   it('stages Global changes, lets Escape cancel without saving, and returns keyboard focus to the opener',async()=>{
