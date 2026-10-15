@@ -13,7 +13,8 @@ function token(sid: string) {
 function fixture(keycloak: boolean | "internal" = false) {
   const embedded = keycloak === "internal";
   const namespace = embedded ? 'internal-profile' : keycloak ? 'keycloak-profile' : 'workos-profile';
-  let stored: string | null = JSON.stringify({ refreshToken: 'stored-refresh', sessionId: 'stored-session', namespace });
+  const initialRefresh = embedded ? 'aihr_refresh_' + 's'.repeat(43) : 'stored-refresh';
+  let stored: string | null = JSON.stringify({ refreshToken: initialRefresh, sessionId: 'stored-session', namespace });
   const files = new Map([['aihr-installation-v1', '1']]);
   class File {
     constructor(_directory: unknown, private name: string) {}
@@ -48,7 +49,7 @@ function fixture(keycloak: boolean | "internal" = false) {
       if (id === './errors') return { SignInRequiredError, UnavailableError };
       throw new Error(`Unexpected auth adapter dependency: ${id}`);
     } });
-  return { auth: output.exports, response, secure, files, stored: () => stored };
+  return { auth: output.exports, response, secure, files, initialRefresh, stored: () => stored };
 }
 afterEach(() => vi.useRealTimers());
 
@@ -166,7 +167,7 @@ describe('native embedded exchange — shipped adapter', () => {
     expect(f.stored()).toBeNull(); expect(f.files.get('aihr-installation-v1')).toBe('signed-out');
     const [url, init] = f.response.mock.calls[0];
     expect(url).toBe('https://hr.test/login/api/logout');
-    expect(JSON.parse(String(init?.body))).toEqual({ refresh_token: 'stored-refresh' });
+    expect(JSON.parse(String(init?.body))).toEqual({ refresh_token: f.initialRefresh });
     expect(init?.credentials).toBe('omit'); expect(f.auth.workosLogoutUrl()).toBeNull();
   });
 });

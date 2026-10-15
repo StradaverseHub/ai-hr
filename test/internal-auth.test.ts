@@ -104,6 +104,14 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(getMobileSession({ authorization: `Bearer ${next.access_token}` })).rejects.toMatchObject({name:'AuthRequiredError'});
     await expect(rotateRefresh(next.refresh_token!)).rejects.toMatchObject({ code: 'invalidLogin' });
   });
+  it('revokes a native family using only its refresh handle during cold-start logout', async () => {
+    const { signedIn } = await enroll(true);
+    expect(await readSession(signedIn.access_token, true)).not.toBeNull();
+    await revokeSession(undefined, true, signedIn.refresh_token);
+    expect(await readSession(signedIn.access_token, true)).toBeNull();
+    await expect(rotateRefresh(signedIn.refresh_token!)).rejects.toMatchObject({ code: 'invalidLogin' });
+    await expect(getMobileSession({ authorization: `Bearer ${signedIn.access_token}` })).rejects.toMatchObject({ name: 'AuthRequiredError' });
+  });
   it('namespaces identical usernames in different organizations and never adopts an account by shared email', async () => {
     const other = await seedBase();
     await bootstrapInternalOwner(owner.client, { appUserId: other.adminUserId, organization: 'beta', username: 'owner', email: 'owner@example.test', password: 'Different private passphrase 555!', installationOperator: false });
