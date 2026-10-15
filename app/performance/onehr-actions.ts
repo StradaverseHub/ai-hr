@@ -302,3 +302,13 @@ export async function keepCompetencyReflectionAction(reviewId:string,messageId:s
 export async function assessmentCalibrationPersonAction(sessionId:string,reviewId:string,axis:'performance'|'potential'|'both'){
  const s=await getSession();try{return await perf.getAssessmentCalibrationPerson(s,z.uuid().parse(sessionId),z.uuid().parse(reviewId),z.enum(['performance','potential','both']).parse(axis));}catch(error){return {error:publicErrorMessage(error)};}
 }
+
+export async function askPerformanceGuideAction(question:string,history:unknown=[]){
+ const s=await getSession();try{return await perf.askPerformanceGuide(s,question,history);}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function performanceGuideReportAction(filters:unknown={}){
+ const s=await getSession();try{return await perf.getPerformanceGuideReport(s,filters);}catch(error){return {error:publicErrorMessage(error)};}
+}
+export async function performanceGuideExportAction(filters:unknown={}){
+ const s=await getSession();try{return {csv:await perf.exportPerformanceGuideReport(s,filters)};}catch(error){return {error:publicErrorMessage(error)};}
+}

@@ -17,3 +17,11 @@ export function rankPerformanceArticles<T extends {slug:string|null;title:string
  const ordered=rows.map((row,index)=>({row,index,meta:metadata.get(row.slug??'')})).sort((a,b)=>(a.meta?.order??Number.MAX_SAFE_INTEGER)-(b.meta?.order??Number.MAX_SAFE_INTEGER)||a.index-b.index);
  return rankKnowledgeArticles(query,ordered.map(({row,meta})=>({...row,tags:meta?.tags??''})));
 }
+
+/** Personal dashboard search excludes scoring-method entries and has no arbitrary fallback. */
+export function rankPerformanceDashboardArticles<T extends {slug:string|null;title:string;body:string}>(query:string,rows:T[]):T[]{
+ const hidden=new Set(['performance-faq-rating-scale','performance-faq-potential-band','performance-faq-good-360-comment']);
+ const metadata=new Map(performanceCatalogue.map(r=>[r.slug,r]));
+ const words=(query.toLowerCase().match(/[a-z0-9]+/g)??[]).filter(w=>w.length>=3&&!stopwords.has(w));
+ return rows.filter(r=>!hidden.has(r.slug??'')).map((row,index)=>{const meta=metadata.get(row.slug??'');return {row,index,order:meta?.order??Number.MAX_SAFE_INTEGER,score:words.reduce((n,w)=>n+3*Number(row.title.toLowerCase().includes(w))+2*Number((meta?.tags??'').toLowerCase().includes(w))+Number(row.body.toLowerCase().includes(w)),0)};}).filter(r=>r.score>0).sort((a,b)=>b.score-a.score||a.order-b.order||a.index-b.index).slice(0,3).map(r=>r.row);
+}

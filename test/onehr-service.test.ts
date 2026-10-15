@@ -49,6 +49,78 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+
+  it('Performance guide refuses rater and scoring questions before retrieval or provider and stores no question text',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    expect(await perf.askPerformanceGuide(self,'Who rated me in 360?')).toMatchObject({mode:'declined',facts:[]});
+    expect(await perf.askPerformanceGuide(self,'How is my potential band calculated?')).toMatchObject({mode:'declined',facts:[]});
+    expect(generateDraft).not.toHaveBeenCalled();expect(resolveActiveAiConfig).not.toHaveBeenCalled();
+    const rows=await owner.db.select().from(schema.assessmentGuideUse);expect(rows).toHaveLength(2);expect(rows.every(r=>r.status==='declined'&&r.question===null)).toBe(true);
+  });
+  it('Performance guide enforces six atomic reservations per minute without a daily cap',async()=>{
+    const reserve=()=>withTenant(self,async tx=>{const [r]=await tx.execute<{id:string|null}>(sql`select app.assessment_guide_reserve() as id`);return r.id;});
+    const ids=await Promise.all(Array.from({length:9},reserve));expect(ids.filter(Boolean)).toHaveLength(6);
+    expect(await perf.askPerformanceGuide(self,'My review')).toMatchObject({mode:'slowed',facts:[]});
+    await owner.db.update(schema.assessmentGuideUse).set({createdAt:new Date(Date.now()-61000)});
+    expect(await reserve()).toBeTruthy();
+  });
+  it('Performance guide uses only own released records and team completion status, never colleague results',async()=>{
+    await complete(true,'SECRET_REVIEWER_REMARK');
+    const facts=await perf.getPerformanceGuideFacts(mgr,'last result');expect(JSON.stringify(facts)).not.toMatch(/SECRET_SCORE|SECRET_REVIEWER_REMARK|released performance band ME/);
+    const own=await perf.getPerformanceGuideFacts(self,'last result');expect(JSON.stringify(own)).not.toMatch(/SECRET_SCORE|SECRET_REVIEWER_REMARK/);
+    expect(own.some(f=>f.id.startsWith('record:'))).toBe(true);
+    await expect(perf.getPerformanceGuideReport(self)).rejects.toThrow();
+  });
+  it('Performance guide separates a released current result from closed-cycle history',async()=>{
+    await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    const current=await perf.getPerformanceGuideFacts(self,'last cycle result');
+    expect(current.some(f=>f.id.startsWith('current:'))).toBe(true);expect(current.some(f=>f.id===`history:${reviewId}`)).toBe(false);
+    await perf.closeCycle(a,{cycleId});
+    const closed=await perf.getPerformanceGuideFacts(self,'last cycle result');expect(closed.some(f=>f.id.startsWith('current:'))).toBe(false);expect(closed.find(f=>f.id===`history:${reviewId}`)?.text).toContain('released performance band ME');
+  });
+  it('Performance guide counts answered questions without storing their text or conversation',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockResolvedValue('{"facts":["dashboard"],"unanswered":false}');
+    const answer=await perf.askPerformanceGuide(self,'My review PRIVATE_QUESTION',[{role:'user',content:'PRIVATE_HISTORY'}]);
+    expect(answer.mode).toBe('answer');expect(answer.facts.map(f=>f.id)).toEqual(['dashboard']);
+    const rows=await owner.db.select().from(schema.assessmentGuideUse);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({status:'answered',question:null});
+    expect(JSON.stringify(rows)).not.toMatch(/PRIVATE_QUESTION|PRIVATE_HISTORY/);
+  });
+  it('Performance guide reports anonymous unanswered questions and neutralizes spreadsheet formula content',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockResolvedValue('{"facts":[],"unanswered":true}');
+    await perf.askPerformanceGuide(self,'=UNANSWERED_QUESTION');
+    const report=await perf.getPerformanceGuideReport(a);expect(report.week).toEqual({answered:0,unanswered:1,declined:0,people:1});
+    expect(report.rows).toHaveLength(1);expect(report.rows[0].question).toBe('=UNANSWERED_QUESTION');expect(Object.keys(report.rows[0]).sort()).toEqual(['at','businessGroup','company','department','question']);
+    expect(JSON.stringify(report)).not.toContain(self.userId);expect(JSON.stringify(report)).not.toContain('Assessment subject');
+    expect(await perf.exportPerformanceGuideReport(a)).toContain("'=UNANSWERED_QUESTION");
+    const other=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated company'}).returning();
+    const [scopedAccount]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();const scopedUser=scopedAccount.id;
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:scopedUser,role:'hr_admin',companyId:other[0].id});
+    const scoped={...a,userId:scopedUser,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:other[0].id}]};
+    expect((await perf.getPerformanceGuideReport(scoped)).rows).toEqual([]);
+    expect((await perf.getPerformanceGuideReport(scoped,{companyId:b.companyId})).week.people).toBe(0);
+  });
+  it('Performance guide drops invalid model claims and rechecks a changed AI configuration',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockResolvedValue('{"facts":["foreign-review"],"unanswered":false}');
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);return '{"facts":["dashboard"],"unanswered":false}';});
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');
+    expect((await owner.db.select().from(schema.assessmentGuideUse)).every(r=>r.status==='search'&&r.question===null)).toBe(true);
+  });
+  it('Performance guide discards a colleague task when reviewer access changes during the provider call',async()=>{
+    const before=await perf.getPerformanceGuideFacts(mgr,'review');const task=before.find(f=>f.id.startsWith(`task:${reviewId}.`));expect(task).toBeTruthy();
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.performanceReview).set({reviewerEmploymentId:peers[0].employmentId}).where(eq(schema.performanceReview.id,reviewId));return JSON.stringify({facts:[task!.id],unanswered:false});});
+    const reply=await perf.askPerformanceGuide(mgr,'Assessment subject review');expect(reply.mode).toBe('search');expect(reply.facts.some(f=>f.id===task!.id)).toBe(false);
+  });
+  it('Performance guide remains useful during provider failures and has no fixed daily allowance',async()=>{
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).not.toHaveBeenCalled();
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});vi.mocked(generateDraft).mockRejectedValue(new Error('provider unavailable'));
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');
+    await expect(withTenant(mgr,tx=>tx.select().from(schema.assessmentGuideUse))).resolves.toEqual([]);
+  });
   it('preserves six independent default-on assistance controls with central group-wide authorization',async()=>{
     const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
     const state=await perf.getAssessmentAiSwitches(groupAdmin);

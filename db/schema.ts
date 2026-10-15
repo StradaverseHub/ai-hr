@@ -10268,3 +10268,9 @@ export const assessmentCareerProfile = pgTable('performance_assessment_career_pr
  managerUserId:uuid('manager_user_id').references(()=>appUser.id),managerCommentAt:timestamp('manager_comment_at',{withTimezone:true}),
  revision:integer('revision').notNull().default(1),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 });
+
+// Operational counts only. Answered questions and conversations are never persisted here.
+export const assessmentGuideUse = pgTable('performance_assessment_guide_use', {
+ id:id(),tenantId:tenantId(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
+ status:text('status').notNull().default('reserved'),question:text('question'),createdAt:createdAt(),
+},t=>[index('assessment_guide_actor_time').on(t.tenantId,t.actorUserId,t.createdAt)]);

@@ -41,6 +41,7 @@ Rewards consumes only a human-confirmed immutable finalized result with its sour
 - Catalogue carry-forward preserves other existing cycles and assigned snapshots instead of retroactively mutating every cycle's global definitions.
 - Retained submitted responses and finalized records are preserved when panels or framework definitions change.
 - Reminder consent, isolated transport, explicit scheduling time and enrolled delivery tests replace source direct SMTP and arbitrary redirection.
+- The standalone personal guide uses the authorized workspace and released personal-record projection. A model selects existing fact IDs; deterministic code renders the answer and links, then rechecks facts and configuration after provider latency. This replaces unrestricted model prose. Conversations remain in browser memory. Only unanswered text is retained for a scoped, identity-free HR report; answered and declined questions have counts only. Atomic six-per-minute reservations include search fallbacks to prevent retry floods; there is no daily quota.
 - Help text uses native control names, module switches, privacy and release rules. It must not promise the source UI labels or broader data visibility.
 
 No real historical employee database or upload export accompanied the source. Synthetic reference people are verification fixtures, never production migration data. Historical imports require an actual export and validated native identity mapping.

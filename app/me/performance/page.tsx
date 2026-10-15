@@ -1,3 +1,4 @@
+import {PerformanceGuide} from '@/app/performance/workspace/performance-guide';
 import { notFound } from 'next/navigation';
 import { PersonalRecord } from '@/app/performance/workspace/personal-record';
 import { RecordDrawer } from '@/app/performance/workspace/record-drawer';
@@ -70,6 +71,7 @@ export default async function MyPerformancePage({
       />
 
       <ErrorBanner message={error} />
+      <div className="flex justify-end"><PerformanceGuide key={`${s.tenantId}.${s.userId}`}/></div>
       {personalRecord&&recordAnchor&&<RecordDrawer title={onehrText('workspace.record')} closeLabel={onehrText('personalRecord.close')} returnTo="/me/performance"><PersonalRecord v={personalRecord} tab={recordTab} baseHref={`/me/performance?recordFor=${recordAnchor.id}`}/></RecordDrawer>}
       <Link data-tour="performance-journey-entry" href="/performance/workspace" className="flex min-h-11 items-center justify-between rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{onehrText('workspace.title')}<span className="text-sm font-normal">{onehrText('workspace.description')} →</span></Link>
       {(onehr.reviews.length > 0 || onehr.sessions.length > 0 || onehr.feedback.length > 0) && <Card className="space-y-3 p-5"><h2 className="font-semibold">{onehrText('assignments')}</h2>{onehr.reviews.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/review/${a.id}`}>{a.name} · {a.cycle} · {a.periodEnd}</Link>{ownRecordIds.has(a.id)&&<Link href={`/me/performance?recordFor=${a.id}&record=${a.cycleStatus==='closed'?a.id:'current'}`} className="ml-4 inline-flex min-h-11 items-center text-sm text-primary underline" aria-label={`${onehrText('workspace.record')} · ${a.cycle}`}>{onehrText('workspace.record')}</Link>}</p>)}{onehr.sessions.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${a.id}`}>{a.name}</Link></p>)}{onehr.feedback.map(a=><p key={a.id}><Link className="text-primary hover:underline" href={`/performance/assessment/feedback/${a.id}`}>{onehrText('feedback360')} · {a.subject}</Link></p>)}</Card>}

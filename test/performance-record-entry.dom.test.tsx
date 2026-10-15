@@ -11,6 +11,7 @@ vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');},useRout
 vi.mock('next-intl/server',async()=>{const {createTranslator}=await import('next-intl');return {getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace:namespace as never})};});
 vi.mock('../app/performance/workspace/personal-record',()=>({PersonalRecord:({v,baseHref}:{v:{selected:{name:string}};baseHref:string})=><div data-testid="personal-record" data-href={baseHref}>{v.selected.name}</div>}));
 vi.mock('../app/performance/workspace/record-drawer',()=>({RecordDrawer:({children,title,returnTo}:{children:ReactNode;title:string;returnTo:string})=><section aria-label={title}>{children}<a href={returnTo}>Close record</a></section>}));
+vi.mock('../app/performance/onehr-actions',()=>({askPerformanceGuideAction:vi.fn()}));
 import MyPerformancePage from '../app/me/performance/page';
 const id='7a1abb6e-7e3e-4f5e-bca6-04fb721e6935',other='654e0910-f9ae-472e-89cb-50b907a78e89';
 beforeEach(()=>{cleanup();vi.clearAllMocks();mock.reviews.mockResolvedValue([{reviewId:id,cycleName:'Previous annual review',status:'submitted',periodEnd:'2025-12-31'}]);mock.assignments.mockResolvedValue({reviews:[{id,name:'Nadia',cycle:'Previous annual review',cycleStatus:'closed',periodEnd:'2025-12-31'},{id:other,name:'Someone else',cycle:'Team cycle',cycleStatus:'closed',periodEnd:'2025-12-31'}],sessions:[],feedback:[]});mock.record.mockResolvedValue({current:null,selected:{name:'Previous annual review'}});});

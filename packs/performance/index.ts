@@ -121,6 +121,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_draft', note: 'actor-private working copies of assessment answers; ADR-0103' },
     { table: 'performance_assessment_conversation', note: 'actor-private review journey conversation; ADR-0103' },
     { table: 'performance_calibration_conversation', note: 'actor-private cohort conversation and held department edits' },
+    { table: 'performance_assessment_guide_use', note: 'personal guide rate reservations and anonymous HR usage projection; no conversation storage' },
     { table: 'performance_assessment_ai_use', note: 'successful draft usage with per-actor field limits at Malaysia midnight' },
     { table: 'performance_assessment_file_text', note: 'derived file text cache; visibility always follows the native attachment' },
     { table: 'performance_assessment_summary', note: 'reviewer-owned summary cache of submitted competency evidence' },

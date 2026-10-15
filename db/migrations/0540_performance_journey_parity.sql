@@ -1963,3 +1963,68 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.assessment_profit_company_in_use(uuid) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.assessment_profit_company_in_use(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Dashboard guidance keeps no conversation, and stores text only for unanswered questions.
+CREATE TABLE performance_assessment_guide_use (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
+ actor_user_id uuid NOT NULL REFERENCES app_user(id), status text NOT NULL DEFAULT 'reserved',
+ question text, created_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT assessment_guide_status CHECK(status IN ('reserved','answered','unanswered','declined','search')),
+ CONSTRAINT assessment_guide_text CHECK((status='unanswered' AND question IS NOT NULL AND length(question)<=300) OR (status<>'unanswered' AND question IS NULL))
+);
+CREATE INDEX assessment_guide_actor_time ON performance_assessment_guide_use(tenant_id,actor_user_id,created_at);
+ALTER TABLE performance_assessment_guide_use ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_assessment_guide_use FORCE ROW LEVEL SECURITY;
+GRANT SELECT ON performance_assessment_guide_use TO ai_hr_app;
+CREATE POLICY assessment_guide_own ON performance_assessment_guide_use FOR SELECT USING(tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id());
+CREATE FUNCTION app.assessment_guide_reserve() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result uuid;
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id() AND archived_at IS NULL AND NOT app.login_blocked(id)) THEN RAISE EXCEPTION 'An active signed-in account is required'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':'||app.current_user_id()::text||':performance-guide',0));
+ IF (SELECT count(*) FROM performance_assessment_guide_use WHERE tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND created_at>clock_timestamp()-interval '60 seconds')>=6 THEN RETURN NULL; END IF;
+ INSERT INTO performance_assessment_guide_use(tenant_id,actor_user_id) VALUES(app.current_tenant_id(),app.current_user_id()) RETURNING id INTO result;
+ RETURN result;
+END $$;
+CREATE FUNCTION app.assessment_guide_finish(wanted_id uuid,outcome text,unanswered_question text DEFAULT NULL) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF outcome NOT IN ('answered','unanswered','declined','search') THEN RAISE EXCEPTION 'Invalid guide outcome'; END IF;
+ UPDATE performance_assessment_guide_use SET status=outcome,question=CASE WHEN outcome='unanswered' THEN left(coalesce(unanswered_question,''),300) END
+ WHERE id=wanted_id AND tenant_id=app.current_tenant_id() AND actor_user_id=app.current_user_id() AND status='reserved';
+ IF NOT FOUND THEN RAISE EXCEPTION 'This question is no longer pending'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_guide_reserve(),app.assessment_guide_finish(uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_guide_reserve(),app.assessment_guide_finish(uuid,text,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Only this projection exposes HR usage; it never returns an actor, person or employee identifier.
+-- Current scoped employment determines scope. Multiple employments never duplicate a question.
+CREATE FUNCTION app.assessment_guide_report(wanted_company uuid DEFAULT NULL,wanted_group text DEFAULT NULL,wanted_department text DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb;
+BEGIN
+ IF NOT app.is_group_admin() AND NOT EXISTS(SELECT 1 FROM company c WHERE c.tenant_id=app.current_tenant_id() AND app.onehr_admin(c.id)) THEN RAISE EXCEPTION 'Performance administrator access is required'; END IF;
+ WITH scoped AS (
+ SELECT g.id,g.actor_user_id,g.status,g.question,g.created_at,org.company,org.business_group,org.department
+ FROM performance_assessment_guide_use g JOIN app_user u ON u.id=g.actor_user_id AND u.tenant_id=g.tenant_id
+ JOIN LATERAL (
+  SELECT c.legal_name AS company,coalesce(bg.legal_name,'') AS business_group,coalesce(d.name,'') AS department
+  FROM employment e JOIN company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
+  LEFT JOIN company bg ON bg.id=c.parent_company_id AND bg.tenant_id=c.tenant_id
+  LEFT JOIN LATERAL (SELECT a.department_id FROM assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id LIMIT 1) a ON true
+  LEFT JOIN department d ON d.id=a.department_id AND d.tenant_id=e.tenant_id
+  WHERE e.person_id=u.person_id AND e.tenant_id=g.tenant_id AND app.onehr_admin(c.id)
+   AND (wanted_company IS NULL OR c.id=wanted_company) AND (wanted_group IS NULL OR coalesce(bg.legal_name,'')=wanted_group)
+   AND (wanted_department IS NULL OR coalesce(d.name,'')=wanted_department)
+  ORDER BY e.hired_on DESC,e.id LIMIT 1
+ ) org ON true
+ WHERE g.tenant_id=app.current_tenant_id() AND g.created_at>=now()-interval '90 days' AND g.status IN ('answered','unanswered','declined')
+ ), recent AS (SELECT * FROM scoped WHERE created_at>=now()-interval '7 days'), questions AS (
+ SELECT created_at AS at,question,company,business_group AS "businessGroup",department FROM scoped WHERE status='unanswered' ORDER BY created_at DESC,id DESC LIMIT 1000
+ )
+ SELECT jsonb_build_object('rows',coalesce((SELECT jsonb_agg(to_jsonb(q)) FROM questions q),'[]'::jsonb),
+ 'week',jsonb_build_object('answered',(SELECT count(*) FROM recent WHERE status='answered'),'unanswered',(SELECT count(*) FROM recent WHERE status='unanswered'),'declined',(SELECT count(*) FROM recent WHERE status='declined'),'people',(SELECT count(DISTINCT actor_user_id) FROM recent))) INTO result;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.assessment_guide_report(uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_guide_report(uuid,text,text) TO ai_hr_app;
