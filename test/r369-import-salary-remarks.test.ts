@@ -27,6 +27,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { commitEmployeeImport, validateEmployeeImport } from '../core/import';
 import { IMPORT_COLUMNS } from '../lib/import-schema';
+import { missingByTab } from '../lib/employee-draft-schema';
 import { buildTemplateCsv, employeeTemplate } from '../lib/import-template';
 import { UNSECTIONED_COLUMNS, foreignColumns } from '../lib/import-sections';
 import { employeeColumnLabel, EMPLOYEE_XLSX_COLUMNS } from '../lib/import-template-xlsx';
@@ -161,16 +162,40 @@ describe('r369 §2 · a zero-basic row WITH a reason imports', () => {
     expect(comp!.remarks).toBe(DIRECTOR_REASON);
   });
 
-  it('a blank basic_salary is still refused — this column relieves a ZERO, not an empty cell', async () => {
-    // `basic_salary` is a REQUIRED column and an empty cell is still a missing figure: NaN reaching
-    // `money()` stores the string "NaN" in a numeric column (NonFiniteSalaryAmountError guards the
-    // service). A reason does not make a blank amount into a stated zero.
-    const preview = await validateEmployeeImport(a, {
-      companyId: b.companyId,
-      records: recs(HEADER, [row({ basic_salary: '', email: 'blank@acme.test', employee_code: 'DIR0009' })]),
-    });
-    expect(preview.rows[0].errors).toContain('Missing basic_salary');
-    expect(preview.validCount).toBe(0);
+  it.each(['', '   '])('a blank basic_salary (%j) with a reason follows the Draft rule and stores an explicit zero', async basic => {
+    // r374/item 7dbaf677 deliberately made the initial amount optional. c445 shares that form rule
+    // with the import; blank is an explicit zero, never a fabricated positive wage or numeric NaN.
+    expect(IMPORT_COLUMNS.required).not.toContain('basic_salary');
+    expect(IMPORT_COLUMNS.optional).toContain('basic_salary');
+    expect(missingByTab({ payroll: { basicSalary: basic, remarks: DIRECTOR_REASON } }).payroll).toEqual([]);
+    const records = recs(HEADER, [row({ basic_salary: basic, email: 'blank@acme.test', employee_code: 'DIR0009' })]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.rows[0].errors).toEqual([]);
+    expect(preview.validCount).toBe(1);
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(1);expect(result.failed).toEqual([]);
+    expect(await personByEmail('blank@acme.test')).toBeTruthy();
+    expect(await openComp('DIR0009')).toMatchObject({ basicSalary: '0.00', remarks: DIRECTOR_REASON });
+  });
+
+  it('a blank basic_salary without a reason is refused before any employee or salary is written', async () => {
+    expect(missingByTab({ payroll: { basicSalary: '' } }).payroll).toEqual(['remarks']);
+    const records = recs(HEADER, [row({ basic_salary: '', email: 'blank-unconfirmed@acme.test', employee_code: 'DIR0010', [COLUMN]: '' })]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.validCount).toBe(0);expect(preview.rows[0].errors.join(' | ')).toContain(COLUMN);
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(0);expect(result.skipped).toBe(1);expect(result.failed).toEqual([]);
+    expect(await personByEmail('blank-unconfirmed@acme.test')).toBeNull();
+    expect(await openComp('DIR0010')).toBeNull();
+  });
+
+  it.each(['-1', 'not-a-number'])('a supplied invalid basic_salary %j stays refused even with a reason', async basic => {
+    const records = recs(HEADER, [row({ basic_salary: basic, email: 'invalid-basic@acme.test', employee_code: 'DIR0011' })]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.validCount).toBe(0);expect(preview.rows[0].errors.join(' | ')).toContain('Invalid basic_salary');
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(0);expect(result.skipped).toBe(1);
+    expect(await personByEmail('invalid-basic@acme.test')).toBeNull();expect(await openComp('DIR0011')).toBeNull();
   });
 
   it('a daily worker with a zero basic and a real RATE needs no reason (the OTHER leg is untouched)', async () => {
@@ -291,11 +316,14 @@ describe('r369 §4 · an existing file with NO salary_remarks column imports eve
 
   it('the legacy header really does NOT carry the new column (or this whole section proves nothing)', () => {
     expect(LEGACY_HEADER.split(',')).not.toContain(COLUMN);
-    // …and it is otherwise exactly today's contract minus that one column, so the fence is real and not
-    // an accident of a stale list.
-    expect([...LEGACY_HEADER.split(',')].sort()).toEqual(
-      [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional].filter((c) => c !== COLUMN).slice().sort(),
-    );
+    // Keep the historical 49-column file literal: c445 expands today's template rather than changing
+    // what a previously downloaded file contained. Every old column remains recognised and every
+    // currently mandatory column is present; actual legacy writes are verified below.
+    const legacy = LEGACY_HEADER.split(','), current = [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional];
+    expect(legacy).toHaveLength(49);
+    expect(legacy.filter(column => !current.includes(column))).toEqual([]);
+    expect(IMPORT_COLUMNS.required.filter(column => !legacy.includes(column))).toEqual([]);
+    expect(parsePersonnelImportCsv(LEGACY_HEADER, { columns: current }).headers).toEqual(legacy);
   });
 
   it('every row of a three-row legacy file validates clean and imports', async () => {
