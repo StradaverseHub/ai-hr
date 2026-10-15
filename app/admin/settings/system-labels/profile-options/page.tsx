@@ -1,3 +1,4 @@
+import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listAllProfileOptions, PERSON_PROFILE_CATEGORIES } from '@/core/profile-options';
@@ -30,6 +31,7 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
       <SystemLabelsTabs active="profile-options" />
+      <SystemLabelImportTools />
       <ErrorBanner message={error} />
 
       {totalCount === 0 ? (

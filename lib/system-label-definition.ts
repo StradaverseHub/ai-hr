@@ -18,10 +18,11 @@ export const LABEL_IMPORT_DEFINITIONS = [
   { kind: 'grade_groups', scope: 'tenant' as const, columns: ['Name', 'Grade Codes'] },
 ];
 export type LabelImportKind = typeof LABEL_IMPORT_DEFINITIONS[number]['kind'];
-export type LabelImportMode = 'add' | 'update';
+export type LabelImportMode = 'add' | 'update' | 'merge';
 export type LabelImportRow = { sheet: string; row: number; values: Record<string, string> };
 export type LabelImportPreviewRow = LabelImportRow & {
   outcome: 'add' | 'update' | 'skip' | 'error'; message: string;
   before: Record<string, string> | null; after: Record<string, string>;
+  selected?: boolean; stale?: boolean;
 };
-export type LabelImportPreview = { token: string; rows: LabelImportPreviewRow[]; valid: boolean };
+export type LabelImportPreview = { token: string; rows: LabelImportPreviewRow[]; valid: boolean; mode?: LabelImportMode };

@@ -18957,5 +18957,19 @@
   "subtitle": "Your leave credit history — credits you earned, how much has been used for Replacement Leave, and what is still available.",
   "empty": "No earned leave credits match these filters.",
   "invalid": "The filters are invalid. This page can show only your own credits."
+},
+  "labelExcelRoundTrip": {
+  "blank": "Download blank template",
+  "current": "Download template with current data",
+  "exportHelp": "Choose companies and organisation lists. All lists are selected initially.",
+  "inactive": "Include inactive / archived records",
+  "download": "Download Excel",
+  "downloadFailed": "The download failed. Try again.",
+  "merge": "Add new + update existing",
+  "blankHelp": "Blank cells keep saved values. Enter [CLEAR] to remove an optional value. Removed file rows never delete records.",
+  "include": "Include",
+  "noChange": "No change",
+  "new": "New",
+  "previewAgain": "The row selection changed. Preview again before confirming."
 }
 }

@@ -18957,5 +18957,19 @@
   "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
   "empty": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
   "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri."
+},
+  "labelExcelRoundTrip": {
+  "blank": "Muat turun templat kosong",
+  "current": "Muat turun templat dengan data semasa",
+  "exportHelp": "Pilih syarikat dan senarai organisasi. Semua senarai dipilih pada awalnya.",
+  "inactive": "Sertakan rekod tidak aktif / diarkibkan",
+  "download": "Muat turun Excel",
+  "downloadFailed": "Muat turun gagal. Cuba lagi.",
+  "merge": "Tambah baharu + kemas kini sedia ada",
+  "blankHelp": "Sel kosong mengekalkan nilai tersimpan. Masukkan [CLEAR] untuk mengosongkan nilai pilihan. Baris yang dibuang daripada fail tidak memadam rekod.",
+  "include": "Sertakan",
+  "noChange": "Tiada perubahan",
+  "new": "Baharu",
+  "previewAgain": "Pilihan baris berubah. Pratonton semula sebelum mengesahkan."
 }
 }

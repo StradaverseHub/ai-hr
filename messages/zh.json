@@ -18957,5 +18957,19 @@
   "subtitle": "您的假期积分记录：已获得的积分、补假已使用的积分及可用余额。",
   "empty": "没有符合筛选条件的已获得假期积分。",
   "invalid": "筛选条件无效。此页面仅显示您本人的积分。"
+},
+  "labelExcelRoundTrip": {
+  "blank": "下载空白模板",
+  "current": "下载包含当前数据的模板",
+  "exportHelp": "选择公司和组织列表。默认选中所有列表。",
+  "inactive": "包含停用／已归档记录",
+  "download": "下载 Excel",
+  "downloadFailed": "下载失败，请重试。",
+  "merge": "新增并更新现有记录",
+  "blankHelp": "空白单元格保留已保存的值。输入 [CLEAR] 清除可选值。从文件删除行不会删除系统记录。",
+  "include": "包含",
+  "noChange": "无变化",
+  "new": "新增",
+  "previewAgain": "所选行已更改。请重新预览后再确认。"
 }
 }

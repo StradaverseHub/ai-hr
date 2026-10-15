@@ -1,4 +1,4 @@
-import { SystemLabelImport } from '@/components/system-label-import';
+import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { isGroupAdmin } from '@/lib/authz';
@@ -291,7 +291,7 @@ export default async function SystemLabelsPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <SystemLabelsTabs active="organisation" />
-      <SystemLabelImport />
+      <SystemLabelImportTools />
       <ErrorBanner message={error} />
 
       {/* b1b81a08 — this used to REPLACE the grid, which made the whole screen (and now Grades with it)

@@ -18957,5 +18957,19 @@
   "subtitle": "Lịch sử tín dụng nghỉ phép của bạn — số đã tích lũy, đã dùng cho nghỉ bù và số còn lại.",
   "empty": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
   "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn."
+},
+  "labelExcelRoundTrip": {
+  "blank": "Tải mẫu trống",
+  "current": "Tải mẫu có dữ liệu hiện tại",
+  "exportHelp": "Chọn công ty và danh sách tổ chức. Ban đầu chọn tất cả danh sách.",
+  "inactive": "Bao gồm bản ghi không hoạt động / đã lưu trữ",
+  "download": "Tải Excel",
+  "downloadFailed": "Tải xuống thất bại. Vui lòng thử lại.",
+  "merge": "Thêm mới + cập nhật hiện có",
+  "blankHelp": "Ô trống giữ nguyên giá trị đã lưu. Nhập [CLEAR] để xóa giá trị không bắt buộc. Xóa dòng trong tệp không xóa bản ghi.",
+  "include": "Bao gồm",
+  "noChange": "Không đổi",
+  "new": "Mới",
+  "previewAgain": "Lựa chọn dòng đã thay đổi. Xem trước lại trước khi xác nhận."
 }
 }
