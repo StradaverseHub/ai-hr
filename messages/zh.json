@@ -14024,10 +14024,10 @@
     },
     "reset": {
       "title": "重置密码",
-      "subtitle": "输入您的电子邮件，我们会发送设置新密码的链接。",
+      "subtitle": "输入邮箱以申请安全的恢复链接。能否发送取决于已配置的邮件服务。",
       "emailLabel": "电子邮件",
-      "submit": "发送重置链接",
-      "sent": "如果该电子邮件存在对应账户，密码重置链接即将送达。",
+      "submit": "申请恢复邮件",
+      "sent": "您的恢复请求已记录。如果邮件发送可用且存在符合条件的账户，身份服务会发送安全链接。如果没有收到邮件，可稍后重新请求。",
       "backToLogin": "返回登录"
     },
     "error": {
@@ -17087,8 +17087,8 @@
     "consentHelp": "选择发送至员工资料中已验证邮箱的更新。偏好按每份雇佣关系分别保存，仅适用于未来事件。",
     "identityRequired": "启用邮件前，请使用已验证的内部账号登录，且邮箱须与员工资料一致。您仍可关闭所有邮件而不提供同意。",
     "relayReady": "托管 SMTP 中继已激活，可发送符合条件的通知。",
-    "relayOff": "托管 SMTP 中继尚未激活，目前无法发送工作流程邮件。",
-    "upgradeRequired": "私人邮件服务须安装工作流程通知升级后才能发送邮件。",
+    "relayOff": "SMTP 尚未配置或不可用。HR 流程仍可继续；符合条件的邮件发送尝试会记录为失败。配置 SMTP 后，可自行选择重试哪些失败邮件。",
+    "upgradeRequired": "邮件服务不可用或需要升级。HR 流程仍可继续；符合条件的邮件发送尝试会记录为失败。",
     "policyTitle": "组织允许的类别",
     "preferencesCategories": "通过邮件通知我以下类别",
     "notAllowed": "您的组织目前已禁用",
@@ -17099,7 +17099,7 @@
     "saved": "设置已保存。",
     "noEmployment": "此登录账号未关联员工资料。",
     "deliveries": "最近邮件发送记录",
-    "deliveriesHelp": "已发送表示中继已接受，并不证明收件人已收到。此处显示最近 50 条记录。发送结果不确定时将暂停，避免自动重复发送。",
+    "deliveriesHelp": "中继接受邮件并不代表收件人已收到。此处显示最近 50 条发送记录。失败邮件会保留，直到您选择重试；配置 SMTP 不会自动重新发送。发送结果不确定时会暂停，以免重复发送。",
     "noDeliveries": "暂无工作流程邮件进入队列。",
     "category": "类别",
     "status": "状态",
@@ -17117,11 +17117,11 @@
     "statuses": {
       "pending": "等待发送",
       "sent": "中继已接受",
-      "failed": "失败或结果不确定",
+      "failed": "失败",
       "skipped": "已跳过"
     },
     "errors": {
-      "relayUnavailable": "中继不可用",
+      "relayUnavailable": "SMTP 尚未配置或不可用。此邮件尚未发送；配置 SMTP 后，可按需选择重试发送。",
       "recipientUnavailable": "身份提供方不可用",
       "recipientChanged": "已验证邮箱或账号已变更",
       "notEligible": "收件人或偏好不再符合条件",
@@ -19110,5 +19110,33 @@
     "scheduledActor": "定时代理",
     "required": "需要约 {tokens} 个令牌",
     "sections": "AI 管理栏目"
+  },
+  "accountEmail": {
+    "title": "账户邮件发送记录",
+    "help": "即使邮件发送失败，邀请和恢复请求也会保存。配置 SMTP 不会自动重发失败邮件。可在下方逐条选择重试。 恢复记录仅对系统邮件管理员可见。",
+    "empty": "尚无账户邮件发送尝试。",
+    "attempts": "尝试次数",
+    "reissue": "重新发出邀请",
+    "retryRecovery": "重试恢复邮件",
+    "invitationAck": "我理解此操作会撤销旧邀请链接、发出新邀请，并可能产生重复邮件。",
+    "recoveryAck": "我希望请求一封新的恢复邮件。先前结果不确定的发送可能导致重复邮件。",
+    "retryError": "无法重试此邮件。请检查您的权限，以及邮件是否已被替代或邀请是否仍待处理。",
+    "retryProcessed": "重试已处理。请查看最新发送状态。",
+    "kinds": {
+      "invitation": "账户邀请",
+      "recovery": "密码恢复"
+    },
+    "statuses": {
+      "pending": "正在尝试发送",
+      "sent": "身份服务已接受",
+      "failed": "失败",
+      "skipped": "已跳过"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP 尚未配置或不可用。请求已保存，此邮件尚未发送。",
+      "providerUnavailable": "登录服务不可用或尚未配置。请求已保存。",
+      "notEligible": "邀请或恢复邮件收件人已不再符合条件。",
+      "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
+    }
   }
 }

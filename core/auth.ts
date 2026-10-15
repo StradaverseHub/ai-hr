@@ -18,17 +18,22 @@ import { keycloakSelected } from '../lib/identity/config';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { and, eq, isNull, ne } from 'drizzle-orm';
-import { client, withTenant, type SessionContext } from '../db/client';
-import { appInvitation, appUser, roleAssignment } from '../db/schema';
+import { client, withTenant, type SessionContext, type Tx } from '../db/client';
+import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
+import { attemptAccountEmail } from './account-email';
+import { accountEmailReadiness } from '../lib/identity/account-email-readiness';
+import { recoveryEmailSchema,type AccountEmailReadiness,type AccountEmailContext } from '../lib/account-email-model';
+import type {IdentityEmailActor} from '../lib/identity/email-model';
 
 /** The WorkOS surface auth services need — injectable so tests never hit the real SDK. */
 export type AuthProvider = {
-  sendInvitation: (email: string, activationPath?: string) => Promise<{ invitationId: string }>;
+  sendInvitation: (email: string, activationPath?: string, context?: AccountEmailContext) => Promise<{ invitationId: string }>;
   revokeInvitation: (invitationId: string) => Promise<void>;
-  sendPasswordReset: (email: string) => Promise<void>;
+  sendPasswordReset: (email: string, context?: AccountEmailContext) => Promise<void>;
   endSession: (returnTo?: string) => Promise<void>;
+  emailReadiness?:()=>Promise<AccountEmailReadiness>;
 };
 
 /**
@@ -37,17 +42,18 @@ export type AuthProvider = {
  * server component). Tests always inject a fake AuthProvider, so lib/workos is never loaded there.
  */
 const defaultProvider: AuthProvider = {
-  sendInvitation: async (email, activationPath) => internalSelected()
-    ? (await import('../lib/internal-auth/invitations')).sendInternalInvitation(email, activationPath ?? '')
+  sendInvitation: async (email, activationPath, context) => internalSelected()
+    ? (await import('../lib/internal-auth/invitations')).sendInternalInvitation(email, activationPath ?? '', context)
     : keycloakSelected()
     ? (await import('../lib/identity/provider')).sendIdentityInvitation(email, activationPath ?? '')
     : (await import('../lib/workos')).sendProviderInvitation(email),
-  revokeInvitation: async (id) => (await import('../lib/workos')).revokeProviderInvitation(id),
-  sendPasswordReset: async (email) => {
-    if (internalSelected()) throw new Error('Use the embedded recovery flow.');
-    if (keycloakSelected()) throw new Error('Use the Keycloak hosted recovery flow.');
+  revokeInvitation: async (id) => { if (!internalSelected()) await (await import('../lib/workos')).revokeProviderInvitation(id); },
+  sendPasswordReset: async (email, context) => {
+    if (internalSelected()) return (await import('../lib/internal-auth/recovery')).sendInternalRecovery(email, context);
+    if (keycloakSelected()) return (await import('../lib/identity/provider')).sendIdentityPasswordReset(email);
     await (await import('../lib/workos')).sendProviderPasswordReset(email);
   },
+  emailReadiness:accountEmailReadiness,
   endSession: async (returnTo) => (await import('../lib/identity/provider')).endProviderSession(returnTo),
 };
 
@@ -132,53 +138,54 @@ export type InviteUserInput = {
 
 /**
  * Admin-only account creation — the ONLY path to a new login (no open self sign-up). Creates the
- * single-use app_invitation (hash only), sends the WorkOS invite email, and logs app-user.invited.
+ * single-use app_invitation (hash only), records email delivery separately, and logs app-user.invited.
  * Returns the raw token ONCE (so a dev/test can build the activation URL); it is never re-derivable.
  */
-export async function inviteUser(
-  ctx: SessionContext,
-  input: InviteUserInput,
-  provider: AuthProvider = defaultProvider,
-): Promise<{ invitationId: string; token: string }> {
-  const email = input.email.trim().toLowerCase();
-  if (!email || !email.includes('@')) throw new Error('A valid email is required to invite a user.');
-  if (!ROLES.has(input.role)) throw new Error(`Unknown role: ${input.role}`);
-  const raw = newRawToken();
-  const tokenHash = hashToken(raw);
+async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput,replacesDeliveryId?:string){
+  assertGroupAdmin(ctx);
+  const email=input.email.trim().toLowerCase();
+  if(!email||!email.includes('@'))throw new Error('A valid email is required to invite a user.');
+  if(!ROLES.has(input.role))throw new Error(`Unknown role: ${input.role}`);
+  const token=newRawToken(),leaseToken=randomUUID();
+  const [row]=await tx.insert(appInvitation).values({tenantId:ctx.tenantId,companyId:input.companyId??null,email,
+    role:input.role,personId:input.personId??null,tokenHash:hashToken(token),status:'pending',
+    expiresAt:sql`now()+(${INVITE_TTL_DAYS}||' days')::interval`,createdBy:ctx.userId??null}).returning({id:appInvitation.id});
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:row.id,
+    eventType:'app-user.invited',actor:actorOf(ctx),payload:{email,role:input.role,companyId:input.companyId??null}});
+  const [delivery]=await tx.insert(accountEmailDelivery).values({tenantId:ctx.tenantId,kind:'invitation',invitationId:row.id,
+    replacesDeliveryId:replacesDeliveryId??null,requestedBy:ctx.userId??null,leaseToken,leaseUntil:sql`now()+interval '90 seconds'`}).returning({id:accountEmailDelivery.id});
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'account-email',aggregateId:delivery.id,eventType:'account-email.requested',
+    actor:actorOf(ctx),payload:{kind:'invitation',...(replacesDeliveryId?{replaces:replacesDeliveryId}:{})}});
+  return {invitationId:row.id,token,deliveryId:delivery.id,leaseToken};
+}
 
-  const invitationId = await withTenant(ctx, async (tx) => {
-    // Identity management is group-wide-admin gated (RLS enforces it too; this fails fast + clearly).
-    assertGroupAdmin(ctx);
-    const [row] = await tx
-      .insert(appInvitation)
-      .values({
-        tenantId: ctx.tenantId,
-        companyId: input.companyId ?? null,
-        email,
-        role: input.role,
-        personId: input.personId ?? null,
-        tokenHash,
-        status: 'pending',
-        expiresAt: sql`now() + (${INVITE_TTL_DAYS} || ' days')::interval`,
-        createdBy: ctx.userId ?? null,
-      })
-      .returning({ id: appInvitation.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'app-invitation',
-      aggregateId: row.id,
-      eventType: 'app-user.invited',
-      actor: actorOf(ctx),
-      // No single employment subject → admin-only to read (ADR-0015). Never log the raw token.
-      payload: { email, role: input.role, companyId: input.companyId ?? null },
-    });
-    return row.id;
+export async function inviteUser(ctx:SessionContext,input:InviteUserInput,provider:AuthProvider=defaultProvider):Promise<{invitationId:string;token:string}>{
+  const created=await withTenant(ctx,tx=>createInvitationTx(tx,ctx,input));
+  await attemptAccountEmail(created.deliveryId,created.leaseToken,provider,created.token);
+  return {invitationId:created.invitationId,token:created.token};
+}
+
+/** Explicit retry reissues an immutable invitation, or reserves a fresh operator-authorized recovery. */
+export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledged:boolean,actor?:IdentityEmailActor,provider:AuthProvider=defaultProvider):Promise<void>{
+  if(!acknowledged||!/^([0-9a-f]{8}-)([0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))throw Error('Confirm the account email retry.');
+  if(actor){
+    if(actor.userId!==ctx.userId||actor.tenantId!==ctx.tenantId)throw Error('Email administrator identity does not match the session.');
+    const reserved=await withTenant(ctx,tx=>tx.execute<{id:string;lease_token:string}>(sql`select * from app.account_email_retry_recovery(${id}::uuid,${actor.issuer},${actor.subject})`));
+    if(reserved[0]){await attemptAccountEmail(reserved[0].id,reserved[0].lease_token,provider);return;}
+  }
+  const created=await withTenant(ctx,async tx=>{
+    assertGroupAdmin(ctx);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
+    const [delivery]=await tx.select().from(accountEmailDelivery).where(and(eq(accountEmailDelivery.id,id),eq(accountEmailDelivery.kind,'invitation'),eq(accountEmailDelivery.status,'failed')));
+    if(!delivery?.invitationId)throw Error('This account email cannot be retried.');
+    const [replacement]=await tx.select({id:accountEmailDelivery.id}).from(accountEmailDelivery).where(eq(accountEmailDelivery.replacesDeliveryId,id));
+    if(replacement)throw Error('This account email already has a replacement.');
+    const [invitation]=await tx.select().from(appInvitation).where(and(eq(appInvitation.id,delivery.invitationId),eq(appInvitation.status,'pending'))).for('update');
+    if(!invitation)throw Error('This invitation is no longer pending.');
+    await tx.update(appInvitation).set({status:'revoked'}).where(eq(appInvitation.id,invitation.id));
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:invitation.id,eventType:'app-user.invitation.revoked',actor:actorOf(ctx),payload:{email:invitation.email}});
+    return createInvitationTx(tx,ctx,{email:invitation.email,role:invitation.role,companyId:invitation.companyId,personId:invitation.personId},id);
   });
-
-  // WorkOS owns the email + one-time link + password set (delegated; failures here don't roll back the
-  // row — the admin can re-send). Best-effort, outside the tenant tx.
-  await provider.sendInvitation(email, `/invite/${raw}/activate`);
-  return { invitationId, token: raw };
+  await attemptAccountEmail(created.deliveryId,created.leaseToken,provider,created.token);
 }
 
 /** Pending invitations visible to the admin (RLS scopes rows to the companies they administer). */
@@ -341,7 +348,7 @@ export async function acceptInvitation(input: {
 // ─────────────────────────── Password reset (thin over WorkOS) ───────────────────────────
 
 /**
- * Request a password reset. Delegates delivery + token to WorkOS. Always emits the audit event and
+ * Record password recovery and attempt provider delivery separately. Always emits the audit event and
  * (deliberately) never reveals whether the email is known — the event is recorded pre-auth with no
  * tenant (system tenant, admin-only to read).
  */
@@ -349,10 +356,12 @@ export async function requestPasswordReset(
   input: { email: string },
   provider: AuthProvider = defaultProvider,
 ): Promise<void> {
-  const email = input.email.trim().toLowerCase();
-  await provider.sendPasswordReset(email).catch(() => {
-    // Swallow provider errors so we never leak whether the email exists; still audit the attempt.
-  });
+  if (internalSelected()) return; // Embedded recovery requires an exact organization + username.
+  const parsed=recoveryEmailSchema.safeParse(input.email.trim());
+  if(!parsed.success)return;
+  const email=parsed.data;
+  const [delivery]=await client<{id:string;lease_token:string}[]>`select * from app.account_email_request_recovery(${email})`;
+  if(delivery)await attemptAccountEmail(delivery.id,delivery.lease_token,provider);
   await appendAuthEvent({
     tenantId: null,
     aggregateType: 'app-user',

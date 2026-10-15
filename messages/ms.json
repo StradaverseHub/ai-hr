@@ -14024,10 +14024,10 @@
     },
     "reset": {
       "title": "Set semula kata laluan anda",
-      "subtitle": "Masukkan e-mel anda dan kami akan menghantar pautan untuk menetapkan kata laluan baharu.",
+      "subtitle": "Masukkan e-mel anda untuk memohon pautan pemulihan selamat. Penghantaran bergantung pada perkhidmatan e-mel yang dikonfigurasi.",
       "emailLabel": "E-mel",
-      "submit": "Hantar pautan set semula",
-      "sent": "Jika akaun wujud untuk e-mel itu, pautan set semula kata laluan sedang dalam perjalanan.",
+      "submit": "Mohon e-mel pemulihan",
+      "sent": "Permintaan pemulihan anda telah direkodkan. Jika penghantaran tersedia dan akaun yang layak sepadan, penyedia akan menghantar pautan selamat. Jika tiada e-mel diterima, anda boleh meminta semula kemudian.",
       "backToLogin": "Kembali ke log masuk"
     },
     "error": {
@@ -17087,8 +17087,8 @@
     "consentHelp": "Pilih kemas kini untuk alamat e-mel yang disahkan dalam profil pekerja anda. Keutamaan berasingan bagi setiap pekerjaan dan hanya untuk peristiwa baharu.",
     "identityRequired": "Log masuk dengan akaun dalaman yang disahkan dan e-melnya sepadan dengan profil pekerja untuk mengaktifkan e-mel. Anda masih boleh mematikan semua e-mel tanpa memberikan persetujuan.",
     "relayReady": "Geganti SMTP terurus aktif. Pemberitahuan yang layak boleh dihantar.",
-    "relayOff": "Geganti SMTP terurus belum aktif. E-mel aliran kerja belum boleh dihantar.",
-    "upgradeRequired": "Perkhidmatan e-mel persendirian memerlukan naik taraf pemberitahuan aliran kerja sebelum penghantaran e-mel.",
+    "relayOff": "SMTP belum dikonfigurasi atau tidak tersedia. Aliran kerja HR diteruskan; cubaan e-mel yang layak direkodkan sebagai gagal. Selepas menyediakan SMTP, pilih e-mel gagal yang mahu dicuba semula.",
+    "upgradeRequired": "Perkhidmatan e-mel tidak tersedia atau memerlukan naik taraf. Aliran kerja HR diteruskan; cubaan e-mel yang layak direkodkan sebagai gagal.",
     "policyTitle": "Kategori yang dibenarkan organisasi",
     "preferencesCategories": "E-mel kepada saya tentang kategori ini",
     "notAllowed": "Kini dimatikan oleh organisasi anda",
@@ -17099,7 +17099,7 @@
     "saved": "Tetapan disimpan.",
     "noEmployment": "Tiada profil pekerja dipautkan kepada log masuk ini.",
     "deliveries": "Penghantaran e-mel terkini",
-    "deliveriesHelp": "Dihantar bermaksud diterima oleh geganti, bukan bukti penerimaan. Senarai ini menunjukkan 50 penghantaran terkini. Penghantaran tidak pasti ditahan untuk mengelakkan pendua automatik.",
+    "deliveriesHelp": "Diterima oleh geganti bukan bukti penerimaan. Senarai ini menunjukkan 50 penghantaran terkini. E-mel gagal kekal sehingga anda memilih untuk mencuba semula; menyediakan SMTP tidak menghantarnya semula secara automatik. Penghantaran tidak pasti ditahan untuk mengelakkan pendua.",
     "noDeliveries": "Tiada e-mel aliran kerja dalam baris gilir.",
     "category": "Kategori",
     "status": "Status",
@@ -17117,11 +17117,11 @@
     "statuses": {
       "pending": "Menunggu",
       "sent": "Diterima oleh geganti",
-      "failed": "Gagal atau tidak pasti",
+      "failed": "Gagal",
       "skipped": "Dilangkau"
     },
     "errors": {
-      "relayUnavailable": "Geganti tidak tersedia",
+      "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. E-mel ini tidak dihantar; sediakan SMTP dan pilih Cuba semula penghantaran apabila perlu.",
       "recipientUnavailable": "Penyedia identiti tidak tersedia",
       "recipientChanged": "E-mel yang disahkan atau akaun berubah",
       "notEligible": "Penerima atau keutamaan tidak lagi layak",
@@ -19110,5 +19110,33 @@
     "scheduledActor": "Ejen berjadual",
     "required": "Memerlukan anggaran {tokens} token",
     "sections": "Bahagian pengurusan AI"
+  },
+  "accountEmail": {
+    "title": "Penghantaran e-mel akaun",
+    "help": "Jemputan dan permintaan pemulihan disimpan walaupun e-mel gagal. Menyediakan SMTP tidak menghantar semula e-mel gagal secara automatik. Pilih cubaan semula di bawah. Sejarah pemulihan hanya boleh dilihat oleh pentadbir e-mel pemasangan.",
+    "empty": "Belum ada cubaan e-mel akaun.",
+    "attempts": "Cubaan",
+    "reissue": "Keluarkan semula jemputan",
+    "retryRecovery": "Cuba semula e-mel pemulihan",
+    "invitationAck": "Saya faham tindakan ini membatalkan pautan jemputan lama, mengeluarkan jemputan baharu dan mungkin menghantar e-mel pendua.",
+    "recoveryAck": "Saya mahu meminta e-mel pemulihan baharu. Penghantaran terdahulu yang tidak pasti mungkin menyebabkan pendua.",
+    "retryError": "E-mel ini tidak dapat dicuba semula. Semak akses anda dan sama ada ia telah diganti atau jemputan tidak lagi menunggu.",
+    "retryProcessed": "Cubaan semula diproses. Semak status penghantaran terkini.",
+    "kinds": {
+      "invitation": "Jemputan akaun",
+      "recovery": "Pemulihan kata laluan"
+    },
+    "statuses": {
+      "pending": "Cubaan sedang berjalan",
+      "sent": "Diterima oleh penyedia",
+      "failed": "Gagal",
+      "skipped": "Dilangkau"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. Permintaan disimpan dan e-mel ini tidak dihantar.",
+      "providerUnavailable": "Penyedia log masuk tidak tersedia atau belum dikonfigurasi. Permintaan disimpan.",
+      "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
+      "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
+    }
   }
 }

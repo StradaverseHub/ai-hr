@@ -1,24 +1,17 @@
 import { internalSelected, internalConfig } from '@/lib/internal-auth/config';
 import { InternalAuthForm } from '../login/internal-form';
-import { redirect } from 'next/navigation';
-import { keycloakSelected } from '@/lib/identity/config';
 import { getTranslations } from 'next-intl/server';
 import { requestPasswordResetAction } from '../auth-actions';
 
-/**
- * /reset-password (ADR-0072). Thin over WorkOS: collect the email, trigger the WorkOS reset email.
- * We never reveal whether the email exists — after submit we always show the same "check your inbox"
- * confirmation (?sent=1). WorkOS owns the reset token + the set-new-password page. Rendered outside
- * the app shell.
- */
+/** Records recovery independently of delivery; the selected identity provider owns the reset token. */
 export default async function ResetPasswordPage({
   searchParams,
 }: {
   searchParams: Promise<{ sent?: string }>;
 }) {
   if (internalSelected()) return <InternalAuthForm mode="recovery" organization={internalConfig().organization}/>;
-  // Keycloak owns recovery, including its anti-enumeration and brute-force controls.
-  if (keycloakSelected()) redirect('/login/start');
+  // The app records the request even without SMTP; the selected provider still owns the secure
+  // one-time action and password change. Confirmation never reveals account existence or delivery.
   const t = await getTranslations('auth');
   const { sent } = await searchParams;
 

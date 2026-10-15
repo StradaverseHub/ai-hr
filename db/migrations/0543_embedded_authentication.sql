@@ -133,3 +133,16 @@ $$;
 REVOKE ALL ON FUNCTION app.internal_auth_email_operator(text,text,text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.internal_auth_email_operator(text,text,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.internal_auth_invitation_mail(p_id uuid,p_lease uuid,p_hash text)
+RETURNS TABLE(email text,tenant_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT i.email,i.tenant_id FROM account_email_delivery d
+ JOIN app_invitation i ON i.id=d.invitation_id AND i.tenant_id=d.tenant_id
+ WHERE d.id=p_id AND d.kind='invitation' AND d.lease_token=p_lease AND d.status='pending' AND d.lease_until>now()
+ AND i.token_hash=p_hash AND i.status='pending' AND i.expires_at>now()
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.internal_auth_invitation_mail(uuid,uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.internal_auth_invitation_mail(uuid,uuid,text) TO ai_hr_app;

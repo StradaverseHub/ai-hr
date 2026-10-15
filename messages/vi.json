@@ -14024,10 +14024,10 @@
     },
     "reset": {
       "title": "Đặt lại mật khẩu của bạn",
-      "subtitle": "Nhập email của bạn và chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.",
+      "subtitle": "Nhập email để yêu cầu liên kết khôi phục an toàn. Việc gửi phụ thuộc vào dịch vụ email đã cấu hình.",
       "emailLabel": "Email",
-      "submit": "Gửi liên kết đặt lại",
-      "sent": "Nếu có tài khoản cho email đó, liên kết đặt lại mật khẩu đang được gửi đến.",
+      "submit": "Yêu cầu email khôi phục",
+      "sent": "Yêu cầu khôi phục đã được ghi nhận. Nếu có thể gửi email và tài khoản đủ điều kiện khớp, nhà cung cấp sẽ gửi liên kết bảo mật. Nếu chưa nhận được email, bạn có thể yêu cầu lại sau.",
       "backToLogin": "Quay lại đăng nhập"
     },
     "error": {
@@ -17087,8 +17087,8 @@
     "consentHelp": "Chọn cập nhật gửi đến email đã xác minh trong hồ sơ nhân viên. Tùy chọn được lưu riêng theo từng quan hệ việc làm và chỉ áp dụng cho sự kiện mới.",
     "identityRequired": "Đăng nhập bằng tài khoản nội bộ đã xác minh có email khớp hồ sơ nhân viên để bật email. Bạn vẫn có thể tắt mọi email mà không cần đồng ý nhận.",
     "relayReady": "Máy chủ chuyển tiếp SMTP đang hoạt động. Thông báo đủ điều kiện có thể được gửi.",
-    "relayOff": "Máy chủ chuyển tiếp SMTP chưa hoạt động. Chưa thể gửi email quy trình.",
-    "upgradeRequired": "Dịch vụ email riêng cần bản nâng cấp thông báo quy trình trước khi có thể gửi email.",
+    "relayOff": "SMTP chưa được cấu hình hoặc không khả dụng. Quy trình HR vẫn tiếp tục; các lần gửi email đủ điều kiện được ghi nhận là thất bại. Sau khi cấu hình SMTP, chọn email thất bại cần gửi lại.",
+    "upgradeRequired": "Dịch vụ email không khả dụng hoặc cần nâng cấp. Quy trình HR vẫn tiếp tục; các lần gửi email đủ điều kiện được ghi nhận là thất bại.",
     "policyTitle": "Danh mục tổ chức cho phép",
     "preferencesCategories": "Gửi email cho tôi về các danh mục này",
     "notAllowed": "Tổ chức hiện đang tắt",
@@ -17099,7 +17099,7 @@
     "saved": "Đã lưu cài đặt.",
     "noEmployment": "Tài khoản này chưa liên kết hồ sơ nhân viên.",
     "deliveries": "Email gửi gần đây",
-    "deliveriesHelp": "Đã gửi nghĩa là máy chủ chuyển tiếp đã chấp nhận, không chứng minh người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Lần gửi chưa rõ kết quả được giữ lại để tránh tự động gửi trùng.",
+    "deliveriesHelp": "Máy chủ chuyển tiếp chấp nhận không có nghĩa người nhận đã nhận. Danh sách hiển thị 50 lần gửi gần nhất. Email thất bại được giữ lại đến khi bạn chọn gửi lại; cấu hình SMTP không tự động gửi lại. Các lần gửi chưa rõ kết quả được giữ để tránh gửi trùng.",
     "noDeliveries": "Chưa có email quy trình trong hàng đợi.",
     "category": "Danh mục",
     "status": "Trạng thái",
@@ -17117,11 +17117,11 @@
     "statuses": {
       "pending": "Đang chờ",
       "sent": "Máy chủ đã chấp nhận",
-      "failed": "Thất bại hoặc chưa rõ",
+      "failed": "Thất bại",
       "skipped": "Đã bỏ qua"
     },
     "errors": {
-      "relayUnavailable": "Máy chủ chuyển tiếp không khả dụng",
+      "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Email này chưa được gửi; cấu hình SMTP rồi chọn Gửi lại khi cần.",
       "recipientUnavailable": "Nhà cung cấp danh tính không khả dụng",
       "recipientChanged": "Email xác minh hoặc tài khoản đã thay đổi",
       "notEligible": "Người nhận hoặc tùy chọn không còn đủ điều kiện",
@@ -19110,5 +19110,33 @@
     "scheduledActor": "Tác tử định kỳ",
     "required": "Cần khoảng {tokens} token",
     "sections": "Các phần quản lý AI"
+  },
+  "accountEmail": {
+    "title": "Lịch sử gửi email tài khoản",
+    "help": "Lời mời và yêu cầu khôi phục được lưu ngay cả khi gửi email thất bại. Cấu hình SMTP không tự động gửi lại email thất bại. Chọn từng lần gửi lại bên dưới. Chỉ quản trị viên email của hệ thống mới xem được lịch sử khôi phục.",
+    "empty": "Chưa có lần gửi email tài khoản nào.",
+    "attempts": "Số lần thử",
+    "reissue": "Cấp lại lời mời",
+    "retryRecovery": "Gửi lại email khôi phục",
+    "invitationAck": "Tôi hiểu thao tác này thu hồi liên kết mời cũ, cấp lời mời mới và có thể gửi email trùng.",
+    "recoveryAck": "Tôi muốn yêu cầu email khôi phục mới. Lần gửi trước chưa rõ kết quả có thể tạo email trùng.",
+    "retryError": "Không thể gửi lại email này. Kiểm tra quyền truy cập và liệu yêu cầu đã được thay thế hoặc lời mời không còn chờ xử lý.",
+    "retryProcessed": "Đã xử lý yêu cầu gửi lại. Kiểm tra trạng thái gửi mới nhất.",
+    "kinds": {
+      "invitation": "Lời mời tài khoản",
+      "recovery": "Khôi phục mật khẩu"
+    },
+    "statuses": {
+      "pending": "Đang thử gửi",
+      "sent": "Nhà cung cấp đã chấp nhận",
+      "failed": "Thất bại",
+      "skipped": "Đã bỏ qua"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Yêu cầu đã được lưu và email này chưa được gửi.",
+      "providerUnavailable": "Dịch vụ đăng nhập không khả dụng hoặc chưa được cấu hình. Yêu cầu đã được lưu.",
+      "notEligible": "Lời mời hoặc người nhận email khôi phục không còn đủ điều kiện.",
+      "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
+    }
   }
 }

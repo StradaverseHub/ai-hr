@@ -6,10 +6,16 @@ import { digest, opaque, passwordHash, validOpaque, validatePassword } from './c
 import { authTransaction, readRecord, writeRecord } from './store';
 import { InternalAuthError, loginKey, takeRate, type Credential, type Organization, type AuthReply } from './service';
 import { sendInternalMail } from './mail';
-export async function sendInternalInvitation(email: string, activationPath: string) {
-  if (!/^\/invite\/[A-Za-z0-9_-]{43}\/activate$/.test(activationPath)) throw new InternalAuthError('unavailable');
+import { AccountEmailDeliveryError, type AccountEmailContext } from '../account-email-model';
+export async function sendInternalInvitation(email: string, activationPath: string, context?: AccountEmailContext) {
+  const match = /^\/invite\/([A-Za-z0-9_-]{43})\/activate$/.exec(activationPath);
+  if (!match || !context) throw new AccountEmailDeliveryError('notEligible');
+  const rows = await client.unsafe('select * from app.internal_auth_invitation_mail($1::uuid,$2::uuid,$3)', [context.deliveryId, context.leaseToken, digest(match[1])]);
+  const invitation = rows[0];
+  const org = invitation ? await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`) : null;
+  if (!org || invitation.email !== email) throw new AccountEmailDeliveryError('notEligible');
   await sendInternalMail({ to: email, subject: 'Your AI HR invitation',
-    text: `You have been invited to AI HR. Open the link to choose your username and password and enroll your authenticator.\n\n${internalConfig().origin}${activationPath}\n\nThis invitation expires after seven days.` });
+    text: `You have been invited to AI HR. Organization code: ${org.code}. Open the link to choose your username and password and enroll your authenticator.\n\n${internalConfig().origin}${activationPath}\n\nThis invitation expires after seven days.` });
   return { invitationId: 'internal' };
 }
 export async function startInvitation(token: string, username: string, password: string, native = false): Promise<AuthReply> {
