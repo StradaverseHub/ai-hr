@@ -381,3 +381,16 @@ describe('797ba70b: actual final effects and immutable approved inputs', () => {
     }finally{vi.useRealTimers();}
   });
 });
+
+
+it('does not treat an administrator-amended future OT request as an effect-free deferral',async()=>{
+  const f=await fixture(),future=addDays(todayInKualaLumpur(),8);await enable(f.a,input({applicationType:'self_overtime'}));const id=await submit(f.self,f.d.employmentId,true,future);
+  await withTenant(f.a,tx=>tx.update(schema.attendanceCorrection).set({adminAmendment:{version:randomUUID(),checkIn:'09:00',checkOut:'18:00',reason:'Administrator adds effective clock inputs',actorId:f.a.userId!,recordedAt:new Date().toISOString()}}).where(eq(schema.attendanceCorrection.id,id)));
+  await approveFirstTwo(f,id);
+  await expect(withTenant(f.actors[2],async tx=>{
+    await rawFinal(tx,f.actors[2],id,f.d.employmentId);await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
+    await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+    throw new Error('Rollback amended-deferral diagnostic');
+  })).rejects.toThrow('Rollback amended-deferral');
+  expect((await readCorrection(id)).status).toBe('pending');expect(await readDay(f.d.employmentId,future)).toBeUndefined();expect(await readDecisions()).toHaveLength(2);
+});

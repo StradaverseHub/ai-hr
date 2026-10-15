@@ -429,7 +429,7 @@ DECLARE c public.attendance_correction; a public.attendance; expected jsonb; exp
 BEGIN
  SELECT r.* INTO c FROM public.attendance_correction r WHERE r.id=p_correction_id AND r.tenant_id=app.current_tenant_id() AND r.status='pending';
  IF NOT FOUND OR NOT app.can_see_employment(c.employment_id) OR NOT app.attendance_workflow_effect_scope(c.employment_id,c.attendance_date) THEN RETURN false; END IF;
- IF c.requested_ot_minutes IS NOT NULL AND c.proposed_check_in IS NULL AND c.proposed_check_out IS NULL AND c.clock_changes IS NULL AND c.attendance_date>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RETURN true; END IF;
+ IF c.admin_amendment IS NULL AND c.requested_ot_minutes IS NOT NULL AND c.proposed_check_in IS NULL AND c.proposed_check_out IS NULL AND c.clock_changes IS NULL AND c.attendance_date>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RETURN true; END IF;
  SELECT d.* INTO a FROM public.attendance d WHERE d.tenant_id=c.tenant_id AND d.employment_id=c.employment_id AND d.attendance_date=c.attendance_date AND app.attendance_workflow_active_write(d.xmin);
  IF NOT FOUND THEN RETURN false; END IF;
  IF c.clock_changes IS NOT NULL THEN expected:=c.clock_changes->'entries';
