@@ -8,7 +8,7 @@ import {testDemoSmtpConnection} from './demo-actions';
 export function DemoSmtpForm({children}:{children:ReactNode}){
   const t=useTranslations('identityEmail'),form=useRef<HTMLFormElement>(null),inFlight=useRef(false);
   const [result,setResult]=useState<DemoSmtpResult|null>(null),[pending,startTransition]=useTransition();
-  return <form ref={form} className="space-y-4 p-5" onChange={event=>{
+  return <form ref={form} method="post" className="space-y-4 p-5" onChange={event=>{
     setResult(null);
     const target=event.target;
     if(target instanceof HTMLSelectElement&&target.name==='security'){
