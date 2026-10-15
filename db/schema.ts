@@ -909,6 +909,17 @@ export const systemLabelCriteriaEpoch = pgTable('system_label_criteria_epoch', {
   revision: bigint('revision', {mode:'number'}).notNull().default(0),
 }, table => [primaryKey({columns:[table.tenantId,table.labelKind]})]);
 
+/** ADR-0124: migration-observed collision caps. App reads only; private triggers can only shrink/retire. */
+export const systemLabelCollisionBaseline = pgTable('system_label_collision_baseline', {
+  id: id(), tenantId: tenantId(), labelKind: text('label_kind').$type<LabelKind>().notNull(),
+  normalizedCode: text('normalized_code').notNull(), firstLabelId: uuid('first_label_id').notNull(),
+  secondLabelId: uuid('second_label_id').notNull(), allCompanies: boolean('all_companies').notNull(),
+  companyIds: uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
+  retiredAt: timestamp('retired_at', {withTimezone:true}), createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', {withTimezone:true}).notNull().defaultNow(),
+}, table => [uniqueIndex('system_label_collision_baseline_pair_uq').on(table.tenantId,table.labelKind,
+  table.normalizedCode,table.firstLabelId,table.secondLabelId)]);
+
 // Termination classification (Wave 4A) — powers the Terminations + Turnover analytics breakdown.
 // Nullable: legacy/active employments have none; set when an employment is terminated.
 export const terminationTypeEnum = pgEnum('termination_type', [

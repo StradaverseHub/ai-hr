@@ -335,13 +335,51 @@ export async function setLabelCriteriaBatch(ctx:SessionContext,changes:readonly 
 export async function assertLabelCriteriaCodeTx(tx: Tx, tenantId: string, kind: LabelKind, labelId: string) {
   const table = KIND_TABLE[kind];
   const key = kind === 'department' ? department.name : kind === 'position' ? position.title : kind === 'cost_center' ? costCenter.code : businessUnit.code;
-  const [label] = await tx.select({ value: key, global: table.isGlobal, archivedAt: table.archivedAt,
-    companyIds: labelCompanyIdsSql(table, kind) }).from(table).where(and(eq(table.tenantId, tenantId), eq(table.id, labelId)));
+  const [label] = await tx.select({ value: key, global: table.isGlobal, archivedAt: table.archivedAt }).from(table).where(and(eq(table.tenantId, tenantId), eq(table.id, labelId)));
   if (!label || label.archivedAt) return;
   const [collision] = await tx.select({ id: table.id }).from(table).where(and(eq(table.tenantId, tenantId),
     sql`${table.id} <> ${labelId}::uuid`, isNull(table.archivedAt), sql`lower(trim(${key})) = lower(trim(${label.value}))`,
-    label.global ? undefined : visibleLabelIdsCondition(table, kind, label.companyIds))).limit(1);
+    sql`not app.system_label_collision_allowed(${tenantId}::uuid,${kind},${label.value},
+      ${labelId}::uuid,${table.id},${label.global},${table.isGlobal},
+      array(select lca.company_id from label_company_assignment lca where lca.tenant_id=${tenantId}::uuid
+        and lca.label_kind=${kind} and lca.label_id=${labelId}::uuid),${labelCompanyIdsSql(table,kind)}::uuid[])`)).limit(1);
   if (collision) throw new Error('Another active label has the same code or name in the selected Criteria.');
+}
+
+/** Projected final pairs use the same read-only collision predicate as the deferred DB guard.
+ * null identity means a NEW row, derived by the workbook owner, never an exemption flag. This
+ * grants no write permission: actual write guards independently load stored final rows. */
+export type LabelCollisionProposal = {
+  key: string; kind: LabelKind; code: string;
+  first: {id: string|null; global: boolean; companyIds: string[]};
+  second: {id: string|null; global: boolean; companyIds: string[]};
+};
+export const LABEL_COLLISION_PREVIEW_PAIR_LIMIT = 10000;
+export async function refusedLabelCollisionProposalsTx(tx: Tx, tenantId: string,
+  pairs: LabelCollisionProposal[]): Promise<string[]> {
+  if (!pairs.length) return [];
+  if (pairs.length>LABEL_COLLISION_PREVIEW_PAIR_LIMIT) throw new Error('Too many matching label codes. Preview a smaller workbook.');
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const seen=new Set<string>();
+  for(const pair of pairs){
+    if(!pair || typeof pair.key!=='string' || !pair.key || pair.key.length>200 || seen.has(pair.key)
+      || !LABEL_KINDS.includes(pair.kind) || typeof pair.code!=='string' || pair.code.length>1000)
+      throw new Error('Invalid projected label collision identity.');
+    seen.add(pair.key);
+    for(const row of [pair.first,pair.second]) if(!row || (row.id!==null&&!uuid.test(row.id))
+      || typeof row.global!=='boolean' || !Array.isArray(row.companyIds) || row.companyIds.length>1000
+      || row.companyIds.some(id=>typeof id!=='string'||!uuid.test(id))) throw new Error('Invalid projected label Criteria.');
+  }
+  const json=JSON.stringify(pairs);
+  if(json.length>2_000_000) throw new Error('Too many matching label codes. Preview a smaller workbook.');
+  const result=await tx.execute(sql`select p.key from jsonb_to_recordset(${json}::jsonb)
+    as p(key text,kind text,code text,first jsonb,second jsonb)
+    where not app.system_label_collision_allowed(${tenantId}::uuid,p.kind,p.code,
+      (p.first->>'id')::uuid,(p.second->>'id')::uuid,
+      (p.first->>'global')::boolean,(p.second->>'global')::boolean,
+      array(select jsonb_array_elements_text(p.first->'companyIds'))::uuid[],
+      array(select jsonb_array_elements_text(p.second->'companyIds'))::uuid[])`);
+  return (result as unknown as {key:string}[]).map(row=>row.key);
 }
 
 /** Compatibility entry points delegate to the complete owner; no independent sharing switch exists. */

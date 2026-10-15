@@ -1,6 +1,8 @@
 -- 0550: System Labels availability has one owner: Global OR an explicit company set.
 -- Applied migration history and legacy company flags are untouched. Creation company remains provenance.
 -- Reserve idx550/when1791900000030 centrally; journal union follows integration of prerequisites0541-0549.
+-- Capture and install guards against one stable incumbent set, before new epoch triggers exist.
+LOCK TABLE department,position,cost_center,business_unit,label_company_assignment IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
 INSERT INTO label_company_assignment(tenant_id,label_kind,label_id,company_id)
 SELECT tenant_id,'department',id,company_id FROM department WHERE NOT is_global
 ON CONFLICT DO NOTHING;--> statement-breakpoint
@@ -14,10 +16,10 @@ INSERT INTO label_company_assignment(tenant_id,label_kind,label_id,company_id)
 SELECT tenant_id,'business_unit',id,company_id FROM business_unit WHERE NOT is_global
 ON CONFLICT DO NOTHING;--> statement-breakpoint
 
--- Refuse ambiguous legacy data before activating the stricter owner. Never repair by renaming,
--- deleting a code, or silently changing its criteria. The owner can reconcile a failed live rehearsal.
+-- Preserve inherited ambiguity by exact pair below; invalid tenancy/orphans still refuse.
+-- Never rename, delete or silently narrow an incumbent label to make migration pass.
 DO $$
-DECLARE v_kind text;v_key text;v_conflict boolean;
+DECLARE v_kind text;v_key text;
 BEGIN
  IF EXISTS(SELECT 1 FROM (SELECT tenant_id,id,company_id FROM department UNION ALL SELECT tenant_id,id,company_id FROM position UNION ALL SELECT tenant_id,id,company_id FROM cost_center UNION ALL SELECT tenant_id,id,company_id FROM business_unit) labels
   LEFT JOIN company co ON co.id=labels.company_id AND co.tenant_id=labels.tenant_id WHERE co.id IS NULL) THEN
@@ -29,18 +31,133 @@ BEGIN
   WHERE co.id IS NULL OR labels.id IS NULL) THEN
   RAISE EXCEPTION 'Existing System Labels have invalid or orphan company Criteria; reconcile before upgrading';
  END IF;
- FOREACH v_kind IN ARRAY ARRAY['department','position','cost_center','business_unit'] LOOP
-  v_key:=CASE v_kind WHEN 'department' THEN 'name' WHEN 'position' THEN 'title' ELSE 'code' END;
-  EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I a JOIN public.%I b ON a.tenant_id=b.tenant_id AND a.id<b.id
-   WHERE a.archived_at IS NULL AND b.archived_at IS NULL AND lower(trim(a.%I))=lower(trim(b.%I))
-    AND (a.is_global OR b.is_global OR EXISTS(SELECT 1 FROM public.label_company_assignment x JOIN public.label_company_assignment y
-     ON x.tenant_id=y.tenant_id AND x.label_kind=y.label_kind AND x.company_id=y.company_id
-     WHERE x.tenant_id=a.tenant_id AND x.label_kind=$1 AND x.label_id=a.id AND y.label_id=b.id)))',v_kind,v_kind,v_key,v_key)
-   INTO v_conflict USING v_kind;
-  IF v_conflict THEN RAISE EXCEPTION 'Existing active System Label codes conflict under common Criteria; reconcile before upgrading';END IF;
- END LOOP;
 END $$;
 --> statement-breakpoint
+
+-- ADR-0124. This is a migration observation, never a caller-controlled collision exemption.
+CREATE TABLE system_label_collision_baseline (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
+ label_kind text NOT NULL CHECK(label_kind IN ('department','position','cost_center','business_unit')),
+ normalized_code text NOT NULL CHECK(normalized_code=lower(trim(normalized_code))),
+ first_label_id uuid NOT NULL, second_label_id uuid NOT NULL CHECK(first_label_id<second_label_id),
+ all_companies boolean NOT NULL, company_ids uuid[] NOT NULL DEFAULT '{}',
+ retired_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT system_label_collision_baseline_pair_uq UNIQUE(tenant_id,label_kind,normalized_code,first_label_id,second_label_id),
+ CHECK(NOT all_companies OR cardinality(company_ids)=0),
+ CHECK(retired_at IS NOT NULL OR all_companies OR cardinality(company_ids)>0)
+);--> statement-breakpoint
+ALTER TABLE system_label_collision_baseline ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+REVOKE ALL ON system_label_collision_baseline FROM PUBLIC,ai_hr_app;--> statement-breakpoint
+GRANT SELECT ON system_label_collision_baseline TO ai_hr_app;--> statement-breakpoint
+CREATE POLICY label_collision_baseline_read ON system_label_collision_baseline FOR SELECT
+USING(tenant_id=app.current_tenant_id());--> statement-breakpoint
+
+-- BEGIN INHERITED LABEL COLLISION CAPTURE: exactly once, as migration owner, no callable seeder.
+DO $$
+DECLARE v_kind text;v_key text;
+BEGIN
+ FOREACH v_kind IN ARRAY ARRAY['department','position','cost_center','business_unit'] LOOP
+  v_key:=CASE v_kind WHEN 'department' THEN 'name' WHEN 'position' THEN 'title' ELSE 'code' END;
+  EXECUTE format('INSERT INTO public.system_label_collision_baseline
+   (tenant_id,label_kind,normalized_code,first_label_id,second_label_id,all_companies,company_ids)
+   SELECT a.tenant_id,$1,lower(trim(a.%I)),a.id,b.id,a.is_global AND b.is_global,overlap.companies
+   FROM public.%I a JOIN public.%I b ON a.tenant_id=b.tenant_id AND a.id<b.id
+   CROSS JOIN LATERAL (SELECT ARRAY(SELECT DISTINCT x.company_id FROM public.label_company_assignment x
+    WHERE x.tenant_id=a.tenant_id AND x.label_kind=$1 AND
+     ((a.is_global AND NOT b.is_global AND x.label_id=b.id) OR
+      (b.is_global AND NOT a.is_global AND x.label_id=a.id) OR
+      (NOT a.is_global AND NOT b.is_global AND x.label_id=a.id AND EXISTS(
+       SELECT 1 FROM public.label_company_assignment y WHERE y.tenant_id=x.tenant_id AND y.label_kind=x.label_kind
+        AND y.label_id=b.id AND y.company_id=x.company_id))) ORDER BY x.company_id) AS companies) overlap
+   WHERE a.archived_at IS NULL AND b.archived_at IS NULL AND lower(trim(a.%I))=lower(trim(b.%I))
+    AND ((a.is_global AND b.is_global) OR cardinality(overlap.companies)>0)
+   ON CONFLICT DO NOTHING',v_key,v_kind,v_kind,v_key,v_key) USING v_kind;
+ END LOOP;
+END $$;
+-- END INHERITED LABEL COLLISION CAPTURE
+--> statement-breakpoint
+
+-- Invoker, read-only: projected workbook facts are not authorization. Actual write guards pass
+-- final stored rows. A new identity (NULL in preview), code or overlap cannot borrow a baseline.
+CREATE FUNCTION app.system_label_collision_allowed(p_tenant uuid,p_kind text,p_code text,
+ p_first uuid,p_second uuid,p_first_global boolean,p_second_global boolean,
+ p_first_companies uuid[],p_second_companies uuid[]) RETURNS boolean
+LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE v_overlap uuid[];v_baseline public.system_label_collision_baseline%ROWTYPE;
+BEGIN
+ IF p_tenant IS NULL OR p_kind IS NULL OR p_kind NOT IN ('department','position','cost_center','business_unit') OR p_code IS NULL
+  OR p_first_global IS NULL OR p_second_global IS NULL OR p_first_companies IS NULL OR p_second_companies IS NULL THEN RETURN false;END IF;
+ IF app.current_tenant_id() IS NOT NULL AND app.current_tenant_id()<>p_tenant THEN RETURN false;END IF;
+ SELECT ARRAY(SELECT DISTINCT c FROM unnest(CASE WHEN p_first_global THEN p_second_companies ELSE p_first_companies END) c
+  WHERE c IS NOT NULL AND (p_first_global OR p_second_global OR c=ANY(p_second_companies)) ORDER BY c) INTO v_overlap;
+ IF NOT(p_first_global AND p_second_global) AND cardinality(v_overlap)=0 THEN RETURN true;END IF;
+ IF p_first IS NULL OR p_second IS NULL OR p_first=p_second THEN RETURN false;END IF;
+ SELECT * INTO v_baseline FROM public.system_label_collision_baseline
+  WHERE tenant_id=p_tenant AND label_kind=p_kind AND normalized_code=lower(trim(p_code))
+   AND first_label_id=least(p_first,p_second) AND second_label_id=greatest(p_first,p_second) AND retired_at IS NULL;
+ IF NOT FOUND THEN RETURN false;END IF;
+ IF p_first_global AND p_second_global THEN RETURN v_baseline.all_companies;END IF;
+ RETURN v_baseline.all_companies OR v_overlap<@v_baseline.company_ids;
+END $$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.system_label_collision_allowed(uuid,text,text,uuid,uuid,boolean,boolean,uuid[],uuid[]) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.system_label_collision_allowed(uuid,text,text,uuid,uuid,boolean,boolean,uuid[],uuid[]) TO ai_hr_app;--> statement-breakpoint
+
+-- Only this private trigger can reduce captured caps. It never inserts, deletes, expands or revives.
+-- Deferred execution observes final batch Criteria, not transient DELETE/INSERT junction rows.
+CREATE FUNCTION app.reduce_system_label_collision_baseline() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE v_tenant uuid;v_kind text;v_id uuid;v_key text;v_a record;v_b record;
+ v_row public.system_label_collision_baseline%ROWTYPE;v_overlap uuid[];v_all boolean;v_retire boolean;
+BEGIN
+ IF TG_RELID NOT IN ('public.department'::regclass,'public.position'::regclass,'public.cost_center'::regclass,
+   'public.business_unit'::regclass,'public.label_company_assignment'::regclass) THEN
+  RAISE EXCEPTION 'Invalid label collision trigger relation' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='label_company_assignment' THEN
+  IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id;v_kind:=OLD.label_kind;v_id:=OLD.label_id;
+  ELSE v_tenant:=NEW.tenant_id;v_kind:=NEW.label_kind;v_id:=NEW.label_id;END IF;
+ ELSE
+  v_kind:=TG_TABLE_NAME;
+  IF TG_OP='DELETE' THEN v_tenant:=OLD.tenant_id;v_id:=OLD.id;ELSE v_tenant:=NEW.tenant_id;v_id:=NEW.id;END IF;
+ END IF;
+ IF v_kind NOT IN ('department','position','cost_center','business_unit') OR
+  (app.current_tenant_id() IS NOT NULL AND app.current_tenant_id()<>v_tenant) THEN
+  RAISE EXCEPTION 'Invalid label collision trigger identity' USING ERRCODE='42501';END IF;
+ v_key:=CASE v_kind WHEN 'department' THEN 'name' WHEN 'position' THEN 'title' ELSE 'code' END;
+ FOR v_row IN SELECT * FROM public.system_label_collision_baseline WHERE tenant_id=v_tenant AND label_kind=v_kind
+  AND (first_label_id=v_id OR second_label_id=v_id) AND retired_at IS NULL ORDER BY first_label_id,second_label_id FOR UPDATE LOOP
+  EXECUTE format('SELECT is_global,archived_at,lower(trim(%I)) AS code FROM public.%I WHERE tenant_id=$1 AND id=$2',v_key,v_kind) INTO v_a USING v_tenant,v_row.first_label_id;
+  EXECUTE format('SELECT is_global,archived_at,lower(trim(%I)) AS code FROM public.%I WHERE tenant_id=$1 AND id=$2',v_key,v_kind) INTO v_b USING v_tenant,v_row.second_label_id;
+  v_retire:=v_a.code IS NULL OR v_b.code IS NULL OR v_a.archived_at IS NOT NULL OR v_b.archived_at IS NOT NULL
+   OR v_a.code<>v_row.normalized_code OR v_b.code<>v_row.normalized_code;
+  v_all:=false;v_overlap:='{}'::uuid[];
+  IF NOT v_retire THEN
+   IF v_a.is_global AND v_b.is_global THEN
+    -- A finite cap cannot become Global again. Leave it finite for the collision guard to refuse.
+    v_all:=v_row.all_companies;v_overlap:=v_row.company_ids;
+   ELSE
+    SELECT ARRAY(SELECT DISTINCT x.company_id FROM public.label_company_assignment x WHERE x.tenant_id=v_tenant AND x.label_kind=v_kind
+     AND ((v_a.is_global AND x.label_id=v_row.second_label_id) OR (v_b.is_global AND x.label_id=v_row.first_label_id)
+      OR (NOT v_a.is_global AND NOT v_b.is_global AND x.label_id=v_row.first_label_id AND EXISTS(
+       SELECT 1 FROM public.label_company_assignment y WHERE y.tenant_id=x.tenant_id AND y.label_kind=x.label_kind
+        AND y.label_id=v_row.second_label_id AND y.company_id=x.company_id)))
+     AND (v_row.all_companies OR x.company_id=ANY(v_row.company_ids)) ORDER BY x.company_id) INTO v_overlap;
+    v_retire:=cardinality(v_overlap)=0;
+   END IF;
+  END IF;
+  IF v_retire OR v_all IS DISTINCT FROM v_row.all_companies OR v_overlap IS DISTINCT FROM v_row.company_ids THEN
+   UPDATE public.system_label_collision_baseline SET all_companies=v_all,company_ids=v_overlap,
+    retired_at=CASE WHEN v_retire THEN now() ELSE NULL END,updated_at=now() WHERE id=v_row.id;
+   INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+   VALUES(v_tenant,'system-label-collision',v_row.id,'system-label-collision.reduced',
+    CASE WHEN app.current_user_id() IS NULL THEN 'system'::public.actor_type ELSE 'user'::public.actor_type END,app.current_user_id(),
+    jsonb_build_object('kind',v_kind,'code',v_row.normalized_code,'firstLabelId',v_row.first_label_id,'secondLabelId',v_row.second_label_id,
+     'before',jsonb_build_object('allCompanies',v_row.all_companies,'companyIds',v_row.company_ids),
+     'after',jsonb_build_object('allCompanies',v_all,'companyIds',v_overlap),'retired',v_retire));
+  END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.reduce_system_label_collision_baseline() FROM PUBLIC,ai_hr_app;--> statement-breakpoint
 
 -- A persistent coordination row makes concurrent writers restart even under REPEATABLE READ;
 -- advisory locks alone serialize timing but cannot refresh an already pinned MVCC snapshot.
@@ -182,9 +299,9 @@ BEGIN
   IF v_label.archived_at IS NOT NULL THEN RETURN NULL;END IF;
   EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I other WHERE other.tenant_id=$1 AND other.id<>$2
     AND other.archived_at IS NULL AND lower(trim(other.%I))=$3
-    AND ($4 OR other.is_global OR EXISTS(SELECT 1 FROM public.label_company_assignment a
-      JOIN public.label_company_assignment b ON b.tenant_id=a.tenant_id AND b.label_kind=a.label_kind AND b.company_id=a.company_id
-      WHERE a.tenant_id=$1 AND a.label_kind=$5 AND a.label_id=$2 AND b.label_id=other.id)))',v_kind,v_key)
+    AND NOT app.system_label_collision_allowed($1,$5,$3,$2,other.id,$4,other.is_global,
+     ARRAY(SELECT company_id FROM public.label_company_assignment WHERE tenant_id=$1 AND label_kind=$5 AND label_id=$2),
+     ARRAY(SELECT company_id FROM public.label_company_assignment WHERE tenant_id=$1 AND label_kind=$5 AND label_id=other.id)))',v_kind,v_key)
     INTO v_collision USING v_tenant,v_id,v_label.code,v_label.is_global,v_kind;
   IF v_collision THEN RAISE EXCEPTION 'Active label code or name conflicts in selected Criteria' USING ERRCODE='23505';END IF;
   RETURN NULL;
@@ -234,6 +351,17 @@ CREATE CONSTRAINT TRIGGER label_company_assignment_criteria_check AFTER INSERT O
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.check_label_company_criteria();--> statement-breakpoint
 
 --> statement-breakpoint
+CREATE CONSTRAINT TRIGGER department_collision_reduce AFTER INSERT OR UPDATE OR DELETE ON department
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reduce_system_label_collision_baseline();--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER position_collision_reduce AFTER INSERT OR UPDATE OR DELETE ON position
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reduce_system_label_collision_baseline();--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER cost_center_collision_reduce AFTER INSERT OR UPDATE OR DELETE ON cost_center
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reduce_system_label_collision_baseline();--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER business_unit_collision_reduce AFTER INSERT OR UPDATE OR DELETE ON business_unit
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reduce_system_label_collision_baseline();--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER label_company_assignment_collision_reduce AFTER INSERT OR UPDATE OR DELETE ON label_company_assignment
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reduce_system_label_collision_baseline();--> statement-breakpoint
+
 -- Reference writers participate in the same coordination order. A pinned MVCC writer cannot commit
 -- a reference validated before another transaction removed its company from the saved Criteria.
 CREATE FUNCTION app.lock_assignment_label_criteria() RETURNS trigger

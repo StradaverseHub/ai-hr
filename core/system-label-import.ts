@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { bulkSaveLabels, createJobGrade, updateJobGrade, type LabelCreateInput, type LabelUpdateInput } from './admin';
 import { createProfileOption, updateProfileOption } from './profile-options';
-import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINTENANCE_LIMIT, boundedLabelMaintenanceRows, lockLabelCriteriaTx } from './system-labels';
+import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINTENANCE_LIMIT, boundedLabelMaintenanceRows, lockLabelCriteriaTx, refusedLabelCollisionProposalsTx, LABEL_COLLISION_PREVIEW_PAIR_LIMIT, type LabelCollisionProposal } from './system-labels';
 import { createGradeGroup, updateGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
@@ -170,8 +170,13 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
         if(!co)throw new Error('Company is unknown or ambiguous.');
         guard(!co.writable||!!co.archived,'Company is archived or outside your administrator scope.');
         const companyId=co.id;v.Company=companyCell(c.companies,companyId);
-        const twins=c.orgs.filter(x=>x.kind===kind&&x.companyId===companyId&&lower(x.values.Code)===lower(code));
-        const old=twins.find(x=>!x.archived)??twins[0];
+        const twins=c.orgs.filter(x=>x.kind===kind&&x.companyId===companyId&&lower(x.values.Code.trim())===lower(code));
+        if(twins.length>1)throw new Error('Company and Code identify multiple records. Resolve this ambiguity in System Labels before importing.');
+        const old=twins[0];
+        if(old&&old.values.Code.trim()!==code)throw new Error('Keep the existing Code spelling; import cannot rename an identifier.');
+        // The workbook reader trims cells; preserve an incumbent stored spelling (including outer
+        // whitespace) rather than silently rewriting an identifier during a metadata-only round trip.
+        if(old)v.Code=old.values.Code;
         mergeBefore(old?.values??null);
         if(row.values.Criteria==='global' && row.values['Criteria Companies']==='')v['Criteria Companies']='';
         if(merge&&old&&same(old.values,v)){classify(old.values,async()=>{});continue;}
@@ -186,7 +191,6 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
         if(head&&headMatches.length!==1)throw new Error('Head Employee Code must identify one active employee in the origin company.');
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])if('required' in col&&col.required)requireValue({code:'Code',label:'Label',description:'Description'}[col.headerKey]);
         guard(!!old?.archived,'Restore the archived option in System Labels first.');
-        if(old&&old.values.Code!==code)throw new Error('Keep the existing Code spelling; import cannot rename an identifier.');
         if(!identify(`${kind}|${companyId}|${lower(code)}`))continue;
         const fields:Partial<LabelCreateInput>={companyId,label:v.Label};
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])Object.assign(fields,{[col.field]:v[{code:'Code',label:'Label',description:'Description'}[col.headerKey]]});
@@ -245,15 +249,32 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
   }
   for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
   const selectedWrites=writes.filter(w=>output.some(r=>r.selected&&r.sheet+':'+r.row===w.key));
-  type ProjectedCriteria={kind:OrganisationLabelKind;id:string;code:string;global:boolean;companies:Set<string>;sourceKey?:string};
-  const companyId=(value:string)=>c.companies.find(company=>company.id===value||company.name===value)?.id;
+  type ProjectedCriteria={kind:OrganisationLabelKind;id:string|null;code:string;global:boolean;companies:Set<string>;sourceKey?:string};
+  const companyId=(value:string)=>{const matches=c.companies.filter(company=>company.id===value||company.name===value);
+    if(matches.length!==1)throw new Error('Saved company Criteria are unknown or ambiguous. Refresh the workbook.');return matches[0].id;};
   const finalCriteria=new Map<string,ProjectedCriteria>(c.orgs.filter(row=>!row.archived).map(row=>[row.kind+':'+row.id,{kind:row.kind,id:row.id,code:lower(row.values.Code.trim()),global:row.values.Criteria==='global',companies:new Set(list(row.values['Criteria Companies']).map(companyId).filter((id):id is string=>!!id))}]));
   for(const write of selectedWrites){const proposal=write.org;if(!proposal)continue;const input=proposal.update??proposal.create!;
-    const id=proposal.update?.id??write.key,criteria=proposal.update?.criteria??{isGlobal:proposal.create!.isGlobal??false,companyIds:proposal.create!.companyIds??[proposal.create!.companyId]};
-    finalCriteria.set(proposal.kind+':'+id,{kind:proposal.kind,id,code:lower(String(proposal.kind==='department'?input.name:proposal.kind==='position'?input.title:input.code).trim()),global:criteria.isGlobal,companies:new Set(criteria.companyIds),sourceKey:write.key});
+    const id=proposal.update?.id??null,criteria=proposal.update?.criteria??{isGlobal:proposal.create!.isGlobal??false,companyIds:proposal.create!.companyIds??[proposal.create!.companyId]};
+    finalCriteria.set(proposal.kind+':'+(id??write.key),{kind:proposal.kind,id,code:lower(String(proposal.kind==='department'?input.name:proposal.kind==='position'?input.title:input.code).trim()),global:criteria.isGlobal,companies:new Set(criteria.companyIds),sourceKey:write.key});
   }
   const byCode=new Map<string,ProjectedCriteria[]>();for(const row of finalCriteria.values()){const key=row.kind+':'+row.code;byCode.set(key,[...(byCode.get(key)??[]),row]);}
-  for(const bucket of byCode.values())for(const row of bucket){if(!row.sourceKey)continue;if(bucket.some(other=>other.id!==row.id&&(row.global||other.global||[...row.companies].some(id=>other.companies.has(id))))){const result=output.find(result=>result.sheet+':'+result.row===row.sourceKey)!;result.outcome='error';result.message='Another active label has the same code in the proposed company Criteria.';}}
+  const pairs:LabelCollisionProposal[]=[],pairSources=new Map<string,string[]>();
+  for(const bucket of byCode.values())for(let i=0;i<bucket.length;i++){
+   const first=bucket[i];if(!first.sourceKey)continue;
+   for(let j=0;j<bucket.length;j++){
+    const second=bucket[j];if(i===j||(second.sourceKey&&j<i))continue;
+    if(pairs.length>=LABEL_COLLISION_PREVIEW_PAIR_LIMIT)throw new Error('Too many matching label codes. Preview a smaller workbook.');
+    const key=String(pairs.length);
+    pairs.push({key,kind:first.kind,code:first.code,
+      first:{id:first.id,global:first.global,companyIds:[...first.companies]},
+      second:{id:second.id,global:second.global,companyIds:[...second.companies]}});
+    pairSources.set(key,[first.sourceKey,second.sourceKey].filter((value):value is string=>!!value));
+   }
+  }
+  for(const key of await refusedLabelCollisionProposalsTx(tx,ctx.tenantId,pairs))for(const sourceKey of pairSources.get(key)??[]){
+    const result=output.find(result=>result.sheet+':'+result.row===sourceKey)!;
+    result.outcome='error';result.message='Another active label has the same code in the proposed company Criteria.';
+  }
   const orgGroups=new Map<OrganisationLabelKind,{creates:LabelCreateInput[];updates:LabelUpdateInput[]}>(),apply:(()=>Promise<unknown>)[]=[];
   for(const write of selectedWrites){if(!write.org){apply.push(write.apply);continue;}const group=orgGroups.get(write.org.kind)??{creates:[],updates:[]};if(write.org.create)group.creates.push(write.org.create);if(write.org.update)group.updates.push(write.org.update);orgGroups.set(write.org.kind,group);}
   for(const kind of ORGANISATION_LABEL_KINDS){const group=orgGroups.get(kind);if(group)apply.push(()=>bulkSaveLabels(ctx,kind,group,tx));}
