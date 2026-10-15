@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 import type SMTPConnection from 'nodemailer/lib/smtp-connection';
 import type {SMTPConnectionOptions} from 'nodemailer/lib/smtp-connection';
 import { isPublicIp } from './public-network';
-import {createDemoSmtpConnection} from './demo-smtp-connection';
+import {createDemoSmtpConnection,DEMO_SMTP_MAX_REPLY_BYTES} from './demo-smtp-connection';
 import { demoSmtpSchema,type DemoSmtpConfig,type DemoSmtpFailure,type DemoSmtpResult } from './demo-smtp-model';
 
 export class DemoSmtpError extends Error {
@@ -52,7 +52,7 @@ export async function probeDemoSmtp(input:DemoSmtpConfig,deps:Dependencies=defau
       secure:config.security==='tls',requireTLS:config.security==='starttls',opportunisticTLS:false,
       tls:{servername:config.host,rejectUnauthorized:true,minVersion:'TLSv1.2'},
       name:'demo.ai-hr.invalid',connectionTimeout:10000,greetingTimeout:5000,socketTimeout:5000,
-      dnsTimeout:2000,maxResponseSize:8192,logger:false,debug:false,transactionLog:false});
+      dnsTimeout:2000,maxResponseSize:DEMO_SMTP_MAX_REPLY_BYTES,logger:false,debug:false,transactionLog:false});
     const client=connection;
     return await new Promise<DemoSmtpResult>(resolve=>{
       let settled=false;

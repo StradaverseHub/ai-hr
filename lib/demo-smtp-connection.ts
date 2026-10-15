@@ -1,6 +1,9 @@
 import 'server-only';
 import SMTPConnection,{type SMTPConnectionOptions} from 'nodemailer/lib/smtp-connection';
 
+export const DEMO_SMTP_MAX_REPLY_BYTES=8192;
+const MAX_EXCHANGE_BYTES=65536;
+
 /** Nodemailer 10.1 bounds unfinished replies, but not an oversized final/complete line.
  * This narrow adapter counts plaintext SMTP bytes before its parser, across TLS upgrades.
  * The pinned library calls _onData dynamically; real TLS/STARTTLS fixtures guard this seam.
@@ -14,10 +17,10 @@ export function createDemoSmtpConnection(options:SMTPConnectionOptions):SMTPConn
  parser._onData=chunk=>{
   if(closed)return;
   totalBytes+=chunk.length;
-  let allowed=totalBytes<=65536;
+  let allowed=totalBytes<=MAX_EXCHANGE_BYTES;
   for(const byte of chunk){
    if(!allowed)break;
-   if(++replyBytes>8192){allowed=false;break;}
+   if(++replyBytes>DEMO_SMTP_MAX_REPLY_BYTES){allowed=false;break;}
    if(prefix.length<4)prefix+=String.fromCharCode(byte);
    if(byte===10){if(!/^\d{3}-/.test(prefix))replyBytes=0;prefix='';}
   }
