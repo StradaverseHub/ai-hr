@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type {AttendanceDeriveRow} from '@/packs/attendance/service';
 import { AttendanceFigureCells, type AttendanceFigureCellsProps } from '@/components/attendance-figure-cells';
 
 /**
@@ -17,6 +18,11 @@ export function DayField({ label, value }: { label: string; value: string }) {
       <div className="mt-0.5 break-words text-sm tabular-nums">{value}</div>
     </div>
   );
+}
+
+/** Day classification and presence are independent: working on a rest day is still a rest day. */
+export function AttendanceDayTypeField({label,dayType,format,override}:{label:string;dayType:AttendanceDeriveRow['dayType'];format:(kind:NonNullable<AttendanceDeriveRow['dayType']>)=>string;override?:string}) {
+  return <DayField label={label} value={override??(dayType?format(dayType):'—')}/>;
 }
 
 /** The grid the day screen's field sections share: two columns on a phone, four from `sm`. */

@@ -15,7 +15,7 @@ import { listEmployees } from '@/core/read';
 import { employmentScheduleGroupName } from '@/core/roster';
 import { attendanceClockData, clockCaptureEvidence, attendanceDayEditor, attendanceIrregularitiesForDate } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
-import { DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
+import { AttendanceDayTypeField, DayField, DayFieldGrid, DayOvertimeRows } from '@/components/attendance-day-parts';
 import { fmtMin, fmtDayDate, fmtCoord, osmPointHref } from '@/components/attendance-format';
 
 /**
@@ -232,7 +232,7 @@ export default async function IndividualAttendanceDayPage({
                 : (row.shiftCode ?? DASH)
             }
           />
-          <Field label={t('dayEdit.dayType')} value={dayEditor?.leave.length?`${t('dayEdit.onLeave')} · ${dayEditor.leave.map(l=>l.name).join(', ')}`:dayEditor?t(`dayEdit.kind.${dayEditor.schedule.dayKind}`):statusText[status]} />
+          <AttendanceDayTypeField label={t('dayEdit.dayType')} dayType={row.dayType} format={kind=>t(`dayEdit.kind.${kind}`)} override={dayEditor?.leave.length?`${t('dayEdit.onLeave')} · ${dayEditor.leave.map(l=>l.name).join(', ')}`:dayEditor?t(`dayEdit.kind.${dayEditor.schedule.dayKind}`):undefined} />
           <Field label={t('daySecBreak')} value={fmtMin(breakMinutes)} />
         </DayFieldGrid>
         {!row.shiftCode && <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dayNoShift')}</div>}
