@@ -49,7 +49,7 @@ export * from '../../core/attendance-shortfall';
 export { captureCanonicalOvertimePersonnelContextTx } from './overtime-input';
 
 export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, overtimeSourceRevisionTx } from './overtime-calculation';
-export { canonicalOvertimeInputTx } from './overtime-input';
+export { canonicalOvertimeInputTx, canonicalOvertimePayrollInputTx } from './overtime-input';
 
 export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type OvertimePatternCalculationReview } from './overtime-calculation';
 export { listOvertimePatterns, getOvertimePattern, overtimePatternSetup, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';

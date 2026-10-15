@@ -1,6 +1,6 @@
 /** Canonical Attendance/Personnel inputs. No current profile substitution for historical facts. */
 import {createHash} from 'node:crypto';
-import {and, asc, desc, eq, gt, isNull, lte, or} from 'drizzle-orm';
+import {and, asc, desc, eq, gt, isNull, lte, or, sql} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../../db/client';
 import {assignment, attendance, attendanceCorrection, attendancePunch, company, compensation, employment} from '../../db/schema';
 import {provenCompanyDatesTx} from '../../core/employment-company';
@@ -74,6 +74,20 @@ function recordedIntervals(day: typeof attendance.$inferSelect, punches: (typeof
 
 export async function canonicalOvertimeInputTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   assertModuleGate(ctx, 'attendance');
+  return readCanonicalInputsTx(tx, ctx, p);
+}
+/** Existing financial obligations remain source-checked if Attendance is later removed. This is a
+ * distinct trusted reader, not a client-provided bypass of the Attendance configuration gate. */
+export async function canonicalOvertimePayrollInputTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
+  assertModuleGate(ctx, 'payroll');
+  if (!isCalendarDate(p.date) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.employmentId)) unavailable();
+  const proof = (await provenCompanyDatesTx(tx, [p])).get(p.employmentId + '|' + p.date);
+  if (!proof?.companyId) unavailable();
+  const permission = await tx.execute(sql`select app.can_admin_payroll_for(${proof!.companyId}::uuid) as allowed`) as unknown as {allowed: boolean}[];
+  if (!permission[0]?.allowed) throw new OvertimeOwnerError('permission', 'The overtime source is outside your financial scope.');
+  return readCanonicalInputsTx(tx, ctx, p);
+}
+async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   if (!isCalendarDate(p.date) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.employmentId)) unavailable();
   const proof = (await provenCompanyDatesTx(tx, [p])).get(p.employmentId + '|' + p.date);
   if (!proof?.companyId) unavailable();
