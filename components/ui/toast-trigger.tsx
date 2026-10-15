@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { hasPendingLegacyScheduleRedirect, legacyScheduleDestinationHash } from '@/lib/legacy-schedule-redirect';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useDatabaseErrorText } from '@/components/database-error-text';
@@ -16,6 +17,9 @@ export function ToastFromQuery() {
   const databaseErrorText = useDatabaseErrorText();
 
   useEffect(() => {
+    // The legacy destination forwards these values. Consuming them here would race that redirect
+    // with a replacement of the old pathname, and could emit the same feedback twice.
+    if (hasPendingLegacyScheduleRedirect(pathname, window.location.hash)) return;
     const ok = params.get('toast');
     const err = params.get('error');
     if (!ok && !err) return;
@@ -25,7 +29,8 @@ export function ToastFromQuery() {
     next.delete('toast');
     next.delete('error');
     const qs = next.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false });
+    const hash = legacyScheduleDestinationHash(pathname, window.location.hash);
+    router.replace(`${pathname}${qs ? `?${qs}` : ''}${hash}`, { scroll: false });
   }, [params, pathname, router]);
 
   return null;

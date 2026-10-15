@@ -159,7 +159,7 @@ async function main() {
     if(!visible||visible.reservedEmployeeCode!==draft.reservedEmployeeCode)throw new Error('Canonical scoped Draft reader cannot see its own fictional case.');
     if(digest(visible.data)!==digest(draft.data))throw new Error('Canonical Draft data differs from the exact fictional captured values; preserving them.');
     if(key!=='missingRequired'&&missingForCreation(visible.data).length)throw new Error('Unexpected missing required values in the fictional case.');
-    const routes=Object.fromEntries(locales.map(locale=>[locale,`/${locale}/admin/personnel/new?draft=${draft!.id}`]));
+    const routes=Object.fromEntries(locales.map(locale=>[locale,`/admin/personnel/new?draft=${draft!.id}`]));
     drafts[key]={id:draft.id,employeeCode:draft.reservedEmployeeCode,companyId:companies[companyKey],reservedConfigId:draft.reservedConfigId,reservedNumber:draft.reservedNumber,currentStep,data:visible.data,dataSha256:digest(visible.data),missing:missingByTab(visible.data),purpose,routes};
   }
   for(const key of ['Main','Foreign']) {
@@ -169,8 +169,8 @@ async function main() {
   if(drafts.deleteConfirm.reservedNumber!==configs.Main.currentRunningNumber)throw new Error('Delete Confirm must own the Main numbering tip before the browser journey.');
   await fs.mkdir(out,{recursive:true});
   const manifest={root,database:'ai_hr_board15_activation_browser',namespace:'board15activation',port:3204,tenantId,locales,companies,departments,configs,people,drafts,
-    catalogue:{nationality:{id:nationality.id,value:nationality.value}},policy:{id:policyId,editRoutes:Object.fromEntries(locales.map(locale=>[locale,`/${locale}/admin/payroll-policy?edit=${policyId}`]))},
-    personnelRoutes:Object.fromEntries(locales.map(locale=>[locale,`/${locale}/admin/personnel`])),personnelAfterSuccessTemplate:'/{locale}/admin/personnel/{employmentId}',
+    catalogue:{nationality:{id:nationality.id,value:nationality.value}},policy:{id:policyId,editRoutes:Object.fromEntries(locales.map(locale=>[locale,`/admin/payroll-policy?edit=${policyId}`]))},
+    personnelRoutes:Object.fromEntries(locales.map(locale=>[locale,`/admin/personnel`])),personnelAfterSuccessTemplate:'/admin/personnel/{employmentId}',
     expectedValidation:{invalidIdentity:{code:'profile_invalid',fields:[{tab:'profile',field:'icNumber'}]},missingRequired:{code:'required_fields',fields:[{tab:'job',field:'department'}]},stalePolicyAfterDeactivation:{code:'payroll_invalid',fields:[{tab:'payroll',field:'payrollPolicyId'}]}},
     identitySwitcher:'Use the app demo principal switcher for named Activation15 users; no cookie/script injection is required.',
     systemFailure:'Unexpected late-fault app demonstration is not injected by this fixture; the committed DB regression owns late-fault proof. Parent may coordinate a scoped disposable fault separately.',
