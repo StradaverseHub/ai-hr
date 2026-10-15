@@ -56,7 +56,9 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { type ComboboxOption } from '@/components/ui/combobox';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput } from '@/lib/personnel-form-contract';
 import { PassportFields } from '@/components/passport-fields';
 import {
   IdentityNumberField,
@@ -188,14 +190,14 @@ export function IdentityFields({
           {/* e4b541c6 — the pre-1990 card, for the CP39's `No. K/P Lama` column. FREE TEXT: the old format
               is not the 12-digit MyKad beside it and a validator would refuse genuine cards. Optional for
               everybody; most employees will never have one. */}
-          <Field label={t('oldIcNumber')}>
+          <PersonnelField fieldId="profile.identity_and_passport.oldicnumber">
             <input
-              name="oldIcNumber"
+              {...personnelInput('profile.identity_and_passport.oldicnumber')}
               defaultValue={oldIcNumber}
               placeholder={t('oldIcNumberPlaceholder')}
               className={inputCls}
             />
-          </Field>
+          </PersonnelField>
         </form>
       )}
 

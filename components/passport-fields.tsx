@@ -33,7 +33,9 @@
  */
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput, personnelFormLabel } from '@/lib/personnel-form-contract';
 import { DateField } from '@/components/ui/date-field';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
 
@@ -88,33 +90,38 @@ export function PassportFields(
 ) {
   const t = useTranslations('people.detail');
   const v = props.value;
-  const req = props.mode === 'form' && props.requiredTrio;
+  const mode=props.mode==='controlled'?'draft':'edit';
+  const context={passportTrio:props.mode==='form'&&props.requiredTrio};
+  const fields={passportNumber:'profile.identity_and_passport.passportnumber',passportIssueDate:'profile.identity_and_passport.passportissuedate',passportExpiryDate:'profile.identity_and_passport.passportexpirydate',passportIssuingCountry:'profile.identity_and_passport.passportissuingcountry',passportIssuingCountryCode:'profile.identity_and_passport.passportissuingcountrycode',passportRemark:'profile.identity_and_passport.passportremark'} as const;
+  const label=(key:keyof PassportValue)=>personnelFormLabel(fields[key],(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
 
   /** One text or date box, in whichever of the two shapes this screen needs. */
   const box = (key: keyof PassportValue, extra: Record<string, unknown> = {}) => (
     <input
       className={inputCls}
       {...extra}
+      {...personnelInput(fields[key],mode,context)}
       {...(props.mode === 'form'
-        ? { name: key, defaultValue: v[key] ?? '' }
+        ? { defaultValue: v[key] ?? '' }
         : { value: v[key] ?? '', onChange: (e) => props.onChange({ [key]: e.target.value }) })}
     />
   );
 
   /** A date box: the r422 DD-MMM-YYYY field where the caller opted in, else the native one as before. */
-  const dateBox = (key: 'passportIssueDate' | 'passportExpiryDate', label: string) =>
+  const dateBox = (key: 'passportIssueDate' | 'passportExpiryDate') =>
     props.mode === 'form' && props.dmyDisplay ? (
-      <DateField name={key} defaultValue={v[key] ?? ''} required={req} className={inputCls} label={label} />
+      <DateField {...personnelControl(fields[key],mode,context)} defaultValue={v[key] ?? ''} className={inputCls} label={label(key)} />
     ) : (
-      box(key, { type: 'date', required: req })
+      box(key)
     );
 
   /** One catalog picker. The Combobox already speaks both dialects (a hidden `name`d input, or
    *  `onValueChange`), which is why the nationality picker could share it first. */
   const picker = (key: 'passportIssuingCountry' | 'passportIssuingCountryCode', options: ComboboxOption[]) => (
     <Combobox
+      {...personnelControl(fields[key],mode)}
       {...(props.mode === 'form'
-        ? { name: key }
+        ? {}
         : { onValueChange: (value: string) => props.onChange({ [key]: value }) })}
       value={v[key]}
       options={options}
@@ -127,36 +134,37 @@ export function PassportFields(
 
   return (
     <>
-      <Field label={t('passportNumber')}>
-        {box('passportNumber', { required: req, placeholder: t('passportNumberPlaceholder') })}
-      </Field>
-      <Field label={t('passportIssueDate')}>{dateBox('passportIssueDate', t('passportIssueDate'))}</Field>
-      <Field label={t('passportExpiryDate')}>{dateBox('passportExpiryDate', t('passportExpiryDate'))}</Field>
-      <Field label={t('passportIssuingCountry')}>{picker('passportIssuingCountry', props.countryOptions)}</Field>
+      <PersonnelField fieldId={fields.passportNumber} mode={mode} context={context}>
+        {box('passportNumber', { placeholder: t('passportNumberPlaceholder') })}
+      </PersonnelField>
+      <PersonnelField fieldId={fields.passportIssueDate} mode={mode} context={context}>{dateBox('passportIssueDate')}</PersonnelField>
+      <PersonnelField fieldId={fields.passportExpiryDate} mode={mode} context={context}>{dateBox('passportExpiryDate')}</PersonnelField>
+      <PersonnelField fieldId={fields.passportIssuingCountry} mode={mode} context={context}>{picker('passportIssuingCountry', props.countryOptions)}</PersonnelField>
       {/* e4b541c6 — the ISO alpha-2 the CP39's `Kod Negara` column wants. A SEPARATE field from the
           issuing country above, which is fed from the tenant's nationality list and therefore holds a
           demonym: "Malaysian" is not "MY", and deriving one from the other would print an invented code
           on a tax document. HR picks it. */}
-      <Field label={t('passportIssuingCountryCode')}>
+      <PersonnelField fieldId={fields.passportIssuingCountryCode} mode={mode} context={context}>
         {picker('passportIssuingCountryCode', COUNTRY_CODE_OPTIONS)}
-      </Field>
-      <Field label={t('passportRemark')}>
+      </PersonnelField>
+      <PersonnelField fieldId={fields.passportRemark} mode={mode} context={context}>
         {props.mode === 'form' ? (
           <textarea
-            name="passportRemark"
+            {...personnelControl(fields.passportRemark,mode)}
             rows={2}
             defaultValue={v.passportRemark ?? ''}
             className={`${inputCls}${props.remarkClassName ? ` ${props.remarkClassName}` : ''}`}
           />
         ) : (
           <textarea
+            {...personnelControl(fields.passportRemark,mode)}
             rows={2}
             value={v.passportRemark ?? ''}
             onChange={(e) => props.onChange({ passportRemark: e.target.value })}
             className={`${inputCls}${props.remarkClassName ? ` ${props.remarkClassName}` : ''}`}
           />
         )}
-      </Field>
+      </PersonnelField>
     </>
   );
 }

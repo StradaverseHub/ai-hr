@@ -21,7 +21,7 @@
 
 import { useTranslations } from 'next-intl';
 import { inputCls } from '@/components/ui';
-import { PAYMENT_METHODS } from '@/lib/payment-methods';
+import { personnelControl,personnelFormChoices,personnelFormLabel } from '@/lib/personnel-form-contract';
 
 type Mode =
   | { mode: 'form'; defaultValue: string | null | undefined; disabled?: boolean }
@@ -29,24 +29,28 @@ type Mode =
 
 export function PaymentMethodField(props: Mode) {
   const t = useTranslations('people.detail');
+  const fieldId='payroll.payment_method_and_payroll_policy.paymentmethod';
+  const mode=props.mode==='controlled'?'draft':'edit';
+  const label=personnelFormLabel(fieldId,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   return (
     <>
-      <span className="text-xs font-medium text-muted-foreground">{t('paymentMethod')}</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <div className="flex gap-2">
         <select
+          {...personnelControl(fieldId,mode)}
           {...(props.mode === 'form'
-            ? { name: 'paymentMethod', defaultValue: props.defaultValue ?? '', disabled: !!props.disabled }
+            ? { defaultValue: props.defaultValue ?? '', disabled: !!props.disabled }
             : {
-                'aria-label': t('paymentMethod'),
+                'aria-label': label,
                 value: props.value ?? '',
                 onChange: (e: React.ChangeEvent<HTMLSelectElement>) => props.onChange(e.target.value),
               })}
           className={inputCls}
         >
           <option value="">{t('paymentMethodNotSet')}</option>
-          {PAYMENT_METHODS.map((m) => (
+          {personnelFormChoices(fieldId).map(({value:m,labelKey}) => (
             <option key={m} value={m}>
-              {t(`paymentMethod_${m}` as 'paymentMethod_bank_transfer')}
+              {t(labelKey.slice(14))}
             </option>
           ))}
         </select>

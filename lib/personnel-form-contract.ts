@@ -4,6 +4,7 @@ import { PAYMENT_METHODS } from './payment-methods';
 /** Client-safe Personnel form presentation. Domain owners retain authorization and cross-field rules. */
 import { personnelField, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { personnelFieldChoices, personnelFieldLabel, personnelScalarIssue, type PersonnelLabelResolver } from './personnel-import-contract';
+export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean};
 export type PersonnelFormMode = 'create' | 'edit' | 'draft' | 'record';
 export function personnelFormField(id:string):PersonnelFieldDescriptor {
   const field=personnelField(id);
@@ -14,19 +15,20 @@ export function personnelFormField(id:string):PersonnelFieldDescriptor {
 export function personnelFormLabel(id:string,resolve:PersonnelLabelResolver) {
   return personnelFieldLabel(personnelFormField(id),resolve);
 }
-export function personnelFormRequired(id:string,mode:PersonnelFormMode='edit') {
+export function personnelFormRequired(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const field=personnelFormField(id);
+  if(mode!=='create'&&mode!=='draft'&&field.form!.requiredOwner)return context[field.form!.requiredOwner]??false;
   return mode==='create'||mode==='draft' ? field.import.requiredCreate : field.form!.required?.[mode] ?? false;
 }
 /** Draft controls deliberately have no name: that screen submits its JSON draft, never FormData. */
-export function personnelControl(id:string,mode:PersonnelFormMode='edit') {
+export function personnelControl(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const field=personnelFormField(id);
-  return { 'data-personnel-field':id, ...(mode==='draft' ? {} : field.form!.name ? {name:field.form!.name} : {}), required:mode==='draft' ? false : personnelFormRequired(id,mode) };
+  return { 'data-personnel-field':id, ...(mode==='draft' ? {} : field.form!.name ? {name:field.form!.name} : {}), required:mode==='draft' ? false : personnelFormRequired(id,mode,context) };
 }
-export function personnelInput(id:string,mode:PersonnelFormMode='edit') {
+export function personnelInput(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const field=personnelFormField(id);const widget=personnelFormWidget(id);
   if(!widget || !['text','email','date','month','number','checkbox','file'].includes(widget))throw new Error(`Personnel field needs its specialized renderer: ${id}`);
-  return {...personnelControl(id,mode),type:widget, ...(field.form!.min==null?{}:{min:field.form!.min}), ...(field.form!.step==null?{}:{step:field.form!.step})};
+  return {...personnelControl(id,mode,context),type:widget, ...(field.form!.min==null?{}:{min:field.form!.min}), ...(field.form!.step==null?{}:{step:field.form!.step})};
 }
 export function personnelFormChoices(id:string) {
   const field=personnelFormField(id);
@@ -74,3 +76,8 @@ export function personnelDisplay(id:string) {personnelFormField(id);return {'dat
 export function personnelCarry(id:string) {return {...personnelDisplay(id),name:personnelFormName(id),type:'hidden'};}
 export function personnelPresence(id:string) {return {...personnelDisplay(id),name:personnelFormName(id)+'__present',type:'hidden'};}
 export function personnelRadio(id:string,mode:PersonnelFormMode='edit') {return {...personnelControl(id,mode),type:'radio'};}
+
+export function personnelOwnedChoices<T>(id:string,owner:string,choices:readonly T[]) {
+  if(personnelFormField(id).allowedValuesOwner!==owner)throw new Error(`Personnel choice owner does not match its descriptor: ${id}`);
+  return choices;
+}

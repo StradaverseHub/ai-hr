@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName} from '../lib/personnel-form-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue} from '../lib/personnel-form-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
@@ -26,6 +26,10 @@ describe('Personnel shared form contract',()=>{
     expect(personnelFormIssue('profile.personal_details.fullname','','draft')).toBe('required');
     expect(personnelControl('profile.personal_details.fullname','draft').required).toBe(false);
     expect(personnelFormChoices('employment.employment_dates_and_service.probationunit').map(option=>option.value)).toEqual(['month','week','day']);
+  });
+  it('rejects a stale specialized override when canonical type changes',()=>{
+    const field=structuredClone(PERSONNEL_FIELDS.find(field=>field.id==='profile.contact_and_permanent_address.personalemail')!);
+    field.type='date';expect(personnelFormMetadataIssue(field)).toContain('canonical type');
   });
   it('reads actual Birth Date JSX and every Employment period control, including unnamed controlled inputs',()=>{
     const read=(file:string)=>readFileSync(new URL('../'+file,import.meta.url),'utf8');

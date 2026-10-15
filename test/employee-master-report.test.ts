@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import establishedPersonnelFieldIds from './fixtures/personnel-field-identities.json';
 import { PERSONNEL_FIELDS, type PersonnelFieldDescriptor } from '../lib/personnel-field-registry';
 import { defaultMasterColumn, runEmployeeMasterProjection, validateEmployeeMasterSpec, type EmployeeMasterSpec, type MasterSubject, type MasterOwnerRecord } from '../lib/employee-master-report';
 
@@ -12,6 +13,7 @@ const validate=(spec:EmployeeMasterSpec,catalogue=fields)=>validateEmployeeMaste
 
 describe('Employee Master report contract',()=>{
   it('declares all approved tab entries once with stable unique IDs and explicit disabled control reasons',()=>{
+    expect(PERSONNEL_FIELDS.map(field=>field.id)).toEqual(expect.arrayContaining(establishedPersonnelFieldIds));
     expect(PERSONNEL_FIELDS.map(field=>field.id)).toEqual(expect.arrayContaining(['profile.personal_details.fullname','employment.employment_dates_and_service.confirmationdate','employment.employment_dates_and_service.finalconfirmationdate']));
     expect(new Set(PERSONNEL_FIELDS.map(field=>field.id)).size).toBe(PERSONNEL_FIELDS.length);
     expect(new Set(PERSONNEL_FIELDS.map(field=>field.tab)).size).toBe(11);

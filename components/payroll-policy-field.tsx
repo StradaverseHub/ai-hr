@@ -23,7 +23,9 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl } from '@/lib/personnel-form-contract';
 
 export type AssignablePolicyOption = { id: string; name: string };
 
@@ -36,10 +38,11 @@ export function PayrollPolicyField(props: Mode & { policies: AssignablePolicyOpt
   const current = props.mode === 'controlled' ? (props.value ?? '') : '';
   const stale = props.mode === 'controlled' && current !== '' && !props.policies.some((p) => p.id === current);
   return (
-    <Field label={tp('assignLabel')}>
+    <PersonnelField fieldId="payroll.payment_method_and_payroll_policy.payrollpolicyname" mode={props.mode==='controlled'?'draft':'edit'}>
       <select
+        {...personnelControl('payroll.payment_method_and_payroll_policy.payrollpolicyname',props.mode==='controlled'?'draft':'edit')}
         {...(props.mode === 'form'
-          ? { name: 'policyId', defaultValue: props.defaultValue ?? '' }
+          ? { defaultValue: props.defaultValue ?? '' }
           : {
               value: current,
               onChange: (e: React.ChangeEvent<HTMLSelectElement>) => props.onChange(e.target.value),
@@ -52,7 +55,7 @@ export function PayrollPolicyField(props: Mode & { policies: AssignablePolicyOpt
           <option key={p.id} value={p.id}>{p.name}</option>
         ))}
       </select>
-    </Field>
+    </PersonnelField>
   );
 }
 

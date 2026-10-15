@@ -1403,6 +1403,7 @@
       "identityTaxCardTitle": "அடையாளம் & வரி",
       "incomeTaxPcbSection": "வருமான வரி (PCB)",
       "taxInfoLegend": "வரித் தகவல்",
+      "taxCategoryNumeric": "முந்தைய வரி வகை (எண்)",
       "taxCategoryLabel": "வரி வகை",
       "taxCategorySingle": "திருமணமாகாதவர்/துணைவர் குழந்தை நிவாரணம் கோரவில்லை",
       "taxCategoryMarriedSpouseNotWorking": "திருமணமானவர் மற்றும் துணைவர் வேலை செய்யவில்லை",

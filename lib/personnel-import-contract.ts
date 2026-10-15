@@ -1,3 +1,4 @@
+import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS } from './personnel-choice-vocabulary';
 import { DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, CHILD_RELIEF_PERCENTAGES } from './dependent-vocabulary';
 import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
 import { isCalendarDate } from './calendar-date';
@@ -117,6 +118,9 @@ export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet
 }
 
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
+  if(field.allowedValuesOwner==='payroll.payMode')return PERSONNEL_PAY_MODES.map(value=>({value,labelKey:`people.detail.payMode_${value}`}));
+  if(field.allowedValuesOwner==='payroll.paymentTerm')return PERSONNEL_PAYMENT_TERMS.map(value=>({value,labelKey:`people.detail.paymentTerm_${value}`}));
+  if(field.allowedValuesOwner==='statutory.epfCitizenship')return PERSONNEL_EPF_CITIZENSHIPS.map(value=>({value,labelKey:`people.detail.${{citizen:'epfCitizenshipCitizen',pr:'epfCitizenshipPr',non_citizen:'epfCitizenshipNonCitizen'}[value]}`}));
   if(field.allowedValuesOwner==='dependent.relationship')return DEPENDENT_RELATIONSHIPS.map(value=>({value,labelKey:`people.detail.family.rel.${value}`}));
   if(field.allowedValuesOwner==='dependent.childReliefPercentage')return CHILD_RELIEF_PERCENTAGES.map(value=>({value:String(value),labelKey:`people.detail.family.childReliefPct_${value}`}));
   if(field.allowedValuesOwner==='dependent.gender')return DEPENDENT_GENDERS.map(value=>({value,labelKey:`people.detail.family.gender.${value}`}));

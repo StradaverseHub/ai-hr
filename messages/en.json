@@ -1403,6 +1403,7 @@
       "identityTaxCardTitle": "Identification & Tax",
       "incomeTaxPcbSection": "Income Tax (PCB)",
       "taxInfoLegend": "Tax information",
+      "taxCategoryNumeric": "Legacy Tax Category (numeric)",
       "taxCategoryLabel": "Tax Category",
       "taxCategorySingle": "Single/Spouse do not Claim Child Relief",
       "taxCategoryMarriedSpouseNotWorking": "Married and Spouse Not Working",

@@ -1403,6 +1403,7 @@
       "identityTaxCardTitle": "Nhận dạng & Thuế",
       "incomeTaxPcbSection": "Thuế thu nhập (PCB)",
       "taxInfoLegend": "Thông tin thuế",
+      "taxCategoryNumeric": "Nhóm thuế cũ (dạng số)",
       "taxCategoryLabel": "Nhóm thuế",
       "taxCategorySingle": "Độc thân/Vợ hoặc chồng không yêu cầu giảm trừ con",
       "taxCategoryMarriedSpouseNotWorking": "Đã kết hôn và vợ hoặc chồng không làm việc",
