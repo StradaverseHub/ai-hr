@@ -84,7 +84,8 @@ import {
   type PayrollPolicyConfig,
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { holidayDatesFor, holidayMemoKey } from './holidays';
+import { originalHolidayDatesFor, holidayMemoKey } from './holidays';
+import {replacementHolidayDatesByEmployment} from './holiday-replacement-read';
 // b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine
 // does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
 // dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
@@ -447,6 +448,7 @@ export async function absenceBreakdownByEmployment(
       holidayGroupId: e.holidayGroupId,
     });
   const holidayMemo = new Map<string, Set<string>>();
+  const replacementDates=await replacementHolidayDatesByEmployment(tx,{employmentIds:empIds,startDate:periodStart,endDate:lastCounted});
 
   const recordedByEmp = new Map<string, Set<string>>();
   const markedAbsentByEmp = new Map<string, Set<string>>();
@@ -488,13 +490,14 @@ export async function absenceBreakdownByEmployment(
     const key = holidayKeyOf(e);
     let holidays = holidayMemo.get(key);
     if (!holidays) {
-      holidays = await holidayDatesFor(tx, {
+      holidays = await originalHolidayDatesFor(tx, {
         employmentId: e.employmentId,
         startDate: periodStart,
         endDate: lastCounted,
       });
       holidayMemo.set(key, holidays);
     }
+    holidays=new Set([...holidays,...replacementDates.get(e.employmentId)??[]]);
     const onLeave = approved.get(e.employmentId) ?? new Set<string>();
     const onPartialLeave = partialByEmp.get(e.employmentId) ?? new Set<string>();
     const recorded = recordedByEmp.get(e.employmentId) ?? new Set<string>();

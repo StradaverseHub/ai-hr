@@ -10287,3 +10287,28 @@ export const attendanceExceptionRevision = pgTable('attendance_exception_revisio
  id:id(),tenantId:tenantId(),ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),
  effectiveFrom:date('effective_from').notNull(),enabled:boolean('enabled').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_exception_revision_rule_date_uq').on(t.ruleId,t.effectiveFrom)]);
+
+// ADR-0120: original holidays and employee-specific replacement allocations remain separate.
+export const replacementHolidayPolicy=pgTable('replacement_holiday_policy',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ effectiveFrom:date('effective_from').notNull(),regime:text('regime').$type<'MY_EA_60D'|'MY_SABAH_103'|'company_confirmed'>().notNull(),
+ confirmed:boolean('confirmed').notNull().default(false),restMode:text('rest_mode').$type<'scheduled_rest'|'last_weekly_rest'>().notNull(),
+ halfEligible:boolean('half_eligible').notNull().default(false),searchDays:integer('search_days').notNull(),
+ reason:text('reason').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('replacement_holiday_policy_date_uq').on(t.tenantId,t.companyId,t.effectiveFrom)]);
+export const replacementHoliday=pgTable('replacement_holiday',{
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ sourceHolidayId:uuid('source_holiday_id').notNull().references(()=>holiday.id),sourceDate:date('source_date').notNull(),sourceName:text('source_name').notNull(),
+ policyId:uuid('policy_id').references(()=>replacementHolidayPolicy.id),inputDigest:text('input_digest').notNull(),
+ status:text('status').$type<'allocated'|'review'|'not_required'>().notNull(),replacementDate:date('replacement_date'),proposedDate:date('proposed_date'),
+ reason:text('reason').notNull(),manual:boolean('manual').notNull().default(false),manualReason:text('manual_reason'),
+ createdAt:createdAt(),updatedAt:updatedAt(),
+},t=>[uniqueIndex('replacement_holiday_source_uq').on(t.tenantId,t.employmentId,t.sourceHolidayId),uniqueIndex('replacement_holiday_employee_date_uq').on(t.tenantId,t.employmentId,t.replacementDate).where(sql`${t.replacementDate} IS NOT NULL`)]);
+export const replacementHolidayRevision=pgTable('replacement_holiday_revision',{
+ id:id(),tenantId:tenantId(),allocationId:uuid('allocation_id').notNull().references(()=>replacementHoliday.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ snapshot:jsonb('snapshot').$type<Record<string,unknown>>().notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
+});
+export const replacementHolidayQueue=pgTable('replacement_holiday_queue',{
+ tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'cascade'}),generation:bigint('generation',{mode:'number'}).notNull().default(1),
+ requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),
+},t=>[primaryKey({columns:[t.tenantId,t.employmentId]})]);

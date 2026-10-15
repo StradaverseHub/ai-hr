@@ -1,0 +1,23 @@
+# ADR-0120: Employee replacement holidays and stable original calendars
+
+Status: Accepted direction — approved item 482eefff, 2026-10-15. Implementation and verification pending.
+
+## Decision
+
+Holiday owns the original calendar and replacement provenance. Schedule owns pre-holiday dated work, half, off and rest days. Replacement allocation reads those two owners without consulting the already holiday-adjusted calendar. A replacement projection is specific to tenant, employment and original holiday ID; it never becomes a company-wide substitute calendar. The original holiday and rest pattern remain intact.
+
+The original calendar winner is selected independently for each calendar year, within the employment's company and assigned calendar context. An applicable company-subtree calendar remains a single winner over assigned/state/national fallback. Its existence is checked over the year, then its dates are filtered to the requested window. This repairs a demonstrated query-window defect: one-day Attendance could retain a national date that month-wide Leave dropped merely because another company override date existed in the month. The source identities are shared by the original-calendar reader and replacement ledger. Cross-year windows select each year independently.
+
+Explicit immutable company policy revisions record effective date, confirmed entitlement/calendar applicability, jurisdiction, rest-day identification, half-day eligibility and a bounded search horizon. Missing or ambiguous applicability, uncertain source dates, unknown schedules and exhausted search produce review cases. No Malaysian region inherits another region's statutory assumptions. Company rules require explicit human confirmation; a country or state is never inferred from a missing field.
+
+The Employment Act sources distinguish the designated weekly rest day, holiday substitution and half working days. [JTKSM Act 265, sections 59 and 60D](https://jtksm.mohr.gov.my/sites/default/files/2023-11/Akta%20Kerja%201955%20%28Akta%20265%29.pdf) informs the supported Employment Act policy; it is not a conclusion about every employment's applicability. [Sabah Amendment Act A1753](https://www.jtksabah.gov.my/web/images/warta_2025/A1753_-Labour_Ordinance_of_Sabah_Amendment_Act_2025.pdf) is a separate regime. The cited Sabah PDF could not be fetched during this implementation review; its official indexed section 103 excerpt supports a distinct working-day substitution provision, but does not establish all eligibility/rest-day details. An explicit confirmed policy remains required.
+
+Allocation is deterministic by original date and source ID, within employment tenure. It skips original holidays, reserved replacements and ineligible raw schedule days. Employment locks serialize concurrent reconciliation. Unique source and employee/date constraints prevent duplicate entitlements and collisions. Input digests make unchanged processing inert. Every changed projection has an immutable before/after revision and canonical audit event. Manual decisions require authority and a reason and are preserved until explicitly released to automatic processing.
+
+Processed/closed payroll and incompatible recorded attendance do not change automatically. The ledger retains any previous effective date and exposes the proposed correction as review. Existing day types change only through Attendance's correction owner; historical pay remains under Payroll's protection owner. The original-calendar repair changes new reads, not stored attendance snapshots.
+
+Transaction triggers enqueue relevant input changes. The queue retains a next daily due time to cover date/year progression. A standing-aware replacement sweep is invoked by the existing deployed minute runner, with durable job-run observability; a standalone uninstalled script is insufficient. A claimed generation is cleared only if no concurrent input change superseded it.
+
+## Verification required
+
+Scenarios A/B/C; rotating and dated schedules; off/half and designated weekly rest; consecutive originals and replacement collisions; month/year and employment boundaries; source calendar and company changes; repeat/concurrent processing; immutable history/manual adjustments; tenant/company/employee authority; recorded and protected payroll history; and identical effective dates in Attendance, Leave, calendar and OT consumers. Walk HR review and employee calendar states in the real app before the final gate, then rehearse and verify migration and deployed runner activation.

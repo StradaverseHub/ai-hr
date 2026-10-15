@@ -780,6 +780,8 @@ export type ScheduleMemo = {
   from: string;
   to: string;
   cache: Map<string, Promise<unknown>>;
+  /** Raw Schedule owner read: suppress only holiday overlay to break replacement selection recursion. */
+  originalSchedule?:boolean;
   /** When set, the roster row for `${employmentId}|${date}` (absent = no roster row) — see prefetch. */
   roster?: Map<string, RosterRow>;
   adjustments?: Map<string,typeof attendanceDayAdjustment.$inferSelect>;
@@ -897,7 +899,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
   // national, single-winner replacement — the SAME calendar the leave engine resolves (leave.ts
   // resolveHolidaySet), so attendance OT day-type classification can never disagree with leave. A
   // business-group override REPLACES nat+state; no company/state rows ⇒ national-only = today's behaviour.
-  const isHoliday = memo
+  const isHoliday = memo?.originalSchedule?false:memo
     ? (
         await memoized(memo, `hol|${employmentId}`, () =>
           holidayDatesFor(tx, { employmentId, startDate: memo.from, endDate: memo.to }),
@@ -6404,4 +6406,15 @@ export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:strin
     const clockChanges={version:1 as const,baseline:p.baseline,entries:active.filter(row=>row.id!==p.punchId).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}))};
     return insertAttendanceCorrectionRequestTx(tx,ctx,{id:p.requestId,removalPunchId:p.punchId,employmentId:me.employmentId,date,clockChanges,checkIn:null,checkOut:null,requestedOtMinutes:null,reason,plannedStartTime:null,plannedEndTime:null,otReasonCategory:null,remark:null,requestKind:'other'});
   });
+}
+
+/** Same dated Schedule owner without any original/replacement holiday overlay. */
+export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to:string){
+ const memo=await newScheduleMemo(tx,{employmentIds:[employmentId],from,to});memo.originalSchedule=true;
+ const out=new Map<string,'full'|'half'|'off'|'rest'|'unknown'>();
+ for(let date=from;date<=to;date=addDays(date,1)){
+  const schedule=await scheduleBaseFor(tx,employmentId,date,memo);
+  out.set(date,schedule.scheduleDayKind??(schedule.dayType==='rest_day'?'rest':schedule.dayType==='workday'?'full':'unknown'));
+ }
+ return out;
 }

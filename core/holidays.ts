@@ -7,7 +7,7 @@
  *   business-group (company subtree) → state → national
  *
  * Concretely:
- *   1. If ANY company-scoped holiday row matches the employee's company CHAIN in the window, those rows
+ *   1. If ANY company-scoped holiday row matches the employee's company CHAIN in that calendar year, those rows
  *      ARE the calendar (the group override wins — the literal feedback logic). The chain is the upward
  *      ancestor walk: a parent-group calendar set on a parent company cascades to its child companies /
  *      factories / business units. We use the SECURITY DEFINER helper `app.is_company_descendant(child,
@@ -51,6 +51,8 @@
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import {replacementHolidayDatesByEmployment} from './holiday-replacement-read';
+import type {OriginalHoliday} from '../lib/holiday-replacement';
 // 0e276da0 — the calendar-coverage read at the foot of this file is SESSION-scoped (a screen asks it),
 // unlike every resolver above, which runs inside the caller's tx. `withTenant` is the only addition.
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -182,7 +184,7 @@ export function yearsSpanned(startDate: string, endDate: string): number[] {
 export async function effectiveHolidayState(
   tx: Tx,
   employmentId: string,
-): Promise<{ country: string; state: string | null; skipCompleteness?: boolean } | null> {
+): Promise<{ country: string; state: string | null; skipCompleteness?: boolean; states?:string[] } | null> {
   const [emp] = await tx
     .select({
       country: company.country,
@@ -214,10 +216,10 @@ export async function effectiveHolidayState(
   // the gazette in holidayDatesFor — so the "gazette < 11" warning would be false noise. Suppress it to
   // keep effectiveHolidayState and holidayDatesFor in agreement. Extended is deliberately NOT suppressed:
   // an extended group still includes the gazette, so the warning stays meaningful.
-  if (effEmpGroupArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };
+  if (effEmpGroupArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true,states:[] };
   const groupFirst = Array.isArray(effEmpGroupStates) ? (effEmpGroupStates as string[])[0] : undefined;
   const state = groupFirst ?? emp.ws ?? emp.cds ?? null;
-  return { country: emp.country, state };
+  return { country: emp.country, state,states:Array.isArray(effEmpGroupStates)?effEmpGroupStates:state?[state]:[] };
 }
 
 /**
@@ -284,10 +286,30 @@ export async function warnIfHolidaysIncomplete(
  *  carried an "ambiguous open assignment, resolve alone" escape hatch. Nothing here joins `assignment`
  *  any more, so a second open assignment cannot change anybody's calendar and both escape hatches went
  *  with it. */
-export async function holidayDatesFor(
+const ORIGINAL_HOLIDAY_COLUMNS={id:holiday.id,date:holiday.holidayDate,name:holiday.name,holidayType:holiday.holidayType,tentative:holiday.tentative,active:holiday.active};
+function uniqueOriginalHolidays(rows:OriginalHoliday[]):OriginalHoliday[]{return [...new Map(rows.map(row=>[row.id,row])).values()].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));}
+/** Stable annual winner, preserving the canonical company > assigned/state/national precedence. */
+export async function originalHolidayCalendarFor(tx:Tx,p:HolidayWindow):Promise<OriginalHoliday[]>{
+ const result:OriginalHoliday[]=[];
+ for(const year of yearsSpanned(p.startDate,p.endDate)){
+  const startDate=p.startDate>`${year}-01-01`?p.startDate:`${year}-01-01`;
+  const endDate=p.endDate<`${year}-12-31`?p.endDate:`${year}-12-31`;
+  result.push(...await originalCalendarForYear(tx,{...p,startDate,endDate}));
+ }
+ return uniqueOriginalHolidays(result);
+}
+export async function originalHolidayDatesFor(tx:Tx,p:HolidayWindow){return new Set((await originalHolidayCalendarFor(tx,p)).map(h=>h.date));}
+/** Effective holiday set: original calendar plus this employee's retained replacement projection. */
+export async function holidayDatesFor(tx:Tx,p:HolidayWindow):Promise<Set<string>>{
+ const originals=await originalHolidayDatesFor(tx,p);
+ const replacements=await replacementHolidayDatesByEmployment(tx,{employmentIds:[p.employmentId],startDate:p.startDate,endDate:p.endDate});
+ return new Set([...originals,...replacements.get(p.employmentId)??[]]);
+}
+
+async function originalCalendarForYear(
   tx: Tx,
   { employmentId, startDate, endDate }: HolidayWindow,
-): Promise<Set<string>> {
+): Promise<OriginalHoliday[]> {
   const [row] = await tx
     .select({
       companyId: employment.companyId,
@@ -313,7 +335,7 @@ export async function holidayDatesFor(
     .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  if (!row) return new Set<string>();
+  if (!row) return [];
   const emp = row;
 
   // ── R18 a519a96e — group INHERITANCE + group-scoped "additional days" ─────────────────────────────
@@ -331,10 +353,10 @@ export async function holidayDatesFor(
   const chainIds: string[] = emp.empHolidayGroupId
     ? [emp.empHolidayGroupId, ...(emp.empGroupParentId ? [emp.empGroupParentId] : [])]
     : [];
-  const chainExtras: string[] = chainIds.length
+  const chainExtras: OriginalHoliday[] = chainIds.length
     ? (
         await tx
-          .select({ d: holiday.holidayDate })
+          .select(ORIGINAL_HOLIDAY_COLUMNS)
           .from(holiday)
           .where(
             and(
@@ -344,7 +366,7 @@ export async function holidayDatesFor(
               inArray(holiday.holidayGroupId, chainIds),
             ),
           )
-      ).map((h) => h.d)
+      )
     : [];
 
   // ── 66b8f5a8 — explicitly TICKED holidays (holiday_group_holiday junction) ─────────────────────────
@@ -355,10 +377,10 @@ export async function holidayDatesFor(
   // (group-SCOPED "additional day" rows keyed on holiday.holiday_group_id), these reference ANY master
   // holiday (national/state/company/other-group rows) — so a group can pick up, e.g., another state's
   // holiday without owning it. Additive to every return path (empty chain ⇒ no-op, byte-identical).
-  const chainTicked: string[] = chainIds.length
+  const chainTicked: OriginalHoliday[] = chainIds.length
     ? (
         await tx
-          .select({ d: holiday.holidayDate })
+          .select(ORIGINAL_HOLIDAY_COLUMNS)
           .from(holidayGroupHoliday)
           .innerJoin(holiday, eq(holiday.id, holidayGroupHoliday.holidayId))
           .where(
@@ -369,7 +391,7 @@ export async function holidayDatesFor(
               eq(holiday.country, emp.country),
             ),
           )
-      ).map((h) => h.d)
+      )
     : [];
   // Fold the ticked dates into chainExtras so EVERY resolution branch below (which already spreads
   // ...chainExtras into its result Set) unions them without further edits.
@@ -380,22 +402,22 @@ export async function holidayDatesFor(
   // The site rung is retired; the equivalent branch for a group assigned DIRECTLY on the profile still
   // exists below, deliberately BELOW Step 1 (see its own note on placement).
 
-  // Step 1 — business-group override: any company-scoped row in the window matching the company chain
+  // Step 1 — business-group override: any company-scoped row in the year matching the company chain
   // (upward ancestor walk via the SECURITY DEFINER helper). If present, it is the WHOLE calendar.
   const groupRows = await tx
-    .select({ d: holiday.holidayDate })
+    .select(ORIGINAL_HOLIDAY_COLUMNS)
     .from(holiday)
     .where(
       and(
-        gte(holiday.holidayDate, startDate),
-        lte(holiday.holidayDate, endDate),
+        gte(holiday.holidayDate, startDate.slice(0,4)+'-01-01'),
+        lte(holiday.holidayDate, startDate.slice(0,4)+'-12-31'),
         eq(holiday.country, emp.country),
         sql`${holiday.companyId} IS NOT NULL`,
         sql`app.is_company_descendant(${emp.companyId}, ${holiday.companyId})`,
       ),
     );
   // R18 a519a96e: the chain's group-scoped extras stack on top of the override (additive, never replaced).
-  if (groupRows.length > 0) return new Set([...groupRows.map((h) => h.d), ...chainExtras]);
+  if (groupRows.length > 0) return uniqueOriginalHolidays([...groupRows.filter(h=>h.date>=startDate&&h.date<=endDate), ...chainExtras]);
 
   // ── ADR-0067 (direct-assign) — per-employee-group archetype branch, for a custom/extended group assigned
   // DIRECTLY on the profile (employment.holidayGroupId). ADR-0086: this is now the ONLY archetype branch —
@@ -409,7 +431,7 @@ export async function holidayDatesFor(
   if (emp.empHolidayGroupId && (effEmpGroupArchetype === 'custom' || effEmpGroupArchetype === 'extended')) {
     // The company-scoped ad-hoc rows for this employee's company chain in the window (same query as Step-1).
     const adHocRows = await tx
-      .select({ d: holiday.holidayDate })
+      .select(ORIGINAL_HOLIDAY_COLUMNS)
       .from(holiday)
       .where(
         and(
@@ -424,14 +446,14 @@ export async function holidayDatesFor(
       // CUSTOM = exactly the hand-picked list: ONLY the company-scoped ad-hoc rows (∪ the chain's
       // group-scoped extras), no gazette. A national date the custom group omits is therefore a normal
       // working day for that staff member — the reporter's "pick which holidays" model, verbatim.
-      return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);
+      return uniqueOriginalHolidays([...adHocRows, ...chainExtras]);
     }
     // EXTENDED = official gazette ∪ company ad-hoc. The gazette half is keyed on the ASSIGNED group's
     // states[] (national ∪ group.states; the PARENT's when the group inherits), mirroring the
     // location-calendar extended path above.
     const groupStates: string[] = Array.isArray(effEmpGroupStates) ? (effEmpGroupStates as string[]) : [];
     const gazetteRows = await tx
-      .select({ d: holiday.holidayDate })
+      .select(ORIGINAL_HOLIDAY_COLUMNS)
       .from(holiday)
       .where(
         and(
@@ -443,7 +465,7 @@ export async function holidayDatesFor(
           groupStates.length ? or(isNull(holiday.state), inArray(holiday.state, groupStates)) : isNull(holiday.state),
         ),
       );
-    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d), ...chainExtras]);
+    return uniqueOriginalHolidays([...adHocRows, ...gazetteRows, ...chainExtras]);
   }
 
   // Step 2 — 2C fallback: national ∪ effState, resolved group → work_state → company default → national.
@@ -459,7 +481,7 @@ export async function holidayDatesFor(
         ? [emp.cds]
         : [];
   const baseRows = await tx
-    .select({ d: holiday.holidayDate })
+    .select(ORIGINAL_HOLIDAY_COLUMNS)
     .from(holiday)
     .where(
       and(
@@ -472,7 +494,7 @@ export async function holidayDatesFor(
       ),
     );
   // The chain's group-scoped extras stack on the gazette result (empty chain → no-op, byte-identical).
-  return new Set([...baseRows.map((h) => h.d), ...chainExtras]);
+  return uniqueOriginalHolidays([...baseRows, ...chainExtras]);
 }
 
 /**
@@ -578,11 +600,13 @@ export async function holidayDatesByEmployment(
     });
     let dates = memo.get(key);
     if (!dates) {
-      dates = await holidayDatesFor(tx, one);
+      dates = await originalHolidayDatesFor(tx, one);
       memo.set(key, dates);
     }
     out.set(id, new Set(dates));
   }
+  const replacements=await replacementHolidayDatesByEmployment(tx,{employmentIds:ids,startDate,endDate});
+  for(const [id,dates] of replacements){const effective=out.get(id);if(effective)for(const date of dates)effective.add(date);}
   return out;
 }
 
