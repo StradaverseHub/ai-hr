@@ -80,6 +80,53 @@ import {
 export { COMPARISON_KINDS, INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
 export type { ComparisonKind, MovementKind };
 
+/** Recorded absence is distinct from a recorded blank/zero. Never hydrate these from live employment. */
+export type MovementRecordedValue<T> = { known: true; value: T } | { known: false; value: null };
+export type MovementRecordedExit = {
+  source: {
+    eventId: string;
+    occurredAt: string;
+  } & (
+    | { eventType: 'employment.terminated'; role: 'effect' }
+    | { eventType: 'employment.movement.scheduled'; role: 'intent' }
+  );
+  terminationReasonCode: MovementRecordedValue<string | null>;
+  terminationNoticeDays: MovementRecordedValue<number | null>;
+};
+
+/** Pure projection of this row's primary event. A scheduled row continues to describe frozen intent
+ * after application/reversal; its separate status describes the outcome. Do not substitute a companion
+ * event or today's mutable exit columns. Unknown legacy/malformed values remain explicitly unknown.
+ */
+export function movementRecordedExitOf(event: {
+  id: string; eventType: string; payload: unknown; occurredAt: Date;
+}): MovementRecordedExit | null {
+  const object = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const payload = object(event.payload);
+  let values: Record<string, unknown>;
+  let source: MovementRecordedExit['source'];
+  if (event.eventType === 'employment.terminated') {
+    values = payload;
+    source = { eventId: event.id, occurredAt: event.occurredAt.toISOString(), eventType: 'employment.terminated', role: 'effect' };
+  } else if (event.eventType === 'employment.movement.scheduled' && payload.type === 'termination') {
+    values = object(payload.input);
+    source = { eventId: event.id, occurredAt: event.occurredAt.toISOString(), eventType: 'employment.movement.scheduled', role: 'intent' };
+  } else return null;
+  const reason = values.terminationReasonCode;
+  const notice = values.terminationNoticeDays;
+  return {
+    source,
+    terminationReasonCode: Object.hasOwn(values, 'terminationReasonCode') &&
+      (reason === null || typeof reason === 'string' && reason.trim() !== '')
+      ? { known: true, value: reason as string | null } : { known: false, value: null },
+    // A historical integer is a recorded fact, not a fresh notice-policy judgement. Never coerce text.
+    terminationNoticeDays: Object.hasOwn(values, 'terminationNoticeDays') &&
+      (notice === null || typeof notice === 'number' && Number.isSafeInteger(notice))
+      ? { known: true, value: notice as number | null } : { known: false, value: null },
+  };
+}
+
 /** One row of the Employment History list. `id` is the domain_event id, or the pseudo-id 'hired' when
  *  the Hired row is synthesized from employment.hiredOn (seed/legacy employments with no hired event —
  *  computed each render from the CURRENT hiredOn, so a hire-date correction can never leave a stale row). */
@@ -156,6 +203,9 @@ export type MovementHistoryRow = {
    * other row.
    */
   hireCorrection: HireCorrectionTrace | null;
+  /** Primary recorded exit values and effect/intent provenance. Optional for existing typed consumers;
+   * canonical movementHistoryTx always supplies it, null for rows without a recorded exit event. */
+  recordedExit?: MovementRecordedExit | null;
 };
 
 /**
@@ -1173,7 +1223,9 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       tx,
       events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
     );
+    const eventsById = new Map(events.map(event => [event.id, event]));
     return rows.map((r) => {
+      const primaryEvent = eventsById.get(r.id);
       const g = groupEventsOf(events, r);
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
       const status = statusOf(r);
@@ -1203,6 +1255,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
         ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
+        recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent) : null,
       };
     });
   }
