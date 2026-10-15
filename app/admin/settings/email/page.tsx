@@ -6,20 +6,24 @@ import { demoSwitcherEnabled } from '@/lib/demo-mode';
 import { canConfigureIdentityEmail, requireIdentityEmailAdmin, readIdentityEmailSettings } from '@/lib/identity/email-settings';
 import { defaultEmailConfig, emailFailureCodes, EmailSettingsError, type EmailSettingsView } from '@/lib/identity/email-model';
 import { PageHeader, Card, SectionHeader, Field, inputCls, ErrorBanner } from '@/components/ui';
+import { AccountEmailDeliveries } from '@/components/account-email-deliveries';
+import { readAccountEmailDeliveries } from '@/core/account-email';
 import { EmailSubmit } from './submit-button';
 import { saveEmailDraft, testEmailDraft, activateEmailDraft } from './actions';
 
-export default async function IdentityEmailPage({searchParams}:{searchParams:Promise<{error?:string;success?:string}>}) {
+export default async function IdentityEmailPage({searchParams}:{searchParams:Promise<{error?:string;success?:string;accountRetry?:string}>}) {
  // HR admins may inspect the setup. Real settings and all mutations retain installation authority.
  const {s}=await scopedSession();
  const mayConfigure=await canConfigureIdentityEmail(s);
  if(!mayConfigure&&!isAdmin(s)) redirect('/');
- const t=await getTranslations('identityEmail'),query=await searchParams;
+ const [t,accountT,query]=await Promise.all([getTranslations('identityEmail'),getTranslations('accountEmail'),searchParams]);
+ let deliveries=await readAccountEmailDeliveries(s);
  let view:EmailSettingsView|null=null;
  if(mayConfigure) {
-  const {actor}=await requireIdentityEmailAdmin();
+  const {session,actor}=await requireIdentityEmailAdmin();
+  deliveries=await readAccountEmailDeliveries(session,actor);
   try{view=await readIdentityEmailSettings(actor);}catch(e){
-  return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/></div>;
+  return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/><AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/></div>;
   }
  }
  const config=view?.draft?.config??view?.active??defaultEmailConfig;
@@ -28,7 +32,8 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
  return <div className="max-w-4xl space-y-6">
   <PageHeader title={t('title')} description={t('description')}/>
   {view?<p className="text-sm text-muted-foreground">{t('scope')}</p>:<div role="status" className="space-y-2 rounded-xl border border-border bg-card p-5"><h2 className="font-medium">{t('previewTitle')}</h2><p className="max-w-prose text-sm text-muted-foreground">{t(demoSwitcherEnabled()?'demoSetup':'restrictedSetup')}</p></div>}
-  <ErrorBanner message={error?t(`errors.${error}`):undefined}/>
+  <ErrorBanner message={query.error==='account-retry'?accountT('retryError'):error?t(`errors.${error}`):undefined}/>
+  {query.accountRetry==='1'?<p role="status" className="text-sm">{accountT('retryProcessed')}</p>:null}
   {success&&<p role="status" className="rounded-xl border border-border bg-card p-4 text-sm">{t(`success.${success}`)}</p>}
   {view&&<Card><SectionHeader title={t('activeTitle')}/><div className="space-y-2 p-5 text-sm">
    <p>{view.active?t('activeSummary',{host:view.active.host,port:view.active.port,from:view.active.from}):t('notConfigured')}</p>
@@ -60,5 +65,6 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
     <EmailSubmit type="submit">{t('activate')}</EmailSubmit>
    </form>}
   </div></Card>}
+  <AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/>
  </div>;
 }

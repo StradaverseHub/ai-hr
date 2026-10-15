@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { identityEmailRequest } from '../lib/identity/email-ipc';
 vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:vi.fn()}));
-import { sendIdentityInvitation } from '../lib/identity/provider';
+import { sendIdentityInvitation,sendIdentityPasswordReset } from '../lib/identity/provider';
 
 const email = 'invited@example.invalid';
 const destination = `/invite/${'a'.repeat(43)}/activate`;
@@ -31,7 +31,7 @@ describe('Keycloak invitation enrollment', () => {
         return new Response(null, { status: deliveries === 1 ? 500 : 204 });
       }
       if (init?.method === 'POST') {
-        account = { ...JSON.parse(String(init.body)), id: 'created-user' };
+        account = { ...JSON.parse(String(init?.body)), id: 'created-user' };
         return new Response(null, { status: 201 });
       }
       return Response.json(account ? [account] : []);
@@ -72,4 +72,27 @@ describe('Keycloak invitation enrollment', () => {
     await expect(sendIdentityInvitation(email, 'https://evil.test')).rejects.toThrow('Invalid invitation destination');
     expect(remote).not.toHaveBeenCalled();
   });
+});
+
+describe('Keycloak recovery email',()=>{
+ it('asks the provider for a new one-time password action only for an exact verified local account',async()=>{
+  const remote=vi.fn<typeof fetch>(async(input,init)=>{
+   const url=new URL(String(input));expect(url.origin).toBe('http://127.0.0.1:18080');expect(init?.redirect).toBe('error');
+   if(url.pathname.endsWith('/token'))return Response.json({access_token:'disposable-service-token'});
+   if(url.pathname.endsWith('/execute-actions-email')){expect(url.search).toBe('');expect(init?.method).toBe('PUT');expect(JSON.parse(String(init?.body))).toEqual(['UPDATE_PASSWORD']);return new Response(null,{status:204});}
+   expect(url.searchParams.get('email')).toBe(email);expect(url.searchParams.get('exact')).toBe('true');return Response.json([{id:'local-user',email,enabled:true,emailVerified:true}]);
+  });vi.stubGlobal('fetch',remote);await expect(sendIdentityPasswordReset(email)).resolves.toBeUndefined();expect(remote).toHaveBeenCalledTimes(3);
+ });
+ it.each([[],[{id:'u',email,enabled:false,emailVerified:true}],[{id:'u',email,enabled:true,emailVerified:false}],[{id:'u',email,enabled:true,emailVerified:true,federationLink:'directory'}],[{id:'u',email:'different@example.invalid',enabled:true,emailVerified:true}]].map(users=>({users})))('refuses unknown, disabled, unverified, federated or mismatched accounts',async({users})=>{
+  const remote=vi.fn<typeof fetch>(async input=>String(input).endsWith('/token')?Response.json({access_token:'disposable'}):Response.json(users));vi.stubGlobal('fetch',remote);
+  await expect(sendIdentityPasswordReset(email)).rejects.toMatchObject({code:'notEligible'});expect(remote).toHaveBeenCalledTimes(2);
+ });
+ it('records no provider attempt without SMTP and never creates an account',async()=>{
+  vi.mocked(identityEmailRequest).mockResolvedValue({ready:false});const remote=vi.fn();vi.stubGlobal('fetch',remote);
+  await expect(sendIdentityPasswordReset(email)).rejects.toMatchObject({code:'relayUnavailable'});expect(remote).not.toHaveBeenCalled();
+ });
+ it('holds a failed delivery as uncertain without exposing provider response text',async()=>{
+  const remote=vi.fn<typeof fetch>(async input=>String(input).endsWith('/token')?Response.json({access_token:'disposable'}):String(input).endsWith('/execute-actions-email')?new Response('secret SMTP detail',{status:500}):Response.json([{id:'local-user',email,enabled:true,emailVerified:true}]));vi.stubGlobal('fetch',remote);
+  await expect(sendIdentityPasswordReset(email)).rejects.toMatchObject({code:'uncertain',message:'Account email: uncertain'});
+ });
 });

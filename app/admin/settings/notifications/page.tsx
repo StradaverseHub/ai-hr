@@ -6,14 +6,17 @@ import { notificationEmailCategories, notificationEmailErrors } from '@/lib/noti
 import { readNotificationEmailPolicy, readNotificationEmailDeliveries } from '@/core/notification-email';
 import { readNotificationEmailTransport } from '@/core/notification-email-delivery';
 import { saveWorkflowEmailPolicy, retryWorkflowEmail } from './actions';
-export default async function WorkflowEmailPage({searchParams}:{searchParams:Promise<{saved?:string;error?:string}>}) {
+import {AccountEmailDeliveries} from '@/components/account-email-deliveries';
+import {readAccountEmailDeliveries} from '@/core/account-email';
+export default async function WorkflowEmailPage({searchParams}:{searchParams:Promise<{saved?:string;error?:string;accountRetry?:string}>}) {
   const {s}=await scopedAdmin();await requireModule('notifications');
-  const t=await getTranslations('workflowEmail'),query=await searchParams;
-  const [policy,deliveries,relay]=await Promise.all([readNotificationEmailPolicy(s),readNotificationEmailDeliveries(s),readNotificationEmailTransport()]);
+  const [t,accountT,query]=await Promise.all([getTranslations('workflowEmail'),getTranslations('accountEmail'),searchParams]);
+  const [policy,deliveries,relay,accountDeliveries]=await Promise.all([readNotificationEmailPolicy(s),readNotificationEmailDeliveries(s),readNotificationEmailTransport(),readAccountEmailDeliveries(s)]);
   const mayWrite=isGroupAdmin(s),enabled=new Set(policy.filter(p=>p.enabled).map(p=>p.category));
   return <div className="max-w-5xl space-y-6">
     <PageHeader title={t('title')} description={t('description')}/>
-    <ErrorBanner message={query.error?t('error'):undefined}/>
+    <ErrorBanner message={query.error==='account-retry'?accountT('retryError'):query.error?t('error'):undefined}/>
+    {query.accountRetry==='1'?<p role="status" className="text-sm">{accountT('retryProcessed')}</p>:null}
     {query.saved==='1'&&<p role="status" className="text-sm">{t('saved')}</p>}
     <Card data-tour="workflow-email-readiness" className="space-y-3 p-5"><p role="status" className="text-sm font-medium">{t(!relay?'upgradeRequired':relay.ready?'relayReady':'relayOff')}</p><p className="text-sm text-muted-foreground">{t('policyHelp')}</p></Card>
     <Card data-tour="workflow-email-policy" className="p-5"><SectionHeader title={t('policyTitle')}/>
@@ -26,10 +29,12 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
     </Card>
     <Card data-tour="workflow-email-deliveries" className="p-5"><SectionHeader title={t('deliveries')}/><p className="mb-4 text-sm text-muted-foreground">{t('deliveriesHelp')}</p>
       {!deliveries.length?<p className="text-sm text-muted-foreground">{t('noDeliveries')}</p>:<ul className="divide-y divide-border">{deliveries.map(d=><li key={d.id} className="space-y-3 py-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"><strong>{notificationEmailCategories.find(c=>c===d.category)?t(`categories.${d.category}`):t('category')}</strong><span>{t(`statuses.${d.status}`)}</span><span>{t('attempts')}: {d.attempts}</span><time dateTime={d.createdAt.toISOString()}>{d.createdAt.toISOString().slice(0,16).replace('T',' ')} UTC</time></div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">{d.recipientCode?<span>{t('recipientCode')}: {d.recipientCode}</span>:null}<strong>{notificationEmailCategories.find(c=>c===d.category)?t(`categories.${d.category}`):t('category')}</strong><span>{t(`statuses.${d.status}`)}</span><span>{t('attempts')}: {d.attempts}</span><time dateTime={d.createdAt.toISOString()}>{d.createdAt.toISOString().slice(0,16).replace('T',' ')} UTC</time></div>
+        <p className="break-all text-xs text-muted-foreground">{t('deliveryReference')}: {d.id}</p>
         {notificationEmailErrors.find(e=>e===d.error)&&<p className="text-sm text-muted-foreground">{t(`errors.${d.error}`)}</p>}
         {mayWrite&&d.status==='failed'&&<form action={retryWorkflowEmail} className="flex flex-wrap items-center gap-3"><input type="hidden" name="deliveryId" value={d.id}/><label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" value="true" required className="mt-1"/>{t('retryAck')}</label><button type="submit" className={btnPrimary}>{t('retry')}</button></form>}
       </li>)}</ul>}
     </Card>
+    <AccountEmailDeliveries items={accountDeliveries} returnTo="/admin/settings/notifications"/>
   </div>;
 }

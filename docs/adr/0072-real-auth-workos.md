@@ -112,3 +112,27 @@ credentials), which would then own `local_credential` (argon2/bcrypt), a single-
 it needs a SECURITY DEFINER counter, same as the auth-audit writer), a first-class `verifyEmail` flow,
 and SMTP creds. Every other step (getSession seam, `principal_by_subject`, invitation consume, the
 auth-audit writer, i18n, middleware carve-outs, tests) is identical to Option A.
+
+
+## Account email delivery independent of business requests
+
+Invitations commit their canonical invitation before attempting delivery. Recovery requests are
+recorded without revealing account existence, even when managed SMTP is unavailable. The separate
+`account_email_delivery` ledger records terminal pre-send failures; enabling SMTP never replays this
+history automatically. Its metadata contains no raw invitation token, reset token, password or
+provider response. Recovery requests are rate limited independently of whether the address exists.
+
+Group administrators can inspect and selectively reissue their tenant's failed invitation emails.
+Reissue revokes the original pending invitation and creates a fresh immutable invitation with the
+same role, company and person; accepted/revoked invitations cannot be retried. Recovery history and
+selective retries require the exact active installation email operator and verified identity session,
+not an HR role. A recovery retry requests a fresh provider-owned password action. Existing attempts
+remain in history, and uncertain delivery requires explicit acknowledgement because duplicates are
+possible. All provider calls occur outside the business transaction. Abandoned requests are held and
+normalized when the authorized log is opened; there is no automatic account-email retry worker.
+
+The application's `/reset-password` journey owns this request ledger. Keycloak's administrator API
+creates its secure recovery action only for a uniquely matched, enabled, verified local account;
+federated and service accounts keep their own recovery owner. Provider-hosted recovery journeys
+outside this application's request endpoint remain provider-owned and do not fabricate app delivery
+records. Successful provider acceptance establishes no claim about inbox delivery.

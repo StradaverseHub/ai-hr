@@ -664,6 +664,19 @@ export const appInvitation = pgTable(
   ],
 );
 
+export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
+
+/** Account-email intent and delivery only. Invitation tokens and reset links are never copied here. */
+export const accountEmailDelivery=pgTable('account_email_delivery',{
+ id:id(),tenantId:tenantId(),kind:text('kind').notNull(),
+ invitationId:uuid('invitation_id').references(()=>appInvitation.id),recoveryEmail:text('recovery_email'),
+ replacesDeliveryId:uuid('replaces_delivery_id').references(():AnyPgColumn=>accountEmailDelivery.id),
+ requestedBy:uuid('requested_by').references(()=>appUser.id),
+ status:notificationDeliveryStatusEnum('status').notNull().default('pending'),attempts:integer('attempts').notNull().default(0),lastError:text('last_error'),
+ leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),startedAt:timestamp('started_at',{withTimezone:true}),sentAt:timestamp('sent_at',{withTimezone:true}),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('account_email_invitation_uq').on(t.invitationId).where(sql`invitation_id is not null`),uniqueIndex('account_email_replaces_delivery_id_key').on(t.replacesDeliveryId),index('account_email_recent_idx').on(t.createdAt.desc(),t.id.desc()),index('account_email_recovery_rate_idx').on(t.recoveryEmail,t.createdAt.desc()).where(sql`kind='recovery'`)]);
+
 // ─────────────────────── Identity & Org (ADR-0003) ───────────────────────
 // person = the global human identity within a tenant (holds PII).
 
@@ -5311,7 +5324,6 @@ export const replacementLeaveRequestDate = pgTable(
 // notification_cursor are dispatcher-internal (app.is_admin). ────────────────────────────────────────────
 export const notificationSeverityEnum = pgEnum('notification_severity', ['info', 'action', 'warning']);
 export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'whatsapp', 'push']);
-export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
 export type NotificationSeverity = (typeof notificationSeverityEnum.enumValues)[number];
 export type NotificationChannel = (typeof notificationChannelEnum.enumValues)[number];
 export type NotificationDeliveryStatus = (typeof notificationDeliveryStatusEnum.enumValues)[number];

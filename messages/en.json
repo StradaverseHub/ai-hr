@@ -14024,10 +14024,10 @@
     },
     "reset": {
       "title": "Reset your password",
-      "subtitle": "Enter your email and we'll send you a link to set a new password.",
+      "subtitle": "Enter your email to request a secure recovery link. Delivery depends on the configured email service.",
       "emailLabel": "Email",
-      "submit": "Send reset link",
-      "sent": "If an account exists for that email, a password reset link is on its way.",
+      "submit": "Request recovery email",
+      "sent": "Your recovery request has been recorded. If delivery is available and an eligible account matches, the provider will send a secure link. If no email arrives, you can request another later.",
       "backToLogin": "Back to sign in"
     },
     "error": {
@@ -17079,6 +17079,8 @@
     "restrictedSetup": "Only an enrolled installation administrator can view or change the live SMTP settings. Ask the installation administrator to complete setup. These fields show the supported configuration only."
   },
   "workflowEmail": {
+    "recipientCode": "Employee code",
+    "deliveryReference": "Delivery reference",
     "title": "Workflow email notifications",
     "description": "Choose which workflow updates may be emailed. Each employee also chooses their own email preferences.",
     "preferencesTitle": "My email notifications",
@@ -17087,8 +17089,8 @@
     "consentHelp": "Choose the updates you want emailed to the verified address on your employee profile. Preferences apply separately to each employment and to future events only.",
     "identityRequired": "Sign in with a verified internal account whose email matches your employee profile to enable email notifications. You can turn all email notifications off without opting in.",
     "relayReady": "The managed SMTP relay is active. Eligible notifications can be delivered.",
-    "relayOff": "The managed SMTP relay is not active. No workflow email can be delivered yet.",
-    "upgradeRequired": "The private email service needs the workflow notification upgrade before email can be delivered.",
+    "relayOff": "SMTP is not configured or available. HR workflows continue; eligible email attempts are recorded as failed. After configuring SMTP, choose which failed emails to retry.",
+    "upgradeRequired": "The email service is unavailable or needs an upgrade. HR workflows continue; eligible email attempts are recorded as failed.",
     "policyTitle": "Categories allowed by your organisation",
     "preferencesCategories": "Email me about these categories",
     "notAllowed": "Currently disabled by your organisation",
@@ -17099,7 +17101,7 @@
     "saved": "Settings saved.",
     "noEmployment": "No employee profile is linked to this login.",
     "deliveries": "Recent email deliveries",
-    "deliveriesHelp": "Sent means accepted by the relay; it does not prove receipt. This list shows the latest 50 deliveries. Uncertain sends are held to avoid automatic duplicates.",
+    "deliveriesHelp": "Accepted by relay does not prove receipt. This list shows the latest 50 deliveries. Failed emails remain here until you choose to retry; configuring SMTP does not resend them automatically. Uncertain sends are held to avoid duplicates.",
     "noDeliveries": "No workflow email has been queued.",
     "category": "Category",
     "status": "Status",
@@ -17117,14 +17119,14 @@
     "statuses": {
       "pending": "Pending",
       "sent": "Accepted by relay",
-      "failed": "Failed or uncertain",
+      "failed": "Failed",
       "skipped": "Skipped"
     },
     "errors": {
-      "relayUnavailable": "Relay unavailable",
+      "relayUnavailable": "SMTP is not configured or available. This email was not sent; configure SMTP and choose Retry delivery when needed.",
       "recipientUnavailable": "Identity provider unavailable",
       "recipientChanged": "Verified email or account changed",
-      "notEligible": "Recipient or preferences no longer eligible",
+      "notEligible": "This update no longer needs delivery, or the recipient or email preferences changed.",
       "smtpTemporary": "Temporary relay rejection",
       "smtpRejected": "Relay rejected the message",
       "smtpAuthentication": "Relay authentication failed",
@@ -19059,5 +19061,33 @@
     "scheduledActor": "Scheduled agent",
     "required": "Needs {tokens} estimated tokens",
     "sections": "AI management sections"
+  },
+  "accountEmail": {
+    "title": "Account email deliveries",
+    "help": "Invitations and recovery requests are saved even when email fails. Configuring SMTP does not resend failures automatically. Choose individual retries below. Recovery history is visible only to the installation email administrator.",
+    "empty": "No account emails have been attempted.",
+    "attempts": "Attempts",
+    "reissue": "Reissue invitation",
+    "retryRecovery": "Retry recovery email",
+    "invitationAck": "I understand that this revokes the old invitation link, issues a new invitation and may send a duplicate email.",
+    "recoveryAck": "I want to request a fresh recovery email. An earlier uncertain delivery may cause a duplicate.",
+    "retryError": "This email could not be retried. Check your access and whether it has already been replaced or the invitation is no longer pending.",
+    "retryProcessed": "Retry processed. Check the latest delivery status.",
+    "kinds": {
+      "invitation": "Account invitation",
+      "recovery": "Password recovery"
+    },
+    "statuses": {
+      "pending": "Attempt in progress",
+      "sent": "Accepted by provider",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP is not configured or available. The request is saved and this email was not sent.",
+      "providerUnavailable": "The sign-in provider is unavailable or not configured. The request is saved.",
+      "notEligible": "The invitation or recovery recipient is no longer eligible.",
+      "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
+    }
   }
 }

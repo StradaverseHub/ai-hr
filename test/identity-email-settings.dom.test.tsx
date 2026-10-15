@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-const m=vi.hoisted(()=>({session:vi.fn(),allowed:vi.fn(),guard:vi.fn(),read:vi.fn(),demo:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),allowed:vi.fn(),guard:vi.fn(),read:vi.fn(),demo:vi.fn(),accounts:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/settings/email',useSearchParams:()=>new URLSearchParams(),redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],messages.identityEmail)??key)}));
+vi.mock('../core/account-email',()=>({readAccountEmailDeliveries:m.accounts}));
+vi.mock('../components/account-email-deliveries',()=>({AccountEmailDeliveries:()=>null}));
 vi.mock('../lib/scope',()=>({scopedSession:m.session}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
@@ -19,7 +21,7 @@ const wrap=(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" me
 const page=async(query={})=>wrap(await Page({searchParams:Promise.resolve(query)}));
 const sidebar=(admin:boolean,operator=false,preview=admin)=>wrap(<Sidebar isAdmin={admin} canApprove={false} canPreviewIdentityEmail={preview} canConfigureIdentityEmail={operator} enabledModules={[]} defaultCollapsed={false}/>);
 beforeEach(()=>{
- cleanup();vi.clearAllMocks();m.session.mockResolvedValue({s:{userId:'admin',roles:['hr_admin']}});m.allowed.mockResolvedValue(false);m.demo.mockReturnValue(true);m.guard.mockResolvedValue({actor:{subject:'verified'}});
+ cleanup();vi.clearAllMocks();m.session.mockResolvedValue({s:{userId:'admin',roles:['hr_admin']}});m.allowed.mockResolvedValue(false);m.demo.mockReturnValue(true);m.accounts.mockResolvedValue([]);m.guard.mockResolvedValue({session:{userId:'operator'},actor:{subject:'verified'}});
  m.read.mockResolvedValue({active:{...defaultEmailConfig,host:'live.smtp.example.test',from:'live@example.test',hasPassword:true},draft:null,revision:'a'.repeat(64),testRecipient:'owner@example.test'});
 });
 describe('SMTP settings discovery and read-only preview',()=>{
