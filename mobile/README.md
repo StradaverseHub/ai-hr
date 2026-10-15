@@ -6,6 +6,9 @@ standalone copies. Inspect the EAS archive before a cloud build; deployment sett
 server code, local credentials and generated native/build folders must be absent.
 The backend release filter also excludes native build folders and signing inputs; mobile binaries
 are delivered separately from the HR server deployment.
+On iPhone, allow Local Network access if prompted when connecting to an HR server on the same
+network. A denied or newly granted prompt may require retrying sign-in; this permission does not
+replace trusted HTTPS certificates or the company's Wi-Fi/VPN connection.
 
 The app uses Expo SDK 57, deployment-owned Keycloak sign-in with PKCE and the shared `/api/mobile/v1` contract. The legacy build-time WorkOS adapter remains for controlled migration.
 For the legacy WorkOS build, run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set `EXPO_PUBLIC_RUNTIME_CONNECTIONS=0`, `EXPO_PUBLIC_AUTH_PROVIDER=workos`, the HTTPS API origin and the

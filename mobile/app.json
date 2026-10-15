@@ -10,6 +10,7 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSFaceIDUsageDescription": "Unlock AI HR with Face ID instead of signing in again.",
+        "NSLocalNetworkUsageDescription": "Connect to your company's AI HR server when it is on your local network.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
