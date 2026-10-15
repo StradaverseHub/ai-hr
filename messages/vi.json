@@ -19033,5 +19033,16 @@
     "unpaid": "Không lương",
     "unknownPaid": "Chưa rõ trạng thái lương",
     "noLeave": "Không có nghỉ phép đã duyệt ngày này"
+  },
+  "boardSchedule": {
+    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
+    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
+    "groupLabel": "Schedule Group Label",
+    "exception": "Enable Exception",
+    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
+    "duty": "Duty Roster Control",
+    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
+    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
+    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure."
   }
 }

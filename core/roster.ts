@@ -57,7 +57,7 @@ import {
   type ResolvedCell,
   type UsualShift,
 } from '../lib/roster-month';
-import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
+import { normalizeShiftColor, type ShiftColorToken } from '../lib/shift-visual';
 // f513ec02 — the dated shift ladder, for the reverse check's "which shift is this person on TODAY".
 // core/shift-arrangement-resolve.ts is a declared LEAF (its only value import is db/schema), which is
 // exactly why the resolver lives there and not in core/shift-arrangement.ts: that module imports THIS
@@ -172,11 +172,10 @@ function validateShiftDayType(v: string | null | undefined): ShiftDayType | null
  * the swatches render from, so the screen, the service and the database cannot disagree about what a
  * colour is — the shape lib/leave-visual.ts + migration 0179 already established for leave_type.color.
  */
-function validateShiftColor(v: string | null | undefined): ShiftColorToken | null {
+function validateShiftColor(v: string | null | undefined): string | null {
   const s = optText(v);
   if (s == null) return null;
-  if (!isShiftColorToken(s)) throw new Error(`Invalid shift colour: ${s}`);
-  return s;
+  return normalizeShiftColor(s);
 }
 
 export type ShiftInput = {
@@ -296,7 +295,7 @@ type NormalizedShift = {
   otRule: ShiftOtRule | null | undefined;
   // r429 (f6819e19) · D2 — the Schedule Group picker is removed from the form; UNDEFINED ⇒ preserve.
   ruleId: string | null | undefined;
-  differential: ShiftDifferential | null;
+  differential: ShiftDifferential | null | undefined;
   // cf21e554 stage 1 — plain values: absent ⇒ null (see ShiftInput for why these are not "preserve on
   // undefined" like the three above).
   description: string | null;
@@ -313,7 +312,7 @@ type NormalizedShift = {
   halfDayFirstOut: string | null;
   halfDaySecondIn: string | null;
   // 6340aecb — absent ⇒ null / false, exactly like the General columns above.
-  color: ShiftColorToken | null;
+  color: string | null;
   // r429 (f6819e19) · D4 — THE WHOLE-SHIFT SWITCH IS RETIRED FROM THE FORM. UNDEFINED ⇒ preserve (the one
   // way a shift the migration could not convert keeps deducting its allowance until someone explicitly
   // ticks "Stop using it", which posts an EXPLICIT false). updateShift additionally refuses an explicit
@@ -330,7 +329,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   if (!name) throw new Error('Shift name is required');
   const code = p.code.trim();
   if (!code) throw new Error('Shift code is required');
-  const differential = validateDifferential(p.differential);
+  const differential = p.differential === undefined ? undefined : validateDifferential(p.differential);
   const type = validateShiftType(p.type);
   const startTime = asShiftTime(p.startTime, 'Shift start');
   const endTime = asShiftTime(p.endTime, 'Shift end');
@@ -817,7 +816,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes ?? null,
           otRule: n.otRule ?? null,
           ruleId: n.ruleId ?? null,
-          differential: n.differential,
+          differential: n.differential ?? null,
           dayType,
           fullDayLeaveMinutes,
           fullDayOtMinutes,
@@ -1326,7 +1325,10 @@ export async function replaceShiftOtWindows(
   ctx: SessionContext,
   p: { shiftId: string; windows: ShiftOtWindowInput[] },
 ): Promise<{ id: string; windows: number }> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => replaceShiftOtWindowsTx(tx, ctx, p));
+}
+
+async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[] }) {
     const [sh] = await tx
       .select({ id: shift.id, startTime: shift.startTime })
       .from(shift)
@@ -1393,8 +1395,18 @@ export async function replaceShiftOtWindows(
       if (anchored[i].s < anchored[i - 1].e) throw new Error('Overtime windows must not overlap each other');
     }
 
-    await tx.delete(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));
-    if (rows.length > 0) await tx.insert(shiftOtWindow).values(rows);
+    const existing = await tx.select().from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId)).orderBy(asc(shiftOtWindow.sortOrder), asc(shiftOtWindow.id));
+    const retained = new Set<string>();
+    for (const row of rows) {
+      const old = existing.find(w => !retained.has(w.id) && w.sortOrder === row.sortOrder && w.label === row.label
+        && w.startTime.slice(0,5) === row.startTime.slice(0,5) && w.endTime.slice(0,5) === row.endTime.slice(0,5)
+        && w.endNextDay === row.endNextDay && w.minMinutes === row.minMinutes && w.maxMinutes === row.maxMinutes
+        && w.adjustAfterMinutes === row.adjustAfterMinutes && w.adjustDeltaMinutes === row.adjustDeltaMinutes);
+      if (old) retained.add(old.id);
+      else await tx.insert(shiftOtWindow).values(row);
+    }
+    const removed = existing.filter(w => !retained.has(w.id)).map(w => w.id);
+    if (removed.length) await tx.delete(shiftOtWindow).where(inArray(shiftOtWindow.id, removed));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'shift',
@@ -1417,10 +1429,7 @@ export async function replaceShiftOtWindows(
       },
     });
     return { id: p.shiftId, windows: rows.length };
-  });
 }
-
-// ── Putting a PERSON in a Schedule Group (f513ec02, r281) ──────────────────────────────────────────
 
 /**
  * f513ec02 — THE WRITER r277 DID NOT SHIP, and with it the REVERSE of the refusal above.
@@ -3291,4 +3300,20 @@ async function administrativeManagerNameTx(tx: Tx, employmentId: string): Promis
     .sort((a, b) => a.validFrom.localeCompare(b.validFrom) || a.id.localeCompare(b.id))
     .pop();
   return admin?.name ?? null;
+}
+
+/** Dedicated pay editor: validation and both changes commit together; basic shift saves omit pay fields. */
+export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[]; differential: ShiftDifferential | null; confirmClear: boolean }) {
+  const differential = validateDifferential(p.differential);
+  return withTenant(ctx, async tx => {
+    const [before] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).for('update');
+    if (!before) throw new Error('Shift not found (or not visible)');
+    const oldWindows = await tx.select({id:shiftOtWindow.id}).from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));
+    if (((oldWindows.length > 0 && p.windows.length === 0) || (before.differential && !differential)) && !p.confirmClear)
+      throw new Error('Confirm clearing the saved overtime windows or shift premium before saving.');
+    const result = await replaceShiftOtWindowsTx(tx, ctx, p);
+    await tx.update(shift).set({differential, updatedAt:new Date()}).where(eq(shift.id,p.shiftId));
+    await appendEvent(tx,{tenantId:ctx.tenantId, aggregateType:'shift', aggregateId:p.shiftId, eventType:'shift.pay-settings.saved', actor:actorOf(ctx),payload:{beforeDifferential:before.differential,differential,windowCount:p.windows.length}});
+    return result;
+  });
 }

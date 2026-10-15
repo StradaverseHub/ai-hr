@@ -1,3 +1,4 @@
+import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
 import type { ReactNode } from 'react';
 import { ScheduleOvertimeDraftFields } from '@/components/schedule-overtime-draft-fields';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
@@ -658,21 +659,8 @@ export async function ScheduleGroupSections({
   return (
     <div className="space-y-8">
       <ErrorBanner message={orphanError} />
-      {/* A jump list, not a tab strip. Every section is rendered and on the page at once — "one Schedule
-          Group is one screen" — so these are anchors into what is already there, which is what makes a
-          save's `#section-<key>` land somewhere. */}
-      <nav aria-label={t('sectionsAria')} className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-        {SCHEDULE_SECTION_KEYS.map((key) => (
-          <a key={key} href={`#${sectionAnchor(key)}`} className="text-primary hover:underline">
-            {SECTION_LABEL[key]}
-          </a>
-        ))}
-      </nav>
-      {SCHEDULE_SECTION_KEYS.map((key) => (
-        <section key={key} id={sectionAnchor(key)} className="scroll-mt-6 space-y-6">
-          {bodyFor[key]}
-        </section>
-      ))}
+      <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')}
+        tabs={(['general','attendance','overtime','workingDay'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
       {mode === 'view' && (
         <div className="flex items-center gap-3">
           <Link href={scheduleGroupEditPath(rule.id)} className={btnPrimary}>

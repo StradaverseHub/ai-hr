@@ -7,7 +7,7 @@ import { listAttendanceRules } from '@/core/attendance-rule';
 import { formatBreakDisplay } from '@/core/shift-break-display';
 import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
-import { shiftChipClass } from '@/lib/shift-visual';
+import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import { scheduleGroupSectionHref } from './schedule/sections';
 import { archiveShiftAction, copyShiftAction, deleteShiftAction, unarchiveShiftAction } from './shift-actions';
 
@@ -125,7 +125,7 @@ export default async function ShiftSettingsPage({
                       <tr key={sh.id}>
                         <td className="px-4 py-2.5 font-medium">
                           {chip ? (
-                            <span className={`rounded px-1.5 py-0.5 ${chip}`} title={t('shiftColorLabel')}>
+                            <span style={shiftChipStyle(sh.color)} className={`rounded px-1.5 py-0.5 ${chip}`} title={t('shiftColorLabel')}>
                               {sh.code ?? '—'}
                             </span>
                           ) : (

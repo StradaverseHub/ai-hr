@@ -7,8 +7,7 @@ import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
 import { ErrorBanner, Field, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { SectionCard, LabelValue, LabelValueList } from '@/components/ui/section-card';
 import { ShiftTimeFields } from '@/components/shift-time-fields';
-import { ShiftOtWindowFields } from '@/components/shift-ot-window-fields';
-import { SHIFT_COLORS, SHIFT_COLOR_TOKENS } from '@/lib/shift-visual';
+import { ShiftColorPicker } from '@/components/shift-color-picker';
 import { scheduleGroupSectionHref } from './schedule/sections';
 import { createShiftAction, updateShiftAction } from './shift-actions';
 
@@ -161,37 +160,7 @@ export async function ShiftForm({
             </Field>
           </div>
 
-          <fieldset className="mt-4">
-            <legend className="mb-1.5 text-sm font-medium text-foreground">{t('shiftColorLabel')}</legend>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground has-[:checked]:ring-2 has-[:checked]:ring-foreground/40">
-                <input
-                  type="radio"
-                  name="color"
-                  value=""
-                  defaultChecked={!editing?.color}
-                  className="h-3.5 w-3.5 accent-primary"
-                />
-                {t('shiftColorNone')}
-              </label>
-              {SHIFT_COLOR_TOKENS.map((token) => (
-                <label
-                  key={token}
-                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium has-[:checked]:ring-2 has-[:checked]:ring-foreground/40 ${SHIFT_COLORS[token]}`}
-                >
-                  <input
-                    type="radio"
-                    name="color"
-                    value={token}
-                    defaultChecked={editing?.color === token}
-                    className="h-3.5 w-3.5 accent-primary"
-                  />
-                  {t(COLOR_KEY[token])}
-                </label>
-              ))}
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">{t('shiftColorHint')}</p>
-          </fieldset>
+          <ShiftColorPicker value={editing?.color ?? null} />
 
           {/* r429 (f6819e19) · D2 — READ ONLY. The group is changed on ITS OWN page now ("Shifts allowed"
               there), and the week is changed on the group's "Working Days" section — never here. */}
@@ -227,8 +196,8 @@ export async function ShiftForm({
             the break rows feed the live normal-hours readout, so the two sections share state. */}
         <ShiftTimeFields
           defaultType={(editing?.type ?? 'normal') as 'normal' | 'semi_flexi' | 'full_flexi'}
-          defaultStart={editing?.startTime.slice(0, 5) ?? '09:00'}
-          defaultEnd={editing?.endTime.slice(0, 5) ?? '18:00'}
+          defaultStart={editing?.startTime?.slice(0, 5) ?? '09:00'}
+          defaultEnd={editing?.endTime?.slice(0, 5) ?? '18:00'}
           defaultBreaks={defaultBreaks}
           isScalarOnlySource={isScalarOnlySource}
           defaultBreakMinutesScalar={editing ? String(editing.breakMinutes) : '0'}
@@ -246,65 +215,7 @@ export async function ShiftForm({
           lockedBreakPeriodsJson={JSON.stringify(editing?.breakPeriods ?? [])}
         />
 
-        {/* ── SECTION 4 · OVERTIME AND PAY FOR THIS SHIFT ─────────────────────────────────────────────
-            Closed by default — most shifts leave both empty — but stays MOUNTED (a <details> hides its
-            children without unmounting them): a conditional render here would delete every overtime window
-            on the next save. 7c834696 rev 2 — the premium is PAY, not a calculation setting; it stays with
-            the shift because each shift has its own value and core/payroll.ts prefillShiftDifferential
-            reads it directly. */}
-        <details className="group rounded-lg border border-border" open={otWindows.length > 0 || !!editing?.differential}>
-          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-foreground marker:content-none">
-            <span className="inline-flex items-center gap-2">
-              <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
-                ▸
-              </span>
-              <span className="font-mono text-xs font-normal tabular-nums text-muted-foreground">04</span>
-              {t('shiftOvertimePayLegend')}
-            </span>
-          </summary>
-          <div className="space-y-6 border-t border-border p-4">
-            <div>
-              <h3 className="mb-2 text-sm font-medium text-foreground">{t('otScheduleLegend')}</h3>
-              <ShiftOtWindowFields
-                defaultRows={otWindows.map((w) => ({
-                  label: w.label ?? '',
-                  startTime: w.startTime.slice(0, 5),
-                  endTime: w.endTime.slice(0, 5),
-                  endNextDay: w.endNextDay,
-                  minMinutes: w.minMinutes == null ? '' : String(w.minMinutes),
-                  maxMinutes: w.maxMinutes == null ? '' : String(w.maxMinutes),
-                  adjustAfterMinutes: w.adjustAfterMinutes == null ? '' : String(w.adjustAfterMinutes),
-                  adjustDeltaMinutes: w.adjustDeltaMinutes == null ? '' : String(w.adjustDeltaMinutes),
-                }))}
-              />
-            </div>
-            <fieldset>
-              <legend className="mb-1.5 text-sm font-medium text-foreground">
-                {t('shiftPremiumLegend')} <span className="font-normal text-muted-foreground">({t('shiftPremiumHint')})</span>
-              </legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={t('diffLabel')}>
-                  <select name="differentialKind" defaultValue={editing?.differential?.kind ?? ''} className={inputCls}>
-                    <option value="">{t('diffNone')}</option>
-                    <option value="percent">{t('diffPercent')}</option>
-                    <option value="flat_hourly">{t('diffFlatHourly')}</option>
-                    <option value="flat_per_shift">{t('diffPerShift')}</option>
-                  </select>
-                </Field>
-                <Field label={t('diffValue')}>
-                  <input
-                    name="differentialValue"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    defaultValue={editing?.differential?.value ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-              </div>
-            </fieldset>
-          </div>
-        </details>
+        <p className="text-sm text-muted-foreground"><Link className="text-primary hover:underline" href="/admin/attendance/settings/work-schedule-overtime#shift-pay">{t('shiftOvertimePayLegend')}</Link></p>
 
         <div className="flex items-center gap-3">
           <button className={btnPrimary}>{editing ? t('saveShift') : t('addShift')}</button>

@@ -5,7 +5,7 @@ import { requireModule } from '@/lib/authz';
 import { myRosterWindow, type MyRosterDay, type MyRosterView } from '@/core/roster';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { isoWeekdayOf, rosterDateLocale } from '@/lib/roster-month';
-import { shiftChipClass } from '@/lib/shift-visual';
+import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   MY_ROSTER_VIEWS,
@@ -202,6 +202,7 @@ export default async function MyRosterPage({
           {view.legend.map((sh) => (
             <span
               key={sh.id}
+              style={shiftChipStyle(sh.color)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs ${
                 shiftChipClass(sh.color) ?? 'border-border bg-muted text-muted-foreground'
               }`}
@@ -299,6 +300,7 @@ function DayBody({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string) => st
         <span className="font-mono text-xs italic text-muted-foreground">{d.shift.code}</span>
       ) : (
         <span
+          style={shiftChipStyle(d.shift.color)}
           className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium ${
             shiftChipClass(d.shift.color) ?? 'border-border bg-muted text-foreground'
           }`}

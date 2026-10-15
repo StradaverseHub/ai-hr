@@ -1,18 +1,3 @@
-// 6340aecb — Shift Settings redesign: the per-shift COLOUR (request points 6 + 7).
-//
-// A CLOSED TOKEN PALETTE, not a free hex value, and the choice is deliberate. The colour is rendered as a
-// filled chip on the Duty Roster, where it has to stay legible in BOTH themes; an arbitrary hex from a
-// colour picker cannot promise that, and "the operator picked black-on-black" is not a bug anyone can fix
-// from the settings screen. This mirrors the shape lib/leave-visual.ts already uses for exactly the same
-// problem (leave_type.color, a fixed 7-token palette with a DB CHECK behind it — migration 0179) rather
-// than inventing a second convention for the same idea.
-//
-// THE CLASSES ARE THE ONES THE ROSTER GRID ALREADY PAINTS. components/roster-grid.tsx has always tinted a
-// shift cell from a six-entry rotating palette keyed on the shift's POSITION in the list; these tokens use
-// the identical Tailwind vocabulary at the identical intensity, so choosing "indigo" gives a cell that
-// looks exactly like today's first auto colour. A shift with NO colour keeps the rotating palette
-// untouched — see components/roster-grid.tsx shiftColor().
-
 export const SHIFT_COLORS = {
   indigo: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300',
   green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300',
@@ -41,5 +26,22 @@ export function isShiftColorToken(v: string): v is ShiftColorToken {
  */
 export function shiftChipClass(color: string | null | undefined): string | null {
   if (!color) return null;
-  return isShiftColorToken(color) ? SHIFT_COLORS[color] : null;
+  return isShiftColorToken(color) ? SHIFT_COLORS[color] : /^#[0-9a-f]{6}$/i.test(color) ? 'border-transparent' : null;
+}
+
+/** Canonical display colour accepts old tokens and six-digit opaque HEX only. */
+export function normalizeShiftColor(value: string | null | undefined): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  if (isShiftColorToken(v)) return v;
+  if (/^#[0-9a-f]{6}$/i.test(v)) return v.toUpperCase();
+  throw new Error('Choose a saved colour or enter a six-digit HEX colour such as #4F46E5.');
+}
+/** WCAG relative luminance; choose the more legible of black and white (at least 4.58:1). */
+export function shiftChipStyle(color: string | null | undefined): { backgroundColor: string; color: string } | undefined {
+  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return undefined;
+  const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255)
+    .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  return { backgroundColor: color, color: (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#FFFFFF' };
 }

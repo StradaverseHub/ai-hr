@@ -499,7 +499,7 @@ export function ShiftTimeFields({
                             {flexOn || semiFlexi ? t('breakFlexibleYes') : t('breakFlexibleNo')}
                           </label>
                           {(flexOn || semiFlexi) && !bp.paid && (
-                            <input
+                            <><input
                               type="number"
                               min={1}
                               max={duration ?? undefined}
@@ -507,7 +507,7 @@ export function ShiftTimeFields({
                               onChange={(e) => setBreak(i, { flexibleMinutes: e.target.value })}
                               className={`${inputCls} w-20`}
                               aria-label={t('breakRowMinutes')}
-                            />
+                            /><span className="text-xs text-muted-foreground">{t('unitMinutesLong')}</span></>
                           )}
                         </span>
                       </StackedTd>
