@@ -20,7 +20,7 @@ const earningId = '33333333-3333-4333-8333-333333333333';
 const deductionId = '44444444-4444-4444-8444-444444444444';
 const options = {
   companies:[{id:companyId,label:'Example company',currency:'MYR'}],
-  departments:[{id:'55555555-5555-4555-8555-555555555555',label:'Finance',companyId,isGlobal:false}],
+  departments:[{id:'55555555-5555-4555-8555-555555555555',label:'Finance',companyId,isGlobal:false,assignedCompanyIds:[]}],
   businessUnits:[],positions:[],grades:[],categories:[],shifts:[],leaveTypes:[],
   employees:[{id:employeeId,label:'Example employee',companyId,category:null}],
 };

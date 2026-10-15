@@ -24,7 +24,8 @@ export async function sweepReplacementHolidayQueue(owner:ReturnType<typeof creat
    try{
     const result=await withTenant(ctx,async tx=>{
      const result=await reconcileReplacementHolidaysTx(tx,ctx,claim.employmentId);
-     await tx.update(replacementHolidayQueue).set({requestedAt:new Date(Date.now()+86400_000),claimedAt:null,claimedGeneration:null,lastError:null,calendarConflicts:result.calendarConflicts}).where(and(eq(replacementHolidayQueue.employmentId,claim.employmentId),eq(replacementHolidayQueue.generation,claim.generation)));
+     const calendarConflicts:{date:string;recorded:string|null;holiday:boolean}[]=result.calendarConflicts;
+     await tx.update(replacementHolidayQueue).set({requestedAt:new Date(Date.now()+86400_000),claimedAt:null,claimedGeneration:null,lastError:null,calendarConflicts}).where(and(eq(replacementHolidayQueue.employmentId,claim.employmentId),eq(replacementHolidayQueue.generation,claim.generation)));
      return result;
     });processed++;changed+=result.changed;review+=result.review;
    }catch(error){

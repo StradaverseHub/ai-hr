@@ -306,7 +306,7 @@ async function resolvePolicyForTx(tx: Tx, employmentId: string) {
  * submission and approval re-resolve it and refuse a working day.
  */
 export function workedDayKindForEmployment(ctx: SessionContext, employmentId: string, date: string) {
-  return withTenant(ctx, (tx) => resolveWorkedDayKindTx(tx, employmentId, date));
+  return withTenant(ctx, (tx) => resolveWorkedDayKindTx(tx, employmentId, date,ctx));
 }
 
 /**
@@ -356,7 +356,7 @@ export function extendedHoursDayForEmployment(
   date: string,
 ): Promise<LeaveCreditExtendedDayView> {
   return withTenant(ctx, async (tx) => {
-    const day = await extendedHoursDayForEmploymentTx(tx, employmentId, date);
+    const day = await extendedHoursDayForEmploymentTx(tx, employmentId, date,ctx);
     return { ...day, approvedOtPlan: await approvedOvertimeForDateTx(tx, employmentId, date) };
   });
 }
@@ -628,7 +628,7 @@ export async function submitReplacementLeaveRequest(
       if (!extended.extendedHoursEnabled)
         throw new ReplacementRequestDisabledError('Extended hours on an ordinary working day are not switched on for this company.');
       for (const l of bLines) {
-        const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, l.workedDate);
+        const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, l.workedDate,ctx);
         // A rest day, off day or public holiday belongs in Section A, and the message says which.
         if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [l.workedDate]);
         // r353 cbfa8b0b — NO CAP OF ITS OWN, and that is checked rather than assumed: the shared function
@@ -708,7 +708,7 @@ export async function submitReplacementLeaveRequest(
     // leaving the new shape out of it would have let an ordinary day in through the non-working route
     // with no attendance behind it. The stored `workedDayKind` comes from the same map.
     for (const l of [...aLines, ...aWindowLines]) {
-      const kind = await resolveWorkedDayKindTx(tx, p.employmentId, l.workedDate);
+      const kind = await resolveWorkedDayKindTx(tx, p.employmentId, l.workedDate,ctx);
       aKinds.set(l.workedDate, kind);
       if (kind === 'workday') (l.sourceType ? taggedWorkingDays : untaggedWorkingDays).push(l.workedDate);
     }

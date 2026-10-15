@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import type { EmployeeDraftData } from '../lib/employee-draft-schema';
 import {
   completeEmployeeDraft, createEmployeeDraftWithReservedCode, draftActivationValidation,
-  DraftActivationValidationError, saveEmployeeDraft,
+  DraftActivationValidationError, saveEmployeeDraft, getEmployeeDraft,
 } from '../core/employee-draft';
 import { createConfig } from '../core/employee-id-config';
 import { hireEmployee } from '../core/org';
@@ -210,8 +210,9 @@ describe('atomic Draft activation', () => {
     ['checkbox', { family: [{ fullName: 'Child', relationship: 'child', childTaxRelief: 'yes' }] }],
   ])('refuses malformed persisted %s input before creating any employee', async (_name, malformed) => {
     const { ctx, id } = await held();
-    const [draft] = await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id, id));
-    await owner.db.update(schema.employeeDraft).set({ data: { ...draft.data, ...malformed } as EmployeeDraftData }).where(eq(schema.employeeDraft.id, id));
+    const draft=await getEmployeeDraft(ctx,id);
+    if(!draft)throw new Error('Expected the scoped, valid seeded Draft before mutation.');
+    await owner.db.update(schema.employeeDraft).set({ data: { ...draft.data, ...malformed } }).where(eq(schema.employeeDraft.id, id));
     await rejectedWithoutChanges(ctx, id, 'invalid_data');
   });
 
@@ -252,7 +253,8 @@ describe('atomic Draft activation', () => {
   it('refuses a changed company in a hand-edited Draft instead of moving the reservation', async () => {
     const { ctx, id } = await held();
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Company' }).returning();
-    const [draft] = await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id, id));
+    const draft=await getEmployeeDraft(ctx,id);
+    if(!draft)throw new Error('Expected the scoped, valid seeded Draft before mutation.');
     await owner.db.update(schema.employeeDraft).set({ data: { ...draft.data, employment: { ...draft.data.employment, companyId: other.id } } }).where(eq(schema.employeeDraft.id, id));
     await rejectedWithoutChanges(ctx, id, 'company_changed');
   });
@@ -260,7 +262,8 @@ describe('atomic Draft activation', () => {
   it('refuses a Payroll policy deactivated since the Draft was saved, using its typed owner error', async () => {
     const { ctx, id } = await held();
     const { id: policyId } = await createPolicy(ctx, { companyId: b.companyId, name: 'Selected Monthly', policyType: 'monthly' });
-    const [draft] = await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id, id));
+    const draft=await getEmployeeDraft(ctx,id);
+    if(!draft)throw new Error('Expected the scoped, valid seeded Draft before mutation.');
     await saveEmployeeDraft(ctx, { id, data: { ...draft.data, payroll: { ...draft.data.payroll, payrollPolicyId: policyId } }, currentStep: 4 });
     await owner.db.update(schema.payrollPolicy).set({ status: 'draft' }).where(eq(schema.payrollPolicy.id, policyId));
     const error = await rejectedWithoutChanges(ctx, id, 'payroll_invalid');

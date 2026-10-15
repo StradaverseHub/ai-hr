@@ -70,6 +70,18 @@ async function provenToilDurationTx(tx:Tx,ctx:SessionContext,employmentId:string
 }
 
 
+function formulaAfterShiftMinutes(formula:Extract<Awaited<ReturnType<typeof provenToilDurationTx>>,{kind:'formula'}>):number {
+  const minutes=formula.afterShiftMinutes;
+  if(minutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
+  return minutes;
+}
+
+function recordedToilDayFacts(formula:Extract<Awaited<ReturnType<typeof provenToilDurationTx>>,{kind:'formula'}>) {
+  if(formula.recordedWorkedDayKind==='workday'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
+  return {kind:formula.recordedWorkedDayKind,scheduleName:null,shiftCode:null,shiftName:null,attendanceRecordPresent:true,...formula.recordedDay,measuredExtendedMinutes:formula.recordedWorkedDayKind==='workday'?formulaAfterShiftMinutes(formula):0};
+}
+
+
 export class ToilDisabledError extends Error {
   constructor(msg = 'Time off in lieu is not enabled.') {
     super(msg);
@@ -928,12 +940,11 @@ async function extendedWorkdayCreditTx(
   // The switch, first and alone: off (or no policy row) ⇒ the pre-r334 sentence, unchanged.
   if (!policy?.extendedHoursEnabled) throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
   // An off day is not an ordinary working day — see the header. Same sentence as before r334.
-  const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
-  if (kind !== 'workday') throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
-
   const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+  const kind = formula.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+  if (kind !== 'workday') throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
   if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded clock placement and scheduled shift end are required to bank extended ordinary-day formula overtime.');
-  const extendedMinutes = formula.kind==='formula'?formula.afterShiftMinutes!:extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
+  const extendedMinutes = formula.kind==='formula'?formulaAfterShiftMinutes(formula):extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
   const { countedMinutes, days } = extendedHoursCreditDays(extendedMinutes, policy);
   if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(p.workedDate, countedMinutes, policy.extendedHalfDayMinutes);
 
@@ -1036,6 +1047,7 @@ export async function bankToilCreditTx(
   // Same lock order as Attendance calculation and Payroll source reservation, before any ledger write.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
   const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,p.formulaClaimWindow);
+  if(formula.kind==='formula'&&p.workedDayKind!==formula.recordedWorkedDayKind)throw new ToilNotEligibleError('Leave Credit day classification must match the recorded Attendance calculation.');
   if(formula.kind==='formula'&&(p.companyId!==formula.companyId||!Number.isSafeInteger(p.otMinutes)||p.otMinutes<0||p.otMinutes>formula.minutes))throw new ToilNotEligibleError('The Leave Credit must use the proven source company and a reviewed subset of its current formula duration.');
   if(formula.kind==='formula'&&p.workedDayKind==='workday'&&(formula.afterShiftMinutes===null||p.otMinutes>formula.afterShiftMinutes))throw new ToilNotEligibleError('Extended Leave Credit must be a reviewed subset of the recorded post-shift formula duration.');
   // Counted subsets already passed through the canonical break/grace/tier owner. Never expand them here.
@@ -1280,7 +1292,9 @@ export async function accrueToil(
  * star re-export — the shape a transpiler can evaluate before its names exist. core/leave-adjustment.ts
  * reaches for core/leave the same way for the same reason.
  */
-export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date: string): Promise<ToilWorkedDayKind> {
+/** A real server context opts into recorded formula classification; legacy dates retain the schedule owner. */
+export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date: string,ctx?:SessionContext): Promise<ToilWorkedDayKind> {
+  if(ctx){const formula=await provenToilDurationTx(tx,ctx,employmentId,date);if(formula.kind==='formula')return formula.recordedWorkedDayKind;}
   const { workedDayKindForTx } = await import('../packs/attendance/service');
   return workedDayKindForTx(tx, employmentId, date);
 }
@@ -1294,6 +1308,7 @@ export async function extendedHoursDayForEmploymentTx(
   tx: Tx,
   employmentId: string,
   date: string,
+  ctx?:SessionContext,
 ): Promise<{
   kind: ToilWorkedDayKind;
   // r365 — `shiftStart` and `actualClockIn` are DISPLAY-ONLY additions for the Leave Credit request's
@@ -1309,6 +1324,8 @@ export async function extendedHoursDayForEmploymentTx(
   actualClockOut: string | null;
   measuredExtendedMinutes: number;
 }> {
+  // Formula views use captured clocks and classification; absent historical names stay unknown.
+  if(ctx){const formula=await provenToilDurationTx(tx,ctx,employmentId,date);if(formula.kind==='formula')return recordedToilDayFacts(formula);}
   const { extendedHoursDayForTx } = await import('../packs/attendance/service');
   return extendedHoursDayForTx(tx, employmentId, date);
 }
@@ -1361,7 +1378,7 @@ export async function accrueSelfDeclaredToilTx(
   // employee could claim a credit for an ordinary working day. Resolved HERE, at approval — the binding
   // moment, inside the transaction that mints the credit — as well as at submission (the courtesy half in
   // core/replacement-request.ts), because a roster can change between the two.
-  const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+  const kind = formula.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
   if (kind === 'workday') throw new ToilOrdinaryWorkingDayError([p.workedDate]);
   return bankToilCreditTx(tx, ctx, {
     employmentId: p.employmentId,
@@ -1456,7 +1473,7 @@ export async function accrueExtendedWorkdayToilTx(
   // Gate 1 — the switch, first and alone, with r334's pre-r334 sentence unchanged.
   if (!policy.extendedHoursEnabled) throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
 
-  const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, p.workedDate);
+  const day = formula.kind==='formula'?recordedToilDayFacts(formula):await extendedHoursDayForEmploymentTx(tx, p.employmentId, p.workedDate);
   // Gate 2 — Section B is for ORDINARY WORKING DAYS. A rest day, off day or public holiday belongs in
   // Section A, and the message says exactly that.
   if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [p.workedDate]);
@@ -1471,7 +1488,7 @@ export async function accrueExtendedWorkdayToilTx(
   // r406 — Gates 3 and 4 run through `leaveCreditWindowCredit`, the one window → days step the employee
   // submit and HR's `grantLeaveCreditRows` share; Gate 2 above is what makes `ordinaryWorkingDay` true.
   if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('The claimed window requires recorded formula clock placement and shift end.');
-  const { countedMinutes, days } = formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,policy):leaveCreditWindowCredit({
+  const { countedMinutes, days } = formula.kind==='formula'?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),policy):leaveCreditWindowCredit({
     ordinaryWorkingDay: true,
     claimStart: p.claimStart,
     claimEnd: p.claimEnd,
@@ -1522,7 +1539,7 @@ export async function maybeAutoAccrueOnApprovalTx(
   if (!toilEnabled(ctx)) return false;
   // Cheap pre-check: a correction with no day type at all can never qualify on any path.
   if (!p.dayType) return false;
-  const eligibleDayType = RL_ELIGIBLE_DAY_TYPES.has(p.dayType as 'rest_day' | 'holiday');
+  let eligibleDayType = RL_ELIGIBLE_DAY_TYPES.has(p.dayType as 'rest_day' | 'holiday');
   // Resolve the company policy gate (enabled + opted-in). RLS already scopes the row to this tenant.
   const [att] = await tx
     .select({ companyId: employment.companyId })
@@ -1530,7 +1547,7 @@ export async function maybeAutoAccrueOnApprovalTx(
     .where(eq(employment.id, p.employmentId))
     .limit(1);
   if (!att) return false;
-  try {const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);if(formula.kind==='formula')att.companyId=formula.companyId;}
+  try {const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);if(formula.kind==='formula'){att.companyId=formula.companyId;eligibleDayType=RL_ELIGIBLE_DAY_TYPES.has(formula.recordedWorkedDayKind as 'rest_day'|'holiday');}}
   catch(error){if(error instanceof ToilNotEligibleError)return false;throw error;}
   const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, att.companyId)).limit(1);
   if (!policy || !policy.enabled || !policy.autoAccrueOnApproval) return false;
@@ -2192,7 +2209,7 @@ export async function previewLeaveCredit(
     assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
     const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
     if(formula.kind==='formula'){emp.companyId=formula.companyId;emp.country=formula.country;}
-    const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+    const kind = formula.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
     const approvedOnDate = todayInKualaLumpur(p.approvedOn ?? new Date());
     const [dupe] = await tx
@@ -2310,7 +2327,7 @@ export async function grantLeaveCredit(
     }
     const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
     if(formula.kind==='formula'){emp.companyId=formula.companyId;emp.country=formula.country;}
-    const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+    const kind = formula.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     // ── r334 928f0454 · AN ORDINARY WORKING DAY, BEHIND THE SWITCH ──────────────────────────────────────
     //
     // Switch off (and every company with no saved policy) ⇒ `ToilOrdinaryWorkingDayError`, byte for byte as
@@ -2328,7 +2345,7 @@ export async function grantLeaveCredit(
       const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
       if (!policy?.extendedHoursEnabled) throw new ToilOrdinaryWorkingDayError([p.workedDate]);
       if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
-      const extended = formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,policy):await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
+      const extended = formula.kind==='formula'?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),policy):await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
       if (!extended || extended.days <= 0) {
         throw new ToilExtendedHoursBelowThresholdError(p.workedDate, extended?.countedMinutes ?? 0, policy.extendedHalfDayMinutes);
       }
@@ -2384,9 +2401,10 @@ export async function leaveCreditRosterKindsTx(
   tx: Tx,
   employmentId: string,
   dates: readonly string[],
+  ctx?:SessionContext,
 ): Promise<Map<string, ToilWorkedDayKind>> {
   const out = new Map<string, ToilWorkedDayKind>();
-  for (const d of new Set(dates)) out.set(d, await resolveWorkedDayKindTx(tx, employmentId, d));
+  for (const d of new Set(dates)){const formula=ctx?await provenToilDurationTx(tx,ctx,employmentId,d):null;out.set(d,formula?.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx(tx, employmentId, d));}
   return out;
 }
 
@@ -2456,8 +2474,8 @@ export async function leaveCreditGrantDayFacts(
   if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
   return withTenant(ctx, async (tx) => {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
-    const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, p.workedDate);
     const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+    const day = formula.kind==='formula'?recordedToilDayFacts(formula):await extendedHoursDayForEmploymentTx(tx,p.employmentId,p.workedDate);
     if(formula.kind==='formula'&&day.kind==='workday'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
     const [dupe] = await tx
       .select({ id: toilAccrual.id })
@@ -2472,7 +2490,7 @@ export async function leaveCreditGrantDayFacts(
       .limit(1);
     return {
       ...day,
-      ...(formula.kind==='formula'?{measuredExtendedMinutes:day.kind==='workday'?formula.afterShiftMinutes!:formula.minutes}:{}),
+      ...(formula.kind==='formula'?{measuredExtendedMinutes:day.kind==='workday'?formulaAfterShiftMinutes(formula):formula.minutes}:{}),
       approvedOtPlan: await approvedOvertimeForDateTx(tx, p.employmentId, p.workedDate),
       overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
       alreadyCredited: dupe != null,
@@ -2595,8 +2613,8 @@ export async function grantLeaveCreditRows(
       );
     }
 
-    // The roster adjudicates the posted day type — the same pure rule the employee's submit runs.
-    const kinds = await leaveCreditRosterKindsTx(tx, p.employmentId, dates);
+    // Captured formula classification (or the legacy roster) adjudicates the posted day type.
+    const kinds = await leaveCreditRosterKindsTx(tx, p.employmentId, dates,ctx);
     const mismatches = adjudicateDayTypes(
       p.rows.map((r) => ({ workedDate: r.workedDate, dayType: r.dayType })),
       kinds,
@@ -2619,8 +2637,8 @@ export async function grantLeaveCreditRows(
       const datedTiers=formula.kind==='formula'?await extendedHoursPolicyForCompanyTx(tx,formula.companyId):tiers;
       if(workingDay&&!datedTiers.extendedHoursEnabled)throw new ToilOrdinaryWorkingDayError([r.workedDate]);
       if(workingDay&&formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('The claimed window requires recorded formula clock placement and shift end.');
-      const day = workingDay ? await extendedHoursDayForEmploymentTx(tx, p.employmentId, r.workedDate) : null;
-      const { countedMinutes, days } = workingDay&&formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,datedTiers):leaveCreditWindowCredit({
+      const day = workingDay ? formula.kind==='formula'?recordedToilDayFacts(formula):await extendedHoursDayForEmploymentTx(tx, p.employmentId, r.workedDate) : null;
+      const { countedMinutes, days } = workingDay&&formula.kind==='formula'?extendedHoursCreditDays(formulaAfterShiftMinutes(formula),datedTiers):leaveCreditWindowCredit({
         ordinaryWorkingDay: workingDay,
         claimStart: r.claimStart!,
         claimEnd: r.claimEnd!,
