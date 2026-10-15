@@ -1,6 +1,6 @@
 import React from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import type {OvertimeEvaluation,OvertimePattern} from '../lib/overtime-pattern-model';
@@ -14,7 +14,7 @@ const date=todayInKualaLumpur();
 const pattern:OvertimePattern={v:1,currency:{code:'MYR',minorScale:2},definitions:[],eligibilityBasis:'day',durationAllocation:'earliest',eligibility:{id:'eligible',type:'constant',value:true},eligibleMinutes:null,durationCap:null,durationRounding:null,deductions:[],rates:[],paymentCap:null,moneyRounding:{stage:'line',mode:'halfUp'}};
 const evaluation:OvertimeEvaluation={status:'ready',source:{tenantId:id,employmentId:id,attendanceId:id,date,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64)},patternVersionId:versionId,assignmentId:id,transferable:false,currency:pattern.currency,rawMinutes:{state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}},eligibleMinutes:{state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}},approvedMinutes:{state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}},payableMinutes:{unit:'minutes',numerator:'120',denominator:'1'},amountMinorUnits:'12345',lines:[],trace:[]};
 const review={options:{companyId:id,currency:'MYR',employmentId:id,date,calculation:{id:'saved-calculation',sourceRevision:4,status:'ready',approvalStatus:'approved',transferable:true,amountMinorUnits:'12345',minorScale:2},runs:[{id:batchId,payPeriod:date.slice(0,7),runType:'regular',batchDate:date,cycleName:'Fictional cycle',status:'draft'}],settlement:null},recorded:{sourceId:id,sourceRevision:4,calculationId:'saved-calculation',status:'ready',approvalStatus:'approved',evaluation:{...evaluation,transferable:true},recordedAt:new Date().toISOString()}};
-function mount(disabled=false){render(<NextIntlClientProvider locale="en" messages={en}><OvertimePreviewPanel patternId={id} versionId={versionId} pattern={pattern} employees={[{id,companyId:id,name:'Fictional Employee',employeeCode:'SYNTH-01'}]} choices={{dayType:[{id:'workday',label:'Workday'}]}} disabled={disabled}/></NextIntlClientProvider>);}
+function mount(disabled=false){render(<NextIntlClientProvider locale="en" messages={en}><OvertimePreviewPanel patternId={id} versionId={versionId} pattern={pattern} earningItems={[{id:batchId,label:'Fictional authorized OT earning'}]} employees={[{id,companyId:id,name:'Fictional Employee',employeeCode:'SYNTH-01'}]} choices={{dayType:[{id:'workday',label:'Workday'}]}} disabled={disabled}/></NextIntlClientProvider>);}
 function chooseEmployee(){fireEvent.change(screen.getByLabelText(words.employees),{target:{value:id}});fireEvent.change(screen.getByLabelText(words.attendanceDate),{target:{value:date}});}
 beforeEach(()=>{cleanup();vi.clearAllMocks();mocks.choices.mockResolvedValue({ok:true,value:{employees:[],employeeNextCursor:null}});mocks.employee.mockResolvedValue({ok:true,value:evaluation});mocks.sample.mockResolvedValue({ok:true,value:evaluation});mocks.review.mockResolvedValue({ok:true,value:review});mocks.transfer.mockResolvedValue({ok:false,code:'stale'});});
 
@@ -23,6 +23,23 @@ describe('preview and actual Payroll are separate operations',()=>{
   mount();chooseEmployee();fireEvent.click(screen.getByRole('button',{name:words.runPreview}));
   await waitFor(()=>expect(mocks.employee).toHaveBeenCalledExactlyOnceWith({patternId:id,versionId,employmentId:id,date}));
   expect(await screen.findByText('MYR 123.45')).toBeVisible();expect(mocks.calculate).not.toHaveBeenCalled();expect(mocks.transfer).not.toHaveBeenCalled();
+ });
+ it('passes authorized earning labels to both preview and saved calculation rows',async()=>{
+  const minutes={unit:'minutes' as const,numerator:'120',denominator:'1'};
+  const value={state:'known' as const,value:minutes};
+  const priced={...evaluation,lines:[{id:'line',source:evaluation.source,sessionId:`${id}:day`,segmentId:'segment',rateId:'rate',tierId:'tier',mapping:{earningItemId:batchId,currency:'MYR'},rawMinutes:value,eligibleMinutes:value,approvedMinutes:value,payableMinutes:minutes,gross:{unit:'money' as const,numerator:'12345',denominator:'100'},adjusted:{unit:'money' as const,numerator:'12345',denominator:'100'},amountMinorUnits:'12345'}],trace:[{kind:'duration' as const,id:'input',data:{sessionGranularity:'dayAggregate'}}]};
+  mocks.employee.mockResolvedValue({ok:true,value:priced});
+  mocks.review.mockResolvedValue({ok:true,value:{...review,recorded:{...review.recorded,evaluation:priced}}});
+  mount();chooseEmployee();fireEvent.click(screen.getByRole('button',{name:words.runPreview}));
+  expect(await screen.findByText('Fictional authorized OT earning')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:words.reviewActual}));
+  await waitFor(()=>expect(screen.getAllByText('Fictional authorized OT earning')).toHaveLength(2));
+  for(const table of screen.getAllByRole('table')) {
+   const cells=within(within(table).getAllByRole('row')[1]).getAllByRole('cell');
+   expect(cells[2].firstElementChild).toHaveTextContent(words.bases.day);
+   expect(cells[4].firstElementChild).toHaveTextContent('Fictional authorized OT earning');
+   expect(cells[4].lastElementChild).toHaveTextContent(batchId);
+  }
  });
  it('retains unknown sample facts and keeps actual Payroll actions unavailable in sample mode',async()=>{
   mount();fireEvent.change(screen.getByLabelText(words.previewMode),{target:{value:'sample'}});fireEvent.change(screen.getByLabelText(words.attendanceDate),{target:{value:date}});

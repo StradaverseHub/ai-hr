@@ -9,7 +9,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {requirePackFor} from '../localization/registry';
-import {createBatch,createAdditionalRun,setPayrollConfig,disburseNetAcrossCycles,createPayComponent,setPayrollInput,prefillOvertimeFromAttendance,generatePayslips,closeBatch,deleteDraftBatch,createPolicy,assignPolicy,overtimePatternTransferOptions,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,readPayrollOvertimeCoverageTx} from '../packs/payroll/service';
+import {createBatch,createAdditionalRun,setPayrollConfig,disburseNetAcrossCycles,createPayComponent,setPayrollInput,prefillOvertimeFromAttendance,generatePayslips,closeBatch,deleteDraftBatch,createPolicy,assignPolicy,overtimePatternTransferOptions,transferOvertimePatternToPayroll,readPayrollOvertimePatternCashTx,readPayrollOvertimeCoverageTx,pendingBatchMoney,narrowToNothingPayable,updateBatchScope,batchScopeHeadcount,batchInputRows} from '../packs/payroll/service';
 import {checkIn,checkOut,setAttendancePolicy,saveOvertimePatternDraft,validateOvertimePatternActivation,activateOvertimePattern,saveOvertimePatternAssignment,createOvertimeCalculationOwner,canonicalOvertimeInputTx,readOvertimeCalculationTx,readOvertimeSettlementForDayTx} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {evaluateOvertimePattern,evaluateOvertimePatternDuration,validateOvertimeInput} from '../lib/overtime-pattern-evaluate';
@@ -42,6 +42,36 @@ async function fixture(amount='60',options:{salary?:number;cappedBase?:boolean}=
 }
 async function slip(batchId:string){return (await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batchId)))[0];}
 describe('formula money is an actual canonical Payroll input',()=>{
+ it('reviews transferred formula cash once with flags off, exact labels/evidence and persisted run scope',async()=>{
+  const f=await fixture('91.50');
+  const excluded=await hireEmployee(f.ctx,{person:{fullName:'Excluded cash review control',primaryEmail:'excluded-cash-review@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+  await setCompensation(f.ctx,{employmentId:excluded.employmentId,basicSalary:3500,effectiveFrom:'2024-01-01'});
+  await updateBatchScope(f.ctx,{batchId:f.batch.batchId,scope:{employmentIds:[f.e.employmentId]}});
+  const first=await transferOvertimePatternToPayroll(f.ctx,f.transfer);await transferOvertimePatternToPayroll(f.ctx,f.transfer);
+  const before=await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId));
+  const review=await pendingBatchMoney(f.ctx,{batchId:f.batch.batchId});
+  expect(await batchScopeHeadcount(f.ctx,f.batch.batchId)).toBe(1);expect((await batchInputRows(f.ctx,f.batch.batchId)).map(row=>row.employmentId)).toEqual([f.e.employmentId]);
+  expect(review.formulaOvertimeReview).toEqual({status:'available',lineCount:1});expect(review.lines).toHaveLength(1);
+  expect(review.lines[0]).toMatchObject({employmentId:f.e.employmentId,door:'overtime',itemName:'Configured formula overtime',amount:91.5,note:null,overtimeCash:{sourceId:first.sourceId,calculationId:first.calculationId,settlementId:first.settlementId,sourceRevision:f.transfer.expectedSourceRevision,earningItemId:f.earning.id,date:day(),currency:'MYR',minorScale:2,amountMinorUnits:'9150'}});
+  expect(review.lines[0].overtimeCash?.lineId).toBeTruthy();expect(review.earnings).toBe(91.5);expect(review.inertRows).toBe(0);
+  expect(await owner.db.select({id:s.payslip.id}).from(s.payslip).where(eq(s.payslip.batchId,f.batch.batchId))).toEqual([]);
+  expect((await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId))).map(row=>row.id).sort()).toEqual(before.map(row=>row.id).sort());
+ });
+ it('shows stale formula evidence as unavailable rather than empty/basic-only or a definite skip',async()=>{
+  const f=await fixture();await transferOvertimePatternToPayroll(f.ctx,f.transfer);
+  await withTenant(f.ctx,tx=>tx.update(s.attendance).set({workedMinutes:599}).where(eq(s.attendance.employmentId,f.e.employmentId)));
+  const review=await pendingBatchMoney(f.ctx,{batchId:f.batch.batchId});
+  expect(review.formulaOvertimeReview).toEqual({status:'unavailable',code:'stale'});expect(review.lines).toEqual([]);
+  expect(narrowToNothingPayable([{employmentId:f.e.employmentId}],review)).toEqual([]);
+  expect(await owner.db.select({id:s.payslip.id}).from(s.payslip).where(eq(s.payslip.batchId,f.batch.batchId))).toEqual([]);
+ });
+ it('retains formula review after Attendance removal and refuses a changed earning treatment visibly',async()=>{
+  const f=await fixture();await transferOvertimePatternToPayroll(f.ctx,f.transfer);
+  await setModule(b.tenantId,'attendance','disabled');const ctx=await entitledCtx(b);
+  expect((await pendingBatchMoney(ctx,{batchId:f.batch.batchId})).lines).toEqual(expect.arrayContaining([expect.objectContaining({itemName:'Configured formula overtime',amount:60})]));
+  await owner.db.update(s.payComponent).set({includedInEpf:true}).where(eq(s.payComponent.id,f.earning.id));
+  const review=await pendingBatchMoney(ctx,{batchId:f.batch.batchId});expect(review.formulaOvertimeReview).toEqual({status:'unavailable',code:'mapping'});expect(review.lines).toEqual([]);
+ });
  it('removes the old attendance aggregate, pays once with transaction flag off, and keeps an identical retry unchanged',async()=>{
   const f=await fixture();const before=(await owner.db.select().from(s.payrollInput).where(eq(s.payrollInput.batchId,f.batch.batchId)))[0];expect(Number(before.overtimeAmount)).toBeGreaterThan(0);
   const first=await transferOvertimePatternToPayroll(f.ctx,f.transfer);expect(first.status).toBe('transferred');expect(await transferOvertimePatternToPayroll(f.ctx,f.transfer)).toMatchObject({status:'unchanged',settlementId:first.settlementId});

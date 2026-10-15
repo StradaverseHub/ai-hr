@@ -4915,6 +4915,9 @@
       "pendingMoney": {
         "title": "Pending transactions",
         "hint": "Everything queued against this run that is not basic salary, whichever screen it was entered on. Twelve entry points write five different tables; this is the one place they are all visible before you generate.",
+        "formulaUnavailable": "Formula overtime cannot be reviewed. Pending totals may be incomplete.",
+        "formulaReviewHint": "Review the recorded Attendance day, approval and earning item. Correct the reported issue and refresh this review before processing.",
+        "formulaRecordedHint": "Recorded formula overtime contributions are shown before combined Payroll policy caps. Processing rechecks each source; these are not final payslip amounts.",
         "empty": "Nothing is queued. This run will pay basic salary and the statutory calculation only.",
         "employees": "Employees affected",
         "earnings": "Earnings",

@@ -5639,6 +5639,9 @@
       "pendingMoney": {
         "title": "Giao dịch đang chờ",
         "hint": "Mọi khoản đang chờ trong đợt này ngoài lương cơ bản, bất kể được nhập từ màn hình nào. Mười hai điểm nhập liệu ghi vào năm bảng khác nhau; đây là nơi duy nhất thấy được tất cả trước khi bạn tính lương.",
+        "formulaUnavailable": "Không thể kiểm tra tiền làm thêm theo công thức. Tổng đang chờ có thể chưa đầy đủ.",
+        "formulaReviewHint": "Kiểm tra ngày chấm công đã ghi, phê duyệt và khoản thu nhập. Sửa vấn đề được báo và làm mới phần kiểm tra này trước khi xử lý.",
+        "formulaRecordedHint": "Khoản làm thêm theo công thức đã ghi được hiển thị trước giới hạn kết hợp của chính sách Lương. Khi xử lý, từng nguồn sẽ được kiểm tra lại; đây chưa phải số tiền phiếu lương cuối cùng.",
         "empty": "Không có khoản nào đang chờ. Đợt này chỉ trả lương cơ bản và phần tính toán theo luật.",
         "employees": "Nhân viên bị ảnh hưởng",
         "earnings": "Khoản thu nhập",
