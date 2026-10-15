@@ -146,3 +146,22 @@ $$;
 REVOKE ALL ON FUNCTION app.internal_auth_invitation_mail(uuid,uuid,text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.internal_auth_invitation_mail(uuid,uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Display context is restricted to the exact verified installation operator. Ordinary tenant HR
+-- administrators cannot resolve recovery request IDs, even by supplying another tenant or address.
+CREATE FUNCTION app.internal_auth_recovery_roots(p_ids uuid[],p_issuer text,p_subject text)
+RETURNS TABLE(id uuid,source_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE requests AS (
+  SELECT d.id AS requested,d.id,d.replaces_delivery_id,ARRAY[d.id] AS seen FROM account_email_delivery d
+  WHERE cardinality(p_ids)<=50 AND d.id=ANY(p_ids) AND d.kind='recovery' AND app.account_email_operator(p_issuer,p_subject)
+  UNION ALL
+  SELECT child.requested,parent.id,parent.replaces_delivery_id,child.seen||parent.id
+  FROM requests child JOIN account_email_delivery parent ON parent.id=child.replaces_delivery_id
+  WHERE parent.kind='recovery' AND NOT parent.id=ANY(child.seen) AND cardinality(child.seen)<64
+ ) SELECT requested,id FROM requests WHERE replaces_delivery_id IS NULL
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.internal_auth_recovery_roots(uuid[],text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.internal_auth_recovery_roots(uuid[],text,text) TO ai_hr_app;

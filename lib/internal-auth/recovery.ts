@@ -8,7 +8,7 @@ import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError } from '../account-email-model';
 import { attemptAccountEmail } from '../../core/account-email';
 type Recovery = { subject: string; version: string };
-type RecoveryContext = { subject: string; issuer: string; tenantId: string; version: string; email: string };
+export type RecoveryContext = { subject: string; issuer: string; tenantId: string; version: string; email: string; organization: string; username: string };
 /** Public request confirmation never discloses account existence or SMTP readiness. */
 export async function requestRecovery(organization: string, username: string, transport?: MailTransport) {
   await takeRate('recovery-global', 120, 3600_000);
@@ -23,7 +23,7 @@ export async function requestRecovery(organization: string, username: string, tr
     const rows = await tx.unsafe('select * from app.account_email_request_recovery($1)', [current.email]);
     const job = rows[0]; if (!job) return null;
     await writeRecord(tx, `recovery-mail:${job.id}`, { subject: current.subject, issuer: current.issuer, tenantId: current.tenantId,
-      version: current.version, email: current.email } satisfies RecoveryContext, current.subject);
+      version: current.version, email: current.email, organization: current.organization, username: current.username } satisfies RecoveryContext, current.subject);
     return { id: job.id as string, lease: job.lease_token as string };
   });
   if (delivery) await attemptAccountEmail(delivery.id, delivery.lease, {

@@ -8,9 +8,9 @@ The backend release filter also excludes native build folders and signing inputs
 are delivered separately from the HR server deployment.
 On iPhone, allow Local Network access if prompted when connecting to an HR server on the same
 network. A denied or newly granted prompt may require retrying sign-in; this permission does not
-replace trusted HTTPS certificates or the company's Wi-Fi/VPN connection.
+replace trusted HTTPS certificates or the company's Wi-Fi/VPN connection. The standard test binary expects system-trusted certificates. Modern Android does not automatically trust a user-installed CA; private-CA customers need a separately reviewed domain-scoped enterprise trust configuration, or a publicly trusted certificate on their private DNS name.
 
-The app uses Expo SDK 57, deployment-owned Keycloak sign-in with PKCE and the shared `/api/mobile/v1` contract. The legacy build-time WorkOS adapter remains for controlled migration.
+The app uses Expo SDK 57, embedded HR username/password and MFA sign-in, and the shared `/api/mobile/v1` contract. The selected signed company profile chooses the cloud or private HR installation; its organization code then selects the tenant credential namespace. Embedded mode does not follow OIDC discovery or call an identity server. Legacy Keycloak/WorkOS adapters remain compatibility paths only; Keycloak activation was cancelled by the owner in ADR-0117.
 For the legacy WorkOS build, run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set `EXPO_PUBLIC_RUNTIME_CONNECTIONS=0`, `EXPO_PUBLIC_AUTH_PROVIDER=workos`, the HTTPS API origin and the
 matching public WorkOS client id, then use an iOS/Android development build. No API key or client
 secret belongs in the app. Root TypeScript/build commands exclude this directory; run
@@ -27,11 +27,12 @@ do not reuse another project's credentials. Server cutover and account bootstrap
 ## Session boundaries
 
 - The refresh credential and WorkOS session id live in SecureStore with
-  `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The access token and API results stay in memory.
+  `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. In embedded mode the stored refresh handle is opaque, bound to the installation namespace and rotated through the HR server. The access handle and API results stay in memory; a bounded server expiry schedules refresh without interpreting it as a JWT.
 - Credential writes are serialized. A login generation owns each browser exchange, refresh and
   request. Logout immediately invalidates the generation and removes private screens. Late results
   cannot restore a session, overwrite a newer login or turn an old refusal into a new account's logout.
-- Each native sign-in attempt creates a new AuthRequest with fresh random state and PKCE values.
+- Embedded sign-in verifies the selected company capability before sending credentials, requires initial password change and confirmed MFA, and shows one-time recovery codes before saving the full session. Password recovery opens the same HR server in the system browser.
+- Each legacy provider sign-in attempt creates a new AuthRequest with fresh random state and PKCE values.
   A cancelled attempt's callback cannot be exchanged during a later attempt. The regression loads
   Expo's installed request, PKCE and callback parser alongside the actual sign-in screen.
 - On first launch without the sandbox installation marker, surviving Keychain credentials are
@@ -39,7 +40,7 @@ do not reuse another project's credentials. Server cutover and account bootstrap
   Explicit logout marks the sandbox as signed out before awaiting deletion. A surviving credential
   cannot be reopened after a deletion failure; only a successful current login clears that marker.
 - Stored sessions require successful OS authentication. Passcode-only devices use the same prompt;
-  unavailable credentials require hosted sign-in. A separate app PIN is deferred in ADR-0088.
+  unavailable credentials require full sign-in. A separate app PIN is deferred in ADR-0088.
 - Inactive/background states hide private routes. Backgrounding or Android focus loss locks the
   session. Late unlock results after backgrounding/logout cannot reopen it. The OS prompt's transient
   inactive state is allowed, with the privacy curtain still visible.
@@ -47,7 +48,8 @@ do not reuse another project's credentials. Server cutover and account bootstrap
   screens mount. Android photo/storage read permissions from the SDK are blocked. Its Android 14
   normal screen-capture detection permission remains declared because the native module registers
   a callback during initialization; this does not grant photo-library access or request a runtime prompt.
-- Explicit sign-out clears local credentials first, then opens the documented WorkOS logout URL in
+- Embedded sign-out invalidates local state synchronously, clears SecureStore, then makes a bounded revocation call to the pinned HR server. Refresh-handle reuse revokes the family; HR archive, offboarding and identity revocation are checked on every API session.
+- Legacy sign-out clears local credentials first, then opens the documented WorkOS logout URL in
   the system browser. It sends `session_id` and the registered callback URI; browser/network failure cannot restore the local
   session. Provider revocation is not considered verified merely because the browser opened.
   Register `aihr://auth/callback` as both a redirect and logout URI in the matching WorkOS application.
@@ -67,17 +69,18 @@ UNKNOWN until checked on staging and physical devices:
 
 | Check | iOS | Android |
 | --- | --- | --- |
-| Hosted PKCE callback, cancel, double tap, changed account | Required | Required |
+| Embedded organization/password/MFA, initial password change, recovery codes | Required | Required |
+| Legacy PKCE callback, cancel, double tap, changed account (when that adapter is selected) | Required | Required |
 | Passcode only, enrolled biometrics, cancelled/failed prompt | Required | Required |
 | Background during unlock, screen lock, app switcher, notification shade | Required | Required |
 | Screenshot, screen recording, app-switcher snapshot privacy | Required | Required |
 | Logout during refresh, provider session revoked, restart after logout | Required | Required |
 | Reinstall, device backup/restore, SecureStore inaccessible | Required | Required |
-| Offline, timeout, WorkOS 429/5xx, expired/revoked refresh token | Required | Required |
+| Offline, timeout, HR-server 429/5xx, rotated/expired/revoked refresh handle | Required | Required |
 | Another employee/company/tenant and offboarded account | Required | Required |
 
 RECOMMENDATION: use synthetic employee data until this matrix and the server authorization suite
-pass against the intended AI HR WorkOS application. `docs/WORKOS-CUTOVER.md` records the staging
+pass against the intended embedded HR installation. `docs/WORKOS-CUTOVER.md` records the staging
 host and the separate production TLS requirement. Confirm the environment rather than reusing a
 different project's connected WorkOS credentials.
 

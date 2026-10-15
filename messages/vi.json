@@ -19140,6 +19140,7 @@
       "providerUnavailable": "Dịch vụ đăng nhập không khả dụng hoặc chưa được cấu hình. Yêu cầu đã được lưu.",
       "notEligible": "Lời mời hoặc người nhận email khôi phục không còn đủ điều kiện.",
       "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
-    }
+    },
+    "reference": "Mã tham chiếu gửi"
   }
 }

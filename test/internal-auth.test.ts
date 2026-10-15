@@ -12,6 +12,8 @@ import { changeInitialPassword, credentialByLogin, readSession, revokeSession, r
 import { requestRecovery, completeRecovery, sendInternalRecovery } from '../lib/internal-auth/recovery';
 import { startInvitation, acceptInternalInvitation } from '../lib/internal-auth/invitations';
 import { createManualAccount, resumeManualAccount } from '../core/manual-identity';
+import { readAccountEmailDeliveries } from '../core/account-email';
+import { withInternalRecoveryLabels } from '../lib/internal-auth/account-email-view';
 import { inviteUser, retryAccountEmail, type AuthProvider } from '../core/auth';
 import { provisionTenant } from '../db/provision';
 import { withTenant } from '../db/client';
@@ -176,6 +178,11 @@ describe('first-party authentication with real private storage and existing HR b
       emailReadiness: async () => null, sendPasswordReset: (email, context) => sendInternalRecovery(email, context, async (_relay, mail) => { text = mail.text; }) };
     const actor = { userId: base.adminUserId, tenantId: base.tenantId, issuer: first.issuer, subject: first.subject };
     await expect(retryAccountEmail(adminCtx(base), job.id, true, { ...actor, subject: (await credentialByLogin('beta', 'owner'))!.subject }, provider)).rejects.toThrow();
+    const history = await withInternalRecoveryLabels(adminCtx(base), actor, await readAccountEmailDeliveries(adminCtx(base), actor));
+    expect(history.find(item => item.id === job.id)?.account).toEqual({ organization: 'alpha', username: 'owner' });
+    const serializedView = JSON.stringify(history);
+    for (const secret of ['totpSecret', 'password', 'recoveryHashes', 'recovery-mail:', first.subject]) expect(serializedView).not.toContain(secret);
+    expect(await readAccountEmailDeliveries(adminCtx(base))).toEqual([]);
     await retryAccountEmail(adminCtx(base), job.id, true, actor, provider);
     const token = text.match(/#token=([A-Za-z0-9_-]{43})/)![1];
     expect(await readRecord(client, `recovery:${digest(token)}`)).toMatchObject({ subject: first.subject });

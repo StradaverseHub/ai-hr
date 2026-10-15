@@ -15,4 +15,4 @@ export const recoveryEmailSchema=z.email().max(320).regex(/^[\x21-\x7e]+$/).tran
 export class AccountEmailDeliveryError extends Error{
   constructor(public readonly code:AccountEmailError){super(`Account email: ${code}`);}
 }
-export type AccountEmailDeliveryView={id:string;kind:'invitation'|'recovery';email:string;status:'pending'|'sent'|'failed'|'skipped';attempts:number;error:AccountEmailError|null;createdAt:Date;canRetry:boolean};
+export type AccountEmailDeliveryView={id:string;kind:'invitation'|'recovery';email:string;status:'pending'|'sent'|'failed'|'skipped';attempts:number;error:AccountEmailError|null;createdAt:Date;canRetry:boolean;account?:{organization:string;username:string}};

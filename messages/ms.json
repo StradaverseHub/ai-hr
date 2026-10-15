@@ -19140,6 +19140,7 @@
       "providerUnavailable": "Penyedia log masuk tidak tersedia atau belum dikonfigurasi. Permintaan disimpan.",
       "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
       "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
-    }
+    },
+    "reference": "Rujukan penghantaran"
   }
 }

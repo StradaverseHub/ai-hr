@@ -1,14 +1,28 @@
 {
-  "cli": { "version": ">= 24.10.0", "appVersionSource": "local" },
+  "cli": {
+    "version": ">= 24.10.0",
+    "appVersionSource": "local"
+  },
   "build": {
     "preview": {
       "distribution": "internal",
-      "env": { "EXPO_PUBLIC_RUNTIME_CONNECTIONS": "1", "EXPO_PUBLIC_AUTH_PROVIDER": "keycloak" },
-      "android": { "buildType": "apk" },
-      "ios": { "image": "latest" }
+      "env": {
+        "EXPO_PUBLIC_RUNTIME_CONNECTIONS": "1",
+        "EXPO_PUBLIC_AUTH_PROVIDER": "internal"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "image": "latest"
+      }
     },
     "simulator": {
-      "extends": "preview", "ios": { "simulator": true, "image": "latest" }
+      "extends": "preview",
+      "ios": {
+        "simulator": true,
+        "image": "latest"
+      }
     }
   }
 }

@@ -19140,6 +19140,7 @@
       "providerUnavailable": "The sign-in provider is unavailable or not configured. The request is saved.",
       "notEligible": "The invitation or recovery recipient is no longer eligible.",
       "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
-    }
+    },
+    "reference": "Delivery reference"
   }
 }

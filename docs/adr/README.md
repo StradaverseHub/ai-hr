@@ -64,3 +64,6 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0108](0108-attendance-board-read-and-retry.md) | Clock retry identity, independent settings save scopes, earned-credit read model and Semi Flexi duration rules | Accepted; verification pending |
 
 | [0115](0115-native-performance-journey-parity.md) | Native Performance journey parity, retained decisions, reminders and Rewards ownership | Accepted |
+
+| [0116](0116-central-ai-inventory-and-allowances.md) | Central AI feature inventory, usage governance and company/user allowances | Accepted; release verification pending |
+| [0117](0117-embedded-hr-authentication.md) | HR-owned usernames/passwords, MFA, recovery and browser/native sessions for cloud and on-prem | Owner-directed; implementation and verification pending |

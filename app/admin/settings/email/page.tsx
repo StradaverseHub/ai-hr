@@ -8,6 +8,7 @@ import { defaultEmailConfig, emailFailureCodes, EmailSettingsError, type EmailSe
 import { PageHeader, Card, SectionHeader, Field, inputCls, ErrorBanner } from '@/components/ui';
 import { AccountEmailDeliveries } from '@/components/account-email-deliveries';
 import { readAccountEmailDeliveries } from '@/core/account-email';
+import { withInternalRecoveryLabels } from '@/lib/internal-auth/account-email-view';
 import { EmailSubmit } from './submit-button';
 import { saveEmailDraft, testEmailDraft, activateEmailDraft } from './actions';
 
@@ -21,7 +22,7 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
  let view:EmailSettingsView|null=null;
  if(mayConfigure) {
   const {session,actor}=await requireIdentityEmailAdmin();
-  deliveries=await readAccountEmailDeliveries(session,actor);
+  deliveries=await withInternalRecoveryLabels(session,actor,await readAccountEmailDeliveries(session,actor));
   try{view=await readIdentityEmailSettings(actor);}catch(e){
   return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/><AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/></div>;
   }

@@ -5,6 +5,7 @@ import {retryAccountEmailAction} from '@/app/admin/settings/notifications/action
 
 export async function AccountEmailDeliveries({items,returnTo}:{items:AccountEmailDeliveryView[];returnTo:'/admin/settings/notifications'|'/admin/settings/email'}){
  const t=await getTranslations('accountEmail');
+ const auth=await getTranslations('internalAuth');
  return <Card className="p-5" data-tour="account-email-deliveries">
   <SectionHeader title={t('title')}/><p className="mb-4 text-sm text-muted-foreground">{t('help')}</p>
   {items.length===0?<p className="text-sm text-muted-foreground">{t('empty')}</p>:<ul className="divide-y divide-border">{items.map(item=><li key={item.id} className="space-y-3 py-4">
@@ -12,6 +13,8 @@ export async function AccountEmailDeliveries({items,returnTo}:{items:AccountEmai
     <strong>{t(`kinds.${item.kind}`)}</strong><span className="break-all">{item.email}</span><span>{t(`statuses.${item.status}`)}</span>
     <span>{t('attempts')}: {item.attempts}</span><time dateTime={item.createdAt.toISOString()}>{item.createdAt.toISOString().slice(0,16).replace('T',' ')} UTC</time>
    </div>
+   {item.account&&<p className="break-all text-sm text-muted-foreground">{auth('organization')}: {item.account.organization} · {auth('username')}: {item.account.username}</p>}
+   <p className="break-all text-xs text-muted-foreground">{t('reference')}: {item.id}</p>
    {item.error?<p className="text-sm text-muted-foreground">{t(`errors.${item.error}`)}</p>:null}
    {item.canRetry?<form action={retryAccountEmailAction} className="flex flex-wrap items-center gap-3">
     <input type="hidden" name="deliveryId" value={item.id}/><input type="hidden" name="kind" value={item.kind}/><input type="hidden" name="returnTo" value={returnTo}/>
