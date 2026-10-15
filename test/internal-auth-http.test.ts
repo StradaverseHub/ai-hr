@@ -20,13 +20,23 @@ describe('embedded auth HTTP trust and credential carriers', () => {
     expect(service.startLogin).not.toHaveBeenCalled();
   });
   it('keeps browser handles out of JSON and sets only the secure host cookie', async () => {
-    service.startLogin.mockResolvedValue({ step: 'complete', access_token: access, refresh_token: refresh, expires_in: 900 });
+    const browserHandle = 'w'.repeat(43);
+    service.startLogin.mockResolvedValue({ step: 'complete', access_token: browserHandle, expires_in: 28800 });
     const response = await request('login', { organization: 'alpha', username: 'user', password: 'secret' }, { origin: 'https://hr.test' });
     expect(await response.json()).toEqual({ step: 'complete' });
     const cookie = response.headers.get('set-cookie')!;
+    expect(response.cookies.get('__Host-aihr_internal')?.value).toBe(browserHandle);
     for (const piece of ['__Host-aihr_internal=', 'Path=/', 'Secure', 'HttpOnly', 'SameSite=lax']) expect(cookie).toContain(piece);
     expect(cookie).not.toContain('Domain='); expect(response.headers.get('cache-control')).toContain('no-store');
     expect(service.startLogin).toHaveBeenCalledWith(expect.objectContaining({ native: false }));
+  });
+  it('does not issue a browser session cookie while password change or MFA is still pending', async () => {
+    for (const step of ['password', 'mfa']) {
+      service.startLogin.mockResolvedValue({ step, challenge: 'c'.repeat(43) });
+      const response = await request('login', { organization: 'alpha', username: 'user', password: 'secret' }, { origin: 'https://hr.test' });
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(await response.json()).toEqual({ step, challenge: 'c'.repeat(43) });
+    }
   });
   it('native login returns opaque handles without setting a browser cookie', async () => {
     service.startLogin.mockResolvedValue({ step: 'complete', access_token: access, refresh_token: refresh, expires_in: 900 });
