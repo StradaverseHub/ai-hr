@@ -120,7 +120,8 @@ export async function readPayrollOvertimePatternCashTx(tx:Tx,ctx:SessionContext,
  for(const claim of claims){const calculation=claim.calculation;if(!calculation){continue;} // Legacy cash claims protect identity; legacy Payroll still supplies their amount.
   const [b]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);if(!b)fail('unavailable');
   await targetTx(tx,ctx,{batchId:p.batchId,employmentId:claim.source.employmentId,date:claim.source.attendanceDate,companyId:claim.source.companyId,status:b.status==='draft'?'draft':'processed'});
-  const contribution:CalculationRead={source:claim.source,calculation,evidence:claim.evidence,lines:claim.lines};
+  const evidence=claim.evidence;if(!evidence)fail('stale');
+  const contribution:CalculationRead={source:claim.source,calculation,evidence,lines:claim.lines};
   lines.push(...await pricedLinesTx(tx,ctx,contribution,b,claim.settlement.id));
  }
  const byEmployment=new Map<string,PayrollOvertimePatternLine[]>();for(const line of lines){const list=byEmployment.get(line.employmentId)??[];list.push(line);byEmployment.set(line.employmentId,list);}return {lines,byEmployment};
