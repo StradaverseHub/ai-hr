@@ -15,7 +15,7 @@
 import type { SessionContext } from '../db/client';
 import type { CustomReportSpec } from '../db/schema';
 import type { ReportData } from '../lib/report-export';
-import { masterDataExport, leaveBalancesSummary, type ReportFilter } from './analytics';
+import { leaveBalancesSummary, type ReportFilter } from './analytics';
 import { overtimeReport, attendanceDailyReport, performanceGoalReport, performanceReviewReport } from './reporting';
 import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
 import { payslipDisplayEarnings } from './pay-display-category';
@@ -94,25 +94,7 @@ const MASTER: ReportDataset = {
     { id: 'department', label: 'Department contains', kind: 'text' },
   ],
   defaultColumns: ['employeeCode', 'name', 'department', 'position', 'status', 'hiredOn'],
-  run: async (ctx, scopeIds, params) => {
-    const filter: ReportFilter = { q: (str(params.name) ?? undefined) as string | undefined };
-    const rows = await masterDataExport(ctx, scopeIds, { includeComp: true, includeTerminated: true, filter });
-    return rows.map((r) => ({
-      employeeCode: r.employeeCode,
-      name: r.name,
-      email: r.email,
-      company: r.company,
-      department: r.department,
-      position: r.position,
-      status: r.status,
-      employmentType: r.employmentType,
-      hiredOn: r.hiredOn,
-      terminatedOn: r.terminatedOn,
-      basicSalary: numStr(r.basicSalary),
-      monthlyAllowance: numStr(r.monthlyAllowance),
-      currency: r.currency ?? null,
-    }));
-  },
+  run: async () => { throw new Error('Employee Master reports must run through the authorised report service.'); },
 };
 
 // ─────────────────────────────── Attendance (OT) ───────────────────────────────
@@ -649,6 +631,16 @@ export async function runReportSpec(
   scopeIds: string[],
   spec: CustomReportSpec,
 ): Promise<ReportData> {
+  if(spec.datasetId==='master'){
+    const {runEmployeeMasterReport,authorizeEmployeeMasterRun}=await import('./employee-master-reports');
+    const {legacyEmployeeMasterSpec}=await import('../lib/employee-master-legacy');
+    const {todayInKualaLumpur}=await import('../lib/hr-date');
+    const run=await runEmployeeMasterReport(ctx,scopeIds,{spec:legacyEmployeeMasterSpec(spec,scopeIds,todayInKualaLumpur())});
+    await authorizeEmployeeMasterRun(ctx,scopeIds,run);
+    if(run.result.sections.length!==1)throw new Error('Use the Employee Master export for reports with multiple record registers.');
+    const section=run.result.sections[0];
+    return {filename:'Employee-Master',title:spec.layout?.title??'Employee Master',columns:section.columns.map(column=>column.header??run.catalogue.find(field=>field.id===column.field)?.label??'Unavailable'),rows:section.rows.map(row=>row.cells.map(cell=>cell.unavailable?'Unavailable — '+cell.unavailable.replaceAll('-',' '):typeof cell.value==='boolean'?cell.value?'Yes':'No':cell.value)),layout:{orientation:spec.layout?.orientation,paperSize:spec.layout?.paperSize,margins:spec.layout?.margins}};
+  }
   const ds = REPORT_DATASETS[spec.datasetId];
   if (!ds) throw new Error('unknown-dataset');
   // r292 — THE REPORT AXIS IS ITS OWN DOOR INTO A PACK'S DATA, and it does not pass through the pack's

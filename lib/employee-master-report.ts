@@ -2,11 +2,13 @@
  * The shared Personnel registry owns fields. This engine owns only selection/row grains/presentation.
  */
 import { z } from 'zod';
+import { todayInKualaLumpur } from './hr-date';
+import { isCalendarDate } from './calendar-date';
 import type { PersonnelFieldDescriptor } from './personnel-field-registry';
 
 export type MasterScalar = string | number | boolean | null;
 export type MasterUnavailableReason = 'historical-unavailable'|'not-recorded'|'not-applicable'|'draft-unfinished'|'unknown-currency'|'mixed-currency'|'incompatible-units';
-export type MasterCell = { value:MasterScalar; unavailable?:MasterUnavailableReason; currency?:string|null; unit?:string; sourceRecordId?:string; labelIsCurrent?:boolean; referenceId?:string|null };
+export type MasterCell = { value:MasterScalar; display?:string; unavailable?:MasterUnavailableReason; currency?:string|null; unit?:string; sourceRecordId?:string; labelIsCurrent?:boolean; referenceId?:string|null };
 export type MasterOwnerRecord = { id:string; effectiveFrom?:string|null; effectiveTo?:string|null; createdAt?:string|null; values:Record<string,MasterCell>; currency?:string|null };
 export type MasterSubject = { id:string; kind:'employment'|'draft'; personId:string|null; companyId:string|null; owners:Record<string,MasterOwnerRecord[]> };
 export type MasterOperator = 'eq'|'ne'|'contains'|'in'|'between'|'before'|'after'|'blank'|'notBlank';
@@ -17,13 +19,14 @@ export type EmployeeMasterSpec = {v:2;asAt:string;companyIds:string[];includeDra
 export const MASTER_PREVIEW_ROWS=50;
 export const MASTER_EXPORT_MAX_ROWS=50_000;
 export const MASTER_EXPORT_MAX_CELLS=2_000_000;
-const isoDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>{const d=new Date(value+'T00:00:00Z');return Number.isFinite(+d)&&d.toISOString().slice(0,10)===value;},'Enter a valid date.');
+const isoDate=z.string().refine(isCalendarDate,'Enter a valid date.');
 const scalar=z.union([z.string().max(2000),z.number().finite(),z.boolean(),z.null()]);
 const column=z.object({field:z.string().min(1).max(200),header:z.string().trim().max(120).optional(),format:z.enum(['auto','text','date','number']),decimals:z.number().int().min(0).max(6),sum:z.boolean(),freeze:z.boolean(),align:z.enum(['left','center','right']),width:z.enum(['auto','narrow','medium','wide']),records:z.enum(['latest','all']),side:z.enum(['before','after']).optional()}).strict();
 const definition=z.object({v:z.literal(2),asAt:isoDate,companyIds:z.array(z.uuid()).min(1).max(100),includeDrafts:z.boolean(),columns:z.array(column).min(1).max(500),expression:z.unknown(),sorts:z.array(z.object({field:z.string(),dir:z.enum(['asc','desc'])}).strict()).max(3),groups:z.array(z.string()).max(3),pdf:z.object({paper:z.enum(['A4','A3','Letter','Legal']),orientation:z.enum(['portrait','landscape']),margins:z.enum(['narrow','normal','wide']),logo:z.boolean(),pageBreakGroups:z.boolean()}).strict()}).strict();
 
 export function validateEmployeeMasterSpec(raw:unknown,fields:readonly PersonnelFieldDescriptor[],today:string):EmployeeMasterSpec {
   const parsed=definition.parse(raw);
+  if(parsed.pdf.logo&&parsed.companyIds.length!==1)throw new Error('Choose one company to print its logo.');
   if(parsed.asAt>today)throw new Error('Choose an as-at date on or before today.');
   const byId=new Map(fields.filter(f=>f.report.enabled).map(f=>[f.id,f]));
   // The supplied catalogue must already be permission-scoped. Errors never echo a restricted ID/label.
@@ -32,6 +35,7 @@ export function validateEmployeeMasterSpec(raw:unknown,fields:readonly Personnel
   };
   if(new Set(parsed.columns.map(c=>c.field+':'+(c.side??'after'))).size!==parsed.columns.length)throw new Error('Select each report field once.');
   for(const c of parsed.columns){const f=field(c.field);if(c.side&&f.owner!=='movementComparison')throw new Error('Before/After columns apply only to Movement comparisons.');if(c.sum)field(c.field,'sum');if(c.format==='date'&&f.type!=='date'||c.format==='number'&&!['number','currency'].includes(f.type))throw new Error('Column format does not match its field type.');if(c.records==='all'&&f.grain!=='many')throw new Error('All records applies only to record registers.');}
+  const firstUnfrozen=parsed.columns.findIndex(column=>!column.freeze);if(firstUnfrozen>=0&&parsed.columns.slice(firstUnfrozen).some(column=>column.freeze))throw new Error('Frozen columns must form a leading block.');
   for(const sort of parsed.sorts)field(sort.field,'sort');
   for(const group of parsed.groups)field(group,'group');
   if(new Set(parsed.groups).size!==parsed.groups.length||new Set(parsed.sorts.map(s=>s.field)).size!==parsed.sorts.length)throw new Error('Choose distinct group and sort fields.');
@@ -53,7 +57,7 @@ export function validateEmployeeMasterSpec(raw:unknown,fields:readonly Personnel
     const operand=(value:MasterScalar|undefined)=>{
       if(value===undefined||value===null)throw new Error('Enter a complete condition value.');
       if(f.type==='boolean'){if(typeof value!=='boolean')throw new Error('Choose Yes or No.');}
-      else if(f.type==='date')isoDate.parse(value);
+      else if(f.type==='date')isoDate.parse(f.unit==='month'?String(value)+'-01':value);
       else if(f.type==='number'||f.type==='currency'){if(typeof value!=='number'||!Number.isFinite(value))throw new Error('Enter a complete number.');}
       else if(typeof value!=='string')throw new Error('Enter a text or choice value.');
     };
@@ -72,8 +76,8 @@ export function masterSpecFields(spec:EmployeeMasterSpec):string[]{
 }
 const unavailable=(reason:MasterUnavailableReason):MasterCell=>({value:null,unavailable:reason});
 export type MasterOutputRow={subjectId:string;personId:string|null;kind:'employment'|'draft';recordId:string|null;cells:MasterCell[];group:MasterCell[];sourceKeys:string[]};
-export type MasterTotal={field:string;value:string|null;currency:string|null;unit:string|null;unavailable?:MasterUnavailableReason};
-export type MasterGroup={key:string;values:MasterCell[];rowCount:number;employeeCount:number;draftCount:number;totals:MasterTotal[]};
+export type MasterTotal={field:string;side?:'before'|'after';value:string|null;currency:string|null;unit:string|null;unavailable?:MasterUnavailableReason};
+export type MasterGroup={key:string;values:MasterCell[];rowCount:number;employeeCount:number;personCount:number;draftCount:number;totals:MasterTotal[]};
 export type MasterSection={id:string;grain:string;columns:MasterColumn[];rows:MasterOutputRow[];rowCount:number;employeeCount:number;personCount:number;draftCount:number;groups:MasterGroup[];totals:MasterTotal[]};
 export type EmployeeMasterResult={asAt:string;employeeCount:number;personCount:number;draftCount:number;unknownMatchCount:number;totalRows:number;sections:MasterSection[]};
 
@@ -81,7 +85,7 @@ export type EmployeeMasterResult={asAt:string;employeeCount:number;personCount:n
 export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],subjects:readonly MasterSubject[],today:string):EmployeeMasterResult{
   const byId=new Map(fields.map(f=>[f.id,f]));
   const descriptor=(id:string)=>{const f=byId.get(id);if(!f)throw new Error('Report catalogue changed; review the report again.');return f;};
-  const records=(subject:MasterSubject,owner:string)=>[...(subject.owners[owner]??[])].filter(r=>{const date=r.effectiveFrom??r.createdAt?.slice(0,10);return !date||date<=spec.asAt;})
+  const records=(subject:MasterSubject,owner:string)=>[...(subject.owners[owner]??[])].filter(r=>{const date=r.effectiveFrom??(r.createdAt?todayInKualaLumpur(new Date(r.createdAt)):undefined);return !date||date<=spec.asAt;})
     .sort((a,b)=>(b.effectiveFrom??'').localeCompare(a.effectiveFrom??'')||(b.createdAt??'').localeCompare(a.createdAt??'')||b.id.localeCompare(a.id));
   const cell=(subject:MasterSubject,field:string,expanded?:{owner:string;record:MasterOwnerRecord},side:'before'|'after'='after'):{cell:MasterCell;source:string}=>{
     const f=descriptor(field);
@@ -90,7 +94,7 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
     const available=records(subject,f.owner);
     const record=expanded?.owner===f.owner?expanded.record:f.grain==='many'?available[0]:available.find(r=>!r.effectiveTo||r.effectiveTo>spec.asAt);
     const value=record?.values[(side==='before'?'before:':'')+f.ownerField]??unavailable(subject.kind==='draft'?'draft-unfinished':'not-recorded');
-    return {cell:{...value,currency:value.currency??record?.currency,sourceRecordId:record?.id},source:subject.id+':'+f.owner+':'+(record?.id??'missing')+':'+side+':'+f.ownerField};
+    return {cell:{...value,currency:value.currency??record?.currency,sourceRecordId:record?.id},source:f.owner+':'+(record?.id??subject.id+':missing')+':'+side+':'+f.ownerField};
   };
   type Truth='true'|'false'|'unknown';
   const matches=(expression:MasterExpression,subject:MasterSubject):Truth=>{
@@ -99,12 +103,12 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
       return !children.length?'true':expression.logic==='and'?children.includes('false')?'false':children.includes('unknown')?'unknown':'true':children.includes('true')?'true':children.includes('unknown')?'unknown':'false';
     }
     const actual=cell(subject,expression.field).cell;if(actual.unavailable)return 'unknown';
-    const v=actual.value,comparison=actual.referenceId??v,expected=expression.value;
+    const v=actual.value,comparison=actual.referenceId??(descriptor(expression.field).unit==='instant'&&v!=null?todayInKualaLumpur(new Date(String(v))):v),expected=expression.value;
     const equal=(a:MasterScalar,b:MasterScalar|undefined)=>typeof a==='string'&&typeof b==='number'&&['number','currency'].includes(descriptor(expression.field).type)?Number(a)===b:a===b;
     let pass=false;
     switch(expression.operator){
-      case 'blank':pass=v==null||v==='';break;
-      case 'notBlank':pass=v!=null&&v!=='';break;
+      case 'blank':pass=comparison==null||comparison==='';break;
+      case 'notBlank':pass=comparison!=null&&comparison!=='';break;
       case 'eq':pass=equal(comparison,expected);break;
       case 'ne':pass=!equal(comparison,expected);break;
       case 'contains':pass=v!=null&&String(v).toLocaleLowerCase().includes(String(expected).toLocaleLowerCase());break;
@@ -112,7 +116,7 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
       case 'before':case 'after':case 'between':{
         if(v==null)return 'false';
         const numeric=['number','currency'].includes(descriptor(expression.field).type);
-        const a=numeric?Number(v):String(v),lo=numeric?Number(expected):String(expected),hi=numeric?Number(expression.upper):String(expression.upper);
+        const a=numeric?Number(v):descriptor(expression.field).unit==='instant'?todayInKualaLumpur(new Date(String(v))):String(v),lo=numeric?Number(expected):String(expected),hi=numeric?Number(expression.upper):String(expression.upper);
         pass=expression.operator==='before'?a<lo:expression.operator==='after'?a>lo:a>=lo&&a<=hi;break;
       }
     }
@@ -132,13 +136,13 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
     for(const row of rows){if(row.kind==='draft'||seen.has(row.sourceKeys[i]))continue;seen.add(row.sourceKeys[i]);cells.push(row.cells[i]);}
     const currencies=new Set(cells.map(value=>value.currency??'')),units=new Set(cells.map(value=>value.unit??f.unit??''));
     const reason=cells.find(value=>value.unavailable)?.unavailable??(f.type==='currency'&&currencies.has('')?'unknown-currency':f.type==='currency'&&currencies.size>1?'mixed-currency':units.size>1?'incompatible-units':undefined);
-    if(reason)return [{field:c.field,value:null,currency:null,unit:f.unit??null,unavailable:reason}];
+    if(reason)return [{field:c.field,side:c.side,value:null,currency:null,unit:f.unit??null,unavailable:reason}];
     // Decimal strings are added in integers; no floating-point salary sum or currency conversion.
     let sum=BigInt(0);const scale=BigInt(1_000_000);
-    for(const value of cells){if(value.value==null||value.value==='')continue;const text=String(value.value);if(!/^-?\d+(?:\.\d{1,6})?$/.test(text))return [{field:c.field,value:null,currency:null,unit:f.unit??null,unavailable:'not-recorded' as const}];const negative=text.startsWith('-'),[whole,fraction='']=text.replace(/^-/,'').split('.');sum+=(negative?BigInt(-1):BigInt(1))*(BigInt(whole)*scale+BigInt(fraction.padEnd(6,'0')));}
+    for(const value of cells){if(value.value==null||value.value==='')continue;const text=String(value.value);if(!/^-?\d+(?:\.\d{1,6})?$/.test(text))return [{field:c.field,side:c.side,value:null,currency:null,unit:f.unit??null,unavailable:'not-recorded' as const}];const negative=text.startsWith('-'),[whole,fraction='']=text.replace(/^-/,'').split('.');sum+=(negative?BigInt(-1):BigInt(1))*(BigInt(whole)*scale+BigInt(fraction.padEnd(6,'0')));}
     const sign=sum<BigInt(0)?'-':'',absolute=sum<BigInt(0)?-sum:sum;
     const value=sign+String(absolute/scale)+'.'+String(absolute%scale).padStart(6,'0');
-    return [{field:c.field,value,currency:f.type==='currency'?[...currencies][0]??null:null,unit:f.unit??null}];
+    return [{field:c.field,side:c.side,value,currency:f.type==='currency'?[...currencies][0]??null:null,unit:f.unit??null}];
   });
   const sections=grains.map(grain=>{
     // Unrelated expanded registers get separate sections; latest overrides remain available in each.
@@ -154,12 +158,13 @@ export function runEmployeeMasterProjection(spec:EmployeeMasterSpec,fields:reado
     }
     const sortValue=(row:MasterOutputRow,field:string)=>{const i=columns.findIndex(c=>c.field===field);return i>=0?row.cells[i]:cell(selected.find(subject=>subject.id===row.subjectId)!,field).cell;};
     rows.sort((a,b)=>{
+      for(let index=0;index<spec.groups.length;index++){const x=a.group[index],y=b.group[index],order=String(x.referenceId??x.value??'').localeCompare(String(y.referenceId??y.value??''));if(order)return order;}
       for(const sort of spec.sorts){const x=sortValue(a,sort.field),y=sortValue(b,sort.field);let result=0;if(x.unavailable||x.value==null)result=y.unavailable||y.value==null?0:1;else if(y.unavailable||y.value==null)result=-1;else if(['number','currency'].includes(descriptor(sort.field).type))result=Number(x.value)-Number(y.value);else result=String(x.value).localeCompare(String(y.value));if(result)return sort.dir==='desc'?-result:result;}
       return a.subjectId.localeCompare(b.subjectId)||(a.recordId??'').localeCompare(b.recordId??'');
     });
     const grouped=new Map<string,MasterOutputRow[]>();for(const row of rows){const key=JSON.stringify(row.group.map(value=>[value.referenceId??value.value,value.unavailable??null]));const bucket=grouped.get(key)??[];bucket.push(row);grouped.set(key,bucket);}
     const counts=(items:MasterOutputRow[])=>({employeeCount:new Set(items.filter(row=>row.kind==='employment').map(row=>row.subjectId)).size,draftCount:new Set(items.filter(row=>row.kind==='draft').map(row=>row.subjectId)).size});
-    const groups=spec.groups.length?[...grouped].map(([key,items])=>({key,values:items[0].group,rowCount:items.length,...counts(items),totals:totals(items,columns)})):[];
+    const groups=spec.groups.length?[...grouped].map(([key,items])=>({key,values:items[0].group,rowCount:items.length,...counts(items),personCount:new Set(items.flatMap(row=>row.personId?[row.personId]:[])).size,totals:totals(items,columns)})):[];
     return {id:grain,grain,columns,rows,rowCount:rows.length,...counts(rows),personCount:new Set(rows.flatMap(row=>row.personId?[row.personId]:[])).size,groups,totals:totals(rows,columns)};
   });
   const totalRows=sections.reduce((sum,section)=>sum+section.rowCount,0);

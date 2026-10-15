@@ -15,6 +15,7 @@ import type { EntitlementSnapshot } from '../core/entitlement-types';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'custom_report_occurrence','custom_report_schedule','custom_report_run',
   'performance_assessment_guide_use',
   'hr_orchestration_case',
   'performance_assessment_profit_achievement',

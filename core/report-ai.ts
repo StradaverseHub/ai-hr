@@ -21,7 +21,7 @@ import { recordProposal } from './agent-proposal';
 import type { CustomReportSpec } from '../db/schema';
 
 export class ReportDraftError extends Error {
-  constructor(public readonly reason: 'not_configured' | 'invalid_output') {
+  constructor(public readonly reason: 'not_configured' | 'invalid_output' | 'forbidden') {
     super(`report-draft:${reason}`);
     this.name = 'ReportDraftError';
   }
@@ -88,6 +88,8 @@ export async function draftReportSpec(
   ctx: SessionContext,
   p: { datasetId: string; description: string },
 ): Promise<ReportDraftResult> {
+  // Master uses a company/category-scoped catalogue; the retired global AI catalogue is not a door into it.
+  if(p.datasetId==='master')throw new ReportDraftError('forbidden');
   const ds = getDataset(p.datasetId);
   if (!ds) throw new ReportDraftError('invalid_output');
 

@@ -31,6 +31,8 @@ export default async function PayrollPermissionsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.payrollPermissions');
+  const reportLabels=await getTranslations('employeeMasterReports.permissions');
+  const keyLabel=(key:string)=>key.startsWith('report.read.')?reportLabels(key.slice('report.read.'.length)):key;
   const { error } = await searchParams;
   const [grants, companies] = await Promise.all([
     listPayrollPermissionGrants(s),
@@ -56,7 +58,7 @@ export default async function PayrollPermissionsPage({
             <tbody className="divide-y divide-border">
               {PAYROLL_PERMISSION_KEYS.map((k) => (
                 <tr key={k}>
-                  <td className="px-4 py-2.5 font-mono text-xs">{k}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs">{keyLabel(k)}<span className="mt-0.5 block text-[10px] text-muted-foreground">{k.startsWith('report.read.')?k:null}</span></td>
                   <td className="px-4 py-2.5 text-muted-foreground">{PAYROLL_PERMISSION_DEFAULTS[k].join(', ')}</td>
                 </tr>
               ))}
@@ -86,7 +88,7 @@ export default async function PayrollPermissionsPage({
                 {grants.map((g) => (
                   <tr key={g.id}>
                     <td className="px-4 py-2.5">{companyName(g.companyId)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{g.permissionKey}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{keyLabel(g.permissionKey)}</td>
                     <td className="px-4 py-2.5">{g.role}</td>
                     <td className="px-4 py-2.5">{g.allowed ? t('allow') : t('deny')}</td>
                     <td className="px-4 py-2.5 text-right">
@@ -124,7 +126,7 @@ export default async function PayrollPermissionsPage({
             <select name="permissionKey" className={inputCls} defaultValue={PAYROLL_PERMISSION_KEYS[0]}>
               {PAYROLL_PERMISSION_KEYS.map((k) => (
                 <option key={k} value={k}>
-                  {k}
+                  {keyLabel(k)}
                 </option>
               ))}
             </select>
