@@ -68,3 +68,22 @@ describe('Attendance history input boundary', () => {
         expect(() => checkedAttendanceHistoryFilter({ submittedFrom: '2026-08-02', submittedTo: '2026-08-01' })).toThrow(/starts after/);
     });
 });
+
+describe('797ba70b: explicit routing version and complete Personnel assignment vocabulary', () => {
+  it('preserves omitted/legacy routing and canonicalizes new level labels by order', () => {
+    expect(validateAttendanceWorkflow(valid()).routingVersion).toBe(1);
+    expect(validateAttendanceWorkflow(valid()).stages[0].name).toBe('Manager');
+    const next = valid(); next.routingVersion = 2; next.stages = Array.from({ length: 3 }, () => ({ name: 'untrusted custom label', level: { kind: 'direct_manager' as const, employmentId: null, alternates: [] } }));
+    expect(validateAttendanceWorkflow(next).stages.map(s => s.name)).toEqual(['Level 1', 'Level 2', 'Level 3']);
+    expect(() => validateAttendanceWorkflow({ ...next, routingVersion: 3 as never })).toThrow();
+  });
+  it('validates and retains every requested axis, with any within a field and all between fields', () => {
+    const value = valid(); value.criteria = { departmentIds: [value.companyId], businessUnitIds: [value.companyId], gradeIds: [value.companyId], positionIds: [value.companyId], employeeIds: [value.companyId], employmentTypes: ['full_time', 'part_time'], orgDivision: ['D'], orgBranch: ['B'], orgRegion: ['R'], orgLine: ['L'], orgSection: ['S'], orgTeam: ['T'], orgBase: ['HQ'], employmentCategory: ['Executive'] };
+    expect(validateAttendanceWorkflow(value).criteria).toEqual(value.criteria);
+    expect(attendanceScopesOverlap({ employeeIds: ['A'] }, { employeeIds: ['B'] })).toBe(false);
+    expect(attendanceScopesOverlap({ orgBranch: ['A', 'B'], employmentTypes: ['full_time'] }, { orgBranch: ['B'], employmentTypes: ['full_time'] })).toBe(true);
+    expect(attendanceScopesOverlap({ orgBranch: ['A', 'B'], employmentTypes: ['full_time'] }, { orgBranch: ['B'], employmentTypes: ['intern'] })).toBe(false);
+    expect(() => validateAttendanceWorkflow({ ...value, criteria: { employeeIds: ['person-name'] } })).toThrow();
+    expect(() => validateAttendanceWorkflow({ ...value, criteria: { employmentTypes: ['invented'] } })).toThrow();
+  });
+});

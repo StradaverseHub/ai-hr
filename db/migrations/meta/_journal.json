@@ -3158,6 +3158,13 @@
       "when": 1791900000027,
       "tag": "0547_replacement_public_holidays",
       "breakpoints": true
+    },
+    {
+      "idx": 548,
+      "version": "7",
+      "when": 1791900000028,
+      "tag": "0548_attendance_hierarchy_approval",
+      "breakpoints": true
     }
   ]
 }

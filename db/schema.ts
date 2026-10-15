@@ -10190,6 +10190,7 @@ export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template'
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2>(),
     priority: integer('priority').notNull(), criteria: jsonb('criteria').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowCriteria>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceWorkflowStage[]>(),
     version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
@@ -10206,6 +10207,7 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     templateId: uuid('template_id').notNull().references(() => attendanceWorkflowTemplate.id), templateCode: text('template_code').notNull(),
     templateName: text('template_name').notNull(), templateVersion: integer('template_version').notNull(),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),
+    routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
@@ -10342,3 +10344,12 @@ export const replacementHolidayQueue=pgTable('replacement_holiday_queue',{
  tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'cascade'}),generation:bigint('generation',{mode:'number'}).notNull().default(1),
  requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),claimedAt:timestamp('claimed_at',{withTimezone:true}),claimedGeneration:bigint('claimed_generation',{mode:'number'}),lastError:text('last_error'),calendarConflicts:jsonb('calendar_conflicts').$type<{date:string;recorded:string;holiday:boolean}[]>().notNull().default([]),
 },t=>[primaryKey({columns:[t.tenantId,t.employmentId]})]);
+// Immutable, reasoned overrides keep the original submitted chain and decisions intact.
+export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reassignment', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    stageIndex: integer('stage_index').notNull(),
+    previousApprovers: jsonb('previous_approvers').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    approvers: jsonb('approvers').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    reason: text('reason').notNull(), actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id),
+    actualPersonId: uuid('actual_person_id').references(() => person.id), actualActorName: text('actual_actor_name').notNull().default(''), occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('attendance_workflow_reassignment_stage').on(t.requestId, t.stageIndex, t.occurredAt, t.id)]);

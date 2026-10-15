@@ -2,7 +2,9 @@
 import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { type SessionContext } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser } from '../db/schema';
+import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
+import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
+import type { AttendanceWorkflowCriteria } from '../lib/attendance-workflow';
 import { attendanceWorkflowForTx } from './attendance-workflow';
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -93,22 +95,30 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
         const workflow = await attendanceWorkflowForTx(tx, id);
         const events = await tx.select({ id: domainEvent.id, eventType: domainEvent.eventType, actorId: domainEvent.actorId, actorType: domainEvent.actorType, actorName: person.fullName, occurredAt: domainEvent.occurredAt, payload: domainEvent.payload }).from(domainEvent).leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(domainEvent.subjectEmploymentId, row.application.employmentId), sql `(${domainEvent.aggregateId}=${id} OR (${domainEvent.payload}->>'correctionId')=${id})`)).orderBy(asc(domainEvent.occurredAt), asc(domainEvent.sequence), asc(domainEvent.id));
         const self = !!ctx.personId && ctx.personId === row.personId;
-        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, canDecide: !self && row.application.status === 'pending', canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
+        const [v2Authority] = workflow?.routingVersion === 2 ? await tx.execute(sql`select app.attendance_workflow_v2_decide(${id}::uuid) as ok`) as unknown as { ok: boolean }[] : [];
+        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, canReassign: !self && row.application.status === 'pending' && workflow?.routingVersion === 2 && workflow.currentStage < workflow.stages.length, canDecide: !self && row.application.status === 'pending' && (workflow?.routingVersion !== 2 || v2Authority?.ok === true), canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
 export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[]) {
     admin(ctx);
     return withTenant(ctx, async (tx) => {
         if (!companyIds.length)
-            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [] };
+            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
         const companies = await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds), sql `app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName));
         if (!companies.length)
-            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [] };
+            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
         const departments = await tx.select({ id: department.id, name: department.name }).from(department).where(and(isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', companies.map(c => c.id)))).orderBy(asc(department.name));
         const businessUnits = await tx.select({ id: businessUnit.id, name: businessUnit.name }).from(businessUnit).where(and(isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', companies.map(c => c.id)))).orderBy(asc(businessUnit.name));
         const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(asc(jobGrade.rank), asc(jobGrade.name));
         const divisions = await tx.select({ id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(eq(profileOption.category, 'division'), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label));
-        const employees=await tx.select({id:employment.id,name:person.fullName}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.companyId,companies.map(c=>c.id))).orderBy(asc(person.fullName),asc(employment.id));
-        return { companies, departments, businessUnits, grades, divisions, employees };
+        const positions = await tx.select({ id: position.id, name: position.title }).from(position).where(and(isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', companies.map(c => c.id)))).orderBy(asc(position.title), asc(position.id));
+        const profileOptions = await tx.select({ category: profileOption.category, id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(inArray(profileOption.category, [...EMPLOYMENT_PROFILE_CATEGORIES]), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label), asc(profileOption.id));
+        const profileFields: Partial<Record<keyof AttendanceWorkflowCriteria, { id: string; name: string }[]>> = {};
+        for (const option of profileOptions) {
+            const key = CATEGORY_EMPLOYMENT_COLUMN[option.category]?.[0] as keyof AttendanceWorkflowCriteria;
+            const values = profileFields[key] ?? []; values.push({ id: option.id, name: option.name }); profileFields[key] = values;
+        }
+        const employees=await tx.select({id:employment.id,name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.companyId,companies.map(c=>c.id))).orderBy(asc(person.fullName),asc(employment.id));
+        return { companies, departments, businessUnits, grades, divisions, employees, positions, profileFields };
     });
 }

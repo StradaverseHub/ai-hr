@@ -3,7 +3,7 @@ import { attendanceHistoryReturn } from '@/lib/attendance-history-filter';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { scopedAdmin } from '@/lib/scope';
-import { decideAttendanceHistorySelection, type AttendanceHistorySelection, attendanceApplicationDetail, decideAttendanceCorrection, cancelAttendanceApplication } from '@/packs/attendance/service';
+import { decideAttendanceHistorySelection, type AttendanceHistorySelection, attendanceApplicationDetail, decideAttendanceCorrection, cancelAttendanceApplication, reassignAttendanceWorkflowStageToHr } from '@/packs/attendance/service';
 import { publicErrorMessage } from '@/lib/public-error';
 export async function attendanceHistoryAction(form: FormData) {
     const { s, scopeIds } = await scopedAdmin(), id = String(form.get('id') ?? ''), action = String(form.get('action') ?? ''), reason = String(form.get('reason') ?? '').trim();
@@ -16,6 +16,11 @@ export async function attendanceHistoryAction(form: FormData) {
             if (!detail.canDecide)
                 throw new Error('This application is not waiting for your decision.');
             await decideAttendanceCorrection(s, { correctionId: id, decision: action, rejectReason: reason, remarks: reason, expectedStageIndex: form.get('workflowStage') ? Number(form.get('workflowStage')) : undefined });
+        }
+        else if (action === 'reassign_hr') {
+            const stage = String(form.get('workflowStage') ?? '');
+            if (!detail.canReassign || detail.workflow?.routingVersion !== 2 || !/^\d+$/.test(stage)) throw new Error('This application has no pending level to reassign.');
+            await reassignAttendanceWorkflowStageToHr(s, { correctionId: id, expectedStageIndex: Number(stage), reason });
         }
         else if (action === 'cancelled' || action === 'withdrawn') {
             if (!detail.canCancel)
