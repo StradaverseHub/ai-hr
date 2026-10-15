@@ -31,6 +31,16 @@ describe('Employee Master complete typed exports',()=>{
   const workbook=XLSX.read((await serializeEmployeeMaster(incomplete,spec,fields,'Incomplete history','xlsx')).bytes,{type:'array'});expect(workbook.SheetNames).toContain('Report notes');expect(JSON.stringify(workbook.Sheets['Report notes'])).toContain('2 currently visible employments excluded');
   const output=await serializeEmployeeMaster(incomplete,spec,fields,'Incomplete history','csv');expect(output.ext).toBe('zip');const zip=await JSZip.loadAsync(output.bytes);expect(await zip.file('Report-notes.txt')!.async('string')).toContain('dated company membership');expect(Object.keys(zip.files).filter(name=>name.endsWith('.csv'))).toHaveLength(1);
  });
+ it('marks scheduled Movement intentions in CSV/PDF text and XLSX comments while preserving real numeric zero',async()=>{
+  const reason=field('movement','terminationReasonCode'),notice=field('movement','noticeServedDays'),selected=[reason,notice],definition={...spec,columns:selected.map(defaultMasterColumn)};
+  const people:MasterSubject[]=[{...subjects[0],owners:{movement:[{id:'scheduled-exit',effectiveFrom:spec.asAt,values:{terminationReasonCode:{value:'resignation',recordedKind:'intent'},noticeServedDays:{value:0,recordedKind:'intent'}}}]}}];
+  const run=runEmployeeMasterProjection(definition,selected,people,spec.asAt),xlsx=await serializeEmployeeMaster(run,definition,selected,'Recorded intent','xlsx');
+  const book=XLSX.read(xlsx.bytes,{type:'array'}),sheet=book.Sheets[book.SheetNames[0]];
+  expect(sheet.A4.v).toContain('recorded intent');expect(sheet.B4).toMatchObject({t:'n',v:0});expect(sheet.B4.c?.[0].t).toContain('does not prove');expect(book.SheetNames).toContain('Report notes');
+  const output=await serializeEmployeeMaster(run,definition,selected,'Recorded intent','csv');expect(output.ext).toBe('zip');
+  const zip=await JSZip.loadAsync(output.bytes),csvName=Object.keys(zip.files).find(name=>name.endsWith('.csv'))!;
+  expect(await zip.file(csvName)!.async('string')).toContain('0 (recorded intent)');expect(await zip.file('Report-notes.txt')!.async('string')).toContain('do not prove the change was applied');
+ });
  it('neutralizes formula-looking CSV strings while keeping actual numeric measures and all rows',async()=>{
   const output=await serializeEmployeeMaster(result(),spec,fields,'Master export','csv'),text=Buffer.from(output.bytes).toString('utf8');
   expect(text).toContain('"\'=HYPERLINK');expect(text).toContain('"00000"');expect(text).toContain('"1200.5"');expect(text.split('\r\n')).toHaveLength(62);

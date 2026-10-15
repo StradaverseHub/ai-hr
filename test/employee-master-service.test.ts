@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { provenCompanyDatesTx,provenCompanySegmentsForPeriodBulkTx } from '../core/employment-company';
-import { hireEmployee } from '../core/org';
+import { hireEmployee,terminateEmployment } from '../core/org';
 import { setPayrollPermissionGrant } from '../core/payroll-permissions-admin';
 import { masterReportCatalogue } from '../core/employee-master-access';
 import { authorizeEmployeeMasterRun, deleteEmployeeMasterReport, duplicateEmployeeMasterReport, getEmployeeMasterReport, listEmployeeMasterReports, recordEmployeeMasterRun, runEmployeeMasterReport, saveEmployeeMasterReport } from '../core/employee-master-reports';
@@ -74,6 +74,13 @@ describe('Employee Master authorization and persistence',()=>{
  it('retains sent/uncertain occurrence identity after deleting its report and schedule',async()=>{
   const saved=await save();const [schedule]=await withTenant(ctx,tx=>tx.insert(schema.customReportSchedule).values({tenantId:b.tenantId,reportId:saved.id,config:{frequency:'weekly',day:1,hour:9,minute:0,timezone:'Asia/Kuala_Lumpur'},recipients:[{userId:receivingUserId,employmentId:employee.employmentId}],reportVersion:saved.version,reviewedDigest:'b'.repeat(64)}).returning({id:schema.customReportSchedule.id}));
   await owner.db.insert(schema.customReportOccurrence).values({tenantId:b.tenantId,scheduleId:schedule.id,reportId:saved.id,ownerUserId:ctx.userId!,recipientUserId:receivingUserId,recipientEmploymentId:employee.employmentId,scheduledFor:new Date(),reportVersion:saved.version,scheduleRevision:randomUUID(),reviewedDigest:'b'.repeat(64),consentAfterSequence:0,policyAfterSequence:0,consentUpdatedAt:new Date(),policyUpdatedAt:new Date(),consentVerifiedAt:new Date(),status:'uncertain'});await deleteEmployeeMasterReport(ctx,saved.id);expect(await withTenant(ctx,tx=>tx.select({id:schema.customReportOccurrence.id}).from(schema.customReportOccurrence))).toHaveLength(1);expect(await withTenant(peer,tx=>tx.select({id:schema.customReportOccurrence.id}).from(schema.customReportOccurrence))).toEqual([]);
+ });
+ it('reports exit codes and zero notice from the recorded Movement effect rather than mutable employment columns',async()=>{
+  await terminateEmployment(ctx,{employmentId:employee.employmentId,terminationDate:todayInKualaLumpur(),terminationReasonCode:'resignation',terminationNoticeDays:0});
+  await owner.db.update(schema.employment).set({terminationReasonCode:'retirement',terminationNoticeDays:999}).where(eq(schema.employment.id,employee.employmentId));
+  const reason=PERSONNEL_FIELDS.find(field=>field.owner==='movement'&&field.ownerField==='terminationReasonCode')!,notice=PERSONNEL_FIELDS.find(field=>field.owner==='movement'&&field.ownerField==='noticeServedDays')!;
+  const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec:{...basic(),columns:[defaultMasterColumn(reason),defaultMasterColumn(notice)]}});
+  expect(run.result.sections[0].rows[0].cells).toEqual([expect.objectContaining({value:'resignation',recordedKind:'effect'}),expect.objectContaining({value:0,recordedKind:'effect'})]);
  });
  it('reads a missing legacy tax selection without locks/initialization in the report snapshot and preserves tenant/subject scope',async()=>{
   await owner.db.delete(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,employee.employmentId));const pack=requirePackFor('MY');const read=await withTenant(ctx,tx=>pack.statutory.getTaxSelection!(ctx,employee.employmentId,undefined,{tx,readOnly:true}),{readOnlySnapshot:true});expect(read).toMatchObject({version:0,transitionState:'confirmation_required'});expect(await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,employee.employmentId))).toEqual([]);

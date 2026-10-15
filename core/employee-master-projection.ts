@@ -232,7 +232,10 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
       for(const movement of history){
         if(movement.effectiveDate>spec.asAt)continue;
         const detail=await movementDetailTx(tx,ctx,employment.id,movement.id);
-        movementRows.push({...movement,id:movement.id,effectiveFrom:movement.effectiveDate,recordedAt:detail?.occurredAt,recordedByName:detail?.actorName,jobTitle:movement.jobTitle,basicSalary:movement.basicAmount,currency:movement.currency,reversedByName:movement.reversed?.by,reversedAt:movement.reversed?.at,reversalReason:movement.reversed?.reason});
+        const exit=movement.recordedExit;
+        const exitCell=(value:{known:boolean;value:string|number|null}|undefined):MasterCell=>value?.known?{value:value.value,...(exit?{recordedKind:exit.source.role}:{})}:{value:null,unavailable:'not-recorded',...(exit?{recordedKind:exit.source.role}:{})};
+        movementRows.push({...movement,id:movement.id,effectiveFrom:movement.effectiveDate,recordedAt:detail?.occurredAt,recordedByName:detail?.actorName,jobTitle:movement.jobTitle,basicSalary:movement.basicAmount,currency:movement.currency,reversedByName:movement.reversed?.by,reversedAt:movement.reversed?.at,reversalReason:movement.reversed?.reason,
+          terminationReasonCode:exitCell(exit?.terminationReasonCode),noticeServedDays:exitCell(exit?.terminationNoticeDays)});
         if(detail){
           const snapshot=(snap:typeof detail.after|null):Row=>snap?{companyName:snap.company,businessUnitName:snap.businessUnit,departmentName:snap.department,positionName:snap.position,gradeName:snap.grade,employmentType:snap.employmentType,managerName:snap.manager,basicSalary:snap.salaryAmount===undefined?{value:null,unavailable:'not-recorded'}:snap.salaryAmount,currency:snap.currency}:{};
           const after=snapshot(detail.after),before=snapshot(detail.before);

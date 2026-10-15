@@ -4458,7 +4458,7 @@
       "calibrationCode": "Code"
     },
     "review": {
-    "typeLabel": "Review type",
+      "typeLabel": "Review type",
       "backMyWorkspace": "My Profile",
       "backPerformance": "Performance",
       "reviewerLabel": "Reviewer: {reviewer}",
@@ -19449,7 +19449,8 @@
     "scheduledBadge": "Scheduled",
     "unknownScopeCount": "{count} currently visible employments were excluded because their company on the selected date is not recorded.",
     "unknownHistoryScope": "Some history for currently visible employees could not be included because its dated company membership is not recorded.",
-    "scopeExportNotes": "Exports include these scope notes. CSV downloads as a ZIP containing the data and a notes file."
+    "scopeExportNotes": "Exports include these scope notes. CSV downloads as a ZIP containing the data and a notes file.",
+    "recordedIntent": "Recorded intent"
   },
   "replacementHoliday": {
     "title": "Replacement public holidays",

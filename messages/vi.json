@@ -4458,7 +4458,7 @@
       "calibrationCode": "Mã"
     },
     "review": {
-    "typeLabel": "Loại đánh giá",
+      "typeLabel": "Loại đánh giá",
       "backMyWorkspace": "Hồ sơ của tôi",
       "backPerformance": "Hiệu suất",
       "reviewerLabel": "Người đánh giá: {reviewer}",
@@ -19449,7 +19449,8 @@
     "scheduledBadge": "Theo lịch",
     "unknownScopeCount": "Đã loại {count} hồ sơ việc làm hiện có quyền xem vì chưa ghi nhận công ty tại ngày đã chọn.",
     "unknownHistoryScope": "Không thể đưa vào một số lịch sử của nhân viên hiện có quyền xem vì chưa ghi nhận công ty tại thời điểm đó.",
-    "scopeExportNotes": "Tệp xuất kèm các ghi chú phạm vi này. CSV được tải dưới dạng ZIP gồm dữ liệu và tệp ghi chú."
+    "scopeExportNotes": "Tệp xuất kèm các ghi chú phạm vi này. CSV được tải dưới dạng ZIP gồm dữ liệu và tệp ghi chú.",
+    "recordedIntent": "Dự định đã ghi nhận"
   },
   "replacementHoliday": {
     "title": "Ngày nghỉ lễ bù",

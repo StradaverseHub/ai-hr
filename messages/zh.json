@@ -4458,7 +4458,7 @@
       "calibrationCode": "编号"
     },
     "review": {
-    "typeLabel": "审核类型",
+      "typeLabel": "审核类型",
       "backMyWorkspace": "我的资料",
       "backPerformance": "绩效",
       "reviewerLabel": "评估人：{reviewer}",
@@ -19449,7 +19449,8 @@
     "scheduledBadge": "已安排",
     "unknownScopeCount": "{count} 份当前可见的雇佣记录因未记录所选日期的所属公司而被排除。",
     "unknownHistoryScope": "部分当前可见员工的历史记录因未记录对应日期的所属公司而无法纳入。",
-    "scopeExportNotes": "导出会保留这些范围说明。CSV 将以 ZIP 下载，其中包含数据和说明文件。"
+    "scopeExportNotes": "导出会保留这些范围说明。CSV 将以 ZIP 下载，其中包含数据和说明文件。",
+    "recordedIntent": "已记录的计划"
   },
   "replacementHoliday": {
     "title": "补替公共假日",

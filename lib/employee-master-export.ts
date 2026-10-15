@@ -7,11 +7,11 @@ import type { EmployeeMasterResult, EmployeeMasterSpec, MasterCell, MasterColumn
 import type { PersonnelFieldDescriptor } from './personnel-field-registry';
 export type MasterExportFormat='xlsx'|'csv'|'pdf';
 export type MasterExport={bytes:Uint8Array;contentType:string;filename:string;ext:string};
-export const masterCellText=(cell:MasterCell):string=>cell.unavailable?'Unavailable — '+cell.unavailable.replaceAll('-',' '):cell.display??(cell.value==null?'':typeof cell.value==='boolean'?cell.value?'Yes':'No':String(cell.value));
+export const masterCellText=(cell:MasterCell):string=>{const value=cell.unavailable?'Unavailable — '+cell.unavailable.replaceAll('-',' '):cell.display??(cell.value==null?'':typeof cell.value==='boolean'?cell.value?'Yes':'No':String(cell.value));return cell.recordedKind==='intent'?value+' (recorded intent)':value;};
 const safeCsv=(value:string)=>/^[\s\u0000-\u001f]*[=+@-]/.test(value)?"'"+value:value;
 const csv=(rows:(string|number)[][])=>'\uFEFF'+rows.map(row=>row.map(value=>'"'+(typeof value==='number'?String(value):safeCsv(value)).replaceAll('"','""')+'"').join(',')).join('\r\n');
 const localExcelInstant=(value:string)=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value)).filter(part=>part.type!=='literal').map(part=>[part.type,Number(part.value)]));return new Date(Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second));};
-const scopeNotes=(result:EmployeeMasterResult)=>[...(result.unknownScopeCount?[`${result.unknownScopeCount} currently visible employments excluded: dated company membership is not recorded.`]:[]),...(result.historyScopeUnavailable?['Some history for currently visible employees is unavailable because dated company membership is not recorded.']:[])];
+const scopeNotes=(result:EmployeeMasterResult)=>[...(result.sections.some(section=>section.rows.some(row=>row.cells.some(cell=>cell.recordedKind==='intent')))?['Movement cells marked recorded intent come from the frozen scheduled request. They do not prove the change was applied; review its Movement status/history.']:[]),...(result.unknownScopeCount?[`${result.unknownScopeCount} currently visible employments excluded: dated company membership is not recorded.`]:[]),...(result.historyScopeUnavailable?['Some history for currently visible employees is unavailable because dated company membership is not recorded.']:[])];
 const slug=(value:string)=>value.replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-|-$/g,'').slice(0,80)||'Employee-Master';
 function sectionName(section:MasterSection,fields:readonly PersonnelFieldDescriptor[]){const field=fields.find(f=>f.owner===section.grain);return section.grain==='employment'?'Employee Master':field?.section??section.grain;}
 function header(column:MasterColumn,fields:readonly PersonnelFieldDescriptor[]){return column.header?.trim()||(column.side==='before'?'Before: ':'')+(fields.find(f=>f.id===column.field)?.label??'Unavailable field');}
@@ -23,7 +23,7 @@ function lines(section:MasterSection,fields:readonly PersonnelFieldDescriptor[])
   const subtotal=(key:string)=>{const group=section.groups.find(group=>group.key===key);if(group?.totals.length)result.push(['Subtotal'],totalCells(section.columns,group.totals));};
   for(const row of section.rows){const key=JSON.stringify(row.group.map(cell=>[cell.referenceId??cell.value,cell.unavailable??null]));
     if(section.groups.length&&key!==lastGroup){if(lastGroup!==null)subtotal(lastGroup);const group=section.groups.find(group=>group.key===key);result.push([row.group.map(masterCellText).join(' / ')+` · ${group?.employeeCount??0} employments · ${group?.draftCount??0} drafts · ${group?.rowCount??0} rows`]);lastGroup=key;}
-    result.push(row.cells.map((cell,index)=>!cell.unavailable&&section.columns[index].format!=='text'&&['number','currency'].includes(fields.find(field=>field.id===section.columns[index].field)?.type??'')&&cell.value!=null&&cell.value!==''?Number(cell.value):masterCellText(cell)));
+    result.push(row.cells.map((cell,index)=>!cell.unavailable&&cell.recordedKind!=='intent'&&section.columns[index].format!=='text'&&['number','currency'].includes(fields.find(field=>field.id===section.columns[index].field)?.type??'')&&cell.value!=null&&cell.value!==''?Number(cell.value):masterCellText(cell)));
   }
   if(lastGroup!==null)subtotal(lastGroup);
   if(section.totals.length)result.push(['Total'],totalCells(section.columns,section.totals));
@@ -41,6 +41,7 @@ async function excel(result:EmployeeMasterResult,spec:EmployeeMasterSpec,fields:
         if(!cell.unavailable&&cell.value!=null&&cell.value!==''&&column.format!=='text'&&field?.type==='date'&&field.unit!=='month'&&/^\d{4}-\d{2}-\d{2}(?:T.*Z)?$/.test(String(cell.value)))sheet[address]={t:'d',v:field.unit==='instant'?localExcelInstant(String(cell.value)):new Date(String(cell.value).length===10?String(cell.value)+'T00:00:00Z':String(cell.value)),z:String(cell.value).length===10?'yyyy-mm-dd':'yyyy-mm-dd hh:mm'};
         else if(!cell.unavailable&&cell.value!=null&&cell.value!==''&&column.format!=='text'&&['number','currency'].includes(field?.type??''))sheet[address]={t:'n',v:Number(cell.value),z:column.decimals?'0.'+'0'.repeat(column.decimals):'0'};
         else sheet[address]={t:'s',v:masterCellText(cell)};
+        if(cell.recordedKind==='intent')sheet[address].c=[{a:'ai-hr',t:'Recorded scheduled intent; this value does not prove the change was applied. Review Movement status/history.'}];
       });outputRow++;
     }
     sheet['!cols']=section.columns.map(column=>({wch:column.width==='narrow'?14:column.width==='wide'?40:column.width==='medium'?25:22}));

@@ -9,7 +9,7 @@ import type { PersonnelFieldDescriptor } from './personnel-field-registry';
 
 export type MasterScalar = string | number | boolean | null;
 export type MasterUnavailableReason = 'historical-unavailable'|'not-recorded'|'not-applicable'|'draft-unfinished'|'unknown-currency'|'mixed-currency'|'incompatible-units';
-export type MasterCell = { value:MasterScalar; display?:string; unavailable?:MasterUnavailableReason; currency?:string|null; unit?:string; sourceRecordId?:string; labelIsCurrent?:boolean; referenceId?:string|null };
+export type MasterCell = { value:MasterScalar; display?:string; unavailable?:MasterUnavailableReason; currency?:string|null; unit?:string; sourceRecordId?:string; labelIsCurrent?:boolean; recordedKind?:'intent'|'effect'; referenceId?:string|null };
 export type MasterOwnerRecord = { id:string; effectiveFrom?:string|null; effectiveTo?:string|null; createdAt?:string|null; values:Record<string,MasterCell>; currency?:string|null };
 export type MasterSubject = { id:string; kind:'employment'|'draft'; personId:string|null; companyId:string|null; owners:Record<string,MasterOwnerRecord[]>; scopeUnavailable?:'historical-company-unavailable'; historyScopeUnavailable?:boolean };
 export type MasterOperator = 'eq'|'ne'|'contains'|'in'|'between'|'before'|'after'|'blank'|'notBlank';
