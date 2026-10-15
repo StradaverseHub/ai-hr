@@ -1,5 +1,7 @@
 'use client';
 
+import {exactOvertimeMinutesText,overtimeCapAssessment,type OvertimeRecordSummary} from '@/lib/overtime-records';
+
 import { formatMinutesToHM, plannedOvertimeMinutes } from '@/lib/overtime-duration';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -11,14 +13,14 @@ const fmtHours = formatMinutesToHM;
 
 export function PlanOtFields({
   date,
-  minutesAlreadyCommitted,
+  committed,
   capMinutes,
   plannedStartPrefill,
 }: {
   /** The overtime date currently selected — the one the calendar picked and the server resolved for. */
   date: string;
   /** OT already recorded + already approved-but-not-yet-counted in this date's month, in minutes. */
-  minutesAlreadyCommitted: number;
+  committed:OvertimeRecordSummary;
   /** The statutory monthly ceiling in minutes (104 hours). */
   capMinutes: number;
   /**
@@ -28,7 +30,7 @@ export function PlanOtFields({
    */
   plannedStartPrefill: string;
 }) {
-  const t = useTranslations('me');
+  const t = useTranslations('me'),tr=useTranslations('attendance.overtimeRecords');
   // NULL means "the employee has not touched this box", which is not the same as "they emptied it". Only
   // an untouched box follows the prefill, so picking a different date moves the suggested start with it
   // while a time somebody actually chose is never overwritten behind their back.
@@ -41,8 +43,8 @@ export function PlanOtFields({
   const derivedMinutes = useMemo(() => plannedOvertimeMinutes(startValue, end), [startValue, end]);
   const otMinutes = derivedMinutes ?? 0;
 
-  const projectedMinutes = minutesAlreadyCommitted + otMinutes;
-  const overCap = otMinutes > 0 && projectedMinutes > capMinutes;
+  const assessment=overtimeCapAssessment(committed,derivedMinutes,capMinutes);
+  const overCap=otMinutes>0&&assessment.overCap===true;
 
   return (
     <div className="space-y-2.5">
@@ -92,11 +94,12 @@ export function PlanOtFields({
 
       {/* WARNS, DOES NOT BLOCK — there is no `disabled` anywhere on this screen. A genuine month-end can
           legitimately cross the ceiling, and the approver is the right person to weigh that, not a form. */}
+      {!assessment.known&&<p role="status" className="text-xs text-amber-800 dark:text-amber-200">{tr('capUnknown')}</p>}
       {overCap && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
           <p className="font-medium">{t('otCapHeading')}</p>
           <p className="mt-1">
-            {t('otCapWarning', { hours: fmtHours(otMinutes), total: fmtHours(projectedMinutes) })}
+            {tr('capWarningExact',{requested:String(otMinutes),total:assessment.projected?exactOvertimeMinutesText(assessment.projected):tr('unavailable')})}
           </p>
         </div>
       )}

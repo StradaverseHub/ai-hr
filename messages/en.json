@@ -3579,7 +3579,27 @@
       "detected": "Detected: {type}. This is a calculated condition, separate from submitted requests.",
       "saveFailed": "The save could not be confirmed. Reload the day before trying again."
     },
-    "statusExempt": "Exempt"
+    "statusExempt": "Exempt",
+    "overtimeRecords": {
+      "duration": "OT duration",
+      "minutes": "{value} min",
+      "unavailable": "Unavailable",
+      "formula": "Formula result",
+      "ineligible": "Not eligible",
+      "sourceUnavailable": "The recorded company could not be established for this calculation.",
+      "recordUnavailable": "The recorded calculation is missing or cannot be read.",
+      "durationRefused": "The recorded duration could not be established.",
+      "cashUnavailable": "The duration is known; the cash calculation is unavailable.",
+      "storedOnly": "Uses the stored result. Current settings do not recalculate this record.",
+      "version": "Pattern version",
+      "reference": "Calculation reference",
+      "incompleteTotal": "{value} known min; {count} unavailable day(s)",
+      "capUnknown": "Some overtime results are unavailable. The monthly limit cannot be assessed yet; you can still submit this request.",
+      "capWarningExact": "This request adds {requested} minutes, bringing the month to {total} minutes, above the monthly limit. This is a warning; you can still submit.",
+      "capProgress": "{used} / {cap} minutes",
+      "recordedDuration": "Recorded overtime",
+      "summaryNote": "Overtime totals use each day’s recorded calculation and preserve exact minutes. Unavailable days make the total incomplete. Working hours, absence and weekly flags retain their Attendance rules. The monthly warning uses the existing 104-hour limit."
+    }
   },
   "org": {
     "title": "Org chart",

@@ -1,3 +1,4 @@
+import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import {
   and,
@@ -6308,10 +6309,11 @@ const checkOutSite = alias(clockingLocation, 'check_out_site');
 /** The current principal's recent attendance, including per-punch Clocking Location & Geofencing
  *  capture (ADR-0070): matched site name, distance, and pass/not-enforced status per punch. */
 export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows=await tx
       .select({
         id: attendance.id,
+        calcTrace:attendance.calcTrace,
         date: attendance.attendanceDate,
         checkInAt: attendance.checkInAt,
         checkOutAt: attendance.checkOutAt,
@@ -6334,8 +6336,10 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
       .leftJoin(checkOutSite, eq(checkOutSite.id, attendance.checkOutClockingLocationId))
       .where(eq(attendance.employmentId, employmentId))
       .orderBy(desc(attendance.attendanceDate))
-      .limit(limit),
-  );
+      .limit(limit);
+    const formulas=await formulaOvertimeForRowsTx(tx,ctx,rows.map(row=>({employmentId,date:row.date,calcTrace:row.calcTrace})));
+    return rows.map(({calcTrace,...row})=>({...row,formulaOvertime:formulas.get(employmentId+'|'+row.date)??null}));
+  });
 }
 
 /** Companies this principal may scope to (top-bar company context): group admin → all; otherwise

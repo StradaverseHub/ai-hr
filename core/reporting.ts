@@ -1,3 +1,5 @@
+import {formulaOvertimeForRowsTx,formulaOvertimeCashForRowsTx} from '../packs/attendance/service';
+import {summarizeOvertimeRecords,exactOvertimeMinutesText,recordedMinorUnitsText,type OvertimeRecordSummary} from '../lib/overtime-records';
 /**
  * Statutory reporting seam (ADR-0010). Generic over jurisdiction: it asks the localization pack for
  * its report registry, then lists / previews / records reports. Reports are derived from payroll, but
@@ -2075,6 +2077,11 @@ const minToHours = (m: number) => r2(m / 60);
 
 /** Structured OT report (for the export route + tests). Amounts reflect eligibility + configured rates. */
 export type OvertimeReportRow = {
+  recordedOvertime?:OvertimeRecordSummary;
+  formulaCash?:{currency:string;minorScale:number;amountMinorUnits:string}[];
+  formulaCashUnknownDays?:number;
+  formulaReferences?:string[];
+  formulaSettlements?:string[];
   employmentId: string;
   name: string;
   employeeCode: string | null;
@@ -2105,8 +2112,9 @@ export type OvertimeReport = {
 /**
  * Build the monthly overtime report for the given companies. Resolves the effective OT ruleset once at
  * month-end (the same asOf payroll's prefill uses for the period), reads each active employee's current s.2
- * wages + per-day classified attendance OT, and monetizes via `overtimePay` so the RM figure equals what the
- * payslip would pay (including the >RM4,000 eligibility gate ⇒ RM 0.00, labelled "Above ceiling").
+ * wages + per-day classified attendance OT, and monetizes only unassigned legacy days through the legacy owner. Formula duration and cash
+ * are read from immutable recorded results, with currency/precision and unknown states preserved;
+ * recorded results are explicitly distinguished from actual cash/TOIL settlement.
  */
 export async function overtimeReport(
   ctx: SessionContext,
@@ -2189,6 +2197,7 @@ export async function overtimeReport(
     const attRows = await tx
       .select({
         employmentId: attendance.employmentId,
+        date:attendance.attendanceDate,calcTrace:attendance.calcTrace,
         dayType: attendance.dayType,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
@@ -2226,13 +2235,15 @@ export async function overtimeReport(
       if (c.status === 'pending') hasPendingOt.add(c.employmentId);
     }
 
-    type Agg = { worked: number; ot: { workday: number; rest: number; holiday: number } };
+    const formulaByDay=await formulaOvertimeForRowsTx(tx,ctx,attRows),cashByDay=await formulaOvertimeCashForRowsTx(tx,ctx,attRows.filter(row=>formulaByDay.get(row.employmentId+'|'+row.date)));
+    type Agg = { rawOt:number; worked: number; ot: { workday: number; rest: number; holiday: number } };
     const aggBy = new Map<string, Agg>();
     const daysBy = new Map<string, { dayType: 'workday' | 'rest_day' | 'holiday'; minutes: number }[]>();
     for (const row of attRows) {
-      const agg = aggBy.get(row.employmentId) ?? { worked: 0, ot: { workday: 0, rest: 0, holiday: 0 } };
+      const agg = aggBy.get(row.employmentId) ?? { rawOt:0,worked: 0, ot: { workday: 0, rest: 0, holiday: 0 } };
       agg.worked += row.workedMinutes ?? 0;
-      const otMin = row.otMinutes ?? 0;
+      agg.rawOt+=row.otMinutes??0;
+      const otMin = formulaByDay.get(row.employmentId+'|'+row.date)?0:row.otMinutes??0;
       const dayType = row.dayType ?? 'workday';
       if (dayType === 'rest_day') agg.ot.rest += otMin;
       else if (dayType === 'holiday') agg.ot.holiday += otMin;
@@ -2246,7 +2257,7 @@ export async function overtimeReport(
     }
 
     const rows: OvertimeReportRow[] = emps.map((e) => {
-      const agg = aggBy.get(e.employmentId) ?? { worked: 0, ot: { workday: 0, rest: 0, holiday: 0 } };
+      const agg = aggBy.get(e.employmentId) ?? { rawOt:0,worked: 0, ot: { workday: 0, rest: 0, holiday: 0 } };
       const otMinutesTotal = agg.ot.workday + agg.ot.rest + agg.ot.holiday;
       const wages = wagesBy.get(e.employmentId);
       // THIS employee's jurisdiction, not the report's.
@@ -2267,12 +2278,17 @@ export async function overtimeReport(
           : null;
       const eligible = result?.eligible ?? false;
       const hasOt = otMinutesTotal > 0;
+      const selectedRows=attRows.filter(row=>row.employmentId===e.employmentId).map(row=>({...row,formulaOvertime:formulaByDay.get(row.employmentId+'|'+row.date)??null}));
+      const recordedOvertime=summarizeOvertimeRecords(selectedRows),cashGroups=new Map<string,{currency:string;minorScale:number;amount:bigint}>();let formulaCashUnknownDays=0;const formulaReferences:string[]=[],formulaSettlements:string[]=[];
+      for(const row of selectedRows){if(!row.formulaOvertime)continue;if(row.formulaOvertime.calculationId)formulaReferences.push(row.formulaOvertime.calculationId);const cash=cashByDay.get(row.employmentId+'|'+row.date);if(row.formulaOvertime.status==='refused'||!cash||cash.calculationId!==row.formulaOvertime.calculationId||cash.amountMinorUnits===null){formulaCashUnknownDays++;formulaSettlements.push(row.date+': unavailable');continue;}const key=cash.currency+'|'+cash.minorScale,group=cashGroups.get(key)??{currency:cash.currency,minorScale:cash.minorScale,amount:BigInt('0')};group.amount+=BigInt(cash.amountMinorUnits);cashGroups.set(key,group);formulaSettlements.push(row.date+': '+cash.settlement);}
+      const formulaCash=[...cashGroups.values()].map(group=>({currency:group.currency,minorScale:group.minorScale,amountMinorUnits:group.amount.toString()}));
       return {
         employmentId: e.employmentId,
+        recordedOvertime,formulaCash,formulaCashUnknownDays,formulaReferences,formulaSettlements,
         name: e.name,
         employeeCode: e.employeeCode,
         // Normal working hours = worked minus OT (OT is over-and-above normal). Total = worked (already ex-OT).
-        normalWorkingHours: minToHours(Math.max(0, agg.worked - otMinutesTotal)),
+        normalWorkingHours: minToHours(Math.max(0, agg.worked - agg.rawOt)),
         totalWorkedHours: minToHours(agg.worked),
         totalOtHours: minToHours(otMinutesTotal),
         normalDayOtHours: minToHours(agg.ot.workday),
@@ -2304,20 +2320,26 @@ export const OVERTIME_REPORT_COLUMNS = [
   'Employee code',
   'Normal working hours',
   'Total worked hours',
-  'Total OT hours',
-  'Normal day OT (h)',
-  'Rest day OT (h)',
-  'Public holiday OT (h)',
-  'Workday rate',
-  'Rest day excess rate',
-  'Public holiday excess rate',
+  'Legacy OT hours',
+  'Legacy normal day OT (h)',
+  'Legacy rest day OT (h)',
+  'Legacy public holiday OT (h)',
+  'Legacy workday rate',
+  'Legacy rest day excess rate',
+  'Legacy public holiday excess rate',
   // Not 'OT amount (RM)': that literal was false for any company not in Malaysia. The currency travels
   // in its own column so a mixed-currency export is visibly mixed rather than silently addable (D-9).
-  'OT amount',
+  'Legacy OT amount',
   'Currency',
-  'Eligibility status',
-  'OT source',
-  'OT approval status',
+  'Legacy eligibility status',
+  'Legacy OT source',
+  'Legacy OT approval status',
+  'Recorded OT duration (minutes)',
+  'Unavailable duration days',
+  'Recorded formula amount by currency',
+  'Unavailable formula amount days',
+  'Formula calculation references',
+  'Formula settlement status',
 ] as const;
 
 /** Serialize the structured report into the neutral ReportData shape for lib/report-export. */
@@ -2355,6 +2377,12 @@ export function overtimeReportToReportData(report: OvertimeReport): ReportData {
       eligibility(r),
       sourceLabel[r.otSource],
       approvalLabel[r.otApprovalStatus],
+      r.recordedOvertime?(r.recordedOvertime.complete?exactOvertimeMinutesText(r.recordedOvertime.knownMinutes):'Incomplete: '+exactOvertimeMinutesText(r.recordedOvertime.knownMinutes)+' known minutes'):'',
+      r.recordedOvertime?.unknownDays??0,
+      (r.formulaCash??[]).map(c=>c.currency+' '+recordedMinorUnitsText(c.amountMinorUnits,c.minorScale)).join('; ')+(r.formulaCashUnknownDays?' (incomplete)':''),
+      r.formulaCashUnknownDays??0,
+      (r.formulaReferences??[]).join('; '),
+      (r.formulaSettlements??[]).join('; '),
     ]),
   };
 }
@@ -2407,6 +2435,7 @@ export async function attendanceDailyReport(
         status: attendance.status,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
+        calcTrace:attendance.calcTrace,
         // 7c834696 stage 1 — the ENGINE's own lateness / early-out figures. This report has always had
         // both columns, but derived them from the COMPANY policy's late_after / work_end, which is simply
         // the wrong yardstick for anyone on a shift: a 22:00 night-shift worker was measured against a
@@ -2457,7 +2486,9 @@ export async function attendanceDailyReport(
       )
       .orderBy(attendance.attendanceDate, person.fullName);
 
+    const formulaByDay=await formulaOvertimeForRowsTx(tx,ctx,rows.map(r=>({employmentId:r.employmentId,date:r.attendanceDate,calcTrace:r.calcTrace})));
     return rows.map((r) => {
+      const formula=formulaByDay.get(r.employmentId+'|'+r.attendanceDate);
       const pol = polByCompany.get(r.companyId);
       const ci = _toMin(r.checkInAt);
       const co = _toMin(r.checkOutAt);
@@ -2477,7 +2508,11 @@ export async function attendanceDailyReport(
         clockIn: _hhmm(r.checkInAt),
         clockOut: _hhmm(r.checkOutAt),
         workingHours: r.workedMinutes == null ? null : r2(r.workedMinutes / 60),
-        otHours: r.otMinutes == null ? null : r2(r.otMinutes / 60),
+        otHours:formula?null:r.otMinutes == null ? null : r2(r.otMinutes / 60),
+        recordedOtMinutes:formula?formula.payableExact&&formula.status!=='refused'?exactOvertimeMinutesText(formula.payableExact):null:r.otMinutes==null?null:String(r.otMinutes),
+        otCalculationStatus:formula?.status??'legacy',
+        otCalculationReference:formula?.calculationId??null,
+        otPatternVersion:formula?.versionId??null,
         lateMinutes: r.storedLateMinutes ?? lateMinutes,
         earlyOutMinutes: r.storedEarlyOutMinutes ?? earlyOut,
         attendanceStatus: r.status,

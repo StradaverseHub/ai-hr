@@ -1,3 +1,6 @@
+import {exactOvertimeMinutesText,overtimeCapAssessment} from '@/lib/overtime-records';
+import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
+import type {ReactNode} from 'react';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -6,7 +9,7 @@ import { myEmployment, reportingLinesFor } from '@/core/read';
 import {
   attendanceForEmploymentRange,
   myOvertimePlans,
-  otMonthToDateMinutes,
+  otMonthToDateDuration,
   otPlanCalendarMonth,
   type OtPlanCalendarDay,
 } from '@/packs/attendance/service';
@@ -62,7 +65,7 @@ export default async function ApplyOtPlanPage({
 }: {
   searchParams: Promise<{ date?: string; error?: string }>;
 }) {
-  const t = await getTranslations('me');
+  const t = await getTranslations('me'),tr=await getTranslations('attendance.overtimeRecords');
   const locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
@@ -96,7 +99,7 @@ export default async function ApplyOtPlanPage({
 
   const [calendar, cap, lines, monthPlans, actual] = await Promise.all([
     otPlanCalendarMonth(s, me.employmentId, month),
-    otMonthToDateMinutes(s, me.employmentId, date),
+    otMonthToDateDuration(s, me.employmentId, date),
     reportingLinesFor(s, me.employmentId),
     // The month's own plans — the dots on the grid, the counts in the summary, and "what you already
     // filed" on the day card. Windowed rather than `limit`-ed: a heavy month of overtime must not push
@@ -193,7 +196,7 @@ export default async function ApplyOtPlanPage({
     rejected: monthPlans.filter((p) => p.status === 'rejected').length,
     cancelled: monthPlans.filter((p) => p.status === 'cancelled').length,
   };
-  const capPct = cap.capMinutes > 0 ? Math.min(100, Math.round((cap.totalMinutes / cap.capMinutes) * 100)) : 0;
+  const capAssessment=overtimeCapAssessment(cap.total,0,cap.capMinutes),capPct=capAssessment.percent;
 
   /** Plans already filed for the SELECTED date — "clicking that date opens what you filed". */
   const plansOnDate = monthPlans.filter((p) => p.attendanceDate === date);
@@ -248,7 +251,7 @@ export default async function ApplyOtPlanPage({
             <div className="mt-3 grid grid-cols-3 gap-2">
               <Stat label={t('otCalPlannedHours')} value={fmtHours(plannedMinutes)} />
               <Stat label={t('otCalApprovedHours')} value={fmtHours(approvedMinutes)} />
-              <Stat label={t('otCalClockedHours')} value={fmtHours(cap.recordedMinutes)} />
+              <Stat label={tr('recordedDuration')} value={cap.recorded.complete?tr('minutes',{value:exactOvertimeMinutesText(cap.recorded.knownMinutes)}):tr('unavailable')} />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">{t('otCalSummaryHelp')}</p>
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -261,17 +264,17 @@ export default async function ApplyOtPlanPage({
               <div className="flex items-baseline justify-between gap-2 text-[11px]">
                 <span className="text-muted-foreground">{t('otCalAgainstLimit')}</span>
                 <span className="tabular-nums">
-                  {t('otCalOfCap', { used: fmtHours(cap.totalMinutes), cap: fmtHours(cap.capMinutes) })}
+                  {cap.total.complete?tr('capProgress',{used:exactOvertimeMinutesText(cap.total.knownMinutes),cap:String(cap.capMinutes)}):tr('capUnknown')}
                 </span>
               </div>
               {/* The bar is decoration over a figure that is already written out beside it, so it carries
                   no ARIA of its own — a progressbar role here would read the same number twice. */}
-              <div aria-hidden="true" className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              {capAssessment.known&&<div aria-hidden="true" className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className={`h-full rounded-full ${cap.totalMinutes > cap.capMinutes ? 'bg-amber-500' : 'bg-primary'}`}
-                  style={{ width: `${capPct}%` }}
+                  className={`h-full rounded-full ${capAssessment.overCap===true?'bg-amber-500':capAssessment.known?'bg-primary':'bg-muted-foreground'}`}
+                  style={{ width:`${capPct}%` }}
                 />
-              </div>
+              </div>}
             </div>
           </Card>
         </div>
@@ -319,7 +322,7 @@ export default async function ApplyOtPlanPage({
                     />
                     <Fact
                       label={t('otCalOvertimeRecorded')}
-                      value={clocked.otMinutes != null ? fmtHours(clocked.otMinutes) : '—'}
+                      value={clocked.formulaOvertime?<FormulaOvertimeDuration record={clocked.formulaOvertime} showReference={false}/>:clocked.otMinutes != null ? fmtHours(clocked.otMinutes) : '—'}
                     />
                   </dl>
                 ) : (
@@ -371,7 +374,7 @@ export default async function ApplyOtPlanPage({
                   SERIALISABLE PROPS ONLY — no `t`, no callbacks (test/server-client-boundary.test.ts). */}
               <PlanOtFields
                 date={date}
-                minutesAlreadyCommitted={cap.totalMinutes}
+                committed={cap.total}
                 capMinutes={cap.capMinutes}
                 plannedStartPrefill={plannedStartPrefill}
               />
@@ -448,7 +451,7 @@ function shiftLine(d: OtPlanCalendarDay): string {
   return [d.shiftCode, d.shiftName].filter(Boolean).join(' — ');
 }
 
-function Fact({ label, value, span }: { label: string; value: string; span?: boolean }) {
+function Fact({ label, value, span }: { label: string; value: ReactNode; span?: boolean }) {
   return (
     <div className={span ? 'col-span-2' : undefined}>
       <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
@@ -457,7 +460,7 @@ function Fact({ label, value, span }: { label: string; value: string; span?: boo
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-md border border-border p-2">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>

@@ -1,3 +1,4 @@
+import {OvertimeSummaryValue} from '@/components/formula-overtime-record';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -274,23 +275,19 @@ export default async function AttendancePage({
                   </td>
                   <td
                     className="px-4 py-2.5 text-right tabular-nums text-muted-foreground"
-                    title={t('otBreakdown', {
-                      workday: fmtOt(r.otWorkday),
-                      restDay: fmtOt(r.otRestDay),
-                      holiday: fmtOt(r.otHoliday),
-                    })}
                   >
-                    {fmtOt(r.otWorkday + r.otRestDay + r.otHoliday)}
+                    <OvertimeSummaryValue summary={r.overtimeSummary}/>
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1.5">
-                      {r.otCapExceeded && (
+                      {r.overtimeCapState==='exceeded' && (
                         <Pill label={t('flagOtCap')} cls="bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400" />
                       )}
+                      {r.overtimeCapState==='unknown'&&<span className="text-xs text-amber-700 dark:text-amber-300">{t('overtimeRecords.unavailable')}</span>}
                       {r.over45hWeek && (
                         <Pill label={t('flagOver45h')} cls="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" />
                       )}
-                      {!r.otCapExceeded && !r.over45hWeek && <span className="text-xs text-muted-foreground">—</span>}
+                      {r.overtimeCapState==='within' && !r.over45hWeek && <span className="text-xs text-muted-foreground">—</span>}
                     </div>
                   </td>
                 </tr>
@@ -311,7 +308,7 @@ export default async function AttendancePage({
           state={summaryPage.state}
         />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-          {t('summaryNote')}
+          {t('overtimeRecords.summaryNote')}
         </p>
       </Card>
     </div>

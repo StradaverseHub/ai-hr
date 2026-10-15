@@ -191,6 +191,7 @@ export default async function IndividualAttendancePage({
                   <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('overtimeRecords.duration')}</th>
                   {/* 570fd56e — Lateness, Early Out and the six overtime buckets came OFF this list. Six of
                       them hold 0.00 on an ordinary day and they were the reason an eighteen-column row could
                       not be scanned. They are NOT deleted: the day screen below renders all eight through the
@@ -226,13 +227,13 @@ export default async function IndividualAttendancePage({
                         </Link>
                       </td>
                     </tr>
-                    {showTrail && <AttendanceTrailRow punches={punches} colSpan={10} labels={labels} />}
+                    {showTrail && <AttendanceTrailRow punches={punches} colSpan={11} labels={labels} />}
                     </Fragment>
                   );
                 })}
                 {dayPage.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
                     </td>
                   </tr>

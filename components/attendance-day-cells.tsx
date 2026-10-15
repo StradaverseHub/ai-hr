@@ -1,11 +1,13 @@
+import {FormulaOvertimeDuration} from './formula-overtime-record';
+import type {FormulaOvertimeRecord} from '@/lib/overtime-records';
 import type { ReactNode } from 'react';
 import { fmtMin } from '@/components/attendance-format';
 
 /**
  * r432 (e721a355) — THE ONE PLACE the Individual and Daily Attendance lists draw a day.
  *
- * Both lists are the same ten columns: [two leading identity cells] Shift · Check In · Check Out · Shift Hrs
- * · Actual Hrs · Status · Flag · Action. Individual leads with Date + Day (one person across days); Daily
+ * Both lists are the same eleven columns: [two leading identity cells] Shift · Check In · Check Out · Shift Hrs
+ * · Actual Hrs · OT Duration · Status · Flag · Action. Individual leads with Date + Day (one person across days); Daily
  * leads with Code + Name (everyone on one day). Everything from Shift to Flag, and the multi-clocking trail
  * line, used to be copy-pasted between the two pages — so a wording or colour change had to be made twice and
  * the pages could drift. They are drawn here now; each page keeps only its leading cells, its header row and
@@ -51,6 +53,8 @@ export function dayCellLabels(translate: (key: never) => string): DayCellLabels 
 }
 
 export type DayCellsRow = {
+  otMinutes?:number|null;
+  formulaOvertime?:FormulaOvertimeRecord|null;
   shiftCode: string | null;
   checkInAt: string | null;
   checkOutAt: string | null;
@@ -58,7 +62,7 @@ export type DayCellsRow = {
   workedMinutes: number | null;
 };
 
-/** The seven cells from Shift to Flag. Only Absent is red; every other status uses the standard text colour. */
+/** The eight cells from Shift to Flag. Only Absent is red; every other status uses the standard text colour. */
 export function AttendanceDayCells({
   row,
   status,
@@ -77,6 +81,7 @@ export function AttendanceDayCells({
       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{row.checkOutAt?.slice(0, 5) ?? '—'}</td>
       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(row.scheduledMinutes)}</td>
       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(row.workedMinutes)}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums"><FormulaOvertimeDuration record={row.formulaOvertime} legacyMinutes={row.otMinutes}/></td>
       <td className="px-3 py-2.5" data-col="status">
         <span className={`capitalize ${status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
           {labels.statusText[status]}

@@ -167,7 +167,7 @@ describe('against the real database', () => {
 describe('the export never asserts a currency it does not know', () => {
   it('has a Currency column and no hardcoded RM in the amount header', () => {
     expect(OVERTIME_REPORT_COLUMNS).toContain('Currency');
-    expect(OVERTIME_REPORT_COLUMNS).toContain('OT amount');
+    expect(OVERTIME_REPORT_COLUMNS).toContain('Legacy OT amount');
     // The old header. False for any company outside Malaysia.
     expect(OVERTIME_REPORT_COLUMNS).not.toContain('OT amount (RM)');
   });
@@ -186,7 +186,7 @@ describe('the export never asserts a currency it does not know', () => {
         },
       ],
     });
-    const amountAt = data.columns.indexOf('OT amount');
+    const amountAt = data.columns.indexOf('Legacy OT amount');
     const currencyAt = data.columns.indexOf('Currency');
     expect(currencyAt).toBe(amountAt + 1);
     expect(data.rows[0][amountAt]).toBe('123.45');

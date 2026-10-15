@@ -1,3 +1,4 @@
+import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import { AttendanceRequestHistory } from '@/components/attendance-request-history';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -193,6 +194,7 @@ export default async function MyAttendanceDayPage({
           the SAME working, so this screen and the list can never explain one day two ways. */}
       <Card className="overflow-hidden">
         <SectionHeader title={t('daySecOt')} />
+        {row.formulaOvertime&&<div className="p-4 text-sm"><FormulaOvertimeDuration record={row.formulaOvertime}/></div>}
         <p className="px-4 text-xs text-muted-foreground sm:hidden">{t('otScrollHint')}</p><div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">

@@ -17,7 +17,7 @@ export const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 
 /** OT columns render as decimal hours (2 dp), matching the request's example (0.50 / 1.00). */
-export const fmtHours2 = (m: number) => (m / 60).toFixed(2);
+export const fmtHours2 = (m:number|null|undefined) => m==null?'—':(m/60).toFixed(2);
 
 /** Lateness / Early Out are small figures — "12m" reads better than "0h 12m". NULL stays an em dash: it
  *  means no engine computed the day, which is not at all the same claim as "on time". */
