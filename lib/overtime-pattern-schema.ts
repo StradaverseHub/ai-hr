@@ -62,10 +62,16 @@ const UNITS: OvertimeUnit[] = ['scalar', 'minutes', 'money', 'moneyPerHour'];
 const SELECTION: readonly string[] = OVERTIME_SELECTION_FIELDS;
 const PERSONNEL = new Set<string>(OVERTIME_ASSIGNMENT_SELECTION_FIELDS);
 function decimalCompare(a: string, b: string) { const scaled = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * 1000000n + BigInt(f.padEnd(6, '0')); }; return scaled(a) < scaled(b) ? -1 : scaled(a) > scaled(b) ? 1 : 0; }
-function controlString(raw: unknown, path: string, max = 200): string { if (typeof raw !== 'string' || raw.length > max)
-    overtimeRefuse('invalid', path, 'Expected bounded control text.'); return raw; }
-function draftNumber(raw: unknown, path: string): number { if (typeof raw !== 'number' || !Number.isFinite(raw) || Math.abs(raw) > 999999)
-    overtimeRefuse('invalid', path, 'Expected a bounded numeric control.'); return raw; }
+function controlString(raw: unknown, path: string, max = 200): string {
+    if (typeof raw !== 'string' || raw.length > max)
+        overtimeRefuse('invalid', path, 'Expected bounded control text.');
+    return raw;
+}
+function draftNumber(raw: unknown, path: string): number {
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || Math.abs(raw) > 999999)
+        overtimeRefuse('invalid', path, 'Expected a bounded numeric control.');
+    return raw;
+}
 function state(currency: OvertimeCurrency, definitionUnits: Map<string, OvertimeUnit>, draft = false) {
     let nodes = 0;
     const ids = new Set<string>(), objects = new WeakSet<object>();
@@ -222,7 +228,7 @@ function state(currency: OvertimeCurrency, definitionUnits: Map<string, Overtime
 /** Strict whole-tree validation; inactive branches and unused definitions are still checked. */
 function parseOvertimePattern(raw: unknown, draft: boolean): OvertimePattern {
     const r = overtimeObject(raw, 'pattern');
-    overtimeKeys(r, ['v', 'currency', 'definitions', 'eligibilityBasis', 'eligibility', 'eligibleMinutes', 'durationCap', 'durationRounding', 'deductions', 'rates', 'paymentCap', 'moneyRounding'], 'pattern');
+    overtimeKeys(r, ['v', 'currency', 'definitions', 'eligibilityBasis', 'durationAllocation', 'eligibility', 'eligibleMinutes', 'durationCap', 'durationRounding', 'deductions', 'rates', 'paymentCap', 'moneyRounding'], 'pattern');
     if (r.v !== 1)
         overtimeRefuse('invalid', 'pattern.v', 'Unsupported overtime schema version.');
     const currencyRaw = overtimeObject(r.currency, 'currency');
@@ -338,7 +344,9 @@ function parseOvertimePattern(raw: unknown, draft: boolean): OvertimePattern {
         overtimeRefuse('invalid', 'moneyRounding', 'Choose an explicit money rounding stage and mode.');
     if (r.eligibilityBasis !== 'day' && r.eligibilityBasis !== 'session')
         overtimeRefuse('invalid', 'eligibilityBasis', 'Choose day or session eligibility explicitly.');
-    const pattern: OvertimePattern = { v: 1, currency, definitions, eligibilityBasis: r.eligibilityBasis, eligibility: s.condition(r.eligibility, 'eligibility'), eligibleMinutes: minutes(r.eligibleMinutes, 'eligibleMinutes'), durationCap: minutes(r.durationCap, 'durationCap'), durationRounding, deductions, rates, paymentCap: money(r.paymentCap, 'paymentCap'), moneyRounding: { stage: round.stage as 'line' | 'dayMapping', mode: round.mode as OvertimeRoundingMode } };
+    if (r.durationAllocation !== 'earliest' && r.durationAllocation !== 'latest')
+        overtimeRefuse('invalid', 'durationAllocation', 'Choose earliest or latest policy count allocation explicitly.');
+    const pattern: OvertimePattern = { v: 1, currency, definitions, eligibilityBasis: r.eligibilityBasis, durationAllocation: r.durationAllocation, eligibility: s.condition(r.eligibility, 'eligibility'), eligibleMinutes: minutes(r.eligibleMinutes, 'eligibleMinutes'), durationCap: minutes(r.durationCap, 'durationCap'), durationRounding, deductions, rates, paymentCap: money(r.paymentCap, 'paymentCap'), moneyRounding: { stage: round.stage as 'line' | 'dayMapping', mode: round.mode as OvertimeRoundingMode } };
     const error = draft ? undefined : analyzeValidatedPattern(pattern).issues.find(i => i.severity === 'error');
     if (error)
         throw new OvertimePatternError(error);

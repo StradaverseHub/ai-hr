@@ -1,7 +1,7 @@
 /** Structural reader for immutable evidence, never a replay using today's configuration or facts.
  * Passing this parser proves shape/arithmetic consistency only. The server must bind all source,
  * calculation/version/assignment/digest and persisted line identities under its real read authority. */
-import { OVERTIME_ISSUE_CODES, OVERTIME_LIMITS as L, type OvertimeEvaluation, type OvertimeExact, type OvertimeIssue, type OvertimeLine, type OvertimeSource, type OvertimeTrace, type OvertimeValue } from './overtime-pattern-model';
+import { OVERTIME_ISSUE_CODES, OVERTIME_LIMITS as L, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeExact, type OvertimeIssue, type OvertimeLine, type OvertimeSource, type OvertimeTrace, type OvertimeValue } from './overtime-pattern-model';
 import { overtimeCurrency, overtimeDate, overtimeId, overtimeInteger, overtimeKeys, overtimeList, overtimeObject, overtimeRefuse as fail, overtimeSourceId, overtimeUuid } from './overtime-pattern-schema';
 type Fraction = {
     n: bigint;
@@ -207,6 +207,34 @@ export function parseRecordedOvertimeEvaluation(raw: unknown): OvertimeEvaluatio
         if (r.status === 'ready' && (BigInt(payableMinutes.numerator) <= 0n || !lines.length))
             fail('invalid', 'status', 'Ready results require positive attributed duration.');
         return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, transferable: r.transferable, currency, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, amountMinorUnits: amount.toString(), lines, trace: evidence };
+    }
+    catch {
+        return null;
+    }
+}
+/** Structural immutable duration reader. No rate calculation, salary read, authorization or current rule replay. */
+export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeDurationEvaluation | null {
+    try {
+        const r = overtimeObject(jsonClone(raw), 'duration'), src = source(r.source), patternVersionId = overtimeUuid(r.patternVersionId, 'patternVersionId'), assignmentId = overtimeUuid(r.assignmentId, 'assignmentId'), evidence = trace(r.trace);
+        if (r.status === 'refused') {
+            overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'transferable', 'issues', 'trace'], 'duration');
+            if (r.transferable !== false)
+                fail('invalid', 'transferable', 'A duration refusal cannot be transferred.');
+            const issues = overtimeList(r.issues, 32, 'issues').map(issue);
+            if (!issues.length)
+                fail('invalid', 'issues', 'A duration refusal needs an issue.');
+            return { status: 'refused', source: src, patternVersionId, assignmentId, transferable: false, issues, trace: evidence };
+        }
+        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'mode', 'transferable', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'trace'], 'duration');
+        if (!['ready', 'ineligible'].includes(r.status as string) || !['preview', 'actual'].includes(r.mode as string) || typeof r.transferable !== 'boolean')
+            fail('invalid', 'status', 'Invalid recorded duration status.');
+        const rawMinutes = value(r.rawMinutes, 'rawMinutes'), eligibleMinutes = value(r.eligibleMinutes, 'eligibleMinutes'), approvedMinutes = value(r.approvedMinutes, 'approvedMinutes'), payableMinutes = exact(r.payableMinutes, 'payableMinutes', 'minutes');
+        if (approvedMinutes.state !== 'known' || compare(fraction(payableMinutes), fraction(approvedMinutes.value)) > 0 || rawMinutes.state === 'known' && compare(fraction(payableMinutes), fraction(rawMinutes.value)) > 0)
+            fail('approval', 'payableMinutes', 'Recorded duration exceeds its canonical bound.');
+        const positive = BigInt(payableMinutes.numerator) > 0n;
+        if ((r.status === 'ready') !== positive || r.transferable !== (r.mode === 'actual' && positive))
+            fail('invalid', 'status', 'Recorded duration state disagrees with its count or sample mode.');
+        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, mode: r.mode as 'actual' | 'preview', transferable: r.transferable, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, trace: evidence };
     }
     catch {
         return null;

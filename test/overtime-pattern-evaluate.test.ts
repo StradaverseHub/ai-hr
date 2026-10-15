@@ -1,8 +1,8 @@
 /** Pure financial contract regressions. No database, current-profile lookup or payment mutation. */
 import { describe, expect, it } from 'vitest';
 import { analyzeOvertimePattern, validateOvertimeAssignmentTarget, validateOvertimePattern, validateOvertimePatternDraft } from '../lib/overtime-pattern-schema';
-import { parseRecordedOvertimeEvaluation } from '../lib/overtime-pattern-result';
-import { evaluateOvertimePattern, resolveOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
+import { parseRecordedOvertimeEvaluation, parseRecordedOvertimeDurationEvaluation } from '../lib/overtime-pattern-result';
+import { evaluateOvertimePattern, evaluateOvertimePatternDuration, resolveOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
 import { overtimeSourceKey, OvertimePatternError, type OvertimeCandidate, type OvertimeCondition, type OvertimeEvaluation, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimePattern, type OvertimeRate, type OvertimeResource, type OvertimeTier, type OvertimeUnit } from '../lib/overtime-pattern-model';
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const date = '2026-03-02', currency = { code: 'MYR', minorScale: 2 };
@@ -15,7 +15,7 @@ const field = (name: keyof typeof import('../lib/overtime-pattern-model').OVERTI
 const yes = (): OvertimeCondition => ({ id: id(), type: 'constant', value: true });
 const selected = (field: 'dayType' | 'departmentId' | 'orgTeam', values: string[]): OvertimeCondition => ({ id: id(), type: 'selection', field, operator: 'in', values });
 const hourly = (from = '0', to: string | null = null, rate = '12', multiplier = '1.5'): OvertimeTier => ({ id: id('tier'), from, to, mapping: { earningItemId: uuid(20), currency: 'MYR' }, payment: { method: 'hourly', rate: literal('moneyPerHour', rate), multiplier: literal('scalar', multiplier) } });
-function definition(): OvertimePattern { return { v: 1, currency: { ...currency }, definitions: [], eligibilityBasis: 'day', eligibility: yes(), eligibleMinutes: null, durationCap: null, durationRounding: null, deductions: [], rates: [{ id: id('rate'), name: 'Configured test rate', description: 'Fictional policy; no statutory assurance', priority: 0, when: yes(), timeBand: null, accumulation: 'day', tierMode: 'marginal', tiers: [hourly()] }], paymentCap: null, moneyRounding: { stage: 'dayMapping', mode: 'halfUp' } }; }
+function definition(): OvertimePattern { return { v: 1, currency: { ...currency }, definitions: [], eligibilityBasis: 'day', durationAllocation: 'earliest', eligibility: yes(), eligibleMinutes: null, durationCap: null, durationRounding: null, deductions: [], rates: [{ id: id('rate'), name: 'Configured test rate', description: 'Fictional policy; no statutory assurance', priority: 0, when: yes(), timeBand: null, accumulation: 'day', tierMode: 'marginal', tiers: [hourly()] }], paymentCap: null, moneyRounding: { stage: 'dayMapping', mode: 'halfUp' } }; }
 function input(minutes = '120'): OvertimeInput { return { mode: 'actual', sessionGranularity: 'recorded', layer: 'raw', source: { tenantId: uuid(1), employmentId: uuid(2), attendanceId: uuid(3), date, inputDigest: 'a'.repeat(64), approvalDigest: 'b'.repeat(64) }, patternVersionId: uuid(4), assignmentId: uuid(5), currency: { ...currency }, facts: { employmentId: fact(uuid(2), 'personnel'), companyId: fact(uuid(10), 'personnel'), dayType: fact('workday'), actualWorkingMinutes: fact(minutes), requiredWorkingMinutes: fact('0'), lateMinutes: fact('15'), basicSalary: fact('3000', 'payroll') }, resources: [], approval: { status: 'approved', minutes: fact(minutes, 'approval'), provenance: { owner: 'approval', reference: uuid(6), asOf: date, basis: 'recorded' } }, segments: [{ id: 'segment_1', sessionId: 'session_1', dayType: fact('workday'), clock: missing(), rawMinutes: fact(minutes), approvedMinutes: fact(minutes, 'approval') }] }; }
 function ready(result: OvertimeEvaluation) {
     expect(result.status).toBe('ready');
@@ -244,4 +244,55 @@ describe('structurally typed incomplete OT Drafts', () => {
     it('keeps incomplete dimensions and circular named refs as draft diagnostics, never calculations', () => { const p = definition(); p.definitions = [{ id: 'draft_a', expression: { id: id(), unit: 'money', type: 'ref', definitionId: 'draft_b' } }, { id: 'draft_b', expression: { id: id(), unit: 'money', type: 'ref', definitionId: 'draft_a' } }]; p.eligibleMinutes = { id: id(), type: 'literal', unit: 'money', value: '' }; expect(validateOvertimePatternDraft(p)).toEqual(p); expect(() => validateOvertimePattern(p)).toThrow(OvertimePatternError); });
     it.each([{}, { rates: null }, { v: 1 }, { ...definition(), rates: null }, { ...definition(), currency: null }, { ...definition(), eligibleMinutes: {} }, { ...definition(), rates: [null] }, { ...definition(), rates: [{ id: 'broken' }] }, { ...definition(), eligibility: { id: 'bad', type: 'sql', query: 'select private' } }, { ...definition(), moneyRounding: { stage: ['line'], mode: 'up' } }])('refuses malformed Draft structure without fabricating defaults %#', raw => { expect(() => validateOvertimePatternDraft(raw)).toThrow(OvertimePatternError); });
     it('rejects object cycles, executable properties and non-string decimal controls in Draft mode', () => { const p = definition(); p.eligibleMinutes = { id: id(), unit: 'minutes', type: 'literal', value: 3 as never }; expect(() => validateOvertimePatternDraft(p)).toThrow(OvertimePatternError); p.eligibleMinutes = null; Object.defineProperty(p, 'rates', { get() { throw new Error('must not execute getter'); }, enumerable: true }); expect(() => validateOvertimePatternDraft(p)).toThrow(OvertimePatternError); });
+});
+describe('one canonical OT duration stage for cash and salary-invisible TOIL', () => {
+    it('proves duration without reading price-only salary, while cash correctly refuses unavailable pricing', () => {
+        const p = definition(), data = input();
+        data.facts.basicSalary = missing();
+        p.rates[0].tiers[0].payment = { method: 'hourly', rate: { id: id(), type: 'hourlyRate', unit: 'moneyPerHour', base: field('basicSalary', 'money'), divisorMinutes: literal('minutes', '480') }, multiplier: literal('scalar', '1') };
+        const duration = evaluateOvertimePatternDuration(p, data);
+        expect(duration.status).toBe('ready');
+        if (duration.status === 'refused')
+            throw new Error('duration unexpectedly refused');
+        expect(minutes(duration.payableMinutes)).toBe('120/1');
+        expect(duration.trace.some(t => t.kind === 'field' && t.id === 'basicSalary')).toBe(false);
+        expect('amountMinorUnits' in duration).toBe(false);
+        expect(parseRecordedOvertimeDurationEvaluation(duration)).toEqual(duration);
+        refused(evaluateOvertimePattern(p, data), 'unknown');
+    });
+    it('shares eligibility, minute deduction, rounding and day approval results exactly with full cash evaluation', () => {
+        const p = definition(), data = input();
+        p.eligibleMinutes = literal('minutes', '100');
+        p.durationRounding = { step: '30', mode: 'down' };
+        data.approval.minutes = fact('80', 'approval');
+        data.resources = [resource()];
+        deduction(p);
+        const duration = evaluateOvertimePatternDuration(p, data), cash = ready(evaluateOvertimePattern(p, data));
+        expect(duration.status).toBe('ready');
+        if (duration.status === 'refused')
+            throw new Error('duration unexpectedly refused');
+        expect(duration.payableMinutes).toEqual(cash.payableMinutes);
+        expect(duration.eligibleMinutes).toEqual(cash.eligibleMinutes);
+        expect(duration.trace).toEqual(cash.trace.slice(0, duration.trace.length));
+    });
+    it('does not require unknown clock placement or session granularity solely for price tiers', () => { const p = definition(), data = input(); data.sessionGranularity = 'dayAggregate'; p.rates.push(nightRate()); expect(evaluateOvertimePatternDuration(p, data).status).toBe('ready'); refused(evaluateOvertimePattern(p, data), 'unknown'); p.rates.pop(); p.rates[0].accumulation = 'session'; expect(evaluateOvertimePatternDuration(p, data).status).toBe('ready'); refused(evaluateOvertimePattern(p, data), 'source'); });
+    it('still refuses unavailable salary when the configured duration rule itself depends on it', () => { const p = definition(), data = input(); data.facts.basicSalary = missing(); p.eligibility = { id: id(), type: 'compare', operator: 'gt', left: field('basicSalary', 'money'), right: literal('money', '0') }; const r = evaluateOvertimePatternDuration(p, data); expect(r.status === 'refused' && r.issues[0].code).toBe('unknown'); });
+    it('keeps preview duration nontransferable and rejects forged stored duration totals', () => {
+        const p = definition(), data = input();
+        data.mode = 'preview';
+        const r = evaluateOvertimePatternDuration(p, data);
+        expect(r.status).toBe('ready');
+        if (r.status === 'refused')
+            throw new Error('duration unexpectedly refused');
+        expect(r.transferable).toBe(false);
+        expect(parseRecordedOvertimeDurationEvaluation({ ...r, transferable: true })).toBeNull();
+        expect(parseRecordedOvertimeDurationEvaluation({ ...r, payableMinutes: { unit: 'minutes', numerator: '121', denominator: '1' } })).toBeNull();
+        expect(parseRecordedOvertimeDurationEvaluation({ ...r, amountMinorUnits: '0' })).toBeNull();
+    });
+});
+describe('explicit earliest/latest OT count attribution', () => {
+    it('prices worked600-required480 in the configured morning or evening bands without changing the raw span', () => { const p = definition(), data = input('600'); data.approval.minutes = fact('120', 'approval'); data.facts.requiredWorkingMinutes = fact('480'); p.eligibleMinutes = { id: id(), unit: 'minutes', type: 'subtract', left: field('rawMinutes', 'minutes'), right: field('requiredWorkingMinutes', 'minutes') }; p.rates[0].tiers = [hourly('0', null, '10', '1')]; p.rates.push({ ...nightRate(2), timeBand: { fromMinute: 17 * 60, toMinute: 20 * 60, endDayOffset: 0 } }); precise(data, 9 * 3600, 10 * 3600); p.durationAllocation = 'earliest'; const morning = ready(evaluateOvertimePattern(p, data)); expect(morning.amountMinorUnits).toBe('2000'); p.durationAllocation = 'latest'; const evening = ready(evaluateOvertimePattern(p, data)); expect(evening.amountMinorUnits).toBe('4000'); expect(evening.lines[0].rateId).toBe(p.rates[1].id); expect(data.segments[0].clock.state === 'known' && data.segments[0].clock.value.localStartSecond).toBe(9 * 3600); });
+    it('keeps latest allocation through day approval, policy deduction and rounding across recorded segments', () => { const p = definition(), data = input(); secondSegment(data); precise(data, 9 * 3600, 3600); precise(data, 18 * 3600, 3600, 0, 1); p.durationAllocation = 'latest'; data.approval.minutes = fact('90', 'approval'); data.resources = [resource()]; deduction(p); p.durationRounding = { step: '30', mode: 'down' }; const r = ready(evaluateOvertimePattern(p, data)); expect(minutes(r.payableMinutes)).toBe('60/1'); expect(r.lines.map(l => l.segmentId)).toEqual(['segment_2']); });
+    it('uses latest chronological partition inside a canonical overnight session, then preserves ordered output', () => { const p = definition(), data = input(); secondSegment(data, '60', 'session_1'); precise(data, 23 * 3600, 3600); precise(data, 0, 3600, 1, 1); p.eligibilityBasis = 'session'; p.durationAllocation = 'latest'; p.eligibleMinutes = literal('minutes', '60'); const r = ready(evaluateOvertimePattern(p, data)); expect(r.lines.map(l => l.segmentId)).toEqual(['segment_2']); expect(evaluateOvertimePatternDuration(p, data).status).toBe('ready'); });
+    it('requires an explicit policy direction for Save and activation', () => { const p = definition(); delete (p as Partial<OvertimePattern>).durationAllocation; expect(() => validateOvertimePatternDraft(p)).toThrow(OvertimePatternError); expect(() => validateOvertimePattern(p)).toThrow(OvertimePatternError); });
 });

@@ -149,6 +149,7 @@ export type OvertimePattern = {
         expression: OvertimeExpression;
     }[];
     eligibilityBasis: 'day' | 'session';
+    durationAllocation: 'earliest' | 'latest';
     eligibility: OvertimeCondition;
     eligibleMinutes: OvertimeExpression | null;
     durationCap: OvertimeExpression | null;
@@ -328,6 +329,29 @@ export type OvertimeEvaluation = {
     payableMinutes: OvertimeExact;
     amountMinorUnits: string;
     lines: OvertimeLine[];
+    trace: OvertimeTrace[];
+} | {
+    status: 'refused';
+    source: OvertimeSource;
+    patternVersionId: string;
+    assignmentId: string;
+    transferable: false;
+    issues: OvertimeIssue[];
+    trace: OvertimeTrace[];
+};
+/** Duration evidence is distinct from a cash result. A canonical TOIL owner still proves authority,
+ * freshness, source exclusivity and actual mode before consumption. No pricing/salary access is implied. */
+export type OvertimeDurationEvaluation = {
+    status: 'ready' | 'ineligible';
+    source: OvertimeSource;
+    patternVersionId: string;
+    assignmentId: string;
+    mode: 'preview' | 'actual';
+    transferable: boolean;
+    rawMinutes: OvertimeValue;
+    eligibleMinutes: OvertimeValue;
+    approvedMinutes: OvertimeValue;
+    payableMinutes: OvertimeExact;
     trace: OvertimeTrace[];
 } | {
     status: 'refused';
