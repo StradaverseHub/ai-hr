@@ -14919,6 +14919,10 @@
       "entitlement-alarm": {
         "name": "Semakan liputan kelayakan cuti",
         "description": "Menyemak setiap malam bahawa setiap syarikat masih mempunyai jadual kelayakan cuti yang berkuat kuasa dan bahawa ia mencapai seseorang, supaya perubahan tetapan tidak boleh menyebabkan tiada sesiapa layak menerima apa-apa tanpa disedari."
+      },
+      "reports-employee-master-deliver": {
+        "name": "Penghantaran laporan Induk Pekerja",
+        "description": "Menyemak laporan mingguan dan bulanan yang tiba masanya, menggunakan persetujuan serta akses semasa penerima, dan merekodkan hasil penghantaran."
       }
     }
   },

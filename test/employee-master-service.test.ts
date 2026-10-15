@@ -45,6 +45,12 @@ describe('Employee Master authorization and persistence',()=>{
  it('keeps ended employments in the Resigned starter under their last employer',async()=>{
   const end=new Date(todayInKualaLumpur()+'T00:00:00Z');end.setUTCDate(end.getUTCDate()-1);await owner.db.update(schema.employment).set({terminatedOn:end.toISOString().slice(0,10)}).where(eq(schema.employment.id,employee.employmentId));const fields=await masterReportCatalogue(ctx,[b.companyId]),spec=employeeMasterStarter(fields,[b.companyId],todayInKualaLumpur(),'resigned');const run=await runEmployeeMasterReport(ctx,[b.companyId],{spec});expect(run.result.employeeCount).toBe(1);expect(run.result.sections[0].rows[0].subjectId).toBe(employee.employmentId);
  });
+ it('permits an unchanged generated snapshot but refuses export after the subject moves outside current RLS company scope',async()=>{
+  await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));const scoped={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const run=await runEmployeeMasterReport(scoped,[b.companyId],{spec:basic()});expect(run.result.employeeCount).toBe(1);await expect(authorizeEmployeeMasterRun(scoped,[b.companyId],run)).resolves.toBeUndefined();
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Revoked scope destination'}).returning();await owner.db.update(schema.employment).set({companyId:other.id}).where(eq(schema.employment.id,employee.employmentId));
+  expect(await withTenant(scoped,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,employee.employmentId)))).toEqual([]);await expect(authorizeEmployeeMasterRun(scoped,[b.companyId],run)).rejects.toThrow();
+ });
  it('uses authentic old-company history across a transfer and ignores superseded assignment mistakes',async()=>{
   const transfer=new Date(todayInKualaLumpur()+'T00:00:00Z');transfer.setUTCDate(transfer.getUTCDate()-1);const transferDate=transfer.toISOString().slice(0,10),oldDate=new Date(transfer.getTime()-86_400_000).toISOString().slice(0,10);
   const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Historical transfer destination'}).returning();const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:other.id,name:'Destination department'}).returning();

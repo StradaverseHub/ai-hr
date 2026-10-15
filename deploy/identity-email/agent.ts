@@ -2,11 +2,16 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename, link } from 'node:fs/promises';
 import postgres from 'postgres';
-import { sendWorkflowSmtp } from './smtp';
+import { sendWorkflowSmtp,sendEmployeeMasterSmtp } from './smtp';
 import { activeWorkflowRelay, createNotificationEmailService, type WorkflowMailTarget } from './notifications';
 import { createEmailService, type EmailState } from './service';
 import { EmailSettingsError } from '../../lib/identity/email-model';
 import { IDENTITY_EMAIL_TEST_REALM } from '../../lib/identity/bootstrap';
+import {z} from 'zod';
+import {createMasterReportDeliveryService} from './reports';
+import {masterDeliveryRequest} from '../../lib/employee-master-delivery-model';
+import {masterRenderContext} from './render-context';
+import {prepareMasterReportFile,authorizeMasterReportFile,removeMasterReportFile,reportRendererReady,cleanupMasterReportFiles} from './render-process';
 import { recordEmailAudit } from './database';
 const required=(name:string)=>{const value=process.env[name];if(!value) throw new Error('Missing private identity service configuration');return value;};
 const database=postgres(required('IDENTITY_EMAIL_DATABASE_URL'),{max:1,connect_timeout:5,idle_timeout:20});
@@ -37,7 +42,7 @@ const service=createEmailService({revisionKey,testRecipient,now:()=>new Date(),
 });
 // Lookup uses the existing realm-scoped identity administration client, copied only by the root upgrade.
 // It is not a read-only credential: the trusted identity service already administers this realm's SMTP.
-async function verifyWorkflowRecipient(target:WorkflowMailTarget):Promise<'verified'|'changed'|'unavailable'> {
+async function verifyWorkflowRecipient(target:Pick<WorkflowMailTarget,'subject'|'email'>):Promise<'verified'|'changed'|'unavailable'> {
  const clientId=process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_ID,secret=process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET;
  if(!clientId||!secret||!/^[a-zA-Z0-9_-]{1,128}$/.test(target.subject))return 'unavailable';
  try{
@@ -79,21 +84,38 @@ const notifications=createNotificationEmailService({
   await sendWorkflowSmtp(c,password,target,mail);
  },
 });
+const reportTarget=masterRenderContext.extend({email:z.email().max(320),subject:z.string().min(1).max(512)}).strict();
+const reports=createMasterReportDeliveryService({
+ origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
+ ready:async()=>{if(!await reportRendererReady()||!process.env.WORKFLOW_EMAIL_ISSUER||!process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET||!process.env.WORKFLOW_EMAIL_ORIGIN)return false;try{return !!await workflowRelay();}catch{return false;}},
+ target:async(id,token)=>{const [row]=await database`select identity_email.report_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as target`;const parsed=reportTarget.safeParse(row?.target);return parsed.success?parsed.data:null;},
+ verifyRecipient:verifyWorkflowRecipient,
+ prepare:target=>{const active=activeReportIdentity;if(!active)throw new Error('Missing private occurrence.');return prepareMasterReportFile(active.id,active.token,target);},
+ authorize:authorizeMasterReportFile,
+ start:async(id,token,target)=>{return (await database`select identity_email.start_report(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${database.json(target)}::jsonb) as started`)[0]?.started===true;},
+ finish:async(id,token,outcome,reason,metadata)=>(await database`select identity_email.finish_report(${id}::uuid,${token}::uuid,${outcome},${reason},${metadata?.rowCount??null}::integer,${metadata?.scopeIds??null}::uuid[]) as finished`)[0]?.finished===true,
+ send:async(target,attachment,messageId)=>{const relay=await workflowRelay();if(!relay)throw new Error('Managed relay unavailable.');const config=relay.config;if(config.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable.');const password=config.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;await sendEmployeeMasterSmtp(config,password,target,attachment,messageId);},
+});
+// Report preparation has its own single-worker queue; it cannot block brief workflow status/settings.
+let activeReportIdentity:{id:string;token:string}|null=null,reportQueue:Promise<unknown>=Promise.resolve();
+async function handleReport(input:unknown){const parsed=masterDeliveryRequest.parse(input);if(parsed.op==='status')return reports(parsed);const run=reportQueue.then(async()=>{activeReportIdentity={id:parsed.occurrenceId,token:parsed.leaseToken};try{return await reports(parsed);}finally{activeReportIdentity=null;await removeMasterReportFile(parsed.occurrenceId,parsed.leaseToken);}});reportQueue=run.catch(()=>{});return run;}
+void cleanupMasterReportFiles().catch(()=>{});
 let privateQueue:Promise<unknown>=Promise.resolve();
 const handlePrivateRequest=(path:string,input:unknown)=>{
+ if(path==='/v1/reports')return handleReport(input);
  const result=privateQueue.then(()=>path==='/v1/notifications'?notifications(input):service(input));
  privateQueue=result.catch(()=>{});return result;
 };
 const server=createServer(async(req,res)=>{
  res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');
- if(req.method!=='POST'||!['/v1/settings','/v1/notifications'].includes(req.url||'')){res.writeHead(404).end('{}');return;}
+ if(req.method!=='POST'||!['/v1/settings','/v1/notifications','/v1/reports'].includes(req.url||'')){res.writeHead(404).end('{}');return;}
  let size=0;const chunks:Buffer[]=[];
  try{
   for await(const chunk of req){size+=chunk.length;if(size>16_384)throw new EmailSettingsError('invalid');chunks.push(chunk);}
   const result=await handlePrivateRequest(req.url!,JSON.parse(Buffer.concat(chunks).toString()));res.writeHead(200).end(JSON.stringify(result));
  }catch(e){const code=e instanceof EmailSettingsError?e.code:'unavailable';res.writeHead(code==='forbidden'?403:400).end(JSON.stringify({error:code}));}
 });
-server.requestTimeout=40_000;server.headersTimeout=5_000;
+server.requestTimeout=210_000;server.headersTimeout=5_000;
 if(process.env.LISTEN_FDS!=='1'||process.env.LISTEN_PID!==String(process.pid)) throw new Error('Systemd socket activation is required');
 server.listen({fd:3});
 for(const signal of ['SIGTERM','SIGINT'] as const)process.on(signal,()=>server.close(()=>{database.end().then(()=>process.exit(0));}));

@@ -14919,6 +14919,10 @@
       "entitlement-alarm": {
         "name": "Leave entitlement cover check",
         "description": "Checks every night that each company still has leave entitlement tables in force and that they reach somebody, so a configuration change cannot silently leave nobody entitled to anything."
+      },
+      "reports-employee-master-deliver": {
+        "name": "Employee Master report delivery",
+        "description": "Checks due weekly and monthly reports, applies current recipient consent and access, and records delivery outcomes."
       }
     }
   },
