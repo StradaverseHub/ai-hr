@@ -1,5 +1,6 @@
 'use client';
-import {isPersonnelRegisterKind} from '@/lib/personnel-register-import';
+import {buildPersonnelCsv} from '@/lib/personnel-csv';
+import {isPersonnelRegisterKind,buildPersonnelRegisterCsv} from '@/lib/personnel-register-import';
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
@@ -122,14 +123,15 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
    * zero out of an Employee ID.
    */
   const downloadCsvTemplate=()=> {
-    const url=URL.createObjectURL(new Blob([toCsv([columns.map(employeeColumnLabel)])],{type:'text/csv;charset=utf-8;'}));
+    const url=URL.createObjectURL(new Blob([buildPersonnelCsv(isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee',[columns.map(employeeColumnLabel)])],{type:'text/csv;charset=utf-8;'}));
     const a=document.createElement('a');a.href=url;a.download=SECTION_TEMPLATE_FILENAMES[section].replace(/\.xlsx$/,'.csv');a.click();URL.revokeObjectURL(url);
   };
   const downloadExistingRegister=()=>startTransition(async()=>{
     setError(null);
+    if(!isPersonnelRegisterKind(section))return;
     try {
       const records=await registerRecordsAction(section,existingEmployeeCode);
-      const text=toCsv([columns.map(employeeColumnLabel),...records.map(record=>columns.map(column=>record[column]??''))]);
+      const text=buildPersonnelRegisterCsv(section,records,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback);
       const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8;'}));
       const a=document.createElement('a');a.href=url;a.download=SECTION_TEMPLATE_FILENAMES[section].replace(/\.xlsx$/,'-current.csv');a.click();URL.revokeObjectURL(url);
     }catch(error){setError(error instanceof Error?error.message:t('fileReadError'));}

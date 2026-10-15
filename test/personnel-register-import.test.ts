@@ -1,6 +1,8 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as schema from '../db/schema';
+import {buildPersonnelRegisterCsv,personnelRegisterColumns} from '../lib/personnel-register-import';
+import {parsePersonnelImportCsv} from '../lib/personnel-import-contract';
 import type {ImportRecord} from '../lib/import-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
@@ -19,6 +21,18 @@ const fullRow=(code:string)=>({full_name:code,email:`${code.toLowerCase()}@regis
 beforeAll(()=>migrateTestDb());beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});afterAll(()=>closeAll());
 
 describe('Qualification and Emergency Contact register imports',()=>{
+  it('reimports the actual protected current CSV without changing any contact values',async()=>{
+    const e=await hire('CSV001');
+    await addEmergencyContact(ctx,{personId:e.personId,fullName:'@Literal contact',mobilePhone:'+601234',homePhone:'-0012',address:'=literal address',remarks:"'genuine apostrophe",priority:'other'});
+    await addEmergencyContact(ctx,{personId:e.personId,fullName:"'Literal name",mobilePhone:"'~p1~literal",priority:'secondary'});
+    const before=await registerRecordsForEmployee(ctx,'emergency','CSV001');
+    const text=buildPersonnelRegisterCsv('emergency',before);
+    const parsed=parsePersonnelImportCsv(text,{columns:personnelRegisterColumns('emergency'),sheet:'emergency'});
+    expect(parsed.records).toEqual(before);
+    const result=await commitSectionImport(ctx,{section:'emergency',records:parsed.records});
+    expect(result.fileErrors).toEqual([]);expect(result.updated).toBe(2);
+    expect(await registerRecordsForEmployee(ctx,'emergency','CSV001')).toEqual(before);
+  });
   it('creates repeated qualifications and applies an explicit-ID patch without clearing blank cells',async()=>{
     const e=await hire('REG001');
     const result=await commitSectionImport(ctx,{section:'qualification',records:[

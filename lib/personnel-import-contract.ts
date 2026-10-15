@@ -11,7 +11,7 @@ import { GENDERS, MARITAL_STATUSES, PERSON_GENDER_LABEL_KEYS, PERSON_MARITAL_LAB
 /** Client-safe presentation and file boundary for the authoritative Personnel descriptors.
  * Domain writers still own permissions, catalogs, dated changes and audit events. */
 import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY, type PersonnelFieldDescriptor } from './personnel-field-registry';
-import { parseCsv } from './csv';
+import { parsePersonnelCsv } from './personnel-csv';
 
 import {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
 export {personnelFieldLabel,type PersonnelLabelResolver} from './personnel-field-label';
@@ -65,7 +65,7 @@ function currentPersonnelHeaders(column:string,sheet:PersonnelImportSheet,resolv
 }
 /** Resolve BEFORE creating records: duplicate old/new headings must never overwrite a cell. */
 export function parsePersonnelImportCsv(text:string, options:{columns:readonly string[];sheet?:PersonnelImportSheet;resolvers?:readonly PersonnelLabelResolver[];generation?:number}) {
-  const rows=parseCsv(text);
+  const rows=parsePersonnelCsv(text,options.sheet??'employee');
   if(!rows.length)return {headers:[] as string[],records:[] as Record<string,string>[],warnings:[] as string[]};
   const sheet=options.sheet??'employee';
   const aliases=new Map<string,Set<string>>();

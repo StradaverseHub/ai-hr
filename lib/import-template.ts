@@ -26,6 +26,7 @@
  *    still what the other four importers offer; it carries that hazard.
  */
 import { toCsv } from './csv';
+import {buildPersonnelCsv} from './personnel-csv';
 import { personnelColumnLabel, type PersonnelLabelResolver } from './personnel-import-contract';
 import { EMPLOYEE_TEMPLATE_COLUMNS as IMPORT_COLUMNS } from './import-schema';
 import { PAYROLL_HISTORY_COLUMNS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
@@ -42,7 +43,8 @@ export type TemplateSpec = {
 
 /** Header row (the spec's column keys, in order) + the sample rows, serialised to RFC-4180 CSV. */
 export function buildTemplateCsv(spec: TemplateSpec, resolve?: PersonnelLabelResolver): string {
-  return toCsv([spec.columns.map((c) => spec.id === 'employee' ? personnelColumnLabel(c.key,'employee',resolve) : c.key), ...spec.sampleRows.map(row => spec.id === 'employee' ? spec.columns.map((_,i)=>row[i]??'') : row)]);
+  if(spec.id==='employee')return buildPersonnelCsv('employee',[spec.columns.map(c=>personnelColumnLabel(c.key,'employee',resolve)),...spec.sampleRows.map(row=>spec.columns.map((_,i)=>row[i]??''))]);
+  return toCsv([spec.columns.map(c=>c.key),...spec.sampleRows]);
 }
 
 /** Pull the data row(s) out of an existing `header\n<rows>` SAMPLE constant (drops the header line). */

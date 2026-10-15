@@ -10,6 +10,7 @@ import {buildTemplateCsv,employeeTemplate} from '../lib/import-template';
 import {sectionTemplateColumns} from '../lib/import-sections';
 import {personnelColumnLabel,personnelColumnGuidance,personnelFieldChoices,personnelScalarIssue} from '../lib/personnel-import-contract';
 import {personnelFormRequired} from '../lib/personnel-form-contract';
+import {parsePersonnelCsv} from '../lib/personnel-csv';
 const resolve=(key:string,fallback:string)=>{let value:unknown=messages;for(const part of key.split('.'))value=value&&typeof value==='object'?(value as Record<string,unknown>)[part]:undefined;return typeof value==='string'?value:fallback;};
 const words={required:'Required',optional:'Optional',reference:'Reference',blankRetains:'Blank retains'};
 const contact=()=>render(<NextIntlClientProvider locale="en" messages={messages}><PersonContactExtraFields mode="controlled" value={{}} onChange={()=>{}} /></NextIntlClientProvider>);
@@ -26,7 +27,7 @@ describe('Actual Personnel widget consumers follow the shared file contract',()=
       expect(input.name).toBe('');expect(input.required).toBe(false); // Partial draft Save remains possible.
       expect(personnelFormRequired(field.id,'draft')).toBe(true); // Activation/advisory rule remains canonical.
       const heading=personnelColumnLabel('home_phone','employee',resolve);
-      expect(buildTemplateCsv(employeeTemplate,resolve).split('\r\n')[0]).toContain(heading);
+      expect(parsePersonnelCsv(buildTemplateCsv(employeeTemplate,resolve),'employee')[0]).toContain(heading);
       expect(sectionTemplateColumns('profile')).toContain('home_phone');
       expect(personnelColumnGuidance('home_phone','employee','create',words)).toContain('Required');
       expect(personnelColumnGuidance('home_phone','employee','create',words)).toContain('YYYY-MM-DD');

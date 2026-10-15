@@ -1,4 +1,5 @@
 'use client';
+import {buildPersonnelCsv} from '@/lib/personnel-csv';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
@@ -158,14 +159,14 @@ export function EmployeeImport({
   // the first worksheet on re-upload.
   const downloadFamilyCsv=()=> {
     const headings=DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback));
-    const url=URL.createObjectURL(new Blob([toCsv([headings])],{type:'text/csv;charset=utf-8;'}));
+    const url=URL.createObjectURL(new Blob([buildPersonnelCsv('family',[headings])],{type:'text/csv;charset=utf-8;'}));
     const a=document.createElement('a');a.href=url;a.download='family-update-template.csv';a.click();URL.revokeObjectURL(url);
   };
   const registerLabel=(kind:PersonnelRegisterKind)=>kind==='qualification'?t('sectionQualification'):t('sectionEmergency');
   const registerColumnLabel=(kind:PersonnelRegisterKind,key:string)=>descriptorColumnLabel(key,kind,(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
   const registerChoices=(kind:PersonnelRegisterKind)=>personnelImportFields(kind).filter(field=>field.import.catalog||personnelFieldChoices(field).length).map(field=>({label:registerColumnLabel(kind,field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(choice=>personnelLabels.has(choice.labelKey)?personnelLabels(choice.labelKey):choice.value)}));
   const downloadRegisterCsv=(kind:PersonnelRegisterKind)=>{
-    const url=URL.createObjectURL(new Blob([toCsv([personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))])],{type:'text/csv;charset=utf-8;'}));
+    const url=URL.createObjectURL(new Blob([buildPersonnelCsv(kind,[personnelRegisterColumns(kind).map(key=>registerColumnLabel(kind,key))])],{type:'text/csv;charset=utf-8;'}));
     const a=document.createElement('a');a.href=url;a.download=`${kind}-update-template.csv`;a.click();URL.revokeObjectURL(url);
   };
   const downloadXlsxTemplate = async () => {
