@@ -1,8 +1,10 @@
 import { request } from 'node:http';
+import { internalSelected } from './internal-auth/config';
 import { notificationEmailRequest, type NotificationEmailRequest } from './notification-email-model';
 /** Credentials remain in the root-installed service. Jobs carry only an ID and a lease capability. */
-export function notificationEmailIpc<T>(input:NotificationEmailRequest):Promise<T> {
+export async function notificationEmailIpc<T>(input:NotificationEmailRequest):Promise<T> {
   const body=notificationEmailRequest.parse(input);
+  if(internalSelected()) return (await import('./internal-auth/notification-mail')).internalNotificationEmailRequest<T>(body);
   return new Promise((resolve,reject)=>{
     const req=request({socketPath:process.env.IDENTITY_EMAIL_SOCKET||'/run/aihr-identity-email.sock',path:'/v1/notifications',method:'POST',headers:{'content-type':'application/json'},timeout:35_000},res=>{
       const chunks:Buffer[]=[];let size=0;

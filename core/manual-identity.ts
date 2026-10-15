@@ -1,4 +1,5 @@
 import { internalSelected, internalIssuer } from '../lib/internal-auth/config';
+import { validatePassword } from '../lib/internal-auth/crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { keycloakConfig, keycloakSelected } from '../lib/identity/config';
@@ -39,6 +40,7 @@ export async function createManualAccount(ctx:SessionContext,input:CreateManualA
       !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)||username.startsWith('service-account-')||
       email.length>255||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email)|| (input.role==='super_admin'&&input.companyId!==null))throw new ManualIdentityError('invalid');
     validateTemporaryPassword(input.password,username,email);
+    if(internalSelected()) { try { validatePassword(input.password,username,email); } catch { throw new ManualIdentityError('invalid'); } }
     // Intent and attestation commit before any provider mutation. No credential is a SQL parameter.
     await withTenant(ctx,tx=>tx.execute(sql`select * from app.manual_identity_reserve(${input.id}::uuid,${issuer},${input.personId}::uuid,${username},${email},${input.role},${input.companyId}::uuid)`));
     return await resumeManualAccount(ctx,input.id,input.password,provider);

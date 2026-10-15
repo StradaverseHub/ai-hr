@@ -66,12 +66,70 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHERE i.token_hash=p_hash AND i.status='pending' AND i.expires_at>now();
 $$;
 --> statement-breakpoint
-CREATE FUNCTION app.internal_auth_mail_due() RETURNS TABLE(record_key text)
+REVOKE ALL ON FUNCTION app.internal_auth_invitation(text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.internal_auth_invitation(text) TO ai_hr_app;
+--> statement-breakpoint
+-- Only an exact active delivery lease can resolve its immutable original recovery request. The
+-- credential subject/version lives in authenticated ciphertext keyed by that original request ID.
+CREATE FUNCTION app.internal_auth_recovery_source(p_id uuid,p_lease uuid) RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT r.record_key FROM public.app_internal_auth_record r
- WHERE r.record_key LIKE 'mail:%' AND r.expires_at>now() ORDER BY r.updated_at,r.record_key LIMIT 25;
+ WITH RECURSIVE requests AS (
+  SELECT d.id,d.replaces_delivery_id,ARRAY[d.id] AS seen FROM account_email_delivery d
+  WHERE d.id=p_id AND d.kind='recovery' AND d.status='pending' AND d.lease_token=p_lease AND d.lease_until>now()
+  UNION ALL
+  SELECT parent.id,parent.replaces_delivery_id,child.seen||parent.id
+  FROM requests child JOIN account_email_delivery parent ON parent.id=child.replaces_delivery_id
+  WHERE parent.kind='recovery' AND NOT parent.id=ANY(child.seen) AND cardinality(child.seen)<64
+ ) SELECT id FROM requests WHERE replaces_delivery_id IS NULL
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.internal_auth_invitation(text),app.internal_auth_mail_due() FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.internal_auth_recovery_source(uuid,uuid) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.internal_auth_invitation(text),app.internal_auth_mail_due() TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.internal_auth_recovery_source(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Embedded workflow mail reuses the canonical recipient/consent/lease checks. The issuer is derived
+-- from the leased job's tenant; callers cannot choose a different identity provider or recipient.
+CREATE FUNCTION app.internal_auth_notification_target(p_id uuid,p_token uuid,p_origin text)
+RETURNS TABLE(user_id uuid,subject text,email text,category text,link_path text,severity text,locale text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT target.* FROM notification_delivery d
+ CROSS JOIN LATERAL identity_email.delivery_target(d.id,p_token,p_origin||'/auth/'||d.tenant_id::text) target
+ WHERE d.id=p_id
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.internal_auth_notification_summary(p_id uuid,p_token uuid,p_origin text)
+RETURNS TABLE(required boolean,summary jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT summary.* FROM notification_delivery d
+ CROSS JOIN LATERAL identity_email.delivery_summary(d.id,p_token,p_origin||'/auth/'||d.tenant_id::text) summary
+ WHERE d.id=p_id
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.internal_auth_notification_start(p_id uuid,p_token uuid,p_origin text,p_target jsonb) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT identity_email.start_delivery(d.id,p_token,p_origin||'/auth/'||d.tenant_id::text,p_target)
+ FROM notification_delivery d WHERE d.id=p_id
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.internal_auth_notification_finish(p_id uuid,p_token uuid,p_outcome text,p_error text) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT identity_email.finish_delivery(p_id,p_token,p_outcome,p_error)
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.internal_auth_notification_target(uuid,uuid,text),app.internal_auth_notification_summary(uuid,uuid,text),app.internal_auth_notification_start(uuid,uuid,text,jsonb),app.internal_auth_notification_finish(uuid,uuid,text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.internal_auth_notification_target(uuid,uuid,text),app.internal_auth_notification_summary(uuid,uuid,text),app.internal_auth_notification_start(uuid,uuid,text,jsonb),app.internal_auth_notification_finish(uuid,uuid,text,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Installation SMTP authority belongs to this exact enrolled identity and attested test address,
+-- never another identity attached to the same HR user.
+CREATE FUNCTION app.internal_auth_email_operator(p_issuer text,p_subject text,p_email text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.account_email_operator(p_issuer,p_subject) AND EXISTS(
+  SELECT 1 FROM deployment_identity_operator o WHERE o.issuer=p_issuer AND o.subject=p_subject
+  AND o.revoked_at IS NULL AND lower(o.test_email)=lower(p_email))
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.internal_auth_email_operator(text,text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.internal_auth_email_operator(text,text,text) TO ai_hr_app;

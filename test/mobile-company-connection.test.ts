@@ -44,6 +44,16 @@ describe('installation switching',()=>{
  });
 });
 describe('public enrollment capability checks',()=>{
+ it('embedded cloud and private profiles verify the same HR origin without OIDC discovery',async()=>{
+  for(const hosting of ['cloud','on-premise'] as const){
+   const profile={...base,hosting,authProvider:'internal',issuer:base.apiOrigin+'/auth'};
+   const verifiedProfile=verifyCompanyProfile(signed(profile),trust);
+   const fetcher=vi.fn<typeof fetch>().mockResolvedValue(Response.json(profile));
+   await verifyCompanyServer(verifiedProfile,fetcher);
+   expect(fetcher).toHaveBeenCalledTimes(1);expect(fetcher.mock.calls[0][0]).toBe(base.apiOrigin+'/login/mobile-connection');
+  }
+  expect(()=>verifyCompanyProfile(signed({...base,authProvider:'internal',issuer:'https://foreign.test/auth'}),trust)).toThrow();
+ });
  it('checks exact server and discovery settings without credentials',async()=>{const p=verified(),e=connectionEndpoints(p);const fetcher=vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(p)).mockResolvedValueOnce(Response.json({issuer:p.issuer,authorization_endpoint:e.authorizationEndpoint,token_endpoint:e.tokenEndpoint,end_session_endpoint:e.logoutEndpoint,code_challenge_methods_supported:['S256']}));await verifyCompanyServer(p,fetcher);expect(fetcher.mock.calls.map(c=>c[0])).toEqual([p.apiOrigin+'/login/mobile-connection',p.issuer+'/.well-known/openid-configuration']);for(const [,init]of fetcher.mock.calls){expect(init?.redirect).toBe('error');expect(init?.credentials).toBe('omit');expect(init?.headers).toBeUndefined();}});
  it('refuses a server with a different identity issuer before following discovery',async()=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(Response.json({...base,issuer:'https://attacker.test/realms/x'}));await expect(verifyCompanyServer(verified(),fetcher)).rejects.toThrow(/differ/);expect(fetcher).toHaveBeenCalledTimes(1);});
  it('reports unactivated server sign-in and never opens an identity request',async()=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(Response.json({error:'login_unavailable'},{status:503}));await expect(verifyCompanyServer(verified(),fetcher)).rejects.toThrow(/not activated/);expect(fetcher).toHaveBeenCalledTimes(1);});

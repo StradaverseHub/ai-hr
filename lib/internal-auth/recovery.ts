@@ -4,21 +4,57 @@ import { internalConfig } from './config';
 import { digest, opaque, validOpaque, passwordHash, validatePassword } from './crypto';
 import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
 import { credentialByLogin, takeRate, InternalAuthError, verifyCredentialFactor, type Credential } from './service';
-import { queueAuthMail, recoveryMailReady } from './mail';
+import { sendInternalMail, type MailTransport } from './mail';
+import { AccountEmailDeliveryError } from '../account-email-model';
+import { attemptAccountEmail } from '../../core/account-email';
 type Recovery = { subject: string; version: string };
-export async function requestRecovery(organization: string, username: string) {
+type RecoveryContext = { subject: string; issuer: string; tenantId: string; version: string; email: string };
+/** Public request confirmation never discloses account existence or SMTP readiness. */
+export async function requestRecovery(organization: string, username: string, transport?: MailTransport) {
   await takeRate('recovery-global', 120, 3600_000);
   await takeRate(`recovery:${organization.trim().toLowerCase()}:${username.trim().toLowerCase()}`, 3, 3600_000);
-  if (!await recoveryMailReady()) throw new InternalAuthError('unavailable');
   const c = await credentialByLogin(organization, username);
   if (!c?.enabled || !c.emailVerified) return;
-  await authTransaction(c.subject, async tx => {
+  const delivery = await authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, `credential:${c.subject}`, true);
-    if (!current?.enabled || current.version !== c.version) return;
-    const raw = opaque();
-    await writeRecord(tx, `recovery:${digest(raw)}`, { subject: c.subject, version: c.version } satisfies Recovery, c.subject, Date.now() + 30 * 60_000);
-    await queueAuthMail(tx, c, 'Reset your AI HR password', `A password reset was requested for your AI HR login.\n\nOpen this link within 30 minutes:\n${internalConfig().origin}/reset-password#token=${raw}\n\nYour authenticator or a recovery code is still required if MFA is enrolled. If you did not request this, you can ignore this email.`);
+    if (!current?.enabled || current.version !== c.version) return null;
+    const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
+    if (principal[0]?.tenant_id !== current.tenantId) return null;
+    const rows = await tx.unsafe('select * from app.account_email_request_recovery($1)', [current.email]);
+    const job = rows[0]; if (!job) return null;
+    await writeRecord(tx, `recovery-mail:${job.id}`, { subject: current.subject, issuer: current.issuer, tenantId: current.tenantId,
+      version: current.version, email: current.email } satisfies RecoveryContext, current.subject);
+    return { id: job.id as string, lease: job.lease_token as string };
   });
+  if (delivery) await attemptAccountEmail(delivery.id, delivery.lease, {
+    sendInvitation: async () => { throw new AccountEmailDeliveryError('notEligible'); },
+    sendPasswordReset: (email, context) => sendInternalRecovery(email, context, transport),
+    emailReadiness: (await import('../identity/account-email-readiness')).accountEmailReadiness,
+  });
+}
+/** Exact delivery lease + authenticated original account binding; an email address is never a lookup. */
+export async function sendInternalRecovery(email: string, context?: { deliveryId: string; leaseToken: string }, transport?: MailTransport) {
+  if (!context) throw new AccountEmailDeliveryError('notEligible');
+  const rows = await client.unsafe('select app.internal_auth_recovery_source($1::uuid,$2::uuid) id', [context.deliveryId, context.leaseToken]);
+  const source = rows[0]?.id;
+  if (!source) throw new AccountEmailDeliveryError('notEligible');
+  const binding = await readRecord<RecoveryContext>(client, `recovery-mail:${source}`);
+  if (!binding || binding.email !== email) throw new AccountEmailDeliveryError('notEligible');
+  const token = await authTransaction(binding.subject, async tx => {
+    const c = await readRecord<Credential>(tx, `credential:${binding.subject}`, true);
+    if (!c?.enabled || !c.emailVerified || c.version !== binding.version || c.issuer !== binding.issuer ||
+      c.tenantId !== binding.tenantId || c.email !== binding.email) throw new AccountEmailDeliveryError('notEligible');
+    const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
+    if (principal[0]?.tenant_id !== c.tenantId) throw new AccountEmailDeliveryError('notEligible');
+    const previous = await readRecord<{ key: string }>(tx, `recovery-active:${c.subject}`);
+    if (previous) await deleteRecord(tx, previous.key);
+    const raw = opaque(), key = `recovery:${digest(raw)}`;
+    await writeRecord(tx, key, { subject: c.subject, version: c.version } satisfies Recovery, c.subject, Date.now() + 30 * 60_000);
+    await writeRecord(tx, `recovery-active:${c.subject}`, { key }, c.subject);
+    return raw;
+  });
+  await sendInternalMail({ to: email, subject: 'Reset your AI HR password',
+    text: `A password reset was requested for your AI HR login.\n\nOpen this link within 30 minutes:\n${internalConfig().origin}/reset-password#token=${token}\n\nYour authenticator or a recovery code is still required if MFA is enrolled. If you did not request this, you can ignore this email.` }, transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
@@ -28,6 +64,8 @@ export async function completeRecovery(raw: string, password: string, code: stri
   const result = await authTransaction(initial.subject, async tx => {
     const value = await readRecord<Recovery>(tx, key, true), c = await readRecord<Credential>(tx, `credential:${initial.subject}`, true);
     if (!value || !c?.enabled || c.version !== value.version) throw new InternalAuthError('invalidChallenge');
+    const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
+    if (principal[0]?.tenant_id !== c.tenantId) throw new InternalAuthError('invalidChallenge');
     try { validatePassword(password, c.username, c.email); } catch { throw new InternalAuthError('passwordPolicy'); }
     if (c.totpSecret && !await verifyCredentialFactor(c, code)) return false;
     c.password = await passwordHash(password); c.version = randomUUID(); c.mustChange = false;

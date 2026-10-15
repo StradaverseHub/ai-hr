@@ -1,11 +1,10 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { toDataURL } from 'qrcode';
 import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKIE } from '@/lib/internal-auth/config';
 import { AuthBusyError } from '@/lib/internal-auth/crypto';
 import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotateRefresh, revokeSession, type AuthReply } from '@/lib/internal-auth/service';
 import { requestRecovery, completeRecovery } from '@/lib/internal-auth/recovery';
 import { startInvitation } from '@/lib/internal-auth/invitations';
-import { flushAuthMail } from '@/lib/internal-auth/mail';
 const responseHeaders = { 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') throw new InternalAuthError('invalidChallenge');
@@ -52,7 +51,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
       result = { step: 'complete' };
     } else if (operation === 'recovery') {
       await requestRecovery(text(body, 'organization', 64), text(body, 'username', 64));
-      after(async () => { try { await flushAuthMail(); } catch { console.error('Authentication mail delivery unavailable.'); } });
       result = { step: 'sent' };
     } else if (operation === 'reset') {
       await completeRecovery(text(body, 'token', 43), text(body, 'password', 128), text(body, 'code', 64)); result = { step: 'resetDone' };

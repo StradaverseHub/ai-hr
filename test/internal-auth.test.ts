@@ -121,10 +121,14 @@ describe('first-party authentication with real private storage and existing HR b
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
     const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
-    await requestRecovery('alpha', 'owner');
-    const rows = await owner.client`select record_key,sealed from app_internal_auth_record where record_key like 'mail:%'`;
-    expect(rows).toHaveLength(1);
-    const mail = await readRecord<{ text: string }>(client, rows[0].record_key); const token = mail!.text.match(/#token=([A-Za-z0-9_-]{43})/)![1];
+    let sentText = '';
+    await requestRecovery('alpha', 'owner', async (_relay, mail) => { sentText = mail.text; });
+    const rows = await owner.client`select id,status from account_email_delivery where kind='recovery'`;
+    expect(rows).toHaveLength(1); expect(rows[0].status).toBe('sent');
+    const token = sentText.match(/#token=([A-Za-z0-9_-]{43})/)![1];
+    const ledger = JSON.stringify(await owner.client`select * from account_email_delivery`);
+    expect(ledger).not.toContain(token);
+    expect((await owner.client`select count(*)::int n from app_internal_auth_record where record_key like 'mail:%'`)[0].n).toBe(0);
     await expect(completeRecovery(token, 'A replacement secure phrase 556!', 'bad-code')).rejects.toMatchObject({ code: 'invalidCode' });
     expect(await readSession(signedIn.access_token)).not.toBeNull();
     await completeRecovery(token, 'A replacement secure phrase 556!', signedIn.recoveryCodes![0]);

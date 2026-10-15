@@ -3,17 +3,16 @@ import nodemailer from 'nodemailer';
 import { client, withTenant } from '../../db/client';
 import { sql } from 'drizzle-orm';
 import { EmailSettingsError, emailConfigSchema, type EmailConfig, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
-import { authTransaction, readRecord, writeRecord, deleteRecord, type AuthSql } from './store';
+import { authTransaction, readRecord, writeRecord } from './store';
 import { opaque } from './crypto';
-import type { Credential } from './service';
 
 type Relay = { config: EmailConfig; password?: string };
 type Draft = Relay & { id: string; revision: string; testedAt: number | null };
 type MailState = { revision: string; active: Relay | null; drafts: Record<string, Draft> };
-type Mail = { to: string; subject: string; text: string; expiresAt: number; notBefore: number; attempts: number };
+type Mail = { to: string; subject: string; text: string };
 const STATE = 'email-state';
 const emptyState = (): MailState => ({ revision: 'initial', active: null, drafts: {} });
-export type MailTransport = (relay: Relay, message: Pick<Mail, 'to' | 'subject' | 'text'>) => Promise<void>;
+export type MailTransport = (relay: Relay, message: Mail) => Promise<void>;
 export const sendSmtp: MailTransport = async (relay, message) => {
   const c = relay.config;
   const transport = nodemailer.createTransport({ host: c.host, port: c.port, secure: true,
@@ -37,7 +36,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
   if (!identity || actor.issuer !== identity.issuer || actor.subject !== identity.subject || actor.userId !== ctx.userId || actor.tenantId !== ctx.tenantId || !identity.emailVerified)
     throw new EmailSettingsError('forbidden');
   const allowed = await withTenant(ctx, async tx => {
-    const rows = await tx.execute(sql`select app.is_identity_email_operator() allowed`) as unknown as { allowed: boolean }[];
+    const rows = await tx.execute(sql`select app.internal_auth_email_operator(${identity.issuer},${identity.subject},${identity.email}) allowed`) as unknown as { allowed: boolean }[];
     return rows[0]?.allowed === true;
   });
   if (!allowed) throw new EmailSettingsError('forbidden');
@@ -64,7 +63,11 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
         // An accepted test is not human receipt. Activation separately requires the explicit receipt checkbox.
         draft.testedAt = null;
         try { await transport(draft, { to: identity.email!, subject: 'AI HR email delivery test', text: 'This verifies email delivery for your AI HR installation. Return to Admin → Email delivery and confirm receipt to activate it.' }); }
-        catch { await writeRecord(tx, STATE, state, null); return { failed: true } as T; }
+        catch {
+          await writeRecord(tx, STATE, state, null);
+          await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.test-failed','user',$2::uuid,NULL)", [ctx.tenantId, ctx.userId!]);
+          return { failed: true } as T;
+        }
         draft.testedAt = Date.now();
       } else {
         if (!request.received) throw new EmailSettingsError('needsReceipt');
@@ -82,22 +85,9 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
     return result;
   });
 }
-export async function queueAuthMail(tx: AuthSql, c: Pick<Credential, 'subject' | 'email'>, subject: string, text: string) {
-  const expiry = Date.now() + 30 * 60_000;
-  await writeRecord(tx, `mail:${randomUUID()}`, { to: c.email, subject, text, expiresAt: expiry, notBefore: 0, attempts: 0 } satisfies Mail, c.subject, expiry);
-}
-/** Durable encrypted outbox; next requests and the maintenance runner may safely run this concurrently. */
-export async function flushAuthMail(transport: MailTransport = sendSmtp) {
+/** One selected delivery attempt. No queue or automatic replay exists in authentication. */
+export async function sendInternalMail(message: Mail, transport: MailTransport = sendSmtp) {
   const relay = (await readRecord<MailState>(client, STATE))?.active;
-  if (!relay) return;
-  const due = await client.unsafe('select record_key from app.internal_auth_mail_due()');
-  for (const row of due) await authTransaction(row.record_key, async tx => {
-    const mail = await readRecord<Mail>(tx, row.record_key, true);
-    if (!mail || mail.notBefore > Date.now()) return;
-    try { await transport(relay, mail); await deleteRecord(tx, row.record_key); }
-    catch {
-      mail.attempts++; mail.notBefore = Date.now() + Math.min(mail.attempts * 60_000, 5 * 60_000);
-      await writeRecord(tx, row.record_key, mail, null, mail.expiresAt);
-    }
-  });
+  if (!relay) throw new EmailSettingsError('unavailable');
+  await transport(relay, message);
 }

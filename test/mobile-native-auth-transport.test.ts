@@ -10,8 +10,9 @@ import { SessionChangedError, SignInRequiredError, UnavailableError } from '../m
 function token(sid: string) {
   return `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 300, sid })).toString('base64url')}.signature`;
 }
-function fixture(keycloak = false) {
-  const namespace = keycloak ? 'keycloak-profile' : 'workos-profile';
+function fixture(keycloak: boolean | "internal" = false) {
+  const embedded = keycloak === "internal";
+  const namespace = embedded ? 'internal-profile' : keycloak ? 'keycloak-profile' : 'workos-profile';
   let stored: string | null = JSON.stringify({ refreshToken: 'stored-refresh', sessionId: 'stored-session', namespace });
   const files = new Map([['aihr-installation-v1', '1']]);
   class File {
@@ -25,7 +26,7 @@ function fixture(keycloak = false) {
     setItemAsync: vi.fn(async (key: string, value: string) => { if (key === 'aihr.refreshToken') stored = value; else deviceValues.set(key, value); }),
     deleteItemAsync: vi.fn(async (key: string) => { if (key === 'aihr.refreshToken') stored = null; else deviceValues.delete(key); }) };
   const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({
-    access_token: token('new-session'), refresh_token: 'rotated-refresh',
+    access_token: embedded ? 'aihr_' + 'a'.repeat(43) : token('new-session'), refresh_token: embedded ? 'aihr_refresh_' + 'b'.repeat(43) : 'rotated-refresh', ...(embedded ? { expires_in: 900 } : {}),
   })));
   const output = { exports: {} as { refresh: () => Promise<string>; hasStoredSession: () => Promise<boolean>;
     beginSignIn: () => number; completeSignIn: (code: string, verifier: string, owner: number) => Promise<void>;
@@ -34,7 +35,7 @@ function fixture(keycloak = false) {
   runInNewContext(transpileModule(readFileSync('mobile/lib/device-registration.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
     { exports: deviceModule.exports, module: deviceModule, require: (id: string) => { if (id === 'expo-secure-store') return secure; throw new Error(id); } });
   const code = transpileModule(readFileSync('mobile/lib/auth.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
-  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, URLSearchParams, atob, setTimeout, clearTimeout,
+  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, AbortSignal, URLSearchParams, atob, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'expo-auth-session') return { makeRedirectUri: () => 'aihr://auth/callback' };
       if (id === 'expo-secure-store') return secure;
@@ -43,7 +44,7 @@ function fixture(keycloak = false) {
       if (id === './auth-state') return { createAuthState };
       if (id === './installation-store') return { createInstallationStore };
       if (id === './provider-logout') return { providerLogoutUrl, sessionIdFromToken };
-      if (id === './config') return { config: { authProvider: keycloak ? 'keycloak' : 'workos', issuer: 'https://identity.test/realms/test', workosClientId: 'public-client-id', scheme: 'aihr' }, configProblem: () => null, identityClientId: () => 'public-client-id', identityNamespace: () => namespace };
+      if (id === './config') return { config: { authProvider: embedded ? 'internal' : keycloak ? 'keycloak' : 'workos', apiUrl: 'https://hr.test', issuer: 'https://identity.test/realms/test', workosClientId: 'public-client-id', scheme: 'aihr' }, configProblem: () => null, identityClientId: () => 'public-client-id', identityNamespace: () => namespace };
       if (id === './errors') return { SignInRequiredError, UnavailableError };
       throw new Error(`Unexpected auth adapter dependency: ${id}`);
     } });
@@ -132,5 +133,40 @@ describe('native Keycloak exchange — shipped adapter', () => {
     f.secure.getItemAsync.mockResolvedValueOnce(JSON.stringify({ refreshToken: 'foreign', namespace: 'other-profile' }));
     expect(await f.auth.hasStoredSession()).toBe(false);
     expect(f.response).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('native embedded exchange — shipped adapter', () => {
+  it('refreshes through the pinned HR origin using JSON without cookies or redirects', async () => {
+    const f = fixture('internal'); const token = await f.auth.refresh();
+    expect(token).toBe('aihr_' + 'a'.repeat(43));
+    const [url, init] = f.response.mock.calls[0];
+    expect(url).toBe('https://hr.test/login/api/refresh');
+    expect(init).toMatchObject({ credentials: 'omit', redirect: 'error', headers: { 'x-aihr-client': 'native', 'content-type': 'application/json' } });
+    expect(JSON.parse(f.stored()!).namespace).toBe('internal-profile');
+    expect(f.stored()).not.toContain(token); expect(f.auth.workosLogoutUrl()).toBeNull();
+  });
+  it('rejects JWTs or malformed opaque credentials in internal mode without persisting them', async () => {
+    for (const value of [ { access_token: token('foreign'), refresh_token: 'foreign', expires_in: 900 },
+      { access_token: 'aihr_' + 'a'.repeat(43), refresh_token: 'aihr_refresh_' + 'b'.repeat(43), expires_in: 86400 } ]) {
+      const f = fixture('internal'), original = f.stored();
+      f.response.mockResolvedValueOnce(Response.json(value));
+      await expect(f.auth.refresh()).rejects.toBeInstanceOf(UnavailableError);
+      expect(f.stored()).toBe(original); expect(f.secure.setItemAsync).not.toHaveBeenCalled();
+    }
+  });
+  it('does not send browser authorization codes to embedded authentication', async () => {
+    const f = fixture('internal');
+    await expect(f.auth.completeSignIn('code', 'verifier', f.auth.beginSignIn())).rejects.toBeInstanceOf(SignInRequiredError);
+    expect(f.response).not.toHaveBeenCalled();
+  });
+  it('deletes the stored native credential and revokes its remote family on explicit logout', async () => {
+    const f = fixture('internal'); await f.auth.signOut();
+    expect(f.stored()).toBeNull(); expect(f.files.get('aihr-installation-v1')).toBe('signed-out');
+    const [url, init] = f.response.mock.calls[0];
+    expect(url).toBe('https://hr.test/login/api/logout');
+    expect(JSON.parse(String(init?.body))).toEqual({ refresh_token: 'stored-refresh' });
+    expect(init?.credentials).toBe('omit'); expect(f.auth.workosLogoutUrl()).toBeNull();
   });
 });

@@ -26,6 +26,23 @@ function authFixture() {
 async function drain() { for (let i = 0; i < 10; i++) await Promise.resolve(); }
 
 describe('native credentials — actual storage and network races', () => {
+  it('uses the bounded server expiry for opaque access tokens and refreshes only when due', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = authFixture(), pair = { access_token: 'aihr_' + 'a'.repeat(43), refresh_token: 'opaque-refresh', expires_in: 900 };
+      await f.state.completeTokens(pair, f.state.beginSignIn());
+      expect(await f.state.getAccessToken()).toBe(pair.access_token); expect(f.ports.authenticate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(841_000);
+      expect(await f.state.getAccessToken()).toBe('fresh'); expect(f.ports.authenticate).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+  it('a late embedded completion cannot replace credentials after a company generation change', async () => {
+    const f = authFixture(), previous = f.state.beginSignIn();
+    f.state.beginSignIn();
+    await expect(f.state.completeTokens({ access_token: 'old-opaque', refresh_token: 'old-refresh', expires_in: 900 }, previous)).rejects.toBeInstanceOf(SessionChangedError);
+    expect(f.ports.write).not.toHaveBeenCalled();
+  });
+
   it('a delayed refresh cannot restore credentials after logout', async () => {
     const f = authFixture();
     const request = deferred<TokenPair>();

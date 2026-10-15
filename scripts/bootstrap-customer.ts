@@ -169,7 +169,7 @@ async function main() {
   const result = await bootstrapCustomer(options);
   console.log(result.status === 'checked'
     ? 'CHECK PASSED: fresh installation and configuration verified; no customer or activation file created.'
-    : 'CREATED: customer and pending administrator invitation committed; activation URL is only in the requested private file.');
+    : `CREATED: customer ${result.tenantId}, administrator ${result.appUserId}. The activation URL is only in the requested private file. For internal authentication, run deploy/internal-auth/bootstrap.sh with this exact administrator ID and private activation file before first sign-in.`);
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {

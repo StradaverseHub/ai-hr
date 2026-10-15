@@ -62,6 +62,7 @@ function fixture() {
     'expo-auth-session': { ...types, ...requests, ...hooks }, 'expo-crypto': crypto, 'expo-web-browser': browser,
     'expo-router': { router, Redirect: () => null }, react: React, 'react/jsx-runtime': jsx,
     'react-native': { View: Container, Text: Container, StyleSheet: { create: (value: unknown) => value } },
+    '../lib/internal-sign-in': { InternalSignIn: () => null },
     '../lib/auth': auth, '../lib/config': { config: { workosClientId: 'public-client' }, configProblem: () => null, identityClientId: () => 'public-client' },
     '../lib/company-connection': { useCompanyConnection: () => null, companyCopy: () => ({ change: 'Change company' }) },
     '../lib/connection-probe': { verifyCompanyServer: vi.fn() },

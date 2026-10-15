@@ -5,11 +5,11 @@ import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, passwordHash, validOpaque, validatePassword } from './crypto';
 import { authTransaction, readRecord, writeRecord } from './store';
 import { InternalAuthError, loginKey, takeRate, type Credential, type Organization, type AuthReply } from './service';
-import { queueAuthMail, recoveryMailReady } from './mail';
+import { sendInternalMail } from './mail';
 export async function sendInternalInvitation(email: string, activationPath: string) {
-  if (!/^\/invite\/[A-Za-z0-9_-]{43}\/activate$/.test(activationPath) || !await recoveryMailReady()) throw new InternalAuthError('unavailable');
-  await authTransaction('invitation-mail', tx => queueAuthMail(tx, { subject: randomUUID(), email }, 'Your AI HR invitation',
-    `You have been invited to AI HR. Open the link to choose your username and password and enroll your authenticator.\n\n${internalConfig().origin}${activationPath}\n\nThis invitation expires after seven days.`));
+  if (!/^\/invite\/[A-Za-z0-9_-]{43}\/activate$/.test(activationPath)) throw new InternalAuthError('unavailable');
+  await sendInternalMail({ to: email, subject: 'Your AI HR invitation',
+    text: `You have been invited to AI HR. Open the link to choose your username and password and enroll your authenticator.\n\n${internalConfig().origin}${activationPath}\n\nThis invitation expires after seven days.` });
   return { invitationId: 'internal' };
 }
 export async function startInvitation(token: string, username: string, password: string, native = false): Promise<AuthReply> {

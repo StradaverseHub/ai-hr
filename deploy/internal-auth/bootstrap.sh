@@ -252,11 +252,14 @@ ask OWNER_APP_USER_ID "Existing administrator app_user UUID:"
 ask OWNER_ORGANIZATION "Organization login code (lowercase letters, digits, hyphens):"
 ask OWNER_USERNAME "Owner username:"
 ask OWNER_EMAIL "Verified owner email:"
+say "For a fresh customer only, provide its private first-administrator activation file. Existing administrators leave this blank."
+ask OWNER_ACTIVATION_FILE "Absolute private activation file (or Enter to skip):"
 ask_secret OWNER_PASSWORD "Temporary owner password (at least 14 characters):"
 ask_secret OWNER_PASSWORD_CONFIRM "Repeat temporary password:"
 [[ "$OWNER_PASSWORD" = "$OWNER_PASSWORD_CONFIRM" ]] || { say "Passwords differ. Nothing was enrolled."; return 1; }
 owner_option=()
-if confirm "Is this the installation operator who may configure the installation SMTP relay?"; then owner_option=(--installation-owner); fi
+if [[ -n "$OWNER_ACTIVATION_FILE" ]]; then owner_option+=("--activation-file=$OWNER_ACTIVATION_FILE"); fi
+if confirm "Is this the installation operator who may configure the installation SMTP relay?"; then owner_option+=(--installation-owner); fi
 confirm "Enroll these credentials on the exact existing HR administrator, preserving all grants?" || return 1
 set -a
 # The root-owned deployment environment is already the installation operator's trusted shell input.
