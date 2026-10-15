@@ -321,3 +321,13 @@ describe('typed duration count attribution for recorded shift-end TOIL', () => {
         const amount=copy(r);amount.allocations[0].payableMinutes.numerator='119';expect(parseRecordedOvertimeDurationEvaluation(amount)).toBeNull();
     });
 });
+
+describe('claimed OT window intersects configured duration count attribution',()=>{
+ it('does not qualify a disjoint after-shift claim and validates an explicit upper boundary',()=>{
+  const p=definition(),data=input('240');precise(data,18*3600,4*3600);p.durationAllocation='latest';p.eligibleMinutes=literal('minutes','120');const r=evaluateOvertimePatternDuration(p,data);
+  const clock=data.segments[0].clock;if(clock.state!=='known')throw new Error('clock required');const lower=BigInt(clock.value.startEpochSeconds);
+  expect(intersectOvertimeDurationAfter(r,lower.toString(),(lower+3600n).toString())).toEqual({state:'known',value:{unit:'minutes',numerator:'0',denominator:'1'}});
+  expect(intersectOvertimeDurationAfter(r,(lower+2n*3600n).toString(),(lower+3n*3600n).toString())).toEqual({state:'known',value:{unit:'minutes',numerator:'60',denominator:'1'}});
+  expect(intersectOvertimeDurationAfter(r,lower.toString(),lower.toString())).toEqual({state:'unknown',reason:'claimedWindowUnavailable'});
+ });
+});
