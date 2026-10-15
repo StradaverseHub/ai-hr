@@ -57,7 +57,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, Card, EmployeeCode, Field, SectionHeader, inputCls } from '@/components/ui';
 import { PersonnelField } from '@/components/personnel-field';
-import { personnelInput, personnelControl } from '@/lib/personnel-form-contract';
+import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
 // 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
 // A second strip would be a second set of tab behaviours to keep in step: the unsaved-changes guard, the
 // `?tab=` written into the address bar on every switch (and read back on load, `openingTab` below), and
@@ -227,6 +227,7 @@ export function EmployeeWizard({
   payrollPolicies?: AssignablePolicyOption[];
 }) {
   const t = useTranslations('people.wizard');
+  const tRoot=useTranslations();
   const router = useRouter();
   const id = draftId;
   const [data, setData] = useState<EmployeeDraftData>(initialData);
@@ -787,10 +788,7 @@ export function EmployeeWizard({
                 value={data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE}
                 onChange={(e) => set('employment', { employmentType: e.target.value })}
               >
-                <option value="full_time">{t('employmentType.full_time')}</option>
-                <option value="part_time">{t('employmentType.part_time')}</option>
-                <option value="contract">{t('employmentType.contract')}</option>
-                <option value="intern">{t('employmentType.intern')}</option>
+                {personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=><option key={choice.value} value={choice.value}>{tRoot(choice.labelKey)}</option>)}
               </select>
             </PersonnelField>
           </div>

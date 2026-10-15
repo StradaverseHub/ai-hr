@@ -1,37 +1,92 @@
 import ts from 'typescript';
+import { personnelFormMetadataIssue } from '../../lib/personnel-form-contract';
 import type { PersonnelFieldDescriptor } from '../../lib/personnel-field-registry';
-export type PersonnelSourceExemption={tag:string;name:string;reason:string};
+export type PersonnelSourceExemption={tag:string;name?:string;nameExpression?:string;context?:string;hidden?:boolean;occurrences?:number;reason:string};
 export type PersonnelSourceIssue={line:number;message:string};
-const CONTROL_TAGS=new Set(['input','select','textarea','DateField','Combobox','ProfileOptionSelect','ProfileOptionSelectControlled']);
-const ADAPTERS=new Set(['personnelInput','personnelControl','personnelFormName']);
+const CONTROL_TAGS=new Set(['input','select','textarea','DateField','Combobox','ProfileOptionSelect','ProfileOptionSelectControlled','IcDobAutofill','CurrencySelect','MultiSelectPopover']);
+const ADAPTERS=new Set(['personnelInput','personnelControl','personnelFormName','personnelCarry','personnelPresence','personnelDisplay','personnelRadio','personnelWorkflowControl','personnelWorkflowInput','personnelWorkflowCarry']);
 /** Inspect real JSX, including controlled draft controls. A registry count is never evidence of rendering. */
 export function auditPersonnelFormSource(file:string,text:string,fields:readonly PersonnelFieldDescriptor[],options:{exemptions?:readonly PersonnelSourceExemption[];dynamicBindings?:Record<string,readonly string[]>}={}) {
   const source=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-  const issues:PersonnelSourceIssue[]=[];let controls=0;const usedExemptions=new Set<string>();
+  const issues:PersonnelSourceIssue[]=[];let controls=0;const usedExemptions=new Map<PersonnelSourceExemption,number>();
   const byId=new Map(fields.map(field=>[field.id,field]));
   const report=(node:ts.Node,message:string)=>issues.push({line:source.getLineAndCharacterOfPosition(node.getStart(source)).line+1,message});
   const visitChildren=(node:ts.Node,fn:(child:ts.Node)=>void)=>{fn(node);node.forEachChild(child=>visitChildren(child,fn));};
-  const ids=(expression:ts.Expression):readonly string[]=>{
+  const enclosingFunction=(node:ts.Node):ts.Node=>{let p=node.parent;while(p&&!ts.isFunctionLike(p))p=p.parent;return p??source;};
+  const declarations:ts.VariableDeclaration[]=[];
+  const collect=(node:ts.Node)=>{if(ts.isVariableDeclaration(node))declarations.push(node);node.forEachChild(collect);};collect(source);
+  const scopes=(node:ts.Node)=>{const out:ts.Node[]=[];let scope=enclosingFunction(node);while(scope!==source){out.push(scope);scope=enclosingFunction(scope);}out.push(source);return out;};
+  const declaration=(name:string,node:ts.Node)=>{for(const scope of scopes(node)){const found=declarations.find(d=>enclosingFunction(d)===scope&&(ts.isIdentifier(d.name)?d.name.text===name:ts.isArrayBindingPattern(d.name)&&d.name.elements.some(e=>ts.isBindingElement(e)&&ts.isIdentifier(e.name)&&e.name.text===name)));if(found)return found;}return undefined;};
+  const registryQuery=(node:ts.Node,bindings:Record<string,string>={})=>{
+    const predicates:Record<string,string>={};
+    const visit=(child:ts.Node)=>{if(ts.isBinaryExpression(child)&&child.operatorToken.kind===ts.SyntaxKind.EqualsEqualsEqualsToken&&ts.isPropertyAccessExpression(child.left)&&['owner','ownerField','formGroup'].includes(child.left.name.text)){const value=ts.isStringLiteralLike(child.right)?child.right.text:ts.isIdentifier(child.right)?bindings[child.right.text]:undefined;if(value)predicates[child.left.name.text]=value;}child.forEachChild(visit);};visit(node);
+    return Object.keys(predicates).length?fields.filter(field=>Object.entries(predicates).every(([key,value])=>field[key as keyof PersonnelFieldDescriptor]===value)).map(field=>field.id):[];
+  };
+  const ids=(expression:ts.Expression,seen=new Set<ts.Node>()):readonly string[]=>{
+    if(seen.has(expression))return [];seen=new Set(seen).add(expression);
+    const exact=options.dynamicBindings?.[expression.getText(source)];if(exact)return exact;
     if(ts.isStringLiteralLike(expression))return [expression.text];
-    return options.dynamicBindings?.[expression.getText(source)]??[];
+    if(ts.isParenthesizedExpression(expression)||ts.isAsExpression(expression)||ts.isNonNullExpression(expression))return ids(expression.expression,seen);
+    if(ts.isConditionalExpression(expression))return [...ids(expression.whenTrue,seen),...ids(expression.whenFalse,seen)];
+    if(ts.isArrayLiteralExpression(expression))return expression.elements.flatMap(e=>ts.isExpression(e)?ids(e,seen):[]);
+    if(ts.isObjectLiteralExpression(expression))return expression.properties.flatMap(p=>ts.isPropertyAssignment(p)?ids(p.initializer,seen):[]);
+    if(ts.isCallExpression(expression)&&ts.isIdentifier(expression.expression)){
+      const d=declaration(expression.expression.text,expression),fn=d?.initializer;
+      if(fn&&(ts.isArrowFunction(fn)||ts.isFunctionExpression(fn))){
+        if(!ts.isBlock(fn.body))return ids(fn.body,seen);
+        const returns:ts.Expression[]=[];visitChildren(fn.body,node=>{if(ts.isReturnStatement(node)&&node.expression)returns.push(node.expression);});return returns.flatMap(value=>ids(value,seen));
+      }
+    }
+    if(ts.isIdentifier(expression)){
+      const fn=enclosingFunction(expression);
+      if(ts.isFunctionLike(fn)){const index=fn.parameters.findIndex(p=>ts.isIdentifier(p.name)&&p.name.text===expression.text);if(index>=0&&ts.isVariableDeclaration(fn.parent)&&ts.isIdentifier(fn.parent.name)){const values:ts.Expression[]=[],ownerName=fn.parent.name.text;visitChildren(source,node=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===ownerName&&node.arguments[index])values.push(node.arguments[index]);});return values.flatMap(value=>ids(value,seen));}}
+      const d=declaration(expression.text,expression);if(d?.initializer){
+        if(ts.isArrayBindingPattern(d.name)&&ts.isElementAccessExpression(d.initializer)&&ts.isIdentifier(d.initializer.expression)){
+          const index=d.name.elements.findIndex(e=>ts.isBindingElement(e)&&ts.isIdentifier(e.name)&&e.name.text===expression.text);
+          const owner=declaration(d.initializer.expression.text,d.initializer);let map=owner?.initializer;if(map&&ts.isAsExpression(map))map=map.expression;
+          if(map&&ts.isObjectLiteralExpression(map))return map.properties.flatMap(p=>ts.isPropertyAssignment(p)&&ts.isArrayLiteralExpression(p.initializer)&&p.initializer.elements[index]?ids(p.initializer.elements[index] as ts.Expression,seen):[]);
+        }
+        return ids(d.initializer,seen);
+      }
+    }
+    if(ts.isElementAccessExpression(expression)||ts.isPropertyAccessExpression(expression)){
+      if(ts.isPropertyAccessExpression(expression)&&expression.name.text==='id'){
+        if(ts.isCallExpression(expression.expression)&&ts.isIdentifier(expression.expression.expression)){
+          const call=expression.expression,d=declaration(call.expression.getText(source),call),fn=d?.initializer;
+          if(fn&&(ts.isArrowFunction(fn)||ts.isFunctionExpression(fn))){const bindings:Record<string,string>={};fn.parameters.forEach((p,i)=>{if(ts.isIdentifier(p.name)&&call.arguments[i]&&ts.isStringLiteralLike(call.arguments[i]))bindings[p.name.text]=(call.arguments[i] as ts.StringLiteral).text;});return registryQuery(fn,bindings);}
+        }
+        for(const scope of scopes(expression)){const found=registryQuery(scope);if(found.length)return found;}
+        return [];
+      }
+      return ids(expression.expression,seen);
+    }
+    return [];
   };
   const attribute=(node:ts.JsxOpeningLikeElement,name:string)=>node.attributes.properties.find(prop=>ts.isJsxAttribute(prop)&&prop.name.getText(source)===name) as ts.JsxAttribute|undefined;
   const literalAttribute=(node:ts.JsxOpeningLikeElement,name:string)=>{const value=attribute(node,name)?.initializer;return value&&ts.isStringLiteral(value)?value.text:undefined;};
+  const signature=(node:ts.JsxOpeningLikeElement)=>{
+    const name=literalAttribute(node,'name');const raw=attribute(node,'name')?.initializer;
+    let owner:ts.Node|undefined=node.parent;while(owner&&!ts.isVariableDeclaration(owner)&&!ts.isFunctionDeclaration(owner))owner=owner.parent;
+    const context=owner&&'name' in owner&&owner.name?owner.name.getText(source):undefined;
+    return {tag:node.tagName.getText(source),name,nameExpression:raw&&ts.isJsxExpression(raw)&&raw.expression?raw.expression.getText(source):undefined,context,hidden:literalAttribute(node,'type')==='hidden'};
+  };
+  const exemptionFor=(node:ts.JsxOpeningLikeElement)=>{const value=signature(node);return options.exemptions?.find(item=>item.tag===value.tag&&item.name===value.name&&item.nameExpression===value.nameExpression&&(item.context==null||item.context===value.context)&&(item.hidden==null||item.hidden===value.hidden));};
   const scan=(node:ts.Node)=>{
     if(ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node)) {
       const tag=node.tagName.getText(source);
+      if(tag==='PersonnelField'&&attribute(node,'label'))report(node,'Personnel caption overrides its descriptor.');
       if(tag==='Field' && attribute(node,'label')) {
         let containsControl=false;
-        if(ts.isJsxElement(node.parent))visitChildren(node.parent,child=>{if((ts.isJsxOpeningElement(child)||ts.isJsxSelfClosingElement(child))&&CONTROL_TAGS.has(child.tagName.getText(source)))containsControl=true;});
+        if(ts.isJsxElement(node.parent))visitChildren(node.parent,child=>{if((ts.isJsxOpeningElement(child)||ts.isJsxSelfClosingElement(child))&&CONTROL_TAGS.has(child.tagName.getText(source))&&!exemptionFor(child))containsControl=true;});
         if(containsControl)report(node,'Personnel field presentation bypasses PersonnelField.');
       }
       if(CONTROL_TAGS.has(tag)) {
         controls++;
-        const name=literalAttribute(node,'name');
-        const exempt=options.exemptions?.find(item=>item.tag===tag&&item.name===name);
+        const {name}=signature(node);
+        const exempt=exemptionFor(node);
         if(exempt) {
           if(!exempt.reason.trim() || exempt.reason==='TODO')report(node,'Personnel control exemption lacks an owner reason.');
-          usedExemptions.add(`${tag}|${name}`);
+          usedExemptions.set(exempt,(usedExemptions.get(exempt)??0)+1);
         } else {
           const calls:ts.CallExpression[]=[];
           for(const prop of node.attributes.properties)visitChildren(prop,child=>{if(ts.isCallExpression(child)&&ts.isIdentifier(child.expression)&&ADAPTERS.has(child.expression.text))calls.push(child);});
@@ -42,10 +97,22 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
           for(const expression of expressions) {
             const resolved=ids(expression);
             if(!resolved.length)report(expression,`Unresolved Personnel binding: ${expression.getText(source)}.`);
-            for(const id of resolved)if(!byId.get(id)?.form)report(expression,`Unknown Personnel form field: ${id}.`);
+            for(const id of resolved){const field=byId.get(id);if(!field?.form)report(expression,`Unknown Personnel form field: ${id}.`);else {const issue=personnelFormMetadataIssue(field);if(issue)report(expression,issue);}}
+            let ancestor:ts.Node|undefined=node.parent;while(ancestor){if(ts.isJsxElement(ancestor)&&ancestor.openingElement.tagName.getText(source)==='PersonnelField'){
+              const value=attribute(ancestor.openingElement,'fieldId')?.initializer;
+              const captionIds=value&&ts.isStringLiteral(value)?[value.text]:value&&ts.isJsxExpression(value)&&value.expression?ids(value.expression):[];
+              const captions=new Set(captionIds.map(id=>byId.get(id)?.labelKey));
+              if(captionIds.length&&resolved.some(id=>!captionIds.includes(id)&&!captions.has(byId.get(id)?.labelKey)))report(node,'Personnel caption and control bind different facts.');
+              break;
+            }ancestor=ancestor.parent;}
+
           }
           if(calls.length)for(const prop of node.attributes.properties) {
-            if(ts.isJsxAttribute(prop)&&['type','required','min','step'].includes(prop.name.getText(source)))report(prop,`Personnel ${prop.name.getText(source)} bypasses descriptor metadata.`);
+            if(ts.isJsxAttribute(prop)&&['type','required','min','max','step'].includes(prop.name.getText(source)))report(prop,`Personnel ${prop.name.getText(source)} bypasses descriptor metadata.`);
+            if(ts.isJsxSpreadAttribute(prop)) {
+              const inspect=(value:ts.Expression)=>{if(ts.isParenthesizedExpression(value))inspect(value.expression);else if(ts.isConditionalExpression(value)){inspect(value.whenTrue);inspect(value.whenFalse);}else if(ts.isObjectLiteralExpression(value))for(const item of value.properties)if(ts.isPropertyAssignment(item)&&['name','type','required','min','max','step'].includes(item.name.getText(source))&&!(ts.isCallExpression(item.initializer)&&ts.isIdentifier(item.initializer.expression)&&ADAPTERS.has(item.initializer.expression.text)))report(item,'Personnel spread overrides descriptor '+item.name.getText(source)+'.');};
+              inspect(prop.expression);
+            }
           }
         }
       }
@@ -53,7 +120,7 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
     node.forEachChild(scan);
   };
   scan(source);
-  for(const exemption of options.exemptions??[])if(!usedExemptions.has(`${exemption.tag}|${exemption.name}`))issues.push({line:1,message:`Stale Personnel control exemption: ${exemption.tag} ${exemption.name}.`});
+  for(const exemption of options.exemptions??[]){const count=usedExemptions.get(exemption)??0;if(!count)issues.push({line:1,message:`Stale Personnel control exemption: ${exemption.tag} ${exemption.name??exemption.nameExpression}.`});else if(exemption.occurrences!=null&&count!==exemption.occurrences)issues.push({line:1,message:`Personnel exemption occurrence changed: ${exemption.context}:${exemption.name??exemption.nameExpression} expected ${exemption.occurrences}, found ${count}.`});}
   if(!controls)issues.push({line:1,message:'Personnel source has no controls; the source inventory is empty.'});
   return {controls,issues};
 }

@@ -9,14 +9,24 @@
 // six allow-listed field names in any case.
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { correctHireDetailsAction } from './actions';
 
+const HIRE_FORM_IDS = {
+  "businessUnitId": "employment.organisation_assignment.businessunitname",
+  "departmentId": "employment.organisation_assignment.departmentname",
+  "positionId": "employment.organisation_assignment.positionname",
+  "costCenterId": "employment_history.original_hire_details_and_corrections.costcenterid",
+  "locationId": "attendance.work_location_and_shift_arrangement.locationid",
+  "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid"
+} as const;
+const hireField=(name:keyof typeof HIRE_FORM_IDS)=>HIRE_FORM_IDS[name];
 export type HireCorrectionOption = { id: string; name: string };
 
 export type HireCorrectionFormField = {
   /** The form name — one of core/hire-correction.ts HIRE_CORRECTION_FIELDS. */
-  field: string;
+  field: keyof typeof HIRE_FORM_IDS;
   label: string;
   /** Department cannot be cleared (it is NOT NULL on the assignment). */
   required: boolean;
@@ -62,6 +72,9 @@ export function HireCorrectionForm({
   cancelHref: string;
 }) {
   const t = useTranslations('people.detail.movement.hireCorrection');
+  const tRoot=useTranslations();
+  const fieldLabel=(field:keyof typeof HIRE_FORM_IDS)=>personnelFormLabel(hireField(field),(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
+  const reasonLabel=personnelFormLabel('employment_history.original_hire_details_and_corrections.reason',(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   const formRef = useRef<HTMLFormElement>(null);
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.field, f.currentId ?? ''])),
@@ -83,7 +96,7 @@ export function HireCorrectionForm({
   const alsoChanges = useMemo(() => {
     const byRecord = new Map<string, string[]>();
     for (const f of changed) {
-      for (const r of f.carriesInto) byRecord.set(r, [...(byRecord.get(r) ?? []), f.label]);
+      for (const r of f.carriesInto) byRecord.set(r, [...(byRecord.get(r) ?? []), fieldLabel(f.field)]);
     }
     return [...byRecord.entries()].map(([record, labels]) => t('recordFields', { record, fields: labels.join(', ') }));
   }, [changed, t]);
@@ -93,10 +106,10 @@ export function HireCorrectionForm({
   return (
     <form ref={formRef} action={correctHireDetailsAction}>
       <input type="hidden" name="employmentId" value={employmentId} />
-      <input type="hidden" name="reason" value={reason} />
+      <input {...personnelCarry('employment_history.original_hire_details_and_corrections.reason')} value={reason} />
       {/* ONLY the changed fields are posted. An untouched select carries no name. */}
       {changed.map((f) => (
-        <input key={f.field} type="hidden" name={f.field} value={values[f.field] ?? ''} />
+        <input key={f.field} {...personnelWorkflowCarry(hireField(f.field),'hireCorrection')} value={values[f.field] ?? ''} />
       ))}
 
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-4 py-3">
@@ -120,7 +133,7 @@ export function HireCorrectionForm({
               className={`grid gap-2 px-4 py-3 sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4 ${isChanged ? 'bg-primary/5' : ''}`}
             >
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>{f.label}</span>
+                <span>{fieldLabel(f.field)}</span>
                 {isChanged && (
                   <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
                     {t('changed')}
@@ -128,13 +141,13 @@ export function HireCorrectionForm({
                 )}
               </div>
               <div className="text-sm text-foreground">{f.originalLabel ?? '—'}</div>
-              <select
-                aria-label={f.label}
+              <select {...personnelControl(hireField(f.field),'draft')}
+                aria-label={fieldLabel(f.field)}
                 value={value}
                 onChange={(e) => setValues((prev) => ({ ...prev, [f.field]: e.target.value }))}
                 className={selectCls}
               >
-                {!f.required && <option value="">{t('none')}</option>}
+                {!personnelFormRequired(hireField(f.field),'record') && <option value="">{t('none')}</option>}
                 {!known && (
                   <option value={value}>{t('unavailable', { name: f.currentLabel ?? value })}</option>
                 )}
@@ -182,12 +195,12 @@ export function HireCorrectionForm({
             <ul className="mt-1 list-disc space-y-0.5 pl-5">
               {changed.flatMap((f) => [
                 ...f.carriesInto.map((r, i) => (
-                  <li key={`${f.field}-c-${i}`}>{t('laterCarries', { record: r, field: f.label })}</li>
+                  <li key={`${f.field}-c-${i}`}>{t('laterCarries', { record: r, field: fieldLabel(f.field) })}</li>
                 )),
                 ...(f.stoppedBy
                   ? [
                       <li key={`${f.field}-s`} className="opacity-80">
-                        {t('laterStops', { record: f.stoppedBy, field: f.label })}
+                        {t('laterStops', { record: f.stoppedBy, field: fieldLabel(f.field) })}
                       </li>,
                     ]
                   : []),
@@ -199,9 +212,9 @@ export function HireCorrectionForm({
 
       <label className="block px-4 pt-4">
         <span className="mb-1 block text-sm font-medium text-foreground">
-          {t('reasonLabel')} <span className="text-destructive">{t('required')}</span>
+          {reasonLabel} <span className="text-destructive">{t('required')}</span>
         </span>
-        <textarea
+        <textarea {...personnelControl('employment_history.original_hire_details_and_corrections.reason','draft')}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={3}
@@ -229,7 +242,7 @@ export function HireCorrectionForm({
                 <div className="mt-4 divide-y divide-border rounded-md border border-border text-sm">
                   {changed.map((f) => (
                     <div key={f.field} className="px-3 py-2">
-                      <span className="text-muted-foreground">{f.label}:</span>{' '}
+                      <span className="text-muted-foreground">{fieldLabel(f.field)}:</span>{' '}
                       <span>{labelOf(f, f.currentId)}</span> <span aria-hidden>→</span>{' '}
                       <span className="font-semibold">{labelOf(f, values[f.field] || null)}</span>
                     </div>
@@ -244,10 +257,10 @@ export function HireCorrectionForm({
                       {changed.map((f) => (
                         <li key={f.field}>
                           {f.reachesCurrent
-                            ? t('currentChanges', { field: f.label })
+                            ? t('currentChanges', { field: fieldLabel(f.field) })
                             : f.stoppedBy
-                              ? t('currentUnchanged', { field: f.label, record: f.stoppedBy })
-                              : t('currentUnchangedPlain', { field: f.label })}
+                              ? t('currentUnchanged', { field: fieldLabel(f.field), record: f.stoppedBy })
+                              : t('currentUnchangedPlain', { field: fieldLabel(f.field) })}
                         </li>
                       ))}
                     </ul>

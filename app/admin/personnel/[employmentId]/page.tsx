@@ -22,7 +22,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { PersonnelField } from '@/components/personnel-field';
-import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices, personnelDisplay, personnelCarry, personnelPresence, personnelRadio } from '@/lib/personnel-form-contract';
+import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
@@ -3211,7 +3211,7 @@ export default async function EmployeePage({
           <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
             {t('socsoEisCardTitle')}
           </legend>
-          <input type="hidden" name="nationality" value={emp.nationality ?? ''} />
+          <input {...personnelCarry('profile.personal_details.nationality')} value={emp.nationality ?? ''} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {/* 35b7af0a group 7 — the SAME group the Create Employee wizard now renders
                 (components/socso-eis-fields.tsx). Names, options and the IC-derived number default are
@@ -3526,15 +3526,15 @@ export default async function EmployeePage({
   // itself stays viewable. Rehire is a future, separate piece.
   const canCreateMovement = admin && !emp.terminatedOn;
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
-  const hireFieldLabel = (f: HireCorrectionField): string =>
-    ({
-      departmentId: t('movement.field.department'),
-      positionId: t('movement.field.position'),
-      businessUnitId: t('movement.field.businessUnit'),
-      costCenterId: t('movement.hireCorrection.fieldCostCenter'),
-      locationId: t('movement.hireCorrection.fieldLocation'),
-      managerEmploymentId: t('movement.hireCorrection.fieldManager'),
-    })[f];
+  const hireFieldIds = {
+  "businessUnitId": "employment.organisation_assignment.businessunitname",
+  "departmentId": "employment.organisation_assignment.departmentname",
+  "positionId": "employment.organisation_assignment.positionname",
+  "costCenterId": "employment_history.original_hire_details_and_corrections.costcenterid",
+  "locationId": "attendance.work_location_and_shift_arrangement.locationid",
+  "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid"
+} as const;
+  const hireFieldLabel = (f:HireCorrectionField):string => personnelLabel(hireFieldIds[f]);
 
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
@@ -3967,10 +3967,8 @@ export default async function EmployeePage({
         // b7b22514 — the destinations, and each destination's org lists (see the read above).
         companies: movementCompanies,
         orgByCompany: movementOrgByCompany,
-        employmentTypes: (['full_time', 'part_time', 'contract', 'intern'] as const).map((v) => ({
-          value: v,
-          label: t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time'),
-        })),
+        profileOptions,
+        employmentTypes: personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=>({value:choice.value,label:t(choice.labelKey.slice(14))})),
         // ae9350f2 — the built-in exit-reason catalogue, pre-translated here (the island holds no server
         // imports). `typeLabel` reuses the EXISTING termination-type labels, so the classification the
         // reason derives reads the same everywhere it already appears (turnover analytics included).
@@ -4292,7 +4290,7 @@ export default async function EmployeePage({
       {pendingCompany ? (
         <form action={changeEmploymentCompanyAction} className="space-y-3 border-b border-border p-4">
           <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="newCompanyId" value={pendingCompany.id} />
+          <input {...personnelWorkflowCarry('employment.organisation_assignment.companyname','companyCorrection')} value={pendingCompany.id} />
           <input type="hidden" name="tab" value={tab ?? ''} />
           <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
             {t('employmentInfo.companyPendingBanner', { company: pendingCompany.name })}
@@ -4773,7 +4771,7 @@ export default async function EmployeePage({
                   <form action={endDelegationAction}>
                     <input type="hidden" name="employmentId" value={emp.employmentId} />
                     <input type="hidden" name="reportingLineId" value={d.id} />
-                    <input type="hidden" name="endDate" value={today} />
+                    <input {...personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')} value={today} />
                     <button type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
                       ×
                     </button>
@@ -4932,7 +4930,7 @@ export default async function EmployeePage({
           className="mx-4 mt-3 grid grid-cols-1 items-end gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 sm:grid-cols-3"
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="locationId" value={branchLocationSuggestion.id} />
+          <input {...personnelCarry('attendance.work_location_and_shift_arrangement.locationid')} value={branchLocationSuggestion.id} />
           <input type="hidden" name="source" value="branch_derived" />
           <div className="sm:col-span-3 text-xs font-medium text-primary">
             {t('locationSuggestedFromBranch', { branch: branchLocationSuggestion.branch })}

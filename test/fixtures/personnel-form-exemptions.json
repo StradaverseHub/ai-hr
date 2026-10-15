@@ -1,0 +1,783 @@
+{
+  "app/admin/personnel/[employmentId]/page.tsx": [
+    {
+      "tag": "input",
+      "context": "emergencyDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by emergencyDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "emergencyDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by emergencyDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "emergencyDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by emergencyDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "emergencyDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "emergencyContactPanel",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by emergencyContactPanel; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "emergencyContactPanel",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by emergencyContactPanel; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "profilePanel",
+      "hidden": true,
+      "occurrences": 3,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by profilePanel; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "profilePanel",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by profilePanel; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "payComponentDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by payComponentDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "payComponentDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "cp38DialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by cp38DialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "cp38DialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by cp38DialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "cp38DialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "cp38Card",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by cp38Card; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "cp38Card",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by cp38Card; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "encashmentCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by encashmentCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "encashmentCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "snapshotId",
+      "reason": "Guarded action record/subject pointer (snapshotId) used by encashmentCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "dialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by dialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "dialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by dialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "dialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by dialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "dialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "familyMembersSection",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by familyMembersSection; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "familyMembersSection",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by familyMembersSection; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "qualificationDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by qualificationDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "qualificationDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by qualificationDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "qualificationDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "qualificationPanel",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by qualificationPanel; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "qualificationPanel",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "id",
+      "reason": "Guarded action record/subject pointer (id) used by qualificationPanel; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "payrollPolicyCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by payrollPolicyCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "defaultShiftCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by defaultShiftCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "clockingCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by clockingCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "salaryAddDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by salaryAddDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "salaryAddDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "compensationCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by compensationCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "statutoryCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by statutoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "statutoryCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by statutoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "othersStatutoryCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by othersStatutoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "othersStatutoryCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by othersStatutoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "tp3Card",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by tp3Card; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "tp3Card",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by tp3Card; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "employmentHistoryCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by employmentHistoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "employmentHistoryCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementId",
+      "reason": "Guarded action record/subject pointer (movementId) used by employmentHistoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "employmentInfoCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by employmentInfoCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "employmentInfoCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "directSuperiorCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by directSuperiorCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "directSuperiorCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "currentSuperiorEmploymentId",
+      "reason": "Current reporting-line compare-and-change proof, validated by the manager owner; not a replacement superior selection."
+    },
+    {
+      "tag": "input",
+      "context": "directSuperiorCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "currentLineId",
+      "reason": "Current reporting-line compare-and-change proof, validated by the manager owner; not a replacement superior selection."
+    },
+    {
+      "tag": "input",
+      "context": "delegationsCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by delegationsCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "delegationsCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "reportingLineId",
+      "reason": "Guarded action record/subject pointer (reportingLineId) used by delegationsCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "holidayCalendarCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by holidayCalendarCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "scheduleGroupCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by scheduleGroupCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "locationCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by locationCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "locationCard",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "source",
+      "reason": "Location-assignment provenance token (manual/branch), validated and audited by the Location owner; the location/date facts bind separately."
+    },
+    {
+      "tag": "input",
+      "context": "EmployeePage",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by EmployeePage; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "EmployeePage",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by EmployeePage; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "components/leave/LeaveDetailsPanel.tsx": [
+    {
+      "tag": "input",
+      "context": "LeaveDetailsPanel",
+      "hidden": true,
+      "occurrences": 1,
+      "nameExpression": "k",
+      "reason": "Existing GET query-state carry for the read-only Leave as-of view; it is not a Personnel write."
+    },
+    {
+      "tag": "DateField",
+      "context": "LeaveDetailsPanel",
+      "hidden": false,
+      "occurrences": 1,
+      "name": "asOf",
+      "reason": "Read-only Leave as-of query date; navigation changes the view, never an employment/leave record."
+    },
+    {
+      "tag": "input",
+      "context": "LeaveDetailsPanel",
+      "hidden": false,
+      "occurrences": 1,
+      "name": "asOf",
+      "reason": "Read-only Leave as-of query date; navigation changes the view, never an employment/leave record."
+    }
+  ],
+  "components/personnel-identity.tsx": [
+    {
+      "tag": "input",
+      "context": "IdentityFields",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by IdentityFields; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "IdentityFields",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by IdentityFields; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "components/bank-info-card.tsx": [
+    {
+      "tag": "input",
+      "context": "BankInfoCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by BankInfoCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "BankInfoCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by BankInfoCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "components/identity-tax-card.tsx": [
+    {
+      "tag": "input",
+      "context": "IdentityTaxCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by IdentityTaxCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "IdentityTaxCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "personId",
+      "reason": "Guarded action record/subject pointer (personId) used by IdentityTaxCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "IdentityTaxCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "expectedTaxCompanyId",
+      "reason": "Employer-scoped tax selection optimistic-concurrency proof, validated by the statutory action; never a submitted tax fact."
+    },
+    {
+      "tag": "input",
+      "context": "IdentityTaxCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "expectedTaxSelectionVersion",
+      "reason": "Employer-scoped tax selection optimistic-concurrency proof, validated by the statutory action; never a submitted tax fact."
+    },
+    {
+      "tag": "input",
+      "context": "IdentityTaxCard",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "expectedTaxApplicabilityEpoch",
+      "reason": "Employer-scoped tax selection optimistic-concurrency proof, validated by the statutory action; never a submitted tax fact."
+    }
+  ],
+  "components/same-as-permanent-address.tsx": [
+    {
+      "tag": "input",
+      "context": "SameAsPermanentAddress",
+      "hidden": true,
+      "occurrences": 1,
+      "nameExpression": "viaInputName",
+      "reason": "Address-copy provenance marker for the Person update event; copied address values bind to their separate canonical descriptors."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/movement-new-event.tsx": [
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by MovementNewEvent; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementId",
+      "reason": "Guarded action record/subject pointer (movementId) used by MovementNewEvent; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [
+    {
+      "tag": "input",
+      "context": "HireCorrectionForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by HireCorrectionForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "components/salary-history-table.tsx": [
+    {
+      "tag": "input",
+      "context": "salaryEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by salaryEditForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "salaryEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "compensationId",
+      "reason": "Guarded action record/subject pointer (compensationId) used by salaryEditForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "salaryEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "SalaryHistoryTable",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Read-only salary-history search/type filter; no Compensation value is edited by this control."
+    },
+    {
+      "tag": "select",
+      "context": "SalaryHistoryTable",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Read-only salary-history search/type filter; no Compensation value is edited by this control."
+    },
+    {
+      "tag": "input",
+      "context": "SalaryHistoryTable",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by SalaryHistoryTable; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "SalaryHistoryTable",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "compensationId",
+      "reason": "Guarded action record/subject pointer (compensationId) used by SalaryHistoryTable; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "components/client-pager.tsx": [
+    {
+      "tag": "select",
+      "context": "ClientPager",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Generic table page-size navigation; no Personnel fact or writer."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/review-section.tsx": [
+    {
+      "tag": "input",
+      "context": "ReviewSection",
+      "hidden": true,
+      "occurrences": 4,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by ReviewSection; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "ReviewSection",
+      "hidden": true,
+      "occurrences": 2,
+      "name": "reviewId",
+      "reason": "Guarded action record/subject pointer (reviewId) used by ReviewSection; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/documents-manager.tsx": [
+    {
+      "tag": "input",
+      "context": "documentDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by documentDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "documentDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "documentId",
+      "reason": "Guarded action record/subject pointer (documentId) used by documentDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "documentDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "replaceDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by replaceDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "replaceDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "documentId",
+      "reason": "Guarded action record/subject pointer (documentId) used by replaceDialogForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "replaceDialogForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    },
+    {
+      "tag": "input",
+      "context": "DocumentsManager",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Read-only document table search/category/type/upload-date filter; document metadata/upload controls are separately bound."
+    },
+    {
+      "tag": "select",
+      "context": "DocumentsManager",
+      "hidden": false,
+      "occurrences": 2,
+      "reason": "Read-only document table search/category/type/upload-date filter; document metadata/upload controls are separately bound."
+    },
+    {
+      "tag": "DateField",
+      "context": "DocumentsManager",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Read-only document table search/category/type/upload-date filter; document metadata/upload controls are separately bound."
+    },
+    {
+      "tag": "input",
+      "context": "DocumentsManager",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by DocumentsManager; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "DocumentsManager",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "documentId",
+      "reason": "Guarded action record/subject pointer (documentId) used by DocumentsManager; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "DocumentsManager",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "tab",
+      "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
+    }
+  ],
+  "app/admin/personnel/employee-switcher.tsx": [
+    {
+      "tag": "input",
+      "context": "EmployeeSwitcher",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Authorized employee-switch search/navigation; no Personnel fact or writer."
+    }
+  ],
+  "app/admin/personnel/new/create-form.tsx": [
+    {
+      "tag": "input",
+      "context": "fields",
+      "hidden": false,
+      "occurrences": 1,
+      "name": "employeeIdMode",
+      "reason": "Employee-code reservation mode chooser, validated by resolveEmployeeIdMode; the held Employee ID fact is separately bound. This radio is an operation choice, not an independent employee value."
+    }
+  ]
+}

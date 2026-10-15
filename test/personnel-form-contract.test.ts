@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue} from '../lib/personnel-form-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelWorkflowControl,personnelWorkflowCarry} from '../lib/personnel-form-contract';
 import {personnelFieldChoices,personnelFieldLabel} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
@@ -67,6 +67,16 @@ describe('Personnel shared form contract',()=>{
     expect(()=>personnelInput('bank_statutory.epf_contribution.epfmode')).toThrow(/specialized/);
     expect(personnelInput('bank_statutory.epf_contribution.epfemployeeamount','draft').required).toBe(false);
     expect(personnelInput('bank_statutory.epf_contribution.epfemployeeamount','edit').required).toBe(true);
+  });
+  it('uses explicit specialist action aliases and canonical conditional Movement requirements',()=>{
+    const manager='employment.direct_superior_and_history.superioremploymentid';
+    expect(personnelWorkflowControl(manager,'movement').name).toBe('managerEmploymentId');
+    expect(personnelWorkflowControl(manager,'hireCorrection').name).toBe('managerEmploymentId');
+    expect(()=>personnelWorkflowControl('profile.personal_details.fullname','movement')).toThrow(/workflow binding/);
+    const lastDay='employment_history.event_information.lastworkingdate';
+    expect(personnelWorkflowControl(lastDay,'movement','edit',{movementEndDate:true}).required).toBe(true);
+    expect(personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')).toMatchObject({name:'endDate',type:'hidden',required:false});
+    expect(personnelFormChoices('employment.organisation_assignment.employmenttype').map(option=>option.value)).toEqual(['full_time','part_time','contract','intern']);
   });
   it('rejects a stale specialized override when canonical type changes',()=>{
     const field=structuredClone(PERSONNEL_FIELDS.find(field=>field.id==='profile.contact_and_permanent_address.personalemail')!);
