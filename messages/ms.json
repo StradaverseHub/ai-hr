@@ -19161,5 +19161,10 @@
       "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
     },
     "reference": "Rujukan penghantaran"
+  },
+  "pageStyleRecovery": {
+    "restoring": "Memulihkan halaman…",
+    "failed": "Halaman tidak dapat dimuatkan sepenuhnya. Semak sambungan anda dan cuba lagi.",
+    "reload": "Muat semula halaman"
   }
 }

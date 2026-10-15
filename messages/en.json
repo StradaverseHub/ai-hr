@@ -19161,5 +19161,10 @@
       "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
     },
     "reference": "Delivery reference"
+  },
+  "pageStyleRecovery": {
+    "restoring": "Restoring the page…",
+    "failed": "The page could not load completely. Check your connection and try again.",
+    "reload": "Reload page"
   }
 }

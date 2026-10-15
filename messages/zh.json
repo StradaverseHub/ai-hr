@@ -19161,5 +19161,10 @@
       "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
     },
     "reference": "发送参考编号"
+  },
+  "pageStyleRecovery": {
+    "restoring": "正在恢复页面…",
+    "failed": "页面未能完整加载。请检查网络连接后重试。",
+    "reload": "重新加载页面"
   }
 }

@@ -19161,5 +19161,10 @@
       "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
     },
     "reference": "Mã tham chiếu gửi"
+  },
+  "pageStyleRecovery": {
+    "restoring": "Đang khôi phục trang…",
+    "failed": "Không thể tải đầy đủ trang. Hãy kiểm tra kết nối và thử lại.",
+    "reload": "Tải lại trang"
   }
 }
