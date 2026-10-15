@@ -3,7 +3,7 @@ import { client } from '../../db/client';
 import { internalConfig } from './config';
 import { digest, opaque, validOpaque, passwordHash, validatePassword } from './crypto';
 import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
-import { credentialByLogin, takeRate, InternalAuthError, verifyCredentialFactor, type Credential } from './service';
+import { canonicalOrg, credentialByLogin, takeRate, InternalAuthError, verifyCredentialFactor, type Credential } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError } from '../account-email-model';
 import { attemptAccountEmail } from '../../core/account-email';
@@ -13,7 +13,7 @@ export type RecoveryContext = { subject: string; issuer: string; tenantId: strin
 export async function requestRecovery(organization: string, username: string, transport?: MailTransport,
   dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt()) {
   await takeRate('recovery-global', 120, 3600_000);
-  await takeRate(`recovery:${organization.trim().toLowerCase()}:${username.trim().toLowerCase()}`, 3, 3600_000);
+  await takeRate(`recovery:${canonicalOrg(organization)}:${username.trim().toLowerCase()}`, 3, 3600_000);
   const c = await credentialByLogin(organization, username);
   if (!c?.enabled || !c.emailVerified) return;
   const delivery = await authTransaction(c.subject, async tx => {

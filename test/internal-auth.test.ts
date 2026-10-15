@@ -177,6 +177,14 @@ describe('first-party authentication with real private storage and existing HR b
     const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false }); expect(login.step).toBe('mfa');
     expect(await readRecord(client, `recovery:${digest(token)}`)).toBeNull();
   });
+  it('shares the recovery limit between explicit and default organization codes', async () => {
+    await enroll();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    try {
+      for (const organization of ['alpha', '', 'ALPHA']) await requestRecovery(organization, ' OWNER ');
+      for (const organization of ['', 'alpha']) await expect(requestRecovery(organization, 'owner')).rejects.toMatchObject({ code: 'rateLimited' });
+    } finally { clock.mockRestore(); }
+  });
   it('commits exact recovery context before acknowledging a deferred single delivery attempt', async () => {
     await enroll();
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);

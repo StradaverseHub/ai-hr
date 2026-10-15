@@ -21,7 +21,7 @@ export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string
 const SESSION_LIFE = 8 * 3600_000, ACCESS_LIFE = 15 * 60_000, CHALLENGE_LIFE = 10 * 60_000;
 const credentialKey = (subject: string) => `credential:${subject}`;
 export const loginKey = (organization: string, username: string) => `login:${digest(`${organization}\0${username}`)}`;
-const canonicalOrg = (value: string) => (value || internalConfig().organization).trim().toLowerCase();
+export const canonicalOrg = (value: string) => (value || internalConfig().organization).trim().toLowerCase();
 const canonicalUsername = (value: string) => value.trim().toLowerCase();
 export async function credentialByLogin(organization: string, username: string) {
   const index = await readRecord<{ subject: string }>(client, loginKey(canonicalOrg(organization), canonicalUsername(username)));
