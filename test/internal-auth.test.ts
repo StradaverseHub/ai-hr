@@ -31,7 +31,7 @@ beforeEach(async () => {
   vi.stubEnv('AUTH_DEFAULT_ORGANIZATION', 'alpha');
   await bootstrapInternalOwner(owner.client, { appUserId: base.adminUserId, organization: 'alpha', username: 'owner', email: 'owner@example.test', password: temp, installationOperator: true });
 });
-afterEach(() => vi.unstubAllEnvs()); afterAll(closeAll);
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); }); afterAll(closeAll);
 function challenge(value: AuthReply) { if (!('challenge' in value)) throw new Error('Expected challenge'); return value.challenge; }
 function completed(value: AuthReply) { if (value.step !== 'complete') throw new Error('Expected full session'); return value; }
 async function enroll(native = false) {
@@ -46,6 +46,8 @@ async function nextCode(c: Credential) { return generate({ secret: c.totpSecret!
 
 describe('first-party authentication with real private storage and existing HR bindings', () => {
   it('requires password change and confirmed MFA before granting any browser or API session', async () => {
+    const externalHttp = vi.fn(async () => { throw new Error('External HTTP is blocked in this on-prem fixture.'); });
+    vi.stubGlobal('fetch', externalHttp);
     const { signedIn } = await enroll();
     const identity = await readSession(signedIn.access_token); expect(identity?.issuer).toBe(internalIssuer(base.tenantId));
     expect(identity?.credential.tenantId).toBe(base.tenantId); expect(await readSession(signedIn.access_token, true)).toBeNull();
@@ -55,6 +57,7 @@ describe('first-party authentication with real private storage and existing HR b
     const raw = JSON.stringify(await owner.client`select * from app_internal_auth_record`);
     for (const secret of [temp, final, signedIn.access_token, signedIn.recoveryCodes![0]]) expect(raw).not.toContain(secret);
     await expect(client`select * from app_internal_auth_record`).rejects.toThrow(/permission denied/);
+    expect(externalHttp).not.toHaveBeenCalled();
   });
   it('blocks wrong passwords, unknown users, partial and forged handles and cross-carrier challenge completion', async () => {
     for (const username of ['owner', 'missing']) await expect(startLogin({ organization: 'alpha', username, password: 'Wrong private passphrase 999!', native: false })).rejects.toMatchObject({ code: 'invalidLogin' });
@@ -118,6 +121,22 @@ describe('first-party authentication with real private storage and existing HR b
     const result = await bootstrapInternalOwner(owner.client, { appUserId: base.adminUserId, organization: 'alpha', username: 'owner', email: 'owner@example.test', password: 'Another different phrase 888!', installationOperator: true });
     expect(result.alreadyEnrolled).toBe(true); expect(await credentialByLogin('alpha', 'owner')).toEqual(before);
     await expect(bootstrapInternalOwner(client, { appUserId: base.adminUserId, organization: 'alpha', username: 'intruder', email: 'intruder@example.test', password: temp, installationOperator: true })).rejects.toThrow(/owner connection/);
+  });
+  it('serializes concurrent claims of a new organization code across different tenants and usernames', async () => {
+    const first = await seedBase(), second = await seedBase();
+    const outcomes = await Promise.allSettled([
+      bootstrapInternalOwner(owner.client, { appUserId: first.adminUserId, organization: 'shared-new', username: 'first.user', email: 'first@example.test', password: temp, installationOperator: false }),
+      bootstrapInternalOwner(owner.client, { appUserId: second.adminUserId, organization: 'shared-new', username: 'second.user', email: 'second@example.test', password: temp, installationOperator: false }),
+    ]);
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter(outcome => outcome.status === 'rejected')).toHaveLength(1);
+    const organization = await readRecord<{ tenantId: string }>(client, 'org:shared-new');
+    const candidates = await Promise.all(['first.user', 'second.user'].map(username => credentialByLogin('shared-new', username)));
+    const accounts = candidates.filter(account => account !== null);
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]?.tenantId).toBe(organization?.tenantId);
+    const loser = organization?.tenantId === first.tenantId ? second : first;
+    expect(await readRecord(client, `tenant:${loser.tenantId}`)).toBeNull();
   });
   it('local manual enrollment preserves the employee ID, requires MFA and never resets an active password on resume', async () => {
     await enroll(); const ctx = adminCtx(base);

@@ -31,6 +31,11 @@ export async function bootstrapInternalOwner(db: Sql, input: {
       if (!invitation.length) throw new Error('The private invitation must select this exact provisioned group administrator.');
     }
     const orgKey = `org:${code}`, tenantKey = `tenant:${user.tenant_id}`, indexKey = loginKey(code, username);
+    // Missing records cannot be row-locked. Serialize both namespace owners before deciding that
+    // either is available, including different usernames racing for the same organization code.
+    for (const namespace of [orgKey, tenantKey]) {
+      await tx.unsafe("select pg_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0))", [namespace]);
+    }
     await tx.unsafe("select pg_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0))", [indexKey]);
     const org = await readRecord<Organization>(tx, orgKey, true), tenantOrg = await readRecord<Organization>(tx, tenantKey, true);
     if ((org && org.tenantId !== user.tenant_id) || (tenantOrg && tenantOrg.code !== code)) throw new Error('Organization code is already bound; no existing namespace may be reassigned.');
