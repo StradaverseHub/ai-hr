@@ -104,8 +104,11 @@ async function main() {
     const reason = `Credit15 fixture ${key} ${offset}`;
     let [lot] = await owner.db.select().from(s.toilAccrual).where(and(eq(s.toilAccrual.employmentId, subject.employmentId), eq(s.toilAccrual.note, reason))).orderBy(asc(s.toilAccrual.id));
     if (!lot) {
+      // The canonical owner correctly prohibits HR self-grants. The existing seeded group HR grants
+      // the fictional HR person's one lot; the scoped HR grants the other fixture people's credits.
+      const operator = key === 'hr' ? await context(seedAdmin) : hr.ctx;
       await setRestDay(hr.ctx, { employmentId: subject.employmentId, shiftDate: day(offset) });
-      const created = await grantLeaveCredit(hr.ctx, { employmentId: subject.employmentId, workedDate: day(offset), days, reason, expiresOn: day(expiryOffset), today });
+      const created = await grantLeaveCredit(operator, { employmentId: subject.employmentId, workedDate: day(offset), days, reason, expiresOn: day(expiryOffset), today });
       [lot] = await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id, created.accrualId));
       if (reversed) await reverseLeaveCredit(hr.ctx, { accrualId: lot.id, reason: 'Credit fixture correction', today });
     }
