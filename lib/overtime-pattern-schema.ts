@@ -61,7 +61,7 @@ const MODES = ['down', 'up', 'halfUp', 'halfEven'];
 const UNITS: OvertimeUnit[] = ['scalar', 'minutes', 'money', 'moneyPerHour'];
 const SELECTION: readonly string[] = OVERTIME_SELECTION_FIELDS;
 const PERSONNEL = new Set<string>(OVERTIME_ASSIGNMENT_SELECTION_FIELDS);
-function decimalCompare(a: string, b: string) { const scaled = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * 1000000n + BigInt(f.padEnd(6, '0')); }; return scaled(a) < scaled(b) ? -1 : scaled(a) > scaled(b) ? 1 : 0; }
+function decimalCompare(a: string, b: string) { const scaled = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * BigInt('1000000') + BigInt(f.padEnd(6, '0')); }; return scaled(a) < scaled(b) ? -1 : scaled(a) > scaled(b) ? 1 : 0; }
 function controlString(raw: unknown, path: string, max = 200): string {
     if (typeof raw !== 'string' || raw.length > max)
         overtimeRefuse('invalid', path, 'Expected bounded control text.');

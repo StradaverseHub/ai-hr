@@ -29,7 +29,7 @@ function exact(raw: unknown, path: string, unit: 'minutes' | 'money' | 'scalar')
     if (r.unit !== unit)
         fail('type', path, 'Recorded dimensional unit does not agree.');
     const n = integer(r.numerator, path), d = integer(r.denominator, path, true);
-    if (gcd(n, d) !== 1n)
+    if (gcd(n, d) !== BigInt('1'))
         fail('invalid', path, 'Recorded exact values must be reduced.');
     return { unit, numerator: n.toString(), denominator: d.toString() };
 }
@@ -43,7 +43,7 @@ function add(a: Fraction, b: Fraction): Fraction {
         fail('limit', 'totals', 'Recorded total exceeds exact arithmetic limits.');
     return { n, d };
 }
-const total = (values: OvertimeExact[]) => values.map(fraction).reduce(add, { n: 0n, d: 1n });
+const total = (values: OvertimeExact[]) => values.map(fraction).reduce(add, { n: BigInt('0'), d: BigInt('1') });
 const compare = (a: Fraction, b: Fraction) => a.n * b.d < b.n * a.d ? -1 : a.n * b.d > b.n * a.d ? 1 : 0;
 function text(raw: unknown, path: string, max = 512): string {
     if (typeof raw !== 'string' || !raw.length || raw.length > max)
@@ -191,7 +191,7 @@ export function parseRecordedOvertimeEvaluation(raw: unknown): OvertimeEvaluatio
                 fail('approval', p, 'Recorded line exceeds its approval attribution.');
             return { id, source: lineSource, sessionId, segmentId, rateId, tierId, mapping, rawMinutes: value(l.rawMinutes, p + '.rawMinutes'), eligibleMinutes: value(l.eligibleMinutes, p + '.eligibleMinutes'), approvedMinutes: lineApproved, payableMinutes: linePayable, gross: exact(l.gross, p + '.gross', 'money'), adjusted: exact(l.adjusted, p + '.adjusted', 'money'), amountMinorUnits: integer(l.amountMinorUnits, p + '.amountMinorUnits').toString() };
         });
-        if (lines.reduce((n, l) => n + BigInt(l.amountMinorUnits), 0n) !== amount || compare(total(lines.map(l => l.payableMinutes)), fraction(payableMinutes)) !== 0)
+        if (lines.reduce((n, l) => n + BigInt(l.amountMinorUnits), BigInt('0')) !== amount || compare(total(lines.map(l => l.payableMinutes)), fraction(payableMinutes)) !== 0)
             fail('invalid', 'totals', 'Recorded line totals disagree.');
         for (const [key, layer] of [['rawMinutes', rawMinutes], ['eligibleMinutes', eligibleMinutes], ['approvedMinutes', approvedMinutes]] as const) {
             if (layer.state === 'known') {
@@ -202,9 +202,9 @@ export function parseRecordedOvertimeEvaluation(raw: unknown): OvertimeEvaluatio
                     fail('invalid', key, 'Recorded line attributions exceed their source layer.');
             }
         }
-        if (r.status === 'ineligible' && (r.transferable || amount !== 0n || BigInt(payableMinutes.numerator) !== 0n || lines.length))
+        if (r.status === 'ineligible' && (r.transferable || amount !== BigInt('0') || BigInt(payableMinutes.numerator) !== BigInt('0') || lines.length))
             fail('invalid', 'status', 'Ineligible results cannot carry a payable contribution.');
-        if (r.status === 'ready' && (BigInt(payableMinutes.numerator) <= 0n || !lines.length))
+        if (r.status === 'ready' && (BigInt(payableMinutes.numerator) <= BigInt('0') || !lines.length))
             fail('invalid', 'status', 'Ready results require positive attributed duration.');
         return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, transferable: r.transferable, currency, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, amountMinorUnits: amount.toString(), lines, trace: evidence };
     }
@@ -231,8 +231,8 @@ function durationAllocation(raw: unknown): OvertimeDurationAllocation {
     if(r.attribution!==null){const a=overtimeObject(r.attribution,'attribution');overtimeKeys(a,['policy','physicalApproval','startEpochSeconds','endEpochSeconds'],'attribution');
         if(!['earliest','latest'].includes(a.policy as string)||a.physicalApproval!==false||rawClock.state!=='known')fail('source','attribution','Invalid policy count attribution.');
         const start=exact(a.startEpochSeconds,'startEpochSeconds','scalar'),end=exact(a.endEpochSeconds,'endEpochSeconds','scalar'),sf=fraction(start),ef=fraction(end),span=rawClock.value;
-        const lower={n:BigInt(span.startEpochSeconds),d:1n},upper={n:BigInt(span.startEpochSeconds)+BigInt(span.elapsedSeconds),d:1n};
-        if(compare(sf,lower)<0||compare(ef,upper)>0||compare(sf,ef)>0||compare(add(ef,{n:-sf.n,d:sf.d}),{n:BigInt(payableMinutes.numerator)*60n,d:BigInt(payableMinutes.denominator)})!==0||a.policy==='earliest'&&compare(sf,lower)!==0||a.policy==='latest'&&compare(ef,upper)!==0)fail('source','attribution','Recorded count placement does not agree with span and policy.');
+        const lower={n:BigInt(span.startEpochSeconds),d:BigInt('1')},upper={n:BigInt(span.startEpochSeconds)+BigInt(span.elapsedSeconds),d:BigInt('1')};
+        if(compare(sf,lower)<0||compare(ef,upper)>0||compare(sf,ef)>0||compare(add(ef,{n:-sf.n,d:sf.d}),{n:BigInt(payableMinutes.numerator)*BigInt('60'),d:BigInt(payableMinutes.denominator)})!==0||a.policy==='earliest'&&compare(sf,lower)!==0||a.policy==='latest'&&compare(ef,upper)!==0)fail('source','attribution','Recorded count placement does not agree with span and policy.');
         attribution={policy:a.policy as 'earliest'|'latest',physicalApproval:false,startEpochSeconds:start,endEpochSeconds:end};
     }
     return {segmentId,sessionId,payableMinutes,rawClock,attribution};
@@ -256,12 +256,12 @@ export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeD
         const rawMinutes = value(r.rawMinutes, 'rawMinutes'), eligibleMinutes = value(r.eligibleMinutes, 'eligibleMinutes'), approvedMinutes = value(r.approvedMinutes, 'approvedMinutes'), payableMinutes = exact(r.payableMinutes, 'payableMinutes', 'minutes');
         if (approvedMinutes.state !== 'known' || compare(fraction(payableMinutes), fraction(approvedMinutes.value)) > 0 || rawMinutes.state === 'known' && compare(fraction(payableMinutes), fraction(rawMinutes.value)) > 0)
             fail('approval', 'payableMinutes', 'Recorded duration exceeds its canonical bound.');
-        const positive = BigInt(payableMinutes.numerator) > 0n;
+        const positive = BigInt(payableMinutes.numerator) > BigInt('0');
         if ((r.status === 'ready') !== positive || r.transferable !== (r.mode === 'actual' && positive))
             fail('invalid', 'status', 'Recorded duration state disagrees with its count or sample mode.');
         const allocations=overtimeList(r.allocations,L.segments,'allocations').map(durationAllocation);
         if(new Set(allocations.map(a=>a.segmentId)).size!==allocations.length||compare(total(allocations.map(a=>a.payableMinutes)),fraction(payableMinutes))!==0)fail('source','allocations','Duration allocations must be unique and sum exactly.');
-        let previousEnd:Fraction|null=null;for(const a of allocations){if(a.rawClock.state==='known'){const start={n:BigInt(a.rawClock.value.startEpochSeconds),d:1n};if(previousEnd&&compare(start,previousEnd)<0)fail('source','allocations','Clock allocations must remain ordered and disjoint.');previousEnd={n:start.n+BigInt(a.rawClock.value.elapsedSeconds),d:1n};}}
+        let previousEnd:Fraction|null=null;for(const a of allocations){if(a.rawClock.state==='known'){const start={n:BigInt(a.rawClock.value.startEpochSeconds),d:BigInt('1')};if(previousEnd&&compare(start,previousEnd)<0)fail('source','allocations','Clock allocations must remain ordered and disjoint.');previousEnd={n:start.n+BigInt(a.rawClock.value.elapsedSeconds),d:BigInt('1')};}}
         return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, mode: r.mode as 'actual' | 'preview', transferable: r.transferable, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, allocations, trace: evidence };
     }
     catch {

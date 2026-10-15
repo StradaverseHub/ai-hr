@@ -14,7 +14,7 @@ describe('recorded work inputs preserve the boundary between quantity and clock 
     expect(before.rawMinutes).toMatchObject({state: 'known', value: '60'});
     expect(after.rawMinutes).toMatchObject({state: 'known', value: '60'});
     expect(before.clock).toMatchObject({state: 'known', value: {localDate: '2026-01-30', localStartSecond: 82800, elapsedSeconds: 3600}});
-    expect(after.clock).toMatchObject({state: 'known', value: {startEpochSeconds: String(BigInt(day.intervals![0].startEpochSeconds) + 3600n), localDate: '2026-01-31', localStartSecond: 0, elapsedSeconds: 3600}});
+    expect(after.clock).toMatchObject({state: 'known', value: {startEpochSeconds: String(BigInt(day.intervals![0].startEpochSeconds) + BigInt('3600')), localDate: '2026-01-31', localStartSecond: 0, elapsedSeconds: 3600}});
     expect(before.sessionId).toBe(after.sessionId);
     expect(before.id).not.toBe(after.id);
     for (const segment of result.segments) expect(segment.dayType).toMatchObject({state: 'known', value: 'workday', provenance: {owner: 'attendance', asOf: day.attendanceDate, basis: 'recorded'}});
@@ -34,7 +34,7 @@ describe('recorded work inputs preserve the boundary between quantity and clock 
   it('refuses clock certainty for duplicate, overlapping, reordered or malformed evidence', () => {
     const first = {...day.intervals![0], elapsedSeconds: 3600};
     const second = {...first, id: 'second'};
-    const later = {...second, startEpochSeconds: String(BigInt(first.startEpochSeconds) + 3600n)};
+    const later = {...second, startEpochSeconds: String(BigInt(first.startEpochSeconds) + BigInt('3600'))};
     for (const intervals of [[first, second], [later, first], [first, {...later, id: first.id}], [{...first, localDate: '2026-02-30'}], [{...first, startEpochSeconds: 'bad'}], [{...first, elapsedSeconds: 3601}]]) {
       const result = recordedOvertimeWork({...day, intervals});
       expect(result.placement).toBe('unavailable');
@@ -43,7 +43,7 @@ describe('recorded work inputs preserve the boundary between quantity and clock 
   });
   it('preserves distinct disjoint sessions instead of charging an absent gap as work', () => {
     const first = {...day.intervals![0], localStartSecond: 36000, elapsedSeconds: 3600};
-    const second = {...first, id: 'second', startEpochSeconds: String(BigInt(first.startEpochSeconds) + 7200n), localStartSecond: 43200};
+    const second = {...first, id: 'second', startEpochSeconds: String(BigInt(first.startEpochSeconds) + BigInt('7200')), localStartSecond: 43200};
     const result = recordedOvertimeWork({...day, intervals: [first, second]});
     expect(result.placement).toBe('recordedIntervals');
     expect(result.segments.map(segment => segment.sessionId)).toEqual(['recorded-session', 'second']);
