@@ -447,8 +447,8 @@ export type ConfigRow = {
 
 /** List all Employee-ID configs (optionally scoped to a set of companies — GLOBAL configs are always
  *  included). Joins the company name for display. */
-export async function listConfigs(ctx: SessionContext, companyIds?: string[]): Promise<ConfigRow[]> {
-  return withTenant(ctx, async (tx) => {
+export async function listConfigs(ctx: SessionContext, companyIds?: string[], outerTx?:Tx): Promise<ConfigRow[]> {
+  const run=async(tx:Tx)=>{
     const rows = await tx
       .select({
         id: employeeIdConfig.id,
@@ -474,7 +474,8 @@ export async function listConfigs(ctx: SessionContext, companyIds?: string[]): P
         ...r,
         status: r.status as EmployeeIdConfigStatus,
       }));
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 export async function getConfig(ctx: SessionContext, id: string): Promise<ConfigRow | null> {

@@ -629,9 +629,9 @@ export type OthersStatutoryInput = {
  * checkbox. Appends an `employee.others-statutory.updated` DomainEvent (before/after) per substrate
  * discipline, so an auditor can reconstruct who toggled HRDF subjectivity and when, from the log alone.
  */
-export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatutoryInput) {
+export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatutoryInput,outerTx?:Tx) {
   const subjectToHrdf = typeof p.subjectToHrdf === 'boolean' ? p.subjectToHrdf : null;
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, subjectToHrdf: employeeStatutoryMy.subjectToHrdf })
       .from(employeeStatutoryMy)
@@ -658,7 +658,8 @@ export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatuto
       },
     });
     return { id: existing.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 // ── Feedback 57840a6e — corrective step for accidental HRDF opt-outs ───────────────────────────────────

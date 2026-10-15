@@ -830,8 +830,9 @@ export function listEmployeesForPayrollRun(
 export function listLeaveTypes(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; locale?: string } = {},
+  outerTx?:Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const rows = await tx
       .select({
         id: leaveType.id,
@@ -1012,7 +1013,8 @@ export function listLeaveTypes(
     return rows
       .map(({ i18n, ...r }) => ({ ...r, name: pickName(r.name, i18n, opts.locale) }))
       .sort((a, b) => a.name.localeCompare(b.name, opts.locale));
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

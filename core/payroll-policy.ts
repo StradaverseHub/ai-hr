@@ -303,8 +303,9 @@ export async function deletePolicy(ctx: SessionContext, p: { id: string }): Prom
 export async function assignPolicy(
   ctx: SessionContext,
   p: { employmentId: string; policyId: string | null },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [emp] = await tx
       .select({ id: employment.id, companyId: employment.companyId, before: employment.payrollPolicyId })
       .from(employment)
@@ -334,7 +335,8 @@ export async function assignPolicy(
       payload: { before: emp.before, after: p.policyId },
     });
     return { id: p.employmentId };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 // ─────────────────────────── Reads ───────────────────────────
@@ -394,18 +396,18 @@ export async function listPolicies(ctx: SessionContext, companyIds?: string[]): 
   });
 }
 
-export async function getPolicy(ctx: SessionContext, id: string): Promise<PolicyRow | null> {
-  const [row] = await listPoliciesById(ctx, [id]);
+export async function getPolicy(ctx: SessionContext, id: string, outerTx?:Tx, lock=false): Promise<PolicyRow | null> {
+  const [row] = await listPoliciesById(ctx, [id],outerTx,lock);
   return row ?? null;
 }
 
-async function listPoliciesById(ctx: SessionContext, ids: string[]): Promise<PolicyRow[]> {
+async function listPoliciesById(ctx: SessionContext, ids: string[],outerTx?:Tx,lock=false): Promise<PolicyRow[]> {
   if (ids.length === 0) return [];
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const assignedCount = sql<number>`(
       select count(*)::int from ${employment} e where e.payroll_policy_id = ${payrollPolicy.id}
     )`;
-    const rows = await tx
+    const query = tx
       .select({
         id: payrollPolicy.id,
         companyId: payrollPolicy.companyId,
@@ -422,6 +424,7 @@ async function listPoliciesById(ctx: SessionContext, ids: string[]): Promise<Pol
       })
       .from(payrollPolicy)
       .where(inArray(payrollPolicy.id, ids));
+    const rows=lock?await query.for('share'):await query;
     return rows.map((r) => ({
       ...r,
       policyType: r.policyType as PolicyType,
@@ -431,7 +434,8 @@ async function listPoliciesById(ctx: SessionContext, ids: string[]): Promise<Pol
       status: r.status as PolicyStatus,
       assignedCount: Number(r.assignedCount),
     }));
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** Active policies in one company — the assignment dropdown source (only active policies are assignable). */

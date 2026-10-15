@@ -36,7 +36,10 @@
  */
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { company, employeeDraft, employeeIdConfig, person, tenantCounter } from '../db/schema';
+import {
+  company, employeeDraft, employeeIdConfig, person, tenantCounter, department, position,
+  costCenter, jobGrade, employment, employmentTypeEnum,
+} from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
 // a72610af — three writers join `hireEmployee` here, and none of them is new: `setEmploymentInfo` owns
 // the probation / confirmation / notice columns (HireParams accepts none of them) and `updatePerson` owns
@@ -68,6 +71,8 @@ import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employe
 // 06f0cb8f — "is this Employee ID free?" spans employment AND employee_draft now. One definition, in its
 // own module, shared with core/org.ts (which cannot import this file: it is the other end of the cycle).
 import { findEmployeeCodeClaim } from './employee-code-claims';
+import { isDatabaseError } from '../lib/db-error';
+import { labelUsableByCompany } from './system-labels';
 import { requirePackFor } from '../localization/registry';
 import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
@@ -84,6 +89,8 @@ import {
   draftProvisionalEndOn,
   draftTaxResidency,
   missingForCreation,
+  missingByTab,
+  type DraftTabKey,
   missingToCreate,
   stepKey,
   withSameAsPermanent,
@@ -94,15 +101,97 @@ import {
 // 759dfc7d — the family the draft captured becomes real rows at Activate. Both of these live in
 // core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
 // set of normalisers and ONE event, so a field the Personnel screen gains cannot be dropped here.
-import { assertDependentsValid, materialiseDependents, type DependentInput } from './dependents';
+import { assertDependentsValid, materialiseDependents, DependentValidationError, type DependentInput } from './dependents';
+
+/** Safe action boundary: finite reasons and schema field tokens, never captured input values. */
+export const DRAFT_ACTIVATION_CODES=['draft_unavailable','permission','required_fields','invalid_data','company_changed','company_unavailable','reference_invalid','employee_code_invalid','employee_code_not_allowed','profile_invalid','statutory_invalid','payroll_invalid','family_invalid'] as const;
+export type DraftActivationValidationCode=typeof DRAFT_ACTIVATION_CODES[number];
+export const DRAFT_ACTIVATION_FIELDS_BY_TAB={
+  profile:['employeeCode','fullName','primaryEmail','dateOfBirth','passport','icNumber','nationality','salutation','religion','race','gender','maritalStatus','personalEmail','permanentState','permanentCountry','correspondenceState','correspondenceCountry'],
+  job:['company','department','position','costCenter','grade','reportingManager','employmentType','hiredOn','provisionalEndOn','confirmationDate','employmentPeriods'],
+  bankStatutory:['bankAccount','customHolderName','customHolderId','epfMode','epfEmployeeRate','epfEmployerRate','epfEmployeeAmount','epfEmployerAmount','epfManualReason','taxResidency','epfCitizenship','subjectToHrdf'],
+  payroll:['basicSalary','monthlyAllowance','remarks','rateAmount','payMode','paymentTerm','paymentMethod','paymentMethodBank','payrollPolicyId'],
+  family:['familyMemberName','familyMemberRelationship','familyMemberDate','gender','marriageStatus','childReliefCategory','childReliefPercentage'],
+} as const satisfies Record<DraftTabKey,readonly string[]>;
+export type DraftActivationField=typeof DRAFT_ACTIVATION_FIELDS_BY_TAB[DraftTabKey][number];
+export type DraftActivationProblem={code:DraftActivationValidationCode;fields:{tab:DraftTabKey;field:DraftActivationField}[]};
+export class DraftActivationValidationError extends Error {
+  readonly code:DraftActivationValidationCode;
+  readonly fields:DraftActivationProblem['fields'];
+  constructor(code:DraftActivationValidationCode,fields:DraftActivationProblem['fields']) {
+    super('Draft activation needs correction.');this.name='DraftActivationValidationError';
+    this.code=(DRAFT_ACTIVATION_CODES as readonly string[]).includes(code)?code:'invalid_data';
+    this.fields=fields.filter(pointer=>Object.hasOwn(DRAFT_ACTIVATION_FIELDS_BY_TAB,pointer.tab)&&(DRAFT_ACTIVATION_FIELDS_BY_TAB[pointer.tab] as readonly string[]).includes(pointer.field)).map(pointer=>({...pointer}));
+  }
+}
+const activationProblem=(code:DraftActivationValidationCode,tab:DraftTabKey,field:DraftActivationField):DraftActivationProblem=>({code,fields:[{tab,field}]});
+/** Normalize existing typed owner refusals; unknown runtime/DB faults use the action's system reference. */
+export function draftActivationValidation(error:unknown):DraftActivationProblem|null {
+  if(isDatabaseError(error))return null;
+  if(error instanceof DraftActivationValidationError)return {code:error.code,fields:error.fields.map(field=>({...field}))};
+  if(error instanceof DraftPayrollSetupError)return activationProblem('payroll_invalid','payroll',error.reason==='payment_method_invalid'?'paymentMethod':'payrollPolicyId');
+  if(error instanceof DraftStatutorySetupError)return activationProblem('statutory_invalid','bankStatutory','taxResidency');
+  if(error instanceof MissingBankForTransferError)return activationProblem('payroll_invalid','payroll','paymentMethodBank');
+  if(error instanceof IncompleteCustomHolderError)return activationProblem('statutory_invalid','bankStatutory',error.field==='name'?'customHolderName':'customHolderId');
+  if(error instanceof DependentValidationError)return activationProblem('family_invalid','family','familyMemberRelationship');
+  if(!(error instanceof Error))return null;
+  const simple:Record<string,DraftActivationProblem>={
+    InvalidICError:activationProblem('profile_invalid','profile','icNumber'),
+    PassportRequiredError:activationProblem('profile_invalid','profile','passport'),
+    TaxSelectionError:activationProblem('statutory_invalid','bankStatutory','taxResidency'),
+    SalaryRemarkRequiredError:activationProblem('payroll_invalid','payroll','remarks'),
+  };
+  if(Object.hasOwn(simple,error.name))return simple[error.name];
+  if (error.name === 'NonFiniteSalaryAmountError' || error.name === 'NegativeSalaryAmountError') {
+    const field = error.message.startsWith('Monthly allowance ') ? 'monthlyAllowance'
+      : error.message.startsWith('Rate ') ? 'rateAmount' : 'basicSalary';
+    return activationProblem('payroll_invalid', 'payroll', field);
+  }
+  const salaryMessages: Record<string, DraftActivationField> = {
+    'Unknown pay mode': 'payMode',
+    'Unknown payment term': 'paymentTerm',
+    'A daily or hourly pay mode requires a rate greater than zero': 'rateAmount',
+  };
+  if (Object.hasOwn(salaryMessages, error.message)) return activationProblem('payroll_invalid', 'payroll', salaryMessages[error.message]);
+  if(error.name==='InvalidEpfElectionError') {
+    const field=(error as Error&{field?:unknown}).field;
+    return activationProblem('statutory_invalid','bankStatutory',typeof field==='string'&&(DRAFT_ACTIVATION_FIELDS_BY_TAB.bankStatutory as readonly string[]).includes(field)?field as DraftActivationField:'epfMode');
+  }
+  // Fixed owner suffix. Project only its category, never the value from the sentence.
+  for(const [category,field] of Object.entries({salutation:'salutation',religion:'religion',race:'race',nationality:'nationality',state:'permanentState',country:'permanentCountry'}))
+    if(error.message.endsWith(` is not an active ${category} option`))return activationProblem('profile_invalid','profile',field as DraftActivationField);
+  if(error.message.startsWith('Employee ID ') && (error.message.endsWith('already in use')||error.message.endsWith('reserved by a draft employee record')))return activationProblem('employee_code_invalid','profile','employeeCode');
+  return null;
+}
+function activationData(raw:unknown):EmployeeDraftData {
+  const fail=(tab:DraftTabKey,field:DraftActivationField):never=>{throw new DraftActivationValidationError('invalid_data',[{tab,field}]);};
+  if(!raw || typeof raw!=='object'||Array.isArray(raw))return fail('profile','fullName');
+  const data=raw as Record<string,unknown>;
+  const sectionTabs={profile:'profile',employment:'job',statutory:'bankStatutory',payroll:'payroll'} as const;
+  const fallback={profile:'fullName',job:'department',bankStatutory:'bankAccount',payroll:'basicSalary'} as const;
+  for(const [section,tab] of Object.entries(sectionTabs)) {
+    const value=data[section];if(value==null)continue;
+    if(typeof value!=='object'||Array.isArray(value))return fail(tab,fallback[tab]);
+    for(const [key,cell] of Object.entries(value))if(cell!=null && typeof cell!=='string')
+      return fail(tab,(DRAFT_ACTIVATION_FIELDS_BY_TAB[tab] as readonly string[]).includes(key)?key as DraftActivationField:fallback[tab]);
+  }
+  if(data.family!=null) {
+    if(!Array.isArray(data.family))return fail('family','familyMemberName');
+    const checks=new Set(['isBeneficiary','isDeceased','spouseWorking','isStudent','childTaxRelief']);
+    for(const member of data.family) {
+      if(!member||typeof member!=='object'||Array.isArray(member))return fail('family','familyMemberName');
+      for(const [key,cell] of Object.entries(member))if(cell!=null && typeof cell!==(checks.has(key)?'boolean':'string'))return fail('family','familyMemberName');
+    }
+  }
+  return data as EmployeeDraftData;
+}
 
 /**
  * r393 (item 685d2380 step 2) — WHY A DRAFT'S PAYROLL SETUP WAS REFUSED, judged BEFORE `hireEmployee`.
  *
  * Activate writes the policy with `assignPolicy` after the employee exists, and that writer checks only
- * the company — not that the policy is still ACTIVE, and not whether Payroll is switched on. A refusal
- * discovered there would leave an employment created and the draft sitting beside it (the half-activated
- * state the plan promises never happens), so every rule is provoked here first and nothing is written.
+ * the company — not that the policy is still ACTIVE, and not whether Payroll is switched on. Preflight gives HR an actionable field before any writes; the enclosing activation transaction
+ * also rolls back every owner write if a later validation or database failure occurs.
  *
  *   payment_method_invalid — a stored value that is not one of PAYMENT_METHODS (a hand-edited blob);
  *   policy_not_found       — the id names no policy this session can see (deleted, or not an id at all);
@@ -351,8 +440,8 @@ export async function saveEmployeeDraft(
  * screen between a draft being saved and being created, and a remembered rule would let the wizard
  * promise a number the engine would not issue.
  */
-export async function employeeIdRuleFor(ctx: SessionContext, companyId: string): Promise<EmployeeIdRule> {
-  return resolveEmployeeIdRule(await listConfigs(ctx), companyId);
+export async function employeeIdRuleFor(ctx: SessionContext, companyId: string,outerTx?:Tx): Promise<EmployeeIdRule> {
+  return resolveEmployeeIdRule(await listConfigs(ctx,undefined,outerTx), companyId);
 }
 
 /**
@@ -618,26 +707,20 @@ async function releaseReservedNumber(
   return rolled.length > 0;
 }
 
-/**
- * Turn a completed draft into a real employee.
- *
- * NOT one transaction, and that is deliberate rather than an oversight: each writer owns its own
- * transaction (this is the same composition `commitEmployeeImport` performs, for the same reason —
- * the services are the contract, not their internals). The consequence is honest and worth stating:
- * if the statutory or compensation write fails, the EMPLOYEE EXISTS and the draft is kept, so HR can
- * see what is missing and finish it on the profile screen. Deleting the employee to "roll back" would
- * be worse — it would silently discard an employment that other tables may already reference.
- *
- * The draft is deleted only after every writer has succeeded.
+/** Activate one locked Draft through canonical owners in a single explicit transaction.
+ * A validation/reference/owner/derived-tax/audit failure rolls back every write and keeps the held code.
+ * Concurrent or repeated attempts see the removed Draft and refuse rather than creating another employee.
  */
 export async function completeEmployeeDraft(
   ctx: SessionContext,
   id: string,
 ): Promise<{ employmentId: string }> {
-  assertAdmin(ctx);
-  const draft = await getEmployeeDraft(ctx, id);
-  if (!draft) throw new Error('Draft not found (or not visible).');
-  const data = draft.data;
+  if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
+  if(!UUID_RE.test(id))throw new DraftActivationValidationError('draft_unavailable',[]);
+  return withTenant(ctx,async tx=>{
+  const [draft]=await tx.select().from(employeeDraft).where(and(eq(employeeDraft.id,id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');
+  if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
+  const data=activationData(draft.data);
 
   // da7463b4 — "SAME AS PERMANENT ADDRESS" IS RE-APPLIED HERE, ON THE SERVER, and that is the point of
   // it. The wizard applies the same function as the form is typed so the screen shows what is stored;
@@ -661,7 +744,7 @@ export async function completeEmployeeDraft(
   // would have. That is why this is a fork and not a replacement.
   const chosenCompanyId = str(e.companyId);
   const reservedCode = str(draft.reservedEmployeeCode ?? undefined);
-  const rule = !reservedCode && chosenCompanyId ? await employeeIdRuleFor(ctx, chosenCompanyId) : null;
+  const rule = !reservedCode && chosenCompanyId ? await employeeIdRuleFor(ctx, chosenCompanyId,tx) : null;
 
   // The client renders the same rules, but the client is not trusted: re-run them here. BOTH rules run —
   // the four Create fields and everything Activate needs — so nothing that used to be checked before an
@@ -684,15 +767,26 @@ export async function completeEmployeeDraft(
   if (paymentMethod === 'bank_transfer' && bankTransferLacksBank(s)) throw new MissingBankForTransferError();
   // r393 (685d2380 step 3a) — A TICKED CUSTOM HOLDER BOX WITH NOTHING IN IT, refused with the SAME typed
   // error `pack.statutory.setBank` throws. That setter can only run once the statutory row exists, which is
-  // after `hireEmployee` has committed, so its refusal is provoked HERE, where nothing has been written yet.
+  // after `hireEmployee` has written within the activation transaction, so its refusal is provoked HERE, where nothing has been written yet.
   // `missingByTab` names the same gap on the Bank & Statutory tab (`customHolderName` / `customHolderId`).
   const holder = draftCustomHolder(s);
   const [holderGap] = customHolderGaps(holder);
   if (holderGap) throw new IncompleteCustomHolderError(holderGap);
   const holderOn = holder.enableCustomHolderName || holder.enableCustomHolderId;
-  if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
+  if(missing.length>0) {
+    const fields:DraftActivationProblem['fields']=[];
+    for(const [tab,names] of Object.entries(missingByTab(data)))for(const field of names)
+      if((DRAFT_ACTIVATION_FIELDS_BY_TAB[tab as DraftTabKey] as readonly string[]).includes(field))fields.push({tab:tab as DraftTabKey,field:field as DraftActivationField});
+    for(const field of missingToCreate(data,judgeTheId?{employeeIdRule:rule}:{}))fields.push({tab:field==='company'?'job':'profile',field:field as DraftActivationField});
+    throw new DraftActivationValidationError('required_fields',fields);
+  }
 
   const companyId = chosenCompanyId!;
+  if(!UUID_RE.test(companyId))throw new DraftActivationValidationError('company_unavailable',[{tab:'job',field:'company'}]);
+  if(draft.companyId && draft.companyId!==companyId)throw new DraftActivationValidationError('company_changed',[{tab:'job',field:'company'}]);
+  const [companyRow]=await tx.select({country:company.country,archivedAt:company.archivedAt}).from(company)
+    .where(and(eq(company.id,companyId),sql`app.is_admin_for(${company.id})`)).for('share');
+  if(!companyRow || companyRow.archivedAt)throw new DraftActivationValidationError('company_unavailable',[{tab:'job',field:'company'}]);
 
   // r393 (685d2380 step 2) — THE PAYROLL POLICY, judged before anything is created (see
   // DraftPayrollSetupError). ONLY WHERE PAYROLL IS SWITCHED ON for this company: the Payroll tab does not
@@ -704,12 +798,15 @@ export async function completeEmployeeDraft(
   const payrollOn = isModuleEnabled(ctx, 'payroll', companyId);
   const policyId = payrollOn ? str(pay.payrollPolicyId) : undefined;
   if (policyId !== undefined) {
-    const policy = UUID_RE.test(policyId) ? await getPolicy(ctx, policyId) : null;
+    const policy = UUID_RE.test(policyId) ? await getPolicy(ctx, policyId,tx,true) : null;
     if (!policy) throw new DraftPayrollSetupError('policy_not_found');
     if (policy.companyId !== companyId) throw new DraftPayrollSetupError('policy_other_company');
     if (policy.status !== 'active') throw new DraftPayrollSetupError('policy_inactive');
   }
   const hiredOn = str(e.hiredOn)!;
+  if (!(employmentTypeEnum.enumValues as readonly string[]).includes(str(e.employmentType)!)) {
+    throw new DraftActivationValidationError('invalid_data', [{ tab: 'job', field: 'employmentType' }]);
+  }
 
   const decision = resolveEmployeeIdMode(rule, {
     chosen: p.employeeIdMode,
@@ -719,34 +816,44 @@ export async function completeEmployeeDraft(
   // "Allow manual override" is OFF for this company's setup — obeyed for the first time (the switch has
   // been stored and displayed since 0261 and read by nothing). Refusing LOUDLY rather than quietly
   // dropping the typed value: HR typed an ID on purpose and must be told it will not be used.
-  if (!reservedCode && typedCode && decision.forcedBecause === 'manualNotAllowed') {
-    throw new Error(
-      `Employee ID "${typedCode}" was entered by hand, but the selected company's Employee ID Auto Running Number Setup does not allow manual entry. Remove it and the next running number will be issued automatically.`,
-    );
-  }
+  if(!reservedCode && typedCode && decision.forcedBecause==='manualNotAllowed')throw new DraftActivationValidationError('employee_code_not_allowed',[{tab:'profile',field:'employeeCode'}]);
   // The held code, NEVER blank — handing `hireEmployee` an empty value would run the generator and
   // advance the counter a second time, giving the employee a different ID from the one that has been
   // reserved for them since Create. On an unreserved (pre-06f0cb8f) draft the bd271009 rule still
   // decides: in Auto mode we send NO code, so `hireEmployee` runs the generator, and a code left behind
   // by someone who switched Manual → Auto is ignored rather than used.
   const employeeCodeToIssue = reservedCode ?? (decision.mode === 'manual' ? typedCode : undefined);
+  if(employeeCodeToIssue)try{requireEmployeeCode(employeeCodeToIssue);}catch{throw new DraftActivationValidationError('employee_code_invalid',[{tab:'profile',field:'employeeCode'}]);}
+
+  // Lock selected references; canonical shared-label eligibility remains the authority.
+  const references=[['department',str(e.departmentId),department,'department'],['position',str(e.positionId),position,'position'],['cost_center',str(e.costCenterId),costCenter,'costCenter']] as const;
+  for(const [kind,referenceId,table,field] of references) {
+    if(!referenceId)continue;
+    if(!UUID_RE.test(referenceId))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field}]);
+    const [reference]=await tx.select({id:table.id}).from(table).where(eq(table.id,referenceId)).for('share');
+    if(!reference || !(await labelUsableByCompany(tx,ctx.tenantId,kind,referenceId,companyId)))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field}]);
+  }
+  const gradeId=str(e.gradeId),managerId=str(e.reportingManagerEmploymentId);
+  if(gradeId) {
+    if(!UUID_RE.test(gradeId))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field:'grade'}]);
+    const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.id,gradeId),eq(jobGrade.tenantId,ctx.tenantId))).for('share');
+    if(!grade)throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field:'grade'}]);
+  }
+  if(managerId) {
+    if(!UUID_RE.test(managerId))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field:'reportingManager'}]);
+    const [manager]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,managerId),eq(employment.tenantId,ctx.tenantId))).for('share');
+    if(!manager)throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field:'reportingManager'}]);
+  }
+
 
   // The company's country pack owns the IC rules (ADR-0080 D1/D6) — resolved from the COMPANY, never
   // from a hardcoded jurisdiction, and fail-loud when the country resolves nothing.
-  const country = await withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ country: company.country })
-      .from(company)
-      .where(eq(company.id, companyId))
-      .limit(1);
-    if (!row) throw new Error('Company not found (or not visible).');
-    return row.country;
-  });
+  const country=companyRow.country;
   const pack = requirePackFor(country);
   const icNumber = str(p.icNumber);
   // Optional (item e3ce0d4d — a non-Malaysian passport holder has no IC) but validated when supplied,
   // because an invalid IC stored now is a payroll fault later.
-  if (icNumber && !pack.statutory.validateIC(icNumber)) throw new Error(`Invalid identity number "${icNumber}".`);
+  if (icNumber && !pack.statutory.validateIC(icNumber))throw new DraftActivationValidationError('profile_invalid',[{tab:'profile',field:'icNumber'}]);
 
   const nationality = str(p.nationality);
 
@@ -755,7 +862,7 @@ export async function completeEmployeeDraft(
   // The draft's raw box strings go through the SAME `mapEpfUiMode` the Active statutory action calls
   // (percent → decimal, ringgit unscaled, blank → null, unused boxes nulled), and the result is asked of the
   // pack's OWN rule, `validateEpfElection` — the one `pack.statutory.set` applies below. That writer can only
-  // run after `hireEmployee` has committed, so a below-floor rate, a rate over 100%, a negative amount, a
+  // run after `hireEmployee` has written within the activation transaction, so a below-floor rate, a rate over 100%, a negative amount, a
   // manual category with no figure or no reason is refused HERE, with the same `InvalidEpfElectionError`,
   // while nothing has been written. `str()` trims, so a blank or whitespace box is null, never 0.
   const epfElection: EpfElectionFields = mapEpfUiMode(
@@ -779,16 +886,15 @@ export async function completeEmployeeDraft(
   }
 
   // ── The family, judged BEFORE anything is created (item 759dfc7d) ───────────────────────────────
-  // `materialiseDependents` can only run once a PERSON exists, which is to say after `hireEmployee` has
-  // committed. So every refusal the dependent writer is capable of has to be provoked HERE, while the
+  // `materialiseDependents` needs the PERSON written by `hireEmployee` in this transaction. So every refusal the dependent writer is capable of has to be provoked HERE, while the
   // cost of one is still nothing: a gender outside the set, a relationship that is neither built-in nor
   // an active catalog option, a relief share that is neither 100 nor 50. The name / relationship /
   // date-format rules were already covered by `missingForCreation` above — between the two, nothing the
   // writer can reject survives to the far side of the hire.
   const family = draftFamilyToDependents(data);
-  await assertDependentsValid(ctx, family);
+  await assertDependentsValid(ctx, family,tx);
 
-  const types = await listLeaveTypes(ctx);
+  const types = await listLeaveTypes(ctx,{},tx);
   const { employmentId, personId } = await hireEmployee(ctx, {
     // r393 (685d2380 step 3b) — the hire-time selection takes only resident / non_resident; an incentive
     // scheme starts as resident (it IS a resident category) and is moved onto its scheme by the scoped tax
@@ -830,7 +936,7 @@ export async function completeEmployeeDraft(
     grantLeaveTypes: types
       .filter((t) => STANDING_GRANTS.has(t.code))
       .map((t) => ({ id: t.id, code: t.code, yearCycleOverride: t.yearCycleOverride })),
-  });
+  },tx);
 
   // r393 (685d2380 step 3a) — the four holder keys decide whether a statutory row is created ONLY through
   // their effective value: an un-ticked box is not carried anywhere, so it must not conjure a row either
@@ -845,7 +951,7 @@ export async function completeEmployeeDraft(
       personId,
       // Item 35524d1f — null, not ''. The setter used to reject a blank IC, so a draft carrying any statutory
       // detail (an EPF number, a bank account) but no Identity No failed HERE, after hireEmployee had already
-      // committed the employee. Nothing in the wizard marks Identity No required, and e3ce0d4d made it
+      // written the employee in this transaction. Nothing in the wizard marks Identity No required, and e3ce0d4d made it
       // optional for passport holders; the statutory row is now stored with a null IC instead.
       icNumber: icNumber ?? null,
       epfNumber: str(s.epfNumber),
@@ -900,7 +1006,7 @@ export async function completeEmployeeDraft(
       employerBearsSkbbk: boolOrUndef(s.employerBearsSkbbk),
       bankName: str(s.bankName),
       bankAccountNo: str(s.bankAccountNo),
-    });
+    },tx);
   }
 
   // ── The custom payment holder (r393, item 685d2380 step 3a) ───────────────────────────────────────
@@ -915,7 +1021,7 @@ export async function completeEmployeeDraft(
       bankName: str(s.bankName) ?? null,
       bankAccountNo: str(s.bankAccountNo) ?? null,
       ...holder,
-    });
+    },tx);
   }
 
   // ── Payment Method and Payroll Policy (r393, item 685d2380 step 2) ─────────────────────────────
@@ -926,10 +1032,10 @@ export async function completeEmployeeDraft(
   // for a reason that was knowable earlier. Each is called only when the draft carries a value: blank is
   // "Not specified" / the Monthly default, which is what a new employment already is.
   if (paymentMethod !== undefined) {
-    await setEmploymentPaymentMethod(ctx, { employmentId, paymentMethod: paymentMethod as 'bank_transfer' | 'cheque' | 'cash' });
+    await setEmploymentPaymentMethod(ctx, { employmentId, paymentMethod: paymentMethod as 'bank_transfer' | 'cheque' | 'cash' },tx);
   }
   if (policyId !== undefined) {
-    await assignPolicy(ctx, { employmentId, policyId });
+    await assignPolicy(ctx, { employmentId, policyId },tx);
   }
 
   // ── The passport block (item a72610af) ──────────────────────────────────────────────────────────
@@ -949,7 +1055,7 @@ export async function completeEmployeeDraft(
     passportRemark: str(p.passportRemark),
   };
   if (Object.values(passport).some((v) => v !== undefined)) {
-    await pack.statutory.setPassport(ctx, { personId, ...passport });
+    await pack.statutory.setPassport(ctx, { personId, ...passport },tx);
   }
 
   // ── The tax reliefs and the child-relief mode (item a72610af) ───────────────────────────────────
@@ -994,7 +1100,7 @@ export async function completeEmployeeDraft(
       ...(!['','1','2','3'].includes(s.taxCategory??'')?{taxCircumstance:s.taxCategory}:{}),
       numChildren: numOrUndef(s.numChildren),
       taxResidency: taxScheme,
-    });
+    },tx);
   }
 
   // ── The training levy switch (item a72610af) ────────────────────────────────────────────────────
@@ -1005,7 +1111,7 @@ export async function completeEmployeeDraft(
   // company's staff from the levy for ever.
   const hrdf = boolOrUndef(s.subjectToHrdf);
   if (hrdf !== undefined) {
-    await pack.statutory.setOthersStatutory(ctx, { personId, subjectToHrdf: hrdf });
+    await pack.statutory.setOthersStatutory(ctx, { personId, subjectToHrdf: hrdf },tx);
   }
 
   // Gender / marital status / date of birth are compliance-gated fields with their own writer. An
@@ -1015,17 +1121,13 @@ export async function completeEmployeeDraft(
   const derivedDob = icNumber ? pack.statutory.dobFromIC(icNumber) : null;
   const dob = typedDob ?? derivedDob ?? undefined;
   if (str(p.gender) || str(p.maritalStatus) || dob) {
-    try {
-      await setPersonComplianceFields(ctx, {
+    await setPersonComplianceFields(ctx, {
         employmentId,
         ...(str(p.gender) ? { gender: str(p.gender) } : {}),
         ...(str(p.maritalStatus) ? { maritalStatus: str(p.maritalStatus) } : {}),
         ...(dob ? { dateOfBirth: dob, dobOnlyIfEmpty: !typedDob } : {}),
-      });
-    } catch {
-      // Best-effort, matching commitEmployeeImport: the employee exists and is payable; a rejected
-      // profile detail must not strand the whole creation.
-    }
+      },tx);
+
   }
 
   // ── The profile fields (item a72610af) ──────────────────────────────────────────────────────────
@@ -1040,11 +1142,10 @@ export async function completeEmployeeDraft(
   // phone on every call (they are not presence-gated the way the profile fields are), so leaving `phone`
   // out would blank the number `hireEmployee` had just stored. The importer passes it for the same reason.
   //
-  // NOT WRAPPED IN A try/catch, unlike the compliance write below. The three catalog-backed values
+  // Owner refusals propagate so activation rolls back completely. The three catalog-backed values
   // (salutation, religion, race) are offered to HR as the tenant's ACTIVE options, exactly as nationality
   // already is, so a value that can be picked is one `assertProfileValueAllowed` accepts — and if one is
-  // somehow refused, the honest outcome is the documented one in this function's header (the employee
-  // exists, the draft is kept, HR finishes it on the profile screen) rather than silently dropping
+  // somehow refused, the honest outcome is the documented one in this function's header (the entire activation rolls back and the draft is kept) rather than silently dropping
   // something HR typed, which is the failure test/draft-activation-field-survival.test.ts exists against.
   const profileFields = {
     salutation: str(p.salutation),
@@ -1088,7 +1189,7 @@ export async function completeEmployeeDraft(
       phone: str(p.phone) ?? null,
       via: 'employee-draft',
       ...profileFields,
-    });
+    },tx);
   }
 
   // ── Probation, confirmation and the two notice periods (item a72610af) ──────────────────────────
@@ -1099,7 +1200,7 @@ export async function completeEmployeeDraft(
   // and it REFUSES an empty write set ("Nothing to change."), so a draft with none of them must not call
   // it at all. Its own validation (whole numbers ≥ 0, a known unit, a confirmation date not before the
   // hire date) is restated by `missingByTab`, so those refusals are provoked on the tab rather than here,
-  // after `hireEmployee` has already committed.
+  // after the hire has written inside this transaction.
   const employmentInfo: Record<string, string> = {};
   for (const [k, v] of Object.entries({
     probationValue: str(e.probationValue),
@@ -1115,7 +1216,7 @@ export async function completeEmployeeDraft(
     if (v !== undefined) employmentInfo[k] = v;
   }
   if (Object.keys(employmentInfo).length > 0) {
-    await setEmploymentInfo(ctx, { employmentId, ...employmentInfo });
+    await setEmploymentInfo(ctx, { employmentId, ...employmentInfo },tx);
   }
 
   // r374 (item 7dbaf677) — A BLANK INITIAL BASIC SALARY IS AN EXPLICIT ZERO, written out rather than
@@ -1123,40 +1224,29 @@ export async function completeEmployeeDraft(
   // 0.00 for a blank — but it read as if a blank were a parse accident, and the draft rule now lets a
   // blank through on purpose (a Director paid quarterly fees). A junk string still reaches
   // `setCompensation` as NaN and is refused there by `NonFiniteSalaryAmountError`; `missingByTab` keeps
-  // that case red on the tab so it never gets this far, which matters because this function is NOT one
-  // transaction — a throw here leaves the employment created (see the header).
+  // that case red on the tab so it never gets this far, which matters because the salary owner participates in the same activation transaction.
   const basicDigits = (pay.basicSalary ?? '').replace(/[,_]/g, '').trim();
   await setCompensation(ctx, {
     employmentId,
     basicSalary: basicDigits === '' ? 0 : Number(basicDigits),
-    monthlyAllowance: numOrUndef(pay.monthlyAllowance),
+    monthlyAllowance: salaryNumberOrUndef(pay.monthlyAllowance),
     payMode: str(pay.payMode),
     paymentTerm: str(pay.paymentTerm),
-    rateAmount: numOrUndef(pay.rateAmount),
+    rateAmount: salaryNumberOrUndef(pay.rateAmount),
     effectiveFrom: hiredOn,
     remarks: str(pay.remarks),
-  });
+  },tx);
 
-  // ── MATERIALISE THE FAMILY (item 759dfc7d) ─────────────────────────────────────────────────────
-  // The last write before the draft stops existing, and the reason it is last is the child-relief sync:
-  // `materialiseDependents` refreshes `employee_statutory_my.num_children` from the register when the
-  // person is on automatic child relief, so it has to run AFTER `pack.statutory.set` has written that
-  // row — the other order would have the statutory writer overwrite what the family just derived.
-  //
-  // ALL-OR-NOTHING AMONG THE MEMBERS: every insert is in ONE transaction inside that service, so a
-  // failure on the fourth child cannot leave three behind with nothing on screen to say which. It is not,
-  // and cannot be, one transaction with the hire — this function has never been one transaction (see the
-  // header) and making it one would mean reaching inside four services that own their own. What replaces
-  // that guarantee is the `assertDependentsValid` pre-flight above: the set is judged while nothing has
-  // been written, so the realistic ways this could fail late have already been spent.
-  await materialiseDependents(ctx, { personId, members: family });
+  // Family inserts and its canonical derived-tax sync share the activation transaction. A later
+  // member or tax-owner refusal keeps the Draft/number and rolls back all preceding hire facts.
+  await materialiseDependents(ctx, { personId, members: family },tx);
 
   // Only now: the draft has become an employee, so it stops existing as a draft. THE RESERVATION GOES
   // WITH IT — deleting the row releases the held code, and it must, because the employment now carries
   // that same code and two live claims on one ID is the state the hold exists to prevent. Deliberately
   // NOT `releaseReservedNumber`: the number was SPENT, not abandoned, so the counter stays where it is.
-  await withTenant(ctx, async (tx) => {
-    await tx.delete(employeeDraft).where(eq(employeeDraft.id, id));
+  const deleted=await tx.delete(employeeDraft).where(eq(employeeDraft.id,id)).returning({id:employeeDraft.id});
+  if(deleted.length!==1)throw new DraftActivationValidationError('draft_unavailable',[]);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-draft',
@@ -1166,9 +1256,8 @@ export async function completeEmployeeDraft(
       subjectEmploymentId: employmentId,
       payload: { employmentId, companyId, ...(reservedCode ? { reservedEmployeeCode: reservedCode } : {}) },
     });
-  });
-
   return { employmentId };
+  });
 }
 
 /**
@@ -1253,6 +1342,13 @@ function withoutUnusedEpfBoxes(s: EmployeeDraftStatutory, epf: EpfElectionFields
 }
 function hasAnyStatutory(s: Record<string, string | undefined>): boolean {
   return Object.values(s).some((v) => (v ?? '').trim() !== '');
+}
+/** Preserve an invalid supplied salary amount as NaN for the canonical owner's finite-number refusal.
+ * Blank remains unspecified; silently converting junk to undefined would discard captured Payroll input.
+ */
+function salaryNumberOrUndef(v: string | undefined): number | undefined {
+  const digits = (v ?? '').replace(/[,_]/g, '').trim();
+  return digits === '' ? undefined : Number(digits);
 }
 function numOrUndef(v: string | undefined): number | undefined {
   const s = (v ?? '').replace(/[,_]/g, '').trim();
