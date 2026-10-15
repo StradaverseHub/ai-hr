@@ -9601,7 +9601,7 @@
         "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này.",
         "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này.",
         "myTeam": "Quản lý xem nhân viên hiện đang báo cáo trực tiếp hoặc gián tiếp. Quản trị HR chọn phòng ban trong các công ty được cấp quyền.",
-        "identityEmail": "Cần đăng ký riêng làm quản trị viên danh tính hệ thống; vai trò nhân sự không tự cấp quyền.",
+        "identityEmail": "Quản trị viên HR có thể xem trước biểu mẫu SMTP. Việc xem hoặc thay đổi thiết lập thực tế yêu cầu đăng ký riêng làm quản trị viên danh tính của bản cài đặt.",
         "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
       },
@@ -17069,7 +17069,13 @@
       "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
       "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
       "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này."
-    }
+    },
+    "connectionTitle": "Kết nối SMTP",
+    "security": "Mã hóa",
+    "tlsSecurity": "SSL/TLS (TLS ngầm định)",
+    "previewTitle": "Xem trước thiết lập SMTP",
+    "demoSetup": "Bản demo này hiển thị các trường kết nối SMTP để xem xét. Việc lưu thông tin xác thực, gửi email thử và kích hoạt gửi email yêu cầu đăng nhập bằng tài khoản quản trị cài đặt đã xác minh. Không có thông tin máy chủ thư nào được tải hoặc lưu tại đây.",
+    "restrictedSetup": "Chỉ quản trị viên cài đặt đã đăng ký mới có thể xem hoặc thay đổi thiết lập SMTP thực tế. Hãy yêu cầu quản trị viên cài đặt hoàn tất thiết lập. Các trường này chỉ hiển thị cấu hình được hỗ trợ."
   },
   "workflowEmail": {
     "title": "Email thông báo quy trình",

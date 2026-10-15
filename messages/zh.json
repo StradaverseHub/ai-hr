@@ -9601,7 +9601,7 @@
         "duplicatePersonRecords": "仅列出您所管理的公司中的员工，因此跨两家公司的一对记录中可能有一半对您不可见。只读——无法从此页面更改任何记录。",
         "childReliefReview": "仅列出您所管理公司的在职员工，因此令吉总额是您可查看范围的总额。只读——无法从此页面更改任何税务设定。",
         "myTeam": "经理查看当前直接或间接下属。人力资源管理员可在获授权公司内选择部门。",
-        "identityEmail": "需要单独登记为部署身份管理员；HR 角色本身不授予访问权限。",
+        "identityEmail": "HR 管理员可以预览 SMTP 表单。查看或更改实际设置需要单独注册为安装身份管理员。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked."
       },
@@ -17069,7 +17069,13 @@
       "save": "草稿已保存。当前中继保持不变。",
       "test": "中继已接受测试邮件。启用前请检查收件箱。",
       "apply": "中继已启用，可用于邀请和密码恢复。"
-    }
+    },
+    "connectionTitle": "SMTP 连接",
+    "security": "加密",
+    "tlsSecurity": "SSL/TLS（隐式 TLS）",
+    "previewTitle": "SMTP 设置预览",
+    "demoSetup": "此演示展示 SMTP 连接字段供您查看。保存凭据、发送测试邮件和启用邮件发送需要经过验证的安装管理员登录。此处不会加载或保存邮件服务器信息。",
+    "restrictedSetup": "只有已注册的安装管理员才能查看或更改实际 SMTP 设置。请联系安装管理员完成设置。这些字段仅展示支持的配置。"
   },
   "workflowEmail": {
     "title": "工作流程邮件通知",
