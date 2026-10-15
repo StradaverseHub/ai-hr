@@ -1,8 +1,12 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),identity:vi.fn(),internal:vi.fn(),policy:vi.fn(),preferences:vi.fn(),retry:vi.fn(),accountRetry:vi.fn(),emailAdmin:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),identity:vi.fn(),internalIdentity:vi.fn(),workosIdentity:vi.fn(),internal:vi.fn(),keycloak:vi.fn(),policy:vi.fn(),preferences:vi.fn(),retry:vi.fn(),accountRetry:vi.fn(),emailAdmin:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/identity/session',()=>({currentIdentitySession:m.identity}));
-vi.mock('../lib/identity/config',()=>({keycloakSelected:m.internal}));
+vi.mock('../lib/identity/config',()=>({keycloakSelected:m.keycloak}));
+vi.mock('../lib/internal-auth/config',()=>({internalSelected:m.internal}));
+vi.mock('../lib/internal-auth/web-session',()=>({currentInternalIdentity:m.internalIdentity}));
+vi.mock('../lib/workos',()=>({currentWorkosSession:m.workosIdentity}));
+vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:vi.fn()}));
 vi.mock('../core/notification-email',()=>({saveNotificationEmailPolicy:m.policy,saveNotificationEmailPreferences:m.preferences,retryNotificationEmail:m.retry}));
 vi.mock('../core/auth',()=>({retryAccountEmail:m.accountRetry}));
 vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:m.emailAdmin}));
@@ -10,18 +14,46 @@ vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));vi.mock('next/navigation',(
 import { saveWorkflowEmailPolicy,retryWorkflowEmail,retryAccountEmailAction } from '../app/admin/settings/notifications/actions';
 import { saveMyWorkflowEmailPreferences } from '../app/me/notifications/actions';
 const session={tenantId:'tenant',userId:'server-user'},identity={issuer:'https://hr.test',subject:'server-subject',email:'verified@example.test',emailVerified:true};
-beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.identity.mockResolvedValue(identity);m.internal.mockReturnValue(true);m.policy.mockResolvedValue(undefined);m.preferences.mockResolvedValue(undefined);m.retry.mockResolvedValue(undefined);m.accountRetry.mockResolvedValue(undefined);m.emailAdmin.mockResolvedValue({session,actor:{...identity,...session}});});
+beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.identity.mockResolvedValue(identity);m.internalIdentity.mockResolvedValue({...identity,issuer:'https://hr.test/auth/tenant',subject:'internal-subject'});m.workosIdentity.mockResolvedValue(null);m.internal.mockReturnValue(false);m.keycloak.mockReturnValue(true);m.policy.mockResolvedValue(undefined);m.preferences.mockResolvedValue(undefined);m.retry.mockResolvedValue(undefined);m.accountRetry.mockResolvedValue(undefined);m.emailAdmin.mockResolvedValue({session,actor:{...identity,...session}});});
 describe('workflow email server action identity boundaries',()=>{
  it.each([saveWorkflowEmailPolicy,saveMyWorkflowEmailPreferences,retryWorkflowEmail])('requires a current session before any mutation',async action=>{
-  m.session.mockRejectedValue(new Error('sign in required'));await expect(action(new FormData())).rejects.toThrow('sign in required');expect(m.policy).not.toHaveBeenCalled();expect(m.preferences).not.toHaveBeenCalled();expect(m.retry).not.toHaveBeenCalled();
+  m.session.mockRejectedValue(new Error('sign in required'));await expect(action(new FormData())).rejects.toThrow('sign in required');expect(m.policy).not.toHaveBeenCalled();expect(m.preferences).not.toHaveBeenCalled();expect(m.retry).not.toHaveBeenCalled();expect(m.internalIdentity).not.toHaveBeenCalled();expect(m.identity).not.toHaveBeenCalled();expect(m.workosIdentity).not.toHaveBeenCalled();
  });
  it('takes consent identity from the server, never from a form claim',async()=>{
   const f=new FormData();for(const [k,v]of Object.entries({employmentId:'target',locale:'ms',issuer:'https://evil.test',subject:'attacker',email:'attacker@example.test',emailVerified:'true'}))f.set(k,v);f.append('category','leave');
-  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.preferences).toHaveBeenCalledWith(session,'target',['leave'],'ms',identity);
+  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.identity).toHaveBeenCalledOnce();expect(m.internalIdentity).not.toHaveBeenCalled();expect(m.preferences).toHaveBeenCalledWith(session,'target',['leave'],'ms',identity);
  });
- it('does not use an internal identity cookie to give a demo or legacy session external-mail consent',async()=>{
-  m.internal.mockReturnValue(false);const f=new FormData();f.set('locale','en');f.set('employmentId','target');f.append('category','leave');
-  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.identity).not.toHaveBeenCalled();expect(m.preferences).toHaveBeenCalledWith(session,'target',['leave'],'en',null);
+ it('uses the selected internal provider and preserves its exact tenant issuer and subject',async()=>{
+  m.internal.mockReturnValue(true);const f=new FormData();f.set('locale','en');f.set('employmentId','target');f.append('category','leave');f.set('issuer','https://evil.test');f.set('subject','attacker');f.set('emailVerified','true');
+  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.internalIdentity).toHaveBeenCalledOnce();expect(m.identity).not.toHaveBeenCalled();expect(m.workosIdentity).not.toHaveBeenCalled();
+  expect(m.preferences).toHaveBeenCalledWith(session,'target',['leave'],'en',{...identity,issuer:'https://hr.test/auth/tenant',subject:'internal-subject'});
+ });
+ it('does not give a legacy WorkOS session an issuer or verified-mail claim',async()=>{
+  m.keycloak.mockReturnValue(false);m.workosIdentity.mockResolvedValue({subject:'legacy-subject',email:'legacy@example.test'});
+  const f=new FormData();f.set('locale','en');f.set('employmentId','target');f.append('category','leave');
+  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.workosIdentity).toHaveBeenCalledOnce();expect(m.internalIdentity).not.toHaveBeenCalled();expect(m.identity).not.toHaveBeenCalled();expect(m.preferences).toHaveBeenCalledWith(session,'target',['leave'],'en',null);
+ });
+ it.each([
+  ['missing provider session',null],
+  ['unverified internal email',{...identity,emailVerified:false}],
+  ['nonboolean verification claim',{...identity,emailVerified:'true'}],
+  ['missing issuer',{...identity,issuer:undefined}],
+  ['empty issuer',{...identity,issuer:''}],
+  ['empty subject',{...identity,subject:''}],
+ ])('passes no consent identity for %s, never a form replacement',async(_label,provider)=>{
+  m.internal.mockReturnValue(true);m.internalIdentity.mockResolvedValue(provider);
+  const f=new FormData();for(const [key,value]of Object.entries({locale:'en',employmentId:'target',issuer:identity.issuer,subject:identity.subject,email:identity.email,emailVerified:'true'}))f.set(key,value);f.append('category','leave');
+  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.preferences).toHaveBeenCalledWith(session,'target',['leave'],'en',null);
+ });
+ it('allows the canonical owner to withdraw consent when provider proof is unavailable',async()=>{
+  m.internal.mockReturnValue(true);m.internalIdentity.mockRejectedValue(Error('provider unavailable'));
+  const f=new FormData();f.set('locale','en');f.set('employmentId','target');
+  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('saved=1');expect(m.preferences).toHaveBeenCalledWith(session,'target',[],'en',null);
+ });
+ it('preserves canonical consent-owner refusal without reflecting identity or private binding errors',async()=>{
+  m.internal.mockReturnValue(true);m.preferences.mockRejectedValue(Error('private employment binding and sequence'));
+  const f=new FormData();f.set('locale','en');f.set('employmentId','another-employment');f.append('category','leave');
+  await expect(saveMyWorkflowEmailPreferences(f)).rejects.toThrow('REDIRECT /me/notifications?error=save');expect(m.preferences).toHaveBeenCalledOnce();
  });
  it('does not accept retry acknowledgement by checkbox presence',async()=>{
   const f=new FormData();f.set('deliveryId','delivery');f.set('acknowledged','false');await expect(retryWorkflowEmail(f)).rejects.toThrow('saved=1');expect(m.retry).toHaveBeenCalledWith(session,'delivery',false);
