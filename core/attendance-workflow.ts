@@ -3,12 +3,13 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
-import { attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, employment, person, department, businessUnit, jobGrade, profileOption } from '../db/schema';
+import { attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
 import { assertCanDecide } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
+import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import { labelUsableByCompany } from './system-labels';
 import { AttendanceWorkflowError, attendanceScopesOverlap, validateAttendanceWorkflow, type AttendanceWorkflowInput, type AttendanceApplicationType, type AttendanceResolvedStage, type AttendanceResolvedApprover } from '../lib/attendance-workflow';
 export { AttendanceWorkflowError } from '../lib/attendance-workflow';
@@ -22,7 +23,7 @@ async function adminFor(tx: Tx, companyId: string) {
 }
 const companyLock = (tx: Tx, tenantId: string, companyId: string, type: string) => tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':attendance-workflow:' + companyId + ':' + type},0))`);
 async function validateScope(tx: Tx, ctx: SessionContext, input: AttendanceWorkflowInput) {
-    for (const [key, table] of [['departmentIds', department], ['businessUnitIds', businessUnit], ['gradeIds', jobGrade]] as const) {
+    for (const [key, table] of [['departmentIds', department], ['businessUnitIds', businessUnit], ['gradeIds', jobGrade], ['positionIds', position]] as const) {
         const ids = input.criteria[key] ?? [];
         if (ids.length) {
             const found = await tx.select({ id: table.id }).from(table).where(and(inArray(table.id, ids), isNull(table.archivedAt)));
@@ -30,15 +31,30 @@ async function validateScope(tx: Tx, ctx: SessionContext, input: AttendanceWorkf
                 throw new AttendanceWorkflowError('invalid', 'An organisational assignment is missing, inactive or outside your access.');
             if (key !== 'gradeIds')
                 for (const id of ids)
-                    if (!(await labelUsableByCompany(tx, ctx.tenantId, key === 'departmentIds' ? 'department' : 'business_unit', id, input.companyId)))
+                    if (!(await labelUsableByCompany(tx, ctx.tenantId, key === 'departmentIds' ? 'department' : key === 'positionIds' ? 'position' : 'business_unit', id, input.companyId)))
                         throw new AttendanceWorkflowError('invalid', 'An organisational assignment is not available to this company.');
         }
     }
-    if (input.criteria.orgDivision?.length) {
-        const rows = await tx.select({ name: profileOption.value }).from(profileOption).where(and(eq(profileOption.category, 'division'), inArray(profileOption.value, input.criteria.orgDivision), eq(profileOption.isActive, true)));
-        if (new Set(rows.map(r => r.name)).size !== input.criteria.orgDivision.length)
-            throw new AttendanceWorkflowError('invalid', 'A division is missing or inactive.');
+    for (const category of EMPLOYMENT_PROFILE_CATEGORIES) {
+        const key = CATEGORY_EMPLOYMENT_COLUMN[category]?.[0] as keyof AttendanceWorkflowInput['criteria'];
+        const selected = input.criteria[key] ?? [];
+        if (!selected.length) continue;
+        const rows = await tx.select({ value: profileOption.value }).from(profileOption).where(and(eq(profileOption.category, category), inArray(profileOption.value, selected), eq(profileOption.isActive, true)));
+        if (new Set(rows.map(r => r.value)).size !== selected.length) throw new AttendanceWorkflowError('invalid', `An assignment in ${category} is missing or inactive.`);
     }
+    const selectedEmployees = input.criteria.employeeIds ?? [];
+    if (selectedEmployees.length) {
+        const rows = await resolveOrgCriteriaTargets(tx, { criteria: { companyIds: [input.companyId] }, asOf: todayInKualaLumpur(), employmentIds: selectedEmployees });
+        if (rows.length !== selectedEmployees.length) throw new AttendanceWorkflowError('invalid', 'An employee is missing, inactive or outside the selected company.');
+    }
+
+}
+/** Employee IDs are an additional intersected restriction, not a new org-criteria interpretation. */
+async function workflowTargets(tx: Tx, criteria: AttendanceWorkflowInput['criteria'], companyId: string, employmentIds?: string[]) {
+    const { employeeIds = [], ...orgCriteria } = criteria;
+    const restricted = employeeIds.length ? employmentIds?.length ? employmentIds.filter(id => employeeIds.includes(id)) : employeeIds : employmentIds;
+    if (employmentIds?.length && employeeIds.length && !restricted?.length) return [];
+    return resolveOrgCriteriaTargets(tx, { criteria: { ...orgCriteria, companyIds: [companyId] }, asOf: todayInKualaLumpur(), employmentIds: restricted });
 }
 async function resolveStages(tx: Tx, employmentId: string, stages: AttendanceWorkflowInput['stages']): Promise<AttendanceResolvedStage[]> {
     const needsManager = stages.some(stage => approversOf(stage.level).some(actor => actor.kind === 'direct_manager'));
@@ -71,7 +87,7 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: Attendance
     const others = await tx.select().from(template).where(and(eq(template.companyId, input.companyId), eq(template.applicationType, input.applicationType), eq(template.active, true), isNull(template.supersededAt)));
     if (others.some(t => t.lineageId !== lineageId && t.priority === input.priority && attendanceScopesOverlap(t.criteria, input.criteria)))
         throw new AttendanceWorkflowError('overlap', 'An active workflow at this priority overlaps this assignment. Use a different priority or disjoint scope. Lower priority numbers apply first.');
-    const targets = await resolveOrgCriteriaTargets(tx, { criteria: { ...input.criteria, companyIds: [input.companyId] }, asOf: todayInKualaLumpur() });
+    const targets = await workflowTargets(tx, input.criteria, input.companyId);
     for (const id of targets)
         await resolveStages(tx, id, input.stages);
     // Zero targets is allowed as a future population. Submission re-resolves and refuses missing approvers.
@@ -137,7 +153,7 @@ export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, 
     const candidates = await tx.select().from(template).where(and(eq(template.companyId, subject.companyId), eq(template.applicationType, applicationType), eq(template.active, true), isNull(template.supersededAt))).orderBy(asc(template.priority), asc(template.id));
     const matches: typeof candidates = [];
     for (const row of candidates)
-        if ((await resolveOrgCriteriaTargets(tx, { criteria: { ...row.criteria, companyIds: [subject.companyId] }, asOf: todayInKualaLumpur(), employmentIds: [employmentId] })).includes(employmentId))
+        if ((await workflowTargets(tx, row.criteria, subject.companyId, [employmentId])).includes(employmentId))
             matches.push(row);
     if (!matches.length)
         throw new AttendanceWorkflowError('noMatch', 'Attendance workflow routing is enabled, but no active template matches this employee and application type. Ask HR to configure the assignment.');
@@ -234,7 +250,7 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: AttendanceWo
     return withTenant(ctx, async (tx) => {
         await adminFor(tx, input.companyId);
         await validateScope(tx, ctx, input);
-        const targets = await resolveOrgCriteriaTargets(tx, { criteria: { ...input.criteria, companyIds: [input.companyId] }, asOf: todayInKualaLumpur() });
+        const targets = await workflowTargets(tx, input.criteria, input.companyId);
         const other = await tx.select().from(template).where(and(eq(template.companyId, input.companyId), eq(template.applicationType, input.applicationType), eq(template.active, true), isNull(template.supersededAt))).orderBy(asc(template.priority), asc(template.code));
         const result: {
             employmentId: string;
@@ -252,7 +268,7 @@ export function previewAttendanceWorkflow(ctx: SessionContext, raw: AttendanceWo
                         priority: number;
                     }[] = [];
                     for (const t of other.filter(t => t.lineageId !== lineageId))
-                        if ((await resolveOrgCriteriaTargets(tx, { criteria: { ...t.criteria, companyIds: [input.companyId] }, asOf: todayInKualaLumpur(), employmentIds: [id] })).includes(id))
+                        if ((await workflowTargets(tx, t.criteria, input.companyId, [id])).includes(id))
                             found.push(t);
                     return found;
                 })()];

@@ -7,38 +7,17 @@ import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { AttendanceStageEditor, emptyAttendanceStage } from './stage-editor';
 import { companyWorkflowHref } from './navigation';
 import { Button, Card, inputCls } from '@/components/ui';
-import type { AttendanceWorkflowInput, AttendanceWorkflowCriteria } from '@/lib/attendance-workflow';
+import { attendanceWorkflowCriteriaFields, attendanceLevelName, type AttendanceWorkflowOptions, type AttendanceWorkflowInput } from '@/lib/attendance-workflow';
 import { previewAttendanceWorkflowAction, saveAttendanceWorkflowAction } from './actions';
-type Options = {
-    companies: {
-        id: string;
-        name: string;
-    }[];
-    departments: {
-        id: string;
-        name: string;
-    }[];
-    businessUnits: {
-        id: string;
-        name: string;
-    }[];
-    grades: {
-        id: string;
-        name: string;
-    }[];
-    divisions: {
-        id: string;
-        name: string;
-    }[];
-};
 export function WorkflowForm({ initial, lineageId, context, options }: {
     initial: AttendanceWorkflowInput | null;
     lineageId: string | null;
     context: Pick<AttendanceWorkflowInput, 'companyId' | 'applicationType'>;
-    options: Options;
+    options: AttendanceWorkflowOptions;
 }) {
+    const employmentTypeLabel = useTranslations('people.wizard.employmentType');
     const t = useTranslations('attendanceWorkflow'), choices = useTranslations('admin.leave'), router = useRouter();
-    const [input, setInput] = useState<AttendanceWorkflowInput>(initial ?? { ...context, code: '', name: '', description: '', priority: 100, criteria: {}, stages: [emptyAttendanceStage()], active: false });
+    const [input, setInput] = useState<AttendanceWorkflowInput>(initial ?? { ...context, routingVersion: 2, code: '', name: '', description: '', priority: 100, criteria: {}, stages: [emptyAttendanceStage(0, 2)], active: false });
     const [error, setError] = useState(''), [pending, start] = useTransition();
     const [savedRevision, setSavedRevision] = useState(0);
     const [savedDestination, setSavedDestination] = useState<string | null>(null);
@@ -58,7 +37,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
         }[];
         truncated: boolean;
     } | null>(null);
-    const baseline = JSON.stringify(initial ?? { ...context, code: '', name: '', description: '', priority: 100, criteria: {}, stages: [emptyAttendanceStage()], active: false });
+    const baseline = JSON.stringify(initial ?? { ...context, routingVersion: 2, code: '', name: '', description: '', priority: 100, criteria: {}, stages: [emptyAttendanceStage(0, 2)], active: false });
     const dirty = JSON.stringify(input) !== baseline;
     const change = <K extends keyof AttendanceWorkflowInput>(k: K, v: AttendanceWorkflowInput[K]) => { setInput(p => ({ ...p, [k]: v })); setPreview(null); };
     const inFlight = useRef(false);
@@ -87,14 +66,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
        } catch { setError(t('requestFailed')); } finally { inFlight.current = false; }
       });
     };
-    const fields: [
-        keyof AttendanceWorkflowCriteria,
-        string,
-        {
-            id: string;
-            name: string;
-        }[]
-    ][] = [['departmentIds', 'department', options.departments], ['businessUnitIds', 'businessUnit', options.businessUnits], ['gradeIds', 'grade', options.grades], ['orgDivision', 'division', options.divisions]];
+    const fields = attendanceWorkflowCriteriaFields(options, employmentTypeLabel);
     return <><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending} className="space-y-5">
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('information')}</h2><div className="grid gap-4 sm:grid-cols-2">
    <label>{t('company')}<select name="companyId" className={inputCls} value={input.companyId} disabled onChange={e => change('companyId', e.target.value)}>{options.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
@@ -102,7 +74,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
    <label>{t('code')}<input name="code" required maxLength={40} pattern="[A-Za-z0-9_-]+" className={inputCls} value={input.code} onChange={e => change('code', e.target.value)}/></label>
    <label>{t('name')}<input name="name" required maxLength={120} className={inputCls} value={input.name} onChange={e => change('name', e.target.value)}/></label>
   </div><label className="block">{t('description')}<textarea name="description" maxLength={1000} className={inputCls} value={input.description ?? ''} onChange={e => change('description', e.target.value)}/></label></Card>
-  <div className="grid items-start gap-5 xl:grid-cols-2"><Card className="space-y-4 p-5"><h2 className="font-semibold">{t('assignment')}</h2><p className="text-sm text-muted-foreground">{t('assignmentHelp')}</p><label className="block max-w-xs">{t('priority')}<input name="priority" required type="number" min={0} max={9999} className={inputCls} value={input.priority} onChange={e => change('priority', Number(e.target.value))}/></label><div className="grid gap-4 sm:grid-cols-2">{fields.map(([key, label, items]) => {
+  <div className="grid items-start gap-5 xl:grid-cols-2"><Card className="space-y-4 p-5"><h2 className="font-semibold">{t('assignment')}</h2><p className="text-sm text-muted-foreground">{t('assignmentHelp')}</p><label className="block max-w-xs">{t('priority')}<input name="priority" required type="number" min={0} max={9999} className={inputCls} value={input.priority} onChange={e => change('priority', Number(e.target.value))}/></label><div className="grid gap-4 sm:grid-cols-2">{fields.map(({ key, label, options: items }) => {
     const selected = input.criteria[key] ?? [];
     const unavailable = selected.filter(id => !items.some(item => item.id === id));
     return <ChipMultiSelect key={key} name={key} label={t(label)}
@@ -111,7 +83,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
       searchPlaceholder={choices('adjustmentsSearchPlaceholder')} selectAllLabel={choices('adjustmentsSelectAll')} clearAllLabel={choices('adjustmentsDeselectAll')}
       onSelectionChange={values => change('criteria', { ...input.criteria, [key]: values })}/>;
   })}</div></Card>
-  <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('stages')}</h2><AttendanceStageEditor stages={input.stages} onChange={stages => change('stages', stages)}/></Card></div>
+  <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('stages')}</h2>{(input.routingVersion ?? 1) === 1 ? <div className="space-y-2 rounded-md border border-border bg-background p-3"><p>{t('legacyLevelsHelp')}</p><Button type="button" variant="secondary" onClick={() => { setInput(p => ({ ...p, routingVersion: 2, stages: p.stages.map((stage, index) => ({ ...stage, name: attendanceLevelName(index) })) })); setPreview(null); }}>{t('convertHierarchy')}</Button></div> : <p className="text-sm text-muted-foreground">{t('hierarchyLevelsHelp')}</p>}<AttendanceStageEditor routingVersion={input.routingVersion ?? 1} stages={input.stages} onChange={stages => change('stages', stages)}/></Card></div>
   <Card className="space-y-3 p-5"><label className="flex gap-2"><input name="active" type="checkbox" checked={input.active} onChange={e => change('active', e.target.checked)}/>{t('activate')}</label><p className="text-sm text-muted-foreground">{t('activationHelp')}</p>{error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}<div className="flex flex-wrap gap-3"><Button type="button" disabled={pending} onClick={() => run(false)}>{t('preview')}</Button><Button type="submit" disabled={pending || !options.companies.length}>{pending ? t('saving') : t('save')}</Button><button type="button" onClick={() => {
             if (!dirty || window.confirm(t('discard')))
                 router.push(companyWorkflowHref(input.companyId, input.applicationType));
