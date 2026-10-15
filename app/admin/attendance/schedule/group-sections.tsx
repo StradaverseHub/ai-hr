@@ -161,6 +161,7 @@ export async function ScheduleGroupSections({
   savedReceipt?: string;
 }) {
   const t = await getTranslations('admin.scheduleConfig');
+  const otWorkspace = await getTranslations('overtimePatterns');
   const tr = await getTranslations('admin.attendanceRule');
   const tp = await getTranslations('admin.attendancePolicy');
   const trs = await getTranslations('roster');
@@ -514,9 +515,9 @@ export async function ScheduleGroupSections({
    * the per-band rounding is FINER than what they asked for, not coarser — they asked for one rounding
    * method and one step for the whole group; each band has carried its own since migration 0439.
    *
-   * The Overtime Pattern is NOT a field here, and that is the 870b79e2 answer restated: the Overtime
-   * Pattern IS the Schedule Group. It is the thing these settings belong to — which, since 665de026, is
-   * the PAGE, not a dropdown inside it and not a picker above it.
+   * Legacy overtime settings remain on this Schedule Group. fcc2ea42 adds an independent formula
+   * workspace linked below; its effective assignments replace only the OT stage. Ordinary work,
+   * lateness and the existing group editor/bookmarks stay under this owner.
    *
    * The band BOUNDARIES and the RATES are not edited here. They are the overtime ladder, they carry a
    * continuous-ladder validation, and the rate is money; they belong to the General section's form. The
@@ -527,6 +528,7 @@ export async function ScheduleGroupSections({
     ratePattern:row.ratePattern,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate)})));
   const overtimeBody = (
     <>
+      <p className="text-sm text-muted-foreground">{otWorkspace('legacyContext')} <Link href="/admin/attendance/settings/overtime-patterns" className="text-primary hover:underline">{otWorkspace('openWorkspace')}</Link></p>
       {editing&&<input type="hidden" name="otBandSnapshot" value={overtimeIdentity}/>}
       <Card>
         <SectionHeader title={t('otEarlyTitle')} subtitle={t('otEarlyHint')} />
