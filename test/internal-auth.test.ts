@@ -9,10 +9,13 @@ import { internalIssuer } from '../lib/internal-auth/config';
 import { digest } from '../lib/internal-auth/crypto';
 import { readRecord, writeRecord } from '../lib/internal-auth/store';
 import { changeInitialPassword, credentialByLogin, readSession, revokeSession, rotateRefresh, startLogin, verifyMfa, type AuthReply, type Credential } from '../lib/internal-auth/service';
-import { requestRecovery, completeRecovery } from '../lib/internal-auth/recovery';
-import { startInvitation } from '../lib/internal-auth/invitations';
+import { requestRecovery, completeRecovery, sendInternalRecovery } from '../lib/internal-auth/recovery';
+import { startInvitation, acceptInternalInvitation } from '../lib/internal-auth/invitations';
 import { createManualAccount, resumeManualAccount } from '../core/manual-identity';
-import { inviteUser, type AuthProvider } from '../core/auth';
+import { inviteUser, retryAccountEmail, type AuthProvider } from '../core/auth';
+import { provisionTenant } from '../db/provision';
+import { withTenant } from '../db/client';
+import { sql } from 'drizzle-orm';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -100,6 +103,13 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(startLogin({ organization: 'beta', username: 'owner', password: temp, native: false })).rejects.toMatchObject({ code: 'invalidLogin' });
     await expect(bootstrapInternalOwner(owner.client, { appUserId: other.adminUserId, organization: 'alpha', username: 'other', email: 'other@example.test', password: temp, installationOperator: false })).rejects.toThrow(/namespace|bound/);
   });
+  it('refuses an otherwise valid session after credential version change without relying on bulk deletion', async () => {
+    const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
+    expect(await readSession(signedIn.access_token)).not.toBeNull();
+    await writeRecord(client, `credential:${c.subject}`, { ...c, version: randomUUID() }, c.subject);
+    expect((await owner.client`select count(*)::int n from app_internal_auth_record where record_key=${'session:' + digest(signedIn.access_token)}`)[0].n).toBe(1);
+    expect(await readSession(signedIn.access_token)).toBeNull();
+  });
   it('bootstrap is idempotent for the exact existing user and never resets an enrolled password', async () => {
     await enroll();
     const before = await credentialByLogin('alpha', 'owner');
@@ -136,6 +146,62 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(completeRecovery(token, 'Yet another secure phrase 337!', signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'invalidChallenge' });
     const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false }); expect(login.step).toBe('mfa');
     expect(await readRecord(client, `recovery:${digest(token)}`)).toBeNull();
+  });
+  it('fresh-customer owner enrollment consumes only its exact private invitation and preserves the provisioned IDs', async () => {
+    const created = await owner.db.transaction(tx => provisionTenant(tx, { name: 'Private Customer', adminEmail: 'customer@example.test', baseUrl: 'https://hr.test' }));
+    const token = new URL(created.activationUrl).pathname.match(/^\/invite\/([A-Za-z0-9_-]{43})$/)![1];
+    const input = { appUserId: created.appUserId, organization: 'private-customer', username: 'customer.owner', email: 'customer@example.test', password: temp, installationOperator: true };
+    await expect(bootstrapInternalOwner(owner.client, input)).rejects.toThrow(/private first-administrator invitation/);
+    await expect(bootstrapInternalOwner(owner.client, { ...input, invitationToken: 'x'.repeat(43) })).rejects.toThrow(/exact provisioned/);
+    await bootstrapInternalOwner(owner.client, { ...input, invitationToken: token });
+    const credential = (await credentialByLogin('private-customer', 'customer.owner'))!;
+    const rows = await client`select * from app.principal_by_identity(${credential.issuer},${credential.subject})`;
+    expect(rows[0].app_user_id).toBe(created.appUserId); expect(rows[0].person_id).toBe(created.personId);
+    expect(rows[0].grants).toHaveLength(1); expect(rows[0].grants[0].role).toBe('hr_admin');
+    const [invitation] = await owner.client`select status from app_invitation where token_hash=${digest(token)}`;
+    expect(invitation.status).toBe('accepted');
+  });
+  it('missing SMTP records a held failure, and a selected retry stays bound to the original organization despite shared email', async () => {
+    const { signedIn } = await enroll(); const first = (await credentialByLogin('alpha', 'owner'))!;
+    const other = await seedBase();
+    await bootstrapInternalOwner(owner.client, { appUserId: other.adminUserId, organization: 'beta', username: 'owner', email: first.email, password: temp, installationOperator: false });
+    await expect(requestRecovery('alpha', 'owner')).resolves.toBeUndefined();
+    const [job] = await owner.client`select id,status,last_error from account_email_delivery where kind='recovery' order by created_at,id`;
+    expect(job).toMatchObject({ status: 'failed', last_error: 'relayUnavailable' });
+    expect((await owner.client`select count(*)::int n from app_internal_auth_record where record_key like 'recovery:%'`)[0].n).toBe(0);
+    await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
+    expect((await owner.client`select status from account_email_delivery where id=${job.id}`)[0].status).toBe('failed');
+    let text = '';
+    const provider: AuthProvider = { sendInvitation: async () => ({ invitationId: 'unused' }), revokeInvitation: async () => {}, endSession: async () => {},
+      emailReadiness: async () => null, sendPasswordReset: (email, context) => sendInternalRecovery(email, context, async (_relay, mail) => { text = mail.text; }) };
+    const actor = { userId: base.adminUserId, tenantId: base.tenantId, issuer: first.issuer, subject: first.subject };
+    await expect(retryAccountEmail(adminCtx(base), job.id, true, { ...actor, subject: (await credentialByLogin('beta', 'owner'))!.subject }, provider)).rejects.toThrow();
+    await retryAccountEmail(adminCtx(base), job.id, true, actor, provider);
+    const token = text.match(/#token=([A-Za-z0-9_-]{43})/)![1];
+    expect(await readRecord(client, `recovery:${digest(token)}`)).toMatchObject({ subject: first.subject });
+    await completeRecovery(token, 'Another private safe phrase 993!', signedIn.recoveryCodes![0]);
+    expect((await credentialByLogin('beta', 'owner'))?.mustChange).toBe(true);
+    const serialized = JSON.stringify(await owner.client`select * from account_email_delivery order by created_at,id`);
+    expect(serialized).not.toContain(token); expect(serialized).not.toContain('#token=');
+  });
+  it('SMTP authority cannot be inherited from a different identity attached to the same HR administrator', async () => {
+    const c = (await credentialByLogin('alpha', 'owner'))!;
+    const allowed = (issuer: string, subject: string, email: string) => withTenant(adminCtx(base), async tx =>
+      (await tx.execute(sql`select app.internal_auth_email_operator(${issuer},${subject},${email}) allowed`))[0].allowed);
+    expect(await allowed(c.issuer, c.subject, c.email)).toBe(true);
+    expect(await allowed(c.issuer, c.subject, 'changed@example.test')).toBe(false);
+    const foreign = randomUUID();
+    await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values('https://other.test/issuer',${foreign},${base.adminUserId}::uuid)`;
+    expect(await allowed('https://other.test/issuer', foreign, c.email)).toBe(false);
+  });
+  it('refuses an invitation for another organization before consuming it even when the email address matches', async () => {
+    await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
+    const other = await seedBase();
+    const provider: AuthProvider = { sendInvitation: async () => ({ invitationId: 'test' }), revokeInvitation: async () => {}, sendPasswordReset: async () => {}, endSession: async () => {} };
+    const invite = await inviteUser(adminCtx(other), { email: c.email, role: 'employee' }, provider);
+    await expect(acceptInternalInvitation(invite.token, { issuer: c.issuer, subject: c.subject, email: c.email, emailVerified: true })).rejects.toMatchObject({ code: 'invalidChallenge' });
+    expect((await owner.client`select status from app_invitation where id=${invite.invitationId}::uuid`)[0].status).toBe('pending');
+    expect((await owner.client`select count(*)::int n from app_external_identity where issuer=${c.issuer} and subject=${c.subject}`)[0].n).toBe(1);
   });
   it('invitation enrollment cannot grant HR access before MFA and cannot bind twice', async () => {
     const provider: AuthProvider = { sendInvitation: async () => ({ invitationId: 'test' }), revokeInvitation: async () => {}, sendPasswordReset: async () => {}, endSession: async () => {} };

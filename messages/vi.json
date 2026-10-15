@@ -18998,7 +18998,10 @@
       "unavailable": "Đăng nhập hoặc khôi phục tạm thời không khả dụng. Thử lại sau hoặc liên hệ quản trị viên.",
       "conflict": "Không thể đăng ký tên này. Chọn tên khác hoặc liên hệ quản trị viên.",
       "forbidden": "Không thể xác minh yêu cầu. Mở ứng dụng trực tiếp và thử lại."
-    }
+    },
+    "switchAccountTitle": "Sử dụng tài khoản khác",
+    "switchAccountHelp": "Lời mời này thuộc tổ chức hoặc email đã xác minh khác. Đăng xuất để thiết lập hoặc đăng nhập tài khoản được mời. Tài khoản HR hiện tại của bạn vẫn riêng biệt.",
+    "switchAccountSubmit": "Đăng xuất và mở lời mời"
   },
   "aiManagement": {
     "title": "Quản lý AI",

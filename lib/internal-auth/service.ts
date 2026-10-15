@@ -43,9 +43,10 @@ export async function assertActiveCredential(tx: AuthSql, c: Credential) {
   if (!rows[0] || rows[0].tenant_id !== c.tenantId) throw new InternalAuthError('invalidLogin');
   return rows[0] as { app_user_id: string; tenant_id: string };
 }
-async function audit(tx: AuthSql, c: Credential, event: string) {
+async function audit(tx: AuthSql, c: Credential, event: string, refused = false) {
   const rows = await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
-  if (rows[0]) await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,'user',$2::uuid,NULL)", [c.tenantId, rows[0].app_user_id, event]);
+  if (rows[0]) await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,$4,$5::uuid,NULL)",
+    [c.tenantId, rows[0].app_user_id, event, refused ? 'external' : 'user', refused ? null : rows[0].app_user_id]);
 }
 async function makeSession(tx: AuthSql, c: Credential, native: boolean, recoveryCodes?: string[]): Promise<AuthReply> {
   await assertActiveCredential(tx, c);
@@ -72,7 +73,11 @@ export async function startLogin(input: { organization: string; username: string
   await takeRate(`login:${org}:${username}`, 10);
   const c = await credentialByLogin(org, username);
   const matched = await passwordMatches(input.password, c?.password || DUMMY_PASSWORD_HASH);
-  if (!c?.enabled || !matched) throw new InternalAuthError('invalidLogin');
+  if (!c?.enabled || !matched) {
+    await client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
+      [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]);
+    throw new InternalAuthError('invalidLogin');
+  }
   return authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, credentialKey(c.subject), true);
     if (!current?.enabled || current.version !== c.version || current.password !== c.password) throw new InternalAuthError('invalidLogin');
@@ -97,6 +102,7 @@ async function withChallenge(raw: string, native: boolean, operation: (tx: AuthS
     const outcome = await operation(tx, c, challenge, key);
     if ('failure' in outcome) {
       challenge.attempts++;
+      await audit(tx, c, 'app-user.mfa-refused', true);
       await writeRecord(tx, key, challenge, c.subject, challenge.expiresAt);
     }
     return outcome;
@@ -243,7 +249,8 @@ export async function updateDisabledCredential(subject: string, operation: 'pass
     if (operation === 'enable' && c.enabled) return;
     if (c.enabled) throw new InternalAuthError('conflict');
     if (operation === 'password') {
-      validatePassword(password || '', c.username, c.email); c.password = await passwordHash(password!); c.version = randomUUID();
+      try { validatePassword(password || '', c.username, c.email); } catch { throw new InternalAuthError('passwordPolicy'); }
+      c.password = await passwordHash(password!); c.version = randomUUID();
     } else if (operation === 'enable') {
       const p = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
       if (!c.password || !p[0] || p[0].tenant_id !== c.tenantId || !c.mustChange) throw new InternalAuthError('conflict');

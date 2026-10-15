@@ -1,5 +1,5 @@
-import { internalSelected } from '@/lib/internal-auth/config';
 'use server';
+import { internalSelected } from '@/lib/internal-auth/config';
 
 import { keycloakSelected } from '@/lib/identity/config';
 

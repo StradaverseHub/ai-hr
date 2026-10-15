@@ -7,6 +7,7 @@ export const validOpaque = (value: unknown): value is string => typeof value ===
 // OWASP's memory/CPU-equivalent scrypt profile: 32 MiB, r=8, p=3. Bound concurrent work per process.
 let active = 0;
 export class AuthBusyError extends Error {}
+export class AuthRecordExpiredError extends Error {}
 async function derive(password: string, salt: Buffer) {
   if (active >= 2) throw new AuthBusyError('Authentication busy. Try again shortly.');
   active++;
@@ -47,6 +48,7 @@ export function decryptRecord<T>(sealed: string, purpose: string, now = Date.now
   const decipher = createDecipheriv('aes-256-gcm', Buffer.from(internalConfig().key, 'hex'), input.subarray(0, 12));
   decipher.setAAD(Buffer.from(`aihr-internal-v1:${purpose}`)); decipher.setAuthTag(input.subarray(12, 28));
   const parsed = JSON.parse(Buffer.concat([decipher.update(input.subarray(28)), decipher.final()]).toString('utf8'));
-  if (!parsed || !(parsed.expiresAt === null || (Number.isFinite(parsed.expiresAt) && parsed.expiresAt > now))) throw new Error('Authentication record expired.');
+  if (!parsed || !(parsed.expiresAt === null || Number.isFinite(parsed.expiresAt))) throw new Error('Invalid authentication record.');
+  if (parsed.expiresAt !== null && parsed.expiresAt <= now) throw new AuthRecordExpiredError('Authentication record expired.');
   return parsed.value as T;
 }

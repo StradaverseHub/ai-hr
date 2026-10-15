@@ -4,7 +4,7 @@ import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKI
 import { AuthBusyError } from '@/lib/internal-auth/crypto';
 import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotateRefresh, revokeSession, type AuthReply } from '@/lib/internal-auth/service';
 import { requestRecovery, completeRecovery } from '@/lib/internal-auth/recovery';
-import { startInvitation } from '@/lib/internal-auth/invitations';
+import { startInvitation, acceptInternalInvitation } from '@/lib/internal-auth/invitations';
 const responseHeaders = { 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') throw new InternalAuthError('invalidChallenge');
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     else if (operation === 'accept-invite' && !native) {
       const identity = await (await import('@/lib/internal-auth/web-session')).currentInternalIdentity();
       if (!identity?.emailVerified) throw new InternalAuthError('invalidLogin');
-      await (await import('@/core/auth')).acceptInvitation({ token: text(body, 'token', 43), subject: identity.subject, issuer: identity.issuer, verifiedEmail: identity.email });
+      await acceptInternalInvitation(text(body, 'token', 43), identity);
       result = { step: 'complete' };
     } else if (operation === 'recovery') {
       await requestRecovery(text(body, 'organization', 64), text(body, 'username', 64));

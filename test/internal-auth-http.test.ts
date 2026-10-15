@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 const service = vi.hoisted(() => ({ startLogin: vi.fn(), changeInitialPassword: vi.fn(), verifyMfa: vi.fn(), rotateRefresh: vi.fn(), revokeSession: vi.fn() }));
 vi.mock('../lib/internal-auth/service', () => ({ ...service, InternalAuthError: class extends Error { constructor(public code: string) { super(code); } } }));
 vi.mock('../lib/internal-auth/recovery', () => ({ requestRecovery: vi.fn(), completeRecovery: vi.fn() }));
-vi.mock('../lib/internal-auth/invitations', () => ({ startInvitation: vi.fn() }));
+vi.mock('../lib/internal-auth/invitations', () => ({ startInvitation: vi.fn(), acceptInternalInvitation: vi.fn() }));
 vi.mock('../lib/internal-auth/mail', () => ({ flushAuthMail: vi.fn() }));
 import { POST } from '../app/login/api/[operation]/route';
 const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(43);

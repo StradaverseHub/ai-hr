@@ -48,7 +48,10 @@
       "unavailable": "Sign-in or recovery is temporarily unavailable. Try again later or contact your administrator.",
       "conflict": "This username cannot be enrolled. Choose another or contact your administrator.",
       "forbidden": "This request could not be verified. Open the app directly and try again."
-    }
+    },
+    "switchAccountTitle": "Use a different account",
+    "switchAccountHelp": "This invitation belongs to a different organization or verified email. Sign out to set up or sign in to the invited account. Your current HR account stays separate.",
+    "switchAccountSubmit": "Sign out and open invitation"
   },
   "ms": {
     "loginTitle": "Log masuk",
@@ -99,6 +102,9 @@
       "unavailable": "Log masuk atau pemulihan tidak tersedia buat sementara waktu. Cuba kemudian atau hubungi pentadbir.",
       "conflict": "Nama pengguna ini tidak boleh didaftarkan. Pilih nama lain atau hubungi pentadbir.",
       "forbidden": "Permintaan ini tidak dapat disahkan. Buka aplikasi secara terus dan cuba lagi."
-    }
+    },
+    "switchAccountTitle": "Gunakan akaun lain",
+    "switchAccountHelp": "Jemputan ini adalah untuk organisasi atau e-mel disahkan yang berbeza. Log keluar untuk menyediakan atau log masuk ke akaun yang dijemput. Akaun HR semasa anda kekal berasingan.",
+    "switchAccountSubmit": "Log keluar dan buka jemputan"
   }
 }

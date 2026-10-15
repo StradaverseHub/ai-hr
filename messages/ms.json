@@ -18998,7 +18998,10 @@
       "unavailable": "Log masuk atau pemulihan tidak tersedia buat sementara waktu. Cuba kemudian atau hubungi pentadbir.",
       "conflict": "Nama pengguna ini tidak boleh didaftarkan. Pilih nama lain atau hubungi pentadbir.",
       "forbidden": "Permintaan ini tidak dapat disahkan. Buka aplikasi secara terus dan cuba lagi."
-    }
+    },
+    "switchAccountTitle": "Gunakan akaun lain",
+    "switchAccountHelp": "Jemputan ini adalah untuk organisasi atau e-mel disahkan yang berbeza. Log keluar untuk menyediakan atau log masuk ke akaun yang dijemput. Akaun HR semasa anda kekal berasingan.",
+    "switchAccountSubmit": "Log keluar dan buka jemputan"
   },
   "aiManagement": {
     "title": "Pengurusan AI",

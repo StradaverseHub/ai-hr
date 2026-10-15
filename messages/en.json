@@ -18998,7 +18998,10 @@
       "unavailable": "Sign-in or recovery is temporarily unavailable. Try again later or contact your administrator.",
       "conflict": "This username cannot be enrolled. Choose another or contact your administrator.",
       "forbidden": "This request could not be verified. Open the app directly and try again."
-    }
+    },
+    "switchAccountTitle": "Use a different account",
+    "switchAccountHelp": "This invitation belongs to a different organization or verified email. Sign out to set up or sign in to the invited account. Your current HR account stays separate.",
+    "switchAccountSubmit": "Sign out and open invitation"
   },
   "aiManagement": {
     "title": "AI management",

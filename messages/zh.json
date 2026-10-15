@@ -18998,7 +18998,10 @@
       "unavailable": "登录或密码恢复暂时不可用，请稍后重试或联系管理员。",
       "conflict": "此用户名无法注册，请选择其他用户名或联系管理员。",
       "forbidden": "无法验证此请求，请直接打开应用后重试。"
-    }
+    },
+    "switchAccountTitle": "使用其他账户",
+    "switchAccountHelp": "此邀请属于其他组织或已验证邮箱。请退出当前账户，再设置或登录受邀账户。您当前的 HR 账户将保持独立。",
+    "switchAccountSubmit": "退出并打开邀请"
   },
   "aiManagement": {
     "title": "AI 管理",

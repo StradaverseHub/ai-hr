@@ -74,7 +74,7 @@ describe('account requests independent of SMTP delivery',()=>{
   provider.emailReadiness.mockResolvedValue(null);await readAccountEmailDeliveries(ctx,actor);expect(provider.sendPasswordReset).not.toHaveBeenCalled();
   await expect(retryAccountEmail(ctx,original.id,true,undefined,provider)).rejects.toThrow();
   const results=await Promise.allSettled([retryAccountEmail(ctx,original.id,true,actor,provider),retryAccountEmail(ctx,original.id,true,actor,provider)]);
-  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(provider.sendPasswordReset).toHaveBeenCalledOnce();expect(provider.sendPasswordReset).toHaveBeenCalledWith('selected@example.test');
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(provider.sendPasswordReset).toHaveBeenCalledOnce();expect(provider.sendPasswordReset).toHaveBeenCalledWith('selected@example.test',expect.objectContaining({deliveryId:expect.any(String),leaseToken:expect.any(String)}));
   const all=await jobs();expect(all.find(job=>job.replacesDeliveryId===original.id)).toMatchObject({status:'sent',lastError:null,attempts:1});
   expect(all.find(job=>job.recoveryEmail==='unselected@example.test')).toMatchObject({status:'failed',lastError:'relayUnavailable'});
   expect((await readAccountEmailDeliveries(ctx,actor)).find(job=>job.id===original.id)?.canRetry).toBe(false);

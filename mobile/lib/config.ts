@@ -10,11 +10,11 @@ let selected: VerifiedCompanyProfile | null = null;
 /** Called only after signature verification and successful session/file cleanup. */
 export function applyCompanyConnection(profile: VerifiedCompanyProfile | null) { selected = profile; }
 export const config = {
-  get authProvider() { return selected ? selected.authProvider : process.env.EXPO_PUBLIC_AUTH_PROVIDER ?? 'workos'; },
-  get issuer() { return selected?.issuer ?? (runtimeConnections ? '' : config.authProvider === 'internal' ? config.apiUrl + '/auth' : (process.env.EXPO_PUBLIC_KEYCLOAK_ISSUER ?? '').replace(/\/+$/, '')); },
+  get authProvider(): string { return selected ? selected.authProvider : process.env.EXPO_PUBLIC_AUTH_PROVIDER ?? 'workos'; },
+  get issuer(): string { return selected?.issuer ?? (runtimeConnections ? '' : config.authProvider === 'internal' ? config.apiUrl + '/auth' : (process.env.EXPO_PUBLIC_KEYCLOAK_ISSUER ?? '').replace(/\/+$/, '')); },
   get keycloakClientId() { return selected?.clientId ?? (runtimeConnections ? '' : process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? ''); },
   /** The AI HR server, e.g. https://hr.example.com. No trailing slash. */
-  get apiUrl() { return selected?.apiOrigin ?? (runtimeConnections ? '' : (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '')); },
+  get apiUrl(): string { return selected?.apiOrigin ?? (runtimeConnections ? '' : (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '')); },
   /** The WorkOS client id of the environment this build signs in against (Staging or Production). */
   workosClientId: process.env.EXPO_PUBLIC_WORKOS_CLIENT_ID ?? '',
   /** The custom URL scheme registered with WorkOS as `aihr://auth/callback` (placeholder until the store name is chosen). */

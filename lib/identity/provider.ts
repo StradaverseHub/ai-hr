@@ -15,7 +15,7 @@ export async function providerSignInUrl(returnTo?: string) {
   return (await import('../workos')).signInUrl(returnTo);
 }
 export async function endProviderSession(returnTo?: string): Promise<void> {
-  if (internalSelected()) return (await import('../internal-auth/web-session')).endInternalSession();
+  if (internalSelected()) return (await import('../internal-auth/web-session')).endInternalSession(returnTo);
   if (keycloakSelected()) return (await import('./session')).endIdentitySession();
   return (await import('../workos')).endWorkosSession(returnTo);
 }
