@@ -2,7 +2,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
+import { addDependent, assertDependentsValid, DependentValidationError, type DependentInput } from '../core/dependents';
 import * as schema from '../db/schema';
 import type { EmployeeDraftData } from '../lib/employee-draft-schema';
 import {
@@ -158,6 +159,40 @@ describe('atomic Draft activation', () => {
     const { ctx, id } = await held(data);
     const error = await rejectedWithoutChanges(ctx, id, code);
     expect(draftActivationValidation(error)?.fields).toEqual([{ tab, field: pointer }]);
+  });
+
+  it.each([
+    ['fullName', '', 'child', 'familyMemberName'],
+    ['relationship', 'not-a-relationship', 'child', 'familyMemberRelationship'],
+    ['gender', 'not-a-gender', 'child', 'gender'],
+    ['marriageStatus', 'not-a-marriage-status', 'spouse', 'marriageStatus'],
+    ['childReliefCategory', 'not-a-category', 'child', 'childReliefCategory'],
+    ['childReliefPercentage', 75, 'child', 'childReliefPercentage'],
+  ] as const)('preserves canonical %s refusal metadata through Family preflight and safe Draft projection', async (field, value, relationship, pointer) => {
+    const ctx = adminCtx(b);
+    const existing = await hireEmployee(ctx, { person: { fullName: 'Existing Family Owner', primaryEmail: 'family.owner@demo.test' },
+      employeeCode: 'FAMILY-OWNER', companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-02-01' });
+    const member: DependentInput = { fullName: 'Private Family Name', relationship, dateOfBirth: '2018-03-04', [field]: value };
+    const before = await state();
+    for (const attempt of [
+      () => addDependent(ctx, { personId: existing.personId, ...member }),
+      () => withTenant(ctx, tx => assertDependentsValid(ctx, [member], tx)),
+      () => assertDependentsValid(ctx, [member]),
+    ]) {
+      let failure: unknown;
+      try { await attempt(); } catch (error) { failure = error; }
+      expect(failure).toBeInstanceOf(DependentValidationError);
+      expect((failure as DependentValidationError).field).toBe(field);
+      expect(draftActivationValidation(failure)).toEqual({ code: 'family_invalid', fields: [{ tab: 'family', field: pointer }] });
+      expect(JSON.stringify(draftActivationValidation(failure))).not.toContain('Private Family Name');
+      expect(await state()).toEqual(before);
+    }
+    // The persisted wizard values use a string share. Activate must retain the same field, too;
+    // a blank name is caught earlier by the existing required-field check rather than the owner.
+    const data = input({ family: [{ fullName: 'Private Family Name', relationship, dateOfBirth: '2018-03-04', [field]: String(value) }] });
+    const { id } = await held(data);
+    const failure = await rejectedWithoutChanges(ctx, id, field === 'fullName' ? 'required_fields' : 'family_invalid');
+    expect(draftActivationValidation(failure)?.fields).toEqual([{ tab: 'family', field: pointer }]);
   });
 
   it('revalidates missing required values and provides finite tab/field pointers', async () => {

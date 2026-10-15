@@ -101,7 +101,7 @@ import {
 // 759dfc7d — the family the draft captured becomes real rows at Activate. Both of these live in
 // core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
 // set of normalisers and ONE event, so a field the Personnel screen gains cannot be dropped here.
-import { assertDependentsValid, materialiseDependents, DependentValidationError, type DependentInput } from './dependents';
+import { assertDependentsValid, materialiseDependents, DependentValidationError, type DependentInput, type DependentValidationField } from './dependents';
 
 /** Safe action boundary: finite reasons and schema field tokens, never captured input values. */
 export const DRAFT_ACTIVATION_CODES=['draft_unavailable','permission','required_fields','invalid_data','company_changed','company_unavailable','reference_invalid','employee_code_invalid','employee_code_not_allowed','profile_invalid','statutory_invalid','payroll_invalid','family_invalid'] as const;
@@ -133,7 +133,11 @@ export function draftActivationValidation(error:unknown):DraftActivationProblem|
   if(error instanceof DraftStatutorySetupError)return activationProblem('statutory_invalid','bankStatutory','taxResidency');
   if(error instanceof MissingBankForTransferError)return activationProblem('payroll_invalid','payroll','paymentMethodBank');
   if(error instanceof IncompleteCustomHolderError)return activationProblem('statutory_invalid','bankStatutory',error.field==='name'?'customHolderName':'customHolderId');
-  if(error instanceof DependentValidationError)return activationProblem('family_invalid','family','familyMemberRelationship');
+  if(error instanceof DependentValidationError){
+    const familyFields={fullName:'familyMemberName',relationship:'familyMemberRelationship',gender:'gender',marriageStatus:'marriageStatus',childReliefCategory:'childReliefCategory',childReliefPercentage:'childReliefPercentage'} as const satisfies Record<DependentValidationField,typeof DRAFT_ACTIVATION_FIELDS_BY_TAB.family[number]>;
+    const field=error.field;
+    return activationProblem('family_invalid','family',typeof field==='string'&&Object.hasOwn(familyFields,field)?familyFields[field]:'familyMemberRelationship');
+  }
   if(!(error instanceof Error))return null;
   const simple:Record<string,DraftActivationProblem>={
     InvalidICError:activationProblem('profile_invalid','profile','icNumber'),
