@@ -10,7 +10,8 @@ import { attemptAccountEmail } from '../../core/account-email';
 type Recovery = { subject: string; version: string };
 export type RecoveryContext = { subject: string; issuer: string; tenantId: string; version: string; email: string; organization: string; username: string };
 /** Public request confirmation never discloses account existence or SMTP readiness. */
-export async function requestRecovery(organization: string, username: string, transport?: MailTransport) {
+export async function requestRecovery(organization: string, username: string, transport?: MailTransport,
+  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt()) {
   await takeRate('recovery-global', 120, 3600_000);
   await takeRate(`recovery:${organization.trim().toLowerCase()}:${username.trim().toLowerCase()}`, 3, 3600_000);
   const c = await credentialByLogin(organization, username);
@@ -26,11 +27,11 @@ export async function requestRecovery(organization: string, username: string, tr
       version: current.version, email: current.email, organization: current.organization, username: current.username } satisfies RecoveryContext, current.subject);
     return { id: job.id as string, lease: job.lease_token as string };
   });
-  if (delivery) await attemptAccountEmail(delivery.id, delivery.lease, {
+  if (delivery) await dispatch(() => attemptAccountEmail(delivery.id, delivery.lease, {
     sendInvitation: async () => { throw new AccountEmailDeliveryError('notEligible'); },
     sendPasswordReset: (email, context) => sendInternalRecovery(email, context, transport),
     emailReadiness: (await import('../identity/account-email-readiness')).accountEmailReadiness,
-  });
+  }));
 }
 /** Exact delivery lease + authenticated original account binding; an email address is never a lookup. */
 export async function sendInternalRecovery(email: string, context?: { deliveryId: string; leaseToken: string }, transport?: MailTransport) {

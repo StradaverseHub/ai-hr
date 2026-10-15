@@ -168,6 +168,18 @@ describe('first-party authentication with real private storage and existing HR b
     const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false }); expect(login.step).toBe('mfa');
     expect(await readRecord(client, `recovery:${digest(token)}`)).toBeNull();
   });
+  it('commits exact recovery context before acknowledging a deferred single delivery attempt', async () => {
+    await enroll();
+    await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
+    const send = vi.fn(async () => {}), scheduled: (() => Promise<void>)[] = [];
+    await requestRecovery('alpha', 'owner', send, attempt => { scheduled.push(attempt); });
+    const rows = await owner.client`select id,status,started_at from account_email_delivery where kind='recovery' order by created_at,id`;
+    expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({status:'pending',started_at:null});
+    expect(await readRecord(client, `recovery-mail:${rows[0].id}`)).toMatchObject({organization:'alpha',username:'owner'});
+    expect(scheduled).toHaveLength(1);expect(send).not.toHaveBeenCalled();
+    await scheduled[0]();expect(send).toHaveBeenCalledOnce();
+    expect((await owner.client`select status from account_email_delivery where id=${rows[0].id}::uuid`)[0].status).toBe('sent');
+  });
   it('fresh-customer owner enrollment consumes only its exact private invitation and preserves the provisioned IDs', async () => {
     const created = await owner.db.transaction(tx => provisionTenant(tx, { name: 'Private Customer', adminEmail: 'customer@example.test', baseUrl: 'https://hr.test' }));
     const token = new URL(created.activationUrl).pathname.match(/^\/invite\/([A-Za-z0-9_-]{43})$/)![1];

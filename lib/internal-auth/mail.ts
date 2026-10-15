@@ -85,7 +85,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
     return result;
   });
 }
-/** One selected delivery attempt. No queue or automatic replay exists in authentication. */
+/** One selected delivery attempt. Held authentication-mail failures are never automatically replayed. */
 export async function sendInternalMail(message: Mail, transport: MailTransport = sendSmtp) {
   const relay = (await readRecord<MailState>(client, STATE))?.active;
   if (!relay) throw new EmailSettingsError('unavailable');

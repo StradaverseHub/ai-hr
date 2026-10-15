@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 const service = vi.hoisted(() => ({ startLogin: vi.fn(), changeInitialPassword: vi.fn(), verifyMfa: vi.fn(), rotateRefresh: vi.fn(), revokeSession: vi.fn() }));
+const recovery = vi.hoisted(() => ({ requestRecovery: vi.fn(), completeRecovery: vi.fn() }));
+const postResponse = vi.hoisted(() => ({ after: vi.fn() }));
+vi.mock('next/server', async original => ({ ...await original<typeof import('next/server')>(), after: postResponse.after }));
 vi.mock('../lib/internal-auth/service', () => ({ ...service, InternalAuthError: class extends Error { constructor(public code: string) { super(code); } } }));
-vi.mock('../lib/internal-auth/recovery', () => ({ requestRecovery: vi.fn(), completeRecovery: vi.fn() }));
+vi.mock('../lib/internal-auth/recovery', () => recovery);
 vi.mock('../lib/internal-auth/invitations', () => ({ startInvitation: vi.fn(), acceptInternalInvitation: vi.fn() }));
 import { POST } from '../app/login/api/[operation]/route';
 const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(43);
@@ -61,5 +64,15 @@ describe('embedded auth HTTP trust and credential carriers', () => {
     expect((await request('login', {}, { origin: 'https://hr.test' })).status).toBe(503);
     vi.stubEnv('AUTH_PROVIDER', 'keycloak'); expect((await request('login', {}, { origin: 'https://hr.test' })).status).toBe(404);
     expect(service.startLogin).not.toHaveBeenCalled();
+  });
+  it('schedules the single recovery delivery after the same public confirmation, without awaiting SMTP', async () => {
+    const delivery = vi.fn(async () => { throw new Error('This slow relay must not run before the response.'); });
+    recovery.requestRecovery.mockImplementation(async (_organization, _username, _transport, dispatch) => { dispatch(delivery); });
+    const response = await request('recovery', { organization: 'alpha', username: 'user' }, { origin: 'https://hr.test' });
+    expect(response.status).toBe(200);expect(await response.json()).toEqual({step:'sent'});
+    expect(postResponse.after).toHaveBeenCalledWith(delivery);expect(delivery).not.toHaveBeenCalled();
+    recovery.requestRecovery.mockImplementation(async () => {});
+    const unknown = await request('recovery', { organization: 'alpha', username: 'unknown' }, { origin: 'https://hr.test' });
+    expect(unknown.status).toBe(200);expect(await unknown.json()).toEqual({step:'sent'});
   });
 });
