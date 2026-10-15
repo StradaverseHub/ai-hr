@@ -1,31 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import nodemailer from 'nodemailer';
 import { client, withTenant } from '../../db/client';
 import { sql } from 'drizzle-orm';
-import { EmailSettingsError, emailConfigSchema, type EmailConfig, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
+import { EmailSettingsError, emailConfigSchema, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
 import { authTransaction, readRecord, writeRecord } from './store';
 import { opaque } from './crypto';
+import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
+export { sendSmtp } from './smtp';
+export type { Relay, Mail, MailTransport } from './smtp';
 
-type Relay = { config: EmailConfig; password?: string };
 type Draft = Relay & { id: string; revision: string; testedAt: number | null };
 type MailState = { revision: string; active: Relay | null; drafts: Record<string, Draft> };
-type Mail = { to: string; subject: string; text: string };
 const STATE = 'email-state';
 const emptyState = (): MailState => ({ revision: 'initial', active: null, drafts: {} });
-export type MailTransport = (relay: Relay, message: Mail) => Promise<void>;
-export const sendSmtp: MailTransport = async (relay, message) => {
-  const c = relay.config;
-  const transport = nodemailer.createTransport({ host: c.host, port: c.port, secure: true,
-    auth: c.auth ? { user: c.user, pass: relay.password } : undefined,
-    tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' }, connectionTimeout: 10_000, greetingTimeout: 8_000, socketTimeout: 15_000,
-    disableFileAccess: true, disableUrlAccess: true });
-  try {
-    const result = await transport.sendMail({ from: { name: c.fromName, address: c.from }, to: message.to,
-      replyTo: c.replyTo || undefined, envelope: { from: c.from, to: [message.to] }, subject: message.subject, text: message.text,
-      disableFileAccess: true, disableUrlAccess: true });
-    if (result.accepted.length !== 1) throw new EmailSettingsError('uncertain');
-  } finally { transport.close(); }
-};
 export async function recoveryMailReady() { return Boolean((await readRecord<MailState>(client, STATE))?.active); }
 export async function internalEmailRequest<T>(request: EmailSettingsRequest, transport: MailTransport = sendSmtp): Promise<T> {
   if (request.op === 'readiness') return { ready: await recoveryMailReady() } as T;

@@ -15,7 +15,7 @@ describe('r292 — transport and product copy describe the same conditional deli
    'deploy/identity-email/smtp.ts: nodemailer',
    'lib/demo-smtp-connection.ts: nodemailer/lib/smtp-connection',
    'lib/demo-smtp-probe.ts: nodemailer/lib/smtp-connection',
-   'lib/internal-auth/mail.ts: nodemailer',
+   'lib/internal-auth/smtp.ts: nodemailer',
    'test/demo-smtp-probe.test.ts: nodemailer/lib/smtp-connection',
   ]);
   expect(read('test/demo-smtp-probe.test.ts')).toMatch(/import type SMTPConnection from ['"]nodemailer\/lib\/smtp-connection['"]/);
