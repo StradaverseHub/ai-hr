@@ -64,7 +64,7 @@ export async function validateBootstrapEnvironment(env: NodeJS.ProcessEnv, cwd =
       app.hostname !== owner.hostname || (app.port || '5432') !== (owner.port || '5432') || app.pathname !== owner.pathname) {
     refuse('App and migration URLs must identify the same database using distinct nonprivileged-app and owner roles.');
   }
-  return { appRole, ownerRole, ownerUrl: owner.toString(), callbackOrigin: new URL(env.AUTH_PROVIDER === 'keycloak' ? env.AUTH_PUBLIC_ORIGIN! : env.NEXT_PUBLIC_WORKOS_REDIRECT_URI!).origin };
+  return { appRole, ownerRole, ownerUrl: owner.toString(), callbackOrigin: new URL(['internal', 'keycloak'].includes(env.AUTH_PROVIDER!) ? env.AUTH_PUBLIC_ORIGIN! : env.NEXT_PUBLIC_WORKOS_REDIRECT_URI!).origin };
 }
 
 export type BootstrapOptions = { configFile: string; apply?: boolean; activationFile?: string; cwd?: string };

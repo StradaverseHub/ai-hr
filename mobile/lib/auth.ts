@@ -24,10 +24,13 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
+    if (config.authProvider === 'internal' && body.grant_type !== 'refresh_token') throw new SignInRequiredError();
+    const embedded = config.authProvider === 'internal';
+    const endpoint = embedded ? config.apiUrl + '/login/api/refresh' : discovery.tokenEndpoint!;
     const params = { client_id: identityClientId(), ...body, ...(config.authProvider === 'keycloak' && body.grant_type === 'authorization_code' ? { redirect_uri: redirectUri() } : {}) };
-    const res = await fetch(discovery.tokenEndpoint!, {
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'content-type': config.authProvider === 'keycloak' ? 'application/x-www-form-urlencoded' : 'application/json' },
+      headers: { ...(embedded ? { 'x-aihr-client': 'native' } : {}), 'content-type': config.authProvider === 'keycloak' ? 'application/x-www-form-urlencoded' : 'application/json' },
       body: config.authProvider === 'keycloak' ? new URLSearchParams(params).toString() : JSON.stringify(params),
       signal: controller.signal,
       redirect: 'error',
@@ -42,7 +45,12 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
       !('refresh_token' in json) || typeof json.refresh_token !== 'string' || !json.refresh_token) {
       throw new UnavailableError('Malformed sign-in response.');
     }
-    return { access_token: json.access_token, refresh_token: json.refresh_token, ...('id_token' in json && typeof json.id_token === 'string' ? { id_token: json.id_token } : {}) };
+    if (embedded && (!/^aihr_[A-Za-z0-9_-]{43}$/.test(json.access_token) ||
+      !/^aihr_refresh_[A-Za-z0-9_-]{43}$/.test(json.refresh_token) || !('expires_in' in json) ||
+      typeof json.expires_in !== 'number' || !Number.isFinite(json.expires_in) || json.expires_in <= 0 || json.expires_in > 3600)) {
+      throw new UnavailableError('Malformed sign-in response.');
+    }
+    return { access_token: json.access_token, refresh_token: json.refresh_token, ...('expires_in' in json && typeof json.expires_in === 'number' ? { expires_in: json.expires_in } : {}), ...('id_token' in json && typeof json.id_token === 'string' ? { id_token: json.id_token } : {}) };
   } catch (error) {
     if (error instanceof SignInRequiredError || error instanceof UnavailableError) throw error;
     throw new UnavailableError();
@@ -95,10 +103,24 @@ const state: ReturnType<typeof createAuthState> = createAuthState({
       idToken = nextIdToken ?? idToken;
     }
   },
-  async remove() { sessionId = null; idToken = null; await storage.remove(); },
+  async remove() {
+    const endpoint = config.authProvider === 'internal' ? config.apiUrl + '/login/api/logout' : null;
+    const namespace = identityNamespace();
+    const stored = endpoint ? await storage.read().catch(() => null) : null;
+    sessionId = null; idToken = null; await storage.remove();
+    // createAuthState invalidates synchronously before entering this serialized cleanup.
+    if (!endpoint || !stored) return;
+    try {
+      const record = JSON.parse(stored);
+      if (record.namespace !== namespace || typeof record.refreshToken !== 'string') return;
+      await fetch(endpoint, { method: 'POST', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(5000),
+        headers: { 'content-type': 'application/json', 'x-aihr-client': 'native' }, body: JSON.stringify({ refresh_token: record.refreshToken }) });
+    } catch { /* Local credentials are gone even when remote revocation is unavailable. */ }
+  },
 });
 /** Capture before local logout; the Keychain copy allows explicit logout immediately after cold launch. */
 export function workosLogoutUrl(): string | null {
+  if (config.authProvider === 'internal') return null;
   if (config.authProvider !== 'keycloak') return providerLogoutUrl(sessionId, redirectUri());
   if (!idToken || configProblem()) return null;
   return `${config.issuer}/protocol/openid-connect/logout?${new URLSearchParams({ id_token_hint: idToken, client_id: identityClientId(), post_logout_redirect_uri: redirectUri() })}`;
@@ -109,5 +131,6 @@ export const hasStoredSession = state.hasStoredSession;
 export const refresh = state.refresh;
 export const getAccessToken = state.getAccessToken;
 export const signOut = state.signOut;
+export const completeInternalSignIn = state.completeTokens;
 export const authGeneration = state.generation;
 export const assertAuthGeneration = state.assertCurrent;

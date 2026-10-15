@@ -17,6 +17,16 @@ const safe = {
   KEYCLOAK_MOBILE_CLIENT_ID: 'aihr-mobile', KEYCLOAK_API_AUDIENCE: 'aihr-api',
 };
 const errors = (changes = {}) => customerEnvironmentErrors({ ...safe, ...changes }, cwd);
+test('embedded authentication needs no external identity settings and retains customer hardening', () => {
+  const internal = { ...safe, AUTH_PROVIDER: 'internal', AUTH_DEFAULT_ORGANIZATION: 'customer-a' };
+  for (const key of Object.keys(internal)) if (key.startsWith('KEYCLOAK_')) delete internal[key];
+  assert.deepEqual(customerEnvironmentErrors(internal, cwd), []);
+  for (const changes of [{ AUTH_SESSION_KEY: 'bad' }, { AUTH_PUBLIC_ORIGIN: 'http://hr.customer.internal' },
+    { AUTH_PUBLIC_ORIGIN: 'https://hr.customer.internal/path' }, { AUTH_DEFAULT_ORGANIZATION: 'Other Customer' },
+    { ALLOW_DEMO_SESSION: 'true' }, { AUDIT_HASH_CHAIN_ENABLED: 'false' }]) {
+    assert.ok(customerEnvironmentErrors({ ...internal, ...changes }, cwd).length > 0);
+  }
+});
 test('Keycloak customer passes with no WorkOS or Basic-auth configuration', () => {
   assert.deepEqual(errors(), []);
   assert.deepEqual(errors({ MIGRATION_DATABASE_URL: undefined }), []);

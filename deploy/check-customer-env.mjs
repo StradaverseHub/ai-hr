@@ -35,8 +35,8 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
     errors.push('AUDIT_HASH_CHAIN_ENABLED must be true before the first customer record is written.');
   }
 
-  if (!['keycloak', 'workos'].includes(env.AUTH_PROVIDER)) {
-    errors.push('AUTH_PROVIDER must explicitly select keycloak (new installations) or workos (legacy).');
+  if (!['internal', 'keycloak', 'workos'].includes(env.AUTH_PROVIDER)) {
+    errors.push('AUTH_PROVIDER must explicitly select internal (new installations), keycloak or workos (legacy).');
   }
   if (env.NODE_TLS_REJECT_UNAUTHORIZED === '0') errors.push('NODE_TLS_REJECT_UNAUTHORIZED must not disable certificate verification.');
   required('AI_CONFIG_SECRET', 16);
@@ -48,10 +48,10 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
     // A holding gate is optional with fully configured real identity, but never accept a placeholder.
     if (env.SHARE_PASSWORD) required('SHARE_PASSWORD', 16);
   }
-  if (env.AUTH_PROVIDER === 'keycloak') {
-    for (const name of ['KEYCLOAK_WEB_CLIENT_ID', 'KEYCLOAK_WEB_CLIENT_SECRET', 'KEYCLOAK_MOBILE_CLIENT_ID', 'KEYCLOAK_API_AUDIENCE']) required(name);
+  if (['internal', 'keycloak'].includes(env.AUTH_PROVIDER)) {
+    if (env.AUTH_PROVIDER === 'keycloak') for (const name of ['KEYCLOAK_WEB_CLIENT_ID', 'KEYCLOAK_WEB_CLIENT_SECRET', 'KEYCLOAK_MOBILE_CLIENT_ID', 'KEYCLOAK_API_AUDIENCE']) required(name);
     if (required('AUTH_SESSION_KEY') && !/^[a-fA-F0-9]{64}$/.test(env.AUTH_SESSION_KEY)) errors.push('AUTH_SESSION_KEY must contain 32 random bytes encoded as hex.');
-    for (const name of ['KEYCLOAK_ISSUER', 'AUTH_PUBLIC_ORIGIN']) {
+    for (const name of env.AUTH_PROVIDER === 'internal' ? ['AUTH_PUBLIC_ORIGIN'] : ['KEYCLOAK_ISSUER', 'AUTH_PUBLIC_ORIGIN']) {
       if (!required(name)) continue;
       try {
         const url = new URL(env[name]);
@@ -59,7 +59,11 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
           (name === 'AUTH_PUBLIC_ORIGIN' ? url.pathname !== '/' : !/\/realms\/[a-zA-Z0-9_-]+$/.test(url.pathname))) throw new Error();
       } catch { errors.push(name + ' must be a trusted HTTPS ' + (name === 'AUTH_PUBLIC_ORIGIN' ? 'origin' : 'realm issuer') + ' without credentials, query, fragment, loopback or placeholder hosts.'); }
     }
-    if (env.KEYCLOAK_BACKCHANNEL_ORIGIN) {
+    if (env.AUTH_PROVIDER === 'internal' && env.AUTH_DEFAULT_ORGANIZATION &&
+      !/^[a-z0-9][a-z0-9-]{1,63}$/.test(env.AUTH_DEFAULT_ORGANIZATION)) {
+      errors.push('AUTH_DEFAULT_ORGANIZATION must be a canonical lowercase organization code, 2–64 characters.');
+    }
+    if (env.AUTH_PROVIDER === 'keycloak' && env.KEYCLOAK_BACKCHANNEL_ORIGIN) {
       try {
         const url = new URL(env.KEYCLOAK_BACKCHANNEL_ORIGIN);
         if (!['127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:' || url.pathname !== '/' || url.username || url.password || url.search || url.hash) throw new Error();

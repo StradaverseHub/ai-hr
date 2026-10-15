@@ -1,6 +1,6 @@
 import { SessionChangedError, SignInRequiredError } from './errors';
 
-export type TokenPair = { access_token: string; refresh_token: string; id_token?: string };
+export type TokenPair = { access_token: string; refresh_token: string; id_token?: string; expires_in?: number };
 type Ports = {
   read: () => Promise<string | null>;
   write: (token: string, accessToken: string, idToken?: string) => Promise<void>;
@@ -13,6 +13,7 @@ type Ports = {
 export function createAuthState(ports: Ports) {
   let generation = 0;
   let accessToken: string | null = null;
+  let accessExpiresAt = 0;
   let flight: { generation: number; promise: Promise<string> } | null = null;
   let writes: Promise<unknown> = Promise.resolve();
 
@@ -26,7 +27,7 @@ export function createAuthState(ports: Ports) {
   }
   function invalidate() {
     generation += 1;
-    accessToken = null;
+    accessToken = null; accessExpiresAt = 0;
     flight = null;
     return generation;
   }
@@ -36,6 +37,8 @@ export function createAuthState(ports: Ports) {
       await ports.write(pair.refresh_token, pair.access_token, pair.id_token);
       assertCurrent(owner);
       accessToken = pair.access_token;
+      accessExpiresAt = typeof pair.expires_in === 'number' && Number.isFinite(pair.expires_in) && pair.expires_in > 0 && pair.expires_in <= 3600
+        ? Date.now() / 1000 + pair.expires_in : expiryOf(pair.access_token);
       return accessToken;
     });
   }
@@ -93,8 +96,9 @@ export function createAuthState(ports: Ports) {
       assertCurrent(owner);
       await commit(pair, owner);
     },
+    async completeTokens(pair: TokenPair, owner: number) { assertCurrent(owner); await commit(pair, owner); },
     async getAccessToken() {
-      if (accessToken && expiryOf(accessToken) - Date.now() / 1000 > 60) return accessToken;
+      if (accessToken && accessExpiresAt - Date.now() / 1000 > 60) return accessToken;
       return refresh();
     },
   };

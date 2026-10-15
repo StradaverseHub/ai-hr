@@ -17,7 +17,9 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
     size += next.value.byteLength; if (size > 8192) { await reader.cancel(); throw new InternalAuthError('invalidChallenge'); }
     chunks.push(next.value);
   }
-  const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  let value: unknown;
+  try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new InternalAuthError('invalidChallenge'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InternalAuthError('invalidChallenge');
   return value as Record<string, unknown>;
 }

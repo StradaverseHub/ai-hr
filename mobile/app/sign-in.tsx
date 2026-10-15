@@ -1,3 +1,4 @@
+import { InternalSignIn } from '../lib/internal-sign-in';
 /**
  * Sign-in (ADR-0088 §1): WorkOS hosted AuthKit in the system browser, authorization code + PKCE.
  * expo-auth-session generates the verifier and challenge and checks `state` on return.
@@ -18,7 +19,8 @@ import { Button, colors } from '../lib/ui';
 
 WebBrowser.maybeCompleteAuthSession();
 
-export default function SignIn() {
+export default function SignIn() { return config.authProvider === 'internal' ? <InternalSignIn/> : <ProviderSignIn/>; }
+function ProviderSignIn() {
   const session = useSession();
   const company = useCompanyConnection();
   const problem = configProblem();
