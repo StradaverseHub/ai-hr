@@ -344,3 +344,28 @@ describe('r168a — retiring the Fixed Transaction near-copy changed nothing a r
     expect(url.searchParams.get('employmentId')).toBe('e4');
   });
 });
+
+describe('23e87eef inquiry All/reset behavior is opt-in', () => {
+  it('pins All during search, clears selection, and Reset clears picker controls while preserving result filters', async () => {
+    push.mockClear();
+    const user = userEvent.setup();
+    const { container } = wrap(<EmployeeScopePanel employees={PEOPLE} selectedId="e1" basePath="/leave/employee-balances" selectParam="emp" allowAll resetToAll preserve={{ q: 'Annual', type: ['type-a', 'type-b'], pickerQ: 'stale', page: '3' }} />);
+    const search = container.querySelector('input[type="search"]')!;
+    await user.type(search, 'no-match');
+    const all = screen.getByRole('button', { name: /All employees/ });
+    expect(all).toBeTruthy(); expect(rowsOf(container)).toEqual([]);
+    await user.click(all);
+    expect(push.mock.lastCall?.[0]).not.toContain('emp=');
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    const target = new URL(push.mock.lastCall![0], 'http://local');
+    expect(target.searchParams.get('emp')).toBeNull(); expect(target.searchParams.get('pickerQ')).toBeNull(); expect(target.searchParams.get('page')).toBeNull();
+    expect(target.searchParams.get('q')).toBe('Annual'); expect(target.searchParams.getAll('type')).toEqual(['type-a', 'type-b']);
+    expect((search as HTMLInputElement).value).toBe('');
+  });
+  it('All receives the Selected badge and the single row restores individual navigation', async () => {
+    push.mockClear(); const user = userEvent.setup();
+    wrap(<EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/leave/employee-records" selectParam="emp" allowAll resetToAll />);
+    expect(within(screen.getByRole('button', { name: /All employees/ })).getByText('Selected')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Aisha Rahman/ })); expect(push.mock.lastCall?.[0]).toContain('emp=e1');
+  });
+});

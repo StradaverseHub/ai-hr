@@ -2749,7 +2749,14 @@
       "fullScreen": "เต็มหน้าจอ",
       "fullScreenClose": "ปิด",
       "fullScreenEsc": "กด Esc เพื่อปิด",
-      "noteLabel": "แสดงหมายเหตุที่มีอยู่"
+      "noteLabel": "แสดงหมายเหตุที่มีอยู่",
+      "allEmployeesHeader": "พนักงานทั้งหมด · {count} คน · {companies}",
+      "invalidQuery": "ไม่สามารถใช้การเลือกพนักงานหรือตัวกรองได้ รีเซ็ตการสอบถามแล้วลองอีกครั้ง",
+      "resetInquiry": "รีเซ็ตการสอบถาม",
+      "dateMode": "ช่วงวันที่ใช้กับ",
+      "leaveDates": "วันที่ลา",
+      "exportLimit": "ส่งออกเกิน 10,000 แถว จำกัดตัวกรองแล้วลองอีกครั้ง",
+      "exportChanged": "ผลลัพธ์เปลี่ยนระหว่างส่งออก โปรดลองอีกครั้ง"
     },
     "override": {
       "title": "Before you submit",

@@ -9,24 +9,26 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listEmployees } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
-import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { parseInquiryQuery, inquirySearchParams, InquiryQueryError } from '@/lib/leave-inquiry-query';
+import { leaveInquiryContext, collectInquiryExport } from '@/packs/leave/service';
 import { formatDays } from '@/lib/day-format';
 import { pooledEntitlementCaption, isPoolBorrower, poolBadges } from '@/lib/shared-leave-balance';
 import { ENTITLEMENT_STATUS_LABEL_KEY } from '@/lib/entitlement-status';
-import { employeeBalanceRows } from '../rows';
+import { inquiryBalancePage } from '../inquiry-data';
 
 export async function GET(req: Request) {
   const { s: session, scopeIds } = await scopedSession();
   if (!isAdmin(session)) return new Response('Forbidden', { status: 403 });
 
   const sp = new URL(req.url).searchParams;
-  const format = sp.get('format') === 'xlsx' ? 'xlsx' : 'csv';
-  const rawAsOf = sp.get('asOf') ?? '';
-  const asOf = /^\d{4}-\d{2}-\d{2}$/.test(rawAsOf) ? rawAsOf : todayInKualaLumpur();
-  const dir = sp.get('dir') === 'desc' ? 'desc' : 'asc';
+  const tError = await getTranslations('leave.inquiry');
+  try {
+  const query = parseInquiryQuery(inquirySearchParams(sp), 'balances');
+  const { format, asOf } = query;
+  const inquiry = await leaveInquiryContext(session, scopeIds, query);
+  const selected = inquiry.selected;
 
   const locale = await getLocale();
   const t = await getTranslations('leave');
@@ -38,17 +40,7 @@ export async function GET(req: Request) {
   // same dictionary the screen reads.
   const tf = await getTranslations(LEAVE_FIGURE_NS);
 
-  // Same selection rule as the screen: an unknown/absent employee falls back to the first by company
-  // then name, so an export link can never resolve to a different employee than the page did.
-  const employees = sortInquiryEmployees(await listEmployees(session, scopeIds), locale);
-  const selected = pickInquiryEmployee(employees, sp.get('emp') ?? undefined);
-  const rows = selected
-    ? await employeeBalanceRows(session, selected.employmentId, asOf, locale, {
-        q: sp.get('q') ?? undefined,
-        typeIds: sp.getAll('type').filter(Boolean),
-        dir,
-      })
-    : [];
+  const rows = await collectInquiryExport(window => inquiryBalancePage(session, inquiry, query, locale, window));
 
   // 4a1abc4a: the export prints the same digits as the screen it exports, through the same formatter. The
   // placeholder is the ONE difference and it is deliberate — a spreadsheet cell for a figure nobody
@@ -90,10 +82,13 @@ export async function GET(req: Request) {
     return pooled ? tMe(pooled.labelKey, { pool: pooled.pool }) : null;
   };
   const data: ReportData = {
-    filename: `leave-balances-${selected?.employeeCode ?? 'employee'}-${asOf}`,
+    filename: `leave-balances-${selected?.employeeCode ?? 'all-employees'}-${asOf}`,
     title: tInq('balancesTitle'),
     columns: [
+      t('filters.employeeId'),
       tInq('employee'),
+      t('filters.company'),
+      t('filters.department'),
       tInq('colLeaveCode'),
       t('colType'),
       tInq('colEntitlementYear'),
@@ -132,7 +127,10 @@ export async function GET(req: Request) {
       tInq('colDate'),
     ],
     rows: rows.map((r) => [
-      selected?.name ?? '',
+      r.employee.employeeCode ?? '',
+      r.employee.name,
+      r.employee.company,
+      r.employee.department ?? '',
       r.code,
       r.leaveType,
       r.entitlementYear ?? '',
@@ -171,4 +169,8 @@ export async function GET(req: Request) {
       'Content-Disposition': `attachment; filename="${data.filename}.${file.ext}"`,
     },
   });
+  } catch (error) {
+    if (!(error instanceof InquiryQueryError)) throw error;
+    return new Response(tError(error.message.startsWith('Export exceeds') ? 'exportLimit' : error.message.startsWith('Results changed') ? 'exportChanged' : 'invalidQuery'), { status: 400 });
+  }
 }

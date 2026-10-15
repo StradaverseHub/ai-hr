@@ -2749,7 +2749,14 @@
       "fullScreen": "Full screen",
       "fullScreenClose": "Close",
       "fullScreenEsc": "Press Esc to close",
-      "noteLabel": "Show existing notes"
+      "noteLabel": "Show existing notes",
+      "allEmployeesHeader": "All employees · {count} employees · {companies}",
+      "invalidQuery": "The employee selection or filters are unavailable. Reset the inquiry and try again.",
+      "resetInquiry": "Reset inquiry",
+      "dateMode": "Date range applies to",
+      "leaveDates": "Leave dates",
+      "exportLimit": "Export exceeds 10,000 rows. Narrow the filters and try again.",
+      "exportChanged": "Results changed during export. Try again."
     },
     "override": {
       "title": "Before you submit",

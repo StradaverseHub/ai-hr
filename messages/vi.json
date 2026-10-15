@@ -2749,7 +2749,14 @@
       "fullScreen": "Toàn màn hình",
       "fullScreenClose": "Đóng",
       "fullScreenEsc": "Nhấn Esc để đóng",
-      "noteLabel": "Hiển thị ghi chú hiện có"
+      "noteLabel": "Hiển thị ghi chú hiện có",
+      "allEmployeesHeader": "Tất cả nhân viên · {count} nhân viên · {companies}",
+      "invalidQuery": "Lựa chọn nhân viên hoặc bộ lọc không khả dụng. Đặt lại tra cứu và thử lại.",
+      "resetInquiry": "Đặt lại tra cứu",
+      "dateMode": "Khoảng ngày áp dụng cho",
+      "leaveDates": "Ngày nghỉ phép",
+      "exportLimit": "Xuất vượt quá 10.000 dòng. Thu hẹp bộ lọc và thử lại.",
+      "exportChanged": "Kết quả thay đổi trong lúc xuất. Vui lòng thử lại."
     },
     "override": {
       "title": "Before you submit",

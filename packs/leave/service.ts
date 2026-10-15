@@ -97,3 +97,6 @@ export * from '../../core/leave-ledger-archive';
 // 93249794 — the Generate Entitlement service. Outside callers reach it HERE, never through core/,
 // which is what keeps it inside the pack boundary declared in test/leave-pack-drift.test.ts.
 export * from '../../core/leave-generation';
+
+// 23e87eef: authorized All/single inquiry read contract, registered with the pack drift guard.
+export * from '../../core/leave-inquiry';

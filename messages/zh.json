@@ -2749,7 +2749,14 @@
       "fullScreen": "全屏",
       "fullScreenClose": "关闭",
       "fullScreenEsc": "按 Esc 关闭",
-      "noteLabel": "显示现有备注"
+      "noteLabel": "显示现有备注",
+      "allEmployeesHeader": "所有员工 · {count} 名员工 · {companies}",
+      "invalidQuery": "员工选择或筛选条件不可用。请重置查询后重试。",
+      "resetInquiry": "重置查询",
+      "dateMode": "日期范围适用于",
+      "leaveDates": "休假日期",
+      "exportLimit": "导出超过 10,000 行。请缩小筛选范围后重试。",
+      "exportChanged": "导出期间结果已更改，请重试。"
     },
     "override": {
       "title": "Before you submit",
