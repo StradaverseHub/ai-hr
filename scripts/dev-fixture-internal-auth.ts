@@ -12,6 +12,7 @@ if (process.env.NODE_ENV === 'production' || process.env.AUTH_PROVIDER !== 'inte
 checked('DATABASE_URL'); checked('MIGRATION_DATABASE_URL');
 process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.TEST_MIGRATION_DATABASE_URL = process.env.MIGRATION_DATABASE_URL;
+async function main() {
 const { seedBase, owner, adminCtx, closeAll } = await import('../test/harness');
 const { bootstrapInternalOwner } = await import('../lib/internal-auth/bootstrap');
 const { changeInitialPassword, credentialByLogin, startLogin, verifyMfa, revokeSession } = await import('../lib/internal-auth/service');
@@ -23,7 +24,7 @@ try {
     const credential = await credentialByLogin('browser-cloud', 'owner');
     if (credential?.subject === existing.cloud.subject) {
       console.log('Existing isolated authentication fixture verified; no records changed.');
-      await closeAll(); process.exit(0);
+      return;
     }
     throw new Error('Remove the stale local fixture output only after recreating its disposable database.');
   }
@@ -47,4 +48,5 @@ try {
   await writeFile(output, JSON.stringify({ notice: 'DISPOSABLE LOCAL SYNTHETIC ACCOUNTS ONLY. Never use these passwords outside this fixture.', cloud, onPrem }, null, 2), { mode: 0o600, flag: 'wx' });
   console.log('Created two isolated organization login fixtures; private synthetic details are in the local fixture file.');
 } finally { await closeAll(); }
-process.exit(0);
+}
+main().then(() => process.exit(0), () => { console.error('Isolated authentication fixture failed.'); process.exit(1); });
