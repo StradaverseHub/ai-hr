@@ -71,6 +71,7 @@ if(!target.heldLockWorker) {
   if(!facadeSource.includes('overtime-records')||!actionSource.includes('transferOvertimePatternToPayroll'))throw new Error('Integrate actual configuration, Records and Payroll action owners before this journey.');
   env.OVERTIME_FIXTURE_COORDINATOR_PID=String(process.pid);env.OVERTIME_FIXTURE_CANDIDATE=candidate;
   let server,activeJob,stopping=false,serverFd,forceStopTimer;
+  let runFailed=false,ownedServerPid;
   let postgresAdmin,postgresTarget,postgresApp;
   let preparationCandidate=candidate,resumeReceipt,devLogName='browser-dev.log',fixtureDate;
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -119,10 +120,10 @@ if(!target.heldLockWorker) {
     if(!stat.isFile()||stat.isSymbolicLink()||stat.size>4*1024*1024)throw new Error('Missing or invalid local browser receipt; preserve target.');
     return JSON.parse(fs.readFileSync(file,'utf8'));
   }
-  function proveStoppedGroup() {
+  function proveStoppedGroup(stopped) {
     const filename=path.join(out,'browser.pid'),stat=fs.lstatSync(filename);
     if(!stat.isFile()||stat.isSymbolicLink()||stat.size>32)throw new Error('Unproven prior owned server PID.');
-    const raw=fs.readFileSync(filename,'utf8').trim();if(!/^[1-9][0-9]*$/.test(raw)||!Number.isSafeInteger(Number(raw))||Number(raw)<=1)throw new Error('Unproven prior owned server PID.');
+    const raw=fs.readFileSync(filename,'utf8').trim();if(!/^[1-9][0-9]*$/.test(raw)||!Number.isSafeInteger(Number(raw))||Number(raw)<=1||stopped.serverPid!==undefined&&stopped.serverPid!==Number(raw))throw new Error('Unproven or unmatched prior owned server PID.');
     try {process.kill(-Number(raw),0);}catch(error){if(error.code==='ESRCH')return;throw error;}
     throw new Error('Prior owned process group still exists; no resume and no process will be killed.');
   }
@@ -134,9 +135,12 @@ if(!target.heldLockWorker) {
     let preparedFixture;
     if(target.resume) {
       const fixture=readReceipt('fixture-manifest.json'),browser=readReceipt('browser-manifest.json'),stopped=readReceipt('browser-stopped.json');
-      let previousResume;if(stopped.resumeReceipt!==undefined){if(!overtimeResumeReceiptName(stopped.resumeReceipt,stopped.candidate))throw new Error('Invalid prior resume receipt identity.');previousResume=readReceipt(stopped.resumeReceipt);}
-      const binding=validateOvertimeResumeReceipts({fixture,browser,stopped,previousResume,target,root,today:todayInKualaLumpur()});
-      proveStoppedGroup();
+      const resumeRecords={};
+      const resumeNames=fs.readdirSync(out).filter(name=>name.startsWith('browser-resume-')&&name.endsWith('.json'));
+      if(resumeNames.length>64)throw new Error('Resume history exceeds the bounded proof limit; preserve target.');
+      for(const name of resumeNames){const receipt=readReceipt(name);if(!overtimeResumeReceiptName(name,receipt.candidate))throw new Error('Invalid prior resume receipt identity.');resumeRecords[name]=receipt;}
+      const binding=validateOvertimeResumeReceipts({fixture,browser,stopped,resumeRecords,target,root,today:todayInKualaLumpur()});
+      proveStoppedGroup(stopped);
       for(const prior of new Set([binding.preparationCandidate,binding.resumedFromCandidate])) {
         if(git(['rev-parse',prior+'^{commit}'])!==prior || git(['diff','--name-only',prior,candidate,'--','db/migrations','packs/catalog.ts','db/schema.ts']))throw new Error('Resume requires unchanged migrations, pack catalog and schema versus preparation/prior candidate.');
       }
@@ -189,7 +193,8 @@ if(!target.heldLockWorker) {
     await assertPortFree();checkCandidate();
     serverFd=fs.openSync(path.join(out,devLogName),'w');
     server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',port],{cwd:root,env,stdio:['ignore',serverFd,serverFd],detached:true});
-    server.once('error',error=>{fs.appendFileSync(path.join(out,devLogName),'\nSpawn failed: '+error.message+'\n');stopping=true;});
+    server.once('error',error=>{fs.appendFileSync(path.join(out,devLogName),'\nSpawn failed: '+error.message+'\n');runFailed=true;process.exitCode=1;stopping=true;});
+    ownedServerPid=server.pid;
     fs.writeFileSync(path.join(out,'browser.pid'),String(server.pid??'')+'\n');
     console.log(target.resume?`Resuming candidate ${candidate} from preparation ${preparationCandidate}; NO migration, seed or fixture ran for this candidate. Local app http://127.0.0.1:${port}; application outcomes remain unverified.`:`Fixture exited cleanly twice with identical declared facts. Owned candidate ${candidate}; local app http://127.0.0.1:${port}; render/application outcomes remain unverified.`);
     console.log(`Stop via ${stopFile}. Only owned process group ${server.pid} will be stopped. Both slots and DB stay held until cleanup.`);
@@ -199,13 +204,20 @@ if(!target.heldLockWorker) {
     }
     if(Date.now()>=deadline)console.log('Browser lifetime watchdog reached; stopping the owned server.');
     await stopOwned(server);server=undefined;fs.closeSync(serverFd);serverFd=undefined;
-    fs.writeFileSync(path.join(out,'browser-stopped.json'),JSON.stringify({candidate,preparationCandidate,root,database,namespace,date:fixtureDate,port:Number(port),resumeReceipt,devLogName,ownedServerStopped:true,stoppedAt:new Date().toISOString()},null,2)+'\n');
-    console.log('Owned Overtime server stopped; coordinator may now release both slots + DB. No browser outcome PASS claimed by runner.');
-  }catch(error){console.error(error instanceof Error?error.message:String(error));process.exitCode=1;}
+  }catch(error){console.error(error instanceof Error?error.message:String(error));runFailed=true;process.exitCode=1;}
   finally {
     clearTimeout(watchdog);clearTimeout(forceStopTimer);
     await stopOwned(activeJob);await stopOwned(server);
     if(serverFd!==undefined)fs.closeSync(serverFd);
     if(postgresApp)await postgresApp.end();if(postgresAdmin)await postgresAdmin.end();if(postgresTarget)await postgresTarget.end();
+    // Publish a CURRENT stop only after every owned group and DB handle has closed. A failed run
+    // remains failed; this is cleanup provenance, never a browser or fixture PASS receipt.
+    if(Number.isSafeInteger(ownedServerPid)&&ownedServerPid>1) {
+      const receipt={candidate,preparationCandidate,root,database,namespace,date:fixtureDate,port:Number(port),resumeReceipt,devLogName,serverPid:ownedServerPid,ownedServerStopped:true,cleanupSucceeded:true,outcome:runFailed?'failed':'stopped',exitCode:runFailed?1:0,stoppedAt:new Date().toISOString()};
+      const temporary=path.join(out,'browser-stopped.json.tmp-'+process.pid);
+      fs.writeFileSync(temporary,JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
+      fs.renameSync(temporary,path.join(out,'browser-stopped.json'));
+      console.log(`Owned Overtime cleanup complete (${receipt.outcome}); coordinator may release both slots + DB. No acceptance PASS claimed.`);
+    }
   }
 }
