@@ -62,6 +62,9 @@ const isYes = (v: string | undefined) => (v ?? '').trim().toLowerCase() === 'yes
 
 export function CustomHolderFields(props: Props) {
   const t = useTranslations('people.detail');
+  const mode=props.mode==='controlled'?'draft':'edit';
+  const fields={enableCustomHolderName:'bank_statutory.bank_information.enablecustomholdername',customHolderName:'bank_statutory.bank_information.customholdername',enableCustomHolderId:'bank_statutory.bank_information.enablecustomholderid',customHolderId:'bank_statutory.bank_information.customholderid'} as const;
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   // Form mode owns its ticks (as the card always did); controlled mode reads them from the draft. Both
   // hooks run in both modes so the hook order never depends on the mode.
   const [formName, setFormName] = useState(props.mode === 'form' ? props.defaults.enableCustomHolderName : false);
@@ -85,9 +88,8 @@ export function CustomHolderFields(props: Props) {
   const box = (which: 'name' | 'id') => {
     const key = which === 'name' ? 'customHolderName' : 'customHolderId';
     return props.mode === 'form'
-      ? { name: key, required: true, defaultValue: props.defaults[key] ?? '' }
+      ? { defaultValue: props.defaults[key] ?? '' }
       : {
-          required: true,
           value: props.value[key] ?? '',
           onChange: (e: React.ChangeEvent<HTMLInputElement>) => props.onChange({ [key]: e.target.value }),
         };
@@ -103,35 +105,33 @@ export function CustomHolderFields(props: Props) {
         <div className="flex flex-col gap-2">
           <label className="flex items-center gap-2 text-sm">
             <input
-              type="checkbox"
-              {...(props.mode === 'form' ? { name: 'enableCustomHolderName' } : {})}
+              {...personnelInput(fields.enableCustomHolderName,mode)}
               checked={enableName}
               onChange={(e) => tick('name', e.target.checked)}
               className="size-4 rounded"
             />
-            {t('enableCustomHolderName')}
+            {label(fields.enableCustomHolderName)}
           </label>
           {enableName && (
-            <Field label={t('customHolderName')}>
-              <input {...box('name')} className={inputCls} />
-            </Field>
+            <PersonnelField fieldId={fields.customHolderName} mode={mode}>
+              <input {...personnelInput(fields.customHolderName,mode)} {...box('name')} className={inputCls} />
+            </PersonnelField>
           )}
         </div>
         <div className="flex flex-col gap-2">
           <label className="flex items-center gap-2 text-sm">
             <input
-              type="checkbox"
-              {...(props.mode === 'form' ? { name: 'enableCustomHolderId' } : {})}
+              {...personnelInput(fields.enableCustomHolderId,mode)}
               checked={enableId}
               onChange={(e) => tick('id', e.target.checked)}
               className="size-4 rounded"
             />
-            {t('enableCustomHolderId')}
+            {label(fields.enableCustomHolderId)}
           </label>
           {enableId && (
-            <Field label={t('customHolderId')}>
-              <input {...box('id')} className={inputCls} />
-            </Field>
+            <PersonnelField fieldId={fields.customHolderId} mode={mode}>
+              <input {...personnelInput(fields.customHolderId,mode)} {...box('id')} className={inputCls} />
+            </PersonnelField>
           )}
         </div>
       </div>

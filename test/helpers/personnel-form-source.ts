@@ -64,6 +64,7 @@ export function personnelRenderedLabelKeys(file:string,text:string,fields:readon
   const groups=new Set<string>();let usesAdapter=false;
   const scan=(node:ts.Node)=>{
     if((ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node))&&node.tagName.getText(source)==='PersonnelField')usesAdapter=true;
+    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='personnelFormLabel')usesAdapter=true;
     if(ts.isStringLiteralLike(node)&&byId.has(node.text)) {
       // Transport/control identities do not themselves render a caption (notably legacy numeric tax).
       const parent=node.parent;

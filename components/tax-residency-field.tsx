@@ -17,7 +17,7 @@
  * One literal t() per option — a template key is invisible to test/i18n-coverage.test.ts check C.
  */
 import { useTranslations } from 'next-intl';
-import {personnelControl,personnelFormLabel} from '@/lib/personnel-form-contract';
+import {personnelControl,personnelFormLabel,personnelFormChoices} from '@/lib/personnel-form-contract';
 
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
@@ -26,11 +26,7 @@ function TaxResidencyOptions() {
   const t = useTranslations('people.detail');
   return (
     <>
-      <option value="resident">{t('taxResidencyResident')}</option>
-      <option value="non_resident">{t('taxResidencyNonResident')}</option>
-      <option value="rep">{t('taxResidencyRep')}</option>
-      <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
-      <option value="c_suite">{t('taxResidencyCSuite')}</option>
+      {personnelFormChoices('bank_statutory.income_tax_pcb.taxresidency').map(({value,labelKey})=><option key={value} value={value}>{t(labelKey.slice(14))}</option>)}
     </>
   );
 }

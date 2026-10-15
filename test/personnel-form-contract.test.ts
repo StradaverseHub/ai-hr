@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue} from '../lib/personnel-form-contract';
+import {personnelFieldChoices} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
@@ -30,6 +31,15 @@ describe('Personnel shared form contract',()=>{
   it('rejects a stale specialized override when canonical type changes',()=>{
     const field=structuredClone(PERSONNEL_FIELDS.find(field=>field.id==='profile.contact_and_permanent_address.personalemail')!);
     field.type='date';expect(personnelFormMetadataIssue(field)).toContain('canonical type');
+  });
+  it('resolves each shared choice caption in all supported locales',()=>{
+    for(const locale of ['en','ms','ta','th','vi','zh']) {
+      const messages=JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8')) as Record<string,unknown>;
+      for(const field of PERSONNEL_FIELDS.filter(field=>field.form))for(const choice of personnelFieldChoices(field)) {
+        let value:unknown=messages;for(const part of choice.labelKey.split('.'))value=value&&typeof value==='object'?(value as Record<string,unknown>)[part]:undefined;
+        expect(typeof value,locale+':'+choice.labelKey).toBe('string');
+      }
+    }
   });
   it('reads actual Birth Date JSX and every Employment period control, including unnamed controlled inputs',()=>{
     const read=(file:string)=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
