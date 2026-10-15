@@ -21,7 +21,8 @@ import { client, withTenant, type SessionContext, type Tx } from '../db/client';
 import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
-import { accountEmailReadiness,attemptAccountEmail } from './account-email';
+import { attemptAccountEmail } from './account-email';
+import { accountEmailReadiness } from '../lib/identity/account-email-readiness';
 import { recoveryEmailSchema,type AccountEmailReadiness } from '../lib/account-email-model';
 import type {IdentityEmailActor} from '../lib/identity/email-model';
 

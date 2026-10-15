@@ -2,20 +2,8 @@
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {client,withTenant,type SessionContext} from '../db/client';
-import {keycloakReady,keycloakSelected} from '../lib/identity/config';
-import {missingWorkosSettings} from '../lib/real-auth';
 import type {IdentityEmailActor} from '../lib/identity/email-model';
 import {AccountEmailDeliveryError,type AccountEmailProvider,type AccountEmailDeliveryView,type AccountEmailError,type AccountEmailReadiness} from '../lib/account-email-model';
-
-/** The deployed provider always checks SMTP; injected test providers may declare their own readiness. */
-export async function accountEmailReadiness():Promise<AccountEmailReadiness>{
- try{
-  const {identityEmailRequest}=await import('../lib/identity/email-ipc');
-  if(!(await identityEmailRequest<{ready:boolean}>({op:'readiness'})).ready)return 'relayUnavailable';
- }catch{return 'relayUnavailable';}
- if(keycloakSelected())return keycloakReady()&&process.env.KEYCLOAK_EMAIL_ENABLED==='true'&&!!process.env.KEYCLOAK_ADMIN_CLIENT_ID&&!!process.env.KEYCLOAK_ADMIN_CLIENT_SECRET?null:'providerUnavailable';
- return missingWorkosSettings().length?'providerUnavailable':null;
-}
 
 /** No business transaction spans the provider call. A lost result remains held, never auto-retried. */
 export async function attemptAccountEmail(id:string,leaseToken:string,provider:AccountEmailProvider,invitationToken?:string):Promise<void>{
