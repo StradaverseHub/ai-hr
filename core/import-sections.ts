@@ -63,8 +63,8 @@ import { setPersonComplianceFields } from './profile';
  * when any row is unmatched, and the template chooser + this section's own notice say it BEFORE a
  * file is uploaded. The correction is being put to the reporter in the same words (AGENTS 31).
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { and, eq, inArray, isNull, gt, or, asc } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
   company,
@@ -74,6 +74,7 @@ import {
   employment,
   person,
   profileOption,
+  reportingLine,
 } from '../db/schema';
 import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields, type EmploymentInfoInput } from './org';
 import { primaryEmergencyContactSql } from './emergency-contacts';
@@ -124,6 +125,8 @@ type Subject = {
   primaryEmail: string;
   phone: string | null;
   hiredOn: string;
+  currentSuperior: {id:string;managerEmploymentId:string}|'ambiguous'|null;
+  futureSuperior: boolean;
   pack: CountryPack;
   /** The person's stored profile columns this importer can write, for the merge + change diff. EVERY
    *  column in `PROFILE_PERSON_COLUMNS` is loaded here: a field the diff cannot see is a field the
@@ -415,6 +418,43 @@ async function analyze(
   return { preview, resolved };
 }
 
+/** Read actual owner edges, never a cached employee manager field. Half-open effective dates and
+ * ambiguity are explicit; a future open edge is not today's manager. Bounded per selected file. */
+async function currentAdministrativeLinesTx(tx:Tx,tenantId:string,employmentIds:string[],asOf:string,lock=false) {
+  const ids=[...new Set(employmentIds)];
+  const current=new Map<string,Subject['currentSuperior']>();const future=new Set<string>();
+  if(!ids.length)return {current,future};
+  const query=tx.select({id:reportingLine.id,subordinateEmploymentId:reportingLine.subordinateEmploymentId,
+    managerEmploymentId:reportingLine.managerEmploymentId,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo})
+    .from(reportingLine).where(and(eq(reportingLine.tenantId,tenantId),inArray(reportingLine.subordinateEmploymentId,ids),
+      eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt),
+      or(isNull(reportingLine.validTo),gt(reportingLine.validTo,asOf))))
+    .orderBy(asc(reportingLine.id)).limit(ids.length*3+1);
+  const rows=lock?await query.for('update'):await query;
+  if(rows.length>ids.length*3)throw new Error('Too many current or scheduled Direct Superior edges. Review Personnel before importing.');
+  for(const edge of rows){
+    if(edge.validFrom>asOf){future.add(edge.subordinateEmploymentId);continue;}
+    current.set(edge.subordinateEmploymentId,current.has(edge.subordinateEmploymentId)?'ambiguous':{id:edge.id,managerEmploymentId:edge.managerEmploymentId});
+  }
+  return {current,future};
+}
+/** SAME subordinate PK lock as canonical setReportingLine, then fresh edge locks/read in this Tx.
+ * That shared owner lock serializes even an empty current-edge set; never substitute an import-only lock. */
+async function applySuperiorIfChangedTx(tx:Tx,ctx:SessionContext,subject:Subject,managerEmploymentId:string) {
+  const [locked]=await tx.select({id:employment.id}).from(employment)
+    .where(and(eq(employment.id,subject.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+  if(!locked)throw new Error('Employment is no longer available. Check the file again.');
+  const today=todayInKualaLumpur();
+  const {current,future}=await currentAdministrativeLinesTx(tx,ctx.tenantId,[subject.employmentId],today,true);
+  const edge=current.get(subject.employmentId);
+  if(edge==='ambiguous')throw new Error('More than one Direct Superior is in force. Review Personnel before importing.');
+  if(edge?.managerEmploymentId===managerEmploymentId)return false;
+  if(future.has(subject.employmentId))throw new Error('A future Direct Superior change is already scheduled. Review Personnel before importing.');
+  await setReportingLine(ctx,{subordinateEmploymentId:subject.employmentId,managerEmploymentId,
+    lineType:'administrative',validFrom:today},tx);
+  return true;
+}
+
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
 async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection) {
   return withTenant(ctx, async (tx) => {
@@ -473,6 +513,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
       if (code && codes.has(code)) wanted.push(r);
     }
     const personIds = wanted.map((r) => r.personId);
+    const superiorEdges=section==='employment'?await currentAdministrativeLinesTx(tx,ctx.tenantId,wanted.map(row=>row.employmentId),todayInKualaLumpur()):{current:new Map<string,Subject['currentSuperior']>(),future:new Set<string>()};
 
     // The statutory rows of the employees this file names — the current values every whole-block
     // setter below is merged over. Read here rather than at write time so the DRY RUN can tell an
@@ -513,6 +554,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         primaryEmail: r.primaryEmail,
         phone: r.phone,
         hiredOn: String(r.hiredOn),
+        currentSuperior:superiorEdges.current.get(r.employmentId)??null,futureSuperior:superiorEdges.future.has(r.employmentId),
         // The employee's own company's country pack decides IC rules (ADR-0080 D1/D6) — a section file
         // may name people at several companies, and each is validated under its own jurisdiction.
         pack: requirePackFor(r.country),
@@ -884,9 +926,13 @@ function buildEmployment(
     if(!x.superiorByCode.has(normalizeEmployeeCode(superior)) && x.superiorByEmail.get(superior.toLowerCase())===null)errors.push('Ambiguous direct_superior email — use the exact Employee ID for the intended employment');
     else if (!found) errors.push(`Unknown direct_superior "${superior}" (no employee with that Employee ID or email)`);
     else if (found === subject.employmentId) errors.push('direct_superior cannot be the employee themselves');
+    else if(subject.currentSuperior==='ambiguous')errors.push('More than one Direct Superior is in force. Review Personnel before importing.');
     else {
       row.superiorEmploymentId = found;
-      changes.push('direct_superior');
+      if(subject.currentSuperior?.managerEmploymentId!==found) {
+        if(subject.futureSuperior)errors.push('A future Direct Superior change is already scheduled. Review Personnel before importing.');
+        else changes.push('direct_superior');
+      }
     }
   }
 }
@@ -1115,7 +1161,11 @@ export async function commitSectionImport(
     const s = row.subject;
     let step: WriteStep = 'person';
     try {
-      await withTenant(ctx,async tx=>{
+      const wrote=await withTenant(ctx,async tx=>{
+      // A manager-only no-op needs no other owner writes or Person/statutory snapshot carry.
+      if(row.superiorEmploymentId && row.result.changes.every(column=>column==='direct_superior')) {
+        step='superior';return applySuperiorIfChangedTx(tx,ctx,s,row.superiorEmploymentId);
+      }
       step = 'person';
       // Lock shared records before carrying forward absent cells. Preview snapshots never supply
       // values for blank columns at apply time; a concurrent unrelated edit must survive.
@@ -1165,19 +1215,12 @@ export async function commitSectionImport(
       step = 'employmentInfo';
       if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo }, tx);
       step = 'superior';
-      if (row.superiorEmploymentId) {
-        await setReportingLine(ctx, {
-          subordinateEmploymentId: s.employmentId,
-          managerEmploymentId: row.superiorEmploymentId,
-          lineType: 'administrative',
-          // The edge opens today, not on the hire date: this is a CHANGE of manager on somebody who is
-          // already employed, and backdating it to their joining date would rewrite history.
-          validFrom: todayInKualaLumpur(),
-        }, tx);
-      }
+      if (row.superiorEmploymentId) await applySuperiorIfChangedTx(tx,ctx,s,row.superiorEmploymentId);
       step = 'dependent';
       if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
+      return true;
       });
+      if(!wrote)continue;
       updated++;
       if(row.dependent) {try {await syncChildReliefFromFamily(ctx,s.personId);}catch{warnings.push(`Row ${row.result.rowNum} was saved; review the child-relief refresh on Personnel.`);}}
     } catch (e) {

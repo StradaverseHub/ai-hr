@@ -31,6 +31,7 @@ import { buildTemplateCsv, employeeTemplate } from '../lib/import-template';
 import { UNSECTIONED_COLUMNS, foreignColumns } from '../lib/import-sections';
 import { employeeColumnLabel, EMPLOYEE_XLSX_COLUMNS } from '../lib/import-template-xlsx';
 import { parseCsvRecords } from '../lib/csv';
+import {parsePersonnelImportCsv} from '../lib/personnel-import-contract';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const COLUMN = 'salary_remarks';
@@ -96,7 +97,7 @@ describe('r369 §1 · the column is in the contract, on the template, and OPTION
   it('the downloadable CSV template carries it, and leaves it BLANK on every sample row', () => {
     // Blank sample cells are the template's own demonstration that a row with a basic salary is not
     // made to carry a reason. A sample row that filled it in would teach the opposite.
-    const { headers, records } = parseCsvRecords(buildTemplateCsv(employeeTemplate));
+    const { headers, records } = parsePersonnelImportCsv(buildTemplateCsv(employeeTemplate),{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]});
     expect(headers).toContain(COLUMN);
     expect(records.length).toBeGreaterThan(0);
     for (const r of records) {
@@ -105,13 +106,10 @@ describe('r369 §1 · the column is in the contract, on the template, and OPTION
     }
   });
 
-  it('the .xlsx heading lowercases-and-underscores back to the contract key (the real re-upload trip)', () => {
-    // `parseCsvRecords` does exactly `h.trim().toLowerCase().replace(/\s+/g, '_')` on a header. A label
-    // that did not round-trip would silently DROP the column from the workbook HR actually fills in —
-    // and this column has no punctuation precisely so no canonicalisation step is needed.
-    const label = employeeColumnLabel(COLUMN);
-    expect(label).toBe('Salary Remarks');
-    expect(label.trim().toLowerCase().replace(/\s+/g, '_')).toBe(COLUMN);
+  it('the .xlsx heading resolves through the actual Personnel header contract', () => {
+    const label=employeeColumnLabel(COLUMN);
+    const parsed=parsePersonnelImportCsv('"'+label.replaceAll('"','""')+'"\nReason',{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]});
+    expect(parsed.headers).toEqual([COLUMN]);expect(parsed.records[0][COLUMN]).toBe('Reason');
     expect(EMPLOYEE_XLSX_COLUMNS).toContain(COLUMN);
   });
 

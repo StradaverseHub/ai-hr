@@ -1,6 +1,7 @@
-import {personnelImportFields, personnelScalarIssue} from './personnel-import-contract';
+import {personnelImportFields, personnelScalarIssue, personnelColumnLabel, type PersonnelLabelResolver} from './personnel-import-contract';
 import {normalizeEmployeeCode, isValidEmployeeCode} from './employee-code';
 import type {ImportRecord} from './import-schema';
+import {buildPersonnelCsv} from './personnel-csv';
 
 export const PERSONNEL_REGISTER_KINDS=['qualification','emergency'] as const;
 export type PersonnelRegisterKind=typeof PERSONNEL_REGISTER_KINDS[number];
@@ -37,4 +38,11 @@ export function personnelRegisterInput(kind:PersonnelRegisterKind,record:ImportR
     input[field.import.writerField!]=field.type==='boolean'?value==='true':value;
   }
   return {employeeCode,recordId,input,errors};
+}
+
+/** The actual current-register download adapter; its versioned codec preserves protected literals. */
+export function buildPersonnelRegisterCsv(kind:PersonnelRegisterKind,records:readonly ImportRecord[],resolve?:PersonnelLabelResolver) {
+ const columns=personnelRegisterColumns(kind);
+ return buildPersonnelCsv(kind,[columns.map(column=>personnelColumnLabel(column,kind,resolve)),
+  ...records.map(record=>columns.map(column=>record[column]??''))]);
 }
