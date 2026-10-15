@@ -22,7 +22,7 @@ function clientFixture() {
     require: (id: string) => {
       if (id === 'react') return React;
       if (id === './auth') return auth;
-      if (id === './config') return { config, apiOriginProblem };
+      if (id === './config') return { config, apiOriginProblem, configProblem: () => null };
       if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError };
       if (id === './i18n') return { appLocale: () => 'en' };
       throw new Error(`Unexpected native client dependency: ${id}`);
@@ -61,7 +61,7 @@ describe('native API transport', () => {
     await f.api.apiGet('me', { employmentId: 'two' });
     expect(f.auth.refresh).toHaveBeenCalledTimes(1); expect(f.response).toHaveBeenCalledTimes(2);
     expect(f.response.mock.calls[1]).toEqual(['https://hr.example.com/api/mobile/v1/me?employmentId=two', {
-      headers: { authorization: 'Bearer rotated-token', 'accept-language': 'en' }, redirect: 'error',
+      headers: { authorization: 'Bearer rotated-token', 'accept-language': 'en' }, redirect: 'error', credentials: 'omit',
       signal: expect.any(AbortSignal),
     }]);
   });

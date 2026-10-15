@@ -1,0 +1,32 @@
+# EAS archives from the Git root, even when invoked from mobile/.
+# Only the native app and its shared contracts belong in that archive.
+/*
+!/.easignore
+!/mobile
+!/lib
+/lib/*
+!/lib/mobile-connection.ts
+!/lib/mobile-design.ts
+!/lib/mobile-composition.ts
+!/lib/mobile-api
+/lib/mobile-api/*
+!/lib/mobile-api/contract.ts
+
+# EAS replaces .gitignore when this file exists; repeat private/generated exclusions.
+**/node_modules
+**/.expo
+**/dist
+/mobile/android
+/mobile/ios
+**/.env*
+**/*.pem
+**/*.key
+**/*.p8
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.mobileprovision
+**/credentials.json
+/mobile/builds
+**/*.tsbuildinfo
+**/.DS_Store

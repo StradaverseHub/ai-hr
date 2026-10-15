@@ -1,7 +1,17 @@
 # Native app foundation
 
-The app uses Expo SDK 57, hosted WorkOS AuthKit with PKCE and the shared `/api/mobile/v1` contract.
-Run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set the HTTPS API origin and the
+Run EAS commands from `mobile/`. EAS uploads from the Git root; the root `.easignore`
+admits only this app and its four shared contracts. The mobile `.easignore` also protects
+standalone copies. Inspect the EAS archive before a cloud build; deployment settings,
+server code, local credentials and generated native/build folders must be absent.
+The backend release filter also excludes native build folders and signing inputs; mobile binaries
+are delivered separately from the HR server deployment.
+On iPhone, allow Local Network access if prompted when connecting to an HR server on the same
+network. A denied or newly granted prompt may require retrying sign-in; this permission does not
+replace trusted HTTPS certificates or the company's Wi-Fi/VPN connection.
+
+The app uses Expo SDK 57, deployment-owned Keycloak sign-in with PKCE and the shared `/api/mobile/v1` contract. The legacy build-time WorkOS adapter remains for controlled migration.
+For the legacy WorkOS build, run `npm ci` inside `mobile/`, copy `.env.example` to `.env.local`, set `EXPO_PUBLIC_RUNTIME_CONNECTIONS=0`, `EXPO_PUBLIC_AUTH_PROVIDER=workos`, the HTTPS API origin and the
 matching public WorkOS client id, then use an iOS/Android development build. No API key or client
 secret belongs in the app. Root TypeScript/build commands exclude this directory; run
 `npm --prefix mobile run typecheck` separately under the repository test locks.
@@ -102,6 +112,11 @@ the exported JavaScript and configuration, not a signed APK/IPA or physical-devi
 Development/build inputs still need control while the two tooling advisories remain open. No audit
 ignore or forced SDK downgrade conceals these findings.
 
+Rechecked 2026-10-15: npm audit reports 19 high findings propagated from those two advisories.
+The runtime-enabled Android/iOS Hermes export maps contain neither `braces` nor `node-forge`
+(1,351 Android modules and 1,220 iOS modules); both contain the patched decoder and the signed-profile
+verifier. This is exported-JavaScript evidence, separate from native binary/device verification.
+
 ## Online Monolith journeys
 
 The Clock tab and Home share one private draft. A preparation slide collects one foreground location
@@ -162,7 +177,75 @@ consumed by native components. Schema 1 still renders the legacy layout. Preview
 the contract, not identical browser/OS primitives; physical-device visual/interaction verification
 is still required before customer distribution.
 
-Runtime cloud/on-premise organization enrollment and internal OIDC are **not implemented** by the
-composer. `EXPO_PUBLIC_API_URL` and the WorkOS client remain build-time configuration. The proposed
-provider-neutral migration is ADR-0098; do not add an arbitrary server picker while retaining the
-current WorkOS token.
+Runtime company connection enrollment is separate from the visual composer. Set
+`EXPO_PUBLIC_RUNTIME_CONNECTIONS=1` for the shared test binary. It verifies an operator-signed company
+setup file against `connections/trust.json` before adopting any API or identity address. The public
+profile pins installation ID, display name, cloud/on-premise hosting, HTTPS API origin, Keycloak issuer,
+public mobile client, API audience, API version and validity window. The same binary can import another
+approved private installation without recompilation. It does not accept caller-supplied tenant IDs,
+arbitrary JWKS or an untrusted key embedded in a file.
+
+### Preparing company setup files
+
+The current `AI HR Test` binary embeds a **test-only** public signing key. Its private key is stored
+outside the repository and every build/upload input, in the operator's protected local key directory.
+It must not be used for customer production distribution. A production operator must provision and
+back up its signing key, embed the reviewed public anchors in the shared production binary, and sign
+customer installation profiles offline. No central directory is needed at login. Adding a supported
+customer uses a new signed profile; adding a new signing trust anchor requires an app update.
+
+The offline operator tool supports:
+
+```sh
+node --import tsx scripts/mobile-company-profile.ts keygen /PRIVATE/operator.pem KEY_ID mobile/connections/trust.json
+node --import tsx scripts/mobile-company-profile.ts sign /PRIVATE/operator.pem /PRIVATE/company.json /OUTPUT/company.aihr.json
+```
+
+Keep the private key outside the mobile project and source/upload tree. Key generation and signing
+refuse to overwrite output files. Distribute only the signed public `.aihr.json` file through the
+customer's approved channel. The profile contains no passwords, tokens, HR data or client secret.
+Unsigned profile fields follow `CompanyProfile` in `lib/mobile-connection.ts`; profiles expire within
+one year. Current app anchors provide offline authenticity, **not instant revocation**: issue bounded
+lifetimes, remove an affected key in a new binary after compromise, and revoke affected identity/client
+access on the server. Device clock and certificate trust remain platform/operator dependencies.
+
+Employees import the file once, review the organization and both domains, and confirm. The selected
+signed file is reverified on cold launch; expired or corrupt setup closes the connection gate. Before
+sign-in, the app compares `/login/mobile-connection` and the issuer's OIDC discovery against the pinned
+profile, including S256 support. The public metadata route reads only operator-owned configuration,
+contains no HR/tenant data, and returns unavailable while internal authentication is disabled/demo.
+Profile changes hide private screens first, invalidate authentication, delete refresh/device credentials
+and local capture/draft files, then persist and install the new connection. Cleanup failure keeps the
+gate closed. Cookies are omitted from token/API/bootstrap requests and redirects are refused.
+
+The server still owns exact identity-to-tenant binding and all HR permissions. Company setup does not
+create a membership or adopt another tenant's user by email. The existing Me picker selects authorized
+employments within the resolved tenant; a new cross-tenant identity-adoption flow is not included.
+Private installations require reachable DNS, trusted HTTPS certificates and Wi-Fi/VPN access to both
+servers. Private certificate authorities require OS/customer provisioning and verification on each
+supported OS/app; provisioning alone does not prove the app trusts that CA. There is no TLS bypass.
+QR scanning and a hosted company directory are not part of this setup-file slice.
+
+### Installable test builds
+
+`eas.json` defines a standalone preview APK and an ad hoc iPhone build, plus an iOS simulator profile.
+The preview app is `AI HR Test` / `ai.stradaverse.aihr.test`; it bundles JavaScript and does not need a
+Metro server to run. Its existing `aihr://auth/callback` must be registered by the deployment operator.
+Do not install another AI HR binary using that same custom scheme alongside it during callback tests.
+Preserve a locally signed Android build's operator keystore outside source/build inputs and reuse its
+certificate for updates. A new EAS signing key cannot update an APK signed by a different key.
+
+```sh
+cd mobile
+npx eas-cli@24.10.0 login
+npx eas-cli@24.10.0 init
+npx eas-cli@24.10.0 build --platform android --profile preview
+npx eas-cli@24.10.0 device:create
+npx eas-cli@24.10.0 build --platform ios --profile preview
+```
+
+EAS cloud builds use the account's plan resources. iPhone installation requires Apple signing and an
+ad hoc profile containing the test device UDID. Local SDK 57 iOS builds require Xcode 26.4+; Xcode 16
+is insufficient. This request does not authorize public App Store/Play Store submission. Use synthetic
+data until the physical-device matrix above passes. Installing a binary does not activate the current
+server's internal login, enroll a user or activate SMTP.

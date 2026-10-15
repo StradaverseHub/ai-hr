@@ -1,6 +1,8 @@
 import { JourneyDraftProvider } from '../lib/journey-drafts';
+import { CompanyConnectionProvider, useCompanyConnection } from '../lib/company-connection';
 import { TenantDesignProvider, useTenantDesign } from '../lib/design';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -15,6 +17,9 @@ function ThemedStack() {
 
 function Gate() {
   const { status, visible, error, unlocking, unlock, signOut } = useSession();
+  const company=useCompanyConnection();
+  // Navigate only AFTER the signed-out Stack commits, including the first connection setup.
+  useEffect(()=>{if(company&&status==='signedOut'&&visible)router.replace('/sign-in');},[company,status,visible]);
   if (status === 'loading' || !visible) {
     return (
       <View style={styles.center}>
@@ -40,10 +45,10 @@ function Gate() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <SessionProvider>
+      <CompanyConnectionProvider><SessionProvider>
         <StatusBar style="dark" />
         <JourneyDraftProvider><Gate /></JourneyDraftProvider>
-      </SessionProvider>
+      </SessionProvider></CompanyConnectionProvider>
     </SafeAreaProvider>
   );
 }
