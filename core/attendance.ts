@@ -1,4 +1,5 @@
 import { exceptionDecisionsTx } from './schedule-group-controls';
+import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
@@ -780,6 +781,8 @@ export type ScheduleMemo = {
   from: string;
   to: string;
   cache: Map<string, Promise<unknown>>;
+  /** Raw Schedule owner read: suppress only holiday overlay to break replacement selection recursion. */
+  originalSchedule?:boolean;
   /** When set, the roster row for `${employmentId}|${date}` (absent = no roster row) — see prefetch. */
   roster?: Map<string, RosterRow>;
   adjustments?: Map<string,typeof attendanceDayAdjustment.$inferSelect>;
@@ -897,7 +900,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
   // national, single-winner replacement — the SAME calendar the leave engine resolves (leave.ts
   // resolveHolidaySet), so attendance OT day-type classification can never disagree with leave. A
   // business-group override REPLACES nat+state; no company/state rows ⇒ national-only = today's behaviour.
-  const isHoliday = memo
+  const isHoliday = memo?.originalSchedule?false:memo
     ? (
         await memoized(memo, `hol|${employmentId}`, () =>
           holidayDatesFor(tx, { employmentId, startDate: memo.from, endDate: memo.to }),
@@ -6404,4 +6407,25 @@ export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:strin
     const clockChanges={version:1 as const,baseline:p.baseline,entries:active.filter(row=>row.id!==p.punchId).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}))};
     return insertAttendanceCorrectionRequestTx(tx,ctx,{id:p.requestId,removalPunchId:p.punchId,employmentId:me.employmentId,date,clockChanges,checkIn:null,checkOut:null,requestedOtMinutes:null,reason,plannedStartTime:null,plannedEndTime:null,otReasonCategory:null,remark:null,requestKind:'other'});
   });
+}
+
+/** Same dated Schedule owner without any original/replacement holiday overlay. The replacement-only
+ * seam reports historical policy fallback as Unknown when the dated entity differs from today's company;
+ * it never borrows the new employer's weekdays or changes ordinary Attendance resolution. */
+export async function rawScheduleDayFactsTx(tx:Tx,employmentId:string,from:string,to:string){
+ const memo=await newScheduleMemo(tx,{employmentIds:[employmentId],from,to});memo.originalSchedule=true;
+ const dates:string[]=[];for(let date=from;date<=to;date=addDays(date,1))dates.push(date);
+ const [employee]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ const companies=await provenCompanyDatesTx(tx,dates.map(date=>({employmentId,date})));
+ const out=new Map<string,{kind:'full'|'half'|'off'|'rest'|'unknown';reason:'historical_schedule_policy_unknown'|null}>();
+ for(const date of dates){
+  const schedule=await scheduleFor(tx,employmentId,date,memo),company=companies.get(`${employmentId}|${date}`);
+  const missingPolicy=schedule.source==='policy'&&company?.companyId&&company.companyId!==employee?.companyId;
+  const kind=missingPolicy?'unknown':schedule.dayType==='rest_day'?(schedule.scheduleDayKind==='off'?'off':'rest'):schedule.dayType==='workday'?(schedule.scheduleDayKind==='half'?'half':'full'):'unknown';
+  out.set(date,{kind,reason:missingPolicy?'historical_schedule_policy_unknown':null});
+ }
+ return out;
+}
+export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to:string){
+ return new Map([...(await rawScheduleDayFactsTx(tx,employmentId,from,to))].map(([date,fact])=>[date,fact.kind]));
 }

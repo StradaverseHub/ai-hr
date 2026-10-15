@@ -23,3 +23,9 @@ Business-group override  →  State PH  →  Country default
 - Migration `0112` adds `holiday.company_id` (nullable FK) + the single-axis CHECK.
 - Leave and attendance share the same holiday resolver, so a business-group override is honoured identically across both.
 - Out of scope: per-employee holiday overrides (the location-level `state` override in ADR-0054 already covers the common case).
+
+## 2026-10-15 follow-up — stable annual selection
+
+[ADR-0120](0120-employee-replacement-holidays.md) makes the original-calendar winner stable for each calendar year. Company-subtree precedence remains single-winner replacement. Selecting the winner only from dates inside the caller's query window violated this ADR's shared Leave/Attendance promise: a day and a month could disagree. The owner now selects the year first and filters its dates afterward, independently across year boundaries. Employee-specific replacement projections are a separate additive owner; stored attendance and protected payroll snapshots are not rewritten.
+
+ADR-0120 additionally resolves each annual company calendar within canonical dated company segments. Legacy original-calendar fallback remains in the entity owner; employee replacement projections require strict dated coverage and retain their ledger for review when coverage becomes Unknown.

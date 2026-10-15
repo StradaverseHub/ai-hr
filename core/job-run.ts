@@ -25,6 +25,7 @@ import { jobRun } from '../db/schema';
  *  never run again. */
 export const JOB_KEYS = [
   'leave.accrue',
+  'replacement-holidays.reconcile',
   'review.sweep',
   'leave.expire-carry',
   // ADR-0077 slice 10 (r113) — the usage meter. Unlike the sweeps above, a MISSED RUN IS A PERMANENT HOLE:
@@ -59,6 +60,7 @@ export type JobOutcome = 'success' | 'partial' | 'failed';
 export type JobDescriptor = { key: JobKey; i18nKey: string; schedule: string };
 
 export const JOBS: readonly JobDescriptor[] = [
+  {key:'replacement-holidays.reconcile',i18nKey:'replacement-holidays-reconcile',schedule:'Every minute — queued changes; daily reconciliation'},
   { key: 'leave.accrue', i18nKey: 'leave-accrue', schedule: 'Monthly — 1st at 02:00' },
   { key: 'review.sweep', i18nKey: 'review-sweep', schedule: 'Daily — 03:00' },
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
