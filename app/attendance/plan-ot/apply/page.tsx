@@ -362,10 +362,8 @@ export default async function ApplyOtPlanPage({
           </Card>
 
           <Card className="p-4">
-            {/* One form, one server action, unchanged. `encType` is spelt out because this form can now
-                carry a file: a server action reads multipart itself, but a JavaScript-off submission is a
-                plain browser POST and would send only the file NAME without it. */}
-            <form action={myRequestOvertime} encType="multipart/form-data" className="space-y-3">
+            {/* React supplies the Server Action's POST and multipart encoding, including file uploads. */}
+            <form action={myRequestOvertime} className="space-y-3">
               <h2 className="text-sm font-semibold">{t('otCalOvertimeHeading')}</h2>
 
               {/* The client island: the planned window, the derived hours and the reason category. The
