@@ -134,7 +134,7 @@ if(!process.argv.includes('--held-lock-worker')) {
     await run('pnpm',['exec','drizzle-kit','migrate','--config',migrationConfig],'browser-migrate',180000);
     if(!seeded)await run(process.execPath,['--import','tsx',path.join(root,'db/seed.ts')],'browser-seed',180000);
     else fs.writeFileSync(path.join(out,'browser-seed.log'),'Existing named fictional demo database preserved; seed was not rerun.\n');
-    for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts/dev-fixture-overtime-patterns.ts')],label,120000);
+    for(const label of ['browser-fixture-first','browser-fixture-second'])await run(process.execPath,['--import','tsx',path.join(root,'scripts/dev-fixture-overtime-patterns.mts')],label,120000);
     const manifests=['browser-fixture-first','browser-fixture-second'].map(manifestFromLog);
     if(JSON.stringify(manifests[0])!==JSON.stringify(manifests[1]))throw new Error('Fixture rerun changed its declared business identities/files; no clean-twice claim.');
     env.DEV_USER_ID=manifests[1].people.HR.userId;
