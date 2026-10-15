@@ -165,3 +165,10 @@ PUBLIC and application table privileges are revoked before restoring application
 including removal of bootstrap write/TRUNCATE grants. Migration refuses an inherited table or column
 write capability. Direct trigger execution remains revoked. Verify employee draft activation under a
 restricted table/function owner; a postgres-owned test cannot establish this production contract.
+
+The isolated Performance mail reader binds its dispatcher context to the tenant of an already
+validated delivery lease. Its function-scoped tenant/user/role/grant settings restore the caller on
+exit. Reminder run and recipient content retain FORCE RLS, and the application cannot execute the
+private reader. Verification must use a NOSUPERUSER/NOBYPASSRLS owner matching production; a
+postgres-owned helper can conceal missing private-worker context. Invalid leases, issuer changes,
+expired preparation and changed or completed work still produce no payload.
