@@ -1,6 +1,6 @@
 /** Pure financial contract regressions. No database, current-profile lookup or payment mutation. */
 import { describe, expect, it } from 'vitest';
-import { analyzeOvertimePattern, validateOvertimeAssignmentTarget, validateOvertimePattern } from '../lib/overtime-pattern-schema';
+import { analyzeOvertimePattern, validateOvertimeAssignmentTarget, validateOvertimePattern, validateOvertimePatternDraft } from '../lib/overtime-pattern-schema';
 import { parseRecordedOvertimeEvaluation } from '../lib/overtime-pattern-result';
 import { evaluateOvertimePattern, resolveOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
 import { overtimeSourceKey, OvertimePatternError, type OvertimeCandidate, type OvertimeCondition, type OvertimeEvaluation, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimePattern, type OvertimeRate, type OvertimeResource, type OvertimeTier, type OvertimeUnit } from '../lib/overtime-pattern-model';
@@ -215,7 +215,7 @@ describe('immutable OT result structure', () => {
         if (kind === 'source')
             r.source.inputDigest = 'not-a-digest';
         if (kind === 'lineSource')
-            r.lines[0].source={...r.lines[0].source,attendanceId:uuid(90)};
+            r.lines[0].source = { ...r.lines[0].source, attendanceId: uuid(90) };
         if (kind === 'unit')
             r.payableMinutes.unit = 'money';
         if (kind === 'zeroDenominator')
@@ -237,4 +237,11 @@ describe('immutable OT result structure', () => {
         expect(parseRecordedOvertimeEvaluation(r)).toBeNull();
     });
     it('strictly rejects array-coerced operator and status tokens', () => { const p = definition(), data = input(); p.rates[0].tierMode = ['marginal'] as never; refused(evaluateOvertimePattern(p, data), 'invalid'); p.rates[0].tierMode = 'marginal'; data.mode = ['actual'] as never; refused(evaluateOvertimePattern(p, data), 'invalid'); });
+});
+describe('structurally typed incomplete OT Drafts', () => {
+    it('round trips blank decimal/catalog/rate controls without normalization or activation', () => { const p = definition(); p.currency.code = ''; p.rates[0].name = ''; p.rates[0].priority = -1; p.durationRounding = { step: '-', mode: 'up' }; p.rates[0].tiers[0].from = '.'; p.rates[0].tiers[0].to = ''; p.rates[0].tiers[0].mapping = { earningItemId: '', currency: 'usd' }; p.rates[0].tiers[0].payment = { method: 'flat', basis: 'day', chargeId: '', amount: { id: id(), unit: 'money', type: 'literal', value: '1.', currency: '' } }; const before = copy(p); expect(validateOvertimePatternDraft(p)).toEqual(p); expect(p).toEqual(before); expect(() => validateOvertimePattern(p)).toThrow(OvertimePatternError); });
+    it('preserves empty typed arrays and incomplete semantic references for Save/Reopen', () => { const p = definition(); p.rates = []; p.eligibility = { id: id(), type: 'group', logic: 'and', children: [] }; p.eligibleMinutes = { id: id(), type: 'ref', unit: 'money', definitionId: '' }; expect(validateOvertimePatternDraft(p)).toEqual(p); expect(() => validateOvertimePattern(p)).toThrow(OvertimePatternError); const selectedDraft = definition(); selectedDraft.eligibility = { id: id(), type: 'selection', field: 'departmentId', operator: 'in', values: [] }; selectedDraft.rates[0].tiers = []; expect(validateOvertimePatternDraft(selectedDraft)).toEqual(selectedDraft); });
+    it('keeps incomplete dimensions and circular named refs as draft diagnostics, never calculations', () => { const p = definition(); p.definitions = [{ id: 'draft_a', expression: { id: id(), unit: 'money', type: 'ref', definitionId: 'draft_b' } }, { id: 'draft_b', expression: { id: id(), unit: 'money', type: 'ref', definitionId: 'draft_a' } }]; p.eligibleMinutes = { id: id(), type: 'literal', unit: 'money', value: '' }; expect(validateOvertimePatternDraft(p)).toEqual(p); expect(() => validateOvertimePattern(p)).toThrow(OvertimePatternError); });
+    it.each([{}, { rates: null }, { v: 1 }, { ...definition(), rates: null }, { ...definition(), currency: null }, { ...definition(), eligibleMinutes: {} }, { ...definition(), rates: [null] }, { ...definition(), rates: [{ id: 'broken' }] }, { ...definition(), eligibility: { id: 'bad', type: 'sql', query: 'select private' } }, { ...definition(), moneyRounding: { stage: ['line'], mode: 'up' } }])('refuses malformed Draft structure without fabricating defaults %#', raw => { expect(() => validateOvertimePatternDraft(raw)).toThrow(OvertimePatternError); });
+    it('rejects object cycles, executable properties and non-string decimal controls in Draft mode', () => { const p = definition(); p.eligibleMinutes = { id: id(), unit: 'minutes', type: 'literal', value: 3 as never }; expect(() => validateOvertimePatternDraft(p)).toThrow(OvertimePatternError); p.eligibleMinutes = null; Object.defineProperty(p, 'rates', { get() { throw new Error('must not execute getter'); }, enumerable: true }); expect(() => validateOvertimePatternDraft(p)).toThrow(OvertimePatternError); });
 });
