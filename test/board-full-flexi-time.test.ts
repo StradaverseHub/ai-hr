@@ -53,3 +53,9 @@ it('shows a named absence exemption without inventing attendance or hiding short
  expect(flagOf(short)).toBe('under');expect(flagOf({...short,checkOutAt:null})).toBe('odd');
  expect(statusOf({...absent,context:'rest_day' as const})).toBe('off');
 });
+
+it('uses the business cutoff when an earlier corrected interval is added to an existing day',()=>{
+ const result=fullFlexiIntervals([{punchAt:'08:00',direction:'in'},{punchAt:'08:30',direction:'out'},{punchAt:'09:00',direction:'in'},{punchAt:'17:00',direction:'out'}],'09:00',240);
+ expect(result).toMatchObject({complete:true,checkInAt:'08:00',checkOutAt:'17:00'});
+ expect(result.intervals).toEqual([{inAbs:480,outAbs:510},{inAbs:540,outAbs:1020}]);
+});
