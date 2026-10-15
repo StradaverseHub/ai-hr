@@ -56,9 +56,9 @@ END $$;
 CREATE TRIGGER ai_control_policy_guard BEFORE INSERT OR UPDATE ON ai_control_policy FOR EACH ROW EXECUTE FUNCTION app.ai_control_policy_guard();
 --> statement-breakpoint
 -- The narrow admission function owns atomic counters. No caller can supply a tenant or actor ID.
-CREATE FUNCTION app.ai_admit(wanted_feature text,wanted_operation text,wanted_provider text,wanted_model text,reserve bigint)
+CREATE FUNCTION app.ai_admit(wanted_feature text,wanted_operation text,wanted_provider text,wanted_model text,reserve bigint,forced_pause boolean DEFAULT false)
  RETURNS TABLE(run_id uuid,allowed boolean,blocked_reason text) LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE switch_key text;switch_on jsonb;tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();companies uuid[];policy record;reason text;rid uuid;used_requests bigint;used_tokens bigint;
+DECLARE switch_key text;switch_on jsonb;tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();companies uuid[];policy record;reason text:=CASE WHEN forced_pause THEN 'paused' END;rid uuid;used_requests bigint;used_tokens bigint;
  day_start timestamptz:=date_trunc('day',now() AT TIME ZONE 'Asia/Kuala_Lumpur') AT TIME ZONE 'Asia/Kuala_Lumpur';
  month_start timestamptz:=date_trunc('month',now() AT TIME ZONE 'Asia/Kuala_Lumpur') AT TIME ZONE 'Asia/Kuala_Lumpur';
 BEGIN
@@ -67,7 +67,7 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM tenant WHERE id=tid AND status IN ('active','trial')) THEN RAISE EXCEPTION 'AI unavailable';END IF;
  IF uid IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=uid AND tenant_id=tid) THEN RAISE EXCEPTION 'Unknown actor';END IF;
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));
- SELECT coalesce(array_agg(c.id),'{}') INTO companies FROM company c WHERE c.tenant_id=tid AND(app.is_admin_for(c.id) OR EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=tid AND e.company_id=c.id AND e.terminated_on IS NULL AND app.can_see_employment(e.id)));
+ SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO companies FROM company c WHERE c.tenant_id=tid AND(app.is_admin_for(c.id) OR EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=tid AND e.company_id=c.id AND app.can_see_employment(e.id)));
  IF EXISTS(SELECT 1 FROM ai_control_policy p WHERE p.tenant_id=tid AND p.kind='feature' AND p.feature_id=wanted_feature AND NOT p.enabled) THEN reason:='paused';END IF;
  -- Re-read canonical switches at admission; a page/session snapshot can predate a pause.
  switch_key:=CASE wanted_feature WHEN 'readiness_reminders' THEN 'notifications.readiness_nudge_enabled'
@@ -76,7 +76,7 @@ BEGIN
  WHEN 'performance_pm' THEN 'performance.ai_pm_enabled' WHEN 'performance_review' THEN 'performance.ai_review_enabled'
  WHEN 'performance_idp' THEN 'performance.ai_idp_enabled' WHEN 'performance_calib' THEN 'performance.ai_calib_enabled' END;
  IF switch_key IS NOT NULL THEN
-  SELECT coalesce(t.value,d.default_value) INTO switch_on FROM setting_definition d LEFT JOIN tenant_setting t ON t.key=d.key AND t.tenant_id=tid WHERE d.key=switch_key;
+  SELECT coalesce(nullif(t.value,'null'::jsonb),d.default_value) INTO switch_on FROM setting_definition d LEFT JOIN tenant_setting t ON t.key=d.key AND t.tenant_id=tid WHERE d.key=switch_key;
   IF switch_on IS DISTINCT FROM 'true'::jsonb THEN reason:='paused';END IF;
  END IF;
  FOR policy IN SELECT p.* FROM ai_control_policy p WHERE p.tenant_id=tid AND
@@ -103,9 +103,9 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'AI request not found';END IF;
 END $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.ai_admit(text,text,text,text,bigint),app.ai_settle(uuid,boolean,bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.ai_admit(text,text,text,text,bigint,boolean),app.ai_settle(uuid,boolean,bigint) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.ai_admit(text,text,text,text,bigint),app.ai_settle(uuid,boolean,bigint) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.ai_admit(text,text,text,text,bigint,boolean),app.ai_settle(uuid,boolean,bigint) TO ai_hr_app;
 
 --> statement-breakpoint
 -- Scoped aggregate: company admins see totals for their companies, never other actors' run rows.

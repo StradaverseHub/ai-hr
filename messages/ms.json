@@ -18986,7 +18986,7 @@
     "noCompanies": "Tiada syarikat dalam skop pentadbiran anda.",
     "inherited": "Kawalan sedia ada",
     "businessLimits": "Akses modul, kebenaran ciri dan had Performance sedia ada sebanyak lima draf berjaya setiap medan setiap pengguna sehari masih terpakai.",
-    "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna sehari dan {tokens} token sebulan bagi penyewa.",
+    "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna sehari dan {tokens} token sebulan bagi penyewa. Belanjawan sedia ada ini ditetapkan semula pada 08:00 waktu Malaysia.",
     "humanDecisions": "AI kekal sebagai penasihat. Kelulusan dan keputusan manusia bagi gaji, penilaian, pengambilan dan akses masih diperlukan.",
     "orchestrator": "Orkestrator HR pusat",
     "orchestratorHelp": "Orkestrator menyelaras kesediaan rekod, pemilik, semakan dan pengesahan. Semakan deterministiknya tidak menggunakan token model. Muat semula bukti penyelarasan di bawah; suis di atas mengawal ejen AI.",
@@ -19026,7 +19026,8 @@
       "ready": "Sedia",
       "paused": "Dijeda",
       "module": "Modul tidak tersedia",
-      "provider": "Penyedia diperlukan"
+      "provider": "Penyedia diperlukan",
+      "restricted": "Sekatan platform"
     },
     "runStates": {
       "pending": "Menunggu / belum disahkan",
@@ -19047,6 +19048,9 @@
     "assistantGranted": "Akses pembantu HR diberikan",
     "assistantNotGranted": "Akses pembantu HR belum diberikan",
     "grantAssistant": "Beri akses pembantu HR",
-    "revokeAssistant": "Tarik balik akses pembantu HR"
+    "revokeAssistant": "Tarik balik akses pembantu HR",
+    "actor": "Pemanggil",
+    "scheduledActor": "Ejen berjadual",
+    "required": "Memerlukan anggaran {tokens} token"
   }
 }

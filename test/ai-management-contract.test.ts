@@ -8,7 +8,7 @@ const read=(p:string)=>readFileSync(p,'utf8');
 const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(ts|tsx)$/.test(e.name)?[join(p,e.name)]:[]);
 const coreCallers:Record<string,string>={'core/assistant.ts':'hr_assistant','core/feedback.ts':'feedback_planning','core/input-triage.ts':'claims_triage','core/pay-rule-ai.ts':'pay_rule_draft','core/payroll-anomaly-narrate.ts':'payroll_explanation','core/payroll-hypothesis.ts':'payroll_hypotheses','core/performance.ts':'performance_pm','core/readiness-nudge.ts':'readiness_reminders','core/report-ai.ts':'report_insight'};
 describe('complete AI management inventory and boundary',()=>{
- it('registers every production model caller and keeps providers behind the shared gateway',()=>{
+ it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[];let packCalls=0;
   for(const file of [...walk('core'),...walk('packs'),...walk('app')]){
    const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
@@ -32,7 +32,7 @@ describe('complete AI management inventory and boundary',()=>{
   for(const locale of ['en','ms','zh','vi','th','ta']){
    const data=JSON.parse(read(`messages/${locale}.json`)).aiManagement;
    for(const feature of AI_FEATURES)expect(data.features[feature.id],`${locale}:${feature.id}`).toBeTruthy();
-   for(const [section,keys] of Object.entries({states:['ready','paused','module','provider'],runStates:['pending','completed','failed','blocked'],kinds:['assistant','agent','feature','platform'],operations:['draft','conversation','image'],reasons:['paused','daily_limit','monthly_limit']}))for(const key of keys)expect(data[section][key],`${locale}:${section}.${key}`).toBeTruthy();
+   for(const [section,keys] of Object.entries({states:['ready','paused','module','provider','restricted'],runStates:['pending','completed','failed','blocked'],kinds:['assistant','agent','feature','platform'],operations:['draft','conversation','image'],reasons:['paused','daily_limit','monthly_limit']}))for(const key of keys)expect(data[section][key],`${locale}:${section}.${key}`).toBeTruthy();
    expect(data.reservationHelp.length).toBeGreaterThan(30);expect(data.attribution.length).toBeGreaterThan(30);
   }
  });

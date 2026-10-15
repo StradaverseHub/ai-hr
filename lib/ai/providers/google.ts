@@ -43,7 +43,7 @@ export const googleAdapter: AiAdapter = {
       const response = await client(cfg.apiKey).models.generateContent({
         model: cfg.model,
         contents: args.prompt,
-        config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:{}) },
+        config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:cfg.governance?{httpOptions:{retryOptions:{attempts:1}}}:{}) },
       });
       if(hasTokenCounts(response.usageMetadata,['promptTokenCount','candidatesTokenCount']))args.onUsage?.(usageFor(response.usageMetadata));
       if(args.signal&&(response.promptFeedback?.blockReason||response.candidates?.some(candidate=>['MAX_TOKENS','SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??''))))throw new AiGatewayError('No complete assessment was produced.');
@@ -91,7 +91,7 @@ export const googleAdapter: AiAdapter = {
           // The SDK will otherwise RUN the tools itself and hide the loop — the loop is where the turn
           // cap, the budget re-check and the audit live.
           automaticFunctionCalling: { disable: true },
-          httpOptions: { timeout: args.timeoutMs ?? 120_000 },
+          httpOptions: { timeout: args.timeoutMs ?? 120_000, ...(cfg.governance ? { retryOptions: { attempts: 1 } } : {}) },
           // toolConfig is omitted deliberately: the default mode is AUTO.
           ...(declarations.length > 0 ? { tools: [{ functionDeclarations: declarations }] } : {}),
         },

@@ -72,3 +72,15 @@ describe('usage reporting across every real transport operation',()=>{
   }
  });
 });
+
+
+describe('governed requests do not hide provider retry loops',()=>{
+ for(const provider of providers)it(`${provider} attempts each governed operation only once`,async()=>{
+  const {converse}=await import('../lib/ai');
+  const cfg:ResolvedAiConfig={provider,model:'fixture',apiKey:'fixture-local-only',governance:{async run(_request,call){return call(()=>{});}}};
+  for(const operation of [()=>generateDraft(cfg,{system:'Only supplied facts.',prompt:'Fictional facts.'}),()=>readImage(cfg,{data:png,mimeType:'image/png'}),()=>converse(cfg,{system:['Only supplied facts.'],turns:[{role:'user',content:'Fictional facts.'}],tools:[]})]){
+   transport.mockReset().mockImplementation(()=>new Response(JSON.stringify({error:{code:503,status:'UNAVAILABLE',message:'fixture failure'}}),{status:503,headers:{'content-type':'application/json'}}));
+   await expect(operation()).rejects.toThrow();expect(transport).toHaveBeenCalledTimes(1);
+  }
+ });
+});

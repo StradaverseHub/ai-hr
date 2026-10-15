@@ -1,4 +1,4 @@
-/** Closed inventory shared by the gateway and management page. Add a feature before enabling a new model caller. */
+/** Closed workload inventory shared by the gateway and management page. Add a feature before enabling a new model caller. */
 export const AI_FEATURES = [
   {id:'hr_assistant',module:'assistant',kind:'assistant',setting:null},
   {id:'readiness_reminders',module:'notifications',kind:'agent',setting:'notifications.readiness_nudge_enabled'},

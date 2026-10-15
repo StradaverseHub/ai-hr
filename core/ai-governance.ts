@@ -1,13 +1,20 @@
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext } from '../db/client';
 import { AiGatewayError,AiAllowanceError,type AiUsage,type ResolvedAiConfig } from '../lib/ai/types';
-import { isAiFeature,type AiFeatureId } from '../lib/ai/features';
+import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
+
+import { resolveEntitlementsTx, getSetting } from './entitlements';
 
 /** The resolved configuration carries the calling authorization as an opaque, server-only capability. */
 export function governedAiConfig(ctx:SessionContext,cfg:ResolvedAiConfig,feature:AiFeatureId):ResolvedAiConfig{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
  return {...cfg,governance:{async run(request,call){
-  const [admission]=await withTenant(ctx,tx=>tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${request.operation},${cfg.provider},${cfg.model},${request.reservedTokens}::bigint)`));
+  const [admission]=await withTenant(ctx,async tx=>{
+   const definition=AI_FEATURES.find(f=>f.id===feature)!;
+   const fresh=definition.setting?{...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined}:ctx;
+   const forcedPause=definition.setting?getSetting(fresh,definition.setting)!==true:false;
+   return tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${request.operation},${cfg.provider},${cfg.model},${request.reservedTokens}::bigint,${forcedPause})`);
+  });
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
    if(reason==='paused'||reason==='daily_limit'||reason==='monthly_limit')throw new AiAllowanceError(reason);

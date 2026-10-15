@@ -85,6 +85,20 @@ describe('central AI allowance admission and durable accounting',()=>{
   try{await expect(call(group,25)).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
   const pending=(await runs()).find(r=>r.state==='pending');expect(pending).toBeDefined();expect(pending?.actualTokens).toBeNull();expect(pending?.reservedTokens).toBe(100);
  });
+ it('honors configured defaults, null fallbacks and platform restrictions in both status and admission',async()=>{
+  await setModule(base.tenantId,'performance','active');
+  await owner.db.delete(schema.tenantSetting).where(eq(schema.tenantSetting.key,'performance.ai_360_enabled'));
+  vi.stubEnv('OPENAI_API_KEY','fixture-never-sent');
+  try{
+   const row=(await aiManagementView(group)).features.find(f=>f.id==='performance_360')!;expect(row.enabled).toBe(true);expect(row.state).toBe('ready');
+   await owner.db.insert(schema.tenantSetting).values({tenantId:base.tenantId,key:'performance.ai_360_enabled',value:sql`'null'::jsonb`,source:'platform'});
+   await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'performance_360').governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
+   await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});
+   vi.stubEnv('SETTING_KILL','notifications.readiness_nudge_enabled');
+   expect((await aiManagementView(group)).features.find(f=>f.id==='readiness_reminders')?.state).toBe('restricted');
+   await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'readiness_reminders').governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
+  }finally{vi.unstubAllEnvs();}
+ });
  it('rechecks canonical switches rather than trusting a stale configuration',async()=>{
   await expect(withTenant(group,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'feature',scopeKey:'feature:performance_pm',featureId:'performance_pm',enabled:false}))).rejects.toThrow();
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:true});
@@ -139,6 +153,7 @@ describe('scoped administration and inventory',()=>{
   await limit('company',other.id,0,null);await limit('company',base.companyId,1,null);
   await expect(call(employee)).resolves.toBe('draft');
   const [record]=await runs();expect(record.companyIds).toEqual([base.companyId]);expect(record.userId).toBe(uid);
+  await owner.db.update(schema.employment).set({terminatedOn:sql`current_date + 30`}).where(eq(schema.employment.personId,employment.personId));
   await expect(call(employee)).rejects.toThrow('daily');
  });
  it('uses the existing Assistant grant owner and reports an allowance refusal accurately',async()=>{
@@ -153,7 +168,7 @@ describe('scoped administration and inventory',()=>{
   finally{vi.restoreAllMocks();vi.unstubAllEnvs();}
   await setAssistantPermission(group,base.adminUserId,false);
   expect((await aiManagementView(group)).users.find(u=>u.id===base.adminUserId)?.assistantGranted).toBe(false);
-  const grants=await owner.db.select().from(schema.assistantGrant).where(eq(schema.assistantGrant.appUserId,base.adminUserId));expect(grants).toHaveLength(1);expect(grants[0].revokedAt).not.toBeNull();
+  const grants=await owner.db.select().from(schema.assistantGrant).where(eq(schema.assistantGrant.appUserId,base.adminUserId)).orderBy(schema.assistantGrant.grantedAt,schema.assistantGrant.id);expect(grants).toHaveLength(1);expect(grants[0].revokedAt).not.toBeNull();
  });
  it('rejects other tenants and ordinary users, including raw app-role writes',async()=>{
   const foreign=await seedBase();

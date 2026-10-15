@@ -18986,7 +18986,7 @@
     "noCompanies": "Không có công ty trong phạm vi quản trị.",
     "inherited": "Kiểm soát hiện có",
     "businessLimits": "Quyền mô-đun, quyền chức năng và giới hạn Performance hiện có là năm bản nháp thành công mỗi trường, mỗi người dùng, mỗi ngày vẫn áp dụng.",
-    "legacyAssistant": "Ngân sách Assistant bổ sung: {daily} câu hỏi mỗi người dùng mỗi ngày và {tokens} token mỗi tháng cho đơn vị thuê.",
+    "legacyAssistant": "Ngân sách Assistant bổ sung: {daily} câu hỏi mỗi người dùng mỗi ngày và {tokens} token mỗi tháng cho đơn vị thuê. Ngân sách hiện có này đặt lại lúc 08:00 giờ Malaysia.",
     "humanDecisions": "AI chỉ tư vấn. Các quyết định về lương, xếp hạng, tuyển dụng và truy cập vẫn cần phê duyệt và con người quyết định.",
     "orchestrator": "Bộ điều phối HR trung tâm",
     "orchestratorHelp": "Bộ điều phối kết nối tình trạng hồ sơ, người phụ trách, xét duyệt và xác minh. Kiểm tra xác định không dùng token mô hình. Làm mới bằng chứng điều phối bên dưới; công tắc trên điều khiển tác tử AI.",
@@ -19026,7 +19026,8 @@
       "ready": "Sẵn sàng",
       "paused": "Tạm dừng",
       "module": "Mô-đun không khả dụng",
-      "provider": "Cần nhà cung cấp"
+      "provider": "Cần nhà cung cấp",
+      "restricted": "Hạn chế nền tảng"
     },
     "runStates": {
       "pending": "Đang chờ / chưa xác nhận",
@@ -19047,6 +19048,9 @@
     "assistantGranted": "Đã cấp quyền trợ lý HR",
     "assistantNotGranted": "Chưa cấp quyền trợ lý HR",
     "grantAssistant": "Cấp quyền trợ lý HR",
-    "revokeAssistant": "Thu hồi quyền trợ lý HR"
+    "revokeAssistant": "Thu hồi quyền trợ lý HR",
+    "actor": "Người gọi",
+    "scheduledActor": "Tác tử định kỳ",
+    "required": "Cần khoảng {tokens} token"
   }
 }

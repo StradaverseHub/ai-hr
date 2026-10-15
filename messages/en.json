@@ -18986,7 +18986,7 @@
     "noCompanies": "No companies in your administrative scope.",
     "inherited": "Existing controls",
     "businessLimits": "Module access, feature permissions and the existing Performance limit of five successful drafts per field per user per day continue to apply.",
-    "legacyAssistant": "Additional Assistant budget: {daily} questions per user per day and {tokens} tokens per month for the tenant.",
+    "legacyAssistant": "Additional Assistant budget: {daily} questions per user per day and {tokens} tokens per month for the tenant. This existing budget resets at 08:00 Malaysia time.",
     "humanDecisions": "AI remains advisory. Existing approvals and human decisions for pay, ratings, hiring and access remain required.",
     "orchestrator": "Central HR orchestrator",
     "orchestratorHelp": "The orchestrator coordinates record readiness, ownership, review and verification. Its deterministic checks do not consume model tokens. Refresh coordination evidence below; the feature switches above control its AI agents.",
@@ -19026,7 +19026,8 @@
       "ready": "Ready",
       "paused": "Paused",
       "module": "Module unavailable",
-      "provider": "Provider required"
+      "provider": "Provider required",
+      "restricted": "Platform restriction"
     },
     "runStates": {
       "pending": "Pending / unconfirmed",
@@ -19047,6 +19048,9 @@
     "assistantGranted": "HR assistant access granted",
     "assistantNotGranted": "HR assistant access not granted",
     "grantAssistant": "Grant HR assistant",
-    "revokeAssistant": "Revoke HR assistant"
+    "revokeAssistant": "Revoke HR assistant",
+    "actor": "Caller",
+    "scheduledActor": "Scheduled agent",
+    "required": "Needs {tokens} estimated tokens"
   }
 }

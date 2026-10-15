@@ -36,8 +36,8 @@ function client(apiKey: string): Anthropic {
  * about four hours pinned inside one server action. Per-call ceilings do not bound the LOOP; the caller
  * must also enforce a whole-exchange deadline.
  */
-function converseClient(apiKey: string, timeoutMs: number | undefined): Anthropic {
-  return new Anthropic({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: 1 });
+function converseClient(apiKey: string, timeoutMs: number | undefined, governed = false): Anthropic {
+  return new Anthropic({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: governed ? 0 : 1 });
 }
 
 export const anthropicAdapter: AiAdapter = {
@@ -53,7 +53,7 @@ export const anthropicAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).messages.create({
+      const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new Anthropic({apiKey:cfg.apiKey,maxRetries:0}):client(cfg.apiKey)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
         thinking: { type: 'adaptive' },
@@ -88,7 +88,7 @@ export const anthropicAdapter: AiAdapter = {
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
       const tools = requestTools(args.tools);
-      const message = await converseClient(cfg.apiKey, args.timeoutMs).messages.create({
+      const message = await converseClient(cfg.apiKey, args.timeoutMs, Boolean(cfg.governance)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
         thinking: { type: 'adaptive' },

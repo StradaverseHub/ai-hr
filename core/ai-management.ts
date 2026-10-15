@@ -2,10 +2,9 @@ import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { aiControlPolicy, aiModelRun, appUser, company, person, assistantBudget } from '../db/schema';
-import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin, isGroupAdmin } from '../lib/authz';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
-import { resolveEntitlementsTx, isModuleEnabled } from './entitlements';
+import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';
 import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
@@ -34,9 +33,10 @@ export async function aiManagementView(ctx: SessionContext, search = '') {
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
     const features = AI_FEATURES.map(f => {
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
-      const enabled = setting ? fresh.entitlements.settings[f.setting!] === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
+      const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
+      const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
       const moduleHeld = f.module == null || isModuleEnabled(fresh, f.module);
-      const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !selectedProvider && f.id !== 'readiness_reminders' ? 'provider' : 'ready';
+      const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted' : !selectedProvider && f.id !== 'readiness_reminders' ? 'provider' : 'ready';
       return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     const companies = await tx.select({id:company.id,label:company.legalName}).from(company)
@@ -54,9 +54,9 @@ export async function aiManagementView(ctx: SessionContext, search = '') {
       from ai_model_run where tenant_id=${ctx.tenantId}::uuid and state<>'blocked'
       and user_id=any(array[${sql.join(users.slice(0,50).map(u=>sql`${u.id}::uuid`),sql`, `)}]::uuid[])
       and started_at>=date_trunc('month',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur' group by user_id order by user_id`) : [];
-    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt})
-      .from(aiModelRun).orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
-    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
+    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt})
+      .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id)).orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
+    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= (now() at time zone 'UTC')::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
     return {features,policies,companies,companyUsage:Array.from(companyUsage),usage:Array.from(usage),users:users.slice(0,50),moreUsers:users.length>50,userUsage:Array.from(userUsage),runs,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
   });
 }

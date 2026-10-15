@@ -27,7 +27,8 @@ reservation before transport starts. Daily requests count model calls, including
 reached the gateway; blocked requests do not consume capacity. Each assistant exchange counts
 separately. Monthly usage includes input, cached input and output. Provider-reported usage replaces
 the reservation; absent usage, failed settlement or process interruption retains the reservation.
-No database transaction spans the new governance layer's provider call.
+No database transaction spans the new governance layer's provider call. Governed calls disable
+hidden SDK retries: a retry must pass a new admission and consume another request.
 
 Reservations are estimates, not exact provider billing guarantees. A finishing call can exceed a
 monthly allowance; subsequent admissions stop when recorded and held capacity exhaust it. This
@@ -39,7 +40,10 @@ administrator or tenant-wide scheduled agent therefore charges every company. Th
 conservative until callers can reliably supply narrower, authorized source attribution. The screen
 must explain this; it must not imply precise single-company source attribution. User and company
 caps apply cumulatively. Changing policies preserves counters and run history. No default caps are
-invented for existing customers. Existing Assistant and Performance business quotas still apply.
+invented for existing customers. Existing Assistant and Performance business quotas still apply. The older Assistant question/month
+budget retains its existing UTC schedule (08:00 Malaysia time), explicitly labelled beside its
+allowance; this increment does not rebucket that historical ledger. Operational credential/model
+checks remain outside workload quotas; these counters are not a provider invoice reconciliation.
 
 Group administrators manage shared features, user allowances and the existing per-user Assistant
 grant from this screen. Grant/revoke reuses the canonical grant service and its history; an allowance

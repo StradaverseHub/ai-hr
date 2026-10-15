@@ -30,8 +30,8 @@ function client(apiKey: string): OpenAI {
 /** Conversation client — separate from `client()` so the drafting path keeps the SDK defaults it has
  *  always run with. Defaults are `timeout` = 10 minutes and `maxRetries` = 2 (client.d.ts:171,174),
  *  which an 8-turn loop turns into hours. */
-function converseClient(apiKey: string, timeoutMs: number | undefined): OpenAI {
-  return new OpenAI({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: 1 });
+function converseClient(apiKey: string, timeoutMs: number | undefined, governed = false): OpenAI {
+  return new OpenAI({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: governed ? 0 : 1 });
 }
 
 export const openaiAdapter: AiAdapter = {
@@ -47,7 +47,7 @@ export const openaiAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
+      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new OpenAI({apiKey:cfg.apiKey,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
@@ -91,7 +91,7 @@ export const openaiAdapter: AiAdapter = {
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
       const tools = requestTools(args.tools);
-      const completion = await converseClient(cfg.apiKey, args.timeoutMs).chat.completions.create({
+      const completion = await converseClient(cfg.apiKey, args.timeoutMs, Boolean(cfg.governance)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [

@@ -35,8 +35,8 @@
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assistantBudget, assistantExchange, assistantUsage } from '../db/schema';
-import { converse, AiAllowanceError } from '../lib/ai';
-import type { AiStop, AiToolCall, AiToolResult, AiTurn, AiUsage } from '../lib/ai/types';
+import { converse } from '../lib/ai';
+import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import { assertMayUseAssistant } from './assistant-grant';
 import { specsFor, toolByName, type ToolOutcome } from './assistant-tools';

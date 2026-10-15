@@ -18986,7 +18986,7 @@
     "noCompanies": "您的管理范围内没有公司。",
     "inherited": "现有控制",
     "businessLimits": "模块访问、功能权限以及 Performance 每位用户每日每个字段最多五次成功草稿的现有限制继续适用。",
-    "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，租户每月 {tokens} 个令牌。",
+    "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，租户每月 {tokens} 个令牌。 此现有预算在马来西亚时间 08:00 重置。",
     "humanDecisions": "AI 仅提供建议。薪酬、评级、招聘和访问权限仍须依照现有审批与人工决策。",
     "orchestrator": "中央 HR 编排器",
     "orchestratorHelp": "编排器协调资料准备、责任分配、审核与验证。其确定性检查不消耗模型令牌。在下方刷新协调证据；上方功能开关控制其 AI 代理。",
@@ -19026,7 +19026,8 @@
       "ready": "就绪",
       "paused": "已暂停",
       "module": "模块不可用",
-      "provider": "需要服务商"
+      "provider": "需要服务商",
+      "restricted": "平台限制"
     },
     "runStates": {
       "pending": "待处理／未确认",
@@ -19047,6 +19048,9 @@
     "assistantGranted": "已授予 HR 助手访问权限",
     "assistantNotGranted": "尚未授予 HR 助手访问权限",
     "grantAssistant": "授予 HR 助手权限",
-    "revokeAssistant": "撤销 HR 助手权限"
+    "revokeAssistant": "撤销 HR 助手权限",
+    "actor": "调用者",
+    "scheduledActor": "定时代理",
+    "required": "需要约 {tokens} 个令牌"
   }
 }
