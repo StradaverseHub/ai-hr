@@ -203,9 +203,10 @@ describe('797ba70b: untrusted request hints and current-transaction final-effect
       await rawFinal(tx,f.actors[2],id,f.d.employmentId);
       await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
       await tx.update(schema.attendancePunch).set({voidedAt:new Date(),voidedBy:f.actors[2].userId!,voidReason:'Verified request-bound clock correction'}).where(eq(schema.attendancePunch.attendanceId,day.id));
+      // Canonical corrections use admin punches under the verified final-effect capability.
       await tx.insert(schema.attendancePunch).values([
-        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'web'},
-        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'web'},
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'admin'},
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'admin'},
       ]);
       await tx.update(schema.attendance).set({checkInAt:'09:00:00',checkOutAt:'18:00:00',workedMinutes:540}).where(eq(schema.attendance.id,day.id));
       await tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id));
@@ -312,9 +313,10 @@ describe('797ba70b: savepoint proof and canonical same-day plan dependencies', (
       // Complete the exact request effect before adding another pending request for this day.
       // The one-pending-request constraint must remain active throughout this diagnostic.
       await tx.update(schema.attendancePunch).set({voidedAt:new Date(),voidedBy:f.actors[2].userId!,voidReason:'Verified request-bound clock correction'}).where(eq(schema.attendancePunch.attendanceId,day.id));
+      // Canonical corrections use admin punches under the verified final-effect capability.
       await tx.insert(schema.attendancePunch).values([
-        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'web'},
-        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'web'},
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'admin'},
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'admin'},
       ]);
       await tx.update(schema.attendance).set({checkInAt:'09:00:00',checkOutAt:'18:00:00',workedMinutes:540}).where(eq(schema.attendance.id,day.id));
       await tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id));
