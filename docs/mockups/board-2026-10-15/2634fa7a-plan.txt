@@ -1,0 +1,33 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Employees already have Leave Credit Status for their applications. HR has a separate register of credits actually earned, including credits added by HR. The requested Leave Credit Details page does not exist yet.
+
+WHAT WE'LL CHANGE
+
+- Add Leave Credit Details between Leave Credit Status and Leave Details, without renaming the existing pages.
+- Show only the signed-in person's earned credit records, using the same figures, usage dates, reasons and Added By details as HR.
+- Use the eight requested columns, newest Date Worked first, with Status and Date Worked filters, Apply, Clear and numbered pagination.
+- Keep this page view only. Hide the company selector on this page and omit HR's employee selector, Add, Reverse, Rules, action column, summaries and audit ledger.
+- Keep language, appearance, mobile and keyboard support consistent with the employee portal.
+
+WHAT YOU'LL GET
+
+Employees can check their earned credits and how they were used, with changes made by HR appearing immediately from the same records.
+
+GOOD TO KNOW
+
+HR currently distinguishes Partially Used, Fully Used and Paid Out as well as Available, Expired and Reversed. The employee page will retain these distinctions so the two screens agree. Older records without a recorded usage date or actor will show that the detail is unavailable rather than invent it.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: inspected the submitted Leave Credit Details-1.pdf, including its annotated proposed employee layout. app/leave/credit/page.tsx is request history, not the earned-credit register. HR calls core/toil.ts listEarnedLeaveCredits; lib/leave-credit-register.ts owns per-lot figures and FEFO usage projection. The HR register currently truncates at 500 rather than offering the requested numbered pager. Relevant deployed application source matches main by checksum; a production browser journey is still unverified because access was blocked in the previous pass.
+
+Graph: toil_accrual and existing allocation/ledger events own earned/used/remaining facts. Add no copied credit table, employee-wide balance or second status calculation. Extract a private shared projection with separately guarded HR and own-person entry points. The own entry point derives every permitted employment from ctx.personId on the server and constrains the SQL before loading lots, events, dates or actor details. An HR administrator visiting their personal page still sees only their own records. Never accept a subject ID from query, form or client state; reject forged subject parameters. Preserve cross-page FEFO context and frozen date provenance, including partial cancellation and legacy unattributed use.
+
+Add /leave/credit-details through packs/leave/service.ts and the existing My Leave navigation, route ownership and permissions declarations. Use the house pager with stable date/recordedAt/id ordering and accurate filtered totals, not a 500-row pseudo-pagination. Reuse shared status vocabulary and formatting. No mutation action or write route is added. Hide only this route's shell company selector; personal reads ignore the administrator company cookie. Keep existing module wind-down access to outstanding credits. Use a narrowly scoped actor-name projection if RLS prevents reading the original grant actor, following the own-request-decider pattern rather than widening person/app_user access. Allocate any required migration after current reservations; append only, grant explicitly and rehearse the live watermark.
+
+Acceptance: compare every displayed figure and status with the HR owner for HR grants, approved employee credits, partial use, full use, expiry, reversal and pay settlement. Include split and cancelled leave allocations, multiple own employments, unknown historical provenance, pagination beyond 500 and equal-date ordering. Verify employee, HR-as-employee, manager, cross-company and cross-tenant refusal; malformed/forged subject URLs must not expose another person's data. Verify no HR controls or company selector, filter Apply/Clear, menu order, populated/empty/error states, all six locales, appearances, narrow layout and keyboard use. Check live changes through canonical grant/use/reverse/expiry writers without copying or syncing. Use the supplied Mei Ling examples only if those records actually exist; never fabricate production credits to satisfy a screenshot. Complete actual local save-source/read-view journeys, required impact gate, TypeScript, build, release, restart and arrival checks. Existing Leave Credit Status and HR register remain regression targets.

@@ -1,0 +1,35 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Full Flexi already uses required working duration for several attendance judgments, but its form still requires fixed clock times. Breaks already have a per-row Flexible choice, and shift colours currently come from a small fixed palette. Overtime windows and shift premiums are still edited on the Shift page.
+
+WHAT WE'LL CHANGE
+
+- Make Full Flexi working-time setup show only required normal working hours. Hide fixed start, end and half-day clock fields for this type.
+- Judge completion from qualifying recorded working time after applicable breaks. An unfinished clocking session stays incomplete, and a different clock time alone does not make Full Flexi late or early out.
+- Keep each Flexible choice, duration input and visible Minutes label together on one line, with responsive layout and existing break validation.
+- Move the existing overtime-window and shift-premium editor to Work Schedule & Overtime Rates, preserving every saved value when basic shift details are edited.
+- Add a visual colour picker, HEX entry and preview. Use the saved colour consistently in existing shift indicators with readable text and icons.
+
+WHAT YOU'LL GET
+
+Full Flexi setup will describe a duration-based shift clearly, and HR can maintain breaks and colours without unrelated pay controls crowding the page.
+
+GOOD TO KNOW
+
+Clocking does not automatically check an employee out after the required hours. Open elapsed time is provisional. Fixed and Semi-Flexi shifts keep their existing rules, and existing saved colours remain recognizable.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: production currently has eight Normal shifts (two archived), one Semi-Flexi and no Full Flexi. components/shift-time-fields.tsx has full_flexi and a required normal-hours override but still renders required startTime/endTime and half-day fields. core/roster.ts requires a positive override; core/attendance.ts flexiDuration suppresses fixed-clock lateness/early-out and uses duration for overtime, while shift spans still anchor breaks and date handling. The Flexible span currently flex-wraps and the numeric field lacks a visible Minutes suffix. lib/shift-visual.ts and migration 0457 enforce an eight-token colour palette. app/admin/attendance/shift-form.tsx mounts ShiftOtWindowFields and differential controls; removing them without preserving absence would erase configuration. Deployed source matches main by checksum; live interactive verification remains unperformed.
+
+Graph: shift owns type, required duration, break rules and display colour. Raw punch intervals and the canonical attendance resolver own qualifying time, completion and downstream OT. shift_ot_window and shift.differential remain their existing owners. Do not replace hidden required fields with fabricated full-day clock windows. Add an explicit duration-based Full Flexi contract supporting absent fixed anchors for new records and preserving legacy anchors as inert historical configuration. Keep the canonical business-date/cutoff, pairing, overnight and duplicate-punch rules; subtract applicable paid/fixed/flexible breaks exactly once from qualifying closed intervals. No auto-checkout, clock writer or client-side completion authority. Treat missing clock-out as incomplete and absent measurement as unknown. Preserve fixed/Semi-Flexi behavior, half-day schedules, approved overrides and closed payroll snapshots.
+
+Move overtime/pay editing to the shared central destination from dac90c4d before deleting the Shift controls. Use dedicated save commands or undefined-preserve fields for omitted OT windows and differential. Retain existing row IDs, zero/empty distinctions, clearing confirmation and payroll differential ownership. Reopening and saving unrelated basic shift fields must not alter the windows or premium.
+
+Extend the display-only colour contract to validated canonical HEX while retaining legacy token resolution and the old no-colour fallback. Use one shared visual resolver at every shift chip/calendar/roster consumer; derive foreground contrast from the rendered background and test light/dark/appearance variants. Accept no arbitrary CSS or colour-like URL. Append-only migrations must adjust the old CHECK and nullable Full Flexi anchors without editing applied SQL. Audit every shift writer, copy, arrangement, import and derived schedule reader. Allocate centrally after existing reservations; rehearse both migration shadow and live watermark.
+
+Acceptance: new/edit Full Flexi with only positive normal hours; reject zero/negative/missing/excessive durations. Demonstrate differing arrival/departure clocks with equal qualifying duration, short/incomplete work, actual-vs-elapsed distinction, multiple intervals, paid/unpaid/fixed/flexible breaks, overnight/cutoff, half days, holidays/rest/off days and duplicate/corrected punches. Verify fixed/Semi-Flexi parity and OT/payroll effects through canonical owners. Save/reopen Flexible minutes, checkbox off and legacy locked break state. Preserve existing OT windows/premium on unrelated edits and manage them at the new destination. Test HEX validation, tokens/null/fallback, save/reopen and every visual consumer with contrast. Walk realistic desktop/narrow, all appearances/locales, keyboard and failure states before full verification as selected for core/schema/pay changes, TypeScript, build, migration rehearsal and official release.

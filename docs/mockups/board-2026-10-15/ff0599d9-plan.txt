@@ -1,0 +1,38 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+System Labels already has a blank Excel template and an import preview. It cannot download the current records into that template. The existing import also treats blank cells differently from the requested edit-and-upload workflow.
+
+WHAT WE'LL CHANGE
+
+- Rename the existing download to Download blank template and add Download template with current data on both System Labels tabs.
+- Let HR choose accessible companies and lists, with all lists selected initially and inactive or archived records optional.
+- Use one workbook layout for both downloads, with current references, text-formatted codes, dropdowns, frozen headers and consistent formatting.
+- Extend the existing importer with Add new + update existing. A blank cell keeps the saved value, while [CLEAR] explicitly removes an optional value.
+- Show New, Update and No change in the preview. HR can exclude rows, review old and new values, and see a warning when a record changed after export.
+- Record each export and preserve records removed from the file. Uploading never changes Active or Archived status.
+
+WHAT YOU'LL GET
+
+HR can download, edit and re-upload current lists through the familiar import, without rewriting unchanged records or accidentally clearing fields.
+
+GOOD TO KNOW
+
+Selections exceeding a worksheet's supported row limit will receive a message to narrow the companies or lists before download. This plan uses that requested alternative rather than split worksheets. Archived rows can be included for reference; editing an archived record still requires restoring it through its existing editor first.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: inspected Download template.pptx, its slide text and embedded current-screen image. components/system-label-import.tsx and core/system-label-import.ts already implement upload, preview, confirmation, scoped catalogue reads, atomic revalidation and exact-duplicate skip. Modes are add/update. lib/system-label-workbook.ts currently emits empty sheets, lacks the requested dropdown/freeze styling, accepts exact headers only and limits the whole import to 500 rows. Blank head currently clears and blank numbers become zero, so the requested merge semantics are a real behavior change. Profile Options currently has no import toolbar. Relevant deployed application source matches main by checksum; production interactive verification is unperformed.
+
+Graph: retain department/position/cost_center/business_unit, profile_option, job_grade and grade_group owners and their existing writers. No copied catalogue, second upload system or status mutation. One workbook builder serves blank and populated downloads. Both tabs expose the same 14 requested organisation-list categories from the existing import definitions. Personal-profile categories are outside this request and are not silently added to the importer. Selectable categories are validated on the server against view/write capabilities. Company scope defaults from the authorized header context; All companies means explicit accessible selections, never tenant-wide implicit authority. Export only visible permitted records, and refuse unsupported or excessive selections before returning a partial workbook.
+
+Matching remains origin Company + exact Code for company labels, Code for group options/grades and Name for grade groups; company/scope identifiers cannot be changed through import. Implement blank-preserve and [CLEAR] in the reviewed upsert mode, with required fields refusing clear and lists/head/numeric fields having explicit empty semantics. Keep old add/update modes and disclose their existing behavior rather than silently changing legacy uploads. Status is an optional informational column accepted and ignored. Unchanged archived/inactive rows are No change; changed archived rows refuse pending restoration. Detect no-op rows after merging, and skip both record writes and import-applied audit noise when nothing is selected to change. Retain an export audit independently.
+
+Use literal text cells for exact codes and formula-looking strings, not apostrophes that alter stored values. Preserve leading zeros, whitespace according to existing identifier contracts, truly empty cells and live Company/Scope/Head references; ambiguous names use existing ID disambiguation. Add export attribution/time and an opaque export ID to hidden metadata. The server-side export audit owns time, user, selection, row identities and revisions; uploaded hidden timestamps are untrusted. Resolve stale-row actor/time from authoritative record history only after current access checks. Preview selection and warning acknowledgment enter the token; revalidate the accepted rows, their revisions and permissions under the existing transaction lock before apply. A change after preview refuses and requires a new preview. Missing old attribution is stated as unknown. Deleted file rows never delete records.
+
+Keep strict ZIP/formula/column/category bounds and server file-size limits. Support bounded 500-data-row worksheets and a bounded workbook total sufficient for the selected lists; reject oversized exports with a narrowing message. Do not silently truncate Reference or data. No split-sheet support is promised. File name is system-labels_<company-or-group>_<Kuala-Lumpur-date-time>.xlsx. Audit user/time/companies/lists/counts. Allocate an append-only migration only if the authoritative export metadata cannot use the existing audit owner; preserve reservation order.
+
+Acceptance: unchanged round trip gives all No change and zero record writes; exactly edited rows update and added rows create. Verify blank-preserve, optional [CLEAR], required-clear refusal, ignored status, inactive unchanged rows, removed rows retained, leading-zero codes, formulas/ZIP bounds, all category mappings and references, company/head/sharing scope, unauthorized/foreign IDs, stale after export and stale after preview, row deselection, concurrent edits, and limits without truncation. Inspect generated workbook headers, dropdowns below populated rows, frozen pane, formatting and hidden metadata. Demonstrate real export/edit/preview/apply/reopen and blank-template regression, all six locales, appearance/mobile/keyboard and runtime logs. Then complete the classifier-selected gate, TypeScript, build and official release.
