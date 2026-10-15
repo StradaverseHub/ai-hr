@@ -333,11 +333,18 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     { href: '/admin/settings/profile-requests', labelKey: 'profileRequestSettings', icon: UserRoundCog, adminOnly: true },
     // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
     { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Mail, identityEmailOnly: true },
-    // deec1691: System Analysis & Dependency Explorer. Alone among the rows of this node it is ALSO
+    // 3f44a539 / 4a8a4fff — existing destinations, relocated from the flat Administration menu.
+    // Explicit child admin gates preserve their previous group-level audience: the installation email
+    // operator can open this node, but may still see only the identityEmailOnly child above.
+    { href: '/admin/settings/notifications', labelKey: 'workflowEmail', icon: Bell, adminOnly: true },
+    // 0280 — the page still enforces group-admin access (and its RLS) independently of the menu.
+    { href: '/admin/scheduled-actions', labelKey: 'scheduledActions', icon: Timer, adminOnly: true },
+    { href: '/admin/privacy', labelKey: 'dataPrivacy', icon: Lock, adminOnly: true },
+    // deec1691: System Analysis & Dependency Explorer. This reference row is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed
-    // by a service that refuses (core/schema-explorer.ts). Every other row here, Holidays included
-    // (4509d2b8), is deliberately ungated by module: they are company-wide setup that every tenant has.
+    // by a service that refuses (core/schema-explorer.ts). Workflow Email Notifications also keeps its
+    // existing notification-module gate; Holidays and the remaining company-wide setup rows are ungated.
     // Last in the node because it is a reference screen, not a setup step; the configuration screens
     // keep their ticket order above.
     { href: '/admin/system-explorer', labelKey: 'systemExplorer', icon: Share2, adminOnly: true },
@@ -430,7 +437,6 @@ const GROUPS: Group[] = [
     labelKey: 'admin',
     adminOnly: true,
     items: [
-      { href: '/admin/settings/notifications', labelKey: 'workflowEmail', icon: Bell, adminOnly: true },
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       /**
        * 639bf4a5 rev 2 (r338) — THE PHYSICAL WORK LOCATION ROW STOOD HERE and is DELIBERATELY GONE.
@@ -489,12 +495,6 @@ const GROUPS: Group[] = [
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
-      // 0280 — read-only log of the four overnight sweeps. Uses the group's existing adminOnly gate
-      // rather than a new groupAdminOnly flag: ChildItem, Group and the two filter expressions below are
-      // separate, so such a flag would type-check here and still render for every admin. The page itself
-      // redirects a non-group admin (and RLS returns zero rows), which is how the rest of the app gates.
-      { href: '/admin/scheduled-actions', labelKey: 'scheduledActions', icon: Timer },
-      { href: '/admin/privacy', labelKey: 'dataPrivacy', icon: Lock },
       { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },
       { href: '/admin/users', labelKey: 'securityPermission', icon: ShieldCheck },
     ],
