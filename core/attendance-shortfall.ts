@@ -28,6 +28,8 @@ export type RecordedAllowanceAttendanceFacts = {
   fixedClockApplicable: boolean | null;
   lateMinutes: number | null;
   earlyOutMinutes: number | null;
+  recordedLateMinutes: number | null;
+  recordedEarlyOutMinutes: number | null;
   incomplete: boolean;
   shortMinutes: number | null;
   recordedUnderMinutes: number | null;
@@ -69,6 +71,8 @@ export function recordedAllowanceAttendanceFacts(input: {
     // Recorded raw positive AND zero figures outrank applicability. An old null is not silently zero.
     lateMinutes: measurement(record?.lateMinutes) ?? (applicability === false ? 0 : null),
     earlyOutMinutes: measurement(record?.earlyOutMinutes) ?? (applicability === false ? 0 : null),
+    recordedLateMinutes: measurement(record?.lateMinutes),
+    recordedEarlyOutMinutes: measurement(record?.earlyOutMinutes),
     incomplete, shortMinutes: null, recordedUnderMinutes: under,
     recordedNormalMinutes: normal, fullDayNormalMinutes: fullDayNormal, leaveMinutes: null,
     sources: { applicability: applicability == null ? 'unavailable' : 'recorded-attendance-trace', shortfall: 'unavailable' },

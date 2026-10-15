@@ -119,7 +119,8 @@ describe('recorded allowance Attendance facts', () => {
     expect(read(record({ calcTrace: trace({ fixedClockApplicable: false }), lateMinutes: 30, earlyOutMinutes: 0 })))
       .toMatchObject({ fixedClockApplicable: false, lateMinutes: 30, earlyOutMinutes: 0 });
     expect(read(record({ calcTrace: trace({ fixedClockApplicable: false }), lateMinutes: null, earlyOutMinutes: null })))
-      .toMatchObject({ fixedClockApplicable: false, lateMinutes: 0, earlyOutMinutes: 0 });
+      .toMatchObject({ fixedClockApplicable: false, lateMinutes: 0, earlyOutMinutes: 0,
+        recordedLateMinutes: null, recordedEarlyOutMinutes: null });
   });
 
   it('does not manufacture an attended or incomplete event for a missing row', () => {
