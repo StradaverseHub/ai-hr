@@ -20,6 +20,7 @@ import { withTenant } from '../db/client';
 import { sql } from 'drizzle-orm';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { getMobileSession } from '../lib/session';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let base: Base;
 const temp = 'Temporary private passphrase 722!';
@@ -94,10 +95,13 @@ describe('first-party authentication with real private storage and existing HR b
   it('rotates native refresh handles and revokes the entire family on reuse, without accepting a browser cookie', async () => {
     const { signedIn } = await enroll(true);
     expect(await readSession(signedIn.access_token, true)).not.toBeNull(); expect(await readSession(signedIn.access_token)).toBeNull();
+    expect(await getMobileSession({ authorization: `Bearer ${signedIn.access_token}` })).toMatchObject({ userId: base.adminUserId, tenantId: base.tenantId, roles: ['hr_admin'] });
+    await expect(getMobileSession({ authorization: `Bearer ${signedIn.refresh_token}` })).rejects.toMatchObject({name:'AuthRequiredError'});
     const next = completed(await rotateRefresh(signedIn.refresh_token!));
     expect(next.refresh_token).not.toBe(signedIn.refresh_token); expect(await readSession(next.access_token, true)).not.toBeNull();
     await expect(rotateRefresh(signedIn.refresh_token!)).rejects.toMatchObject({ code: 'invalidLogin' });
     expect(await readSession(next.access_token, true)).toBeNull();
+    await expect(getMobileSession({ authorization: `Bearer ${next.access_token}` })).rejects.toMatchObject({name:'AuthRequiredError'});
     await expect(rotateRefresh(next.refresh_token!)).rejects.toMatchObject({ code: 'invalidLogin' });
   });
   it('namespaces identical usernames in different organizations and never adopts an account by shared email', async () => {
@@ -148,6 +152,11 @@ describe('first-party authentication with real private storage and existing HR b
     expect(await resumeManualAccount(ctx, input.id, 'Changed by replay 111111!')).toBe(id);
     expect((await credentialByLogin('alpha', 'local.user'))?.password).toBe(c?.password);
     const [person] = await owner.client`select person_id from app_user where id=${id}::uuid`; expect(person.person_id).toBe(employee.personId);
+    const login = await startLogin({organization:'alpha',username:'local.user',password:temp,native:true});
+    const setup = await changeInitialPassword(challenge(login),final,true);
+    if(setup.step!=='enroll'||!setup.secret)throw new Error('Expected employee authenticator enrollment.');
+    const signedIn = completed(await verifyMfa(challenge(setup),await generate({secret:setup.secret}),true));
+    expect(await getMobileSession({authorization:`Bearer ${signedIn.access_token}`})).toMatchObject({userId:id,tenantId:base.tenantId,personId:employee.personId,roles:['employee']});
   });
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
     const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
