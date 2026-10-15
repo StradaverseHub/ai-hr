@@ -8,6 +8,7 @@ import {hireEmployee} from '../core/org';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
 import {saveEmployeeMasterReport,deleteEmployeeMasterReport} from '../core/employee-master-reports';
 import {saveEmployeeMasterSchedule} from '../core/employee-master-schedules';
+import {sweepEmployeeMasterReports} from '../core/employee-master-delivery';
 import {masterReportDatabaseGrants} from '../deploy/identity-email/database';
 import {defaultMasterColumn} from '../lib/employee-master-report';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -68,6 +69,38 @@ describe('managed report nonce and durable lifecycle in the actual database',()=
  it('retains delivery audit after deletion, and will not accept invented export scope in success metadata',async()=>{
   const job=await queued(),expected=await target(job);expect(await start(job,expected)).toBe(true);expect((await raw`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'sent',null,1,${[randomUUID()]}::uuid[]) finished`)[0].finished).toBe(false);
   await deleteEmployeeMasterReport(ctx,report.id);expect((await raw`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'sent',null,1,${[b.companyId]}::uuid[]) finished`)[0].finished).toBe(true);expect((await withTenant(ctx,tx=>tx.select({status:schema.customReportOccurrence.status,frozenScopeIds:schema.customReportOccurrence.frozenScopeIds}).from(schema.customReportOccurrence)))[0]).toMatchObject({status:'sent',frozenScopeIds:[b.companyId]});
+ });
+ it('claims each lease just before processing so earlier rendering cannot expire later work',async()=>{
+  const before=new Date(Date.now()-60_000);
+  await owner.db.update(schema.notificationPref).set({updatedAt:before,reportConsentVerifiedAt:before}).where(eq(schema.notificationPref.category,'employee_master_reports'));
+  await owner.db.update(schema.notificationEmailPolicy).set({updatedAt:before}).where(eq(schema.notificationEmailPolicy.category,'employee_master_reports'));
+  for(const offset of [20_000,10_000]){
+   const due=new Date(Date.now()-offset);await owner.db.update(schema.customReportSchedule).set({nextRunAt:due}).where(eq(schema.customReportSchedule.id,scheduleId));
+   expect((await raw`select identity_email.queue_report(${scheduleId}::uuid,${due.toISOString()}::timestamptz,${new Date(Date.now()+86400000).toISOString()}::timestamptz) added`)[0].added).toBe(1);
+  }
+  let attempted=0;
+  const result=await sweepEmployeeMasterReports(owner.db,{limit:2,transport:async<T>(request:import('../lib/employee-master-delivery-model').MasterDeliveryRequest):Promise<T>=>{
+   if(request.op==='status')return {version:1,ready:true} as T;
+   attempted++;const job={id:request.occurrenceId,token:request.leaseToken};expect(await target(job)).not.toBeNull();
+   if(attempted===1)await raw`update custom_report_occurrence set lease_until=now()-interval '1 second' where id<>${job.id}::uuid and lease_token is not null and status='pending'`;
+   expect((await raw`select identity_email.finish_report(${job.id}::uuid,${job.token}::uuid,'skipped','notEligible') finished`)[0].finished).toBe(true);
+   return {outcome:'skipped'} as T;
+  }});
+  expect(result).toMatchObject({attempted:2,skipped:2,unavailable:false});expect(attempted).toBe(2);
+ });
+ it.each(['suspended','closed','unknown-standing'])('leaves schedules and pending leases untouched for %s tenants and refuses a prepared send',async status=>{
+  const job=await queued(),expected=await target(job);
+  const due=new Date(Date.now()-1000);
+  await owner.db.update(schema.customReportSchedule).set({nextRunAt:due}).where(eq(schema.customReportSchedule.id,scheduleId));
+  await owner.db.update(schema.tenant).set({status}).where(eq(schema.tenant.id,b.tenantId));
+  expect((await raw`select identity_email.queue_report(${scheduleId}::uuid,${due.toISOString()}::timestamptz,${new Date(Date.now()+86400000).toISOString()}::timestamptz) added`)[0].added).toBe(0);
+  expect((await owner.db.select().from(schema.customReportSchedule).where(eq(schema.customReportSchedule.id,scheduleId)))[0].nextRunAt).toEqual(due);
+  expect(await target(job)).toBeNull();expect(await start(job,expected)).toBe(false);
+  await owner.db.update(schema.customReportOccurrence).set({leaseUntil:new Date(Date.now()-1000)}).where(eq(schema.customReportOccurrence.id,job.id));
+  expect(await raw`select * from identity_email.claim_reports(10)`).toEqual([]);
+  const transport=async<T>(request:import('../lib/employee-master-delivery-model').MasterDeliveryRequest):Promise<T>=>{expect(request.op).toBe('status');return {version:1,ready:true} as T;};
+  expect(await sweepEmployeeMasterReports(owner.db,{transport})).toMatchObject({queued:0,attempted:0,tenantsFailed:0});
+  expect((await owner.db.select().from(schema.customReportOccurrence).where(eq(schema.customReportOccurrence.id,job.id)))[0]).toMatchObject({status:'pending',leaseToken:job.token});
  });
  it('keeps the installed private role incapable of direct HR reads, queue/claim and app helper access',async()=>{
   const role='report_mail_'+randomUUID().replaceAll('-','');await raw.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);

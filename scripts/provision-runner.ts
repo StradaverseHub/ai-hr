@@ -18,6 +18,7 @@
  * PER TICK, IN ORDER: stale reclaim → claim one → email pre-check → provision → reissue pass.
  */
 import { createDb, client } from '../db/client';
+import { sweepEmployeeMasterReports } from '../core/employee-master-delivery';
 import { sweepReplacementHolidayQueue } from './replacement-holiday-sweep';
 import { ProvisionStepError, provisionTenant, INVITE_TTL_DAYS } from '../db/provision';
 import { appendEvent } from '../db/events';
@@ -334,12 +335,23 @@ async function main() {
   }
   const owner = createDb(url, { max: 2 });
   try {
-    const r = await runProvisionTick(owner);
-    const holidays=await sweepReplacementHolidayQueue(owner);
-    if(holidays.processed||holidays.failed)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed`);
-    if(holidays.failed)process.exitCode=1;
-    if (r.reclaimed) console.log(`· reclaimed ${r.reclaimed} stale request(s)`);
-    if (!r.provisioned && !r.reclaimed && !r.reissued) console.log('· nothing to do');
+    // Independent minute jobs must still run when another job fails.
+    try {
+      const r = await runProvisionTick(owner);
+      if (r.reclaimed) console.log(`· reclaimed ${r.reclaimed} stale request(s)`);
+      if (!r.provisioned && !r.reclaimed && !r.reissued) console.log('· no provisioning work');
+    } catch { console.error('Provisioning tick failed.'); process.exitCode=1; }
+    try {
+      const holidays=await sweepReplacementHolidayQueue(owner);
+      if(holidays.processed||holidays.failed)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed`);
+      if(holidays.failed)process.exitCode=1;
+    } catch { console.error('Replacement holiday tick failed.'); process.exitCode=1; }
+    try {
+      const reports=await sweepEmployeeMasterReports(owner.db);
+      if(reports.attempted)console.log(`· employee master reports: ${reports.attempted} attempted, ${reports.sent} sent, ${reports.failed} failed, ${reports.uncertain} uncertain`);
+      // An uninstalled optional renderer leaves schedules untouched. Transport failures after a claim are failures.
+      if(reports.tenantsFailed)process.exitCode=1;
+    } catch { console.error('Employee master report tick failed.'); process.exitCode=1; }
   } finally {
     await owner.client.end({ timeout: 5 });
     await client.end({timeout:5});

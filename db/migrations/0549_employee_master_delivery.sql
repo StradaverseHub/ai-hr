@@ -24,6 +24,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION identity_email.report_access_stamp(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Database mirror of core/entitlement-types.ts TENANT_STATUS_GOOD_STANDING, pinned by a contract test.
+-- Private delivery entry points recheck standing, including already queued work after suspension.
+CREATE FUNCTION identity_email.report_tenant_available(p_tenant uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM tenant t WHERE t.id=p_tenant AND t.status IN ('active','trial'));
+$$;
+REVOKE ALL ON FUNCTION identity_email.report_tenant_available(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION identity_email.report_target(p_id uuid,p_token uuid,p_issuer text) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
 SET app.tenant_id='' SET app.user_id='' SET app.roles='' SET app.grants='[]' AS $$
@@ -31,7 +39,7 @@ DECLARE bound_tenant uuid;result jsonb;
 BEGIN
  SELECT o.tenant_id INTO bound_tenant FROM custom_report_occurrence o
  WHERE o.id=p_id AND o.lease_token=p_token AND o.lease_until>now() AND o.status='pending' AND o.started_at IS NULL;
- IF bound_tenant IS NULL THEN RETURN NULL;END IF;
+ IF bound_tenant IS NULL OR NOT identity_email.report_tenant_available(bound_tenant) THEN RETURN NULL;END IF;
  PERFORM set_config('app.tenant_id',bound_tenant::text,true);
  SELECT jsonb_build_object(
   'tenantId',o.tenant_id,'ownerUserId',o.owner_user_id,'recipientUserId',o.recipient_user_id,'recipientEmploymentId',o.recipient_employment_id,
@@ -115,7 +123,7 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_
 DECLARE schedule custom_report_schedule;report custom_report;pair jsonb;pref notification_pref;policy notification_email_policy;added integer:=0;inserted integer;eligible integer:=0;
 BEGIN
  SELECT * INTO schedule FROM custom_report_schedule s WHERE s.id=p_schedule AND s.enabled AND s.next_run_at=p_scheduled AND s.next_run_at<=now() FOR UPDATE;
- IF NOT FOUND THEN RETURN 0;END IF;
+ IF NOT FOUND OR NOT identity_email.report_tenant_available(schedule.tenant_id) THEN RETURN 0;END IF;
  IF p_next IS NULL OR p_next<=now() OR p_next<=p_scheduled THEN RAISE EXCEPTION 'Invalid next report date';END IF;
  SELECT * INTO report FROM custom_report r WHERE r.id=schedule.report_id AND r.tenant_id=schedule.tenant_id AND r.version=schedule.report_version AND r.dataset_id='master' AND r.spec ? 'employeeMaster' AND r.created_by_user_id IS NOT NULL AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=r.created_by_user_id AND u.tenant_id=r.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
  IF NOT FOUND THEN UPDATE custom_report_schedule SET enabled=false,updated_at=now() WHERE id=schedule.id;RETURN 0;END IF;
@@ -143,15 +151,15 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION identity_email.queue_report(uuid,timestamptz,timestamptz) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION identity_email.claim_reports(p_limit integer DEFAULT 10) RETURNS TABLE(id uuid,lease_token uuid)
+CREATE FUNCTION identity_email.claim_reports(p_limit integer DEFAULT 10) RETURNS TABLE(id uuid,lease_token uuid,tenant_id uuid)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF p_limit<1 OR p_limit>50 THEN RAISE EXCEPTION 'Invalid report sweep limit';END IF;
  -- A started SMTP attempt can have been accepted. Its expired lease is terminal uncertainty.
  UPDATE custom_report_occurrence SET status='uncertain',reason='uncertain',finished_at=now(),lease_token=NULL,lease_until=NULL
- WHERE status='started' AND lease_until<now();
- RETURN QUERY WITH picked AS(SELECT o.id FROM custom_report_occurrence o WHERE o.status='pending' AND o.started_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<now()) ORDER BY o.scheduled_for,o.id LIMIT p_limit FOR UPDATE SKIP LOCKED)
- UPDATE custom_report_occurrence o SET lease_token=gen_random_uuid(),lease_until=now()+interval '180 seconds' FROM picked WHERE o.id=picked.id RETURNING o.id,o.lease_token;
+ WHERE status='started' AND lease_until<now() AND identity_email.report_tenant_available(custom_report_occurrence.tenant_id);
+ RETURN QUERY WITH picked AS(SELECT o.id FROM custom_report_occurrence o WHERE o.status='pending' AND identity_email.report_tenant_available(o.tenant_id) AND o.started_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<now()) ORDER BY o.scheduled_for,o.id LIMIT p_limit FOR UPDATE SKIP LOCKED)
+ UPDATE custom_report_occurrence o SET lease_token=gen_random_uuid(),lease_until=now()+interval '180 seconds' FROM picked WHERE o.id=picked.id RETURNING o.id,o.lease_token,o.tenant_id;
 END $$;
 REVOKE ALL ON FUNCTION identity_email.claim_reports(integer) FROM PUBLIC,ai_hr_app;
 

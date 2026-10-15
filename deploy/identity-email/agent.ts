@@ -1,3 +1,4 @@
+import {createSingleReportHandler} from './report-handler';
 /** Root-installed settings service. The web process never receives its realm management credential. */
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename, link } from 'node:fs/promises';
@@ -96,9 +97,8 @@ const reports=createMasterReportDeliveryService({
  finish:async(id,token,outcome,reason,metadata)=>(await database`select identity_email.finish_report(${id}::uuid,${token}::uuid,${outcome},${reason},${metadata?.rowCount??null}::integer,${metadata?.scopeIds??null}::uuid[]) as finished`)[0]?.finished===true,
  send:async(target,attachment,messageId)=>{const relay=await workflowRelay();if(!relay)throw new Error('Managed relay unavailable.');const config=relay.config;if(config.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable.');const password=config.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;await sendEmployeeMasterSmtp(config,password,target,attachment,messageId);},
 });
-// Report preparation has its own single-worker queue; it cannot block brief workflow status/settings.
-let reportQueue:Promise<unknown>=Promise.resolve();
-async function handleReport(input:unknown){const parsed=masterDeliveryRequest.parse(input);if(parsed.op==='status')return reports(parsed);const run=reportQueue.then(async()=>{try{return await reports(parsed);}finally{try{await removeMasterReportFile(parsed.occurrenceId,parsed.leaseToken);}catch{console.error('Private report artifact cleanup unavailable; renderer expiry remains active.');}}});reportQueue=run.catch(()=>{});return run;}
+// A concurrent lease is refused immediately, leaving its pending reclaim to the durable queue.
+const handleReport=createSingleReportHandler(reports,removeMasterReportFile);
 let privateQueue:Promise<unknown>=Promise.resolve();
 const handlePrivateRequest=(path:string,input:unknown)=>{
  if(path==='/v1/reports')return handleReport(input);
