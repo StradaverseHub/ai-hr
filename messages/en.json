@@ -1972,6 +1972,36 @@
       "proposedValues": "Proposed values"
     },
     "wizard": {
+      "deleteRecord": "Delete Record",
+      "deleteRecordTitle": "Delete Employee Record?",
+      "deleteRecordDescription": "Delete the Draft record for {name} (Employee ID: {code})? This removes the record from the system and cannot be undone.",
+      "deleteRecordConfirm": "Yes, Delete",
+      "deleteRecordCancel": "No, Cancel",
+      "deletingRecord": "Deleting…",
+      "deleteNoHeldCode": "Not yet issued",
+      "deleteFailed": "Deletion could not be confirmed. Check the Personnel list before trying again.",
+      "activationFailed": "Activation could not be confirmed. Check the Personnel list before trying again.",
+      "saveFailed": "Your changes could not be saved. Please try again.",
+      "failureReference": "Reference: {reference}",
+      "validationFields": {
+        "details": "Other details",
+        "employmentPeriods": "Employment periods"
+      },
+      "activationValidation": {
+        "draft_unavailable": "This Draft is no longer available. Return to Personnel and reopen the record.",
+        "permission": "You no longer have permission to activate this Draft.",
+        "required_fields": "Complete the required details, then activate again.",
+        "invalid_data": "Review the Draft details and correct any invalid values.",
+        "company_changed": "This Draft’s company has changed. Reload the record before continuing.",
+        "company_unavailable": "This Draft’s company is no longer available for activation.",
+        "reference_invalid": "A selected organisation or reference value is no longer available. Choose an available value.",
+        "employee_code_invalid": "Review the Employee ID. It must meet the company’s numbering rule and be available.",
+        "employee_code_not_allowed": "Manual Employee IDs are not allowed by this company’s numbering rule.",
+        "profile_invalid": "Review the Profile details before activation.",
+        "statutory_invalid": "Review the Bank & Statutory details before activation.",
+        "payroll_invalid": "Review the Payroll details before activation.",
+        "family_invalid": "Review the Family details before activation."
+      },
       "fields": {
         "fullName": "Full name",
         "primaryEmail": "Email",
@@ -2081,7 +2111,7 @@
       "activate": "Activate",
       "activating": "Activating…",
       "activateNeeds": "Activate still needs:",
-      "discardReleasesTip": "Discarding returns the Employee ID only when it was the most recent one issued. Otherwise the number stays used and the sequence skips it.",
+      "discardReleasesTip": "Deleting the Draft returns the Employee ID only when it was the most recent one issued. Otherwise the number stays used and the sequence skips it.",
       "tabs": {
         "profile": "Profile",
         "job": "Employment",

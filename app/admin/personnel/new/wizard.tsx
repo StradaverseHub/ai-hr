@@ -52,10 +52,13 @@
  * `CrossCompanyError` guard in `core/org.ts` remains the last line of defence, exactly as before.
  */
 
-import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
+import type {DraftActivateActionResult,DraftDeleteActionResult} from '@/lib/draft-action-result';
+import {draftActivationMessageKey,draftActivationFieldLabels,draftFailureReference} from '@/lib/draft-activation-presentation';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Card, EmployeeCode, Field, SectionHeader, inputCls } from '@/components/ui';
+import { Badge, Button, Card, EmployeeCode, SectionHeader, inputCls } from '@/components/ui';
 import { PersonnelField } from '@/components/personnel-field';
 import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
 // 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
@@ -244,6 +247,23 @@ export function EmployeeWizard({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+  const mutationRef=useRef(false);
+  const mountedRef=useRef(true);
+  useEffect(()=>{mountedRef.current=true;return()=>{mountedRef.current=false;};},[]);
+  const deleteTriggerRef=useRef<HTMLButtonElement>(null);
+  const [operation,setOperation]=useState<'save'|'activate'|'delete'|null>(null);
+  const [leaving,setLeaving]=useState(false);
+  const [deleteTarget,setDeleteTarget]=useState<{id:string;name:string;code:string}|null>(null);
+  const [deleteError,setDeleteError]=useState<string|null>(null);
+  const [activationFields,setActivationFields]=useState<{tab:DraftTabKey;label:string}[]>([]);
+  const busy=pending||operation!==null||leaving;
+  const beginMutation=(next:'save'|'activate'|'delete')=>{
+    if(mutationRef.current||leaving)return false;
+    mutationRef.current=true;setOperation(next);setError(null);setActivationFields([]);return true;
+  };
+  const finishMutation=()=>{mutationRef.current=false;setOperation(null);};
+  const withReference=(message:string,value:unknown)=>{const reference=draftFailureReference(value);return reference?`${message} ${t('failureReference',{reference})}`:message;};
+
   // The Business Unit is a FILTER on the department list, not a stored field — the assignment writer
   // takes a department, and the department carries its own BU. Kept in component state, never in the
   // draft, so a saved draft cannot carry a value nothing will ever read.
@@ -263,24 +283,11 @@ export function EmployeeWizard({
   const isContractHire = employmentType === 'contract';
   const showsEndDateBox = draftShowsEndDateBox(employmentType);
   const endDate = draftProvisionalEndOn(data.employment);
-  // The box's name for the outstanding list. Literal `t()` calls rather than a computed key — a template
-  // key is invisible to test/i18n-coverage.test.ts check C. Null for the two types that show no box.
-  const endDateLabel = isContractHire
-    ? t('fields.contractEndDate')
-    : employmentType === 'intern'
-      ? t('fields.internshipEndDate')
-      : null;
-  /**
-   * The outstanding list's label for a field name, in the words the TAB uses. Two names are relabelled by
-   * r392: `hiredOn` is shown on the tab as "Group Join Date" (its key `fields.hiredOn` is retired), and
-   * `provisionalEndOn` takes the box's own type-specific name. Everything else is `fields.<name>` as before
-   * — test/employee-draft-wizard.test.ts §2 sweeps every name either rule can return in all six locales.
-   */
-  const missingFieldLabel = (f: string) => {
-    if (f === 'hiredOn') return t('fields.groupJoinDate');
-    if (f === 'provisionalEndOn') return endDateLabel ?? t('fields.provisionalEndOn');
-    return t(`fields.${f}`);
-  };
+  // Advisory outstanding fields and owner refusals name the same declared controls.
+  const missingFieldLabel=(key:DraftTabKey,field:string)=>
+    draftActivationFieldLabels([{tab:key,field}],(labelKey,fallback)=>tRoot.has(labelKey)?tRoot(labelKey):fallback,employmentType)[0]?.label
+      ?? t('validationFields.details');
+
 
   // r393 (685d2380 step 3b) — the pack's statutory rules (EPF election, income tax residency), so the tab
   // names what Activate would refuse. 'MY' for the same reason SocsoEisFields is handed country="MY" below.
@@ -336,43 +343,57 @@ export function EmployeeWizard({
     companyId !== '' && opts.length > 0 && opts.every((o) => !visible(o, false));
 
   /** SAVE. Deliberately unvalidated, from whichever tab is open — that is the whole of what a draft is. */
-  const saveDraft = () =>
-    startTransition(async () => {
-      setError(null);
+  const saveDraft = () => {
+    if(deleteTarget||!beginMutation('save'))return;
+    startTransition(async()=>{
       try {
-        // `stepNumber`, NOT `indexOf + 1`: the stored number is declared in employee-draft-schema.ts
-        // (5 is the retired `review` slot and stays retired), so counting positions here would write the
-        // wrong number for every tab after it — and would move the drafts already parked on 5.
-        await saveDraftAction(id, data, stepNumber(tab));
-        setSaved(true);
-        router.refresh();
-      } catch (e) {
-        setError((e as Error).message);
-      }
+        await saveDraftAction(id,data,stepNumber(tab));
+        if(!mountedRef.current)return;
+        setSaved(true);router.refresh();
+      } catch {if(mountedRef.current)setError(t('saveFailed'));}
+      finally {if(mountedRef.current)finishMutation();}
     });
-
-  const discard = () =>
-    startTransition(async () => {
-      setError(null);
-      try {
-        await discardDraftAction(id);
-        router.push('/admin/personnel');
-      } catch (e) {
-        setError((e as Error).message);
+  };
+  const openDelete=()=>{
+    if(busy||mutationRef.current)return;
+    setDeleteError(null);
+    setDeleteTarget({id,name:data.profile?.fullName?.trim()||t('untitledDraft'),code:reservedEmployeeCode??''});
+  };
+  const closeDelete=()=>{if(!mutationRef.current){setDeleteTarget(null);setDeleteError(null);}};
+  const confirmDelete=()=>{
+    const target=deleteTarget;
+    if(!target||target.id!==id||!beginMutation('delete'))return;
+    setDeleteError(null);
+    startTransition(async()=>{
+      let result:DraftDeleteActionResult;
+      try {result=await discardDraftAction(target.id);}
+      catch {if(mountedRef.current){setDeleteError(t('deleteFailed'));finishMutation();}return;}
+      if(!mountedRef.current)return;
+      if(result?.ok){
+        setLeaving(true);setDeleteTarget(null);
+        router.push('/admin/personnel');router.refresh();return;
       }
+      setDeleteError(withReference(t('deleteFailed'),result?.reference));finishMutation();
     });
-
-  /** ACTIVATE. The held Employee ID becomes a real employment carrying that same ID. */
-  const activate = () =>
-    startTransition(async () => {
-      setError(null);
-      try {
-        const res = await createEmployeeAction(id, data, stepNumber(tab));
-        router.push(`/admin/personnel/${res.employmentId}?from=personnel`);
-      } catch (e) {
-        setError((e as Error).message);
+  };
+  /** ACTIVATE. Only a confirmed owner result becomes navigation; validation stays on this Draft. */
+  const activate=()=>{
+    if(deleteTarget||!beginMutation('activate'))return;
+    startTransition(async()=>{
+      let result:DraftActivateActionResult;
+      try {result=await createEmployeeAction(id,data,stepNumber(tab));}
+      catch {if(mountedRef.current){setError(t('activationFailed'));finishMutation();}return;}
+      if(!mountedRef.current)return;
+      if(result?.ok){
+        setLeaving(true);router.push(`/admin/personnel/${result.employmentId}?from=personnel`);router.refresh();return;
       }
+      if(result?.kind==='validation'){
+        setError(tRoot(draftActivationMessageKey(result.code)));
+        setActivationFields(draftActivationFieldLabels(result.fields,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback,employmentType));
+      }else setError(withReference(t('activationFailed'),result?.reference));
+      finishMutation();
     });
+  };
 
   /**
    * THE TAB LABELS — one STATIC `t()` per tab, never a computed key built from the tab name.
@@ -1371,8 +1392,9 @@ export function EmployeeWizard({
       </Card>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-          {error}
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+          <p>{error}</p>
+          {activationFields.length>0&&<ul className="mt-2 space-y-1">{activationFields.map(field=><li key={field.tab+field.label}><button type="button" className="text-left underline underline-offset-2" onClick={()=>selectTabRef.current?.(field.tab)}>{tabLabel[field.tab]} — {field.label}</button></li>)}</ul>}
         </div>
       )}
 
@@ -1384,6 +1406,7 @@ export function EmployeeWizard({
           outstanding list below moves the shell, through the shell's OWN guarded switch rather than
           around it. `emptyLabel` can never actually show here (every one of the five tabs has a panel),
           and is passed because the shell requires a real string rather than a placeholder. */}
+      <fieldset disabled={busy} className="min-w-0 border-0 p-0">
       <ClientTabs
         tabs={tabs}
         panels={panels}
@@ -1393,6 +1416,7 @@ export function EmployeeWizard({
         selectRef={selectTabRef}
         onTabChange={setTab}
       />
+      </fieldset>
 
       {/* WHAT ACTIVATE IS STILL WAITING FOR — the plan's "the screen still says what is outstanding".
           Named in place, immediately above the button it governs, and visible from EVERY tab rather than
@@ -1418,7 +1442,7 @@ export function EmployeeWizard({
                   {tabLabel[k]}
                 </button>
                 {' — '}
-                {missing[k].map(missingFieldLabel).join(', ')}
+                {missing[k].map(field=>missingFieldLabel(k,field)).join(', ')}
               </li>
             ))}
           </ul>
@@ -1432,21 +1456,22 @@ export function EmployeeWizard({
       <div className="flex flex-wrap items-center gap-2">
         {/* Deliberately UNVALIDATED: a draft that refused to save until it was complete would not be
             a draft. The reporter's whole ask is "keep what I have and come back to it". */}
-        <Button variant="secondary" onClick={() => saveDraft()} disabled={pending}>
-          {pending ? t('saving') : t('saveDraft')}
+        <Button variant="secondary" onClick={() => saveDraft()} disabled={busy||!!deleteTarget}>
+          {operation==='save' ? t('saving') : t('saveDraft')}
         </Button>
         {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">{t('draftSaved')}</span>}
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={discard}
-            disabled={pending}
+            ref={deleteTriggerRef}
+            onClick={openDelete}
+            disabled={busy}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            {t('discardDraft')}
+            {t('deleteRecord')}
           </button>
-          <Button onClick={activate} disabled={pending || outstanding.length > 0}>
-            {pending ? t('activating') : t('activate')}
+          <Button onClick={activate} disabled={busy||!!deleteTarget||outstanding.length>0}>
+            {operation==='activate' ? t('activating') : t('activate')}
           </Button>
         </div>
       </div>
@@ -1454,6 +1479,26 @@ export function EmployeeWizard({
           only returned when it is the last one issued. Discarding after somebody else has been created
           behind this draft leaves a gap in the sequence. */}
       <p className="text-xs text-muted-foreground">{t('discardReleasesTip')}</p>
+      {deleteTarget&&<AlertDialog.Root open onOpenChange={open=>{if(!open)closeDelete();}}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay data-draft-delete-backdrop className="fixed inset-0 z-50 bg-black/50" onClick={event=>{if(event.target===event.currentTarget)closeDelete();}} />
+          <AlertDialog.Content
+            aria-busy={operation==='delete'}
+            onEscapeKeyDown={event=>{if(mutationRef.current)event.preventDefault();}}
+            onCloseAutoFocus={event=>{event.preventDefault();deleteTriggerRef.current?.focus();}}
+            className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
+          >
+            <AlertDialog.Title className="text-base font-semibold">{t('deleteRecordTitle')}</AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 break-words text-sm text-muted-foreground">{t('deleteRecordDescription',{name:deleteTarget.name,code:deleteTarget.code||t('deleteNoHeldCode')})}</AlertDialog.Description>
+            {deleteError&&<p role="alert" className="mt-3 text-sm text-destructive">{deleteError}</p>}
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <AlertDialog.Cancel asChild><Button type="button" variant="outline" disabled={busy}>{t('deleteRecordCancel')}</Button></AlertDialog.Cancel>
+              <Button type="button" variant="destructive" onClick={confirmDelete} disabled={busy}>{operation==='delete'?t('deletingRecord'):t('deleteRecordConfirm')}</Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>}
+
     </div>
   );
 }

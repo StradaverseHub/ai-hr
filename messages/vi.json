@@ -1972,6 +1972,36 @@
       "proposedValues": "Giá trị đề xuất"
     },
     "wizard": {
+      "deleteRecord": "Xóa hồ sơ",
+      "deleteRecordTitle": "Xóa hồ sơ nhân viên?",
+      "deleteRecordDescription": "Xóa hồ sơ Nháp của {name} (Mã nhân viên: {code})? Hồ sơ sẽ bị xóa khỏi hệ thống và không thể hoàn tác.",
+      "deleteRecordConfirm": "Có, Xóa",
+      "deleteRecordCancel": "Không, Hủy",
+      "deletingRecord": "Đang xóa…",
+      "deleteNoHeldCode": "Chưa được cấp",
+      "deleteFailed": "Chưa thể xác nhận việc xóa. Hãy kiểm tra danh sách Nhân sự trước khi thử lại.",
+      "activationFailed": "Chưa thể xác nhận việc kích hoạt. Hãy kiểm tra danh sách Nhân sự trước khi thử lại.",
+      "saveFailed": "Không thể lưu thay đổi. Vui lòng thử lại.",
+      "failureReference": "Mã tham chiếu: {reference}",
+      "validationFields": {
+        "details": "Thông tin khác",
+        "employmentPeriods": "Thời hạn lao động"
+      },
+      "activationValidation": {
+        "draft_unavailable": "Bản Nháp này không còn khả dụng. Hãy quay lại Nhân sự và mở lại hồ sơ.",
+        "permission": "Bạn không còn quyền kích hoạt bản Nháp này.",
+        "required_fields": "Hãy điền thông tin bắt buộc rồi kích hoạt lại.",
+        "invalid_data": "Hãy kiểm tra thông tin Nháp và sửa các giá trị không hợp lệ.",
+        "company_changed": "Công ty của bản Nháp đã thay đổi. Hãy tải lại hồ sơ trước khi tiếp tục.",
+        "company_unavailable": "Công ty của bản Nháp không còn khả dụng để kích hoạt.",
+        "reference_invalid": "Tổ chức hoặc giá trị tham chiếu đã chọn không còn khả dụng. Hãy chọn giá trị hiện có.",
+        "employee_code_invalid": "Hãy kiểm tra Mã nhân viên. Mã phải tuân thủ quy tắc đánh số của công ty và chưa được sử dụng.",
+        "employee_code_not_allowed": "Quy tắc đánh số của công ty không cho phép Mã nhân viên nhập thủ công.",
+        "profile_invalid": "Hãy kiểm tra thông tin Hồ sơ trước khi kích hoạt.",
+        "statutory_invalid": "Hãy kiểm tra thông tin Ngân hàng & Pháp định trước khi kích hoạt.",
+        "payroll_invalid": "Hãy kiểm tra thông tin Bảng lương trước khi kích hoạt.",
+        "family_invalid": "Hãy kiểm tra thông tin Gia đình trước khi kích hoạt."
+      },
       "fields": {
         "fullName": "Họ và tên",
         "primaryEmail": "Email",
@@ -2081,7 +2111,7 @@
       "activate": "Kích hoạt",
       "activating": "Đang kích hoạt…",
       "activateNeeds": "Kích hoạt vẫn cần:",
-      "discardReleasesTip": "Bỏ bản nháp chỉ trả lại mã nhân viên khi đó là mã được cấp gần nhất. Nếu không, số đó vẫn coi như đã dùng và dãy số sẽ bỏ qua nó.",
+      "discardReleasesTip": "Xóa bản Nháp chỉ trả lại mã nhân viên khi đó là mã được cấp gần nhất. Nếu không, số đó vẫn được coi là đã dùng và dãy số sẽ bỏ qua nó.",
       "tabs": {
         "profile": "Hồ sơ",
         "job": "Việc làm",
