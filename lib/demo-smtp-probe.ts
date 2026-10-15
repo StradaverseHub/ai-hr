@@ -1,8 +1,10 @@
 import 'server-only';
 import { Resolver } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import SMTPConnection, {type SMTPConnectionOptions} from 'nodemailer/lib/smtp-connection';
+import type SMTPConnection from 'nodemailer/lib/smtp-connection';
+import type {SMTPConnectionOptions} from 'nodemailer/lib/smtp-connection';
 import { isPublicIp } from './public-network';
+import {createDemoSmtpConnection} from './demo-smtp-connection';
 import { demoSmtpSchema,type DemoSmtpConfig,type DemoSmtpFailure,type DemoSmtpResult } from './demo-smtp-model';
 
 export class DemoSmtpError extends Error {
@@ -32,7 +34,7 @@ export function smtpProbeFailure(error:unknown):DemoSmtpFailure {
   return 'connectionFailed';
 }
 type Dependencies={resolve:(host:string)=>Promise<string[]>;connection:(options:SMTPConnectionOptions)=>SMTPConnection};
-const defaults:Dependencies={resolve:resolveDemoSmtpHost,connection:options=>new SMTPConnection(options)};
+const defaults:Dependencies={resolve:resolveDemoSmtpHost,connection:createDemoSmtpConnection};
 
 /** Connection + optional AUTH only. No sender, recipients, message, relay state or secret storage. */
 export async function probeDemoSmtp(input:DemoSmtpConfig,deps:Dependencies=defaults):Promise<DemoSmtpResult> {
