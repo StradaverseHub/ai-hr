@@ -22,7 +22,7 @@ Stop by creating `$PERSONNEL_WORKTREE/scratchpad/board15-personnel-registers/bro
 
 ## Fixture and uploads
 
-`dev-fixture-personnel-registers.ts` refuses any database except the exact target, any namespace except the assigned one, and tenants beyond the seeded Demo Group/system tenant. Company, department, hire, profile, bank/statutory, reporting line, termination, catalogue, Family, Qualification and Contact facts go through their canonical owners/packs. The migration connection inserts only fictional app-user/role grants; all other use is read-only lookup. Existing facts are preserved on rerun, not reset to make a test green.
+`dev-fixture-personnel-registers.mts` refuses any database except the exact target, any namespace except the assigned one, and tenants beyond the seeded Demo Group/system tenant. Company, department, hire, profile, bank/statutory, reporting line, termination, catalogue, Family, Qualification and Contact facts go through their canonical owners/packs. The migration connection inserts only fictional app-user/role grants; all other use is read-only lookup. Existing facts are preserved on rerun, not reset to make a test green.
 
 The fixture declares its fictional Main and Foreign companies, company-scoped HR, manager, employee, other employee, inactive employee and foreign employee in `fixture-manifest.json`. The Employee has a spouse and two same-name children with different birthdays, two live qualifications, two same-name live contacts, archived records, leading-zero bank/profile values and stored inactive legacy catalogue values. Active catalogue aliases include an unambiguous label and two values with the same ambiguous label.
 

@@ -5,7 +5,7 @@ import {describe,expect,it} from 'vitest';
 const read=(name:string)=>readFileSync(path.join(process.cwd(),name),'utf8');
 describe('local Personnel fixture/runner source boundary',()=>{
   it('derives its root, pins named local targets and refuses production/demo mismatch before importing DB owners',()=>{
-    const fixture=read('scripts/dev-fixture-personnel-registers.ts');
+    const fixture=read('scripts/dev-fixture-personnel-registers.mts');
     expect(fixture).toContain("fileURLToPath(new URL('..',import.meta.url))");
     expect(fixture).toContain("url.pathname!=='/ai_hr_board15_personnel_browser'");expect(fixture).toContain("url.port!=='5433'");
     expect(fixture).toContain("process.env.TEST_DB_NAMESPACE!=='board15personnelregisters'");

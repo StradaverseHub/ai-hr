@@ -4,7 +4,7 @@ import {describe,expect,it} from 'vitest';
 const read=(name:string)=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 describe('local Activation fixture/runner source safety',()=>{
   it('guards exact local demo target and app role before dynamically importing database owners',()=>{
-    const fixture=read('scripts/dev-fixture-draft-activation.ts');
+    const fixture=read('scripts/dev-fixture-draft-activation.mts');
     expect(fixture).toContain("fileURLToPath(new URL('..',import.meta.url))");
     expect(fixture).toContain("url.pathname!=='/ai_hr_board15_activation_browser'");
     expect(fixture).toContain("url.port!=='5433'");
@@ -21,7 +21,7 @@ describe('local Activation fixture/runner source safety',()=>{
     expect(fixture).toContain('process.exit(0)');
   });
   it('preserves real reservations/owners and declares each browser case without activating or discarding it',()=>{
-    const fixture=read('scripts/dev-fixture-draft-activation.ts');
+    const fixture=read('scripts/dev-fixture-draft-activation.mts');
     for(const owner of ['createEmployeeDraftWithReservedCode(actor','saveEmployeeDraft(actor','getEmployeeDraft(actor','createConfig(bootstrap','hireEmployee(bootstrap','createPolicy(hr'])expect(fixture).toContain(owner);
     expect(fixture).not.toContain('completeEmployeeDraft(');expect(fixture).not.toContain('discardEmployeeDraft(');
     for(const key of ["['valid',rich","['optionalBlank',blank","['invalidIdentity',invalid","['missingRequired',missing","['stalePolicy',stale","['deleteCancel',cancel","['deleteConfirm',baseData('DeleteConfirm')","['foreign',baseData('Foreign','Foreign')"])expect(fixture).toContain(key);
@@ -44,7 +44,7 @@ describe('local Activation fixture/runner source safety',()=>{
     expect(runner).toContain("port='3204'");expect(runner).toContain("CREATE DATABASE ai_hr_board15_activation_browser");
     expect(runner).toContain("['browser-fixture-first','browser-fixture-second']");
     expect(runner).toContain('JSON.stringify(manifests[0])!==JSON.stringify(manifests[1])');
-    expect(runner).toContain("'scripts/dev-fixture-draft-activation.ts'");
+    expect(runner).toContain("'scripts/dev-fixture-draft-activation.mts'");
     expect(runner).toContain("actionSource.includes('draftActivationValidation')");
     expect(runner).toContain('drizzle-activation.config.ts');expect(runner).toContain('120000');expect(runner).toContain('45*60*1000');
     expect(runner).toContain('appUrl.pathname');expect(runner).toContain('ownerUrl.pathname');
