@@ -77,12 +77,6 @@ export async function assertShiftsAllowedForEmploymentsTx(
   const real = pairs.filter((p): p is { employmentId: string; shiftId: string; shiftDate?:string } => !!p.shiftId);
   if (real.length === 0) return;
   const employmentIds = [...new Set(real.map((p) => p.employmentId))];
-  const attemptedIds=[...new Set(real.map(p=>p.shiftId))];
-  const available=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,attemptedIds));
-  if(attemptedIds.some(id=>!available.some(sh=>sh.id===id)))throw new Error('A selected shift is unavailable in this tenant.');
-  if(!options?.existingReferences&&available.some(sh=>sh.archivedAt))throw new Error('An archived shift cannot be selected for a new assignment. Select an active shift.');
-
-
   // 1. Which of these employments are in a group at all? None ⇒ nothing to enforce, and this is the
   //    release-day path for every caller.
   const grouped = await tx
@@ -91,10 +85,17 @@ export async function assertShiftsAllowedForEmploymentsTx(
     .where(and(inArray(employment.id, employmentIds), isNotNull(employment.attendanceRuleId)));
   const groupOf = new Map<string, string>();
   for (const row of grouped) if (row.ruleId) groupOf.set(row.employmentId, row.ruleId);
-  if (groupOf.size === 0) return;
 
   const ruleIds = [...new Set(groupOf.values())];
-  await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,ruleIds)).orderBy(asc(attendanceRule.id)).for('update');
+  if(ruleIds.length)await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,ruleIds)).orderBy(asc(attendanceRule.id)).for('update');
+  // Match pool writers' lock order: group first, selected templates second.
+  const attemptedIds=[...new Set(real.map(p=>p.shiftId))];
+  const available=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,attemptedIds)).orderBy(asc(shift.id)).for('update');
+  if(attemptedIds.some(id=>!available.some(sh=>sh.id===id)))throw new Error('A selected shift is unavailable in this tenant.');
+  if(!options?.existingReferences&&available.some(sh=>sh.archivedAt))throw new Error('An archived shift cannot be selected for a new assignment. Select an active shift.');
+
+
+  if(groupOf.size===0)return;
   const attemptedShiftIds = [...new Set(real.filter((p) => groupOf.has(p.employmentId)).map((p) => p.shiftId))];
 
   const membership=await tx.select().from(attendanceRuleShift).where(inArray(attendanceRuleShift.ruleId,ruleIds));
