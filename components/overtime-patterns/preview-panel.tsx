@@ -1,0 +1,110 @@
+'use client';
+
+import {useEffect,useRef,useState,useTransition} from 'react';
+import {useTranslations} from 'next-intl';
+import {Field,inputCls,btnPrimary} from '@/components/ui';
+import {HR_LOCAL_TZ} from '@/lib/hr-date';
+import {OVERTIME_SAMPLE_INPUT_FIELDS,OVERTIME_NUMERIC_FIELDS,OVERTIME_LIMITS,type OvertimeEvaluation,type OvertimePattern} from '@/lib/overtime-pattern-model';
+import type {OvertimeSampleDraft} from '@/lib/overtime-pattern-ui';
+import type {OvertimePatternSetup} from '@/packs/attendance/service';
+import {previewOvertimeEmployeeAction,previewOvertimeSampleAction,readOvertimeTransferAction,calculateOvertimeDayAction,transferOvertimePayrollAction,overtimeChoicesAction,type OvertimeActionFailure} from '@/app/admin/attendance/settings/overtime-patterns/actions';
+import {OvertimeCalculationResult,OvertimeDurationResult,overtimeMoneyText} from './calculation-result';
+import {useOvertimeChoiceText} from './choice-label';
+import {ruleId,type OvertimeChoices} from './rule-controls';
+
+const button='min-h-10 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50';
+type Review=Extract<Awaited<ReturnType<typeof readOvertimeTransferAction>>,{ok:true}>['value'];
+export function OvertimePreviewPanel({patternId,versionId,pattern,employees,choices,disabled}:{patternId?:string;versionId?:string;pattern:OvertimePattern;employees:OvertimePatternSetup['employees'];choices:OvertimeChoices;disabled:boolean}) {
+  const t=useTranslations('overtimePatterns');
+  const choiceText=useOvertimeChoiceText();
+  const [mode,setMode]=useState<'employee'|'sample'>('employee');
+  const [employmentId,setEmploymentId]=useState('');
+  const [employeeSearch,setEmployeeSearch]=useState('');
+  const [employeeOptions,setEmployeeOptions]=useState(employees);
+  const [employeeCursor,setEmployeeCursor]=useState<string|null>(null);
+  const [date,setDate]=useState('');
+  const [sample,setSample]=useState<OvertimeSampleDraft>({date:'',facts:{},sessionGranularity:'dayAggregate',approvalStatus:'unknown',approvalMinutes:'',currency:pattern.currency,segments:[{id:'sample_segment',sessionId:'sample_session',date:'',rawMinutes:'',dayType:'',endDayType:'',clockKnown:false,from:'',to:'',endDayOffset:0}],resources:[]});
+  const [result,setResult]=useState<OvertimeEvaluation|null>(null);
+  const [review,setReview]=useState<Review|null>(null);
+  const [failure,setFailure]=useState<OvertimeActionFailure|null>(null);
+  const [batchId,setBatchId]=useState('');
+  const [reason,setReason]=useState('');
+  const [acknowledged,setAcknowledged]=useState(false);
+  const [notice,setNotice]=useState<string|null>(null);
+  const [pending,startTransition]=useTransition();
+  const busy=useRef(false),mounted=useRef(true);
+  const context=`${patternId}:${versionId}:${employmentId}:${date}:${mode}:${disabled}`;
+  const currentContext=useRef(context);currentContext.current=context;
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+  useEffect(()=>{setResult(null);setReview(null);setAcknowledged(false);setBatchId('');setFailure(null);setNotice(null);},[context]);
+  useEffect(()=>{setResult(null);},[sample]);
+  useEffect(()=>{setEmployeeOptions(previous=>[...new Map([...previous.filter(employee=>employee.id===employmentId),...employees].map(employee=>[employee.id,employee])).values()]);},[employees,employmentId]);
+  const selectionChoices={...choices,employmentId:employeeOptions.map(employee=>({id:employee.id,label:`${employee.employeeCode??''} ${employee.name}`.trim()}))};
+  const canPreview=!disabled&&Boolean(patternId&&versionId&&date)&&(mode==='sample'||Boolean(employmentId));
+  function perform(work:(valid:()=>boolean)=>Promise<void>) {
+    if(busy.current)return;busy.current=true;setFailure(null);setNotice(null);const requested=context;
+    const valid=()=>mounted.current&&currentContext.current===requested;
+    startTransition(async()=>{try{await work(valid);}catch{if(valid())setFailure({ok:false,code:'system'});}finally{busy.current=false;}});
+  }
+  function showFailure(response:OvertimeActionFailure) {setFailure(response);setAcknowledged(false);}
+  const searchEmployees=(more=false)=>perform(async valid=>{const response=await overtimeChoicesAction({employeeSearch,employeeCursor:more?employeeCursor??undefined:undefined});if(!valid())return;if(!response.ok){showFailure(response);return;}setEmployeeOptions(previous=>[...new Map([...(more?previous:previous.filter(employee=>employee.id===employmentId)),...response.value.employees].map(employee=>[employee.id,employee])).values()]);setEmployeeCursor(response.value.employeeNextCursor);});
+  const preview=()=>perform(async valid=>{
+    if(!canPreview)return;
+    const response=mode==='employee'?await previewOvertimeEmployeeAction({patternId:patternId!,versionId:versionId!,employmentId,date}):await previewOvertimeSampleAction({patternId:patternId!,versionId:versionId!,sample:{...sample,date,currency:pattern.currency}});
+    if(!valid())return;if(!response.ok){showFailure(response);return;}setResult(response.value);
+  });
+  async function readReview(valid:()=>boolean) {
+    const response=await readOvertimeTransferAction({employmentId,date});
+    if(!valid())return;if(!response.ok){showFailure(response);return;}
+    setReview(response.value);setAcknowledged(false);setBatchId('');
+  }
+  const calculate=()=>perform(async valid=>{
+    if(!review||!reason)return;
+    const response=await calculateOvertimeDayAction({employmentId,date,expectedCurrentRevision:review.recorded?.sourceRevision??0,reason});
+    if(!valid())return;if(!response.ok){showFailure(response);return;}
+    setNotice(response.value.status==='legacy'?'legacyCalculation':'calculationRecorded');await readReview(valid);
+  });
+  const calculation=review?.options.calculation;
+  const recorded=review?.recorded;
+  const reviewMatches=Boolean(calculation&&recorded&&calculation.id===recorded.calculationId&&calculation.sourceRevision===recorded.sourceRevision&&recorded.status==='ready'&&recorded.evaluation?.status==='ready'&&recorded.evaluation.transferable);
+  const canTransfer=mode==='employee'&&!disabled&&reviewMatches&&calculation?.transferable&&calculation.status==='ready'&&review?.options.settlement?.mode!=='toil'&&Boolean(batchId&&reason&&acknowledged);
+  const transfer=()=>perform(async valid=>{
+    if(!canTransfer||!calculation)return;
+    const response=await transferOvertimePayrollAction({employmentId,date,expectedCalculationId:calculation.id,expectedSourceRevision:calculation.sourceRevision,batchId,reason});
+    if(!valid())return;if(!response.ok){showFailure(response);return;}
+    setNotice(response.value.status==='unchanged'?'transferUnchanged':'transferred');await readReview(valid);
+  });
+  function updateSample(next:OvertimeSampleDraft) {setSample(next);setResult(null);}
+  return <div className="space-y-5">
+    <p className="text-sm text-muted-foreground">{t('previewHelp')}</p>
+    {disabled||!versionId?<p role="status" className="text-sm">{t('saveBeforePreview')}</p>:null}
+    {failure?<div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm"><p>{t(`errors.${failure.code}`)}</p>{failure.reference?<p>{t('reference',{reference:failure.reference})}</p>:null}</div>:null}
+    {notice?<p role="status" className="text-sm">{t(notice)}</p>:null}
+    <fieldset disabled={pending||disabled||!versionId} className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3"><Field label={t('previewMode')}><select className={inputCls} value={mode} onChange={event=>setMode(event.target.value as 'employee'|'sample')}><option value="employee">{t('authorizedEmployee')}</option><option value="sample">{t('enteredSample')}</option></select></Field><Field label={t('attendanceDate')}><input type="date" className={inputCls} value={date} onChange={event=>{setDate(event.target.value);updateSample({...sample,date:event.target.value,segments:sample.segments.map(row=>({...row,date:row.date||event.target.value}))});}}/></Field>{mode==='employee'?<Field label={t('employees')}><select className={inputCls} value={employmentId} onChange={event=>setEmploymentId(event.target.value)}><option value="">{t('choose')}</option>{employeeOptions.map(employee=><option key={employee.id} value={employee.id}>{employee.employeeCode} · {employee.name}</option>)}</select></Field>:null}</div>
+      {mode==='employee'?<div className="flex flex-wrap items-end gap-3"><Field label={t('employeeSearch')}><input className={inputCls} value={employeeSearch} onChange={event=>setEmployeeSearch(event.target.value)}/></Field><button type="button" className={button} onClick={()=>searchEmployees()}>{t('search')}</button>{employeeCursor?<button type="button" className={button} onClick={()=>searchEmployees(true)}>{t('loadMore')}</button>:null}</div>:null}
+      {mode==='sample'?<div className="space-y-4">
+        <p className="text-xs text-muted-foreground">{t('sampleHelp',{zone:HR_LOCAL_TZ})}</p>
+        <div className="grid gap-3 sm:grid-cols-3"><Field label={t('sessionGranularity')}><select className={inputCls} value={sample.sessionGranularity} onChange={event=>{const sessionGranularity=event.target.value as typeof sample.sessionGranularity;if(sessionGranularity==='dayAggregate'){if((sample.segments.length>1||sample.segments.some(row=>row.clockKnown)||sample.resources.some(row=>row.basis==='session'))&&!window.confirm(t('resetSampleSession')))return;updateSample({...sample,sessionGranularity,segments:[{...sample.segments[0],clockKnown:false}],resources:sample.resources.filter(row=>row.basis==='day')});}else updateSample({...sample,sessionGranularity});}}><option value="dayAggregate">{t('dayAggregate')}</option><option value="recorded">{t('recordedSessions')}</option></select></Field><Field label={t('approvalStatus')}><select className={inputCls} value={sample.approvalStatus} onChange={event=>updateSample({...sample,approvalStatus:event.target.value as typeof sample.approvalStatus})}>{['unknown','approved','notRequired','pending','rejected'].map(status=><option key={status} value={status}>{t(`approvalStatuses.${status}`)}</option>)}</select></Field><Field label={t('dayApprovalMinutes')}><input inputMode="decimal" className={inputCls} value={sample.approvalMinutes} onChange={event=>updateSample({...sample,approvalMinutes:event.target.value})}/></Field></div>
+        {sample.segments.map((segment,index)=><fieldset key={segment.id} className="space-y-3 rounded-lg border border-border p-3"><legend className="px-1 text-sm">{t('numberedSegment',{number:index+1})}</legend>
+          <div className="grid gap-3 sm:grid-cols-3"><Field label={t('session')}><select className={inputCls} value={segment.sessionId} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,sessionId:event.target.value==='new'?ruleId():event.target.value}:row)})}>{[...new Set(sample.segments.map(row=>row.sessionId))].map((id,i)=><option key={id} value={id}>{t('numberedSession',{number:i+1})}</option>)}<option value="new">{t('newSession')}</option></select></Field><Field label={t('fields.rawMinutes')}><input inputMode="decimal" className={inputCls} disabled={segment.clockKnown} value={segment.rawMinutes} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,rawMinutes:event.target.value}:row)})}/></Field><Field label={t('fields.dayType')}><select className={inputCls} value={segment.dayType} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,dayType:event.target.value}:row)})}><option value="">{t('unknown')}</option>{(choices.dayType??[]).map(option=><option key={option.id} value={option.id}>{choiceText('dayType',option)}</option>)}</select></Field></div>
+          <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={segment.clockKnown} disabled={sample.sessionGranularity!=='recorded'} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,clockKnown:event.target.checked}:row)})}/>{t('knownClock')}</label>
+          {segment.clockKnown?<><div className="grid gap-3 sm:grid-cols-4"><Field label={t('attendanceDate')}><input type="date" className={inputCls} value={segment.date} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,date:event.target.value}:row)})}/></Field>{(['from','to'] as const).map(key=><Field key={key} label={t(key==='from'?'fromMinute':'toMinute')}><input type="time" className={inputCls} value={segment[key]} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,[key]:event.target.value}:row)})}/></Field>)}<Field label={t('endDayOffset')}><select className={inputCls} value={segment.endDayOffset} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,endDayOffset:Number(event.target.value) as 0|1}:row)})}><option value="0">{t('sameDay')}</option><option value="1">{t('nextDay')}</option></select></Field></div>{segment.endDayOffset===1?<Field label={t('nextDayType')}><select className={inputCls} value={segment.endDayType} onChange={event=>updateSample({...sample,segments:sample.segments.map((row,i)=>i===index?{...row,endDayType:event.target.value}:row)})}><option value="">{t('unknown')}</option>{(choices.dayType??[]).map(option=><option key={option.id} value={option.id}>{choiceText('dayType',option)}</option>)}</select></Field>:null}<p className="text-xs text-muted-foreground">{t('sampleClockHelp',{zone:HR_LOCAL_TZ})}</p></>:null}
+          <button type="button" className={button} disabled={sample.segments.length===1} onClick={()=>updateSample({...sample,segments:sample.segments.filter((_,i)=>i!==index)})}>{t('remove')}</button>
+        </fieldset>)}
+        <button type="button" className={button} disabled={sample.sessionGranularity!=='recorded'||sample.segments.length>=OVERTIME_LIMITS.sessions} onClick={()=>updateSample({...sample,segments:[...sample.segments,{id:ruleId(),sessionId:ruleId(),date,rawMinutes:'',dayType:'',endDayType:'',clockKnown:false,from:'',to:'',endDayOffset:0}]})}>{t('addSegment')}</button>
+        <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-medium">{t('sampleFacts')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">{OVERTIME_SAMPLE_INPUT_FIELDS.map(field=><Field key={field} label={t(`fields.${field}`)}>{Object.hasOwn(OVERTIME_NUMERIC_FIELDS,field)?<input className={inputCls} inputMode="decimal" value={sample.facts[field]??''} onChange={event=>updateSample({...sample,facts:{...sample.facts,[field]:event.target.value}})}/>:<select className={inputCls} value={sample.facts[field]===null?'__missing__':sample.facts[field]??''} onChange={event=>updateSample({...sample,facts:{...sample.facts,[field]:event.target.value==='__missing__'?null:event.target.value}})}><option value="">{t('unknown')}</option><option value="__missing__">{t('knownMissing')}</option>{(selectionChoices[field as keyof OvertimeChoices]??[]).map(option=><option key={option.id} value={option.id}>{choiceText(field,option)}</option>)}</select>}</Field>)}</div></details>
+        <div className="space-y-3"><h4 className="font-medium">{t('sampleResources')}</h4>{sample.resources.map((resource,index)=><div key={resource.id} className="space-y-3 rounded-lg border border-border p-3"><div className="grid gap-3 sm:grid-cols-3"><Field label={t('resource')}><select className={inputCls} value={resource.resource} onChange={event=>updateSample({...sample,resources:sample.resources.map((row,i)=>i===index?{...row,resource:event.target.value}:row)})}><option value="">{t('choose')}</option><option value="lateIn">{t('lateIn')}</option><option value="postOtBreak">{t('postOtBreak')}</option></select></Field><Field label={t('evidenceType')}><select className={inputCls} value={resource.evidence} onChange={event=>updateSample({...sample,resources:sample.resources.map((row,i)=>i===index?{...row,evidence:event.target.value as typeof row.evidence}:row)})}><option value="measured">{t('measured')}</option><option value="policyCapacity">{t('policyCapacity')}</option></select></Field><Field label={t('basis')}><select className={inputCls} value={resource.basis} onChange={event=>updateSample({...sample,resources:sample.resources.map((row,i)=>i===index?{...row,basis:event.target.value as 'day'|'session'}:row)})}><option value="day">{t('bases.day')}</option><option value="session" disabled={sample.sessionGranularity!=='recorded'}>{t('bases.session')}</option></select></Field><Field label={t('decimalValue')}><input className={inputCls} inputMode="decimal" value={resource.quantity} onChange={event=>updateSample({...sample,resources:sample.resources.map((row,i)=>i===index?{...row,quantity:event.target.value}:row)})}/></Field><Field label={t('unit')}><select className={inputCls} value={resource.unit} onChange={event=>updateSample({...sample,resources:sample.resources.map((row,i)=>i===index?{...row,unit:event.target.value as 'minutes'|'money'}:row)})}><option value="minutes">{t('units.minutes')}</option><option value="money">{t('units.money')}</option></select></Field>{resource.basis==='session'?<Field label={t('session')}><select className={inputCls} value={resource.sessionId} onChange={event=>updateSample({...sample,resources:sample.resources.map((row,i)=>i===index?{...row,sessionId:event.target.value}:row)})}><option value="">{t('choose')}</option>{[...new Set(sample.segments.map(row=>row.sessionId))].map((id,i)=><option key={id} value={id}>{t('numberedSession',{number:i+1})}</option>)}</select></Field>:null}</div><button type="button" className={button} onClick={()=>updateSample({...sample,resources:sample.resources.filter((_,i)=>i!==index)})}>{t('remove')}</button></div>)}<button type="button" className={button} disabled={sample.resources.length>=128} onClick={()=>updateSample({...sample,resources:[...sample.resources,{id:ruleId(),resource:'',basis:'day',sessionId:'',quantity:'',unit:'minutes',evidence:'measured'}]})}>{t('addSampleResource')}</button></div>
+      </div>:null}
+      <button type="button" className={btnPrimary} disabled={!canPreview} onClick={preview}>{t(pending?'working':'runPreview')}</button>
+    </fieldset>
+    {result?<OvertimeCalculationResult result={result} pattern={pattern}/>:null}
+    {mode==='employee'?<fieldset disabled={pending||disabled||!employmentId||!date} className="space-y-4 border-t border-border pt-5"><legend className="px-1 font-semibold">{t('actualPayroll')}</legend><p className="text-sm text-muted-foreground">{t('actualPayrollHelp')}</p><button type="button" className={button} onClick={()=>perform(readReview)}>{t('reviewActual')}</button>
+      {review?<><p className="text-sm">{t('approvalStatus')}: {calculation?.approvalStatus??t('unknown')}</p><p className="text-sm">{t('amount')}: {calculation?.amountMinorUnits!==null&&calculation?.amountMinorUnits!==undefined?overtimeMoneyText(calculation.amountMinorUnits,calculation.minorScale,review.options.currency):t('unknown')}</p>{review.options.settlement?<p className="text-sm">{t('settlement')}: {t(review.options.settlement.mode==='cash'?'cashClaimed':'toilClaimed')}</p>:null}{recorded?.calculationId?<p className="break-all text-xs text-muted-foreground">{t('calculationReference',{id:recorded.calculationId,revision:recorded.sourceRevision})} · {recorded.recordedAt??t('unknown')}</p>:null}{recorded?.duration?<OvertimeDurationResult result={recorded.duration}/>:null}{recorded?.evaluation?<><h3 className="font-semibold">{t('cashResult')}</h3><OvertimeCalculationResult result={recorded.evaluation} pattern={recorded.evaluation.patternVersionId===versionId?pattern:undefined} preview={false}/></>:<p className="text-sm text-muted-foreground">{t('noRecordedCalculation')}</p>}
+        <Field label={t('reason')}><input className={inputCls} maxLength={500} value={reason} onChange={event=>setReason(event.target.value)}/></Field><button type="button" className={button} disabled={!reason} onClick={calculate}>{t('calculateActual')}</button>
+        <Field label={t('payrollRun')}><select className={inputCls} value={batchId} onChange={event=>{setBatchId(event.target.value);setAcknowledged(false);}}><option value="">{t('choose')}</option>{review.options.runs.map(run=><option key={run.id} value={run.id}>{run.payPeriod} · {run.batchDate} · {run.cycleName??run.runType}</option>)}</select></Field>
+        <label className="flex min-h-10 items-start gap-2 text-sm"><input type="checkbox" checked={acknowledged} onChange={event=>setAcknowledged(event.target.checked)}/>{t('transferAcknowledgement')}</label><button type="button" className={btnPrimary} disabled={!canTransfer} onClick={transfer}>{t('transfer')}</button>
+      </>:null}
+    </fieldset>:null}
+  </div>;
+}

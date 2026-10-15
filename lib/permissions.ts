@@ -940,6 +940,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/attendance-policy/schedule',
       '/admin/attendance-policy/rules/new',
       '/admin/attendance-policy/rules/[ruleId]',
+      // fcc2ea42 — independent OT formula workspace; existing permission identity and guard.
+      '/admin/attendance/settings/overtime-patterns',
     ],
   },
   {
