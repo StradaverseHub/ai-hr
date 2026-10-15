@@ -87,13 +87,15 @@ describe('reviewed System Labels imports',()=>{
     expect(await apply(book({division:[row,row]}))).toMatchObject({imported:1,skipped:1});
     expect((await previewSystemLabelImport(adminCtx(b),book({division:[row,{...row,Label:'Different'}]}),'update')).valid).toBe(false);
   });
-  it('shares only into permitted companies, enables sharing, and keeps Global visible through the existing resolver',async()=>{
+  it('applies explicit permitted Criteria without changing legacy sharing flags, and keeps Global visible',async()=>{
     const other=await createCompany(adminCtx(b),{legalName:'Excel second company'});
     const [co]=await owner.db.select().from(s.company).where(eq(s.company.id,b.companyId));
+    const [beforeTarget]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));
     await apply(book({department:[{Company:co.legalName,Scope:'shared','Shared Companies':'Excel second company',Code:'SHARED'}]}));
     const [dep]=await owner.db.select().from(s.department).where(eq(s.department.name,'SHARED'));
     expect(await labelIdsForCompany(adminCtx(b),'department',other.id)).toContain(dep.id);
-    const [shared]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));expect(shared.sharedSystemLabels).toBe(true);
+    const [shared]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));expect(shared.sharedSystemLabels).toBe(beforeTarget.sharedSystemLabels);
+    expect((await owner.db.select({companyId:s.labelCompanyAssignment.companyId}).from(s.labelCompanyAssignment).where(eq(s.labelCompanyAssignment.labelId,dep.id))).map(row=>row.companyId).sort()).toEqual([co.id,other.id].sort());
     await apply(book({department:[{Company:co.legalName,Scope:'global',Code:'GLOBAL'}]}));
     const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'GLOBAL'));
     expect(await labelIdsForCompany(adminCtx(b),'department',other.id)).toContain(global.id);

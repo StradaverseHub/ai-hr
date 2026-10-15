@@ -6,10 +6,11 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {bulkSaveLabels} from '../core/admin';
+import {bulkSaveLabels,type LabelUpdateInput} from '../core/admin';
 import {labelIdsForCompany,setLabelCriteria,setLabelCriteriaBatch,refusedLabelCollisionProposalsTx} from '../core/system-labels';
 import {downloadSystemLabelsWithData,previewSystemLabelImport,applySystemLabelImport} from '../core/system-label-import';
 import {buildSystemLabelWorkbook} from '../lib/system-label-workbook';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {PersonnelImportLookup} from '../lib/personnel-import-lookup';
 let b:Base;
 let f:{companies:string[];costs:string[];positions:string[]};
@@ -37,7 +38,25 @@ beforeEach(async()=>{
  f={companies,costs,positions};
 });
 async function caps(){return owner.db.select().from(s.systemLabelCollisionBaseline).where(eq(s.systemLabelCollisionBaseline.tenantId,b.tenantId));}
-async function editCost(id:string,p:Record<string,unknown>){return bulkSaveLabels(adminCtx(b),'cost_center',{creates:[],updates:[{id,key:id,...p}]});}
+async function editCost(id:string,p:Partial<Omit<LabelUpdateInput,'id'|'key'>>,ctx=adminCtx(b)){
+ const [stored]=await owner.db.select().from(s.costCenter).where(eq(s.costCenter.id,id));
+ return bulkSaveLabels(ctx,'cost_center',{creates:[],updates:[{id,key:id,code:stored.code,name:stored.name,
+  label:stored.label??'',description:stored.description??'',...p}]});
+}
+async function editPosition(id:string,p:Partial<Omit<LabelUpdateInput,'id'|'key'>>) {
+ const [stored]=await owner.db.select().from(s.position).where(eq(s.position.id,id));
+ return bulkSaveLabels(adminCtx(b),'position',{creates:[],updates:[{id,key:id,title:stored.title,jobFamily:stored.jobFamily??'',label:stored.label??'',description:stored.description??'',...p}]});
+}
+function assertCriteriaCollision(error:unknown) {
+ expect(pgSqlState(error)).toBe('23505');
+ expect(pgErrorChain(error).some(link=>link.message==='Active label code or name conflicts in selected Criteria')).toBe(true);
+}
+async function refusesCriteriaCollision(write:Promise<unknown>) {
+ try{await write;}catch(error){assertCriteriaCollision(error);return;}
+ throw new Error('Expected the actual Criteria collision guard to refuse the write.');
+}
+async function freshCompanies(count:number){return (await owner.db.insert(s.company).values(Array.from({length:count},()=>({tenantId:b.tenantId,legalName:'Fictional collision origin '+randomUUID()}))).returning({id:s.company.id})).map(row=>row.id);}
+
 async function forceChecks(tx:Tx){await tx.execute(sql`set constraints all immediate`);}
 describe('bounded inherited System Label collisions',()=>{
  it('captures exactly four synthetic pairs without rewriting IDs/codes/availability; Global pairs include future companies',async()=>{
@@ -60,7 +79,8 @@ describe('bounded inherited System Label collisions',()=>{
   }
   const privileges=await withTenant(adminCtx(b),tx=>tx.execute(sql`select has_function_privilege(current_user,'app.reduce_system_label_collision_baseline()','EXECUTE') as allowed`)) as unknown as {allowed:boolean}[];
   expect(privileges[0].allowed).toBe(false);
-  await expect(withTenant(adminCtx(b),async tx=>{await tx.execute(sql`select set_config('app.allow_label_collision','true',true)`);await tx.insert(s.costCenter).values({tenantId:b.tenantId,companyId:b.companyId,code:'HQ',name:'New forbidden identity',isGlobal:true});await forceChecks(tx);})).rejects.toThrow(/conflict/);
+  const [newOrigin]=await freshCompanies(1);
+  await refusesCriteriaCollision(withTenant(adminCtx(b),async tx=>{await tx.execute(sql`select set_config('app.allow_label_collision','true',true)`);await tx.insert(s.costCenter).values({tenantId:b.tenantId,companyId:newOrigin,code:'HQ',name:'New forbidden identity',isGlobal:true});await forceChecks(tx);}));
  });
  it('allows reductions then permanently refuses finite re-expansion or restoring Global',async()=>{
   const admin=adminCtx(b);
@@ -94,19 +114,19 @@ describe('bounded inherited System Label collisions',()=>{
   const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning({id:s.appUser.id});
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
   const ctx={...adminCtx(b),userId:user.id,grants:[{role:'hr_admin' as const,companyId:b.companyId}]};
-  await bulkSaveLabels(ctx,'cost_center',{creates:[],updates:[{id:f.costs[0],key:f.costs[0],label:'Scoped metadata'}]});
-  await expect(bulkSaveLabels(ctx,'cost_center',{creates:[],updates:[{id:f.costs[1],key:f.costs[1],label:'Other origin'}]})).rejects.toThrow();
+  await editCost(f.costs[0],{label:'Scoped metadata'},ctx);
+  await expect(editCost(f.costs[1],{label:'Other origin'},ctx)).rejects.toMatchObject({rowErrors:[{key:f.costs[1],code:'notAdminForCompany'}]});
   await expect(setLabelCriteria(ctx,{kind:'cost_center',labelId:f.costs[0],isGlobal:false,companyIds:[b.companyId]})).rejects.toThrow(/group administrator/);
  });
  it.each(['rename','archive','delete'] as const)('retires the exact %s-resolved pair and refuses recreation',async action=>{
   const id=f.positions[0],admin=adminCtx(b);
-  if(action==='rename')await bulkSaveLabels(admin,'position',{creates:[],updates:[{id,key:id,title:'Distinct recorded identifier'}]});
-  else if(action==='archive')await bulkSaveLabels(admin,'position',{creates:[],updates:[{id,key:id,archived:true}]});
+  if(action==='rename')await editPosition(id,{title:'Distinct recorded identifier'});
+  else if(action==='archive')await editPosition(id,{archived:true});
   else await withTenant(admin,tx=>tx.delete(s.position).where(eq(s.position.id,id)));
   const row=(await caps()).find(row=>row.labelKind==='position')!;expect(row.retiredAt).toBeInstanceOf(Date);
-  if(action==='rename')await expect(bulkSaveLabels(admin,'position',{creates:[],updates:[{id,key:id,title:'Machine Operator'}]})).rejects.toThrow(/same code|conflict/);
-  else if(action==='archive')await expect(bulkSaveLabels(admin,'position',{creates:[],updates:[{id,key:id,archived:false}]})).rejects.toThrow(/same code|conflict/);
-  else await expect(withTenant(admin,async tx=>{await tx.insert(s.position).values({id,tenantId:b.tenantId,companyId:b.companyId,title:'Machine Operator',isGlobal:true});await forceChecks(tx);})).rejects.toThrow(/conflict/);
+  if(action==='rename')await expect(editPosition(id,{title:'Machine Operator'})).rejects.toThrow(/same code|conflict/);
+  else if(action==='archive')await expect(editPosition(id,{archived:false})).rejects.toThrow(/same code|conflict/);
+  else await refusesCriteriaCollision(withTenant(admin,async tx=>{await tx.insert(s.position).values({id,tenantId:b.tenantId,companyId:b.companyId,title:'Machine Operator',isGlobal:true});await forceChecks(tx);}));
   expect((await caps()).find(cap=>cap.id===row.id)?.retiredAt).toEqual(row.retiredAt);
  });
  it('cannot borrow a pair for a different code, kind, identity or tenant',async()=>{
@@ -140,7 +160,7 @@ describe('bounded inherited System Label collisions',()=>{
   await owner.db.transaction(async tx=>{
    await tx.execute(sql`alter table department disable trigger user`);
    await tx.execute(sql`alter table label_company_assignment disable trigger user`);
-   await tx.insert(s.department).values(ids.map(id=>({id,tenantId:b.tenantId,companyId:b.companyId,name:'Ambiguous same-origin legacy',isGlobal:true})));
+   await tx.insert(s.department).values(ids.map(id=>({id,tenantId:b.tenantId,companyId:b.companyId,name:id===ids[0]?'Ambiguous same-origin legacy':' Ambiguous same-origin legacy ',isGlobal:true})));
    await tx.execute(sql.raw(capture));
    await tx.execute(sql`alter table department enable trigger user`);
    await tx.execute(sql`alter table label_company_assignment enable trigger user`);
@@ -148,12 +168,15 @@ describe('bounded inherited System Label collisions',()=>{
   const bytes=await buildSystemLabelWorkbook({kinds:['department'],references:{companies:[],grades:[],employees:[]},rows:{department:[{Company:b.companyId,Code:'Ambiguous same-origin legacy',Label:'Must not pick a first row',Criteria:'global','Criteria Companies':''}]}});
   const preview=await previewSystemLabelImport(adminCtx(b),bytes,'update');expect(preview.valid).toBe(false);expect(preview.rows[0].message).toMatch(/multiple records/);
   await expect(applySystemLabelImport(adminCtx(b),{bytes,mode:'update',token:preview.token,confirmUpdates:true})).rejects.toThrow(/invalid or conflicting/);
-  expect((await owner.db.select().from(s.department).where(eq(s.department.name,'Ambiguous same-origin legacy'))).every(row=>row.label===null)).toBe(true);
+  const unchanged=await owner.db.select().from(s.department).where(sql`${s.department.id} in (${ids[0]}::uuid,${ids[1]}::uuid)`);
+  expect(unchanged).toHaveLength(2);expect(unchanged.every(row=>row.label===null)).toBe(true);
  });
  it('raw app writes cannot expand finite overlap, and concurrent new IDs cannot inherit an exception',async()=>{
-  await expect(withTenant(adminCtx(b),async tx=>{await tx.insert(s.labelCompanyAssignment).values({tenantId:b.tenantId,labelKind:'cost_center',labelId:f.costs[2],companyId:f.companies[0]});await forceChecks(tx);})).rejects.toThrow(/conflict/);
-  const attempts=await Promise.allSettled([0,1].map(i=>withTenant(adminCtx(b),async tx=>{await tx.insert(s.costCenter).values({tenantId:b.tenantId,companyId:f.companies[i],code:'HQ',name:'Concurrent forbidden row',isGlobal:true});await forceChecks(tx);})));
+  await refusesCriteriaCollision(withTenant(adminCtx(b),async tx=>{await tx.insert(s.labelCompanyAssignment).values({tenantId:b.tenantId,labelKind:'cost_center',labelId:f.costs[2],companyId:f.companies[0]});await forceChecks(tx);}));
+  const origins=await freshCompanies(2);
+  const attempts=await Promise.allSettled([0,1].map(i=>withTenant(adminCtx(b),async tx=>{await tx.insert(s.costCenter).values({tenantId:b.tenantId,companyId:origins[i],code:'HQ',name:'Concurrent forbidden row',isGlobal:true});await forceChecks(tx);})));
   expect(attempts.map(result=>result.status)).toEqual(['rejected','rejected']);
+  for(const result of attempts)if(result.status==='rejected')assertCriteriaCollision(result.reason);
   expect(await owner.db.select().from(s.costCenter).where(and(eq(s.costCenter.tenantId,b.tenantId),eq(s.costCenter.name,'Concurrent forbidden row')))).toEqual([]);
  });
 });
