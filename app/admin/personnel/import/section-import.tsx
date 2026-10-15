@@ -8,7 +8,7 @@ import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
-import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices } from '@/lib/personnel-import-contract';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
   buildInstructionRows,
   buildReferenceRows,
@@ -47,6 +47,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,section==='family'?'family':'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
   const guidance=(key:string,sheet:'employee'|'family',mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
+  const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
   const router = useRouter();
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<SectionImportPreview | null>(null);
@@ -139,6 +140,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
             ? [{ label: employeeColumnLabel('tax_category'), values: [...EMPLOYEE_ENUM_VALUES.tax_category] }]
             : section === 'family'
               ? [
+                  ...familyChoices,
                   { label: t('familyRelationshipLabel'), values: reference.familyRelationships },
                   { label: t('familyGenderLabel'), values: [...DEPENDENT_ENUM_VALUES.gender] },
                 ]

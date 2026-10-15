@@ -65,3 +65,12 @@ describe('Personnel forms and file contract',()=>{
     expect(parsed.records[0].gender).toBe('female');
   });
 });
+
+it('keeps compound Employment headings distinct in every locale',()=>{
+  for(const locale of ['en','ms','ta','th','vi','zh']) {
+    const resolver=resolve(locale);
+    expect(personnelColumnLabel('probation_value','employee',resolver)).not.toBe(personnelColumnLabel('probation_unit','employee',resolver));
+    const parsed=parsePersonnelImportCsv(buildTemplateCsv(employeeTemplate,resolver),{columns,resolvers:[resolver]});
+    expect(parsed.records[0].probation_months).toBe('3');
+  }
+});

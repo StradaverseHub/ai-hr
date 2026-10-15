@@ -158,13 +158,46 @@ export function dependentTextColumnIndexes(): number[] {
  * the flat-columns alternative could not express: ONE employee with THREE family members.
  * Order matches DEPENDENT_XLSX_COLUMNS.
  */
-export const DEPENDENT_SAMPLE_ROWS: readonly (readonly string[])[] = [
-  // employee_code, full_name, relationship, date_of_birth, gender, ic_or_passport, passport_number,
-  // phone, is_beneficiary, remarks
-  ['TMPL0001', 'Nurul Huda Binti Ismail', 'spouse', '1979-08-14', 'female', '790814105566', '', '', 'yes', ''],
-  ['TMPL0001', 'Aiman Bin Faizal', 'child', '2014-03-02', 'male', '', '', '', 'no', ''],
-  ['TMPL0001', 'Alia Binti Faizal', 'child', '2018-11-21', 'female', '', '', '', 'no', ''],
+const DEPENDENT_TEMPLATE_SAMPLES:Record<string,string>[] = [
+  {
+    "employee_code": "TMPL0001",
+    "full_name": "Nurul Huda Binti Ismail",
+    "relationship": "spouse",
+    "date_of_birth": "1979-08-14",
+    "gender": "female",
+    "ic_or_passport": "790814105566",
+    "passport_number": "",
+    "phone": "",
+    "is_beneficiary": "yes",
+    "remarks": ""
+  },
+  {
+    "employee_code": "TMPL0001",
+    "full_name": "Aiman Bin Faizal",
+    "relationship": "child",
+    "date_of_birth": "2014-03-02",
+    "gender": "male",
+    "ic_or_passport": "",
+    "passport_number": "",
+    "phone": "",
+    "is_beneficiary": "no",
+    "remarks": ""
+  },
+  {
+    "employee_code": "TMPL0001",
+    "full_name": "Alia Binti Faizal",
+    "relationship": "child",
+    "date_of_birth": "2018-11-21",
+    "gender": "female",
+    "ic_or_passport": "",
+    "passport_number": "",
+    "phone": "",
+    "is_beneficiary": "no",
+    "remarks": ""
+  }
 ];
+
+export const DEPENDENT_SAMPLE_ROWS: readonly (readonly string[])[] = DEPENDENT_TEMPLATE_SAMPLES.map(row=>DEPENDENT_XLSX_COLUMNS.map(key=>row[key]??''));
 
 /** The fixed enumerations the family sheet accepts (the relationship list also takes any ACTIVE custom
  *  option from the tenant's dependentRelationship catalog — the Reference sheet is generated from the

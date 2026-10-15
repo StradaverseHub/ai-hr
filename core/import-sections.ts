@@ -1,3 +1,4 @@
+import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
 import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 import { setPersonComplianceFields } from './profile';
@@ -65,7 +66,7 @@ import {
 } from '../db/schema';
 import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields } from './org';
 import { primaryEmergencyContactSql } from './emergency-contacts';
-import { addDependentTx, syncChildReliefFromFamily, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type DependentInput, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode } from '../lib/employee-code';
 // The reporting-line edge below opens "today", and today is a WALL-CLOCK question: this product
@@ -169,28 +170,7 @@ type TaxPatch = {
   disabledSpouse: boolean;
   childReliefTable: unknown;
 };
-type DependentPatch = {
-  fullName: string;
-  relationship: string;
-  dateOfBirth?: string;
-  gender?: string;
-  icOrPassport?: string;
-  passportNumber?: string;
-  phone?: string;
-  isBeneficiary: boolean;
-  remarks?: string;
-};
-/**
- * Only the periods + confirmation date this section may write. `setEmploymentInfo` leaves anything
- * absent alone, so an omitted key is genuinely untouched — no merge needed on this one.
- *
- * THE VALUE + UNIT PAIR IS THE ONE THE SCREEN READS (migration 0213). The legacy month/day column is
- * written alongside it, from the same cell, so the two can never disagree — and so an import is
- * visible on the Employment tab, which resolves `probationValue ?? probationMonths`. Writing only the
- * legacy column, as this importer first did, produced a run that reported success and changed nothing
- * the user could see for any employee whose Employment tab had been saved once.
- */
-type EmploymentInfoPatch = Partial<Record<keyof import('./org').EmploymentInfoInput,string>>;
+type DependentPatch = DependentInput;
 
 /** Everything one valid row will do at commit. Built in the dry run; applied verbatim afterwards. */
 type ResolvedSectionRow = {
@@ -380,6 +360,11 @@ async function analyze(
     row.result.ok = errors.length === 0 && row.result.verdict === 'update';
     resolved.push(row);
   });
+
+  for(const row of resolved)if(row.result.ok && row.dependent) {
+    try { await assertDependentsValid(ctx,[row.dependent]); }
+    catch(error) { row.result.ok=false;row.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
+  }
 
   const preview: SectionImportPreview = {
     section,
@@ -989,6 +974,7 @@ function buildFamily(
     else if (FALSY.has(v)) isBeneficiary = false;
     else errors.push(`Invalid is_beneficiary "${ben}" (use yes/no)`);
   }
+  const extra=personnelFamilyValues(rec);errors.push(...extra.errors,...personnelFamilyCatalogErrors(rec,catalog));
   if (errors.length > 0 || fullName === undefined || relationship === undefined) return;
 
   // ALREADY ON FILE. A family sheet is the one section file a nervous admin uploads twice, and adding
@@ -1012,6 +998,7 @@ function buildFamily(
     phone: cell('phone'),
     isBeneficiary,
     remarks: cell('remarks'),
+    ...extra.values,
   };
   changes.push('family_member');
 }

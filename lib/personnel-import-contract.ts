@@ -1,3 +1,4 @@
+import { DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, CHILD_RELIEF_PERCENTAGES } from './dependent-vocabulary';
 import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
 import { isCalendarDate } from './calendar-date';
 import { GENDERS, MARITAL_STATUSES, PERSON_GENDER_LABEL_KEYS, PERSON_MARITAL_LABEL_KEYS } from './person-vocabulary';
@@ -51,6 +52,12 @@ export function personnelColumnLabel(column: string, sheet: PersonnelImportSheet
 export class PersonnelImportHeaderError extends Error {
   constructor(message:string) { super(message);this.name='PersonnelImportHeaderError'; }
 }
+function currentPersonnelHeaders(column:string,sheet:PersonnelImportSheet,resolve?:PersonnelLabelResolver) {
+  const field=personnelImportField(column,sheet);if(!field)return [personnelColumnLabel(column,sheet,resolve)];
+  const labels=[personnelColumnLabel(column,sheet,resolve)];
+  for(const alias of PERSONNEL_FIELDS)if(alias.id!==field.id && alias.owner===field.owner && alias.ownerField===field.ownerField && alias.tab===field.tab && !alias.import.column)labels.push(personnelFieldLabel(alias,resolve));
+  return [...new Set(labels)];
+}
 /** Resolve BEFORE creating records: duplicate old/new headings must never overwrite a cell. */
 export function parsePersonnelImportCsv(text:string, options:{columns:readonly string[];sheet?:PersonnelImportSheet;resolvers?:readonly PersonnelLabelResolver[];generation?:number}) {
   const rows=parseCsv(text);
@@ -59,8 +66,8 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
   const aliases=new Map<string,Set<string>>();
   const register=(label:string,column:string)=> { const key=normalized(label); const values=aliases.get(key)??new Set<string>();values.add(column);aliases.set(key,values); };
   for(const column of options.columns) {
-    register(personnelColumnLabel(column,sheet),column);
-    for(const resolve of options.resolvers??[]) register(personnelColumnLabel(column,sheet,resolve),column);
+    for(const label of currentPersonnelHeaders(column,sheet))register(label,column);
+    for(const resolve of options.resolvers??[])for(const label of currentPersonnelHeaders(column,sheet,resolve))register(label,column);
     if((options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1) {
       register(column,column);register(column.replaceAll('_',' '),column);
       for(const alias of personnelImportField(column,sheet)?.import.aliases??[])register(alias,column);
@@ -73,7 +80,7 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
     const column=[...matches][0];
     if(seen.has(column))throw new PersonnelImportHeaderError(`Column “${raw}” repeats “${personnelColumnLabel(column,sheet)}”. Keep one column; old and new headings cannot appear together.`);
     seen.add(column);
-    const current=[personnelColumnLabel(column,sheet),...(options.resolvers??[]).map(resolve=>personnelColumnLabel(column,sheet,resolve))];
+    const current=[...currentPersonnelHeaders(column,sheet),...(options.resolvers??[]).flatMap(resolve=>currentPersonnelHeaders(column,sheet,resolve))];
     if(!current.some(label=>normalized(label)===normalized(raw))) warnings.push(`Older header “${raw}”: use “${personnelColumnLabel(column,sheet)}” in the next template generation.`);
     return column;
   });
@@ -107,6 +114,11 @@ export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet
 }
 
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
+  if(field.allowedValuesOwner==='dependent.relationship')return DEPENDENT_RELATIONSHIPS.map(value=>({value,labelKey:`people.detail.family.rel.${value}`}));
+  if(field.allowedValuesOwner==='dependent.childReliefPercentage')return CHILD_RELIEF_PERCENTAGES.map(value=>({value:String(value),labelKey:`people.detail.family.childReliefPct_${value}`}));
+  if(field.allowedValuesOwner==='dependent.gender')return DEPENDENT_GENDERS.map(value=>({value,labelKey:`people.detail.family.gender.${value}`}));
+  if(field.allowedValuesOwner==='dependent.marriageStatus')return DEPENDENT_MARRIAGE_STATUSES.map(value=>({value,labelKey:`people.detail.family.marriageStatus.${value}`}));
+  if(field.allowedValuesOwner==='dependent.childReliefCategory')return CHILD_RELIEF_CATEGORIES.map(value=>({value,labelKey:`people.detail.family.childReliefCat_${value}`}));
   if(field.allowedValuesOwner==='employment.periodUnit')return EMPLOYMENT_PERIOD_UNITS.map(value=>({value,labelKey:`people.detail.employmentInfo.unit_${value}`}));
   if(field.allowedValuesOwner==='person.gender')return GENDERS.map(value=>({value,labelKey:PERSON_GENDER_LABEL_KEYS[value]}));
   if(field.allowedValuesOwner==='person.maritalStatus')return MARITAL_STATUSES.map(value=>({value,labelKey:PERSON_MARITAL_LABEL_KEYS[value]}));

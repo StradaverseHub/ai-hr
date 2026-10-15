@@ -1,3 +1,4 @@
+import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
 import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 /**
@@ -34,7 +35,7 @@ import { setCompensation, unpayableSalaryLeg } from './comp';
 import { setPersonComplianceFields } from './profile';
 // Item 2983802f — the family sheet writes through the SAME service the Family card uses, so an imported
 // dependant is indistinguishable from a hand-entered one (events, child-relief resync, catalog rules).
-import { addDependentTx, syncChildReliefFromFamily, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type DependentInput, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 // Rung 5a (ADR-0080 D1/D6): the statutory writer + IC helpers come from the COMPANY'S country pack
 // (resolved in analyze() from company.country), never from a direct localization/my import. A company
 // whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
@@ -183,17 +184,7 @@ type ResolvedDependent = {
   result: DependentRowResult;
   /** Index into the employee `resolved` array; -1 when the Employee ID matched nothing on that sheet. */
   employeeIndex: number;
-  add: {
-    fullName: string;
-    relationship: string;
-    dateOfBirth?: string;
-    gender?: string;
-    icOrPassport?: string;
-    passportNumber?: string;
-    phone?: string;
-    isBeneficiary: boolean;
-    remarks?: string;
-  };
+  add: DependentInput;
 };
 
 const norm = (s: string | undefined) => (s ?? '').trim();
@@ -904,6 +895,13 @@ async function analyze(
     catalog,
   });
 
+  for(const dependent of dependents)if(dependent.result.ok) {
+    try { await assertDependentsValid(ctx,[dependent.add]); }
+    catch(error) { dependent.result.ok=false;dependent.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
+  }
+  dependentPreview.validCount=dependents.filter(dependent=>dependent.result.ok).length;
+  if(dependentPreview.validCount<dependents.length && !fileErrors.length)fileErrors.push('Some Family values were refused by the Personnel owner. Correct those rows before importing; nothing will be written.');
+
   const preview: ImportPreview = {
     companyId,
     total: records.length,
@@ -981,6 +979,7 @@ function analyzeDependents(
       else errors.push(`Invalid is_beneficiary "${rec.is_beneficiary}" (use yes/no)`);
     }
 
+    const extra=personnelFamilyValues(rec);errors.push(...extra.errors,...personnelFamilyCatalogErrors(rec,ctx.catalog));
     // The link. An Employee ID that is not on the employee sheet is the case the plan singled out.
     const codeNorm = normalizeEmployeeCode(codeRaw);
     let employeeIndex = -1;
@@ -1019,6 +1018,7 @@ function analyzeDependents(
         phone: norm(rec.phone) || undefined,
         isBeneficiary,
         remarks: norm(rec.remarks) || undefined,
+        ...extra.values,
       },
     });
   });

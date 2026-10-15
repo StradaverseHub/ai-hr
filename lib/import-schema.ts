@@ -150,17 +150,10 @@ export const IMPORT_COLUMNS = {
  * carries employees only. That is stated on the template's Instructions sheet rather than left to be
  * discovered.
  */
+const familyFields=PERSONNEL_FIELDS.filter(field=>field.import.section==='family' && field.import.column);
 export const DEPENDENT_IMPORT_COLUMNS = {
-  required: ['employee_code', 'full_name', 'relationship'],
-  optional: [
-    'date_of_birth',
-    'gender',
-    'ic_or_passport',
-    'passport_number',
-    'phone',
-    'is_beneficiary',
-    'remarks',
-  ],
+  required:['employee_code',...familyFields.filter(field=>field.import.requiredCreate).map(field=>field.import.column!)],
+  optional:familyFields.filter(field=>!field.import.requiredCreate).map(field=>field.import.column!),
 } as const;
 
 /** One validated row of the family sheet, mirroring `RowResult`'s shape for the employee sheet. */

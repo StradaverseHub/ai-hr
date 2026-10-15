@@ -11,7 +11,7 @@ import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
-import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices } from '@/lib/personnel-import-contract';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
   buildInstructionRows,
   buildReferenceRows,
@@ -65,6 +65,7 @@ export function EmployeeImport({
   const personnelLabels = useTranslations();
   const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
   const guidance=(key:string,sheet:'employee'|'family',mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
+  const familyChoices=personnelImportFields('family').filter(field=>personnelFieldChoices(field).length).map(field=>({label:descriptorColumnLabel(field.import.column!,'family',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback),values:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const [csv, setCsv] = useState('');
@@ -198,6 +199,7 @@ export function EmployeeImport({
                   values: reference.nationalities,
                 },
                 { label: employeeColumnLabel('emergency_contact_relationship'), values: reference.relationships },
+                ...familyChoices,
                 { label: t('familyRelationshipLabel'), values: reference.familyRelationships },
                 { label: t('familyGenderLabel'), values: [...DEPENDENT_ENUM_VALUES.gender] },
                 enumList('employment_type'),
