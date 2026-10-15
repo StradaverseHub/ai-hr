@@ -1,0 +1,580 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+The current report builder offers only a small employee master list. It does not yet bring together every Personnel tab, and a private saved report is not reliably hidden from other HR administrators.
+
+WHAT WE'LL CHANGE
+
+- Build the three-panel field, column and employee-selection workspace shown in the attachment, using the same field list as Personnel and the employee import templates.
+- Keep the actual Personnel tab names. The complete field catalogue below covers all current tabs, including conditional fields and record histories. Approval confirms this catalogue before building; reject with the missing or incorrect field if it needs correction.
+- Add dated employee selection, grouped conditions, three sorts, grouping and totals, a first-50-row preview, and complete Excel, CSV and PDF exports.
+- Save private or role-shared templates with the requested actions, recent-run ordering, four starter reports and optional weekly/monthly delivery to authorised users who opt in.
+- Check sensitive-field permission at every view, filter, count, total, export and scheduled delivery. Sharing a template never shares additional employee data.
+
+WHAT YOU'LL GET
+
+HR can build and reuse employee reports without maintaining a second field list. Saving returns the report to the Reports front page immediately; private reports stay private, including from colleagues who are HR administrators.
+
+GOOD TO KNOW
+
+- Historical values that were never retained will say Unavailable for this date. Today's value will never be presented as a past value.
+- Several All records selections produce separately named record sections rather than multiplying family, salary and document rows together. Employee counts and pay totals remain accurate.
+- Contract information is under Employment today. Existing blacklist history is included; there is no separate Disciplinary tab to invent. File contents and the address-copy control are listed but cannot become exported data columns.
+- The related Personnel/import field-list request must be approved and delivered first. The catalogue and sketches are for confirmation; the report feature has not been built.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: The master dataset in core/report-registry.ts currently defines 13 fields. The Personnel screen renders 11 tabs, not the nine groups or illustrative counts in the attached PDF. db/migrations/0165_custom_report.sql allows SELECT through both an admin branch and a FOR ALL admin policy. It therefore cannot satisfy the requested Only me test. This plan describes the replacement, not an existing security guarantee.
+
+DEPENDENCY AND FIELD OWNERSHIP
+
+Consume the shared Personnel field registry from c44575e0. Each descriptor must name a stable field id, localised screen label, tab/section, type/unit, source owner, single/many cardinality, permission category, filter/sort/group capabilities, as-at coverage and importability. A future Personnel field becomes a registry declaration once; forms, full/section templates and this catalogue read that declaration. Test adding a registry entry through all consumers without adding a second report-specific field definition. An arbitrary UI label or raw database column is not a safe automatically exportable field. Include disabled catalogue entries with explicit reasons for non-reportable file/control fields.
+
+Reuse the authoritative Personnel, employment/assignment, compensation, reporting-line, attendance, leave, document, qualification, dependent and employment-review reads through their owners and pack facades. No second salary, tax, leave or schedule calculation. Tenant, selected-company and field permissions are server enforced. Reject forged field ids, employee ids, companies, role lists, saved-report ids and hidden filter/sort/group/aggregate fields. Apply permission before counting or serialising any rows; the RSC payload, search suggestions and error messages must not expose restricted field values or labels to an unauthorised caller.
+
+The requested field-level restriction is broader than today's report permissions. Add explicit company-aware report read categories for compensation, personal identity/contact, bank/payment, tax/statutory and confidential HR records; do not use generic admin as an override of a denied field category. Derive initial grants from existing authorised HR/payroll readership without granting a new role by implication. The role called HR Manager in the acceptance example must be the tenant's configured role, not an invented hardcoded login role. Treat the access classifications in the catalogue as planned policy, not verified current permissions. An owner cannot share around a recipient's field or company restriction.
+
+AS-AT AND RECORD GRAIN
+
+Default the as-at date to todayInKualaLumpur. Resolve status, company, department, position, pay and superior through dated owner records where available, checking employment windows and corrections. Record the actual coverage of each field. Non-versioned profile, flat organisation labels, bank, tax and edited register values are not historical snapshots. An absent record yields an explicit unavailable value, never current data or zero. Historical ids with renamed catalogue labels require a recorded label for an exact historical name; otherwise disclose that the label is current. A current-only field used in a past-date condition is a visible validation issue, not a false match. Capture future revisions prospectively through their authoritative owners; do not backfill fictional history.
+
+An activated report row is an employment within the authorised company selection; Employee ID distinguishes multiple employments and rehire. Show a distinct person count separately when needed. The requested Draft status reads the existing company-scoped employee-draft owner as a separate row kind, using its held Employee ID and shared registry fields. A draft has no employment yet; label unfinished/unavailable values, keep drafts separate from active headcount and pay totals, and deduplicate after activation. Unassigned-company drafts follow the owner’s all-companies scope rule and are never added to an empty company selection. Draft data is currently mutable and cannot be presented as a past snapshot. Latest on a dated register means the latest effective record not after the report date, with documented tie ordering. Latest on an undated register means its authoritative creation ordering, and must not imply a historical snapshot. Columns from the same expanded register align by the same record identity. One All records register creates one row per that register record; additional unrelated All records registers get separate named sections/sheets, not a Cartesian join. Latest overrides remain explicit per column. A selected missing register does not silently drop the employee. Aggregate each measure at its owner grain, count employees distinctly, and never sum salary copies, borrowed leave pools, incompatible units or mixed currencies. Each exported section states its row grain and unavailable-value reason.
+
+BUILDER AND EXECUTION
+
+Preserve the attached three panels, with searchable collapsible tabs and Add all applying only to selectable authorised fields. Columns support keyboard and drag reorder, header rename, text/date/number treatment, decimals, sum where meaningful, freeze, alignment and Auto/Narrow/Medium/Wide width. Sum is an aggregation option, not a text format. DD/MM/YYYY is a display/export date format; Excel stores a real date. Keep PDF paper/orientation/margins/logo/page-break controls collapsed after data selection.
+
+Use a bounded typed AND/OR expression tree shared by UI, preview, export and scheduling. Operators depend on field type: text equals/not equals/contains/in list/blank; dates or numbers between and ordered comparisons; choices/references use scoped options; yes/no and unavailable retain distinct meanings. Validate operand type, date range, depth/node limits and maximum three sorts. Group by an ordered field list with employee/record counts and compatible sums at group and grand-total level. Changing fields, filters, date, scope, ordering or access invalidates the previous preview. Compute the live distinct employee count with the same query/permission contract. Describe count loading/errors plainly rather than showing an old number as current.
+
+Preview uses server pagination of 50 rows and reports full result counts. Excel, CSV and PDF stream the full authorised filtered dataset, not the preview slice. Use stable tie ordering. Excel has frozen selected identifier/header columns, filters and real date/number formats; all text cells and CSV fields handle spreadsheet formula injection. A run and its export use a consistent data snapshot; if permission changes, re-authorise and re-run rather than exporting stale cached data. Set explicit bounded runtime/size behaviour and an actionable refusal for over-large exports; do not silently truncate. PDF repeats headings and identifies continued sections. Keep existing non-master report datasets/specs working; version the new spec and provide explicit validation for old templates. The existing initial Monthly Allowance on the draft and the legacy compensation/report value retain their real source; they are not relabelled as a new active-profile Pay Item.
+
+SAVED REPORTS AND DELIVERY
+
+Extend saved templates with description, immutable owner, Only me/role-shared visibility, allowed role ids, canonical last successful run, and schedule linkage. Replace both permissive SELECT and FOR ALL policies with separate command policies: a private report is readable only by its owner; a shared report only by its owner or an allowed role. HR Admin Edit/Delete applies only to a report already visible to that administrator. Enforce the same decision in read, update, delete, duplicate, preview, run, all export routes, AI design/context and scheduled execution. A global is_admin OR would invalidate the change. Legacy shared reports need a no-widening migration to their currently authorised report roles; null/orphan owners need a separately reviewed system-template/maintenance treatment, never a private-data bypass. Parent centrally allocates append-only migration numbers after concurrent changes settle.
+
+Save must update the Reports Master card immediately and preserve the saved selection on reopen. List report name, one-line description, owner, Only me/Shared, last successful run date and schedule badge. Sort successful runs newest first; never-run templates sort by saved time after them, with deterministic ties. Show five plus View all with the visible total and search. If the newly saved template sorts outside the first five, show an immediate Saved message with Run/Edit links and the View all destination; never move it above a more recently run template to simulate arrival. Run opens preview; Export Excel uses the same runner; owner or visible-report HR Admin can Edit/Delete; other permitted readers can Run/Export/Duplicate. Duplicate creates a new private owner copy with no inherited delivery schedule or recipients. Starter templates: Headcount listing, New hires by date range, Resigned staff and Contract expiring, beside the existing HR analytics & master data entry. Starter definitions must use actual recorded status/date fields and show history limits; no invented fields. Reuse core/employment-status.ts exactly: its current Resigned bucket covers ended lifecycle dates, including non-voluntary terminations. The starter and status filter share that owner meaning; termination reason is a separate selectable recorded fact, not a second report-specific status rule.
+
+Scheduling is optional and off by default. Use the platform's existing job/mail delivery owners, not a parallel scheduler. Store explicit weekly/monthly recurrence and timezone. Permit only selected tenant users with delivery opt-in and current report/field/company access; no arbitrary pasted email list. At each occurrence, re-check the owner and each recipient, compute only the authorised company/field intersection, and refuse/skip a recipient whose access no longer satisfies the report. Never send an owner-authorised salary workbook to a less-privileged recipient. Role changes, employee transfer, owner suspension and consent withdrawal must take effect before delivery. Changes to template/recipients require a fresh reviewed preview. Log each manual or scheduled run/export/delivery attempt and outcome: actor, time, report/version, authorised scope, row counts, format, recipient decision and failure reason, without recording exported salary/identity values. Failed runs do not update last successful run. Avoid duplicate scheduled sends with a durable per-occurrence identity.
+
+ACCEPTANCE AND EXPERIENCE REVIEW BEFORE FINAL GATE
+
+- Compare every current Personnel panel, conditional field, register row and detail with the full catalogue below. Check the shared import registry's labels and disabled-field reasons. Reconcile any additions made by other board work before building this item.
+- Save/reopen as user A: a private template and one shared with the configured HR Manager role. User B with that role sees only the shared report on the front page, View all, direct routes, id requests, duplicate/run/export, AI context and schedule paths. Repeat with an HR Admin colleague: admin status alone must not reveal A's private template. Cross-tenant and unauthorised-company requests refuse.
+- A user without compensation permission cannot discover/select/filter/sort/group/count by or export Basic Salary, related pay fields or salary-bearing history/audit values. Test stale saved specs, forged payloads, direct export and scheduled recipient delivery after access revocation.
+- Register one future Personnel field; confirm matching label/type automatically appears in the Personnel editor, appropriate import templates and this catalogue, with no second report registration. A newly restricted field remains absent to unauthorised users.
+- Exercise full/draft/terminated, rehire/multiple employments, historical transfer and salary revision, corrected/cancelled movement, missing historical facts and renamed labels. Show exact as-at results or explicit unavailable values. Confirm quick status labels reuse the actual owner vocabulary, including its Resigned meaning, and Draft comes from the separately scoped draft owner. Inert Withhold remains inert rather than fabricated.
+- Family plus salary plus documents in All records cannot multiply salary sums or employee counts. Latest overrides align with documented ordering; duplicate effective dates, blank records, multiple currencies and borrowed leave pools remain correct.
+- Typed nested conditions, three sorts, group subtotals and grand totals match the same complete exports. Seed more than 50 rows; prove all formats contain every filtered row, preserve dates/leading zeros and escape formula-looking text. Test empty, invalid, loading, permission-change and export-too-large states.
+- Save updates the front page immediately, correct owner actions appear, recent successful run sorting changes after Run, View all/search counts are visibility-scoped, and all four starters open and duplicate correctly.
+- Weekly/monthly delivery stays off until explicitly enabled with authorised users' opt-in. Verify revoked permission/consent, inactive owner, changed report, mail failure and retry cannot leak data or send twice; audit outcomes remain accurate.
+- Walk actual builder, preview, save/reopen, all exports, front page and schedule settings with representative local fixtures on wide/narrow screens and light/dark themes; inspect runtime logs, keyboard actions and focus. Only then run the parent-selected release gate and official release. This review draft supplies no test or deployment claim.
+
+FULL FIELD CATALOGUE FOR CONFIRMATION
+
+The following is the complete named catalogue proposal for the current Personnel screen. Repeated labels are qualified by tab and section. A label shown in two places keeps one authoritative value; its alias is identified in the detailed catalogue. Compound controls expose their individual value/unit, Employee ID/name, code/name, or original/corrected parts. File content and address-copy entries remain disabled with a reason. These entries are not independent stored-fact counts.
+
+PROFILE
+
+Personal details:
+- Employee ID (Text).
+- Salutation (Choice).
+- Full name (as per IC/passport) (Text).
+- First name (Text).
+- Last name (Text).
+- Preferred name (Text).
+- Nationality (Choice).
+- Religion (Choice).
+- Race (Choice).
+- Date of birth (Date).
+- Age (Whole number).
+- Gender (Choice).
+- Marital status (Choice).
+- Status (Choice).
+- Profile photo (Image).
+
+Identity and passport:
+- Identity No (NRIC) (Text).
+- Old identity card no. (Text).
+- Passport number (Text).
+- Passport issue date (Date).
+- Passport expiry date (Date).
+- Issuing country (Choice).
+- Issuing country code (Text).
+- Passport remark (Text).
+
+Contact and permanent address:
+- Work email (Text).
+- Mobile Phone Number (Text).
+- Home Phone Number (Text).
+- Personal email (Text).
+- Address line 1 (Text).
+- Address line 2 (Text).
+- Address line 3 (Text).
+- Postcode (Text).
+- City (Text).
+- State (Choice).
+- Country (Choice).
+
+Correspondence address:
+- Address line 1 (Text).
+- Address line 2 (Text).
+- Address line 3 (Text).
+- Postcode (Text).
+- City (Text).
+- State (Choice).
+- Country (Choice).
+- Mobile Phone Number (Text).
+- Home Phone Number (Text).
+- Same as permanent address (Copy control).
+
+Emergency contact:
+- Contact name (Text).
+- Relationship (Choice).
+- Mobile phone (Text).
+- Home phone (Text).
+- Priority (Choice).
+- Address (Text).
+- Remark (Text).
+
+Draft-only saved address choice:
+- Same as permanent address (Yes/no).
+
+FAMILY
+
+Family and dependents:
+- Relationship (Choice).
+- Name (Text).
+- Gender (Choice).
+- Date of birth (Date).
+- Age (from date of birth) (Whole number).
+- Contact number (Text).
+- New IC number (Text).
+- IC / birth certificate number (Text).
+- Passport number (Text).
+- Residential address (Text).
+- Marriage date (Date).
+- Marriage status (Choice).
+- Occupation (Text).
+- Company name (Text).
+- Employer address (Text).
+- Currently working (Yes/no).
+- Insurance beneficiary (Yes/no).
+- Deceased (Yes/no).
+- Student (Yes/no).
+- School name (Text).
+- Study level (Text).
+- Study country (Choice).
+- Relief category (Choice).
+- Claim tax relief (Yes/no).
+- Relief share (Percentage).
+- Counts toward tax relief (Derived yes/no).
+- Remarks (Text).
+
+EMPLOYMENT
+
+Organisation assignment:
+- Company (Choice).
+- Business Unit (Choice).
+- Department (Choice).
+- Position (Choice).
+- Job Grade (Choice).
+- Employment Type (Choice).
+
+Additional organisation labels:
+- Division (Choice).
+- Branch (Choice).
+- Region (Choice).
+- Line (Choice).
+- Section (Choice).
+- Team (Choice).
+- Base (Choice).
+- Category (Choice).
+
+Employment dates and service:
+- Group Join Date (Date).
+- Join Date (Date).
+- Group Service (Duration).
+- Current Company Service (Duration).
+- Year of Service (Duration).
+- Probation Period — Value (Number).
+- Probation Period — Unit (Choice).
+- Extended Probation Period — Value (Number).
+- Extended Probation Period — Unit (Choice).
+- Confirmation Date (Date).
+- Contract Start Date (Date).
+- Contract End Date (Date).
+- Remark (Text).
+- Notice Before Confirmation — Value (Number).
+- Notice Before Confirmation — Unit (Choice).
+- Notice After Confirmation — Value (Number).
+- Notice After Confirmation — Unit (Choice).
+- Tender Resignation Date (Date).
+- Resignation Date (Date).
+- Last Working Date (Date).
+
+Direct superior and history:
+- Direct Superior — Employee ID (Text).
+- Direct Superior — Name (Text).
+- Previous superiors — Employee ID (Text).
+- Previous superiors — Name (Text).
+- From (Date).
+- Until (Date).
+
+Approval delegations:
+- Delegate to — Employee ID (Text).
+- Delegate to — Name (Text).
+- From (Date).
+- Until (optional) (Date).
+
+Draft-only employment fields:
+- Cost center (Choice).
+- Internship End Date (Date).
+- Probation ends on (Date).
+
+EMPLOYMENT HISTORY
+
+Event information:
+- Event Type (Choice).
+- Effective Date (Date).
+- End Date (Date).
+- Last Working Day (Date).
+- Recorded by (Employee/user display name).
+- Recorded at (Date and time).
+- Remarks (Text).
+- Movement status (Choice).
+- Job Title (Choice).
+- Basic (Money).
+- Termination Reason (Choice).
+- Termination type (Choice).
+- Resignation Date (Date).
+- Notice served (days) (Whole number).
+- Blacklist Status (Yes/no).
+- Reason for correction (Text).
+- Rolled back by (Employee/user display name).
+- Rolled back at (Date and time).
+- Reason for rollback or cancellation (Text).
+
+Before Changes and After Changes:
+- Company (Choice).
+- Business Unit (Choice).
+- Division (Choice).
+- Department (Choice).
+- Position (Choice).
+- Job Grade (Choice).
+- Employment Type (Choice).
+- Reporting Manager — Employee ID (Text).
+- Reporting Manager — Name (Text).
+- Salary (Money).
+- Currency (Choice).
+- Pay Mode (Choice).
+- Payment Term (Choice).
+- Category (Choice).
+- Region (Choice).
+- Branch (Choice).
+- Team (Choice).
+- Section (Choice).
+- Line (Choice).
+- Base (Choice).
+- Location (Choice).
+
+Original hire details and corrections:
+- Business Unit (Choice).
+- Department (Choice).
+- Position (Choice).
+- Cost Centre (Choice).
+- Location (Choice).
+- Direct Superior — Employee ID (Text).
+- Direct Superior — Name (Text).
+- Originally recorded (Typed value).
+- Corrected (Typed value).
+- Recorded by (Employee/user display name).
+- Recorded at (Date and time).
+- Reason for the correction (Text).
+
+Related values shown during hire correction:
+- Company (Choice).
+- Group Join Date (Date).
+- Join Date (Date).
+- Job Grade (Choice).
+- Employment Type (Choice).
+
+ATTENDANCE
+
+Holiday calendar and schedule:
+- Holiday calendar (Choice).
+- Schedule group (Choice).
+
+Clocking and attendance photo:
+- Use Geofencing for Clocking (Yes/no).
+- Clocking location — Code (Text).
+- Clocking location — Name (Text).
+- Address (Text).
+- Radius (Number (metres)).
+- Location status (Choice).
+- Card ID (Text).
+- Attendance Photo (Choice).
+
+Work location and shift arrangement:
+- Location — Code (Text).
+- Location — Name (Text).
+- Effective date (Date).
+- Shift type (Choice).
+- Backup shift — Code (Text).
+- Backup shift — Name (Text).
+- Effective date (Date).
+- Previous shift — Code (Text).
+- Previous shift — Name (Text).
+- New shift — Code (Text).
+- New shift — Name (Text).
+- Changed by (Employee/user display name).
+- Changed on (Date and time).
+
+BANK & STATUTORY
+
+Bank Information:
+- Bank (Choice).
+- Bank account (Text).
+- Use a custom holder name (Yes/no).
+- Custom holder name (Text).
+- Use a custom holder identification (Yes/no).
+- Custom holder identification (Text).
+
+EPF contribution:
+- EPF number (Text).
+- EPF citizenship (Choice).
+- EPF Category (Choice).
+- Employee rate % (Percentage).
+- Employer rate % (Percentage).
+- Employee amount (RM per month) (Money).
+- Employer amount (RM per month) (Money).
+- Reason for the fixed amount (Text).
+- Employer bears EPF Contribution (Yes/no).
+
+SOCSO, EIS and Others Statutory:
+- SOCSO & EIS number (Text).
+- SOCSO category (Choice).
+- EIS category (Choice).
+- Subject to SKBBK (Yes/no).
+- Employer bears SOCSO (Yes/no).
+- Employer bears EIS (Yes/no).
+- Employer bears SKBBK (Yes/no).
+- Subject to HRDF (Choice).
+
+Income Tax (PCB):
+- Tax number (Text).
+- Tax Category (Choice).
+- Income Tax Resident (Choice).
+- Disabled individual (OKU) (Yes/no).
+- Disabled spouse (OKU) (Yes/no).
+- Child relief mode (Choice).
+- Children qualifying for tax relief (Whole number).
+- Counted as, for monthly tax (C) (Number).
+- Child relief (Money).
+- Employer bears tax contribution (Yes/no).
+- Employer (Company reference).
+- Tax selection confirmation required (Yes/no).
+- Item (Text).
+- Relief category (Choice).
+- Relief share (Percentage).
+- Qualifying children (Number).
+- Relief (RM) (Money).
+
+Declared child-relief table:
+- Child under 18 — 100% (Whole number).
+- Child under 18 — 50% (Whole number).
+- 18+ in full-time pre-university study — 100% (Whole number).
+- 18+ in full-time pre-university study — 50% (Whole number).
+- 18+ in diploma/degree study (and above) — 100% (Whole number).
+- 18+ in diploma/degree study (and above) — 50% (Whole number).
+- Disabled child — 100% (Whole number).
+- Disabled child — 50% (Whole number).
+- Disabled child in full-time study — 100% (Whole number).
+- Disabled child in full-time study — 50% (Whole number).
+
+PAYROLL
+
+Basic Salary and salary history:
+- Effective date (Date).
+- Basic salary (MYR) (Money).
+- Currency (Choice).
+- Previous salary (Money).
+- Increment (RM) (Money).
+- Increment (%) (Percentage).
+- Pay Mode (Choice).
+- Payment Term (Choice).
+- Rate (Money).
+- Remarks (Text).
+- Status (Choice).
+
+Payment method and payroll policy:
+- Payment Method (Choice).
+- Applied policy (Choice).
+
+Pay items:
+- Component (Choice).
+- Amount (Money).
+- Currency (Choice).
+- Effective from (Date).
+- Effective to (Date).
+- Prorate (Choice).
+- Remarks (Text).
+
+CP38 Deduction:
+- LHDN reference (Text).
+- Monthly amount (RM) (Money).
+- Effective from (Date).
+- Effective to (Date).
+- Remarks (Text).
+- Status (Choice).
+
+Leave encashment:
+- Raw balance (Number (days)).
+- Auto figure (Number (days)).
+- Effective figure (Number (days)).
+- Calculated as of (Date).
+- Status (Choice).
+- Adjusted days (Number (days)).
+- Reason (Text).
+
+Previous employment this year (TP3 / opening balances):
+- Applies to year (Whole number).
+- Accumulated net remuneration (Y−K) (Money).
+- EPF claimed toward relief (K) (Money).
+- PCB already deducted (X) (Money).
+
+Zakat summary:
+- Status (Choice).
+- State authority (Choice).
+- Method (Choice).
+- Rate (Money or percentage).
+
+Draft initial monthly allowance:
+- Monthly allowance (Money).
+
+LEAVE
+
+Grade and benefit scheme:
+- Grade (Choice).
+- Benefit Scheme (Text).
+- Effective From (Date).
+- Years of service (Number).
+- Leave type (Choice).
+- Picked up by (Text).
+- Days at service years (Number (days)).
+- Unmatched leave types (Choice list).
+
+Leave balance and breakdown:
+- Leave type (Choice).
+- As at date (Date).
+- Entitlement (Number (days)).
+- Earned to Date (Number (days)).
+- Rounded Earned to Date (Number (days)).
+- Brought forward (Number (days)).
+- Adjustments (Number (days)).
+- Total (Number (days)).
+- Taken (Number (days)).
+- Pending approval (Number (days)).
+- Brought forward forfeited (Number (days)).
+- Expiry date (Date).
+- Available Balance (Number (days)).
+- Entitlement status (Choice).
+- Entitlement table (Text).
+- Shared balance source (Leave-type reference).
+
+Entitlement recalculation history:
+- Took effect (Date).
+- Leave type (Choice).
+- Previous Job grade (Choice).
+- New Job grade (Choice).
+- Reason (Text).
+- Previous (Number (days)).
+- New (Number (days)).
+- Change (Number (days)).
+
+Eligibility and explanation details:
+- Eligibility rule (Text).
+- Rule state (Choice).
+- Rule valid from (Date).
+- Rule valid to (Date).
+- Rule does not match because (Text).
+- Balance line (Choice).
+- Explanation (Text).
+- Description (Text).
+- Formula (Text).
+
+DOCUMENTS
+
+Employee documents:
+- Document name / title (Text).
+- Category (Text).
+- Description / remarks (Text).
+- File name (Text).
+- Type (Text).
+- Size (Whole number (bytes)).
+- Uploaded (Date and time).
+- Last updated (Date and time).
+- Uploaded by (Employee/user display name).
+- Last updated by (Employee/user display name).
+- Attachment (File).
+
+QUALIFICATION
+
+Academic and professional qualifications:
+- Qualification (Choice).
+- Institute (Text).
+- From (year & month) (Year and month).
+- To (year & month) (Year and month).
+- Graduation date (Date).
+- Major / Field of study (Text).
+- Result / Grade (Text).
+- Description (Text).
+- Highest qualification (Yes/no).
+
+OTHERS
+
+Change history:
+- Event (Choice).
+- Action (Choice).
+- High impact (Yes/no).
+- Actor type (Choice).
+- Actor (Employee/user display name).
+- Module (Choice).
+- Record type (Choice).
+- At (Date and time).
+- Sequence (Whole number).
+- Changed field (Choice).
+- Previous value (Typed value).
+- New value (Typed value).
+
+Leave requests:
+- Leave type (Choice).
+- Start date (Date).
+- End date (Date).
+- Days (Number (days)).
+- Status (Choice).
+
+Probation / Contract / Internship Review:
+- Employment type (Choice).
+- Review type (Choice).
+- End date (Date).
+- Review due (Date).
+- Review status (Choice).
+- Review decision (Choice).
+- Review document kind (Choice).
+- Review document file name (Text).
+- Upload signed letter (File).
+
+CATALOGUE BOUNDARIES
+
+- Data privacy (PDPA): This Personnel section contains explanatory text and a link, not a saved Personnel field. Privacy case data belongs to its own screen and is not exposed automatically.
+- Disciplinary: No separate disciplinary tab/register is rendered by the current Personnel screen. Existing blacklist status/reasons are included under Employment History. A future registered disciplinary field must opt into the restricted HR category.
+- Contract history: Contract start/end/remark currently live under Employment; contract-related movements and review records are included in their actual owners. No independent contract-history register is invented.
+- Full Form TP3 and payroll transaction details: The Payroll tab displays four opening-balance fields and a Zakat summary, plus links. Fields on the linked transaction screens are not silently claimed to be Personnel tab fields.
+- Actions, save/discard, buttons, help text, search, paging and confirmation draft values: Interface controls are not business data columns.
+- Photo and attachment binary contents: Listed for completeness but disabled as report columns. Metadata/availability can be reported; protected files remain accessible only through their existing guarded screen.
+- Arbitrary audit payload properties: Only registered, typed, permission-checked Personnel fields may be selected. Generic payload dumping could expose confidential values.
+
+The companion 5f9c8062-catalogue.txt records each section’s owner, code evidence, row cardinality, planned sensitivity and historical availability for implementation review. Those classifications are not a claim that the new permission or historical-report feature is already implemented.

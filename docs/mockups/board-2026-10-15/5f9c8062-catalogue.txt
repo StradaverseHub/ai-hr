@@ -1,0 +1,747 @@
+EMPLOYEE MASTER REPORT — FULL CATALOGUE FOR CONFIRMATION
+Review draft. Not implemented. 385 named entries across 11 current Personnel tabs.
+Entries include screen aliases and the explicitly unavailable photo/file-content entries; they are not a claim that every entry is independently stored.
+
+HOW TO READ THIS CATALOGUE
+The group and section qualify repeated labels such as Status, Name and Effective date. Types describe the permitted report treatment. Current-only means historical values must say Unavailable for this date unless an authoritative dated record or snapshot exists. Restricted access below is the proposed report permission, not a claim that today’s screen already has that control.
+
+
+PROFILE
+
+PERSONAL DETAILS
+Rows: One person value per employment; Employee ID belongs to employment.
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Employee ID (Text).
+- Salutation (Choice).
+- Full name (as per IC/passport) (Text).
+- First name (Text).
+- Last name (Text).
+- Preferred name (Text).
+- Nationality (Choice).
+- Religion (Choice). Restricted personal information
+- Race (Choice). Restricted personal information
+- Date of birth (Date). Restricted personal information
+- Age (Whole number). Age at report date from the authoritative date of birth; unavailable if date of birth is unavailable
+- Gender (Choice). Restricted personal information
+- Marital status (Choice). Restricted personal information
+- Status (Choice). Derived employment status; historical availability depends on recorded lifecycle facts
+- Profile photo (Image). Catalogue entry; file content excluded from spreadsheet/CSV/PDF exports. Availability only, no public file link.
+Source owner: Personnel person and employment owners
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1108-1207; components/person-name-fields.tsx; components/identity-fields.tsx; components/birth-date-fields.tsx; components/person-details-fields.tsx
+
+IDENTITY AND PASSPORT
+Rows: One current person record
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Identity No (NRIC) (Text).
+- Old identity card no. (Text).
+- Passport number (Text).
+- Passport issue date (Date).
+- Passport expiry date (Date).
+- Issuing country (Choice).
+- Issuing country code (Text).
+- Passport remark (Text).
+Source owner: Country statutory profile owner, linked to person
+Evidence: components/personnel-identity.tsx; components/identity-fields.tsx; components/passport-fields.tsx
+
+CONTACT AND PERMANENT ADDRESS
+Rows: One current person record
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Work email (Text).
+- Mobile Phone Number (Text).
+- Home Phone Number (Text).
+- Personal email (Text).
+- Address line 1 (Text).
+- Address line 2 (Text).
+- Address line 3 (Text).
+- Postcode (Text).
+- City (Text).
+- State (Choice).
+- Country (Choice).
+Source owner: Personnel person/contact owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1217-1271; components/person-name-fields.tsx; components/address-fields.tsx
+
+CORRESPONDENCE ADDRESS
+Rows: One current person record
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Address line 1 (Text).
+- Address line 2 (Text).
+- Address line 3 (Text).
+- Postcode (Text).
+- City (Text).
+- State (Choice).
+- Country (Choice).
+- Mobile Phone Number (Text).
+- Home Phone Number (Text).
+- Same as permanent address (Copy control). Catalogue entry for completeness, disabled as a report column. Copying an address is not a saved choice and cannot be reported as a historical flag.
+Source owner: Personnel person/contact owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1274-1304; components/address-fields.tsx; components/same-as-permanent-address.tsx
+
+EMERGENCY CONTACT
+Rows: Many contacts per person. Latest and All records use explicit record ordering; primary priority is a field, not a substitute for latest.
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Contact name (Text).
+- Relationship (Choice).
+- Mobile phone (Text).
+- Home phone (Text).
+- Priority (Choice).
+- Address (Text).
+- Remark (Text).
+Source owner: Emergency contact register owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:893-1028; core/emergency-contacts.ts
+
+DRAFT-ONLY SAVED ADDRESS CHOICE
+Rows: One draft value; not a persistent activated-profile flag
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Same as permanent address (Yes/no). Saved in the draft only. After activation, the active-profile copy control has no stored choice and remains disabled as a report column.
+Source owner: Employee draft owner; active-profile copy gesture is transient
+Evidence: app/admin/personnel/new/wizard.tsx; lib/employee-draft-schema.ts:135-145
+
+FAMILY
+
+FAMILY AND DEPENDENTS
+Rows: Many records per person. Conditional fields remain in the catalogue and are blank when not applicable.
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted personal information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Relationship (Choice).
+- Name (Text).
+- Gender (Choice).
+- Date of birth (Date).
+- Age (from date of birth) (Whole number). Derived at report date, not stored age
+- Contact number (Text).
+- New IC number (Text). Same stored identity value as IC / birth certificate number; label applies to spouse/other relationships
+- IC / birth certificate number (Text). Same stored identity value as New IC number; label applies to children
+- Passport number (Text).
+- Residential address (Text).
+- Marriage date (Date).
+- Marriage status (Choice).
+- Occupation (Text).
+- Company name (Text).
+- Employer address (Text).
+- Currently working (Yes/no).
+- Insurance beneficiary (Yes/no).
+- Deceased (Yes/no).
+- Student (Yes/no).
+- School name (Text).
+- Study level (Text).
+- Study country (Choice).
+- Relief category (Choice). Also requires restricted tax/statutory information permission
+- Claim tax relief (Yes/no). Also requires restricted tax/statutory information permission
+- Relief share (Percentage). Also requires restricted tax/statutory information permission
+- Counts toward tax relief (Derived yes/no). Canonical owner eligibility at the report date, with unavailable retained where facts are insufficient
+- Remarks (Text).
+Source owner: Family/dependent register owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1796-1978,2031-2135; components/family-relationship-fields.tsx; core/dependents.ts
+
+EMPLOYMENT
+
+ORGANISATION ASSIGNMENT
+Rows: One assignment valid on the report date
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Company (Choice).
+- Business Unit (Choice).
+- Department (Choice).
+- Position (Choice).
+- Job Grade (Choice).
+- Employment Type (Choice).
+Source owner: Employment/assignment owner; movement owns changes
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4385-4455; core/org.ts; core/movement.ts
+
+ADDITIONAL ORGANISATION LABELS
+Rows: One current employment value
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Division (Choice).
+- Branch (Choice).
+- Region (Choice).
+- Line (Choice).
+- Section (Choice).
+- Team (Choice).
+- Base (Choice).
+- Category (Choice).
+Source owner: Employment information owner, with recorded movement changes where present
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4433-4455; core/movement.ts:219-228
+
+EMPLOYMENT DATES AND SERVICE
+Rows: One employment value; period fields contain value and unit, both separately selectable
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Group Join Date (Date). Use recorded joining-date correction history when available
+- Join Date (Date). Use recorded transfer/joining-date history when available
+- Group Service (Duration). Years, months and days from authoritative Group Join Date at the report date
+- Current Company Service (Duration). Years, months and days from authoritative Join Date at the report date
+- Year of Service (Duration). Same authoritative duration as Group Service; alias retained because both labels appear
+- Probation Period — Value (Number). Part of the Probation Period control; the value/unit pair is never silently normalised to months.
+- Probation Period — Unit (Choice). Part of the Probation Period control; the value/unit pair is never silently normalised to months.
+- Extended Probation Period — Value (Number). Part of the Extended Probation Period control; the value/unit pair is never silently normalised to months.
+- Extended Probation Period — Unit (Choice). Part of the Extended Probation Period control; the value/unit pair is never silently normalised to months.
+- Confirmation Date (Date).
+- Contract Start Date (Date).
+- Contract End Date (Date).
+- Remark (Text).
+- Notice Before Confirmation — Value (Number). Part of the Notice Before Confirmation control; the value/unit pair is never silently normalised to months.
+- Notice Before Confirmation — Unit (Choice). Part of the Notice Before Confirmation control; the value/unit pair is never silently normalised to months.
+- Notice After Confirmation — Value (Number). Part of the Notice After Confirmation control; the value/unit pair is never silently normalised to months.
+- Notice After Confirmation — Unit (Choice). Part of the Notice After Confirmation control; the value/unit pair is never silently normalised to months.
+- Tender Resignation Date (Date).
+- Resignation Date (Date).
+- Last Working Date (Date).
+Source owner: Employment lifecycle owner; joining-date corrections owned by Movement
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4507-4668,5376-5411; components/employment-period-fields.tsx; core/leave.ts serviceYearsMonthsDaysAt
+
+DIRECT SUPERIOR AND HISTORY
+Rows: Current superior and many dated previous-superior rows
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Direct Superior — Employee ID (Text). Includes Employee ID and name as separately selectable parts
+- Direct Superior — Name (Text). Includes Employee ID and name as separately selectable parts
+- Previous superiors — Employee ID (Text). Previous superior; includes Employee ID and name as separately selectable parts
+- Previous superiors — Name (Text). Previous superior; includes Employee ID and name as separately selectable parts
+- From (Date). Previous-superior valid-from date
+- Until (Date). Previous-superior valid-to date
+Source owner: Reporting-line owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4688-4746; core/read.ts directSuperiorHistoryFor/reportingLinesFor; core/org.ts
+
+APPROVAL DELEGATIONS
+Rows: Many dated delegation windows
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Delegate to — Employee ID (Text). Includes Employee ID and name as separately selectable parts
+- Delegate to — Name (Text). Includes Employee ID and name as separately selectable parts
+- From (Date).
+- Until (optional) (Date).
+Source owner: Reporting-line/delegation owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4753-4805; core/read.ts delegationsFor; core/org.ts
+
+DRAFT-ONLY EMPLOYMENT FIELDS
+Rows: One current draft value. These supplement the shared Employment fields, not a separate Personnel tab.
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Cost center (Choice). The draft captures Cost Centre; hire correction also exposes the real assignment source
+- Internship End Date (Date). The provisional end date is labelled for Internship; contract uses Contract End Date already listed
+- Probation ends on (Date). Owner-derived draft date from Group Join Date and Probation Period, or explicitly labelled legacy stored date
+Source owner: Employee draft owner, using the hire/assignment lifecycle owners on activation
+Evidence: app/admin/personnel/new/wizard.tsx:726-742,827-875; lib/employee-draft-schema.ts EmployeeDraftEmployment
+
+EMPLOYMENT HISTORY
+
+EVENT INFORMATION
+Rows: Many recorded events. Latest means greatest effective date not after the report date, with deterministic tie ordering; cancelled/reversed rows remain explicit.
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Event Type (Choice).
+- Effective Date (Date).
+- End Date (Date).
+- Last Working Day (Date). Termination-specific interpretation of the event end date
+- Recorded by (Employee/user display name). Unknown remains unknown for system/import/synthesised records
+- Recorded at (Date and time).
+- Remarks (Text).
+- Movement status (Choice). Applied, pending, superseded, cancelled, reversed or corrected, as the owner records
+- Job Title (Choice). List caption for the Position source; not a second job-title field
+- Basic (Money). List caption for the Salary source; requires restricted compensation permission
+- Termination Reason (Choice).
+- Termination type (Choice). Derived from the selected termination reason
+- Resignation Date (Date).
+- Notice served (days) (Whole number).
+- Blacklist Status (Yes/no).
+- Reason for correction (Text).
+- Rolled back by (Employee/user display name).
+- Rolled back at (Date and time).
+- Reason for rollback or cancellation (Text).
+Source owner: Movement projection over employment/assignment/compensation/reporting-line owners and recorded events
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3537-3977; app/admin/personnel/[employmentId]/movement-new-event.tsx:463-591; core/movement.ts
+
+BEFORE CHANGES AND AFTER CHANGES
+Rows: Each listed field has Before Changes and After Changes columns. Hired has no Before Changes.
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Company (Choice).
+- Business Unit (Choice).
+- Division (Choice). Only where this event recorded the change
+- Department (Choice).
+- Position (Choice).
+- Job Grade (Choice).
+- Employment Type (Choice).
+- Reporting Manager — Employee ID (Text).
+- Reporting Manager — Name (Text).
+- Salary (Money). Also requires restricted compensation permission
+- Currency (Choice). Also requires restricted compensation permission
+- Pay Mode (Choice). Also requires restricted compensation permission
+- Payment Term (Choice). Also requires restricted compensation permission
+- Category (Choice). Only where this event recorded the change
+- Region (Choice). Only where this event recorded the change
+- Branch (Choice). Only where this event recorded the change
+- Team (Choice). Only where this event recorded the change
+- Section (Choice). Only where this event recorded the change
+- Line (Choice). Only where this event recorded the change
+- Base (Choice). Only where this event recorded the change
+- Location (Choice). Only where owner reconstruction or event snapshot supports it
+Source owner: Movement owner reconstruction and event-recorded flat changes
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3795-3820; app/admin/personnel/[employmentId]/movement-new-event.tsx:358-433; core/movement.ts MOVEMENT_FLAT_FIELDS
+
+ORIGINAL HIRE DETAILS AND CORRECTIONS
+Rows: Many correction traces. Each corrected field exposes original and corrected values, correction actor, date and reason.
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Business Unit (Choice).
+- Department (Choice).
+- Position (Choice).
+- Cost Centre (Choice).
+- Location (Choice).
+- Direct Superior — Employee ID (Text). Employee ID/name parts when owner has them
+- Direct Superior — Name (Text). Employee ID/name parts when owner has them
+- Originally recorded (Typed value). Per corrected field; not an arbitrary event payload export
+- Corrected (Typed value). Per corrected field
+- Recorded by (Employee/user display name).
+- Recorded at (Date and time).
+- Reason for the correction (Text).
+Source owner: Hire correction owner and original hire event
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3503-3535,3650-3688,4020-4130; core/hire-correction.ts
+
+RELATED VALUES SHOWN DURING HIRE CORRECTION
+Rows: One related current value; these controls do not claim to be editable original-hire corrections
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Company (Choice).
+- Group Join Date (Date).
+- Join Date (Date).
+- Job Grade (Choice).
+- Employment Type (Choice).
+Source owner: Hire correction owner read-only related values
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4080-4118
+
+ATTENDANCE
+
+HOLIDAY CALENDAR AND SCHEDULE
+Rows: One employment selection; holiday group and state alternatives are separate selectable parts
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Holiday calendar (Choice). Company default, named holiday group or state; do not invent an employee-specific calendar snapshot
+- Schedule group (Choice).
+Source owner: Holiday/roster owners
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4817-4902; core/roster.ts; core/holidays.ts
+
+CLOCKING AND ATTENDANCE PHOTO
+Rows: One geofence/photo setting, many assigned clocking locations
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Use Geofencing for Clocking (Yes/no).
+- Clocking location — Code (Text). Code and name separately selectable
+- Clocking location — Name (Text). Code and name separately selectable
+- Address (Text). Assigned clocking location address
+- Radius (Number (metres)). Assigned location radius; no retired employee override
+- Location status (Choice). Active, inactive or not open to employee company
+- Card ID (Text). Preserves leading zeros
+- Attendance Photo (Choice).
+Source owner: Attendance clocking-location/control owners
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2457-2557; components/attendance/location-assignment.tsx
+
+WORK LOCATION AND SHIFT ARRANGEMENT
+Rows: One valid location/shift arrangement; many dated shift-history rows
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Location — Code (Text). Location code and name separately selectable
+- Location — Name (Text). Location code and name separately selectable
+- Effective date (Date). Location assignment effective date
+- Shift type (Choice).
+- Backup shift — Code (Text). Shift code and name separately selectable
+- Backup shift — Name (Text). Shift code and name separately selectable
+- Effective date (Date).
+- Previous shift — Code (Text). History row; shift code and name separately selectable
+- Previous shift — Name (Text). History row; shift code and name separately selectable
+- New shift — Code (Text). History row; shift code and name separately selectable
+- New shift — Name (Text). History row; shift code and name separately selectable
+- Changed by (Employee/user display name).
+- Changed on (Date and time). Recorded-on-release provenance retained if exact legacy date is unknown
+Source owner: Dated work-location assignment and shift-arrangement owners
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2355-2426,4916-4989; components/employee-shift-fields.tsx; core/shift-arrangement.ts; core/location.ts
+
+BANK & STATUTORY
+
+BANK INFORMATION
+Rows: One current person profile
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted bank/payment information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Bank (Choice).
+- Bank account (Text).
+- Use a custom holder name (Yes/no).
+- Custom holder name (Text).
+- Use a custom holder identification (Yes/no).
+- Custom holder identification (Text).
+Source owner: Country bank/statutory profile owner
+Evidence: components/bank-info-card.tsx; components/bank-account-fields.tsx; components/custom-holder-fields.tsx
+
+EPF CONTRIBUTION
+Rows: One current person profile; election fields conditional on the category
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- EPF number (Text).
+- EPF citizenship (Choice).
+- EPF Category (Choice).
+- Employee rate % (Percentage).
+- Employer rate % (Percentage).
+- Employee amount (RM per month) (Money).
+- Employer amount (RM per month) (Money).
+- Reason for the fixed amount (Text).
+- Employer bears EPF Contribution (Yes/no).
+Source owner: Country statutory profile and contribution owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3153-3199; components/epf-registration-fields.tsx; components/epf-election.tsx; components/employer-bears-fields.tsx
+
+SOCSO, EIS AND OTHERS STATUTORY
+Rows: One current person profile
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- SOCSO & EIS number (Text).
+- SOCSO category (Choice).
+- EIS category (Choice).
+- Subject to SKBBK (Yes/no).
+- Employer bears SOCSO (Yes/no).
+- Employer bears EIS (Yes/no).
+- Employer bears SKBBK (Yes/no).
+- Subject to HRDF (Choice). Follow company default remains distinct from explicit Yes or No
+Source owner: Country statutory profile owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3208-3252,3357-3396; components/socso-eis-fields.tsx; components/tax-relief-fields.tsx
+
+INCOME TAX (PCB)
+Rows: One person tax record plus employer-scoped selection; many child-relief breakdown rows
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Tax number (Text).
+- Tax Category (Choice). Detailed circumstance retained; legacy numeric category not mistaken for it
+- Income Tax Resident (Choice). Employer-scoped scheme; None remains distinct from Resident/Non-Resident
+- Disabled individual (OKU) (Yes/no).
+- Disabled spouse (OKU) (Yes/no).
+- Child relief mode (Choice).
+- Children qualifying for tax relief (Whole number).
+- Counted as, for monthly tax (C) (Number). Weighted monthly-tax figure, not a headcount
+- Child relief (Money). Canonical owner amount; no report-local tax formula
+- Employer bears tax contribution (Yes/no).
+- Employer (Company reference). Owner of the employer-scoped tax scheme
+- Tax selection confirmation required (Yes/no). Derived state shown when selection needs confirmation
+- Item (Text). Breakdown row is a child or a category, depending on the mode
+- Relief category (Choice).
+- Relief share (Percentage).
+- Qualifying children (Number).
+- Relief (RM) (Money).
+Source owner: Country statutory tax/child-relief owners; employer-scoped tax selection
+Evidence: components/identity-tax-card.tsx:499-996; components/tax-category-field.tsx; components/tax-relief-fields.tsx; core/dependents.ts qualifyingChildReliefFor
+
+DECLARED CHILD-RELIEF TABLE
+Rows: One declared table; each category has a 100% and a 50% whole-number count
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Child under 18 — 100% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- Child under 18 — 50% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- 18+ in full-time pre-university study — 100% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- 18+ in full-time pre-university study — 50% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- 18+ in diploma/degree study (and above) — 100% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- 18+ in diploma/degree study (and above) — 50% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- Disabled child — 100% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- Disabled child — 50% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- Disabled child in full-time study — 100% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+- Disabled child in full-time study — 50% (Whole number). Declared count for this category/share, not a calculated monetary relief.
+Source owner: Country statutory child-relief owner
+Evidence: components/identity-tax-card.tsx:692-755; lib/dependent-vocabulary.ts; localization/country-pack.ts
+
+PAYROLL
+
+BASIC SALARY AND SALARY HISTORY
+Rows: Many dated salary revisions; latest/current selected by valid date, never by array position
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Effective date (Date).
+- Basic salary (MYR) (Money). Source label is MYR; actual currency is included and mixed currencies are never summed together
+- Currency (Choice).
+- Previous salary (Money).
+- Increment (RM) (Money).
+- Increment (%) (Percentage). Unavailable when prior basic is zero or absent
+- Pay Mode (Choice).
+- Payment Term (Choice).
+- Rate (Money). Per day/per hour unit retained
+- Remarks (Text).
+- Status (Choice). Active, Historical, Future effective
+Source owner: Compensation owner; display uses its dated revisions
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2910-3108; components/salary-history-table.tsx; core/comp.ts
+
+PAYMENT METHOD AND PAYROLL POLICY
+Rows: One current employment setting
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Payment Method (Choice).
+- Applied policy (Choice).
+Source owner: Employment payment method and assigned payroll-policy owners
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2328-2342,3105-3124; components/payment-method-field.tsx; components/payroll-policy-field.tsx
+
+PAY ITEMS
+Rows: Many dated pay-item windows
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Component (Choice).
+- Amount (Money).
+- Currency (Choice).
+- Effective from (Date).
+- Effective to (Date).
+- Prorate (Choice). Inherit remains distinct from explicit Yes/No
+- Remarks (Text).
+Source owner: Employment pay-component owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1342-1467; core/pay-components.ts
+
+CP38 DEDUCTION
+Rows: Many dated deduction windows
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- LHDN reference (Text). Also requires restricted tax/statutory information permission
+- Monthly amount (RM) (Money).
+- Effective from (Date).
+- Effective to (Date).
+- Remarks (Text).
+- Status (Choice).
+Source owner: CP38 owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1489-1635; core/cp38.ts
+
+LEAVE ENCASHMENT
+Rows: Saved snapshot and recorded adjustment/unfreeze actions; not a freshly invented balance
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Raw balance (Number (days)).
+- Auto figure (Number (days)).
+- Effective figure (Number (days)).
+- Calculated as of (Date).
+- Status (Choice). Frozen/Unfrozen
+- Adjusted days (Number (days)).
+- Reason (Text). Recorded action reason; draft form value is not exported
+Source owner: Leave-encashment snapshot owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:1647-1725; core/leave-encashment.ts
+
+PREVIOUS EMPLOYMENT THIS YEAR (TP3 / OPENING BALANCES)
+Rows: One current profile for its stated year; full Form TP3 is another screen and is not fabricated here
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Applies to year (Whole number).
+- Accumulated net remuneration (Y−K) (Money).
+- EPF claimed toward relief (K) (Money).
+- PCB already deducted (X) (Money).
+Source owner: Country statutory opening-balance owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3404-3420
+
+ZAKAT SUMMARY
+Rows: One current election; payroll transaction screen remains the only editor
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted tax/statutory information permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Status (Choice).
+- State authority (Choice).
+- Method (Choice).
+- Rate (Money or percentage). Type follows the method; no sum across percentages and ringgit
+Source owner: Country payroll zakat-election owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:3452-3497
+
+DRAFT INITIAL MONTHLY ALLOWANCE
+Rows: One current draft amount; distinct from dated Pay Items
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted compensation permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Monthly allowance (Money). Existing draft field and legacy compensation/report field. It is not a new active-profile Pay Item or a second allowance calculator.
+Source owner: Employee draft owner, handed to compensation owner at activation
+Evidence: app/admin/personnel/new/wizard.tsx:1211-1221; core/employee-draft.ts
+
+LEAVE
+
+GRADE AND BENEFIT SCHEME
+Rows: One valid grade; benefit scheme resolution and many leave-type rows
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Grade (Choice). Same job-grade source as Employment; label retained, no duplicate fact
+- Benefit Scheme (Text). May not resolve to a single scheme; retain that state
+- Effective From (Date). Unavailable when no recorded change establishes the date
+- Years of service (Number). Canonical service-years input used by entitlement owner
+- Leave type (Choice).
+- Picked up by (Text). Rule or default/sole entitlement table, accurately distinguished
+- Days at service years (Number (days)). Source caption is Days at the selected service-years figure; absent band remains unavailable
+- Unmatched leave types (Choice list). Owner says which configured types did not resolve; do not assign zero entitlement
+Source owner: Employment grade owner and canonical entitlement-scheme owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2573-2757; core/entitlement-scheme-view.ts
+
+LEAVE BALANCE AND BREAKDOWN
+Rows: One row per employee and leave type/cycle; exact and rounded earned values kept distinct
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Leave type (Choice).
+- As at date (Date).
+- Entitlement (Number (days)). Prorated/rounded entitlement as shown by the current panel; not a newly calculated annual allowance
+- Earned to Date (Number (days)). Exact closing arithmetic value
+- Rounded Earned to Date (Number (days)). Owner-rounded display value; separately labelled
+- Brought forward (Number (days)).
+- Adjustments (Number (days)).
+- Total (Number (days)).
+- Taken (Number (days)).
+- Pending approval (Number (days)).
+- Brought forward forfeited (Number (days)).
+- Expiry date (Date). Canonical carried-forward expiry date
+- Available Balance (Number (days)).
+- Entitlement status (Choice). Not generated, not configured, no matching rule and other owner states remain distinct
+- Entitlement table (Text). Only an owner-resolved table name
+- Shared balance source (Leave-type reference). Borrowing types identify their source pool; totals must not count the same pool twice
+Source owner: Canonical leave balance and entitlement-breakdown owners
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2763-2822; components/leave/EntitlementBreakdown.tsx; components/leave/entitlement-panel-config.ts
+
+ENTITLEMENT RECALCULATION HISTORY
+Rows: Many recorded recalculation rows
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Personnel report access within permitted companies.
+- Took effect (Date).
+- Leave type (Choice).
+- Previous Job grade (Choice). Event-recorded previous grade
+- New Job grade (Choice). Event-recorded new grade
+- Reason (Text).
+- Previous (Number (days)).
+- New (Number (days)).
+- Change (Number (days)).
+Source owner: Leave entitlement recalculation audit owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2843-2895; core/leave.ts listEntitlementRecalcAudit
+
+ELIGIBILITY AND EXPLANATION DETAILS
+Rows: Many rule explanations and one explanation per displayed balance line; not new report-local formulas
+History: Dated records exist. Resolve the record valid on the selected date; show unavailable outside recorded coverage. Historical catalogue names require recorded labels; current names must be identified as current.
+Planned access: Personnel report access within permitted companies.
+- Eligibility rule (Text). Only an owner-returned rule name
+- Rule state (Choice). Matched, in force, expired, not yet or table stopped
+- Rule valid from (Date).
+- Rule valid to (Date).
+- Rule does not match because (Text). Authorised explanation, not an arbitrary criteria payload
+- Balance line (Choice). The displayed entitlement/balance line this explanation belongs to
+- Explanation (Text). Canonical generated sentence, if the owner exposes a reusable rendered explanation
+- Description (Text). HR-authored explanation for this balance line
+- Formula (Text). HR-authored explanatory text; never executed as a report formula
+Source owner: Canonical entitlement explanation and configured formula-explanation owners
+Evidence: components/leave/LeaveDetailsPanel.tsx:431-478,650-691; lib/entitlement-status.ts:276-360
+
+DOCUMENTS
+
+EMPLOYEE DOCUMENTS
+Rows: Many document metadata rows; file content is excluded
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Document name / title (Text). Same stored title shown as Document in the list
+- Category (Text).
+- Description / remarks (Text).
+- File name (Text).
+- Type (Text).
+- Size (Whole number (bytes)).
+- Uploaded (Date and time).
+- Last updated (Date and time).
+- Uploaded by (Employee/user display name). Shown beneath the upload timestamp
+- Last updated by (Employee/user display name). Shown beneath the update timestamp
+- Attachment (File). Catalogue entry; binary file content and public download links excluded from report export. Use guarded Personnel document access.
+Source owner: Employee-document register owner
+Evidence: app/admin/personnel/[employmentId]/documents-manager.tsx:105-142,208-260; app/admin/personnel/[employmentId]/documents-section.tsx; core/employee-documents.ts
+
+QUALIFICATION
+
+ACADEMIC AND PROFESSIONAL QUALIFICATIONS
+Rows: Many records per employment; highest is a stored flag, distinct from latest
+History: Current record. Past values unavailable unless the owner has a dated record or a recorded snapshot for that date.
+Planned access: Personnel report access within permitted companies.
+- Qualification (Choice).
+- Institute (Text).
+- From (year & month) (Year and month).
+- To (year & month) (Year and month).
+- Graduation date (Date).
+- Major / Field of study (Text).
+- Result / Grade (Text).
+- Description (Text).
+- Highest qualification (Yes/no). Same flag shown as Highest in the list
+Source owner: Qualification register owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:2181-2317; core/qualifications.ts
+
+OTHERS
+
+CHANGE HISTORY
+Rows: Many recorded audit entries; allow-listed typed details only
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Event (Choice). Human-readable event name
+- Action (Choice). Created, updated, deleted, archived, unarchived, superseded or other
+- High impact (Yes/no). Canonical audit classification
+- Actor type (Choice). User, system or other canonical actor kind
+- Actor (Employee/user display name).
+- Module (Choice).
+- Record type (Choice). Aggregate type displayed by the audit owner
+- At (Date and time).
+- Sequence (Whole number).
+- Changed field (Choice). Only fields registered in the shared Personnel catalogue; raw unvalidated event payload is not a report column
+- Previous value (Typed value). Only the masked/allow-listed value the authorised audit owner exposes; never bypass its masking
+- New value (Typed value). Only the masked/allow-listed value the authorised audit owner exposes; never bypass its masking
+Source owner: Authorised personnel audit projection
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4136-4140; components/audit-table.tsx; core/read.ts employeeAudit
+
+LEAVE REQUESTS
+Rows: Many leave request records
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Personnel report access within permitted companies.
+- Leave type (Choice).
+- Start date (Date).
+- End date (Date).
+- Days (Number (days)).
+- Status (Choice). Partially approved is retained where some dates were rejected
+Source owner: Leave request owner
+Evidence: app/admin/personnel/[employmentId]/page.tsx:4995-5027; core/read.ts leaveRequestsFor
+
+PROBATION / CONTRACT / INTERNSHIP REVIEW
+Rows: One current review profile; many completed/pending reviews and document metadata rows
+History: Recorded event/snapshot. Read what the event recorded, including correction state; do not substitute today’s values.
+Planned access: Restricted confidential HR history permission, plus Personnel report access and company scope. Proposed permission; not claimed to exist today.
+- Employment type (Choice).
+- Review type (Choice).
+- End date (Date).
+- Review due (Date).
+- Review status (Choice).
+- Review decision (Choice).
+- Review document kind (Choice). System letter or signed letter
+- Review document file name (Text).
+- Upload signed letter (File). Catalogue entry; file content is excluded from exports and continues to require guarded document access
+Source owner: Employment-review owner and stored review-document owner
+Evidence: app/admin/personnel/[employmentId]/review-section.tsx:37-176; core/employment-review.ts
+
+EXPLICIT SCOPE BOUNDARIES
+- Data privacy (PDPA): This Personnel section contains explanatory text and a link, not a saved Personnel field. Privacy case data belongs to its own screen and is not exposed automatically.
+- Disciplinary: No separate disciplinary tab/register is rendered by the current Personnel screen. Existing blacklist status/reasons are included under Employment History. A future registered disciplinary field must opt into the restricted HR category.
+- Contract history: Contract start/end/remark currently live under Employment; contract-related movements and review records are included in their actual owners. No independent contract-history register is invented.
+- Full Form TP3 and payroll transaction details: The Payroll tab displays four opening-balance fields and a Zakat summary, plus links. Fields on the linked transaction screens are not silently claimed to be Personnel tab fields.
+- Actions, save/discard, buttons, help text, search, paging and confirmation draft values: Interface controls are not business data columns.
+- Photo and attachment binary contents: Listed for completeness but disabled as report columns. Metadata/availability can be reported; protected files remain accessible only through their existing guarded screen.
+- Arbitrary audit payload properties: Only registered, typed, permission-checked Personnel fields may be selected. Generic payload dumping could expose confidential values.
+
+HISTORICAL LIMIT
+As-at date cannot recover a past value which was never retained. Past values without owner history/snapshot must show Unavailable for this date. A current value is never silently labelled historical. Current field labels/catalogue renames and mutable records need coverage decisions before implementation.
+
+COUNT RECONCILIATION
+
+FACT: The attachment’s 186 fields and nine groups are illustrative, not the source inventory.
+FACT: PersonnelTabs and EmployeePage contain eleven tabs. The draft uses the same named tabs for its supported fields.
+OBSERVATION: The earlier AST translation-call extraction produced 298 labels within tab buckets. It included actions, headings and helper text, and missed dynamic controls and nested records. It was not a report field count.
+DECISION FOR REVIEW: This proposal names 385 catalogue entries across the actual eleven tabs. These include screen aliases, qualified subfields, five draft-only entries and four explicitly disabled control/file-content entries. They are not 385 independent stored columns or a claim of historical support. Compound before/after and original/corrected values keep their qualified parts.
+
+- Profile: 52 entries.
+- Family: 27 entries.
+- Employment: 47 entries.
+- Employment History: 57 entries.
+- Attendance: 23 entries.
+- Bank & Statutory: 50 entries.
+- Payroll: 42 entries.
+- Leave: 41 entries.
+- Documents: 11 entries.
+- Qualification: 9 entries.
+- Others: 26 entries.
+
+Added through source reconciliation: Family beneficiary/deceased/student/claim switches; employment value/unit controls and dated superior/delegation details; tax disability and employer-bears switches; declared child-relief grid shares; document upload/update actors; movement correction traces; authorised owner-generated leave/audit detail fields; and draft-only Cost Centre, Internship End Date, Probation ends on, initial Monthly Allowance and the saved Same as permanent address draft choice. The active-profile copy gesture is transient and is explicitly disabled as a report column.
+
+Removed as non-fields: Actions, save/discard and confirmation controls, fieldset headings, examples, helper instructions, the Documents Uploaded from date filter, standalone Before Changes/After Changes headers and claim-share table headings. Equivalent labels such as Job Title/Position, Basic/Salary, Highest/Highest qualification, Start/Effective from and End/Effective to are identified as aliases or qualified views of the same owner value.
+
+FACT: core/employment-status.ts already calls an ended lifecycle Resigned, including involuntary termination dates. The new report must consume that owner vocabulary. Draft is supplied by core/employee-draft.ts; no employment id is manufactured for a draft.
+
+UNKNOWN: Exact per-record historical coverage, the tenant’s configured HR Manager role identity, initial field-permission grants and durable schedule/mail integration details require implementation verification after approval. The catalogue marks these limits instead of manufacturing them. No database, actual-app runtime check or production reproduction was performed for this documentation-only proposal.
