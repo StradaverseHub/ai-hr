@@ -7,7 +7,8 @@ const m=vi.hoisted(()=>({session:vi.fn(),allowed:vi.fn(),guard:vi.fn(),read:vi.f
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/settings/email',useSearchParams:()=>new URLSearchParams(),redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],messages.identityEmail)??key)}));
 vi.mock('../lib/scope',()=>({scopedSession:m.session}));
-vi.mock('../lib/authz',()=>({isAdmin:(s:{roles:string[]})=>s.roles.includes('hr_admin')}));
+vi.mock('../lib/session',()=>({getSession:vi.fn()}));
+vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:m.demo}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.allowed,requireIdentityEmailAdmin:m.guard,readIdentityEmailSettings:m.read}));
 vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn()}));
@@ -39,7 +40,8 @@ describe('SMTP settings discovery and read-only preview',()=>{
   fireEvent.click(screen.getByRole('button',{name:messages.nav.systemSettings}));
   expect(within(screen.getByRole('navigation',{name:messages.nav.systemSettings})).queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
  });
- it('renders the connection fields without reading live settings or exposing a mail action in the demo',async()=>{
+ it.each(['hr_admin','super_admin'])('renders the connection fields for %s without reading live settings or exposing a mail action in the demo',async role=>{
+  m.session.mockResolvedValue({s:{userId:'admin',roles:[role]}});
   await page({success:'apply'});expect(screen.getByText(messages.identityEmail.demoSetup)).toBeInTheDocument();
   for(const label of ['host','port','security','authentication','from','fromName','username','password','replyTo'] as const)expect(screen.getByLabelText(messages.identityEmail[label])).toBeDisabled();
   expect(screen.getByLabelText(messages.identityEmail.port)).toHaveValue(465);expect(screen.getByLabelText(messages.identityEmail.password)).toHaveValue('');
