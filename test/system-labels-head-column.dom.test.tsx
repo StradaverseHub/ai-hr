@@ -239,6 +239,8 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
     const ops = heads(container)[1];
     expect(ops.value).toBe('emp-ravi');
     expect([...ops.options].map((o) => o.value)).toContain('emp-ravi');
+    expect(ops.selectedOptions[0].textContent).toBe(en.admin.systemLabels.headUnavailable);
+    expect(ops.selectedOptions[0].textContent).not.toContain('emp-ravi');
   });
 
   it('a text-only edit re-sends the loaded head unchanged — renaming a unit cannot unroute it', async () => {

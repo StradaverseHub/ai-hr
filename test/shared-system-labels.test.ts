@@ -158,6 +158,7 @@ describe('Shared System Labels — assign / unassign mutations + substrate', () 
       );
     expect(rows.length).toBe(0);
     expect(await eventTypesFor(b.tenantId, id)).toContain('department.criteria.changed');
+    expect((await latestEventPayload(b.tenantId,id,'department.criteria.changed'))?.companyIds).toEqual([b.companyId]);
   });
 
   it('assign is idempotent (re-assigning the same company does not duplicate the junction row)', async () => {

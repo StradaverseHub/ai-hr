@@ -220,3 +220,10 @@ describe('approved common System Labels editing experience',()=>{
     expect(await screen.findByText(en.admin.systemLabels.globalGroupAdminOnly)).toBeInTheDocument();expect(codeInput(rows(container)[0]).value).toBe(OWN.name+' unsaved');expect(within(rows(container)[0]).getByRole('button',{name:'B Sdn Bhd'})).toBeInTheDocument();expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
+
+it('a new B-only draft chooses B creation ownership without adding a page company selector',async()=>{
+ const user=userEvent.setup(),save:GridActionsSave=vi.fn(async(kind,payload)=>({ok:true as const,created:1,updated:0,createdIds:[{key:payload.creates[0].key,id:'saved-b'}]}));
+ const {container}=wrap(<SystemLabelsGrid data={{department:[],position:[],cost_center:[],business_unit:[]}} companies={[{id:'a',name:'Company A'},{id:'b',name:'Company B'}]} writableCompanyIds={['a','b']} isGroupAdmin actions={{save,setCriteria:vi.fn(async()=>({ok:true as const})),assign:vi.fn(async()=>({ok:true as const})),unassign:vi.fn(async()=>({ok:true as const})),copyToCompanies:vi.fn(async()=>({ok:true as const}))}}/>);
+ await user.click(screen.getByRole('button',{name:en.admin.systemLabels.addRow}));await user.click(within(rows(container)[0]).getByRole('button',{name:en.admin.systemLabels.scopeGlobal}));const dialog=screen.getByRole('dialog');await user.click(within(dialog).getByRole('checkbox',{name:en.admin.systemLabels.scopeGlobal}));await user.click(within(dialog).getByRole('checkbox',{name:'Company A'}));await user.click(within(dialog).getByRole('checkbox',{name:'Company B'}));await user.click(within(dialog).getByRole('button',{name:en.admin.systemLabels.apply}));await user.type(codeInput(rows(container)[0]),'B-only code');await user.click(screen.getByRole('button',{name:en.admin.systemLabels.saveAll}));
+ expect(save).toHaveBeenCalledWith('department',expect.objectContaining({creates:[expect.objectContaining({companyId:'b',companyIds:['b'],isGlobal:false})]}));
+});

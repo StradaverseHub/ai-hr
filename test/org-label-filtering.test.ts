@@ -4,7 +4,7 @@
  * Server-side halves of the change:
  *   - transferEmployee now guards department / position / cost-centre CHANGED-ONLY: a newly-supplied
  *     value must be usable by the employment's company under the Shared System Labels resolver
- *     (origin ∪ shared-in ∪ global, flag-gated — labelUsableByCompany) AND not archived; re-supplying
+ *     (Global or explicit companies — labelUsableByCompany) AND not archived; re-supplying
  *     the stored current value (even legacy cross-company data) keeps working.
  *   - setEmploymentAssignment applies the same resolver + archived check to a CHANGED department /
  *     position (the BU check is covered by test/personnel-org-assignment-standardization.test.ts),
@@ -173,11 +173,10 @@ describe('570e3311 — setEmploymentAssignment changed-only department / positio
     const coB = await secondCompany();
     const shared = await createPosition(a, { companyId: coB, title: 'Shared Position' });
     await assignLabelToCompanies(a, { kind: 'position', labelId: shared.id, companyIds: [b.companyId] });
-    // d61f0ff2: assigning AUTO-ENABLES sharing for the target company; the flag is now an explicit
-    // OPT-OUT. Opted out, the shared-in position is NOT a valid option (origin-only strictness kept).
+    // Retired flag data has no effect on explicit Criteria availability.
     await owner.db.update(schema.company).set({sharedSystemLabels:false}).where(eq(schema.company.id,b.companyId));
     const first=await setEmploymentAssignment(a,{employmentId:hire.employmentId,effectiveDate:'2026-06-01',positionId:shared.id});expect(first.changed).toBe(true);
-    // Opted back in → accepted.
+    // The other legacy flag state must not change the saved Criteria or force another assignment version.
     await owner.db.update(schema.company).set({sharedSystemLabels:true}).where(eq(schema.company.id,b.companyId));
     const res = await setEmploymentAssignment(a, {
       employmentId: hire.employmentId,
@@ -196,7 +195,7 @@ describe('570e3311 — setEmploymentAssignment changed-only department / positio
     await assignLabelToCompanies(a, { kind: 'position', labelId: shared.id, companyIds: [b.companyId] });
     await owner.db.update(schema.company).set({sharedSystemLabels:true}).where(eq(schema.company.id,b.companyId));
     await setEmploymentAssignment(a, { employmentId: hire.employmentId, effectiveDate: '2026-03-01', positionId: shared.id });
-    // Sharing later switched off — the stored value is now outside the company's normal option set.
+    // Changing retired flag data does not change the saved option set or retained value.
     await owner.db.update(schema.company).set({sharedSystemLabels:false}).where(eq(schema.company.id,b.companyId));
     // An Organisation Assignment save that does NOT touch position (the pinned UI re-posts the current
     // value) still applies the department change and carries the position forward.
@@ -252,16 +251,10 @@ describe('570e3311 — employee detail page wiring pins', () => {
   });
 });
 
-/**
- * d61f0ff2 — the empty-dropdown regression: Criteria (label_company_assignment) rows were written
- * unconditionally, but the resolver ignored them (and global labels) while the target company's
- * shared_system_labels flag stayed at its OFF default — so a company whose labels were all
- * distributed through Criteria saw EMPTY hire-form dropdowns. Fix under test: every Criteria write
- * now auto-enables the flag for its target companies (same transaction); the flag stays an explicit
- * per-company opt-out.
- */
-describe('d61f0ff2 — Criteria assignment auto-enables company sharing (never silently ignored)', () => {
-  it('assignLabelToCompanies flips shared_system_labels ON for the target company and the label resolves immediately', async () => {
+/** The original empty-dropdown regression stays fixed by explicit Criteria alone. Company flag data
+ * remains unchanged and cannot hide an assigned or Global code. */
+describe('Criteria availability never depends on changing retired company flags', () => {
+  it('assignLabelToCompanies resolves immediately without changing company flag data', async () => {
     const a = adminCtx(b);
     const coB = await secondCompany();
     const shared = await createDepartment(a, { companyId: coB, name: 'Criteria Dept' });
@@ -270,11 +263,11 @@ describe('d61f0ff2 — Criteria assignment auto-enables company sharing (never s
     const [co] = await owner.db.select().from(schema.company).where(eq(schema.company.id, b.companyId));
     expect(co.sharedSystemLabels).toBe(false);
     expect(await labelIdsForCompany(a, 'department', b.companyId)).toContain(shared.id);
-    // Substrate: the auto-enable appends the SAME company event the manual Sharing toggle does.
+    // Criteria owns its own event; it does not fabricate a company-configuration change.
     expect(await eventTypesFor(b.tenantId,b.companyId)).not.toContain('company.shared-labels.enabled');
   });
 
-  it('setLabelGlobal(true) enables sharing for every company of the tenant so the global label surfaces everywhere', async () => {
+  it('setLabelGlobal(true) resolves in every company without changing company flag data', async () => {
     const a = adminCtx(b); // group admin — passes the is_global trigger gate
     const coB = await secondCompany();
     const glob = await createPosition(a, { companyId: b.companyId, title: 'Global Criteria Pos' });

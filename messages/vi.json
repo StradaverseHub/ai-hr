@@ -8701,6 +8701,7 @@
           "error": "Lỗi"
         }
       },
+      "headUnavailable": "Đã chỉ định trưởng bộ phận — không có thông tin chi tiết",
       "criteriaHelp": "Mã Toàn cục áp dụng cho mọi công ty hiện tại và được thêm sau này. Mỗi mã có thể dùng danh sách công ty được chọn. Giới hạn của quản trị viên công ty được giữ nguyên; chỉ quản trị viên tập đoàn được thay đổi tiêu chí Toàn cục."
     },
     "leave": {

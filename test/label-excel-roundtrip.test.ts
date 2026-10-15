@@ -1,11 +1,12 @@
 import {afterAll,beforeAll,beforeEach,describe,it,expect} from 'vitest';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as s from '../db/schema';
 import {downloadSystemLabelsWithData,previewSystemLabelImport,applySystemLabelImport} from '../core/system-label-import';
-import {createCompany} from '../core/admin';
+import {createCompany,createDepartment} from '../core/admin';
 import {setLabelGlobal} from '../core/system-labels';
 import {LABEL_IMPORT_DEFINITIONS} from '../lib/system-label-definition';
 import {createProfileOption,updateProfileOption,setProfileOptionActive} from '../core/profile-options';
@@ -48,6 +49,34 @@ describe('System Labels populated workbook round trip',()=>{
   expect((await previewSystemLabelImport(ctx,changed,'merge')).rows.find(row=>row.values.Code==='GLOBAL_ORIGIN')).toMatchObject({outcome:'error'});
   await expect(downloadSystemLabelsWithData(ctx,{companyIds:[co.id],kinds:['department'],includeInactive:false})).rejects.toThrow('accessible');
   expect((await owner.db.select().from(s.department).where(and(eq(s.department.companyId,co.id),eq(s.department.name,'GLOBAL_ORIGIN'))))[0].label).toBe('Global visible');
+ });
+ it('previews and applies a valid company-Criteria swap as one canonical batch, and flags a conflicting final selection before Apply',async()=>{
+  const admin=adminCtx(b),other=await createCompany(admin,{legalName:'Synthetic swap company'}),first=(await createDepartment(admin,{companyId:b.companyId,name:'SWAP_CODE'})).id,second=(await createDepartment(admin,{companyId:other.id,name:'SWAP_CODE'})).id;
+  const makeBook=(targets:string[])=>buildSystemLabelWorkbook({kinds:['department'],references:{companies:[],grades:[],employees:[]},rows:{department:[{Company:b.companyId,Code:'SWAP_CODE',Criteria:'companies','Criteria Companies':targets[0],Label:'First'},{Company:other.id,Code:'SWAP_CODE',Criteria:'companies','Criteria Companies':targets[1],Label:'Second'}]}});
+  const bytes=await makeBook([other.id,b.companyId]),preview=await previewSystemLabelImport(admin,bytes,'update');expect(preview.valid).toBe(true);expect(preview.rows.map(row=>row.outcome)).toEqual(['update','update']);
+  expect(await applySystemLabelImport(admin,{bytes,mode:'update',token:preview.token,confirmUpdates:true})).toMatchObject({updated:2});
+  const {companiesForLabel}=await import('../core/system-labels');expect(await companiesForLabel(admin,'department',first)).toEqual([other.id]);expect(await companiesForLabel(admin,'department',second)).toEqual([b.companyId]);
+  const conflict=await previewSystemLabelImport(admin,await makeBook([b.companyId,b.companyId]),'update');expect(conflict.valid).toBe(false);expect(conflict.rows.some(row=>row.outcome==='error'&&row.message.includes('proposed company Criteria'))).toBe(true);
+ });
+ it('does not block a Criteria workbook behind ordinary writer RowExclusive table locks',async()=>{
+  const admin=adminCtx(b),bytes=await buildSystemLabelWorkbook({kinds:['department'],references:{companies:[],grades:[],employees:[]},rows:{department:[{Company:b.companyId,Code:'CONCURRENT_WORKBOOK',Criteria:'companies','Criteria Companies':b.companyId,Label:'Concurrent workbook'}]}});
+  const preview=await previewSystemLabelImport(admin,bytes,'add');expect(preview.valid).toBe(true);
+  let release!:()=>void,ready!:()=>void,setupFailed!:(error:unknown)=>void,timer:ReturnType<typeof setTimeout>|undefined;
+  const released=new Promise<void>(resolve=>{release=resolve;}),locked=new Promise<void>((resolve,reject)=>{ready=resolve;setupFailed=reject;});
+  const writer=withTenant(admin,async tx=>{await tx.execute(sql`LOCK TABLE department, employment IN ROW EXCLUSIVE MODE`);ready();await released;});
+  void writer.catch(setupFailed);let applying:ReturnType<typeof applySystemLabelImport>|undefined;
+  try{await locked;applying=applySystemLabelImport(admin,{bytes,mode:'add',token:preview.token,confirmUpdates:false});
+    const bounded=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Workbook waited for ordinary writer table locks.')),3000);});
+    expect(await Promise.race([applying,bounded])).toMatchObject({imported:1});
+  }finally{release();if(timer)clearTimeout(timer);await Promise.allSettled(applying?[writer,applying]:[writer]);}
+ });
+ it('permits an origin company administrator to edit Global text without changing Criteria',async()=>{
+  const admin=adminCtx(b),id=(await createDepartment(admin,{companyId:b.companyId,name:'GLOBAL_TEXT_OWNER'})).id;await setLabelGlobal(admin,{kind:'department',labelId:id,isGlobal:true});
+  const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'origin-text-admin'}).returning();await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
+  const ctx={...admin,userId:user.id,grants:[{role:'hr_admin' as const,companyId:b.companyId}]};
+  const bytes=await buildSystemLabelWorkbook({kinds:['department'],references:{companies:[],grades:[],employees:[]},rows:{department:[{Company:b.companyId,Code:'GLOBAL_TEXT_OWNER',Criteria:'global','Criteria Companies':'',Label:'Origin text edit'}]}});
+  const preview=await previewSystemLabelImport(ctx,bytes,'update');expect(preview.valid).toBe(true);expect(preview.rows[0].outcome).toBe('update');await applySystemLabelImport(ctx,{bytes,mode:'update',token:preview.token,confirmUpdates:true});
+  expect((await owner.db.select().from(s.department).where(eq(s.department.id,id)))[0]).toMatchObject({isGlobal:true,label:'Origin text edit'});
  });
  it('binds export history to the authenticated user and tenant and refuses an employee export',async()=>{
   const bytes=await make();

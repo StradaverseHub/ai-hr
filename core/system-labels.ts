@@ -13,6 +13,7 @@ import {
   department,
   employment,
   labelCompanyAssignment,
+  person,
   position,
   LABEL_KINDS,
   type LabelKind,
@@ -59,6 +60,18 @@ function aggForKind(kind: LabelKind): string {
 
 function assertKind(kind: string): asserts kind is LabelKind {
   if (!(LABEL_KINDS as readonly string[]).includes(kind)) throw new Error(`Unknown system-label kind “${kind}”.`);
+}
+
+/** Acquire the Criteria owner's persistent coordination rows before taking any label row lock.
+ * All four kinds are intentional: an assignment, department link or mixed workbook can touch more
+ * than one kind. Every caller uses the same order as the reference-write database trigger.
+ * This is coordination only, never authorization; the database still checks tenant identity/RLS.
+ * A caller-supplied transaction must invoke this before its first label FOR SHARE/FOR UPDATE.
+ */
+export async function lockLabelCriteriaTx(tx: Tx, tenantId: string): Promise<void> {
+  for (const kind of LABEL_KINDS) {
+    await tx.execute(sql`select app.lock_system_label_criteria(${tenantId}::uuid, ${kind})`);
+  }
 }
 
 /** Load a label row's origin company + is_global, or throw if it does not exist in the tenant. */
@@ -151,7 +164,6 @@ export function labelMaintenanceCompanies(ctx:SessionContext){return withTenant(
 });}
 /** Retain stored heads, including ended employments; writes independently validate current eligibility. */
 export function labelMaintenanceHeadOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
- const {person}=await import('../db/schema');
  const rows=await tx.select({employmentId:employment.id,companyId:employment.companyId,employeeCode:employment.employeeCode,name:person.fullName}).from(employment)
   .innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId)))
   .where(and(eq(employment.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${employment.companyId})`)).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
@@ -258,39 +270,44 @@ export function listLabelAssignments(ctx: SessionContext, kind: string): Promise
   );
 }
 
-/** One complete Criteria save. All permission, in-use and collision checks share this Tx. */
-export async function setLabelCriteria(
-  ctx: SessionContext,
-  p: { kind: string; labelId: string; isGlobal: boolean; companyIds: string[] },
-  existingTx?: Tx,
-): Promise<{ isGlobal: boolean; companyIds: string[] }> {
-  assertKind(p.kind);
-  const kind = p.kind;
-  const ids = [...new Set(p.companyIds)];
-  if (ids.length > 1000 || ids.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))
-    throw new Error('Choose valid companies from the available list.');
-  if (!p.isGlobal && !ids.length) throw new Error('Select at least one company, or choose Global.');
-  return tenantMutation(ctx, existingTx, async tx => {
+export type LabelCriteriaChange={kind:string;labelId:string;isGlobal:boolean;companyIds:string[]};
+/** One complete owner for a single save or a reviewed batch. No caller can skip final validation. */
+export async function setLabelCriteria(ctx:SessionContext,p:LabelCriteriaChange,existingTx?:Tx):Promise<{isGlobal:boolean;companyIds:string[]}>{
+ const [result]=await setLabelCriteriaBatch(ctx,[p],existingTx);return {isGlobal:result.isGlobal,companyIds:result.companyIds};
+}
+export async function setLabelCriteriaBatch(ctx:SessionContext,changes:readonly LabelCriteriaChange[],existingTx?:Tx):Promise<{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]>{
+ if(!Array.isArray(changes)||changes.some(change=>!change||typeof change.isGlobal!=='boolean'||!Array.isArray(change.companyIds)))throw new Error('Choose valid label Criteria.');
+ if(changes.length>1000||new Set(changes.map(change=>change.kind+':'+change.labelId)).size!==changes.length)throw new Error('Choose each label once within the supported batch size.');
+ for(const p of changes){assertKind(p.kind);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.labelId))throw new UnknownLabelError();const ids=[...new Set(p.companyIds)];if(ids.length>1000||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new Error('Choose valid companies from the available list.');if(!p.isGlobal&&!ids.length)throw new Error('Select at least one company, or choose Global.');}
+ return tenantMutation(ctx,existingTx,async tx=>{
+  await lockLabelCriteriaTx(tx, ctx.tenantId);
+  const plans:{kind:LabelKind;labelId:string;isGlobal:boolean;companyIds:string[]}[]=[],results:typeof plans=[];
+  for(const p of changes){assertKind(p.kind);const kind=p.kind,ids=[...new Set(p.companyIds)];
     const table = KIND_TABLE[kind];
-    await tx.execute(sql`select app.lock_system_label_criteria(${ctx.tenantId}::uuid, ${kind})`);
     const [label] = await tx.select({ companyId: table.companyId, isGlobal: table.isGlobal })
       .from(table).where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, p.labelId))).for('update');
     if (!label) throw new UnknownLabelError();
     const proof = await tx.execute(sql`select app.is_group_admin() as global,
       app.is_admin_for(${label.companyId}::uuid) as origin`) as unknown as {global:boolean;origin:boolean}[];
     if (!proof[0]?.origin) throw new Error('You do not administer this label’s creation company.');
+    const previous = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
+      .where(and(eq(labelCompanyAssignment.tenantId, ctx.tenantId), eq(labelCompanyAssignment.labelKind, kind), eq(labelCompanyAssignment.labelId, p.labelId)));
+    const effective = p.isGlobal ? [] : ids;
+    // Unchanged availability is not a Criteria mutation. Preserve origin-admin text/archive rights,
+    // including retained scoped companies outside their scope and legacy junctions on a Global row.
+    if (label.isGlobal === p.isGlobal && (p.isGlobal || [...previous.map(row => row.companyId)].sort().join(',') === [...effective].sort().join(','))) {
+      results.push({kind,labelId:p.labelId,isGlobal:p.isGlobal,companyIds:effective});continue;
+    }
     if ((p.isGlobal || label.isGlobal) && !proof[0]?.global) throw new Error('Only a group administrator may change Global criteria.');
     const companies = await tx.select({ id: company.id, archivedAt: company.archivedAt,
       writable: sql<boolean>`app.is_admin_for(${company.id})` }).from(company)
       .where(and(eq(company.tenantId, ctx.tenantId), ids.length ? inArray(company.id, ids) : sql`false`));
     if (companies.length !== ids.length || companies.some(row => !row.writable || row.archivedAt))
       throw new Error('A selected company is unavailable or outside your administrator scope.');
-    const previous = await tx.select({ companyId: labelCompanyAssignment.companyId }).from(labelCompanyAssignment)
-      .where(and(eq(labelCompanyAssignment.tenantId, ctx.tenantId), eq(labelCompanyAssignment.labelKind, kind), eq(labelCompanyAssignment.labelId, p.labelId)));
     const priorIds = label.isGlobal
       ? (await tx.select({ id: company.id }).from(company).where(eq(company.tenantId, ctx.tenantId))).map(row => row.id)
       : previous.map(row => row.companyId);
-    const effective = p.isGlobal ? [] : ids;
+
     const losing = p.isGlobal ? [] : priorIds.filter(id => !effective.includes(id));
     if (losing.length && !proof[0]?.global) {
       const allowed = await tx.select({ id: company.id }).from(company)
@@ -299,17 +316,18 @@ export async function setLabelCriteria(
     }
     if (await labelInUseByCompanies(tx, ctx.tenantId, kind, p.labelId, losing))
       throw new LabelInUseError('A removed company still uses this label. Reassign its records before changing Criteria.');
-    if (label.isGlobal === p.isGlobal && [...previous.map(row => row.companyId)].sort().join(',') === [...effective].sort().join(','))
-      return { isGlobal: p.isGlobal, companyIds: effective };
-    await tx.update(table).set({ isGlobal: p.isGlobal }).where(eq(table.id, p.labelId));
-    await tx.delete(labelCompanyAssignment).where(and(eq(labelCompanyAssignment.tenantId, ctx.tenantId),
-      eq(labelCompanyAssignment.labelKind, kind), eq(labelCompanyAssignment.labelId, p.labelId)));
-    if (effective.length) await tx.insert(labelCompanyAssignment).values(effective.map(companyId => ({ tenantId: ctx.tenantId, labelKind: kind, labelId: p.labelId, companyId })));
-    await assertLabelCriteriaCodeTx(tx, ctx.tenantId, kind, p.labelId);
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: aggForKind(kind), aggregateId: p.labelId,
-      eventType: `${aggForKind(kind)}.criteria.changed`, actor: actorOf(ctx), payload: { kind, isGlobal: p.isGlobal, companyIds: effective } });
-    return { isGlobal: p.isGlobal, companyIds: effective };
-  });
+
+    const plan={kind,labelId:p.labelId,isGlobal:p.isGlobal,companyIds:effective};plans.push(plan);results.push(plan);
+  }
+  for(const p of plans){const table=KIND_TABLE[p.kind];
+    await tx.update(table).set({isGlobal:p.isGlobal}).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,p.labelId)));
+    await tx.delete(labelCompanyAssignment).where(and(eq(labelCompanyAssignment.tenantId,ctx.tenantId),eq(labelCompanyAssignment.labelKind,p.kind),eq(labelCompanyAssignment.labelId,p.labelId)));
+    if(p.companyIds.length)await tx.insert(labelCompanyAssignment).values(p.companyIds.map(companyId=>({tenantId:ctx.tenantId,labelKind:p.kind,labelId:p.labelId,companyId})));
+  }
+  // All scopes are now final. Deferred database constraints independently check that same final state.
+  for(const p of plans){await assertLabelCriteriaCodeTx(tx,ctx.tenantId,p.kind,p.labelId);await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:aggForKind(p.kind),aggregateId:p.labelId,eventType:`${aggForKind(p.kind)}.criteria.changed`,actor:actorOf(ctx),payload:{kind:p.kind,isGlobal:p.isGlobal,companyIds:p.companyIds}});}
+  return results;
+ });
 }
 
 /** Shared by criteria changes and all label code/name saves. No other label values are exposed. */

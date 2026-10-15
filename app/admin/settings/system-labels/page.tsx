@@ -150,7 +150,7 @@ export default async function SystemLabelsPage({
     });
   }
 
-  const gridCompanies = companies.filter(c => maintenanceIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
+  const gridCompanies = companies.filter(c => maintenanceIds.has(c.id)).map(c => ({ id: c.id, name: c.name,archived:!!c.archivedAt }));
 
   const actions = {
     save: saveLabelsGridAction,

@@ -8701,6 +8701,7 @@
           "error": "Error"
         }
       },
+      "headUnavailable": "Assigned head — details unavailable",
       "criteriaHelp": "Global codes are available in every current and future company. Each code can instead use a selected company list. Company administrators retain their existing limits; only group administrators can change Global criteria."
     },
     "leave": {

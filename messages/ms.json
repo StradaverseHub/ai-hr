@@ -8701,6 +8701,7 @@
           "error": "Ralat"
         }
       },
+      "headUnavailable": "Ketua ditetapkan — butiran tidak tersedia",
       "criteriaHelp": "Kod Global tersedia untuk semua syarikat semasa dan baharu. Setiap kod boleh menggunakan senarai syarikat terpilih. Had pentadbir syarikat kekal; hanya pentadbir kumpulan boleh mengubah kriteria Global."
     },
     "leave": {

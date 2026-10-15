@@ -15,9 +15,9 @@
  *      page's own reads, for all four kinds: a global row created under company A is in scope for a scope
  *      containing only company B; an A-specific row is not; and a single-company scope returns exactly
  *      (that company's rows ∪ all global rows).
- *   2. `globalUsable = false` still excludes globals — the Shared System Labels opt-out that
- *      `labelUsableByCompany` applies server-side, which the delegation coverage picker mirrors so it
- *      never offers an option its own save would refuse.
+ *   2. Global availability ignores retired sharing flags; scoped availability follows only the explicit
+ *      company IDs, including when creation company is excluded. Delegation and other client pickers
+ *      mirror the canonical server owner without a third flag argument.
  *   3. Source pins on the four surfaces that narrow a loaded catalogue to a company, so a one-line revert
  *      to origin-only cannot pass this suite (the precedent is the page-source pins in
  *      test/org-label-filtering.test.ts).
@@ -72,8 +72,7 @@ async function secondCompany(): Promise<string> {
   return co.id;
 }
 
-/** A company-scoped hr_admin, as the System Labels page sees one: reads are tenant-wide, and the page's
- *  own `inScope` is what narrows them to the admin's companies. */
+/** A company-scoped hr_admin: maintenance applies database administration scope before its bounds. */
 async function adminFor(companyId: string): Promise<SessionContext> {
   const [u] = await owner.db
     .insert(schema.appUser)
@@ -85,9 +84,8 @@ async function adminFor(companyId: string): Promise<SessionContext> {
   return { tenantId: b.tenantId, userId: u.id, grants: [{ role: 'hr_admin', companyId }] };
 }
 
-/** The two fields the rule reads, which is all these tests need off a row (each list returns a wider,
- *  kind-specific shape — narrowing here keeps the four kinds in one table). */
-type LabelRow = { id: string; companyId: string; isGlobal: boolean };
+/** Keep the explicit Criteria projection in the common client-consumer contract. */
+type LabelRow = { id: string; companyId: string; isGlobal: boolean; assignedCompanyIds: string[] };
 
 /** Cost centres and business units carry a UNIQUE code, so the fixtures mint their own rather than
  *  deriving one from the name (two fixtures whose names share a prefix would otherwise collide). */
@@ -133,8 +131,8 @@ describe('f1bbc572 — a Global System Label is in scope for every company', () 
       const aOnlyId = await K.create(a, b.companyId, `AOnly${K.kind}`);
       const bOwnId = await K.create(a, coB, `BOwn${K.kind}`);
 
-      // Read exactly as the page does — tenant-wide, through a company-B-scoped admin — then apply the
-      // page's own narrowing for a scope that contains company B and nothing else.
+      // Read through the page's already scoped database owner, then compare the downstream
+      // client picker for exactly company B against the same availability rule.
       const rows = await K.list(await adminFor(coB));
       const seen = labelsInCompanyScope(rows, new Set([coB])).map((r) => r.id);
 
@@ -191,7 +189,8 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
   const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 
   it('the common maintenance page consumes database-scoped reads without a company-switcher filter',()=>{
-    const page=src('app/admin/settings/system-labels/page.tsx'),admin=src('core/admin.ts');
+    const page=src('app/admin/settings/system-labels/page.tsx'),admin=src('core/admin.ts'),tools=src('components/system-label-import-tools.tsx');
+    expect(tools).toContain('labelMaintenanceCompanies(session)');expect(tools).not.toMatch(/scopedAdmin|scopeIds/);
     expect(page).toContain('labelMaintenanceCompanies(s)');expect(page).not.toMatch(/scopedIdSet|globalUsable|sharedSystemLabels|labelsInCompanyScope/);
     for(const [fn,table,kind]of [['listDepartmentsForLabels','department','department'],['listPositionsForLabels','position','position'],['listCostCentersForLabels','costCenter','cost_center'],['listBusinessUnitsForLabels','businessUnit','business_unit']]){
       const start=admin.indexOf('export function '+fn+'('),end=admin.indexOf('\nexport function ',start+1);expect(start).toBeGreaterThanOrEqual(0);const body=admin.slice(start,end<0?admin.length:end);expect(body.length).toBeGreaterThan(500);expect(body).toContain(`labelMaintenanceCondition(${table}, '${kind}')`);expect(body).toContain('.limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)');
