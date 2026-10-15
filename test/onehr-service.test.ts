@@ -64,6 +64,7 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     const report=await perf.getAssessmentAdminReport(a,cycleId,{kind:'participants',groupBy:'person',businessGroup:'parent business group'});expect(report.rows.length).toBeGreaterThan(0);expect(report.rows.every(r=>r[2]==='Parent business group'&&r[4]==='Finance')).toBe(true);
     const [foreign]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated company'}).returning();const [account]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:account.id,role:'hr_admin',companyId:foreign.id});
     const scoped={...a,userId:account.id,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:foreign.id}]};await expect(perf.getAssessmentAdminReport(scoped,cycleId,{kind:'participants'})).rejects.toThrow();
+    expect((await perf.getAssessmentAdminAssistant(scoped)).cycle).toBeNull();const foundation=await perf.getAssessmentAdminReadiness(scoped);expect(foundation.steps.find(s=>s.label==='People loaded')).toMatchObject({detail:'Nothing yet',done:false});
   });
   it('Performance admin report history excludes old events and other actors',async()=>{
     await owner.db.insert(schema.domainEvent).values([{tenantId:b.tenantId,aggregateType:'onehr',aggregateId:cycleId,eventType:'onehr.admin-report-built',actorType:'user',actorId:a.userId,occurredAt:new Date(Date.now()-31*86400000),payload:{params:{kind:'participants'}}},{tenantId:b.tenantId,aggregateType:'onehr',aggregateId:cycleId,eventType:'onehr.admin-report-built',actorType:'user',actorId:mgr.userId,payload:{params:{kind:'participants'}}}]);
@@ -94,10 +95,44 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     vi.mocked(generateDraft).mockResolvedValue('{"actions":[{"tool":"save_setting","args":{"minValid":1}}]}');expect((await perf.askAssessmentAdmin(a,cycleId,'panel target')).mode).toBe('search');
     expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
   });
+  it('Performance admin discards proposed reports after settings or provider configuration change',async()=>{
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
+    const report='{"actions":[{"tool":"build_report","args":{"kind":"participants"}}]}';
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(groupAdmin,'review',false);return report;});
+    expect((await perf.askAssessmentAdmin(a,cycleId,'Participants report')).mode).toBe('search');expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
+    await perf.setAssessmentAiSwitch(groupAdmin,'review',true);
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'changed',apiKey:'fixture-local-only'});return report;});
+    expect((await perf.askAssessmentAdmin(a,cycleId,'Participants report')).mode).toBe('search');expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
+  });
+  it('Performance admin refuses provider results after administrator access is revoked',async()=>{
+    const [account]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();const [role]=await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:account.id,role:'hr_admin',companyId:b.companyId}).returning();
+    const scoped={...a,userId:account.id,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,role.id));return '{"actions":[{"tool":"build_report","args":{"kind":"participants"}}]}';});
+    await expect(perf.askAssessmentAdmin(scoped,cycleId,'Participants report')).rejects.toThrow(/administrator access/);
+    expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
+  });
+  it('Performance admin home supports no active cycle and fresh current-cycle selection',async()=>{
+    expect((await perf.getAssessmentAdminAssistant(a)).cycle?.id).toBe(cycleId);
+    await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
+    const home=await perf.getAssessmentAdminAssistant(a);expect(home.cycle).toBeNull();expect(home.items.some(i=>i.href==='/performance')).toBe(true);expect(home.history).toEqual([]);
+    const ready=await perf.getAssessmentAdminReadiness(a);expect(ready.total).toBe(3);expect(ready.steps.find(s=>s.label==='An active cycle')).toMatchObject({detail:'Nothing yet',done:false});
+    await expect(perf.getAssessmentAdminAssistant(self)).rejects.toThrow(/administrator access/);
+    await expect(perf.runAssessmentAdminAction(a,undefined,{tool:'build_report',args:{kind:'participants'}})).rejects.toThrow(/Open a cycle/);
+  });
+  it('Performance admin readiness reads release grants before freezing and reflects revocation',async()=>{
+    await complete();await perf.releaseOnehrResult(a,reviewId,'performance',true);await perf.releaseOnehrResult(a,reviewId,'feedback',true);
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toEqual([]);
+    const ready=await perf.getAssessmentAdminReadiness(a,cycleId);expect(ready.steps.find(s=>s.label==='Reports released')).toMatchObject({detail:'1 of 1 people',done:true});expect(ready.steps.find(s=>s.label==='Results released')).toMatchObject({detail:'1 people',done:true});
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);await perf.releaseOnehrResult(a,reviewId,'feedback',false);
+    const revoked=await perf.getAssessmentAdminReadiness(a,cycleId);expect(revoked.steps.find(s=>s.label==='Reports released')).toMatchObject({detail:'0 of 1 people',done:false});expect(revoked.steps.find(s=>s.label==='Results released')).toMatchObject({detail:'Nothing yet',done:false});
+  });
   it('Performance admin readiness uses real denominators and omits switched-off modules',async()=>{
     const before=await perf.getAssessmentAdminReadiness(a,cycleId);expect(before.steps.find(s=>s.label==='Responses in')).toMatchObject({detail:'Nothing yet',done:false});
     const c=await perf.getOnehrCycle(a,cycleId);await perf.updateAssessmentModules(a,cycleId,c!.revision,{...c!.policy.modules,tm:false,pm:false,calibration:false});
     const after=await perf.getAssessmentAdminReadiness(a,cycleId);expect(after.steps.map(s=>s.module)).toEqual(['Foundation','Foundation','Foundation']);
+    const index=await perf.getAssessmentAdminIndex(a,cycleId);expect(index.items.filter(i=>i.kind==='page').some(i=>/panels|calibration|kpi-import/.test(i.href))).toBe(false);expect(index.items.filter(i=>i.kind==='report').some(i=>i.href.includes('kind=progress'))).toBe(false);
   });
   it('Performance guide refuses rater and scoring questions before retrieval or provider and stores no question text',async()=>{
     vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'openai',model:'fixture',apiKey:'fixture-local-only'});

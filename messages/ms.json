@@ -18461,6 +18461,7 @@
       "title": "Pembantu pentadbir prestasi",
       "close": "Tutup",
       "intro": "Cari tetapan semasa, buka halaman berkaitan, semak kesediaan atau bina laporan. Perubahan, penerbitan dan mesej dibuat pada halaman masing-masing.",
+      "noCycle": "Buka kitaran untuk melihat tetapannya dan membina laporan.",
       "failed": "Permintaan tidak dapat diselesaikan. Cuba lagi.",
       "readiness": "Semak kesediaan kitaran",
       "build": "Bina laporan",

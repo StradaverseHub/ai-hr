@@ -18461,6 +18461,7 @@
       "title": "Trợ lý quản trị hiệu suất",
       "close": "Đóng",
       "intro": "Tìm cài đặt hiện tại, mở trang phù hợp, kiểm tra mức độ sẵn sàng hoặc tạo báo cáo. Thay đổi, công bố và tin nhắn được thực hiện trên trang tương ứng.",
+      "noCycle": "Mở một chu kỳ để xem thiết lập và tạo báo cáo.",
       "failed": "Không thể hoàn tất yêu cầu. Hãy thử lại.",
       "readiness": "Kiểm tra mức độ sẵn sàng của kỳ",
       "build": "Tạo báo cáo",

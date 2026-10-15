@@ -18461,6 +18461,7 @@
       "title": "Performance admin assistant",
       "close": "Close",
       "intro": "Find current settings, open the right page, check readiness or build a report. Changes, releases and messages stay on their own pages.",
+      "noCycle": "Open a cycle to view its settings and build reports.",
       "failed": "The request could not be completed. Try again.",
       "readiness": "Check cycle readiness",
       "build": "Build report",

@@ -313,6 +313,6 @@ export async function performanceGuideExportAction(filters:unknown={}){
  const s=await getSession();try{return {csv:await perf.exportPerformanceGuideReport(s,filters)};}catch(error){return {error:publicErrorMessage(error)};}
 }
 
-export async function performanceAdminAssistantAction(cycleId:string){const s=await getSession();try{return await perf.getAssessmentAdminAssistant(s,cycleId);}catch(error){return {error:publicErrorMessage(error)};}}
-export async function performanceAdminAskAction(cycleId:string,question:string,history:unknown=[]){const s=await getSession();try{return await perf.askAssessmentAdmin(s,cycleId,question,history);}catch(error){return {error:publicErrorMessage(error)};}}
-export async function performanceAdminToolAction(cycleId:string,action:unknown){const s=await getSession();try{return await perf.runAssessmentAdminAction(s,cycleId,action);}catch(error){return {error:publicErrorMessage(error)};}}
+export async function performanceAdminAssistantAction(cycleId?:string){const s=await getSession();try{return await perf.getAssessmentAdminAssistant(s,cycleId);}catch(error){return {error:publicErrorMessage(error)};}}
+export async function performanceAdminAskAction(cycleId:string|undefined,question:string,history:unknown=[]){const s=await getSession();try{return await perf.askAssessmentAdmin(s,cycleId,question,history);}catch(error){return {error:publicErrorMessage(error)};}}
+export async function performanceAdminToolAction(cycleId:string|undefined,action:unknown){const s=await getSession();try{return await perf.runAssessmentAdminAction(s,cycleId,action);}catch(error){return {error:publicErrorMessage(error)};}}
