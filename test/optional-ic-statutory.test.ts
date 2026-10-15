@@ -199,7 +199,7 @@ describe('Optional Identity No on the statutory row (35524d1f)', () => {
       }),
       currentStep: 3,
     });
-    await expect(completeEmployeeDraft(a, bad.id)).rejects.toThrow(/Invalid identity number/);
+    await expect(completeEmployeeDraft(a, bad.id)).rejects.toMatchObject({ code: 'profile_invalid', fields: [{ tab: 'profile', field: 'icNumber' }] });
     const after = await owner.db.select({ id: schema.employment.id }).from(schema.employment);
     expect(after.length).toBe(before.length);
   });
