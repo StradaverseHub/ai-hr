@@ -18981,9 +18981,11 @@
   "leaveCreditDetails": {
     "title": "假期积分详情",
     "subtitle": "您的假期积分记录：已获得的积分、补假已使用的积分及可用余额。",
-    "empty": "没有符合筛选条件的已获得假期积分。",
+    "empty": "您还没有假期额度记录。",
     "invalid": "筛选条件无效。此页面仅显示您本人的积分。",
-    "truncatedHint": "选择每页行数以查看其余假期额度。"
+    "truncatedHint": "选择每页行数以查看其余假期额度。",
+    "emptyFiltered": "没有符合筛选条件的已获得假期积分。",
+    "emptyPage": "此页没有假期额度记录。请选择上一页或首页。"
   },
   "labelExcelRoundTrip": {
     "blank": "下载空白模板",

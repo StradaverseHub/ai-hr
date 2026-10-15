@@ -18981,9 +18981,11 @@
   "leaveCreditDetails": {
     "title": "Chi tiết tín dụng nghỉ phép",
     "subtitle": "Lịch sử tín dụng nghỉ phép của bạn — số đã tích lũy, đã dùng cho nghỉ bù và số còn lại.",
-    "empty": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
+    "empty": "Bạn chưa có bản ghi phép được cộng nào.",
     "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn.",
-    "truncatedHint": "Chọn số dòng mỗi trang để xem các khoản phép còn lại."
+    "truncatedHint": "Chọn số dòng mỗi trang để xem các khoản phép còn lại.",
+    "emptyFiltered": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
+    "emptyPage": "Không có bản ghi phép được cộng trên trang này. Chọn Trước hoặc Đầu."
   },
   "labelExcelRoundTrip": {
     "blank": "Tải mẫu trống",

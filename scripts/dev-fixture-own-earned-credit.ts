@@ -91,15 +91,24 @@ async function main() {
   if (!line) await setReportingLine(hr.ctx, { subordinateEmploymentId: employee.employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: day(-365) });
   else if (line.managerEmploymentId !== manager.employmentId) throw new Error('Existing fixture manager changed; preserving it.');
   const [policy] = await owner.db.select().from(s.toilPolicy).where(eq(s.toilPolicy.companyId, company.id));
-  if (!policy) await setToilPolicy(hr.ctx, { companyId: company.id, enabled: true, accrualBasis: 'hours_worked', expiryDays: 90, onExpiry: 'lapse', allowFirstScheduleEligible: false, autoAccrueOnApproval: false, carryForwardAtYearEnd: false, employeeRequestEnabled: true });
+  if (!policy || !policy.enabled) {
+    // createCompany installs a disabled default. Initialize that default only before the fixture has
+    // minted any credit; a later browser change to an established fixture must remain untouched.
+    const existingCredits = await owner.db.select({ id: s.toilAccrual.id }).from(s.toilAccrual).innerJoin(s.employment, eq(s.employment.id, s.toilAccrual.employmentId)).where(eq(s.employment.companyId, company.id)).limit(1);
+    if (existingCredits.length) throw new Error('Existing fixture policy was disabled; preserving it.');
+    await setToilPolicy(hr.ctx, { companyId: company.id, enabled: true, accrualBasis: 'hours_worked', expiryDays: 90, onExpiry: 'lapse', allowFirstScheduleEligible: false, autoAccrueOnApproval: false, carryForwardAtYearEnd: false, employeeRequestEnabled: true });
+  }
   // Stable reasons identify each canonical fixture grant without depending on today's date on reruns.
   for (const [key, days, offset, reversed, expiryOffset] of [['employee', 0.75, -20, false, 60], ['employee', 1.25, -21, false, 90], ['employee', 1, -22, false, 110], ['employee', 1.5, -23, true, 90], ['manager', 1, -24, false, 90], ['hr', 1, -25, false, 90]] as const) {
     const subject = people.get(key)!;
     const reason = `Credit15 fixture ${key} ${offset}`;
     let [lot] = await owner.db.select().from(s.toilAccrual).where(and(eq(s.toilAccrual.employmentId, subject.employmentId), eq(s.toilAccrual.note, reason))).orderBy(asc(s.toilAccrual.id));
     if (!lot) {
+      // The canonical owner correctly prohibits HR self-grants. The existing seeded group HR grants
+      // the fictional HR person's one lot; the scoped HR grants the other fixture people's credits.
+      const operator = key === 'hr' ? await context(seedAdmin) : hr.ctx;
       await setRestDay(hr.ctx, { employmentId: subject.employmentId, shiftDate: day(offset) });
-      const created = await grantLeaveCredit(hr.ctx, { employmentId: subject.employmentId, workedDate: day(offset), days, reason, expiresOn: day(expiryOffset), today });
+      const created = await grantLeaveCredit(operator, { employmentId: subject.employmentId, workedDate: day(offset), days, reason, expiresOn: day(expiryOffset), today });
       [lot] = await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id, created.accrualId));
       if (reversed) await reverseLeaveCredit(hr.ctx, { accrualId: lot.id, reason: 'Credit fixture correction', today });
     }

@@ -18981,9 +18981,11 @@
   "leaveCreditDetails": {
     "title": "Butiran Kredit Cuti",
     "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
-    "empty": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
+    "empty": "Anda belum mempunyai rekod kredit cuti.",
     "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri.",
-    "truncatedHint": "Pilih bilangan baris setiap halaman untuk melihat baki kredit."
+    "truncatedHint": "Pilih bilangan baris setiap halaman untuk melihat baki kredit.",
+    "emptyFiltered": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
+    "emptyPage": "Tiada rekod kredit cuti pada halaman ini. Pilih Sebelumnya atau Pertama."
   },
   "labelExcelRoundTrip": {
     "blank": "Muat turun templat kosong",
