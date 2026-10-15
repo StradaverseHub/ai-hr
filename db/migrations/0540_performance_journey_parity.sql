@@ -2028,3 +2028,16 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assessment_guide_report(uuid,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assessment_guide_report(uuid,text,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Personal recent report parameters only; no snapshots, employee identities or conversation text.
+-- Function-scoped access also supports Performance partners whose general audit feed is restricted.
+CREATE OR REPLACE FUNCTION app.assessment_admin_report_history(wanted_cycle uuid)
+RETURNS TABLE(params jsonb,at text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT ev.payload->'params',ev.occurred_at::text FROM domain_event ev
+ WHERE ev.tenant_id=app.current_tenant_id() AND ev.actor_id=app.current_user_id()
+ AND app.onehr_cycle_admin(wanted_cycle) AND ev.aggregate_id=wanted_cycle
+ AND ev.event_type='onehr.admin-report-built' AND ev.occurred_at>=now()-interval '30 days'
+ ORDER BY ev.occurred_at DESC,ev.id DESC LIMIT 40
+$$;
+REVOKE ALL ON FUNCTION app.assessment_admin_report_history(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_admin_report_history(uuid) TO ai_hr_app;

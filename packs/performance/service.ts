@@ -60,3 +60,7 @@ export {getAssessmentTalentInsight} from './onehr/talent-insight-service';
 export {getAssessmentTalentPerson} from './onehr/talent-person-service';
 export {saveAssessmentTalentRemark} from './onehr/service';
 export {askPerformanceGuide,getPerformanceGuideReport,exportPerformanceGuideReport,getPerformanceGuideFacts} from './onehr/guide-service';
+
+export {getAssessmentAdminAssistant,askAssessmentAdmin,runAssessmentAdminAction,getAssessmentAdminReadiness,getAssessmentAdminIndex} from './onehr/admin-agent-service';
+export {getAssessmentAdminReport,buildAssessmentAdminReport,getAssessmentAdminReportHistory,exportAssessmentAdminReport,assessmentAdminReportLinks,assessmentAdminReportCsv} from './onehr/admin-report-service';
+export {buildAssessmentAdminWorkbook} from './onehr/admin-report-xlsx';

@@ -100,6 +100,11 @@ export async function previewAssessmentReminder(ctx:SessionContext,cycleId:strin
  });
 }
 
+/** Current central configuration without reading recipient work or delivery outcomes. */
+export async function assessmentReminderSettingsTx(tx:Tx,ctx:SessionContext,cycleId:string){
+ await access(tx,cycleId);const state=await fresh(tx,ctx.tenantId);return {rules:rules(state),words:words(state)};
+}
+
 /** Counts and SMTP outcomes are projections of the current graph and the existing delivery ledger. */
 export async function getAssessmentReminders(ctx:SessionContext,cycleId:string){
  return withTenant(ctx,async tx=>{
