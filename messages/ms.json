@@ -17074,8 +17074,25 @@
     "security": "Penyulitan",
     "tlsSecurity": "SSL/TLS (TLS tersirat)",
     "previewTitle": "Pratonton tetapan SMTP",
-    "demoSetup": "Demo ini memaparkan medan sambungan SMTP untuk semakan. Menyimpan kelayakan, menghantar e-mel ujian dan mengaktifkan penghantaran memerlukan log masuk pentadbir pemasangan yang disahkan. Tiada butiran pelayan e-mel dimuatkan atau disimpan di sini.",
-    "restrictedSetup": "Hanya pentadbir pemasangan yang berdaftar boleh melihat atau mengubah tetapan SMTP sebenar. Minta pentadbir pemasangan melengkapkan persediaan. Medan ini hanya menunjukkan konfigurasi yang disokong."
+    "demoSetup": "Masukkan butiran SMTP untuk menyemak sambungan selamat dan log masuk. Ujian sementara ini tidak mengubah pelayan mel aktif.",
+    "restrictedSetup": "Hanya pentadbir pemasangan yang berdaftar boleh melihat atau mengubah tetapan SMTP sebenar. Minta pentadbir pemasangan melengkapkan persediaan. Medan ini hanya menunjukkan konfigurasi yang disokong.",
+    "demoTestTitle": "Uji sambungan SMTP",
+    "starttlsSecurity": "TLS (STARTTLS, wajib)",
+    "testConnection": "Uji sambungan",
+    "testingConnection": "Menguji sambungan…",
+    "demoTestHelp": "Gunakan SSL/TLS (biasanya port 465) atau STARTTLS wajib (biasanya port 587) dengan pelayan SMTP awam. Tiada e-mel dihantar. Butiran tidak disimpan dan kata laluan dikosongkan selepas setiap ujian.",
+    "demoAuthenticated": "Sambungan selamat dan log masuk SMTP berjaya. Penghantaran e-mel belum diuji.",
+    "demoConnected": "Sambungan selamat berjaya. Pengesahan tidak diminta; penghantaran e-mel belum diuji.",
+    "demoErrors": {
+      "forbidden": "Ujian sambungan hanya tersedia kepada pentadbir HR dalam demo.",
+      "invalid": "Semak nama hos dan port SMTP. Masukkan nama pengguna dan kata laluan apabila pengesahan kata laluan dipilih.",
+      "blockedHost": "Ujian demo memerlukan pelayan SMTP awam. Alamat setempat, peribadi dan tujuan khas tidak tersedia di sini.",
+      "busy": "Ujian sambungan sedang sibuk atau had ujian telah dicapai. Tunggu seminit dan cuba lagi.",
+      "authenticationFailed": "Log masuk SMTP gagal. Semak nama pengguna, kata laluan dan tetapan akses SMTP penyedia, kemudian masukkan semula kata laluan dan cuba lagi.",
+      "tlsFailed": "Sambungan selamat tidak dapat disahkan. Semak tetapan penyulitan dan sijil TLS pelayan.",
+      "connectionFailed": "Tidak dapat menyambung ke pelayan SMTP. Semak nama hos, port, penyulitan dan peraturan akses rangkaian penyedia.",
+      "unavailable": "Ujian sambungan tidak dapat diselesaikan. Masukkan semula kata laluan dan cuba lagi."
+    }
   },
   "workflowEmail": {
     "title": "Pemberitahuan e-mel aliran kerja",

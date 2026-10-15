@@ -17074,8 +17074,25 @@
     "security": "Mã hóa",
     "tlsSecurity": "SSL/TLS (TLS ngầm định)",
     "previewTitle": "Xem trước thiết lập SMTP",
-    "demoSetup": "Bản demo này hiển thị các trường kết nối SMTP để xem xét. Việc lưu thông tin xác thực, gửi email thử và kích hoạt gửi email yêu cầu đăng nhập bằng tài khoản quản trị cài đặt đã xác minh. Không có thông tin máy chủ thư nào được tải hoặc lưu tại đây.",
-    "restrictedSetup": "Chỉ quản trị viên cài đặt đã đăng ký mới có thể xem hoặc thay đổi thiết lập SMTP thực tế. Hãy yêu cầu quản trị viên cài đặt hoàn tất thiết lập. Các trường này chỉ hiển thị cấu hình được hỗ trợ."
+    "demoSetup": "Nhập thông tin SMTP để kiểm tra kết nối bảo mật và đăng nhập. Thử nghiệm tạm thời này không thay đổi máy chủ thư đang hoạt động.",
+    "restrictedSetup": "Chỉ quản trị viên cài đặt đã đăng ký mới có thể xem hoặc thay đổi thiết lập SMTP thực tế. Hãy yêu cầu quản trị viên cài đặt hoàn tất thiết lập. Các trường này chỉ hiển thị cấu hình được hỗ trợ.",
+    "demoTestTitle": "Kiểm tra kết nối SMTP",
+    "starttlsSecurity": "TLS (bắt buộc STARTTLS)",
+    "testConnection": "Kiểm tra kết nối",
+    "testingConnection": "Đang kiểm tra kết nối…",
+    "demoTestHelp": "Dùng SSL/TLS (thường là cổng 465) hoặc STARTTLS bắt buộc (thường là cổng 587) với máy chủ SMTP công khai. Không gửi email. Thông tin không được lưu và mật khẩu được xóa sau mỗi lần kiểm tra.",
+    "demoAuthenticated": "Kết nối bảo mật và đăng nhập SMTP thành công. Chưa kiểm tra việc gửi email.",
+    "demoConnected": "Kết nối bảo mật thành công. Không yêu cầu xác thực; chưa kiểm tra việc gửi email.",
+    "demoErrors": {
+      "forbidden": "Chỉ quản trị viên HR trong bản demo mới có thể kiểm tra kết nối.",
+      "invalid": "Kiểm tra tên máy chủ và cổng SMTP. Nhập tên người dùng và mật khẩu khi chọn xác thực bằng mật khẩu.",
+      "blockedHost": "Kiểm tra trong demo cần máy chủ SMTP công khai. Không hỗ trợ địa chỉ cục bộ, riêng tư hoặc dành cho mục đích đặc biệt.",
+      "busy": "Kiểm tra kết nối đang bận hoặc đã đạt giới hạn. Đợi một phút rồi thử lại.",
+      "authenticationFailed": "Đăng nhập SMTP thất bại. Kiểm tra tên người dùng, mật khẩu và quyền truy cập SMTP của nhà cung cấp, rồi nhập lại mật khẩu để thử lại.",
+      "tlsFailed": "Không thể xác minh kết nối bảo mật. Kiểm tra phương thức mã hóa và chứng chỉ TLS của máy chủ.",
+      "connectionFailed": "Không thể kết nối máy chủ SMTP. Kiểm tra tên máy chủ, cổng, mã hóa và quy tắc truy cập mạng của nhà cung cấp.",
+      "unavailable": "Không thể hoàn tất kiểm tra kết nối. Nhập lại mật khẩu và thử lại."
+    }
   },
   "workflowEmail": {
     "title": "Email thông báo quy trình",
