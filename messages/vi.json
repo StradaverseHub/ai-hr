@@ -17125,7 +17125,7 @@
       "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Email này chưa được gửi; cấu hình SMTP rồi chọn Gửi lại khi cần.",
       "recipientUnavailable": "Nhà cung cấp danh tính không khả dụng",
       "recipientChanged": "Email xác minh hoặc tài khoản đã thay đổi",
-      "notEligible": "Người nhận hoặc tùy chọn không còn đủ điều kiện",
+      "notEligible": "Thông báo này không còn cần gửi, hoặc người nhận hay tùy chọn email đã thay đổi.",
       "smtpTemporary": "Máy chủ tạm từ chối",
       "smtpRejected": "Máy chủ từ chối email",
       "smtpAuthentication": "Xác thực máy chủ thất bại",

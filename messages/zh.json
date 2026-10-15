@@ -17125,7 +17125,7 @@
       "relayUnavailable": "SMTP 尚未配置或不可用。此邮件尚未发送；配置 SMTP 后，可按需选择重试发送。",
       "recipientUnavailable": "身份提供方不可用",
       "recipientChanged": "已验证邮箱或账号已变更",
-      "notEligible": "收件人或偏好不再符合条件",
+      "notEligible": "此更新已无需发送，或收件人或邮件偏好已更改。",
       "smtpTemporary": "中继暂时拒绝",
       "smtpRejected": "中继拒绝了邮件",
       "smtpAuthentication": "中继身份验证失败",

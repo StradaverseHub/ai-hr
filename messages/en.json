@@ -17125,7 +17125,7 @@
       "relayUnavailable": "SMTP is not configured or available. This email was not sent; configure SMTP and choose Retry delivery when needed.",
       "recipientUnavailable": "Identity provider unavailable",
       "recipientChanged": "Verified email or account changed",
-      "notEligible": "Recipient or preferences no longer eligible",
+      "notEligible": "This update no longer needs delivery, or the recipient or email preferences changed.",
       "smtpTemporary": "Temporary relay rejection",
       "smtpRejected": "Relay rejected the message",
       "smtpAuthentication": "Relay authentication failed",

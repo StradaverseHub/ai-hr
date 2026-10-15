@@ -17125,7 +17125,7 @@
       "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. E-mel ini tidak dihantar; sediakan SMTP dan pilih Cuba semula penghantaran apabila perlu.",
       "recipientUnavailable": "Penyedia identiti tidak tersedia",
       "recipientChanged": "E-mel yang disahkan atau akaun berubah",
-      "notEligible": "Penerima atau keutamaan tidak lagi layak",
+      "notEligible": "Kemas kini ini tidak lagi perlu dihantar, atau penerima atau pilihan e-mel telah berubah.",
       "smtpTemporary": "Penolakan sementara oleh geganti",
       "smtpRejected": "Geganti menolak mesej",
       "smtpAuthentication": "Pengesahan geganti gagal",
