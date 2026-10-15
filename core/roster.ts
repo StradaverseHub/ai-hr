@@ -3040,7 +3040,7 @@ export function rosterVariance(
       const recordedSchedule = att?.calcTrace?.schedule;
       const expectedMinutes = r.isRestDay ? null : att
         ? recordedSchedule?.dayType === 'workday'
-          ? recordedSchedule.normalMinutesOverride ?? recordedSchedule.scheduledMinutes
+          ? att.calcTrace?.overtime?.normalMinutes ?? recordedSchedule.normalMinutesOverride ?? recordedSchedule.scheduledMinutes
           : null
         : r.shiftType === 'full_flexi' ? r.normalMinutesOverride
           : !r.start || !r.end ? null
@@ -3050,6 +3050,8 @@ export function rosterVariance(
         : att?.workedMinutes != null && expectedMinutes != null && att.workedMinutes < expectedMinutes;
       let kind: RosterVarianceKind;
       if (r.isRestDay) {
+        // This compares the explicit roster to recorded work. A direct roster edit to rest still
+        // means rest_worked here; it never changes attendance's frozen dayType or pay classification.
         if (!att) continue; // rest day with no work is expected
         kind = 'rest_worked';
       } else if (!att) {

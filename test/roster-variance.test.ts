@@ -10,7 +10,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { checkIn, checkOut } from '../core/attendance';
-import { assignShift, createShift, updateShift, rosterVariance, setRestDay } from '../core/roster';
+import { assignShift, createShift, updateShift, assignDefaultShift, rosterVariance, setRestDay } from '../core/roster';
 
 let b: Base;
 let emp1: string;
@@ -116,6 +116,29 @@ describe('roster variance (ADR-0032 C4)', () => {
     await owner.db.update(schema.attendance).set({ calcTrace: null }).where(eq(schema.attendance.id, frozen[0].id));
     const legacy = (await read()).find(row => row.shiftDate === shortDate);
     expect(legacy).toMatchObject({ expectedMinutes: null, workedMinutes: 420, kind: 'short' });
+  });
+
+  it('displays the recorded half-day target rather than the full-day normal unit', async () => {
+    const ctx = adminCtx(b), date = todayInKualaLumpur();
+    const half = await createShift(ctx, {
+      companyId: b.companyId, name: 'Half duration', code: 'HALF-DURATION', type: 'full_flexi',
+      startTime: null, endTime: null, normalMinutesOverride: 480, breakMinutes: 0,
+      weeklyPattern: null, halfPattern: [1, 2, 3, 4, 5, 6, 7],
+    });
+    await assignDefaultShift(ctx, { employmentId: emp2, shiftId: half.id });
+    await checkIn(ctx, { employmentId: emp2, date, time: '09:00' });
+    await checkOut(ctx, { employmentId: emp2, date, time: '13:00' });
+    const [recorded] = await owner.db.select().from(schema.attendance).where(and(
+      eq(schema.attendance.employmentId, emp2), eq(schema.attendance.attendanceDate, date),
+    ));
+    expect(recorded).toMatchObject({ workedMinutes: 240, underMinutes: 0 });
+    expect(recorded.calcTrace?.schedule).toMatchObject({ fullDayNormalMinutes: 480 });
+    expect(recorded.calcTrace?.overtime?.normalMinutes).toBe(240);
+    // A subsequent explicit roster assignment is a full rostered day, but cannot reinterpret the
+    // already recorded half-day attendance target.
+    await assignShift(ctx, { employmentId: emp2, shiftDate: date, shiftId: half.id });
+    const [row] = await rosterVariance(ctx, { from: date, to: date, today: date });
+    expect(row).toMatchObject({ expectedMinutes: 240, workedMinutes: 240, kind: 'on_track' });
   });
 
   it('a worked rostered rest day is rest_worked', async () => {
