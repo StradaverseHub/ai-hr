@@ -19962,7 +19962,13 @@
       "stale": "Semakan ini berubah. Kekalkan suntingan dan muat semula sebelum cuba lagi.",
       "unavailable": "Rekod atau rujukan tidak lagi tersedia dalam skop.",
       "closed": "Gaji dimuktamadkan dilindungi. Gunakan proses pelarasan atau pembukaan semula sedia ada.",
-      "system": "Permintaan tidak dapat diselesaikan. Suntingan kekal; cuba semula atau kongsi rujukan sokongan."
+      "system": "Permintaan tidak dapat diselesaikan. Suntingan kekal; cuba semula atau kongsi rujukan sokongan.",
+      "mapping": "Semak item pendapatan dan layanan berkanunnya sebelum memindahkannya.",
+      "statutoryFloor": "Bayaran yang dikonfigurasi kurang daripada minimum negara atau polisi Penggajian yang terpakai. Semak formula.",
+      "wageIneligible": "Semak asas gaji yang direkodkan untuk pengiraan ini.",
+      "unsupportedRun": "Pilih proses Penggajian biasa untuk bayaran kerja lebih masa ini.",
+      "coverage": "Pilih proses yang meliputi pekerja dan tarikh kerja lebih masa ini.",
+      "unknownHours": "Had jam memerlukan bukti jam bagi setiap input kerja lebih masa. Semak kerja lebih masa manual atau sekali sahaja."
     },
     "traceKinds": {
       "field": "Input direkodkan",

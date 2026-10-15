@@ -13,10 +13,10 @@ import {OvertimePatternError} from '@/lib/overtime-pattern-model';
 import {OVERTIME_LIMITS,OVERTIME_SAMPLE_INPUT_FIELDS} from '@/lib/overtime-pattern-model';
 import type {OvertimeIssue,OvertimeInput,OvertimeFact,OvertimeRawSegment} from '@/lib/overtime-pattern-model';
 import type {OvertimeSampleDraft} from '@/lib/overtime-pattern-ui';
-import {overtimePatternTransferOptions,transferOvertimePatternToPayroll} from '@/packs/payroll/service';
+import {overtimePatternTransferOptions,transferOvertimePatternToPayroll,OvertimePayrollError,type OvertimePayrollErrorCode} from '@/packs/payroll/service';
 import {isCalendarDate} from '@/lib/calendar-date';
 
-export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'system';reference?:string;issues?:OvertimeIssue[]};
+export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[]};
 export type OvertimeActionResult<T>={ok:true;value:T}|OvertimeActionFailure;
 const PAGE='/admin/attendance/settings/overtime-patterns';
 async function run<T>(work:()=>Promise<T>,mutation:boolean):Promise<OvertimeActionResult<T>> {
@@ -26,6 +26,7 @@ async function run<T>(work:()=>Promise<T>,mutation:boolean):Promise<OvertimeActi
     return {ok:true,value};
   } catch(error) {
     if(error instanceof OvertimeOwnerError) return {ok:false,code:error.code};
+    if(error instanceof OvertimePayrollError) return {ok:false,code:error.code};
     if(error instanceof OvertimePatternError) return {ok:false,code:'invalid',issues:[error.issue]};
     const reference=`OT-${randomUUID().slice(0,8).toUpperCase()}`;
     console.error('[overtime-pattern action]',reference,error);

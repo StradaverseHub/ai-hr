@@ -19962,7 +19962,13 @@
       "stale": "Bản lưu đã thay đổi. Giữ sửa đổi và tải lại trước khi thử.",
       "unavailable": "Bản ghi hoặc mục tham chiếu không còn khả dụng trong phạm vi.",
       "closed": "Bảng lương chốt được bảo vệ. Dùng quy trình điều chỉnh hoặc mở lại hiện có.",
-      "system": "Không hoàn tất yêu cầu. Sửa đổi vẫn còn; thử lại hoặc gửi mã hỗ trợ."
+      "system": "Không hoàn tất yêu cầu. Sửa đổi vẫn còn; thử lại hoặc gửi mã hỗ trợ.",
+      "mapping": "Kiểm tra khoản thu nhập và cách xử lý theo luật trước khi chuyển.",
+      "statutoryFloor": "Số tiền được cấu hình thấp hơn mức tối thiểu áp dụng theo quốc gia hoặc chính sách lương. Hãy kiểm tra công thức.",
+      "wageIneligible": "Kiểm tra cơ sở tiền lương đã ghi nhận cho phép tính này.",
+      "unsupportedRun": "Chọn kỳ tính lương thường xuyên để trả khoản làm thêm giờ này.",
+      "coverage": "Chọn kỳ bao gồm nhân viên và ngày làm thêm giờ này.",
+      "unknownHours": "Giới hạn giờ cần có bằng chứng về số giờ cho mọi khoản làm thêm. Hãy kiểm tra khoản nhập thủ công hoặc khoản một lần."
     },
     "traceKinds": {
       "field": "Đầu vào đã ghi",

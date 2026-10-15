@@ -19962,7 +19962,13 @@
       "stale": "This saved revision changed. Keep your edits and reload before retrying.",
       "unavailable": "The record or a referenced item is no longer available in scope.",
       "closed": "Finalized payroll is protected. Use the established adjustment or reopening process.",
-      "system": "The request could not be completed. Your edits remain available; retry or share the support reference."
+      "system": "The request could not be completed. Your edits remain available; retry or share the support reference.",
+      "mapping": "Review the earning item and its statutory treatment before transferring.",
+      "statutoryFloor": "The configured payment is below the applicable country or Payroll policy minimum. Review the formula.",
+      "wageIneligible": "Review the recorded wage basis required for this calculation.",
+      "unsupportedRun": "Choose a regular Payroll run for this overtime payment.",
+      "coverage": "Choose a run that covers this employee and overtime date.",
+      "unknownHours": "The hours cap needs evidenced hours for every overtime input. Review the manual or one-off overtime."
     },
     "traceKinds": {
       "field": "Recorded input",

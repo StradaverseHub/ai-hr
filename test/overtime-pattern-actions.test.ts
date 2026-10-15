@@ -10,7 +10,8 @@ vi.mock('../packs/attendance/service',()=>({
  OvertimeOwnerError:class extends Error {constructor(readonly code:string,message:string){super(message);}},
  saveOvertimePatternDraft:vi.fn(),forkOvertimePatternDraft:vi.fn(),validateOvertimePatternActivation:vi.fn(),activateOvertimePattern:vi.fn(),stopOvertimePatternVersion:vi.fn(),archiveOvertimePattern:vi.fn(),saveOvertimePatternAssignment:vi.fn(),closeOvertimePatternAssignment:vi.fn(),overtimePatternSetup:vi.fn(),previewOvertimePatternEmployee:mocks.employee,previewOvertimePatternSample:mocks.sample,calculateOvertimePatternDay:mocks.calculate,readOvertimePatternCalculation:mocks.read,
 }));
-vi.mock('../packs/payroll/service',()=>({overtimePatternTransferOptions:mocks.options,transferOvertimePatternToPayroll:mocks.transfer}));
+vi.mock('../packs/payroll/service',()=>({overtimePatternTransferOptions:mocks.options,transferOvertimePatternToPayroll:mocks.transfer,OvertimePayrollError:class extends Error {constructor(readonly code:string){super('Finite financial refusal');}}}));
+import {OvertimePayrollError} from '../packs/payroll/service';
 import {previewOvertimeSampleAction,previewOvertimeEmployeeAction,transferOvertimePayrollAction,readOvertimeTransferAction} from '../app/admin/attendance/settings/overtime-patterns/actions';
 const tenantId='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002';
 const date=todayInKualaLumpur();
@@ -82,5 +83,10 @@ describe('Overtime UI server entry points',()=>{
   const result=await readOvertimeTransferAction({employmentId:tenantId,date});expect(result.ok).toBe(false);
   if(!result.ok){expect(result.code).toBe('system');expect(result.reference).toMatch(/^OT-[A-F0-9]{8}$/);}
   expect(JSON.stringify(result)).not.toContain('PRIVATE');expect(mocks.log).toHaveBeenCalledOnce();
+ });
+ it.each(['stale','currency','mapping','statutoryFloor','coverage','unknownHours'] as const)('keeps a finite Payroll %s refusal actionable without exposing raw text or logging an incident',async code=>{
+  mocks.transfer.mockRejectedValue(new OvertimePayrollError(code));
+  expect(await transferOvertimePayrollAction({employmentId:tenantId,date,expectedCalculationId:versionId,expectedSourceRevision:1,batchId:tenantId,reason:'Reviewed source'})).toEqual({ok:false,code});
+  expect(mocks.log).not.toHaveBeenCalled();
  });
 });
