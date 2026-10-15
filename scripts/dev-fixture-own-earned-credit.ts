@@ -91,7 +91,13 @@ async function main() {
   if (!line) await setReportingLine(hr.ctx, { subordinateEmploymentId: employee.employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: day(-365) });
   else if (line.managerEmploymentId !== manager.employmentId) throw new Error('Existing fixture manager changed; preserving it.');
   const [policy] = await owner.db.select().from(s.toilPolicy).where(eq(s.toilPolicy.companyId, company.id));
-  if (!policy) await setToilPolicy(hr.ctx, { companyId: company.id, enabled: true, accrualBasis: 'hours_worked', expiryDays: 90, onExpiry: 'lapse', allowFirstScheduleEligible: false, autoAccrueOnApproval: false, carryForwardAtYearEnd: false, employeeRequestEnabled: true });
+  if (!policy || !policy.enabled) {
+    // createCompany installs a disabled default. Initialize that default only before the fixture has
+    // minted any credit; a later browser change to an established fixture must remain untouched.
+    const existingCredits = await owner.db.select({ id: s.toilAccrual.id }).from(s.toilAccrual).innerJoin(s.employment, eq(s.employment.id, s.toilAccrual.employmentId)).where(eq(s.employment.companyId, company.id)).limit(1);
+    if (existingCredits.length) throw new Error('Existing fixture policy was disabled; preserving it.');
+    await setToilPolicy(hr.ctx, { companyId: company.id, enabled: true, accrualBasis: 'hours_worked', expiryDays: 90, onExpiry: 'lapse', allowFirstScheduleEligible: false, autoAccrueOnApproval: false, carryForwardAtYearEnd: false, employeeRequestEnabled: true });
+  }
   // Stable reasons identify each canonical fixture grant without depending on today's date on reruns.
   for (const [key, days, offset, reversed, expiryOffset] of [['employee', 0.75, -20, false, 60], ['employee', 1.25, -21, false, 90], ['employee', 1, -22, false, 110], ['employee', 1.5, -23, true, 90], ['manager', 1, -24, false, 90], ['hr', 1, -25, false, 90]] as const) {
     const subject = people.get(key)!;
