@@ -3186,6 +3186,13 @@
       "when": 1791900000029,
       "tag": "0549_employee_master_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 550,
+      "version": "7",
+      "when": 1791900000030,
+      "tag": "0550_system_label_company_criteria",
+      "breakpoints": true
     }
   ]
 }
