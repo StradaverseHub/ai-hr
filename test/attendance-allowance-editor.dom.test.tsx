@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { AttendanceAllowanceEditor } from '../components/attendance-allowance-editor';
-import { emptyAllowanceRules } from '../lib/attendance-allowance-rules';
+import { emptyAllowanceRules,emptyAllowanceRulesV3 } from '../lib/attendance-allowance-rules';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
@@ -21,7 +21,7 @@ const deductionId = '44444444-4444-4444-8444-444444444444';
 const options = {
   companies:[{id:companyId,label:'Example company',currency:'MYR'}],
   departments:[{id:'55555555-5555-4555-8555-555555555555',label:'Finance',companyId,isGlobal:false}],
-  businessUnits:[],positions:[],grades:[],categories:[],shifts:[],
+  businessUnits:[],positions:[],grades:[],categories:[],shifts:[],leaveTypes:[],
   employees:[{id:employeeId,label:'Example employee',companyId,category:null}],
 };
 const components = [{id:earningId,code:'ATTENDANCE',name:'Attendance earning',kind:'allowance'},{id:deductionId,code:'ATT_DEDUCT',name:'Attendance deduction',kind:'deduction'}];
@@ -41,8 +41,8 @@ describe('four-section allowance editor', () => {
     expect(screen.getByRole('heading',{name:t.sections.employees})).toBeInTheDocument();
     expect(screen.getByRole('heading',{name:t.sections.attendance})).toBeInTheDocument();
     expect(screen.getByRole('heading',{name:t.sections.review})).toBeInTheDocument();
-    expect(screen.getByText(t.fixedRule)).toBeInTheDocument();
-    expect(screen.getByRole('button',{name:t.save})).toBeDisabled();
+    expect(screen.getByText(catalogs[locale].allowanceV3.fixedRule)).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:catalogs[locale].allowanceV3.savePreview})).toBeDisabled();
     const user=userEvent.setup();
     await user.selectOptions(screen.getByLabelText(t.method),'weekly');
     expect(screen.getByText(t.weeklyRule)).toBeInTheDocument();
@@ -65,8 +65,8 @@ describe('four-section allowance editor', () => {
     await user.click(screen.getByRole('button',{name:t.addAttendanceCriterion}));
     await user.selectOptions(screen.getByLabelText(t.operator),'between');
     fireEvent.change(screen.getByLabelText(t.upper),{target:{value:'9'}});
-    expect(submittedRules()).toMatchObject({v:2,employee:{mode:'selected',employmentIds:[employeeId]},attendance:{criteria:[{field:'actualMinutes',operator:'between',value:'8',upper:'9',unit:'hours'}]}});
-    const review=screen.getByRole('checkbox',{name:t.reviewConfirm}),save=screen.getByRole('button',{name:t.save});
+    expect(submittedRules()).toMatchObject({v:3,employee:{mode:'selected',employmentIds:[employeeId]},attendance:{expression:{type:'group',children:[{field:'actualMinutes',operator:'between',value:'8',upper:'9',unit:'hours'}]}}});
+    const review=screen.getByRole('checkbox',{name:t.reviewConfirm}),save=screen.getByRole('button',{name:en.allowanceV3.savePreview});
     await user.click(review);expect(save).toBeEnabled();
     fireEvent.change(screen.getByLabelText(t.upper),{target:{value:'10'}});
     expect(review).not.toBeChecked();expect(save).toBeDisabled();
@@ -75,7 +75,7 @@ describe('four-section allowance editor', () => {
     await screen.findByText('Synthetic validation refusal');
     expect(screen.getByLabelText(t.name)).toHaveValue('Attendance test');
     expect(screen.getByLabelText(`${t.amount} (MYR)`)).toHaveValue(0.1);
-    expect(submittedRules().attendance.criteria[0].upper).toBe('10');
+    expect(submittedRules().attendance.expression.children[0].upper).toBe('10');
     const leave=new Event('beforeunload',{cancelable:true});window.dispatchEvent(leave);
     expect(leave.defaultPrevented).toBe(true);
   });
@@ -105,7 +105,7 @@ describe('four-section allowance editor', () => {
     expect(screen.getByLabelText(t.method).querySelectorAll('option')).toHaveLength(1);
     expect(screen.getByLabelText(t.legacyCriteria.maxAbsentDays)).toHaveValue(0);
     await user.click(screen.getByRole('checkbox',{name:t.convertLegacy}));
-    expect(submittedRules()).toEqual(emptyAllowanceRules());
+    expect(submittedRules()).toEqual(emptyAllowanceRulesV3());
     expect(screen.getByLabelText(t.method).querySelectorAll('option')).toHaveLength(3);
     await user.selectOptions(screen.getByLabelText(t.policyType),'deduction');
     const code=screen.getByLabelText(t.deductionCode);

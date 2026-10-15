@@ -16749,9 +16749,21 @@
     }
   },
   "attendanceSettingsHub": {
-    "companyPolicy": {"title": "Tetapan Polisi Syarikat", "desc": "Polisi waktu kerja syarikat dan keperluan peranti berdaftar.", "cta": "Buka"},
-    "workScheduleOvertime": {"title": "Jadual Kerja & Kadar Kerja Lebih Masa", "desc": "Kadar kerja lebih masa dan liputan syif sandaran.", "cta": "Buka"},
-    "registeredDevices": {"title": "Peranti Kehadiran Berdaftar", "desc": "Lihat peranti berdaftar dan batalkan pendaftaran.", "cta": "Buka"},
+    "companyPolicy": {
+      "title": "Tetapan Polisi Syarikat",
+      "desc": "Polisi waktu kerja syarikat dan keperluan peranti berdaftar.",
+      "cta": "Buka"
+    },
+    "workScheduleOvertime": {
+      "title": "Jadual Kerja & Kadar Kerja Lebih Masa",
+      "desc": "Kadar kerja lebih masa dan liputan syif sandaran.",
+      "cta": "Buka"
+    },
+    "registeredDevices": {
+      "title": "Peranti Kehadiran Berdaftar",
+      "desc": "Lihat peranti berdaftar dan batalkan pendaftaran.",
+      "cta": "Buka"
+    },
     "title": "Tetapan",
     "subtitle": "Halaman persediaan kehadiran di satu tempat. Setiap kad membuka halaman yang anda gunakan sebelum ini.",
     "shift": {
@@ -18661,7 +18673,15 @@
       "earlyOutMinutes": "Keluar awal",
       "absentDays": "Hari tidak hadir",
       "attendanceDays": "Hari hadir",
-      "eligibleWorkingDays": "Hari bekerja terpakai"
+      "eligibleWorkingDays": "Hari bekerja terpakai",
+      "lateCount": "Bilangan lewat hadir",
+      "earlyOutCount": "Bilangan pulang awal",
+      "absenceCount": "Bilangan ketidakhadiran",
+      "shortHoursCount": "Bilangan kekurangan jam",
+      "shortMinutes": "Tempoh kekurangan jam",
+      "incompleteCount": "Bilangan catatan tidak lengkap",
+      "leaveCount": "Bilangan cuti diluluskan",
+      "leaveDays": "Tempoh cuti diluluskan"
     },
     "operators": {
       "eq": "Sama dengan",
@@ -18677,7 +18697,8 @@
     "units": {
       "hours": "jam",
       "minutes": "minit",
-      "days": "hari"
+      "days": "hari",
+      "occurrences": "kali"
     },
     "measurementsHint": "Kehadiran direkodkan memiliki ukuran masa. Rekod tidak lengkap atau ukuran wajib tidak diketahui tidak layak. Hari kerja berjadual yang tiada rekod dikira tidak hadir kecuali dilindungi cuti diluluskan; hari rehat, hari tidak bekerja dan cuti umum tanpa rekod tidak memperoleh amaun.",
     "reviewWarning": "Simpanan mencipta versi polisi baharu. Versi lama, pengiraan dan sejarah Gaji dikekalkan. Polisi bertindih dengan kod gaji yang sama boleh dijumlahkan; semak pratonton setiap polisi sebelum pemindahan.",
@@ -18707,7 +18728,8 @@
       "noApplicableDays": "Tiada hari kehadiran atau ketidakhadiran berjadual yang berkenaan.",
       "incompleteAttendance": "Sekurang-kurangnya satu rekod waktu berkenaan tidak lengkap.",
       "criteriaFailed": "Syarat kehadiran tidak dipenuhi atau ukuran yang diperlukan tidak tersedia.",
-      "employeeCriteriaFailed": "Syarat pemilihan pekerja tidak dipenuhi."
+      "employeeCriteriaFailed": "Syarat pemilihan pekerja tidak dipenuhi.",
+      "unknownMeasurements": "Ukuran yang diperlukan tidak tersedia. Ini bukan sifar."
     },
     "processedConfirm": "Larian ini telah diproses. Saya membenarkan kemas kini input sumber ini dan menandakan pekerja terlibat untuk pemprosesan semula Gaji. Slip gaji sedia ada tidak berubah sehingga diproses semula.",
     "transferWarning": "Pemindahan mengira semula pratonton dan menolak perubahan kehadiran atau polisi. Percubaan semula menggantikan sumber polisi ini sahaja; input manual lain tidak ditulis ganti. Larian Gaji ditutup dilindungi.",
@@ -18953,23 +18975,63 @@
     "reload": "Muat semula jadual semasa"
   },
   "leaveCreditDetails": {
-  "title": "Butiran Kredit Cuti",
-  "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
-  "empty": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
-  "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri."
-},
+    "title": "Butiran Kredit Cuti",
+    "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
+    "empty": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
+    "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri."
+  },
   "labelExcelRoundTrip": {
-  "blank": "Muat turun templat kosong",
-  "current": "Muat turun templat dengan data semasa",
-  "exportHelp": "Pilih syarikat dan senarai organisasi. Semua senarai dipilih pada awalnya.",
-  "inactive": "Sertakan rekod tidak aktif / diarkibkan",
-  "download": "Muat turun Excel",
-  "downloadFailed": "Muat turun gagal. Cuba lagi.",
-  "merge": "Tambah baharu + kemas kini sedia ada",
-  "blankHelp": "Sel kosong mengekalkan nilai tersimpan. Masukkan [CLEAR] untuk mengosongkan nilai pilihan. Baris yang dibuang daripada fail tidak memadam rekod.",
-  "include": "Sertakan",
-  "noChange": "Tiada perubahan",
-  "new": "Baharu",
-  "previewAgain": "Pilihan baris berubah. Pratonton semula sebelum mengesahkan."
-}
+    "blank": "Muat turun templat kosong",
+    "current": "Muat turun templat dengan data semasa",
+    "exportHelp": "Pilih syarikat dan senarai organisasi. Semua senarai dipilih pada awalnya.",
+    "inactive": "Sertakan rekod tidak aktif / diarkibkan",
+    "download": "Muat turun Excel",
+    "downloadFailed": "Muat turun gagal. Cuba lagi.",
+    "merge": "Tambah baharu + kemas kini sedia ada",
+    "blankHelp": "Sel kosong mengekalkan nilai tersimpan. Masukkan [CLEAR] untuk mengosongkan nilai pilihan. Baris yang dibuang daripada fail tidak memadam rekod.",
+    "include": "Sertakan",
+    "noChange": "Tiada perubahan",
+    "new": "Baharu",
+    "previewAgain": "Pilihan baris berubah. Pratonton semula sebelum mengesahkan."
+  },
+  "allowanceV3": {
+    "all": "Semua · setiap syarat mesti lulus",
+    "any": "Mana-mana · sekurang-kurangnya satu syarat mesti lulus",
+    "rootGroup": "Syarat kehadiran",
+    "nestedGroup": "Kumpulan syarat bersarang",
+    "match": "Padanan syarat",
+    "addGroup": "Tambah kumpulan",
+    "unrestricted": "Tiada sekatan syarat kehadiran. Tarikh yang terpakai masih diperlukan.",
+    "emptyGroup": "Tambah syarat atau buang kumpulan kosong ini.",
+    "moveUp": "Alih ke atas",
+    "moveDown": "Alih ke bawah",
+    "moveUpAt": "Alih syarat {position} ke atas",
+    "moveDownAt": "Alih syarat {position} ke bawah",
+    "removeAt": "Buang syarat {position}",
+    "choose": "Pilih nilai",
+    "search": "Cari pilihan",
+    "selectAll": "Pilih semua yang dipaparkan",
+    "clearAll": "Kosongkan semua yang dipaparkan",
+    "removeValue": "Buang {value}",
+    "retainedUnavailable": "Pilihan tersimpan yang tidak tersedia dikekalkan. Buangkannya sebelum menyimpan versi yang dibetulkan.",
+    "leaveTypes": "Jenis cuti",
+    "allLeaveTypes": "Tiada pilihan bermaksud semua jenis cuti yang diluluskan.",
+    "unknown": "Tidak diketahui",
+    "unknownMeasurement": "Ukuran yang diperlukan tidak tersedia. Ini bukan sifar.",
+    "versionNotice": "Versi ini mengekalkan syarat rata dan kaedah pengiraan asal.",
+    "upgrade": "Guna syarat berkumpulan dalam versi baharu",
+    "savePreview": "Simpan dan pratonton",
+    "reviewActivate": "Semak dan aktifkan",
+    "activationReviewed": "Saya telah menyemak keputusan pengiraan dan hasil Tidak diketahui bagi versi ini untuk bulan yang dipilih.",
+    "activate": "Aktifkan versi yang disemak",
+    "activationHint": "Versi ini kekal tidak aktif selepas disimpan. Semak pengiraan baharu sebelum mengaktifkannya.",
+    "allShiftsHint": "Tiada pilihan bermaksud semua syif. Carian menapis pilihan yang terlibat dalam Pilih semua dan Kosongkan semua.",
+    "measurementsHint": "Bilangan menggunakan tarikh berbeza. Masa yang hilang atau tempoh cuti yang kabur kekal Tidak diketahui. Hanya hasil berkumpulan yang pasti benar melayakkan bayaran.",
+    "fixedRule": "Amaun tetap dikenakan sekali bagi setiap tempoh yang layak tanpa prorata. Syarat kehadiran kosong merangkumi hari direkodkan, ketidakhadiran berjadual dan tarikh cuti diluluskan yang terpakai. Tambah syarat hadir jika kehadiran diperlukan.",
+    "leaveSource": "Bukti cuti",
+    "paid": "Bergaji",
+    "unpaid": "Tanpa gaji",
+    "unknownPaid": "Status gaji tidak diketahui",
+    "noLeave": "Tiada cuti diluluskan pada tarikh ini"
+  }
 }

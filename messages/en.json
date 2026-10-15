@@ -16749,9 +16749,21 @@
     }
   },
   "attendanceSettingsHub": {
-    "companyPolicy": {"title": "Company Policy Settings", "desc": "Company working-time policies and registered-device requirements.", "cta": "Open"},
-    "workScheduleOvertime": {"title": "Work Schedule & Overtime Rates", "desc": "Overtime rates and backup-shift coverage.", "cta": "Open"},
-    "registeredDevices": {"title": "Registered Clocking Devices", "desc": "View registered devices and revoke registrations.", "cta": "Open"},
+    "companyPolicy": {
+      "title": "Company Policy Settings",
+      "desc": "Company working-time policies and registered-device requirements.",
+      "cta": "Open"
+    },
+    "workScheduleOvertime": {
+      "title": "Work Schedule & Overtime Rates",
+      "desc": "Overtime rates and backup-shift coverage.",
+      "cta": "Open"
+    },
+    "registeredDevices": {
+      "title": "Registered Clocking Devices",
+      "desc": "View registered devices and revoke registrations.",
+      "cta": "Open"
+    },
     "title": "Settings",
     "subtitle": "The setup pages for attendance, in one place. Each card opens the page you used before.",
     "shift": {
@@ -18661,7 +18673,15 @@
       "earlyOutMinutes": "Early departure",
       "absentDays": "Absent days",
       "attendanceDays": "Attendance days",
-      "eligibleWorkingDays": "Eligible working days"
+      "eligibleWorkingDays": "Eligible working days",
+      "lateCount": "Late arrival count",
+      "earlyOutCount": "Early departure count",
+      "absenceCount": "Absence count",
+      "shortHoursCount": "Short hours count",
+      "shortMinutes": "Short hours duration",
+      "incompleteCount": "Incomplete entry count",
+      "leaveCount": "Approved leave count",
+      "leaveDays": "Approved leave duration"
     },
     "operators": {
       "eq": "Equal to",
@@ -18677,7 +18697,8 @@
     "units": {
       "hours": "hours",
       "minutes": "minutes",
-      "days": "days"
+      "days": "days",
+      "occurrences": "occurrences"
     },
     "measurementsHint": "Recorded attendance owns measured time. Incomplete clockings and unknown required measurements do not qualify. Missing past scheduled days count as absences unless covered by approved leave; unrecorded rest, off and holiday dates do not earn an amount.",
     "reviewWarning": "Saving creates a new policy version. Past policy versions, calculations and Payroll history are retained. Overlapping policies can add together when they share a pay code; review the preview for each policy before transfer.",
@@ -18707,7 +18728,8 @@
       "noApplicableDays": "No applicable attendance or scheduled absence days.",
       "incompleteAttendance": "At least one applicable clocking is incomplete.",
       "criteriaFailed": "Attendance conditions failed or a required measurement is unavailable.",
-      "employeeCriteriaFailed": "Employee selection conditions did not match."
+      "employeeCriteriaFailed": "Employee selection conditions did not match.",
+      "unknownMeasurements": "A required measurement is unavailable. This is not zero."
     },
     "processedConfirm": "This run is already processed. I authorise updating these source inputs and marking the affected employees for Payroll reprocessing. Existing payslips remain unchanged until reprocessed.",
     "transferWarning": "Transfer recalculates the preview and refuses if attendance or the policy changed. Retries replace this policy’s sources; unrelated manual inputs are never overwritten. Closed Payroll runs are protected.",
@@ -18953,23 +18975,63 @@
     "reload": "Reload current schedule"
   },
   "leaveCreditDetails": {
-  "title": "Leave Credit Details",
-  "subtitle": "Your leave credit history — credits you earned, how much has been used for Replacement Leave, and what is still available.",
-  "empty": "No earned leave credits match these filters.",
-  "invalid": "The filters are invalid. This page can show only your own credits."
-},
+    "title": "Leave Credit Details",
+    "subtitle": "Your leave credit history — credits you earned, how much has been used for Replacement Leave, and what is still available.",
+    "empty": "No earned leave credits match these filters.",
+    "invalid": "The filters are invalid. This page can show only your own credits."
+  },
   "labelExcelRoundTrip": {
-  "blank": "Download blank template",
-  "current": "Download template with current data",
-  "exportHelp": "Choose companies and organisation lists. All lists are selected initially.",
-  "inactive": "Include inactive / archived records",
-  "download": "Download Excel",
-  "downloadFailed": "The download failed. Try again.",
-  "merge": "Add new + update existing",
-  "blankHelp": "Blank cells keep saved values. Enter [CLEAR] to remove an optional value. Removed file rows never delete records.",
-  "include": "Include",
-  "noChange": "No change",
-  "new": "New",
-  "previewAgain": "The row selection changed. Preview again before confirming."
-}
+    "blank": "Download blank template",
+    "current": "Download template with current data",
+    "exportHelp": "Choose companies and organisation lists. All lists are selected initially.",
+    "inactive": "Include inactive / archived records",
+    "download": "Download Excel",
+    "downloadFailed": "The download failed. Try again.",
+    "merge": "Add new + update existing",
+    "blankHelp": "Blank cells keep saved values. Enter [CLEAR] to remove an optional value. Removed file rows never delete records.",
+    "include": "Include",
+    "noChange": "No change",
+    "new": "New",
+    "previewAgain": "The row selection changed. Preview again before confirming."
+  },
+  "allowanceV3": {
+    "all": "All · every condition must pass",
+    "any": "Any · at least one condition must pass",
+    "rootGroup": "Attendance conditions",
+    "nestedGroup": "Nested condition group",
+    "match": "Match conditions",
+    "addGroup": "Add group",
+    "unrestricted": "No attendance condition restrictions. Applicable dates are still required.",
+    "emptyGroup": "Add a condition or remove this empty group.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "moveUpAt": "Move condition {position} up",
+    "moveDownAt": "Move condition {position} down",
+    "removeAt": "Remove condition {position}",
+    "choose": "Choose values",
+    "search": "Search choices",
+    "selectAll": "Select all visible",
+    "clearAll": "Clear all visible",
+    "removeValue": "Remove {value}",
+    "retainedUnavailable": "Unavailable saved choices are retained. Remove them before saving a corrected version.",
+    "leaveTypes": "Leave types",
+    "allLeaveTypes": "No selections means all approved leave types.",
+    "unknown": "Unknown",
+    "unknownMeasurement": "A required measurement is unavailable. This is not zero.",
+    "versionNotice": "This version retains the original flat conditions and calculation behavior.",
+    "upgrade": "Use grouped conditions in a new version",
+    "savePreview": "Save and preview",
+    "reviewActivate": "Review and activate",
+    "activationReviewed": "I reviewed this version’s calculated decisions and Unknown results for the selected month.",
+    "activate": "Activate reviewed version",
+    "activationHint": "Saving keeps this version inactive. Review a fresh calculation before activation.",
+    "allShiftsHint": "No selections means all shifts. Search filters the choices affected by Select all and Clear all.",
+    "measurementsHint": "Counts use distinct dates. Missing time or ambiguous leave duration stays Unknown. Only a known true grouped result qualifies.",
+    "fixedRule": "The fixed amount applies once per qualifying period, without proration. Empty attendance conditions include applicable recorded days, scheduled absences and approved leave dates. Add a presence condition when attendance is required.",
+    "leaveSource": "Leave evidence",
+    "paid": "Paid",
+    "unpaid": "Unpaid",
+    "unknownPaid": "Paid status unknown",
+    "noLeave": "No approved leave on this date"
+  }
 }

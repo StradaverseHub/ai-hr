@@ -11634,12 +11634,15 @@ export function actionableLeaveRequests(ctx:SessionContext,{employmentIds}:{empl
 
 /** Period and upcoming leave use the owner's deductible-day/session weights and recorded per-date truth. */
 export function myTeamLeaveProjection(ctx:SessionContext,p:{employmentIds:string[];from:string;to:string;today:string}){
- return withTenant(ctx,async tx=>{
+ return withTenant(ctx,tx=>leaveProjectionTx(tx,p));
+}
+
+async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string;purpose?:'allowance'}){
   if(!p.employmentIds.length)return [];
   const requests=await tx.select({request:leaveRequest,type:leaveType}).from(leaveRequest)
    .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId))
    .where(and(inArray(leaveRequest.employmentId,p.employmentIds),inArray(leaveRequest.status,['approved','pending']),
-    or(eq(leaveRequest.status,'pending'),and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
+    p.purpose==='allowance'?and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)):or(eq(leaveRequest.status,'pending'),and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
    .orderBy(asc(leaveRequest.startDate));
   const ids=requests.map(r=>r.request.id);
   const dates=ids.length ? await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)) : [];
@@ -11655,12 +11658,51 @@ export function myTeamLeaveProjection(ctx:SessionContext,p:{employmentIds:string
     const session=req.durationType==='half_day_am' ? 'AM' as const : req.durationType==='half_day_pm' ? 'PM' as const : req.durationType==='hourly' ? 'hourly' as const : 'full_day' as const;
     const projected=stored.length ? stored.filter(d=>d.status==='approved'||d.status==='pending')
       .map(d=>({date:d.leaveDate,days:Number(d.days),status:d.status as 'approved'|'pending'})) :
-      eachDate(req.startDate,req.endDate).filter(d=>isDeductibleDay(d,sched,hols,inclusion)).map(date=>({date,
-        days:session==='full_day'?dayWeight(date,sched,hols,inclusion):Number(req.days),status:req.status as 'approved'|'pending'}));
+      eachDate(req.startDate,req.endDate).filter(d=>p.purpose==='allowance'&&type.counting!=='working_days'||isDeductibleDay(d,sched,hols,inclusion)).map(date=>({date,
+        days:session==='full_day'?(p.purpose==='allowance'&&type.counting!=='working_days'?1:dayWeight(date,sched,hols,inclusion)):Number(req.days),status:req.status as 'approved'|'pending'}));
     result.push({requestId:req.id,employmentId,leaveTypeId:type.id,code:type.code,name:type.name,color:type.color,
-      session,fromTime:req.fromTime,toTime:req.toTime,dates:projected});
+      session,fromTime:req.fromTime,toTime:req.toTime,dates:projected,...(p.purpose==='allowance'?{paid:type.paid&&Number(req.unpaidDays??0)>0?null:!type.paid||req.allowanceEligible===false?false:true,projectionSource:stored.length?'recorded-approved-dates':'canonical-leave-schedule'}:{})});
    }
   }
   return result;
- });
+}
+
+
+/** Canonical approved leave measurements for Attendance. Counts remain known when overlapping legacy
+ * approvals cannot supply an unambiguous duration. No request span is counted by the consumer. */
+export async function approvedLeaveMeasurementsTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string}) {
+ const projected=await leaveProjectionTx(tx,{...p,purpose:'allowance'});
+ type Piece={typeId:string;paid:boolean|null;days:number;requestId:string;session:string;from:string|null;to:string|null;source:string};
+ const raw=new Map<string,Piece[]>();
+ for(const req of projected)for(const day of req.dates){
+  if(day.status!=='approved'||day.date<p.from||day.date>p.to||day.date>p.today||day.days<=0)continue;
+  const key=req.employmentId+':'+day.date;
+  const pieces=raw.get(key)??[];pieces.push({typeId:req.leaveTypeId,paid:req.paid===undefined?null:req.paid,days:day.days,requestId:req.requestId,session:req.session,from:req.fromTime,to:req.toTime,source:req.projectionSource??'canonical-leave-schedule'});raw.set(key,pieces);
+ }
+ const out=new Map<string,{types:string[];leave:{typeId:string;paid:boolean|null;days:number;requestIds:string[]}[]|null;source:string}>();
+ for(const [key,pieces]of raw){
+  const sameSlot=new Map<string,Piece>();
+  for(const piece of pieces){const slot=JSON.stringify([piece.typeId,piece.session,piece.from,piece.to]);const prior=sameSlot.get(slot);sameSlot.set(slot,!prior?piece:{...(piece.days>prior.days?piece:prior),paid:prior.paid===piece.paid?piece.paid:null});}
+  const unique=[...sameSlot.values()];
+  const overlap=(a:Piece,b:Piece)=>{
+   if(a.session==='full_day'||b.session==='full_day')return true;
+   if(a.session!=='hourly'&&b.session!=='hourly')return a.session===b.session;
+   if(a.session==='hourly'&&b.session==='hourly'&&a.from&&a.to&&b.from&&b.to)return a.from<b.to&&b.from<a.to;
+   return true; // A legacy hourly/half-day mix has no frozen common working-time basis.
+  };
+  let ambiguous=false;
+  for(let i=0;i<unique.length;i++)for(let j=i+1;j<unique.length;j++)if(overlap(unique[i],unique[j]))ambiguous=true;
+  const total=unique.reduce((sum,p)=>sum+Math.round(p.days*100),0);
+  if(total>100)ambiguous=true;
+  const leave=ambiguous?null:unique.map(piece=>({typeId:piece.typeId,paid:piece.paid,days:piece.days,requestIds:pieces.filter(p=>p.typeId===piece.typeId&&p.session===piece.session&&p.from===piece.from&&p.to===piece.to).map(p=>p.requestId).sort()}));
+  out.set(key,{types:[...new Set(pieces.map(p=>p.typeId))].sort(),leave,source:ambiguous?'approved-leave-overlap-duration-unknown':unique.map(p=>p.source).sort().join(';')});
+ }
+ return out;
+}
+
+/** Company-country scoped leave type references; current permissions still apply inside this owner. */
+export async function allowanceLeaveTypesTx(tx:Tx,companyId:string,includeArchived=false) {
+ const [co]=await tx.select({country:company.country}).from(company).where(eq(company.id,companyId)).limit(1);
+ if(!co)return [];
+ return tx.select({id:leaveType.id,label:leaveType.name,archivedAt:leaveType.archivedAt,country:leaveType.country}).from(leaveType).where(and(eq(leaveType.country,co.country),includeArchived?undefined:isNull(leaveType.archivedAt))).orderBy(asc(leaveType.name),asc(leaveType.id));
 }

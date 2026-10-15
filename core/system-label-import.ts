@@ -16,7 +16,7 @@ import { readSystemLabelWorkbook, buildSystemLabelWorkbook, systemLabelExportId 
 const lower = (v: string) => v.toLowerCase();
 const list = (v: string) => [...new Set(v.split(';').map(x => x.trim()).filter(Boolean))].sort();
 const whole = (v: string) => { if (v && !/^-?\d{1,9}$/.test(v)) throw new Error('Rank and Sort Order must be whole numbers.'); return Number(v || 0); };
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: Record<string,string>, b: Record<string,string>) => JSON.stringify(Object.keys(a).sort().map(key=>[key,a[key]])) === JSON.stringify(Object.keys(b).sort().map(key=>[key,b[key]]));
 type Org = { kind: OrganisationLabelKind; id: string; companyId: string; archived: boolean;
   values: Record<string, string>; original: LabelUpdateInput };
 
@@ -26,6 +26,7 @@ type Catalogue = {
   groups:(typeof s.gradeGroup.$inferSelect)[];members:(typeof s.gradeGroupMember.$inferSelect)[];
   employees:{id:string;code:string|null;companyId:string;name:string;active:boolean}[];groupAdmin:boolean;
 };
+const companyCell=(companies:Catalogue['companies'],id:string)=>{const co=companies.find(x=>x.id===id);return co&&companies.filter(x=>x.name===co.name).length===1?co.name:id;};
 async function catalogue(tx: Tx): Promise<Catalogue> {
   const permission = await tx.execute(sql`select app.is_admin() as allowed, app.is_group_admin() as global`) as unknown as {allowed:boolean;global:boolean}[];
   if (!permission[0]?.allowed) throw new Error('Only an administrator may import System Labels.');
@@ -45,7 +46,7 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
     for (const r of rows) {
       const field = (key: string) => String((r as unknown as Record<string,unknown>)[key] ?? '');
       const shared = assignments.filter(a => a.labelId === r.id && a.labelKind === kind && a.companyId !== r.companyId).map(a => a.companyId).sort();
-      const values: Record<string,string> = { Company:companies.find(co=>co.id===r.companyId)?.name??r.companyId, Scope:r.isGlobal?'global':shared.length?'shared':'own', 'Shared Companies':r.isGlobal?'':shared.map(id=>companies.find(co=>co.id===id)?.name??id).sort().join(';') };
+      const values: Record<string,string> = { Company:companyCell(companies,r.companyId), Scope:r.isGlobal?'global':shared.length?'shared':'own', 'Shared Companies':r.isGlobal?'':shared.map(id=>companyCell(companies,id)).sort().join(';') };
       for (const c of ORGANISATION_LABEL_COLUMNS[kind]) values[{code:'Code',label:'Label',description:'Description'}[c.headerKey]] = field(c.field);
       if (kind === 'department' || kind === 'business_unit') values['Head Employee Code'] = employees.find(e => e.id === field('headEmploymentId'))?.code ?? '';
       orgs.push({kind,id:r.id,companyId:r.companyId,archived:r.archivedAt!=null,values,
@@ -93,7 +94,7 @@ export async function downloadSystemLabelsWithData(ctx:SessionContext,p:SystemLa
   for(const row of rows)data[row.sheet].push({...row.values,Status:row.active?'Active':'Archived / Inactive'});
   const id=randomUUID();
   const bytes=await buildSystemLabelWorkbook({kinds,rows:data,includeStatus:p.includeInactive,exportId:id,references:{
-   companies:c.companies.filter(co=>!co.archived&&(co.writable||rows.some(r=>r.values.Company===co.name))).map(co=>[co.name,co.id]),
+   companies:c.companies.filter(co=>!co.archived&&(co.writable||rows.some(r=>r.values.Company===co.name||r.values.Company===co.id))).map(co=>[co.name,co.id]),
    grades:c.grades.filter(g=>!g.archivedAt).map(g=>[g.code,g.name]),
    employees:c.employees.filter(e=>e.active&&e.code&&c.companies.some(co=>co.id===e.companyId&&co.writable)).map(e=>[e.code!,e.companyId,e.name])}});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-export',aggregateId:id,eventType:'system-labels.exported',actor:actorOf(ctx),payload:{version:1,companyIds,kinds,includeInactive:p.includeInactive,count:rows.length,rows:rows.map(r=>({id:r.id,key:rowKey(r.sheet,r.values),hash:fingerprint(r.values)}))}});
@@ -161,13 +162,13 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
         const co=matches.length===1?matches[0]:undefined;
         if(!co)throw new Error('Company is unknown or ambiguous.');
         guard(!co.writable||!!co.archived,'Company is archived or outside your administrator scope.');
-        const companyId=co.id;v.Company=co.name;
+        const companyId=co.id;v.Company=companyCell(c.companies,companyId);
         const twins=c.orgs.filter(x=>x.kind===kind&&x.companyId===companyId&&lower(x.values.Code)===lower(code));
         const old=twins.find(x=>!x.archived)??twins[0];
         mergeBefore(old?.values??null);
         if(merge&&old&&same(old.values,v)){classify(old.values,async()=>{});continue;}
         if(!['own','shared','global'].includes(v.Scope))throw new Error('Scope must be own, shared or global.');
-        const shared=list(v['Shared Companies']).map(value=>{const matches=c.companies.filter(x=>x.id===value||x.name===value);if(matches.length!==1)throw new Error('A shared company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();v['Shared Companies']=shared.map(id=>c.companies.find(x=>x.id===id)!.name).sort().join(';');
+        const shared=list(v['Shared Companies']).map(value=>{const matches=c.companies.filter(x=>x.id===value||x.name===value);if(matches.length!==1)throw new Error('A shared company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();v['Shared Companies']=shared.map(id=>companyCell(c.companies,id)).sort().join(';');
         guard(v.Scope==='global'&&!c.groupAdmin,'Global options require a group administrator.');
         if((v.Scope==='shared')!==(shared.length>0)||shared.includes(companyId))throw new Error('Shared scope needs additional company IDs; own/global scope must leave Shared Companies blank.');
         guard(shared.some(id=>!c.companies.some(x=>x.id===id&&x.writable&&!x.archived)),'A shared company is archived or outside your administrator scope.');

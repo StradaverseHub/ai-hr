@@ -70,10 +70,11 @@ function checkZip(bytes: Buffer) {
 
 export function readSystemLabelWorkbook(bytes: Buffer): LabelImportRow[] {
   checkZip(bytes);
-  const wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true, sheetRows: LABEL_FORMATTED_ROW_CEILING + 2 });
+  const wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
   if (wb.SheetNames.length > LABEL_IMPORT_DEFINITIONS.length + 3) throw new Error('Too many worksheets.');
   const rows: LabelImportRow[] = [], seen = new Set<string>();
   for (const sheet of wb.SheetNames) {
+    for (const [key,cell] of Object.entries(wb.Sheets[sheet])) if(!key.startsWith('!')&&cell?.f)throw new Error(`Formula in ${sheet}!${key}. Enter a literal value.`);
     if (sheet === 'Instructions' || sheet === 'Reference' || sheet === LABEL_EXPORT_SHEET) continue;
     const definition = LABEL_IMPORT_DEFINITIONS.find(d => d.kind === sheet);
     if (!definition || seen.has(sheet)) throw new Error(`Unknown or duplicate label worksheet: ${sheet}`);
@@ -139,7 +140,7 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
     const values=p.rows?.[d.kind]??[];
     if(values.length>LABEL_WORKBOOK_MAX_ROWS)throw new Error('A selected list exceeds 500 rows. Narrow the companies or lists.');
     const columns=p.includeStatus?[...d.columns,'Status']:d.columns;
-    const ws=XLSX.utils.aoa_to_sheet([columns,...values.map(row=>columns.map(key=>['Rank','Sort Order'].includes(key)&&row[key]!==''?Number(row[key]):row[key]??''))]);
+    const ws=XLSX.utils.aoa_to_sheet([columns,...values.map(row=>columns.map(key=>['Rank','Sort Order'].includes(key)&&row[key]!=null&&row[key]!==''?Number(row[key]):row[key]??''))]);
     ws['!cols']=columns.map(key=>({wch:key==='Description'?40:key==='Company'||key==='Shared Companies'?30:24}));
     const formattedEnd=Math.min(LABEL_FORMATTED_ROW_CEILING,Math.max(500,values.length+100));
     for(let row=1;row<=formattedEnd;row++)for(let col=0;col<columns.length;col++){

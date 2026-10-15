@@ -35,6 +35,7 @@ async function scopedPolicy(id:string){
   return {s,policy};
 }
 export async function saveAllowancePolicyFormAction(_state:{error:string|null},fd:FormData):Promise<{error:string|null}>{
+  let reviewPath:string|undefined;
   try{
     const {s,scopeIds}=await scopedAdmin();
     const companyId=text(fd,'companyId'),id=text(fd,'id');
@@ -46,14 +47,15 @@ export async function saveAllowancePolicyFormAction(_state:{error:string|null},f
     if(!id&&!rules)throw new Error('New policies require the attendance and employee conditions');
     const policyType=text(fd,'policyType');if(policyType!=='earning'&&policyType!=='deduction')throw new Error('Choose Earning or Deduction');
     const input={companyId,code:text(fd,'code'),name:text(fd,'name'),policyType:policyType as AllowancePolicyType,method:text(fd,'method'),amount:text(fd,'amount'),payComponentId:text(fd,'payComponentId'),effectiveFrom:text(fd,'effectiveFrom'),rules,...(!rules?{criteria:legacyCriteria(fd),scope:legacyScope(fd)}:{})};
-    if(id)await updateAllowancePolicy(s,{id,...input});else await createAllowancePolicy(s,input);
+    const saved=id?(await updateAllowancePolicy(s,{id,...input})):await createAllowancePolicy(s,input);
+    if(rules?.v===3)reviewPath=`${PAGE}/${saved.id}`;
     revalidatePath(PAGE);if(id)revalidatePath(`${PAGE}/${id}`);
   }catch(error){return {error:await message(error)};}
-  redirect(PAGE);
+  redirect(reviewPath??PAGE);
 }
 async function runStatus(fd:FormData,archive:boolean){
   let error:string|undefined;
-  try{const id=text(fd,'id');const {s}=await scopedPolicy(id);if(archive)await archiveAllowancePolicy(s,{id});else await setAllowancePolicyStatus(s,{id,status:text(fd,'status')});revalidatePath(PAGE);}catch(e){error=await message(e);}
+  try{const id=text(fd,'id');const {s}=await scopedPolicy(id);if(archive)await archiveAllowancePolicy(s,{id});else await setAllowancePolicyStatus(s,{id,status:text(fd,'status'),previewMonth:text(fd,'previewMonth'),expectedDigest:text(fd,'expectedDigest'),reviewed:fd.get('activationReviewed')==='on'});revalidatePath(PAGE);}catch(e){error=await message(e);}
   redirect(error?`${PAGE}?error=${encodeURIComponent(error)}`:PAGE);
 }
 export async function setAllowanceStatusAction(fd:FormData){return runStatus(fd,false);}

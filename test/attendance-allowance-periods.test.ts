@@ -10,7 +10,8 @@ import { createMovementEvent } from '../core/movement';
 import { assignDefaultShift, createShift } from '../core/roster';
 import { allowanceScheduleFactsTx, checkIn, checkOut, setAttendancePolicy } from '../packs/attendance/service';
 import { createBatch, deleteDraftBatch, seedPayComponentCatalog, AllowancePayrollConflictError } from '../packs/payroll/service';
-import { allowancePeriods, allowanceTransferHistory, createAllowancePolicy, emptyAllowanceRules, evaluateAllowancesForPeriod, StaleAllowancePreviewError, transferAllowancesToBatch, updateAllowancePolicy, type AllowanceRules } from '../packs/attendance/service';
+import { allowancePeriods, allowanceTransferHistory, createAllowancePolicy, getAllowancePolicy, setAllowancePolicyStatus, emptyAllowanceRules, evaluateAllowancesForPeriod, StaleAllowancePreviewError, transferAllowancesToBatch, updateAllowancePolicy, type AllowanceRules } from '../packs/attendance/service';
+import { upgradeAllowanceRules } from '../lib/attendance-allowance-rules';
 import { monthDates } from '../lib/roster-month';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -60,6 +61,28 @@ async function sources(batchId:string) {
 }
 
 describe('source-owned allowance periods', () => {
+  it('saves grouped versions inactive, requires a fresh reviewed calculation, and retains prior transferred evidence after editing', async()=>{
+    const f=await fixture(),rules=upgradeAllowanceRules(f.rules),p=await f.policy('GROUPED_REVIEW','0.10',{rules});
+    expect((await getAllowancePolicy(f.ctx,p.id))?.status).toBe('inactive');
+    const {batchId}=await createBatch(f.a,{companyId:b.companyId,payPeriod:month,scope:{employmentIds:[f.employees[0]]}});
+    await expect(transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId})).rejects.toThrow('Activate this policy');
+    const preview=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(preview.rows).toHaveLength(1);expect(preview.rows[0].amount).toBe('0.20');
+    expect(preview.rows[0].periods.filter(period=>period.qualified).every(period=>period.expression?.state==='true'&&period.ruleVersion===3)).toBe(true);
+    await expect(setAllowancePolicyStatus(f.ctx,{id:p.id,status:'active',previewMonth:month,expectedDigest:preview.inputDigest})).rejects.toThrow('Preview and review');
+    await expect(setAllowancePolicyStatus(f.ctx,{id:p.id,status:'active',previewMonth:month,expectedDigest:'0'.repeat(64),reviewed:true})).rejects.toThrow(StaleAllowancePreviewError);
+    await setAllowancePolicyStatus(f.ctx,{id:p.id,status:'active',previewMonth:month,expectedDigest:preview.inputDigest,reviewed:true});
+    const transferPreview=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month,batchId});
+    await transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId,expectedDigest:transferPreview.inputDigest});
+    expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+    const history=await allowanceTransferHistory(f.ctx,p.id),snapshots=history.revisions.map(revision=>JSON.stringify(revision));
+    await updateAllowancePolicy(f.ctx,{id:p.id,amount:'0.30'});
+    expect(await getAllowancePolicy(f.ctx,p.id)).toMatchObject({status:'inactive',version:2});
+    const after=await allowanceTransferHistory(f.ctx,p.id);expect(after.revisions.map(revision=>JSON.stringify(revision))).toEqual(snapshots);
+    expect(after.versions).toHaveLength(2);expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.20');
+    await expect(setAllowancePolicyStatus(f.ctx,{id:p.id,status:'active',previewMonth:month,expectedDigest:preview.inputDigest,reviewed:true})).rejects.toThrow(StaleAllowancePreviewError);
+  });
+
   it('previews real recorded attendance, limits the selected payroll scope, and pays each qualifying day once', async () => {
     const f = await fixture();
     const rules = emptyAllowanceRules();

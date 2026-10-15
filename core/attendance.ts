@@ -4389,14 +4389,14 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
 /** Canonical date facts for attendance allowance previews. No measurement is recomputed here.
  * Company-policy halfWorkingDays classify as half, while the policy branch retains
  * its existing full scheduled-minute threshold. This seam never invents a duration. */
-export async function allowanceScheduleFactsTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<{
-  shiftId: string | null; kind: 'full' | 'half' | 'off' | 'rest' | 'holiday'; scheduledMinutes: number;
+export async function allowanceScheduleFactsTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo,options?:{includeApplicability:boolean}): Promise<{
+  fixedClockApplicable?:boolean;shiftId: string | null; kind: 'full' | 'half' | 'off' | 'rest' | 'holiday'; scheduledMinutes: number;
 }> {
   const resolved = await scheduleFor(tx, employmentId, date, memo);
   const kind = resolved.dayType === 'holiday' ? 'holiday'
     : resolved.dayType === 'rest_day' ? 'rest'
     : resolved.scheduleDayKind ?? (resolved.source === 'default-shift-rest' ? 'off' : 'full');
-  return { shiftId: resolved.displayShiftId ?? null, kind,
+  return { shiftId: resolved.displayShiftId ?? null, kind,...(options?.includeApplicability?{fixedClockApplicable:!resolved.flexiDuration&&resolved.dayType==='workday'}:{}),
     scheduledMinutes: kind === 'off' || kind === 'rest' ? 0 : resolved.normalMinutesOverride ?? resolved.scheduledMinutes };
 }
 

@@ -16749,9 +16749,21 @@
     }
   },
   "attendanceSettingsHub": {
-    "companyPolicy": {"title": "公司政策设置", "desc": "公司工作时间政策和设备注册要求。", "cta": "打开"},
-    "workScheduleOvertime": {"title": "工作安排与加班费率", "desc": "加班费率及备用班次覆盖情况。", "cta": "打开"},
-    "registeredDevices": {"title": "已注册打卡设备", "desc": "查看已注册设备并撤销注册。", "cta": "打开"},
+    "companyPolicy": {
+      "title": "公司政策设置",
+      "desc": "公司工作时间政策和设备注册要求。",
+      "cta": "打开"
+    },
+    "workScheduleOvertime": {
+      "title": "工作安排与加班费率",
+      "desc": "加班费率及备用班次覆盖情况。",
+      "cta": "打开"
+    },
+    "registeredDevices": {
+      "title": "已注册打卡设备",
+      "desc": "查看已注册设备并撤销注册。",
+      "cta": "打开"
+    },
     "title": "设置",
     "subtitle": "出勤的所有设置页面集中在这里。每张卡片打开你之前使用的页面。",
     "shift": {
@@ -18661,7 +18673,15 @@
       "earlyOutMinutes": "早退时间",
       "absentDays": "缺勤天数",
       "attendanceDays": "出勤天数",
-      "eligibleWorkingDays": "适用工作天数"
+      "eligibleWorkingDays": "适用工作天数",
+      "lateCount": "迟到次数",
+      "earlyOutCount": "早退次数",
+      "absenceCount": "缺勤次数",
+      "shortHoursCount": "工时不足次数",
+      "shortMinutes": "工时不足时长",
+      "incompleteCount": "不完整打卡次数",
+      "leaveCount": "已批准休假次数",
+      "leaveDays": "已批准休假时长"
     },
     "operators": {
       "eq": "等于",
@@ -18677,7 +18697,8 @@
     "units": {
       "hours": "小时",
       "minutes": "分钟",
-      "days": "天"
+      "days": "天",
+      "occurrences": "次"
     },
     "measurementsHint": "时间数据以已记录考勤为准。不完整打卡或缺失的必要计量不符合条件。过去已排班但无记录的工作日计为缺勤，经批准的休假除外；无记录的休息日、轮休日和节假日不产生金额。",
     "reviewWarning": "保存会创建新的政策版本。旧版本、计算记录和薪资历史均保留。使用同一薪资代码的重叠政策金额可能累加；转入薪资前请逐一检查预览。",
@@ -18707,7 +18728,8 @@
       "noApplicableDays": "没有适用的出勤或排定工作日缺勤记录。",
       "incompleteAttendance": "至少一条适用的打卡记录不完整。",
       "criteriaFailed": "考勤条件未通过，或缺少所需的测量值。",
-      "employeeCriteriaFailed": "员工选择条件未匹配。"
+      "employeeCriteriaFailed": "员工选择条件未匹配。",
+      "unknownMeasurements": "所需测量值不可用，不能当作零。"
     },
     "processedConfirm": "本次薪资已处理。我授权更新这些来源输入，并将相关员工标记为需要重新处理薪资。现有工资单在重新处理前保持不变。",
     "transferWarning": "转入时会重新计算预览；考勤或政策有变化时将拒绝操作。重试仅替换本政策的来源，不覆盖其他手动输入。已关闭的薪资受到保护。",
@@ -18953,23 +18975,63 @@
     "reload": "重新加载当前排班"
   },
   "leaveCreditDetails": {
-  "title": "假期积分详情",
-  "subtitle": "您的假期积分记录：已获得的积分、补假已使用的积分及可用余额。",
-  "empty": "没有符合筛选条件的已获得假期积分。",
-  "invalid": "筛选条件无效。此页面仅显示您本人的积分。"
-},
+    "title": "假期积分详情",
+    "subtitle": "您的假期积分记录：已获得的积分、补假已使用的积分及可用余额。",
+    "empty": "没有符合筛选条件的已获得假期积分。",
+    "invalid": "筛选条件无效。此页面仅显示您本人的积分。"
+  },
   "labelExcelRoundTrip": {
-  "blank": "下载空白模板",
-  "current": "下载包含当前数据的模板",
-  "exportHelp": "选择公司和组织列表。默认选中所有列表。",
-  "inactive": "包含停用／已归档记录",
-  "download": "下载 Excel",
-  "downloadFailed": "下载失败，请重试。",
-  "merge": "新增并更新现有记录",
-  "blankHelp": "空白单元格保留已保存的值。输入 [CLEAR] 清除可选值。从文件删除行不会删除系统记录。",
-  "include": "包含",
-  "noChange": "无变化",
-  "new": "新增",
-  "previewAgain": "所选行已更改。请重新预览后再确认。"
-}
+    "blank": "下载空白模板",
+    "current": "下载包含当前数据的模板",
+    "exportHelp": "选择公司和组织列表。默认选中所有列表。",
+    "inactive": "包含停用／已归档记录",
+    "download": "下载 Excel",
+    "downloadFailed": "下载失败，请重试。",
+    "merge": "新增并更新现有记录",
+    "blankHelp": "空白单元格保留已保存的值。输入 [CLEAR] 清除可选值。从文件删除行不会删除系统记录。",
+    "include": "包含",
+    "noChange": "无变化",
+    "new": "新增",
+    "previewAgain": "所选行已更改。请重新预览后再确认。"
+  },
+  "allowanceV3": {
+    "all": "全部 · 每项条件均须通过",
+    "any": "任一 · 至少一项条件须通过",
+    "rootGroup": "考勤条件",
+    "nestedGroup": "嵌套条件组",
+    "match": "条件匹配方式",
+    "addGroup": "添加条件组",
+    "unrestricted": "不限制考勤条件，仍须有适用日期。",
+    "emptyGroup": "请添加条件或移除此空组。",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "moveUpAt": "将第 {position} 项条件上移",
+    "moveDownAt": "将第 {position} 项条件下移",
+    "removeAt": "移除第 {position} 项条件",
+    "choose": "选择值",
+    "search": "搜索选项",
+    "selectAll": "选择全部可见项",
+    "clearAll": "清除全部可见项",
+    "removeValue": "移除 {value}",
+    "retainedUnavailable": "保留已保存但不可用的选项。保存修订版本前请移除这些选项。",
+    "leaveTypes": "假期类型",
+    "allLeaveTypes": "不选择表示所有已批准的假期类型。",
+    "unknown": "未知",
+    "unknownMeasurement": "所需测量值不可用，不能当作零。",
+    "versionNotice": "此版本保留原有的平面条件和计算方式。",
+    "upgrade": "在新版本中使用分组条件",
+    "savePreview": "保存并预览",
+    "reviewActivate": "审核并启用",
+    "activationReviewed": "我已审核此版本在所选月份的计算结果及未知结果。",
+    "activate": "启用已审核版本",
+    "activationHint": "保存后此版本保持停用。启用前须审核最新计算。",
+    "allShiftsHint": "不选择表示所有班次。全选和清除仅影响搜索后可见的选项。",
+    "measurementsHint": "次数按不同日期计算。缺失的时间或无法确定的休假时长保持未知。只有明确为真的分组结果才符合资格。",
+    "fixedRule": "固定金额按每个符合资格的期间发放一次，不按比例计算。空考勤条件包括适用的已记录日期、排定缺勤及已批准休假日期。如须实际出勤，请添加出勤条件。",
+    "leaveSource": "休假依据",
+    "paid": "有薪",
+    "unpaid": "无薪",
+    "unknownPaid": "薪资状态未知",
+    "noLeave": "此日期无已批准休假"
+  }
 }

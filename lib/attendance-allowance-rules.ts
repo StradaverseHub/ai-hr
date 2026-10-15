@@ -1,24 +1,18 @@
 /** Client-safe policy vocabulary and deterministic fixed-amount engine. No database or executable formula. */
 import { addDaysIso, datesBetween, isMonthParam, monthRange, weekRangeOf } from './roster-month';
-export const ALLOWANCE_METHODS_V2 = ['monthly', 'weekly', 'daily'] as const;
-export type AllowancePeriodMethod = typeof ALLOWANCE_METHODS_V2[number];
-export type AllowancePolicyType = 'earning' | 'deduction';
-export const ALLOWANCE_EMPLOYEE_FIELDS = ['companyId', 'departmentId', 'businessUnitId', 'positionId', 'gradeId', 'employmentType', 'employmentCategory', 'status'] as const;
-export type AllowanceEmployeeField = typeof ALLOWANCE_EMPLOYEE_FIELDS[number];
-export const ALLOWANCE_METRICS = ['workingMinutes', 'actualMinutes', 'overtimeMinutes', 'lateMinutes', 'earlyOutMinutes', 'absentDays', 'attendanceDays', 'eligibleWorkingDays'] as const;
-export type AllowanceMetric = typeof ALLOWANCE_METRICS[number];
-export const ALLOWANCE_OPERATORS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between'] as const;
-export type AllowanceOperator = typeof ALLOWANCE_OPERATORS[number];
-export const ALLOWANCE_DAY_KINDS = ['full', 'half', 'off', 'rest', 'holiday'] as const;
-export type AllowanceDayKind = typeof ALLOWANCE_DAY_KINDS[number];
+import { ALLOWANCE_METHODS_V2, ALLOWANCE_EMPLOYEE_FIELDS, ALLOWANCE_METRICS, ALLOWANCE_OPERATORS, ALLOWANCE_DAY_KINDS, type AllowancePeriodMethod, type AllowancePolicyType, type AllowanceEmployeeField, type AllowanceMetric, type AllowanceOperator, type AllowanceDayKind } from './attendance-allowance-vocabulary';
+export * from './attendance-allowance-vocabulary';
+import { validateAllowanceExpression, evaluateAllowanceExpression, type AllowanceExpression, type AllowanceExpressionTrace } from './attendance-allowance-expression';
 export type AllowanceAttendanceCriterion = { field: AllowanceMetric; operator: AllowanceOperator; value: string; upper?: string; unit: 'minutes' | 'hours' | 'days' };
 export type AllowanceEmployeeCriterion = { field: AllowanceEmployeeField; operator: 'in' | 'notIn'; values: string[] };
-export type AllowanceRules = {
+export type AllowanceRulesV2 = {
   v: 2;
   employee: { mode: 'all' | 'selected' | 'criteria'; employmentIds: string[]; logic: 'and' | 'or'; criteria: AllowanceEmployeeCriterion[] };
   attendance: { dayKinds: AllowanceDayKind[]; shiftIds: string[]; logic: 'and' | 'or'; criteria: AllowanceAttendanceCriterion[] };
 };
-export const emptyAllowanceRules = (): AllowanceRules => ({ v: 2, employee: { mode: 'all', employmentIds: [], logic: 'and', criteria: [] }, attendance: { dayKinds: [], shiftIds: [], logic: 'and', criteria: [] } });
+export type AllowanceRulesV3 = Omit<AllowanceRulesV2,'v'|'attendance'> & { v:3; attendance:AllowanceRulesV2['attendance'] & {expression:AllowanceExpression} };
+export type AllowanceRules = AllowanceRulesV2 | AllowanceRulesV3;
+export const emptyAllowanceRules = (): AllowanceRulesV2 => ({ v: 2, employee: { mode: 'all', employmentIds: [], logic: 'and', criteria: [] }, attendance: { dayKinds: [], shiftIds: [], logic: 'and', criteria: [] } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const bag = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Incomplete allowance conditions');
@@ -50,7 +44,7 @@ function threshold(value: unknown, unit: AllowanceAttendanceCriterion['unit']): 
   const fixed = BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, '0'));
   return unit === 'hours' ? fixed * BigInt(60) : fixed;
 }
-export function validateAllowanceRules(raw: unknown): AllowanceRules {
+function validateAllowanceRulesV2(raw: unknown): AllowanceRulesV2 {
   const r = bag(raw), e = bag(r.employee), a = bag(r.attendance);
   if (r.v !== 2 || !['all', 'selected', 'criteria'].includes(String(e.mode))) throw new Error('Unknown allowance rules version or employee selection');
   const employmentIds = e.mode === 'selected' ? ids(e.employmentIds) : [];
@@ -84,6 +78,20 @@ export function validateAllowanceRules(raw: unknown): AllowanceRules {
   });
   return { v: 2, employee: { mode: e.mode as AllowanceRules['employee']['mode'], employmentIds, logic: logic(e.logic), criteria: employeeCriteria }, attendance: { dayKinds, shiftIds: ids(a.shiftIds), logic: logic(a.logic), criteria: attendanceCriteria } };
 }
+export function validateAllowanceRules(raw:unknown):AllowanceRules {
+  const r=bag(raw);
+  if(r.v!==3)return validateAllowanceRulesV2(raw);
+  const a=bag(r.attendance);
+  if(!Array.isArray(a.criteria)||a.criteria.length||a.logic!=='and')throw new Error('Version 3 attendance conditions must use their expression tree.');
+  const base=validateAllowanceRulesV2({...r,v:2,attendance:{...a,criteria:[],logic:'and'}});
+  return {...base,v:3,attendance:{...base.attendance,expression:validateAllowanceExpression(a.expression)}};
+}
+export const emptyAllowanceRulesV3=():AllowanceRulesV3=>{const base=emptyAllowanceRules();return {...base,v:3,attendance:{...base.attendance,expression:{id:'root',type:'group',logic:'and',children:[]}}};};
+/** Conversion is explicit and produces a new policy definition; old snapshots keep their version. */
+export function upgradeAllowanceRules(rules:AllowanceRulesV2):AllowanceRulesV3 {
+ return {...rules,v:3,attendance:{...rules.attendance,criteria:[],logic:'and',expression:{id:'root',type:'group',logic:rules.attendance.logic,children:rules.attendance.criteria.map((c,i)=>({...c,id:'criterion-'+i,type:'criterion'}))}}};
+}
+
 export type AllowancePeriod = { from: string; to: string; key: string };
 export function allowancePeriods(method: AllowancePeriodMethod, month: string): AllowancePeriod[] {
   if (!isMonthParam(month)) throw new Error('Invalid allowance month');
@@ -116,13 +124,15 @@ export type AllowanceDay = {
   lateMinutes: number | null; earlyOutMinutes: number | null;
   absentDays: number; attendanceDays: number; eligibleWorkingDays: number;
   complete: boolean;
+  v3Facts?: {shortMinutes:number|null;incomplete:boolean;fixedClockApplicable:boolean;leave:{typeId:string;paid:boolean|null;days:number;requestIds:string[]}[]|null;leaveTypesPresent:string[];source:string};
   factSources?: { measurements: 'recorded-attendance' | 'canonical-scheduled-absence'; recordedDayType: string | null; dayAndShift: 'canonical-schedule-at-calculation'; canonicalKind: AllowanceDayKind };
 };
 export type AllowanceMetricTrace = { field: AllowanceMetric; actual: number | null; pass: boolean; operator: AllowanceOperator; value: string; upper?: string; unit: AllowanceAttendanceCriterion['unit'] };
-export type AllowancePeriodEvaluation = AllowancePeriod & { qualified: boolean; amount: string; eligibleDates: string[]; attendanceIds: string[]; metrics: Record<AllowanceMetric, number | null>; criteria: AllowanceMetricTrace[]; reasons: string[]; sourceDays: AllowanceDay[]; employeeSelection?: { asOf:string|null; facts:AllowanceEmployeeFacts|null; pass:boolean; factSources:Record<AllowanceEmployeeField,string> } };
+export type AllowancePeriodEvaluation = AllowancePeriod & { qualified: boolean; amount: string; eligibleDates: string[]; attendanceIds: string[]; metrics: Record<AllowanceMetric, number | null>; criteria: AllowanceMetricTrace[]; reasons: string[]; sourceDays: AllowanceDay[]; expression?:AllowanceExpressionTrace; ruleVersion?:3; employeeSelection?: { asOf:string|null; facts:AllowanceEmployeeFacts|null; pass:boolean; factSources:Record<AllowanceEmployeeField,string> } };
 export function evaluateAllowancePeriods(p: { method: AllowancePeriodMethod; month: string; amount: string; effectiveFrom: string; today: string; rules: AllowanceRules; days: AllowanceDay[] }): AllowancePeriodEvaluation[] {
   const amount = allowanceCents(p.amount);
   return allowancePeriods(p.method, p.month).map(period => {
+    if(p.rules.v===3)return evaluateAllowancePeriodV3(p as typeof p & {rules:AllowanceRulesV3},period,amount);
     const days = p.days.filter(d => d.date >= period.from && d.date <= period.to && d.date >= p.effectiveFrom && d.date <= p.today && (d.attendanceId!=null||d.absentDays>0) && (!p.rules.attendance.dayKinds.length || p.rules.attendance.dayKinds.includes(d.kind)) && (!p.rules.attendance.shiftIds.length || (d.shiftId != null && p.rules.attendance.shiftIds.includes(d.shiftId))));
     const metrics = Object.fromEntries(ALLOWANCE_METRICS.map(field => {
       const vals = days.map(d => d[field]);
@@ -144,4 +154,19 @@ export function evaluateAllowancePeriods(p: { method: AllowancePeriodMethod; mon
     const qualified = reasons.length === 0;
     return { ...period, qualified, amount: allowanceMoney(qualified ? amount : BigInt(0)), eligibleDates: days.map(d => d.date), attendanceIds: days.flatMap(d => d.attendanceId ? [d.attendanceId] : []), metrics, criteria, reasons, sourceDays:days };
   });
+}
+
+function evaluateAllowancePeriodV3(p:{effectiveFrom:string;today:string;rules:AllowanceRulesV3;days:AllowanceDay[]},period:AllowancePeriod,amount:bigint):AllowancePeriodEvaluation {
+ const byDate=new Map<string,AllowanceDay>();
+ for(const day of p.days){if(byDate.has(day.date))throw new Error('Duplicate canonical allowance date');byDate.set(day.date,day);}
+ const days=[...byDate.values()].filter(d=>d.date>=period.from&&d.date<=period.to&&d.date>=p.effectiveFrom&&d.date<=p.today&&(d.attendanceId!=null||d.absentDays>0||((d.v3Facts?.leaveTypesPresent.length??0)>0))&&(!p.rules.attendance.dayKinds.length||p.rules.attendance.dayKinds.includes(d.kind))&&(!p.rules.attendance.shiftIds.length||d.shiftId!=null&&p.rules.attendance.shiftIds.includes(d.shiftId))).sort((a,b)=>a.date.localeCompare(b.date));
+ const expression=evaluateAllowanceExpression(p.rules.attendance.expression,days);
+ const reasons:string[]=[];
+ if(period.to>p.today)reasons.push('unfinishedPeriod');
+ if(period.from<p.effectiveFrom)reasons.push('beforeEffective');
+ if(!days.length)reasons.push('noApplicableDays');
+ if(expression.state!=='true')reasons.push(expression.state==='unknown'?'unknownMeasurements':'criteriaFailed');
+ const qualified=!reasons.length;
+ const metrics=Object.fromEntries(ALLOWANCE_METRICS.map(field=>{const values=days.map(d=>d[field]);return [field,values.some(v=>v==null)?null:values.reduce<number>((a,v)=>a+(v??0),0)];})) as Record<AllowanceMetric,number|null>;
+ return {...period,qualified,amount:allowanceMoney(qualified?amount:BigInt(0)),eligibleDates:days.map(d=>d.date),attendanceIds:days.flatMap(d=>d.attendanceId?[d.attendanceId]:[]),metrics,criteria:[],reasons,sourceDays:days,expression,ruleVersion:3};
 }

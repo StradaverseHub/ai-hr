@@ -16749,9 +16749,21 @@
     }
   },
   "attendanceSettingsHub": {
-    "companyPolicy": {"title": "Cài đặt chính sách công ty", "desc": "Chính sách giờ làm và yêu cầu thiết bị đã đăng ký.", "cta": "Mở"},
-    "workScheduleOvertime": {"title": "Lịch làm việc và mức làm thêm", "desc": "Mức làm thêm và phạm vi ca dự phòng.", "cta": "Mở"},
-    "registeredDevices": {"title": "Thiết bị chấm công đã đăng ký", "desc": "Xem thiết bị và thu hồi đăng ký.", "cta": "Mở"},
+    "companyPolicy": {
+      "title": "Cài đặt chính sách công ty",
+      "desc": "Chính sách giờ làm và yêu cầu thiết bị đã đăng ký.",
+      "cta": "Mở"
+    },
+    "workScheduleOvertime": {
+      "title": "Lịch làm việc và mức làm thêm",
+      "desc": "Mức làm thêm và phạm vi ca dự phòng.",
+      "cta": "Mở"
+    },
+    "registeredDevices": {
+      "title": "Thiết bị chấm công đã đăng ký",
+      "desc": "Xem thiết bị và thu hồi đăng ký.",
+      "cta": "Mở"
+    },
     "title": "Cài đặt",
     "subtitle": "Các trang thiết lập chấm công ở một nơi. Mỗi thẻ mở trang bạn vẫn dùng trước đây.",
     "shift": {
@@ -18661,7 +18673,15 @@
       "earlyOutMinutes": "Thời gian về sớm",
       "absentDays": "Số ngày vắng mặt",
       "attendanceDays": "Số ngày có mặt",
-      "eligibleWorkingDays": "Số ngày làm việc áp dụng"
+      "eligibleWorkingDays": "Số ngày làm việc áp dụng",
+      "lateCount": "Số lần đến muộn",
+      "earlyOutCount": "Số lần về sớm",
+      "absenceCount": "Số lần vắng mặt",
+      "shortHoursCount": "Số lần thiếu giờ",
+      "shortMinutes": "Thời lượng thiếu giờ",
+      "incompleteCount": "Số lần chấm công chưa đủ",
+      "leaveCount": "Số lần nghỉ đã duyệt",
+      "leaveDays": "Thời lượng nghỉ đã duyệt"
     },
     "operators": {
       "eq": "Bằng",
@@ -18677,7 +18697,8 @@
     "units": {
       "hours": "giờ",
       "minutes": "phút",
-      "days": "ngày"
+      "days": "ngày",
+      "occurrences": "lần"
     },
     "measurementsHint": "Thời gian lấy từ bản ghi chấm công. Chấm công chưa hoàn tất hoặc thiếu số đo bắt buộc không đủ điều kiện. Ngày làm theo lịch đã qua mà không có bản ghi được tính vắng mặt, trừ nghỉ phép đã duyệt; ngày nghỉ và ngày lễ không có bản ghi không phát sinh tiền.",
     "reviewWarning": "Lưu sẽ tạo phiên bản chính sách mới. Các phiên bản, kết quả tính và lịch sử lương cũ được giữ lại. Các chính sách trùng phạm vi dùng cùng mã lương có thể cộng dồn; hãy kiểm tra từng bản xem trước khi chuyển.",
@@ -18707,7 +18728,8 @@
       "noApplicableDays": "Không có ngày chấm công hoặc ngày vắng theo lịch làm việc phù hợp.",
       "incompleteAttendance": "Có ít nhất một bản ghi chấm công áp dụng chưa đầy đủ.",
       "criteriaFailed": "Không đạt điều kiện chấm công hoặc thiếu số liệu cần thiết.",
-      "employeeCriteriaFailed": "Không khớp điều kiện lựa chọn nhân viên."
+      "employeeCriteriaFailed": "Không khớp điều kiện lựa chọn nhân viên.",
+      "unknownMeasurements": "Thiếu số đo cần thiết. Không được coi là bằng không."
     },
     "processedConfirm": "Đợt này đã xử lý. Tôi cho phép cập nhật dữ liệu nguồn và đánh dấu nhân viên liên quan để tính lại lương. Phiếu lương hiện có không đổi cho đến khi tính lại.",
     "transferWarning": "Khi chuyển, hệ thống tính lại bản xem trước và từ chối nếu chấm công hoặc chính sách đã thay đổi. Thử lại chỉ thay nguồn của chính sách này, không ghi đè dữ liệu nhập tay khác. Đợt lương đã đóng được bảo vệ.",
@@ -18953,23 +18975,63 @@
     "reload": "Tải lại lịch hiện tại"
   },
   "leaveCreditDetails": {
-  "title": "Chi tiết tín dụng nghỉ phép",
-  "subtitle": "Lịch sử tín dụng nghỉ phép của bạn — số đã tích lũy, đã dùng cho nghỉ bù và số còn lại.",
-  "empty": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
-  "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn."
-},
+    "title": "Chi tiết tín dụng nghỉ phép",
+    "subtitle": "Lịch sử tín dụng nghỉ phép của bạn — số đã tích lũy, đã dùng cho nghỉ bù và số còn lại.",
+    "empty": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
+    "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn."
+  },
   "labelExcelRoundTrip": {
-  "blank": "Tải mẫu trống",
-  "current": "Tải mẫu có dữ liệu hiện tại",
-  "exportHelp": "Chọn công ty và danh sách tổ chức. Ban đầu chọn tất cả danh sách.",
-  "inactive": "Bao gồm bản ghi không hoạt động / đã lưu trữ",
-  "download": "Tải Excel",
-  "downloadFailed": "Tải xuống thất bại. Vui lòng thử lại.",
-  "merge": "Thêm mới + cập nhật hiện có",
-  "blankHelp": "Ô trống giữ nguyên giá trị đã lưu. Nhập [CLEAR] để xóa giá trị không bắt buộc. Xóa dòng trong tệp không xóa bản ghi.",
-  "include": "Bao gồm",
-  "noChange": "Không đổi",
-  "new": "Mới",
-  "previewAgain": "Lựa chọn dòng đã thay đổi. Xem trước lại trước khi xác nhận."
-}
+    "blank": "Tải mẫu trống",
+    "current": "Tải mẫu có dữ liệu hiện tại",
+    "exportHelp": "Chọn công ty và danh sách tổ chức. Ban đầu chọn tất cả danh sách.",
+    "inactive": "Bao gồm bản ghi không hoạt động / đã lưu trữ",
+    "download": "Tải Excel",
+    "downloadFailed": "Tải xuống thất bại. Vui lòng thử lại.",
+    "merge": "Thêm mới + cập nhật hiện có",
+    "blankHelp": "Ô trống giữ nguyên giá trị đã lưu. Nhập [CLEAR] để xóa giá trị không bắt buộc. Xóa dòng trong tệp không xóa bản ghi.",
+    "include": "Bao gồm",
+    "noChange": "Không đổi",
+    "new": "Mới",
+    "previewAgain": "Lựa chọn dòng đã thay đổi. Xem trước lại trước khi xác nhận."
+  },
+  "allowanceV3": {
+    "all": "Tất cả · mọi điều kiện phải đạt",
+    "any": "Bất kỳ · ít nhất một điều kiện phải đạt",
+    "rootGroup": "Điều kiện chấm công",
+    "nestedGroup": "Nhóm điều kiện lồng nhau",
+    "match": "Cách khớp điều kiện",
+    "addGroup": "Thêm nhóm",
+    "unrestricted": "Không giới hạn điều kiện chấm công. Vẫn cần ngày áp dụng.",
+    "emptyGroup": "Thêm điều kiện hoặc xóa nhóm trống này.",
+    "moveUp": "Chuyển lên",
+    "moveDown": "Chuyển xuống",
+    "moveUpAt": "Chuyển điều kiện {position} lên",
+    "moveDownAt": "Chuyển điều kiện {position} xuống",
+    "removeAt": "Xóa điều kiện {position}",
+    "choose": "Chọn giá trị",
+    "search": "Tìm lựa chọn",
+    "selectAll": "Chọn tất cả mục hiển thị",
+    "clearAll": "Bỏ chọn tất cả mục hiển thị",
+    "removeValue": "Xóa {value}",
+    "retainedUnavailable": "Giữ lại lựa chọn đã lưu nhưng không còn khả dụng. Hãy xóa trước khi lưu phiên bản sửa đổi.",
+    "leaveTypes": "Loại nghỉ phép",
+    "allLeaveTypes": "Không chọn nghĩa là tất cả loại nghỉ phép đã duyệt.",
+    "unknown": "Không xác định",
+    "unknownMeasurement": "Thiếu số đo cần thiết. Không được coi là bằng không.",
+    "versionNotice": "Phiên bản này giữ nguyên điều kiện phẳng và cách tính ban đầu.",
+    "upgrade": "Dùng điều kiện nhóm trong phiên bản mới",
+    "savePreview": "Lưu và xem trước",
+    "reviewActivate": "Xem xét và kích hoạt",
+    "activationReviewed": "Tôi đã xem xét kết quả tính và kết quả Không xác định của phiên bản này cho tháng đã chọn.",
+    "activate": "Kích hoạt phiên bản đã xem xét",
+    "activationHint": "Phiên bản vẫn không hoạt động sau khi lưu. Xem xét phép tính mới trước khi kích hoạt.",
+    "allShiftsHint": "Không chọn nghĩa là tất cả ca. Chọn tất cả và Bỏ chọn tất cả chỉ tác động các mục hiển thị sau khi tìm.",
+    "measurementsHint": "Số lần tính theo các ngày riêng biệt. Thời gian thiếu hoặc thời lượng nghỉ chưa rõ vẫn là Không xác định. Chỉ kết quả nhóm chắc chắn đúng mới đủ điều kiện.",
+    "fixedRule": "Số tiền cố định áp dụng một lần mỗi kỳ đủ điều kiện, không phân bổ tỷ lệ. Điều kiện trống bao gồm ngày có chấm công, vắng mặt theo lịch và nghỉ đã duyệt phù hợp. Thêm điều kiện có mặt nếu cần đi làm.",
+    "leaveSource": "Bằng chứng nghỉ phép",
+    "paid": "Có lương",
+    "unpaid": "Không lương",
+    "unknownPaid": "Chưa rõ trạng thái lương",
+    "noLeave": "Không có nghỉ phép đã duyệt ngày này"
+  }
 }

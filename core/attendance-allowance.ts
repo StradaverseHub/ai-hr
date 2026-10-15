@@ -1,3 +1,5 @@
+import { allowanceLeaveTypesTx } from '../packs/leave/service';
+import { allowanceExpressionCriteria } from '../lib/attendance-allowance-expression';
 /** Attendance allowance policy definitions, pure preview and atomic source-owned payroll transfer.
  * ADR-0106 extends ADR-0072 without reinterpreting any NULL-rules legacy monthly policy.
  */
@@ -88,6 +90,7 @@ async function validateDefinitionTx(tx:Tx,p:{companyId:string;payComponentId:str
   if(isUnsupportedTaxableComponent(component))throw new UnsupportedBatchComponentError(component.code);
   if(component.archivedAt||component.isNonPayable||(component.rule&&component.rule.kind!=='fixed')||(p.policyType==='deduction'?component.kind!=='deduction':component.kind!=='allowance'))throw new Error('Choose an active fixed Payroll code compatible with Earning or Deduction');
   if(!p.rules)return;
+  if(p.rules.v===3){const ids=[...new Set(allowanceExpressionCriteria(p.rules.attendance.expression).flatMap(c=>c.leaveTypeIds??[]))];const available=await allowanceLeaveTypesTx(tx,p.companyId);if(ids.some(id=>!available.some(type=>type.id===id)))throw new Error('Choose active leave types available to the policy company.');}
   const selected=p.rules.attendance.shiftIds;
   if(selected.length){const rows=await tx.select({id:shift.id}).from(shift).where(and(inArray(shift.id,selected),isNull(shift.archivedAt),sql`(${shift.companyId} is null or ${shift.companyId}=${p.companyId})`));if(rows.length!==selected.length)throw new Error('Selected shifts must be active and available to the policy company');}
   const empIds=p.rules.employee.employmentIds;
@@ -275,7 +278,7 @@ export async function createAllowancePolicy(
           amount,
           payComponentId,
           effectiveFrom,
-          status: 'active',
+          status: rules?.v===3?'inactive':'active',
           criteria,
           scope,
         })
@@ -341,7 +344,7 @@ export async function updateAllowancePolicy(
     try {
       await tx
         .update(attendanceAllowancePolicy)
-        .set({ code, name, amount, payComponentId, effectiveFrom, criteria, scope,method,policyType,rules,version:before.version+1 })
+        .set({ code, name, amount, payComponentId, effectiveFrom, criteria, scope,method,policyType,rules,version:before.version+1,status:rules?.v===3?'inactive':before.status })
         .where(eq(attendanceAllowancePolicy.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicateAllowancePolicyCodeError();
@@ -363,7 +366,7 @@ export async function updateAllowancePolicy(
 
 export async function setAllowancePolicyStatus(
   ctx: SessionContext,
-  p: { id: string; status: string },
+  p: { id: string; status: string;previewMonth?:string;expectedDigest?:string;reviewed?:boolean },
 ): Promise<{ id: string }> {
   const status = normalizeStatus(p.status);
   return withTenant(ctx, async (tx) => {
@@ -371,6 +374,11 @@ export async function setAllowancePolicyStatus(
     if(!before||before.archivedAt)throw new Error('Attendance-allowance policy not found');
     await assertPolicyAdminTx(tx,before.companyId);
     if(status==='active')await validateDefinitionTx(tx,{companyId:before.companyId,payComponentId:before.payComponentId,policyType:before.policyType,rules:before.rules});
+    if(status==='active'&&before.rules?.v===3){
+      if(!p.reviewed||!p.previewMonth||!p.expectedDigest)throw new Error('Preview and review the current policy calculation before activation.');
+      const preview=await evaluateAllowancesTx(tx,ctx,{policyId:before.id,month:p.previewMonth});
+      if(preview.inputDigest!==p.expectedDigest)throw new StaleAllowancePreviewError();
+    }
     await tx
       .update(attendanceAllowancePolicy)
       .set({ status })
@@ -518,7 +526,7 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
     const rules=validateAllowanceRules(policy.rules);
     const from=periods[0]?.from,to=periods[periods.length-1]?.to;
     const today=p.today??todayInKualaLumpur();
-    const inputs=from&&to?await allowanceInputsTx(tx,policy.companyId,from,to,today):[];
+    const inputs=from&&to?await allowanceInputsTx(tx,policy.companyId,from,to,today,rules.v===3?3:2):[];
     for(const input of inputs){
       // Employee selection is resolved on each period's final owned employment date, independently
       // of the attendance predicate; no today's department is silently substituted for history.
@@ -641,7 +649,7 @@ export function allowanceTransferHistory(ctx:SessionContext,policyId:string){
 export function allowanceSetupOptions(ctx:SessionContext,companyIds:string[]){
   return withTenant(ctx,async tx=>{
     for(const id of companyIds)await assertPolicyAdminTx(tx,id);
-    if(!companyIds.length)return {companies:[],departments:[],businessUnits:[],positions:[],grades:[],employees:[],categories:[],shifts:[]};
+    if(!companyIds.length)return {companies:[],departments:[],businessUnits:[],positions:[],grades:[],employees:[],categories:[],shifts:[],leaveTypes:[]};
     const [companies,departments,businessUnits,positions,grades,employees,shifts]=await Promise.all([
       tx.select({id:company.id,label:company.legalName,currency:company.currency}).from(company).where(inArray(company.id,companyIds)).orderBy(company.legalName),
       tx.select({id:department.id,label:department.name,companyId:department.companyId,isGlobal:department.isGlobal}).from(department).where(and(isNull(department.archivedAt),sql`(${inArray(department.companyId,companyIds)} or ${department.isGlobal})`)).orderBy(department.name),
@@ -649,8 +657,9 @@ export function allowanceSetupOptions(ctx:SessionContext,companyIds:string[]){
       tx.select({id:position.id,label:position.title,companyId:position.companyId,isGlobal:position.isGlobal}).from(position).where(and(isNull(position.archivedAt),sql`(${inArray(position.companyId,companyIds)} or ${position.isGlobal})`)).orderBy(position.title),
       tx.select({id:jobGrade.id,label:jobGrade.name}).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(jobGrade.rank,jobGrade.name),
       tx.select({id:employment.id,label:person.fullName,companyId:employment.companyId,category:employment.employmentCategory}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(inArray(employment.companyId,companyIds),sql`app.can_admin_employment(${employment.id})`)).orderBy(person.fullName,employment.id),
-      tx.select({id:shift.id,label:shift.name,companyId:shift.companyId}).from(shift).where(and(isNull(shift.archivedAt),sql`(${shift.companyId} is null or ${inArray(shift.companyId,companyIds)})`)).orderBy(shift.name),
+      tx.select({id:shift.id,label:shift.name,companyId:shift.companyId,archived:sql<boolean>`${shift.archivedAt} is not null`}).from(shift).where(sql`(${shift.companyId} is null or ${inArray(shift.companyId,companyIds)})`).orderBy(shift.name),
     ]);
-    return {companies,departments,businessUnits,positions,grades,employees,categories:[...new Set(employees.flatMap(e=>e.category?[e.category]:[]))],shifts};
+    const leaveTypes=(await Promise.all(companyIds.map(async companyId=>(await allowanceLeaveTypesTx(tx,companyId,true)).map(type=>({id:type.id,label:type.label,archived:type.archivedAt!=null,companyId}))))).flat();
+    return {companies,departments,businessUnits,positions,grades,employees,leaveTypes,categories:[...new Set(employees.flatMap(e=>e.category?[e.category]:[]))],shifts};
   });
 }
