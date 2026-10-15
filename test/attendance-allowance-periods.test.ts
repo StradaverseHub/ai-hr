@@ -7,7 +7,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { createMovementEvent } from '../core/movement';
-import { assignDefaultShift, createShift } from '../core/roster';
+import { assignDefaultShift, createShift, updateShift } from '../core/roster';
 import { allowanceScheduleFactsTx, checkIn, checkOut, setAttendancePolicy } from '../packs/attendance/service';
 import { createBatch, deleteDraftBatch, seedPayComponentCatalog, AllowancePayrollConflictError } from '../packs/payroll/service';
 import { allowancePeriods, allowanceTransferHistory, createAllowancePolicy, getAllowancePolicy, setAllowancePolicyStatus, emptyAllowanceRules, evaluateAllowancesForPeriod, StaleAllowancePreviewError, transferAllowancesToBatch, updateAllowancePolicy, type AllowanceRules } from '../packs/attendance/service';
@@ -61,6 +61,48 @@ async function sources(batchId:string) {
 }
 
 describe('source-owned allowance periods', () => {
+  it('uses approved half-day Leave to explain recorded shortfall without recalculating Attendance',async()=>{
+    const f=await fixture(),date=workedDates[0],employmentId=f.employees[0];
+    await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId,employmentId));
+    const sh=await createShift(f.a,{name:'Recorded allowance basis',code:'ALW_BASIS',startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+    await assignDefaultShift(f.a,{employmentId,shiftId:sh.id});
+    await checkIn(f.a,{employmentId,date,time:'13:00:00'});await checkOut(f.a,{employmentId,date,time:'17:00:00'});
+    const [record]=await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,employmentId),eq(schema.attendance.attendanceDate,date)));
+    expect(record.underMinutes).toBe(240);
+    const [request]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date,days:'0.50',durationType:'half_day_am',status:'approved'}).returning();
+    await owner.db.insert(schema.leaveRequestDate).values({tenantId:b.tenantId,leaveRequestId:request.id,subjectEmploymentId:employmentId,leaveDate:date,days:'0.50',status:'approved'});
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'short',type:'criterion',field:'shortMinutes',operator:'eq',value:'0',unit:'minutes'}]};
+    const p=await f.policy('V3_PARTIAL_SHORT','4.05',{rules});
+    const preview=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month}),period=preview.rows[0].periods.find(period=>period.from===date)!;
+    expect(period).toMatchObject({qualified:true,amount:'4.05'});
+    expect(period.sourceDays[0].v3Facts).toMatchObject({shortMinutes:0,attendanceEvidence:{recordedUnderMinutes:240,fullDayNormalMinutes:480,leaveMinutes:240,reasons:{shortfall:'approved-partial-leave-adjustment'}}});
+    const [after]=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.id,record.id));expect(after).toEqual(record);
+    const trace=record.calcTrace as {schedule:Record<string,unknown>};
+    const legacy=structuredClone(trace);delete legacy.schedule.fullDayNormalMinutes;
+    await owner.db.update(schema.attendance).set({calcTrace:legacy}).where(eq(schema.attendance.id,record.id));
+    const unknown=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    expect(unknown.rows[0].periods.find(period=>period.from===date)?.reasons).toContain('unknownMeasurements');
+    expect(unknown.rows[0].periods.find(period=>period.from===date)?.sourceDays[0].v3Facts?.attendanceEvidence?.reasons.shortfall).toBe('recorded-full-day-basis-unavailable');
+  });
+
+  it('retains recorded late counts and duration when the live assigned shift becomes Full Flexi',async()=>{
+    const f=await fixture(),date=workedDates[0],employmentId=f.employees[0];
+    await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId,employmentId));
+    const base={name:'Historical fixed shift',code:'ALW_HISTORY',startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]};
+    const sh=await createShift(f.a,base);await assignDefaultShift(f.a,{employmentId,shiftId:sh.id});
+    await checkIn(f.a,{employmentId,date,time:'10:00:00'});await checkOut(f.a,{employmentId,date,time:'18:00:00'});
+    const rules=emptyAllowanceRulesV3();rules.employee=f.rules.employee;
+    rules.attendance.expression={id:'root',type:'group',logic:'and',children:[{id:'late',type:'criterion',field:'lateCount',operator:'eq',value:'1',unit:'occurrences'},{id:'duration',type:'criterion',field:'lateMinutes',operator:'gt',value:'0',unit:'minutes'}]};
+    const p=await f.policy('V3_RECORDED_LATE','1.05',{rules}),before=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month});
+    const original=before.rows[0].periods.find(period=>period.from===date)!;expect(original.qualified).toBe(true);
+    await updateShift(f.a,{shiftId:sh.id,...base,type:'full_flexi',normalMinutesOverride:480});
+    const after=await evaluateAllowancesForPeriod(f.ctx,{policyId:p.id,month}),period=after.rows[0].periods.find(period=>period.from===date)!;
+    expect(period.qualified).toBe(true);expect(period.expression).toEqual(original.expression);
+    expect(period.sourceDays[0].lateMinutes).toBe(original.sourceDays[0].lateMinutes);
+    expect(period.sourceDays[0].v3Facts?.attendanceEvidence?.fixedClockApplicable).toBe(true);
+  });
+
   it('never redistributes recorded legacy approvals using a changed weekday or holiday calendar, and marks unrecoverable allocation Unknown',async()=>{
     const f=await fixture(),monday=monthDates(month).find(date=>new Date(`${date}T00:00:00Z`).getUTCDay()===1)!,tuesday=monthDates(month)[monthDates(month).indexOf(monday)+1],friday=monthDates(month)[monthDates(month).indexOf(monday)+4];
     const [type]=await owner.db.insert(schema.leaveType).values({tenantId:b.tenantId,code:'V3_LEGACY',name:'Recorded legacy working-day leave',paid:true,counting:'working_days'}).returning();

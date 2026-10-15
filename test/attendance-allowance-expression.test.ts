@@ -44,6 +44,10 @@ describe('grouped allowance decisions',()=>{
     expect(evaluate(group('and',[criterion('late','lateCount'),criterion('early','earlyOutMinutes','0','eq','minutes')]),days).state).toBe('true');
     expect(evaluate(group('and',[criterion('late','lateCount')]),[day({lateMinutes:null})]).state).toBe('unknown');
   });
+  it('preserves recorded positive lateness and early departure even when applicability says otherwise',()=>{
+    const days=[day({lateMinutes:30,earlyOutMinutes:15,v3Facts:{...day().v3Facts!,fixedClockApplicable:false}})];
+    expect(evaluate(group('and',[criterion('late','lateCount','1'),criterion('early','earlyOutCount','1'),criterion('lateTime','lateMinutes','30','eq','minutes'),criterion('earlyTime','earlyOutMinutes','15','eq','minutes')]),days).state).toBe('true');
+  });
   it('counts approved leave by distinct date and type, sums approved fractions, and keeps ambiguous duration Unknown',()=>{
     const facts={...day().v3Facts!,leave:[{typeId,paid:true,days:0.5,requestIds:['request-1']},{typeId:otherType,paid:false,days:0.5,requestIds:['request-2']}],leaveTypesPresent:[typeId,otherType]},days=[day({v3Facts:facts})];
     expect(evaluate(group('and',[criterion('count','leaveCount','1'),criterion('duration','leaveDays','1','eq','days')]),days).state).toBe('true');

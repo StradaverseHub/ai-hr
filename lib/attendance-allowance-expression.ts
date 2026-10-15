@@ -46,9 +46,8 @@ function actualFor(criterion:AllowanceExpressionCriterion,days:AllowanceDay[]):n
  const values=days.map(day=>{
   const facts=day.v3Facts,field=criterion.field;
   if(field==='lateCount'||field==='earlyOutCount'){
-   if(facts?.fixedClockApplicable===false)return 0;
    const minutes=field==='lateCount'?day.lateMinutes:day.earlyOutMinutes;
-   return minutes==null?null:minutes>0?1:0;
+   return minutes==null?(facts?.fixedClockApplicable===false?0:null):minutes>0?1:0;
   }
   if(field==='absenceCount')return facts?.absenceKnown===false?null:day.absentDays>0?1:0;
   if(field==='absentDays'&&facts?.absenceKnown===false)return null;
@@ -68,7 +67,7 @@ function actualFor(criterion:AllowanceExpressionCriterion,days:AllowanceDay[]):n
    if(!Number.isFinite(total)||total<0||total>1.000001)throw new Error('Inconsistent canonical leave fractions.');
    return total;
   }
-  if((field==='lateMinutes'||field==='earlyOutMinutes')&&facts?.fixedClockApplicable===false)return 0;
+  if((field==='lateMinutes'||field==='earlyOutMinutes')&&day[field]==null&&facts?.fixedClockApplicable===false)return 0;
   return day[field as AllowanceMetric];
  });
  return values.some(value=>value==null)?null:values.reduce<number>((sum,value)=>sum+(value??0),0);
