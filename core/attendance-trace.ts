@@ -157,6 +157,9 @@ export type AttendanceTraceV1 = {
   exemption?:{revisionId:string;effectiveFrom:string;types:readonly ['absent','late','early_out']};
   v: typeof ATTENDANCE_TRACE_VERSION;
   schedule: {
+    /** IDs and anchoring inputs captured by this calculation, absent in older traces. */
+    shiftId?: string | null;
+    dailyCutoffMinutes?: number | null;
     fixedClockApplicable?:boolean;
     fullDayNormalMinutes?:number;
     source: TraceScheduleSource;
@@ -179,6 +182,10 @@ export type AttendanceTraceV1 = {
     ruleId: string | null;
   };
   punch: {
+    /** Captured calculation inputs, not reconstruction from a current shift. An elapsed envelope is
+     * only precise physical placement when the canonical punch source proves one closed pair. */
+    calculationIntervals?: {inAbs: number; outAbs: number}[];
+    intervalSource?: 'closedPunchPairs' | 'elapsedEnvelope';
     inAbs: number;
     /** Null on an open day (checked in, not yet out) — worked and overtime are unknowable then. */
     outAbs: number | null;

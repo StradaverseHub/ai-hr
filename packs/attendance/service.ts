@@ -44,3 +44,6 @@ export * from './day-adjustment';
 export * from './history-decisions';
 export * from '../../core/schedule-group-controls';
 export * from '../../core/attendance-shortfall';
+
+// ADR0123 — canonical recorded inputs, consumed through this facade by Attendance writers.
+export { captureCanonicalOvertimePersonnelContextTx } from './overtime-input';

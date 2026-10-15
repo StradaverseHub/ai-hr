@@ -67,3 +67,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 
 | [0118](0118-schedule-membership-and-dated-exceptions.md) | Allowed shift membership separate from calculation defaults, dated exception decisions and controlled manual rosters | Accepted |
 | [0120](0120-employee-replacement-holidays.md) | Stable annual original calendar, explicit replacement policy and employee-specific audited allocations | Direction accepted; verification pending |
+
+| [0123](0123-versioned-overtime-patterns-and-source-settlement.md) | Immutable formula versions, explicit OT-stage assignment, recorded inputs and one cash/TOIL day source | Direction accepted; implementation and verification pending |

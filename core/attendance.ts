@@ -3,6 +3,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
+import { captureCanonicalOvertimePersonnelContextTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { myEmployment } from './read';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -1371,6 +1372,8 @@ function deriveAttendance(
     ...(exceptionActive?{exemption:{revisionId:exemption!.id,effectiveFrom:exemption!.effectiveFrom,types:['absent','late','early_out'] as const}}:{}),
     schedule: {
       source: s.source,
+      shiftId: s.displayShiftId ?? null,
+      dailyCutoffMinutes: s.dailyCutoffMinutes,
       dayType: s.dayType,
       fixedClockApplicable:s.dayType==='workday'&&!s.flexiDuration,
       ...(s.fullDayNormalMinutes==null?{}:{fullDayNormalMinutes:s.fullDayNormalMinutes}),
@@ -1578,7 +1581,11 @@ function deriveAttendance(
   // ── 7c834696 POINT 3 · finish the trace. Reads the finished figures; writes none of them. ───────────
   const trace = baseTrace();
   trace.schedule.breakSpanned = durationBreak ?? spannedBreak;
-  trace.punch = { inAbs: inAbsRaw, outAbs: inAbsRaw + span, spanMinutes: span, workedMinutes };
+  trace.punch = {
+    inAbs: inAbsRaw, outAbs: inAbsRaw + span, spanMinutes: span, workedMinutes,
+    calculationIntervals: (intervals ?? [{inAbs: w?.inAbs ?? inAbsRaw, outAbs: (w?.inAbs ?? inAbsRaw) + span}]).map(part => ({...part})),
+    intervalSource: intervals && closedIntervals ? 'closedPunchPairs' : 'elapsedEnvelope',
+  };
   trace.earlyOut =
     earlyOut == null || schedEndAbs == null || outAbsSched == null
       ? null
@@ -2076,6 +2083,10 @@ export async function checkInTx(
       clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
+
+    // Record mutable Personnel axes only at first current-day observation. Corrections/repeated
+    // clock-ins retain that original context; historical imports never borrow today's profile.
+    if (!existing) await captureCanonicalOvertimePersonnelContextTx(tx, ctx, {employmentId: p.employmentId, date: p.date});
 
     const derived = await recomputeDayFromPunches(tx, {
       attendanceId,
