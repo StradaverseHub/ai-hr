@@ -16,7 +16,7 @@ import { Sidebar } from '../components/sidebar';
 import { defaultEmailConfig, EmailSettingsError } from '../lib/identity/email-model';
 const wrap=(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>);
 const page=async(query={})=>wrap(await Page({searchParams:Promise.resolve(query)}));
-const sidebar=(admin:boolean,operator=false)=>wrap(<Sidebar isAdmin={admin} canApprove={false} canConfigureIdentityEmail={operator} enabledModules={[]} defaultCollapsed={false}/>);
+const sidebar=(admin:boolean,operator=false,preview=admin)=>wrap(<Sidebar isAdmin={admin} canApprove={false} canPreviewIdentityEmail={preview} canConfigureIdentityEmail={operator} enabledModules={[]} defaultCollapsed={false}/>);
 beforeEach(()=>{
  cleanup();vi.clearAllMocks();m.session.mockResolvedValue({s:{userId:'admin',roles:['hr_admin']}});m.allowed.mockResolvedValue(false);m.demo.mockReturnValue(true);m.guard.mockResolvedValue({actor:{subject:'verified'}});
  m.read.mockResolvedValue({active:{...defaultEmailConfig,host:'live.smtp.example.test',from:'live@example.test',hasPassword:true},draft:null,revision:'a'.repeat(64),testRecipient:'owner@example.test'});
@@ -32,6 +32,12 @@ describe('SMTP settings discovery and read-only preview',()=>{
  });
  it('does not offer system setup to an ordinary employee',()=>{
   sidebar(false);expect(screen.queryByRole('button',{name:messages.nav.systemSettings})).toBeNull();expect(screen.queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
+ });
+ it('does not advertise SMTP preview to a partner who only has the broader administration rail',()=>{
+  sidebar(true,false,false);const admin=screen.getByRole('button',{name:messages.nav.admin});
+  if(admin.getAttribute('aria-expanded')==='false')fireEvent.click(admin);
+  fireEvent.click(screen.getByRole('button',{name:messages.nav.systemSettings}));
+  expect(within(screen.getByRole('navigation',{name:messages.nav.systemSettings})).queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
  });
  it('renders the connection fields without reading live settings or exposing a mail action in the demo',async()=>{
   await page({success:'apply'});expect(screen.getByText(messages.identityEmail.demoSetup)).toBeInTheDocument();

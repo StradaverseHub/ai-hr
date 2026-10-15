@@ -509,6 +509,7 @@ const GROUPS: Group[] = [
 export function Sidebar({
   isAdmin,
   canConfigureIdentityEmail = false,
+  canPreviewIdentityEmail = false,
   canApprove = false,
   canAccessTeam = false,
   approvalCount = 0,
@@ -519,6 +520,8 @@ export function Sidebar({
 }: {
   isAdmin: boolean;
   canConfigureIdentityEmail?: boolean;
+  /** Actual HR administrator access, independent of the broader partner administration rail. */
+  canPreviewIdentityEmail?: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
@@ -609,7 +612,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.identityEmailOnly ? isAdmin || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+    moduleAllows(c.href) && (c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail : g.managerUp ? isAdmin || canApprove : true))
