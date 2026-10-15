@@ -14024,9 +14024,9 @@
     },
     "reset": {
       "title": "Reset your password",
-      "subtitle": "Enter your email and we'll send you a link to set a new password.",
+      "subtitle": "Enter your email to request a secure recovery link. Delivery depends on the configured email service.",
       "emailLabel": "Email",
-      "submit": "Send reset link",
+      "submit": "Request recovery email",
       "sent": "Your recovery request has been recorded. If delivery is available and an eligible account matches, the provider will send a secure link. If no email arrives, you can request another later.",
       "backToLogin": "Back to sign in"
     },
@@ -18950,7 +18950,7 @@
   },
   "accountEmail": {
     "title": "Account email deliveries",
-    "help": "Invitations and recovery requests are saved even when email fails. Configuring SMTP does not resend failures automatically. Choose individual retries below.",
+    "help": "Invitations and recovery requests are saved even when email fails. Configuring SMTP does not resend failures automatically. Choose individual retries below. Recovery history is visible only to the installation email administrator.",
     "empty": "No account emails have been attempted.",
     "attempts": "Attempts",
     "reissue": "Reissue invitation",

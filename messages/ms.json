@@ -14024,9 +14024,9 @@
     },
     "reset": {
       "title": "Set semula kata laluan anda",
-      "subtitle": "Masukkan e-mel anda dan kami akan menghantar pautan untuk menetapkan kata laluan baharu.",
+      "subtitle": "Masukkan e-mel anda untuk memohon pautan pemulihan selamat. Penghantaran bergantung pada perkhidmatan e-mel yang dikonfigurasi.",
       "emailLabel": "E-mel",
-      "submit": "Hantar pautan set semula",
+      "submit": "Mohon e-mel pemulihan",
       "sent": "Permintaan pemulihan anda telah direkodkan. Jika penghantaran tersedia dan akaun yang layak sepadan, penyedia akan menghantar pautan selamat. Jika tiada e-mel diterima, anda boleh meminta semula kemudian.",
       "backToLogin": "Kembali ke log masuk"
     },
@@ -18950,7 +18950,7 @@
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",
-    "help": "Jemputan dan permintaan pemulihan disimpan walaupun e-mel gagal. Menyediakan SMTP tidak menghantar semula e-mel gagal secara automatik. Pilih cubaan semula di bawah.",
+    "help": "Jemputan dan permintaan pemulihan disimpan walaupun e-mel gagal. Menyediakan SMTP tidak menghantar semula e-mel gagal secara automatik. Pilih cubaan semula di bawah. Sejarah pemulihan hanya boleh dilihat oleh pentadbir e-mel pemasangan.",
     "empty": "Belum ada cubaan e-mel akaun.",
     "attempts": "Cubaan",
     "reissue": "Keluarkan semula jemputan",

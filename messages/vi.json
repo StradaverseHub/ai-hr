@@ -14024,9 +14024,9 @@
     },
     "reset": {
       "title": "Đặt lại mật khẩu của bạn",
-      "subtitle": "Nhập email của bạn và chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.",
+      "subtitle": "Nhập email để yêu cầu liên kết khôi phục an toàn. Việc gửi phụ thuộc vào dịch vụ email đã cấu hình.",
       "emailLabel": "Email",
-      "submit": "Gửi liên kết đặt lại",
+      "submit": "Yêu cầu email khôi phục",
       "sent": "Yêu cầu khôi phục đã được ghi nhận. Nếu có thể gửi email và tài khoản đủ điều kiện khớp, nhà cung cấp sẽ gửi liên kết bảo mật. Nếu chưa nhận được email, bạn có thể yêu cầu lại sau.",
       "backToLogin": "Quay lại đăng nhập"
     },
@@ -18950,7 +18950,7 @@
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",
-    "help": "Lời mời và yêu cầu khôi phục được lưu ngay cả khi gửi email thất bại. Cấu hình SMTP không tự động gửi lại email thất bại. Chọn từng lần gửi lại bên dưới.",
+    "help": "Lời mời và yêu cầu khôi phục được lưu ngay cả khi gửi email thất bại. Cấu hình SMTP không tự động gửi lại email thất bại. Chọn từng lần gửi lại bên dưới. Chỉ quản trị viên email của hệ thống mới xem được lịch sử khôi phục.",
     "empty": "Chưa có lần gửi email tài khoản nào.",
     "attempts": "Số lần thử",
     "reissue": "Cấp lại lời mời",

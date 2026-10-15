@@ -3,7 +3,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {client,withTenant} from '../db/client';
-import {inviteUser,requestPasswordReset,retryAccountEmail,acceptInvitation,type AuthProvider} from '../core/auth';
+import {inviteUser,requestPasswordReset,retryAccountEmail,acceptInvitation,revokeInvitation,type AuthProvider} from '../core/auth';
 import {readAccountEmailDeliveries} from '../core/account-email';
 import * as s from '../db/schema';
 
@@ -49,6 +49,14 @@ describe('account requests independent of SMTP delivery',()=>{
   await expect(retryAccountEmail(scoped,job.id,true,undefined,provider)).rejects.toThrow();
   const foreign=await seedBase();await expect(retryAccountEmail({...adminCtx(foreign),entitlements:harnessSnapshot(foreign.tenantId)},job.id,true,undefined,provider)).rejects.toThrow();
   expect(provider.sendInvitation).not.toHaveBeenCalled();expect((await jobs())[0]).toMatchObject({status:'failed',attempts:1});
+ });
+ it('never reissues accepted or revoked invitations even when their email attempt failed',async()=>{
+  const provider=fake(),ctx=adminCtx(b);
+  const accepted=await inviteUser(ctx,{email:'accepted@example.test',role:'employee'},provider);
+  const revoked=await inviteUser(ctx,{email:'revoked@example.test',role:'employee'},provider);
+  await acceptInvitation({token:accepted.token,subject:'accepted-subject'});await revokeInvitation(ctx,revoked.invitationId);
+  for(const job of await jobs())await expect(retryAccountEmail(ctx,job.id,true,undefined,provider)).rejects.toThrow(/no longer pending/);
+  expect((await readAccountEmailDeliveries(ctx)).every(job=>!job.canRetry)).toBe(true);expect(provider.sendInvitation).not.toHaveBeenCalled();
  });
  it('records known and unknown recovery requests identically without SMTP and keeps them private from HR roles',async()=>{
   const provider=fake();await expect(requestPasswordReset({email:'known@example.test'},provider)).resolves.toBeUndefined();await expect(requestPasswordReset({email:'unknown@example.test'},provider)).resolves.toBeUndefined();
