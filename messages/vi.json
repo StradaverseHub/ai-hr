@@ -1903,7 +1903,7 @@
       "step4": "Kiểm tra và xem trước",
       "step5": "Xác nhận nhập",
       "step6": "Kết quả nhập",
-      "step2Hint": "Mỗi nhân viên một hàng ở trang tính đầu tiên, mỗi thành viên gia đình một hàng ở trang tính Gia đình. Mọi cột trừ sáu cột bắt buộc đều có thể để trống.",
+      "step2Hint": "Mỗi nhân viên một hàng ở trang tính đầu tiên, mỗi người thân một hàng ở trang tính Gia đình. Cột bắt buộc: {columns}. Có thể để trống ô khác; xem điều kiện trong ghi chú tiêu đề.",
       "step4Hint": "Không có gì được tạo cho đến khi bạn xác nhận.",
       "step5Hint": "Kiểm tra các hàng ở trên rồi nhập. Hồ sơ được tạo ở bước này.",
       "step5Blocked": "Tệp này bị từ chối toàn bộ. Hãy sửa và tải lên lại — trước đó không thể nhập bất cứ thứ gì.",

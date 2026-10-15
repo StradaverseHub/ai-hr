@@ -42,29 +42,15 @@ import {
   type TxnImportKind,
 } from './payroll-txn-import-schema';
 
-/** Words that must not be title-cased letter-by-letter. Everything else is Capitalised. */
-const ACRONYMS: Record<string, string> = { ic: 'IC', epf: 'EPF', socso: 'SOCSO', eis: 'EIS' };
-
-/**
- * `ic_number` → `IC Number`.
- *
- * The label must LOWERCASE-AND-UNDERSCORE back to its own key, because that is precisely what
- * `parseCsvRecords` does to a header on re-upload (`h.trim().toLowerCase().replace(/\s+/g, '_')`).
- * A prettier label that does not round-trip would silently drop the whole column, so
- * test/employee-import-xlsx.test.ts asserts the round-trip for every key rather than trusting it.
- */
-export function employeeColumnLabel(key: string): string {
-  return key
-    .split('_')
-    .map((w) => ACRONYMS[w] ?? w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
+/** Exact Personnel labels; family has its own person grain. */
+import { personnelColumnLabel } from './personnel-import-contract';
+export function employeeColumnLabel(key:string):string { return personnelColumnLabel(key); }
 
 /** Every column, required first — the same order (and therefore the same sample rows) as the CSV
  *  template, derived from the SAME contract so the two can never disagree. */
 export const EMPLOYEE_XLSX_COLUMNS: readonly string[] = employeeTemplate.columns.map((c) => c.key);
 
-export const EMPLOYEE_XLSX_HEADERS: readonly string[] = EMPLOYEE_XLSX_COLUMNS.map(employeeColumnLabel);
+export const EMPLOYEE_XLSX_HEADERS: readonly string[] = EMPLOYEE_XLSX_COLUMNS.map(key=>employeeColumnLabel(key));
 
 /**
  * The columns that are IDENTIFIERS, not quantities: digits that must survive verbatim, leading
@@ -148,7 +134,7 @@ export const DEPENDENT_XLSX_COLUMNS: readonly string[] = [
   ...DEPENDENT_IMPORT_COLUMNS.optional,
 ];
 
-export const DEPENDENT_XLSX_HEADERS: readonly string[] = DEPENDENT_XLSX_COLUMNS.map(employeeColumnLabel);
+export const DEPENDENT_XLSX_HEADERS: readonly string[] = DEPENDENT_XLSX_COLUMNS.map(key=>personnelColumnLabel(key,'family'));
 
 /**
  * The family sheet's identity columns — same reasoning as the employee sheet's: these are digits that

@@ -1,3 +1,6 @@
+import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { isCalendarDate } from '../lib/calendar-date';
+import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
  * bulk-load path). Parses a validated set of CSV records and reuses the same services the
@@ -124,6 +127,7 @@ type ResolvedRow = {
    * existing file's import is unchanged.
    */
   profile?: Record<string, string | null>;
+  compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   /** Item 2983802f — the passport block, written through the company pack's `setPassport`. Undefined
    *  unless the row supplied at least one passport cell (an all-blank block must not clear anything). */
   passport?: {
@@ -484,7 +488,7 @@ async function analyze(
     // Hire date
     const hiredOn = norm(rec.hired_on);
     if (!hiredOn) errors.push('Missing hired_on');
-    else if (!DATE_RE.test(hiredOn)) errors.push(`hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
+    else if (!isCalendarDate(hiredOn)) errors.push(`hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
 
     // Employment type
     let employmentType: 'full_time' | 'part_time' | 'contract' | 'intern' = 'full_time';
@@ -497,17 +501,15 @@ async function analyze(
     // IC (required, format + uniqueness — DB enforces tenant-unique IC; rules from the company's pack)
     const icRaw = norm(rec.ic_number);
     const icNorm = pack.statutory.normalizeIC(icRaw);
-    if (!icRaw) errors.push('Missing ic_number');
-    else if (!pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
-    else if (seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
-    else if (existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
+    if (icRaw && !pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
+    else if (icRaw && seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
+    else if (icRaw && existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
     if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary
     const salaryRaw = norm(rec.basic_salary).replace(/[,_]/g, '');
     const basicSalary = Number(salaryRaw);
-    if (!salaryRaw) errors.push('Missing basic_salary');
-    else if (!Number.isFinite(basicSalary) || basicSalary < 0) errors.push(`Invalid basic_salary "${rec.basic_salary}"`);
+    if (!Number.isFinite(basicSalary) || basicSalary < 0) errors.push(`Invalid basic_salary "${rec.basic_salary}"`);
     const allowanceRaw = norm(rec.monthly_allowance).replace(/[,_]/g, '');
     let monthlyAllowance = 0;
     if (allowanceRaw) {
@@ -609,7 +611,6 @@ async function analyze(
     // basic_salary already carries its own error above, and saying two things about one cell is noise.
     const salaryRemarks = norm(rec.salary_remarks) || undefined;
     if (
-      salaryRaw &&
       Number.isFinite(basicSalary) &&
       basicSalary >= 0 &&
       unpayableSalaryLeg(payMode ?? 'monthly', basicSalary, rateAmount ?? null) === 'no_monthly_basic' &&
@@ -630,7 +631,7 @@ async function analyze(
     const dateField = (raw: string | undefined, label: string): string | undefined => {
       const v = norm(raw);
       if (!v) return undefined;
-      if (!DATE_RE.test(v)) {
+      if (!isCalendarDate(v)) {
         errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
         return undefined;
       }
@@ -709,22 +710,18 @@ async function analyze(
       const v = carriedProfileValue(checked, norm(rec[column]));
       if (v !== undefined) profile[field] = v;
     };
-    carry('address_line_1', 'permanentAddressLine1');
-    carry('address_line_2', 'permanentAddressLine2');
-    carry('address_line_3', 'permanentAddressLine3');
-    carry('postcode', 'permanentPostcode');
-    carry('city', 'permanentCity');
-    carry('state', 'permanentState', catalogField(rec.state, 'state', 'state'));
-    carry('country', 'permanentCountry', catalogField(rec.country, 'country', 'country'));
-    carry('emergency_contact_name', 'emergencyContactName');
-    carry(
-      'emergency_contact_relationship',
-      'emergencyContactRelationship',
-      catalogField(rec.emergency_contact_relationship, 'relationship', 'emergency_contact_relationship'),
-    );
-    carry('emergency_contact_phone', 'emergencyContactPhone');
-    carry('emergency_contact_home_phone', 'emergencyContactPhone2');
-    carry('emergency_contact_address', 'emergencyContactAddress');
+    for(const field of PERSONNEL_PROFILE_IMPORT_FIELDS) {
+      const {column,writerField,catalog:category}=field.import;
+      if(column && writerField)carry(column,writerField,category?catalogField(rec[column],category,column):undefined);
+    }
+    const compliance: NonNullable<ResolvedRow['compliance']> = {};
+    for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
+      const column=field.import.column!; const value=norm(rec[column]);if(!value)continue;
+      const issue=personnelScalarIssue(field,value);
+      if(issue)errors.push(`${column}: invalid ${issue} value`);
+      else (compliance as Record<string,string>)[field.ownerField]=value;
+    }
+    if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))errors.push('Invalid personal_email');
 
     // PROBATION + NOTICE PERIOD. `probation_end_date` writes the employment's provisional end date, which
     // IS the probation end for a full-time hire — and means the END OF THE CONTRACT for a contract or an
@@ -736,11 +733,11 @@ async function analyze(
         `probation_end_date applies to full_time employees only (this row is ${employmentType}; for a fixed term use the contract dates on the employee's record)`,
       );
     }
-    if (probationEnd && hiredOn && DATE_RE.test(hiredOn) && probationEnd < hiredOn) {
+    if (probationEnd && hiredOn && isCalendarDate(hiredOn) && probationEnd < hiredOn) {
       errors.push('probation_end_date must be on or after hired_on');
     }
     const confirmationDate = dateField(rec.confirmation_date, 'confirmation_date');
-    if (confirmationDate && hiredOn && DATE_RE.test(hiredOn) && confirmationDate < hiredOn) {
+    if (confirmationDate && hiredOn && isCalendarDate(hiredOn) && confirmationDate < hiredOn) {
       errors.push('confirmation_date must be on or after hired_on');
     }
     const employmentInfo: Record<string, string> = {};
@@ -786,6 +783,7 @@ async function analyze(
         provisionalEndOn: probationEnd,
       },
       profile: Object.keys(profile).length > 0 ? profile : undefined,
+      compliance: Object.keys(compliance).length > 0 ? compliance : undefined,
       passport,
       employmentInfo: Object.keys(employmentInfo).length > 0 ? employmentInfo : undefined,
       statutory: {
@@ -957,7 +955,7 @@ function analyzeDependents(
     }
 
     const dob = norm(rec.date_of_birth);
-    if (dob && !DATE_RE.test(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+    if (dob && !isCalendarDate(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
     const gender = enumCell(rec.gender);
     if (gender && !genders.has(gender)) {
       errors.push(`Unknown gender "${rec.gender}" (use ${[...DEPENDENT_GENDERS].join(' / ')})`);
@@ -1153,6 +1151,7 @@ export async function commitEmployeeImport(
           ...row.profile,
         });
       }
+      if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance});
       if (row.employmentInfo) {
         await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo });
       }

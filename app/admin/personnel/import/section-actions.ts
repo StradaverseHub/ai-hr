@@ -2,7 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
-import { parseCsvRecords } from '@/lib/csv';
+import { parsePersonnelImportCsv } from '@/lib/personnel-import-contract';
+import { personnelImportLabelResolvers } from '@/lib/personnel-import-labels.server';
+import { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS } from '@/lib/import-schema';
+function parseSection(section:string,text:string) {
+  const family=assertSection(section)==='family';
+  return parsePersonnelImportCsv(text,{columns:family?[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional]:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],sheet:family?'family':'employee',resolvers:personnelImportLabelResolvers});
+}
 import { commitSectionImport, validateSectionImport } from '@/core/import-sections';
 import {
   isImportSection,
@@ -28,8 +34,10 @@ function assertSection(section: string) {
 /** Dry-run validation for one section file. Returns a per-row verdict; writes nothing. */
 export async function validateSectionAction(section: string, csv: string): Promise<SectionImportPreview> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
-  return validateSectionImport(s, { section: assertSection(section), records });
+  const { records,warnings } = parseSection(section,csv);
+  const preview=await validateSectionImport(s, { section: assertSection(section), records });
+  for(const row of preview.rows)row.warnings.push(...warnings);
+  return preview;
 }
 
 /**
@@ -43,7 +51,7 @@ export async function commitSectionAction(
   fileName?: string,
 ): Promise<SectionImportResult> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
+  const { records } = parseSection(section,csv);
   const result = await commitSectionImport(s, {
     section: assertSection(section),
     records,

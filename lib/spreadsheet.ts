@@ -157,6 +157,9 @@ export async function buildXlsx(
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
   if (opts?.textColumns?.length) applyTextColumns(XLSX, ws, opts.textColumns, rows.length, opts.textRowFloor ?? TEXT_ROW_FLOOR);
+  for(const [index,note] of (opts?.headerNotes??[]).entries()) {
+    const cell=ws[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
+  }
   XLSX.utils.book_append_sheet(wb, ws, opts?.sheetName ?? 'Leave Import');
   for (const extra of opts?.extraSheets ?? []) {
     const sheet = XLSX.utils.aoa_to_sheet(extra.rows);
@@ -165,6 +168,9 @@ export async function buildXlsx(
     // gets: an Employee ID typed into a General cell is mangled wherever it is typed.
     if (extra.textColumns?.length) {
       applyTextColumns(XLSX, sheet, extra.textColumns, Math.max(extra.rows.length - 1, 0), opts?.textRowFloor ?? TEXT_ROW_FLOOR);
+    }
+    for(const [index,note] of (extra.headerNotes??[]).entries()) {
+      const cell=sheet[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
     }
     XLSX.utils.book_append_sheet(wb, sheet, extra.name);
   }
@@ -181,7 +187,8 @@ export type BuildXlsxOptions = {
   /** Additional sheets appended after the data sheet — reference lists, instructions, and (2983802f)
    *  the employee importer's Family sheet, which is filled in and therefore takes `textColumns` of its
    *  own so its Employee ID and identity columns survive Excel. */
-  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[] }[];
+  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];headerNotes?:string[] }[];
+  headerNotes?:string[];
   /** How many rows below the samples get the text format pre-applied. */
   textRowFloor?: number;
 };

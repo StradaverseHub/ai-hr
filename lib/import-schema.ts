@@ -1,3 +1,4 @@
+import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY } from './personnel-field-registry';
 /** Client-safe shape of the employee importer — the column list and result types, with no
  *  server (DB) imports, so both the server service (core/import) and the client UI can use them. */
 
@@ -118,96 +119,10 @@ export function importRunOutcome(r: {
  *  employee_code is OPTIONAL (38668d9b gives HR the ABILITY to key in an Employee ID, not an
  *  obligation): when the column is absent or a cell is blank, hireEmployee auto-generates the
  *  next code; when supplied it is validated (format + file/tenant uniqueness). */
+const employeeFields=PERSONNEL_FIELDS.filter(field=>field.import.column && field.import.section!=='family');
 export const IMPORT_COLUMNS = {
-  required: ['full_name', 'email', 'department', 'hired_on', 'ic_number', 'basic_salary'],
-  optional: [
-    // d8471481 — ONE FILE, MANY COMPANIES. Blank (or the column absent) keeps the old behaviour
-    // exactly: the row lands in the company selected on screen. When supplied it is matched against
-    // the tenant's companies by legal name, company label or registration number, and every catalog
-    // lookup for that row (department / position / cost centre) is done against THAT company — which
-    // is what makes "Department does not belong to this company" a real check rather than a hope.
-    'company',
-    'employee_code',
-    'phone',
-    'position',
-    'cost_center',
-    'employment_type',
-    'monthly_allowance',
-    'bank_name',
-    'bank_account_no',
-    'epf_number',
-    'socso_number',
-    'tax_number',
-    'tax_category',
-    'num_children',
-    'eis_eligible',
-    'is_resident',
-    'epf_citizenship',
-    // ADR-0078 (642ecc55) — employee-specific salary structure. All optional: blank = monthly / monthly /
-    // no rate (the setCompensation defaults). pay_mode daily|hourly REQUIRES a positive rate_amount.
-    'pay_mode',
-    'payment_term',
-    'rate_amount',
-    // r369 (item eb949191) — THE CONFIRMATION GESTURE, CARRIED BY THE FILE.
-    //
-    // A basic salary of 0 is legal now: a Director paid quarterly Director Fees has no monthly basic, and
-    // `core/comp.ts` accepts such a record on ONE condition — whoever saves it types a remark saying why
-    // (`SalaryRemarkRequiredError`). That sentence is the whole thing that tells a deliberate zero from a
-    // mistyped one, months before any payroll run reads either, and the kernel never reads it to decide
-    // money.
-    //
-    // WITHOUT A COLUMN FOR IT the condition was unmeetable by anybody importing, so the reporter's own
-    // Director — onboarded by file, like the rest of their workforce — failed their row on a refusal the
-    // file had no way to answer. Nothing about the refusal is weakened here and NO remark is written on
-    // the operator's behalf: the file states the reason, or the row is refused with this column named.
-    //
-    // OPTIONAL, and that is the scope fence. A row with a positive basic never has to carry it, a file
-    // that has no such column imports exactly as it did, and a blank cell reaches `setCompensation` as
-    // `undefined` — which stores `null` and logs no `remarks` field change, byte-identical to the call
-    // this importer made before r369.
-    'salary_remarks',
-    // ── Item 2983802f — the seven blocks the template had no columns for at all. EVERY ONE IS OPTIONAL,
-    //    and that is the scope fence: a file that imports today imports unchanged tomorrow.
-    //
-    // Passport Information (employee_statutory_my). All-or-nothing on the trio, exactly as the Personnel
-    // card enforces it: number + issue + expiry together, or none of them. Issuing country is optional.
-    'passport_number',
-    'passport_issue_date',
-    'passport_expiry_date',
-    'passport_issuing_country',
-    // Contact & Address — the employee's HOME address. Written to the PERMANENT block on `person`, which
-    // is what the Contact & Address card maintains (the flat legacy block is rollback history only).
-    // `state` / `country` are validated against the tenant's profile_option catalog, so a typo is a
-    // per-row error at preview rather than a failure at write.
-    'address_line_1',
-    'address_line_2',
-    'address_line_3',
-    'postcode',
-    'city',
-    'state',
-    'country',
-    // Emergency Contact — ONE contact per employee row, filed as Primary. The register holds several;
-    // a second one is added on the card afterwards (see the parity test's exclusion note).
-    'emergency_contact_name',
-    'emergency_contact_relationship',
-    'emergency_contact_phone',
-    'emergency_contact_home_phone',
-    'emergency_contact_address',
-    // Probation Information. `probation_end_date` is the employment's provisional end date, which IS the
-    // probation end for a full-time hire — it is refused for any other employment type, because for a
-    // contract or an internship that same column means the end of the contract.
-    'probation_end_date',
-    'probation_months',
-    'probation_days',
-    'confirmation_date',
-    // Notice Period Information — the contractual policy the Employment tab maintains.
-    'resignation_notice_months',
-    'resignation_notice_days',
-    // Direct Superior — an Employee ID (or work email) naming the administrative manager. FORWARD
-    // REFERENCES ARE LEGAL: the superior may appear further down the same file, so this is resolved
-    // after every employee row is staged, never row by row (see core/import.ts).
-    'direct_superior',
-  ],
+  required: [...new Set(employeeFields.filter(field=>field.import.requiredCreate).map(field=>field.import.column!))],
+  optional: [...new Set([...employeeFields.filter(field=>!field.import.requiredCreate).map(field=>field.import.column!),...PERSONNEL_IMPORT_COMPATIBILITY.map(adapter=>adapter.column)])],
 } as const;
 
 /**

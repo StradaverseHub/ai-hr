@@ -27,7 +27,8 @@
  * these. `fullName` is NOT here — it is required at Create and is the one name the record cannot be
  * without, so it keeps its own control on each screen.
  */
-import { type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
+import { PERSONNEL_FIELDS } from '@/lib/personnel-field-registry';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
 import {
@@ -114,21 +115,14 @@ export function PersonNameFields(
     />
   );
 
-  return (
-    <>
-      {/* 8c284478 — Salutation BEFORE the names, which is the natural data-entry order and the order the
-          Personnel card has used since that item. */}
-      <Field label={t('salutation')}>{catalog('salutation')}</Field>
-      {props.afterSalutation}
-      <Field label={t('firstName')}>{text('firstName')}</Field>
-      <Field label={t('lastName')}>{text('lastName')}</Field>
-      <Field label={t('preferredName')}>{text('preferredName')}</Field>
-      {/* PDPA 2010 s.40 sensitive demographics. Catalog-backed like Salutation, and optional: nothing in
-          the product requires either, and a blank one stores null. */}
-      <Field label={t('religion')}>{catalog('religion')}</Field>
-      <Field label={t('race')}>{catalog('race')}</Field>
-    </>
-  );
+  return <>{PERSONNEL_FIELDS.filter(field=>field.formGroup==='person-name').map(field=>{
+    const key=field.ownerField as keyof PersonNameValue;
+    const label=t(field.labelKey.replace(/^people\.detail\./,''));
+    return <Fragment key={field.id}><Field label={label}>
+      {field.type==='choice' ? catalog(key as keyof PersonNameCatalogs) : text(key as 'firstName'|'lastName'|'preferredName')}
+    </Field>{key==='salutation' ? props.afterSalutation : null}</Fragment>;
+  })}</>;
+
 }
 
 /**
@@ -162,7 +156,7 @@ export function PersonContactExtraFields(
   const v = props.value;
   return (
     <>
-      <Field label={t('homePhone')}>
+      <Field label={t(PERSONNEL_FIELDS.find(field=>field.formGroup==='person-contact-extra' && field.ownerField==='homePhone')!.labelKey.replace(/^people\.detail\./,''))}>
         <input
           id={props.homePhoneId}
           className={inputCls}
@@ -171,7 +165,7 @@ export function PersonContactExtraFields(
             : { value: v.homePhone ?? '', onChange: (e) => props.onChange({ homePhone: e.target.value }) })}
         />
       </Field>
-      <Field label={t('personalEmail')}>
+      <Field label={t(PERSONNEL_FIELDS.find(field=>field.formGroup==='person-contact-extra' && field.ownerField==='personalEmail')!.labelKey.replace(/^people\.detail\./,''))}>
         <input
           type="email"
           className={inputCls}

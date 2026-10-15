@@ -32,6 +32,7 @@ export default async function ImportPage() {
     nationalities,
     relationships,
     familyRelationships,
+    salutations, religions, races,
     importRuns,
   ] = await Promise.all([
     listCompanies(s),
@@ -43,6 +44,9 @@ export default async function ImportPage() {
     listProfileOptions(s, 'nationality', { activeOnly: true }),
     listProfileOptions(s, 'relationship', { activeOnly: true }),
     listProfileOptions(s, 'dependentRelationship', { activeOnly: true }),
+    listProfileOptions(s, 'salutation', { activeOnly: true }),
+    listProfileOptions(s, 'religion', { activeOnly: true }),
+    listProfileOptions(s, 'race', { activeOnly: true }),
     // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
     // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
     listEmployeeImportRuns(s),
@@ -93,6 +97,7 @@ export default async function ImportPage() {
               nationalities: nationalities.map((o) => o.value),
               relationships: relationships.map((o) => o.value),
               familyRelationships: familyRelationships.map((o) => o.value),
+              salutations:salutations.map(o=>o.value),religions:religions.map(o=>o.value),races:races.map(o=>o.value),
             }}
           />
           {/* cf43c909 — the record of what has been loaded. Always rendered, empty state included, so an

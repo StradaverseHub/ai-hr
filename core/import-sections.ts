@@ -1,3 +1,7 @@
+import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
+import { isCalendarDate } from '../lib/calendar-date';
+import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
+import { setPersonComplianceFields } from './profile';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
  *
@@ -211,6 +215,7 @@ type ResolvedSectionRow = {
   personPatch?: { fullName: string; primaryEmail: string; phone: string | null; fields: PersonProfileFields };
   /** The Malaysian NRIC, with the stored `oldIcNumber` carried through so a save cannot clear it. */
   ic?: { icNumber: string; oldIcNumber: string | null };
+  compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   passport?: PassportPatch;
   bank?: BankPatch;
   tax?: TaxPatch;
@@ -224,30 +229,12 @@ type ResolvedSectionRow = {
 /** Column → the person column it writes. The address block is the PERMANENT one — the block the
  *  Personnel Contact & Address card maintains, matching the wide importer (the flat legacy columns
  *  are rollback history only). */
-const PROFILE_PERSON_COLUMNS: Record<string, keyof PersonProfileFields> = {
-  address_line_1: 'permanentAddressLine1',
-  address_line_2: 'permanentAddressLine2',
-  address_line_3: 'permanentAddressLine3',
-  postcode: 'permanentPostcode',
-  city: 'permanentCity',
-  state: 'permanentState',
-  country: 'permanentCountry',
-  emergency_contact_name: 'emergencyContactName',
-  emergency_contact_relationship: 'emergencyContactRelationship',
-  emergency_contact_phone: 'emergencyContactPhone',
-  emergency_contact_home_phone: 'emergencyContactPhone2',
-  emergency_contact_address: 'emergencyContactAddress',
+const PROFILE_PERSON_COLUMNS = Object.fromEntries(PERSONNEL_PROFILE_IMPORT_FIELDS.map(field=>[field.import.column!,field.import.writerField!])) as Record<string,keyof PersonProfileFields>;
+const PROFILE_CATALOG_CATEGORY: Record<string,string> = {
+  ...Object.fromEntries(PERSONNEL_PROFILE_IMPORT_FIELDS.filter(field=>field.import.catalog).map(field=>[field.import.column!,field.import.catalog!])),
+  passport_issuing_country:'nationality',
 };
 
-/** The catalog category each catalog-governed column is checked against. `passport_issuing_country`
- *  is checked against NATIONALITY, not country: the Passport card's picker is fed from the nationality
- *  list, so the value the product stores there is a demonym. Same rule as the wide importer's. */
-const PROFILE_CATALOG_CATEGORY: Record<string, string> = {
-  state: 'state',
-  country: 'country',
-  emergency_contact_relationship: 'relationship',
-  passport_issuing_country: 'nationality',
-};
 
 async function analyze(
   ctx: SessionContext,
@@ -437,6 +424,9 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         primaryEmail: person.primaryEmail,
         phone: person.phone,
         country: company.country,
+        salutation:person.salutation,firstName:person.firstName,lastName:person.lastName,preferredName:person.preferredName,nationality:person.nationality,religion:person.religion,race:person.race,homePhone:person.homePhone,personalEmail:person.personalEmail,
+        correspondenceAddressLine1:person.correspondenceAddressLine1,correspondenceAddressLine2:person.correspondenceAddressLine2,correspondenceAddressLine3:person.correspondenceAddressLine3,correspondencePostcode:person.correspondencePostcode,correspondenceCity:person.correspondenceCity,correspondenceState:person.correspondenceState,correspondenceCountry:person.correspondenceCountry,correspondenceMobilePhone:person.correspondenceMobilePhone,correspondenceHomePhone:person.correspondenceHomePhone,
+        dateOfBirth:person.dateOfBirth,gender:person.gender,maritalStatus:person.maritalStatus,
         permanentAddressLine1: person.permanentAddressLine1,
         permanentAddressLine2: person.permanentAddressLine2,
         permanentAddressLine3: person.permanentAddressLine3,
@@ -516,6 +506,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         // may name people at several companies, and each is validated under its own jurisdiction.
         pack: requirePackFor(r.country),
         personRow: {
+          ...Object.fromEntries([...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_COMPLIANCE_IMPORT_FIELDS].map(field=>[field.import.writerField!, (r as unknown as Record<string,string|null>)[field.import.writerField!]??null])),
           permanentAddressLine1: r.permanentAddressLine1,
           permanentAddressLine2: r.permanentAddressLine2,
           permanentAddressLine3: r.permanentAddressLine3,
@@ -667,6 +658,15 @@ function buildProfile(
     if (v !== (subject.personRow[field] ?? '')) changes.push(column);
   }
 
+  if(patch.personalEmail && !EMAIL_RE.test(patch.personalEmail))errors.push('Invalid personal_email');
+  const compliance:NonNullable<ResolvedSectionRow['compliance']>={};
+  for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
+    const column=field.import.column!;const value=cell(column);if(value===undefined)continue;
+    const issue=personnelScalarIssue(field,value);
+    if(issue)errors.push(`${column}: invalid ${issue} value`);
+    else { (compliance as Record<string,string>)[field.ownerField]=value; if(value!==(subject.personRow[field.ownerField]??''))changes.push(column); }
+  }
+  if(Object.keys(compliance).length)row.compliance=compliance;
   const touchesPerson = fullName !== undefined || email !== undefined || phone !== undefined || Object.keys(patch).length > 0;
   if (touchesPerson) {
     row.personPatch = {
@@ -713,7 +713,7 @@ function buildProfile(
     [pIssue, 'passport_issue_date'],
     [pExpiry, 'passport_expiry_date'],
   ] as const) {
-    if (v !== undefined && !DATE_RE.test(v)) errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
+    if (v !== undefined && !isCalendarDate(v)) errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
   }
   if (pNumber !== undefined || pIssue !== undefined || pExpiry !== undefined || pCountry !== undefined) {
     const stored = subject.statutory;
@@ -838,7 +838,7 @@ function buildEmployment(
 
   const confirmation = cell('confirmation_date');
   if (confirmation !== undefined) {
-    if (!DATE_RE.test(confirmation)) errors.push(`confirmation_date must be YYYY-MM-DD (got "${confirmation}")`);
+    if (!isCalendarDate(confirmation)) errors.push(`confirmation_date must be YYYY-MM-DD (got "${confirmation}")`);
     else if (confirmation < subject.hiredOn)
       errors.push(`confirmation_date must be on or after this employee's join date (${subject.hiredOn})`);
     else {
@@ -975,7 +975,7 @@ function buildFamily(
     }
   }
   const dob = cell('date_of_birth');
-  if (dob !== undefined && !DATE_RE.test(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+  if (dob !== undefined && !isCalendarDate(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
   const gender = cell('gender') === undefined ? undefined : enumCell(rec.gender);
   if (gender !== undefined && !(DEPENDENT_GENDERS as readonly string[]).includes(gender)) {
     errors.push(`Unknown gender "${rec.gender}" (use ${DEPENDENT_GENDERS.join(' / ')})`);
@@ -1106,6 +1106,7 @@ export async function commitSectionImport(
           ...row.personPatch.fields,
         });
       }
+      if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance});
       step = 'ic';
       if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, ...row.ic });
       step = 'passport';

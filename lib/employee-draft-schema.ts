@@ -1,3 +1,4 @@
+import { isCalendarDate } from './calendar-date';
 /**
  * The Create New Employee wizard's shape and its completeness rules — item 6d671f44.
  *
@@ -798,7 +799,7 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   // downstream. The one rule it keeps is a FORMAT rule: a date of birth that is not ISO cannot be stored,
   // so a typo is named on the tab that owns it rather than at Activate.
   const profile: string[] = [];
-  if (!blank(p.dateOfBirth) && !DRAFT_DATE_RE.test((p.dateOfBirth ?? '').trim())) profile.push('dateOfBirth');
+  if (!blank(p.dateOfBirth) && !isCalendarDate((p.dateOfBirth ?? '').trim())) profile.push('dateOfBirth');
   // ── The passport block (item a72610af) ─────────────────────────────────────────────────────────
   // NOT REQUIRED — most new joiners will never have one recorded here, and a tab that demanded one would
   // block every one of them. What IS required is that a passport somebody DID start can actually be
@@ -813,7 +814,7 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   // Both passport dates reach Postgres as a `date` and throw THERE — after the employee exists — so a
   // value that is not ISO is named here instead, under the same name as the block it belongs to.
   for (const d of [p.passportIssueDate, p.passportExpiryDate]) {
-    if (!blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim()) && !profile.includes('passport')) {
+    if (!blank(d) && !isCalendarDate((d ?? '').trim()) && !profile.includes('passport')) {
       profile.push('passport');
     }
   }
@@ -822,11 +823,11 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   if (blank(e.departmentId)) job.push('department');
   if (blank(e.employmentType)) job.push('employmentType');
   if (blank(e.hiredOn)) job.push('hiredOn');
-  else if (!DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())) job.push('hiredOn');
+  else if (!isCalendarDate((e.hiredOn ?? '').trim())) job.push('hiredOn');
   // r392 — judged only when the stored end date is the one Activate will USE (`draftProvisionalEndOn`):
   // a part-time hire's leftover value, or a full-time one superseded by its Probation Period, goes
   // nowhere, and naming it would hold Activate back over a box the tab does not even show.
-  if (draftProvisionalEndOn(e).source === 'stored' && !DRAFT_DATE_RE.test((e.provisionalEndOn ?? '').trim()))
+  if (draftProvisionalEndOn(e).source === 'stored' && !isCalendarDate((e.provisionalEndOn ?? '').trim()))
     job.push('provisionalEndOn');
   // ── The probation / confirmation / notice block (item a72610af) ────────────────────────────────
   // Every one of them OPTIONAL. The rules below are the ones `setEmploymentInfo` ENFORCES BY THROWING,
@@ -838,12 +839,12 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   //     what the writer will compare it to.
   //   • a period value must be a whole number of zero or more ("Period months/days must be whole
   //     numbers of 0 or more."), and its unit must be one the writer knows.
-  const hiredOnIso = !blank(e.hiredOn) && DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())
+  const hiredOnIso = !blank(e.hiredOn) && isCalendarDate((e.hiredOn ?? '').trim())
     ? (e.hiredOn ?? '').trim()
     : null;
   if (!blank(e.confirmationDate)) {
     const c = (e.confirmationDate ?? '').trim();
-    if (!DRAFT_DATE_RE.test(c)) job.push('confirmationDate');
+    if (!isCalendarDate(c)) job.push('confirmationDate');
     else if (hiredOnIso && c < hiredOnIso) job.push('confirmationDate');
   }
   const periodValues = [e.probationValue, e.extendedProbationValue, e.noticeBeforeConfirmationValue, e.noticeAfterConfirmationValue];
@@ -956,7 +957,7 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
     // Every date the register stores. A value that is not ISO reaches Postgres as a `date` and throws
     // there — after the employee exists — so it is named here, on the tab that owns it.
     for (const d of [m.dateOfBirth, m.marriageDate, m.deceasedOn]) {
-      if (!blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim())) familySet.add('familyMemberDate');
+      if (!blank(d) && !isCalendarDate((d ?? '').trim())) familySet.add('familyMemberDate');
     }
   }
   const family = [...familySet];

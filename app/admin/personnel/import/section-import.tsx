@@ -8,10 +8,10 @@ import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices } from '@/lib/personnel-import-contract';
 import {
   buildInstructionRows,
   buildReferenceRows,
-  employeeColumnLabel,
   EMPLOYEE_ENUM_VALUES,
   DEPENDENT_ENUM_VALUES,
 } from '@/lib/import-template-xlsx';
@@ -44,6 +44,9 @@ import { commitSectionAction, validateSectionAction } from './section-actions';
  */
 export function SectionImport({ section, reference }: { section: ImportSection; reference: ImportReference }) {
   const t = useTranslations('people.import');
+  const personnelLabels = useTranslations();
+  const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,section==='family'?'family':'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
+  const guidance=(key:string,sheet:'employee'|'family',mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
   const router = useRouter();
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<SectionImportPreview | null>(null);
@@ -111,6 +114,10 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
    * columns and no others, and the identity columns are stamped as text so Excel cannot eat a leading
    * zero out of an Employee ID.
    */
+  const downloadCsvTemplate=()=> {
+    const url=URL.createObjectURL(new Blob([toCsv([columns.map(employeeColumnLabel)])],{type:'text/csv;charset=utf-8;'}));
+    const a=document.createElement('a');a.href=url;a.download=SECTION_TEMPLATE_FILENAMES[section].replace(/\.xlsx$/,'.csv');a.click();URL.revokeObjectURL(url);
+  };
   const downloadTemplate = async () => {
     setError(null);
     try {
@@ -118,7 +125,12 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
       const referenceLists =
         section === 'profile'
           ? [
-              { label: employeeColumnLabel('state'), values: reference.states },
+              ...['gender','marital_status'].map(column=>({label:employeeColumnLabel(column),values:personnelFieldChoices(personnelImportField(column)!).map(option=>personnelLabels(option.labelKey))})),
+                {label:employeeColumnLabel('salutation'),values:reference.salutations??[]},
+                {label:employeeColumnLabel('religion'),values:reference.religions??[]},
+                {label:employeeColumnLabel('race'),values:reference.races??[]},
+                {label:employeeColumnLabel('nationality'),values:reference.nationalities},
+                { label: employeeColumnLabel('state'), values: reference.states },
               { label: employeeColumnLabel('country'), values: reference.countries },
               { label: employeeColumnLabel('passport_issuing_country'), values: reference.nationalities },
               { label: employeeColumnLabel('emergency_contact_relationship'), values: reference.relationships },
@@ -154,6 +166,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
         sheetName: SECTION_SHEET_NAMES[section],
         textColumns: sectionTextColumnIndexes(section),
+        headerNotes:columns.map(key=>guidance(key,section==='family'?'family':'employee','update')),
         extraSheets,
       });
       const url = URL.createObjectURL(
@@ -217,6 +230,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
           >
             {t('sectionDownloadTemplate', { section: label })}
           </button>
+          <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">CSV</button>
         </div>
 
         <StepHeading num={2} label={t('sectionStep2')} />
@@ -227,7 +241,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
           <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground sm:grid-cols-3">
             {columns.map((c) => (
               <li key={c}>
-                <code>{c}</code>
+                <span>{employeeColumnLabel(c)}</span>
               </li>
             ))}
           </ul>
@@ -522,5 +536,5 @@ function SectionPreview({
 /** `bank_account_no` → `Bank Account No`. The preview's "what changes" column shows the same words the
  *  template's header row does, so a reader can find the cell they are being told about. */
 function fieldLabel(column: string): string {
-  return employeeColumnLabel(column);
+  return descriptorColumnLabel(column);
 }

@@ -1,3 +1,4 @@
+import { PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS } from './personnel-import-contract';
 /**
  * Item 2983802f — PER-SECTION IMPORT: the column contract, the fence, and the shared result shapes.
  *
@@ -94,6 +95,7 @@ const PROFILE_COLUMNS = [
   'emergency_contact_phone',
   'emergency_contact_home_phone',
   'emergency_contact_address',
+  ...[...PERSONNEL_PROFILE_IMPORT_FIELDS,...PERSONNEL_COMPLIANCE_IMPORT_FIELDS].map(field=>field.import.column!).filter(column=>!['address_line_1','address_line_2','address_line_3','postcode','city','state','country','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone','emergency_contact_home_phone','emergency_contact_address'].includes(column)),
 ] as const;
 
 /**

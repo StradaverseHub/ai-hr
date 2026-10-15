@@ -11,18 +11,17 @@ import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
+import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelFieldChoices } from '@/lib/personnel-import-contract';
 import {
   buildInstructionRows,
   buildReferenceRows,
   dependentTextColumnIndexes,
-  employeeColumnLabel,
   employeeTextColumnIndexes,
   DEPENDENT_ENUM_VALUES,
   DEPENDENT_SAMPLE_ROWS,
-  DEPENDENT_XLSX_HEADERS,
+  DEPENDENT_XLSX_COLUMNS,
   EMPLOYEE_ENUM_VALUES,
   EMPLOYEE_XLSX_FILENAME,
-  EMPLOYEE_XLSX_HEADERS,
   EMPLOYEE_XLSX_SHEETS,
 } from '@/lib/import-template-xlsx';
 import { validateImportAction, commitImportAction } from './actions';
@@ -49,6 +48,7 @@ export type ImportReference = {
   nationalities: string[];
   relationships: string[];
   familyRelationships: string[];
+  salutations?:string[];religions?:string[];races?:string[];
 };
 
 export function EmployeeImport({
@@ -62,6 +62,9 @@ export function EmployeeImport({
   reference: ImportReference;
 }) {
   const t = useTranslations('people.import');
+  const personnelLabels = useTranslations();
+  const employeeColumnLabel=(key:string)=>descriptorColumnLabel(key,'employee',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback);
+  const guidance=(key:string,sheet:'employee'|'family',mode:'create'|'update')=>personnelColumnGuidance(key,sheet,mode,{required:t('required'),optional:t('optional'),reference:t('instructionReference'),blankRetains:t('sectionInstructionBlank')});
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const [csv, setCsv] = useState('');
@@ -144,6 +147,11 @@ export function EmployeeImport({
   // ~400 KB library never enters the initial bundle or any server action), from the live catalogs the
   // server passed down. Three sheets; the data sheet stays FIRST because `workbookToCsvText` reads
   // the first worksheet on re-upload.
+  const downloadFamilyCsv=()=> {
+    const headings=DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback));
+    const url=URL.createObjectURL(new Blob([toCsv([headings])],{type:'text/csv;charset=utf-8;'}));
+    const a=document.createElement('a');a.href=url;a.download='family-update-template.csv';a.click();URL.revokeObjectURL(url);
+  };
   const downloadXlsxTemplate = async () => {
     setError(null);
     try {
@@ -153,18 +161,20 @@ export function EmployeeImport({
         values: [...EMPLOYEE_ENUM_VALUES[key]],
       });
       const bytes = await buildXlsx(
-        [...EMPLOYEE_XLSX_HEADERS],
-        employeeTemplate.sampleRows,
+        employeeTemplate.columns.map(column=>employeeColumnLabel(column.key)),
+        employeeTemplate.sampleRows.map(row=>employeeTemplate.columns.map((_,i)=>row[i]??'')),
         {
           sheetName: EMPLOYEE_XLSX_SHEETS.data,
           textColumns: employeeTextColumnIndexes(),
+          headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
           extraSheets: [
             // Item 2983802f — THE FAMILY SHEET, second so it reads as the other sheet to fill in. It is
             // read back BY NAME on upload, so its position is free but its name is not.
             {
               name: EMPLOYEE_XLSX_SHEETS.family,
-              rows: [[...DEPENDENT_XLSX_HEADERS], ...DEPENDENT_SAMPLE_ROWS.map((r) => [...r])],
+              rows: [DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback)), ...DEPENDENT_SAMPLE_ROWS.map((r) => [...r])],
               textColumns: dependentTextColumnIndexes(),
+              headerNotes: DEPENDENT_XLSX_COLUMNS.map(key=>guidance(key,'family','create')),
             },
             {
               name: EMPLOYEE_XLSX_SHEETS.reference,
@@ -176,6 +186,11 @@ export function EmployeeImport({
                 // Item 2983802f — the catalog-governed vocabularies the new columns write into. These are
                 // the SAME active options core/import validates a cell against, read from the live catalog
                 // by the server component, so a value on this sheet is a value the file may carry.
+                ...['gender','marital_status'].map(column=>({label:employeeColumnLabel(column),values:personnelFieldChoices(personnelImportField(column)!).map(option=>personnelLabels(option.labelKey))})),
+                {label:employeeColumnLabel('salutation'),values:reference.salutations??[]},
+                {label:employeeColumnLabel('religion'),values:reference.religions??[]},
+                {label:employeeColumnLabel('race'),values:reference.races??[]},
+                {label:employeeColumnLabel('nationality'),values:reference.nationalities},
                 { label: employeeColumnLabel('state'), values: reference.states },
                 { label: employeeColumnLabel('country'), values: reference.countries },
                 {
@@ -329,13 +344,14 @@ export function EmployeeImport({
             {t('downloadTemplateXlsx')}
           </button>
           <DownloadTemplate spec={employeeTemplate} onDownloaded={() => setTemplateDownloaded(true)} />
+          <button type="button" onClick={downloadFamilyCsv} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{t('sectionFamily')} CSV</button>
           <span className="ml-auto text-xs text-muted-foreground">
             {t('resolveHint', { company: company?.name ?? t('theCompany') })}
           </span>
         </div>
 
         <StepHeading num={2} label={t('step2')} />
-        <p className="text-xs text-muted-foreground">{t('step2Hint')}</p>
+        <p className="text-xs text-muted-foreground">{t('step2Hint',{columns:IMPORT_COLUMNS.required.map(employeeColumnLabel).join(', ')})}</p>
 
         <StepHeading num={3} label={t('step3')} />
         {/* Choose (or drop) the completed template. Reading it auto-runs the same validate step the
@@ -445,7 +461,7 @@ export function EmployeeImport({
               <ul className="space-y-0.5 text-muted-foreground">
                 {IMPORT_COLUMNS.required.map((c) => (
                   <li key={c}>
-                    <code>{c}</code>
+                    <span>{employeeColumnLabel(c)}</span>
                   </li>
                 ))}
               </ul>
@@ -455,7 +471,7 @@ export function EmployeeImport({
               <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
                 {IMPORT_COLUMNS.optional.map((c) => (
                   <li key={c}>
-                    <code>{c}</code>
+                    <span>{employeeColumnLabel(c)}</span>
                   </li>
                 ))}
               </ul>

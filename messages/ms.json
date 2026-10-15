@@ -1903,7 +1903,7 @@
       "step4": "Semak dan pratonton",
       "step5": "Sahkan import",
       "step6": "Keputusan import",
-      "step2Hint": "Satu baris bagi setiap pekerja pada helaian pertama, satu baris bagi setiap ahli keluarga pada helaian Keluarga. Semua lajur kecuali enam lajur wajib boleh dibiarkan kosong.",
+      "step2Hint": "Satu baris bagi setiap pekerja pada helaian pertama, satu baris bagi setiap ahli keluarga pada helaian Keluarga. Lajur wajib: {columns}. Sel lain boleh kosong; syarat tambahan terdapat dalam nota pengepala.",
       "step4Hint": "Tiada rekod dicipta sehingga anda mengesahkannya.",
       "step5Hint": "Semak baris di atas, kemudian import. Di sinilah rekod dicipta.",
       "step5Blocked": "Fail ini ditolak sepenuhnya. Betulkan dan muat naik semula — tiada apa-apa boleh diimport sebelum itu.",

@@ -1903,7 +1903,7 @@
       "step4": "Check and preview",
       "step5": "Confirm the import",
       "step6": "Import result",
-      "step2Hint": "One row per employee on the first sheet, one row per family member on the Family sheet. Every column except the six required ones may be left blank.",
+      "step2Hint": "One row per employee on the first sheet, one row per family member on the Family sheet. Required columns: {columns}. Other cells may be blank; conditional rules appear in the header notes.",
       "step4Hint": "Nothing is created until you confirm.",
       "step5Hint": "Check the rows above, then import. This is the point at which records are created.",
       "step5Blocked": "This file was refused as a whole. Correct it and upload it again — nothing can be imported until then.",
