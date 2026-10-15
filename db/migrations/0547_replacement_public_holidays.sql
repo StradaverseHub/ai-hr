@@ -50,9 +50,13 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM replacement_holiday WHERE id=NEW.allocation_id AND tenant_id=NEW.tenant_id AND employment_id=NEW.employment_id AND company_id=NEW.company_id) THEN RAISE EXCEPTION 'Allocation provenance is unavailable';END IF;
  ELSE
   IF NOT EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Employee or company is unavailable in this tenant';END IF;
-  IF TG_OP='INSERT' AND NOT EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND company_id=NEW.company_id) THEN RAISE EXCEPTION 'Allocation company does not match employment';END IF;
+  IF TG_OP='INSERT' AND NOT EXISTS(SELECT 1 FROM employment WHERE id=NEW.employment_id AND company_id=NEW.company_id)
+   AND NOT EXISTS(SELECT 1 FROM assignment a WHERE a.employment_id=NEW.employment_id AND a.tenant_id=NEW.tenant_id AND a.company_id=NEW.company_id AND a.superseded_at IS NULL AND a.valid_from<=NEW.source_date AND (a.valid_to IS NULL OR a.valid_to>NEW.source_date)) THEN RAISE EXCEPTION 'Allocation company does not match dated employment';END IF;
   IF NOT EXISTS(SELECT 1 FROM holiday WHERE id=NEW.source_holiday_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Original holiday is unavailable in this tenant';END IF;
   IF NEW.status='allocated' AND NOT EXISTS(SELECT 1 FROM replacement_holiday_policy WHERE id=NEW.policy_id AND confirmed) THEN RAISE EXCEPTION 'An assigned replacement requires a confirmed policy';END IF;
+  IF NEW.status='allocated' AND (NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.hired_on<=NEW.source_date AND e.hired_on<=NEW.replacement_date AND (e.terminated_on IS NULL OR (e.terminated_on>=NEW.source_date AND e.terminated_on>=NEW.replacement_date)))
+   OR EXISTS(SELECT 1 FROM (VALUES(NEW.source_date),(NEW.replacement_date)) d(day) WHERE (SELECT count(*) FROM assignment a WHERE a.employment_id=NEW.employment_id AND a.tenant_id=NEW.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=d.day AND (a.valid_to IS NULL OR a.valid_to>d.day))<>1
+    OR NOT EXISTS(SELECT 1 FROM assignment a WHERE a.employment_id=NEW.employment_id AND a.tenant_id=NEW.tenant_id AND a.superseded_at IS NULL AND a.company_id=NEW.company_id AND a.valid_from<=d.day AND (a.valid_to IS NULL OR a.valid_to>d.day)))) THEN RAISE EXCEPTION 'An assigned replacement requires proven dated company and tenure coverage';END IF;
   IF NEW.policy_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM replacement_holiday_policy WHERE id=NEW.policy_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND (effective_from<=NEW.source_date OR NEW.manual)) THEN RAISE EXCEPTION 'Replacement policy does not apply to this company and source date';END IF;
  END IF;
  RETURN NEW;
@@ -77,7 +81,7 @@ BEGIN
 END $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION app.enqueue_replacement_holidays() FROM PUBLIC;--> statement-breakpoint
 DO $$ DECLARE tab text;BEGIN
- FOREACH tab IN ARRAY ARRAY['employment','employment_shift_arrangement','roster_assignment','shift','attendance_rule','attendance_rule_shift','attendance_rotation','attendance_policy','attendance_day_adjustment','holiday','holiday_group','holiday_group_holiday','replacement_holiday_policy','company'] LOOP
+ FOREACH tab IN ARRAY ARRAY['employment','assignment','employment_shift_arrangement','roster_assignment','shift','attendance_rule','attendance_rule_shift','attendance_rotation','attendance_policy','attendance_day_adjustment','holiday','holiday_group','holiday_group_holiday','replacement_holiday_policy','company'] LOOP
   EXECUTE format('CREATE TRIGGER replacement_holiday_dirty AFTER INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION app.enqueue_replacement_holidays()',tab);
  END LOOP;
 END $$;--> statement-breakpoint

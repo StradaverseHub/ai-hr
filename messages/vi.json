@@ -19193,6 +19193,9 @@
     "calendarReview": "Loại ngày đã ghi nhận khác lịch ngày lễ hiện có hiệu lực. Xem xét sửa đổi hoặc ngoại lệ được phép trước khi thay đổi chấm công hay lương.",
     "reasonSourceDate": "Ngày lễ gốc đã thay đổi. Xem xét lịch sử được giữ lại và ngày đề xuất.",
     "updatedOriginal": "Ngày lễ gốc hiện tại",
-    "reasonCollision": "Nhiều ngày lễ gốc trùng cùng một ngày. Hãy xác nhận liệu mỗi ngày lễ có tạo quyền nghỉ bù riêng hay không."
+    "reasonCollision": "Nhiều ngày lễ gốc trùng cùng một ngày. Hãy xác nhận liệu mỗi ngày lễ có tạo quyền nghỉ bù riêng hay không.",
+    "reasonCoverage": "Thiếu hoặc chưa rõ lịch sử công ty theo ngày hiệu lực. Xác nhận lịch sử công ty của nhân viên trước khi xếp ngày nghỉ bù này.",
+    "reasonTenure": "Ngày này nằm ngoài khoảng ngày vào làm và chấm dứt đã ghi nhận của nhân viên.",
+    "reasonHistoricalSchedule": "Không có chính sách lịch làm việc trong quá khứ cho công ty/ngày này. Nhân sự phải xác nhận lịch; không được thay bằng ngày làm việc của công ty hiện tại."
   }
 }

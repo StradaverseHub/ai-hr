@@ -55,6 +55,13 @@ describe('replacement date decisions from original calendar and raw schedule',()
   const result=plan(['rest','full','full'],{sources:[source('first gazette'),source('second gazette')]});
   expect(result).toHaveLength(2);expect(result.every(r=>r.status==='review'&&r.date===null&&r.reason==='source_collision_unclear')).toBe(true);
  });
+ it('selects only the original date’s proven company policy and does not carry allocation across a transfer',()=>{
+  const sources=[{...source('original'),companyId:'A'}],policies=[{...policy,companyId:'A'},{...policy,id:'B-policy',companyId:'B',effectiveFrom:day(0),confirmed:false}];
+  const companyCoverage=new Map([[day(0),{companyId:'A',reason:null}],[day(1),{companyId:'A',reason:null}]]);
+  expect(plan(['rest','full'],{sources,policies,companyCoverage})[0]).toMatchObject({policyId:policy.id,status:'allocated',date:day(1)});
+  companyCoverage.set(day(1),{companyId:'B',reason:null});
+  expect(plan(['rest','full'],{sources,policies,companyCoverage})[0]).toMatchObject({policyId:policy.id,status:'review',date:null,reason:'company_coverage_unknown'});
+ });
  it('requires tentative and inactive sources to be reviewed',()=>{
   for(const value of [{tentative:true},{active:false}])expect(plan(['rest','full'],{sources:[{...source('uncertain'),...value}]})[0].reason).toBe('source_unconfirmed');
  });

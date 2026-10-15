@@ -86,6 +86,7 @@ import {
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { originalHolidayDatesFor, holidayMemoKey } from './holidays';
 import {replacementHolidayDatesByEmployment} from './holiday-replacement-read';
+import {companySegmentsForPeriodBulk} from './employment-company';
 // b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine
 // does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
 // dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
@@ -260,6 +261,7 @@ export async function absenceBreakdownByEmployment(
     .where(inArray(employment.id, ids));
   if (emps.length === 0) return out;
   const empIds = emps.map((e) => e.employmentId);
+  const holidayCompanySegments=await companySegmentsForPeriodBulk(tx,empIds,periodStart,periodEnd,new Map(emps.map(e=>[e.employmentId,e.companyId])));
   const dateCorrections=await attendanceDateOverridesTx(tx,empIds,periodStart,lastCounted);
 
   const [rows, approved, partialLeave, policies, rosterRows, defaultShifts, scheduleGroups, groupWeeks] =
@@ -446,6 +448,7 @@ export async function absenceBreakdownByEmployment(
       companyId: e.companyId,
       workState: e.workState,
       holidayGroupId: e.holidayGroupId,
+      companySegments:holidayCompanySegments.get(e.employmentId)??[],
     });
   const holidayMemo = new Map<string, Set<string>>();
   const replacementDates=await replacementHolidayDatesByEmployment(tx,{employmentIds:empIds,startDate:periodStart,endDate:lastCounted});
@@ -484,7 +487,7 @@ export async function absenceBreakdownByEmployment(
   }
 
   for (const e of emps) {
-    // ADR-0055 — the resolver is single-employment; memoized on its three determining inputs (above), so a
+    // ADR-0055/0120 — original calendars memoize current selection plus dated entity segments, so a
     // company whose staff share a calendar costs ONE call instead of one per head. Sequential because
     // every call shares this transaction's one connection.
     const key = holidayKeyOf(e);

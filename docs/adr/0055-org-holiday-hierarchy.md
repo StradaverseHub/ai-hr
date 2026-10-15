@@ -27,3 +27,5 @@ Business-group override  →  State PH  →  Country default
 ## 2026-10-15 follow-up — stable annual selection
 
 [ADR-0120](0120-employee-replacement-holidays.md) makes the original-calendar winner stable for each calendar year. Company-subtree precedence remains single-winner replacement. Selecting the winner only from dates inside the caller's query window violated this ADR's shared Leave/Attendance promise: a day and a month could disagree. The owner now selects the year first and filters its dates afterward, independently across year boundaries. Employee-specific replacement projections are a separate additive owner; stored attendance and protected payroll snapshots are not rewritten.
+
+ADR-0120 additionally resolves each annual company calendar within canonical dated company segments. Legacy original-calendar fallback remains in the entity owner; employee replacement projections require strict dated coverage and retain their ledger for review when coverage becomes Unknown.

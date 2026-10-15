@@ -19193,6 +19193,9 @@
     "calendarReview": "Recorded day types differ from the current effective holiday calendar. Review the existing correction or authorized exception before changing attendance or pay.",
     "reasonSourceDate": "The original holiday date has changed. Review its retained history and proposed date.",
     "updatedOriginal": "Current original date",
-    "reasonCollision": "Several original public holidays share this date. Confirm whether they create separate replacement entitlements."
+    "reasonCollision": "Several original public holidays share this date. Confirm whether they create separate replacement entitlements.",
+    "reasonCoverage": "Dated company assignment coverage is missing or unclear. Confirm the employee’s company history before assigning this replacement.",
+    "reasonTenure": "This date falls outside the employee’s recorded hire and termination dates.",
+    "reasonHistoricalSchedule": "Historical work-schedule policy is unavailable for this company/date. HR must confirm the schedule; the current employer’s weekdays cannot be substituted."
   }
 }

@@ -4,16 +4,16 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {hireEmployee} from '../core/org';
+import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
 import {createShift,assignDefaultShift,updateShift,setEmploymentScheduleGroup} from '../core/roster';
 import {createAttendanceRule,setRuleShifts} from '../core/attendance-rule';
 import {saveScheduleRotation,getScheduleRotation} from '../core/attendance-rotation';
 import {assignEmployeeShiftDated} from '../core/shift-arrangement';
-import {checkIn,checkOut,setAttendancePolicy,rawScheduleDaysTx} from '../packs/attendance/service';
+import {checkIn,checkOut,setAttendancePolicy,rawScheduleDaysTx,rawScheduleDayFactsTx} from '../packs/attendance/service';
 import {workingDatesForSpan} from '../packs/leave/service';
 import {holidayDatesFor,holidayDatesByEmployment,originalHolidayCalendarFor} from '../core/holidays';
 import {adjustReplacementHoliday,reconcileReplacementHolidays,saveReplacementHolidayPolicy} from '../core/holiday-replacements';
-import {listReplacementHolidays,replacementHolidayHistory} from '../core/holiday-replacement-read';
+import {listReplacementHolidays,replacementHolidayHistory,replacementHolidayReviewRows} from '../core/holiday-replacement-read';
 import {addHolidayDays} from '../lib/holiday-replacement';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setCompensation} from '../core/comp';
@@ -112,6 +112,48 @@ describe('employee replacement owner and shared calendar',()=>{
  it.each(['processed','closed'] as const)('leaves %s payroll snapshots intact and flags the proposed new holiday',async status=>{
   const f=await fixture();await setCompensation(f.ctx,{employmentId:f.e.employmentId,basicSalary:4000,monthlyAllowance:0,effectiveFrom:day(-366)});const {batchId}=await createBatch(f.ctx,{companyId:b.companyId,payPeriod:day(2).slice(0,7)});await generatePayslips(f.ctx,{batchId});if(status==='closed')await owner.db.update(schema.payrollBatch).set({status}).where(eq(schema.payrollBatch.id,batchId));
   const paid=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));await reconcileReplacementHolidays(f.ctx,f.e.employmentId);expect((await rows(f.e.employmentId))[0]).toMatchObject({status:'review',reason:'payroll_protected',replacementDate:null,proposedDate:day(2)});expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(paid);
+ });
+ it('retains proven old-company history while excluding old-company future dates after a dated transfer',async()=>{
+  const f=await fixture();
+  const [later]=await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,country:'MY',companyId:b.companyId,holidayDate:day(8),name:'Later old-company holiday'}).returning();
+  await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const ledger=await rows(f.e.employmentId);expect(ledger.map(r=>r.replacementDate)).toEqual([day(2),day(9)]);
+  const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Dated holiday destination',country:'MY'}).returning();
+  const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:destination.id,name:'Destination department'}).returning();
+  const [newHoliday]=await owner.db.insert(schema.holiday).values({tenantId:b.tenantId,country:'MY',companyId:destination.id,holidayDate:day(4),name:'Destination original'}).returning();
+  await withTenant(f.ctx,tx=>transferEmploymentCompanyTx(tx,f.ctx,{employmentId:f.e.employmentId,newCompanyId:destination.id,effectiveDate:day(3),placement:{departmentId:department.id},movement:{type:'entityTransfer',groupId:randomUUID()}}));
+  expect(await withTenant(f.ctx,tx=>rawScheduleDaysTx(tx,f.e.employmentId,day(1),day(2)))).toEqual(new Map([[day(1),'rest'],[day(2),'full']])); // assigned historical shift remains known
+  const other=await hireEmployee(f.ctx,{person:{fullName:'Always destination',primaryEmail:`${randomUUID()}@test.local`},companyId:destination.id,departmentId:department.id,employmentType:'full_time',hiredOn:day(-366)});
+  const originals=await withTenant(f.ctx,tx=>originalHolidayCalendarFor(tx,{employmentId:f.e.employmentId,startDate:day(1),endDate:day(10)}));
+  expect(originals.map(h=>h.id)).toEqual([f.h.id,newHoliday.id]);expect(originals.some(h=>h.id===later.id)).toBe(false);
+  const calendars=await withTenant(f.ctx,tx=>holidayDatesByEmployment(tx,{employmentIds:[f.e.employmentId,other.employmentId],startDate:day(1),endDate:day(10)}));
+  expect(calendars.get(f.e.employmentId)).toEqual(new Set([day(1),day(2),day(4)]));expect(calendars.get(other.employmentId)).toEqual(new Set([day(4)]));
+  expect(await rows(f.e.employmentId)).toEqual(ledger); // reads do not rewrite protected provenance
+  const review=await replacementHolidayReviewRows(f.ctx,b.companyId);expect(review.rows.find(r=>r.allocation.sourceHolidayId===later.id)?.coverageReason).toBe('assignment_company_changed');expect(review.rows.find(r=>r.allocation.sourceHolidayId===f.h.id)?.coverageReason).toBeNull();
+ });
+ it('flags missing historical schedule policy instead of borrowing the new company’s weekday pattern',async()=>{
+  const f=await fixture();
+  const fallback=await hireEmployee(f.ctx,{person:{fullName:'Policy fallback transfer',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-366)});
+  await setAttendancePolicy(f.ctx,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7].filter(d=>d!==dow(day(1)))});
+  const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Different weekday policy',country:'MY'}).returning();
+  const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:destination.id,name:'Different policy department'}).returning();
+  await setAttendancePolicy(f.ctx,{companyId:destination.id,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
+  await withTenant(f.ctx,tx=>transferEmploymentCompanyTx(tx,f.ctx,{employmentId:fallback.employmentId,newCompanyId:destination.id,effectiveDate:day(3),placement:{departmentId:department.id},movement:{type:'entityTransfer',groupId:randomUUID()}}));
+  const facts=await withTenant(f.ctx,tx=>rawScheduleDayFactsTx(tx,fallback.employmentId,day(1),day(1)));expect(facts.get(day(1))).toEqual({kind:'unknown',reason:'historical_schedule_policy_unknown'});
+  await reconcileReplacementHolidays(f.ctx,fallback.employmentId);expect((await rows(fallback.employmentId))[0]).toMatchObject({companyId:b.companyId,status:'review',replacementDate:null,reason:'historical_schedule_policy_unknown'});
+ });
+ it('excludes a retained replacement after shortened tenure and exposes the review without changing recorded attendance',async()=>{
+  const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);await checkIn(f.ctx,{employmentId:f.e.employmentId,date:day(2),time:'09:00'});await checkOut(f.ctx,{employmentId:f.e.employmentId,date:day(2),time:'18:00'});
+  const ledger=await rows(f.e.employmentId),recorded=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,f.e.employmentId));
+  await owner.db.update(schema.employment).set({terminatedOn:day(1)}).where(eq(schema.employment.id,f.e.employmentId));
+  expect(await withTenant(f.ctx,tx=>holidayDatesFor(tx,{employmentId:f.e.employmentId,startDate:day(2),endDate:day(2)}))).toEqual(new Set());
+  expect((await replacementHolidayReviewRows(f.ctx,b.companyId)).rows[0].coverageReason).toBe('outside_tenure');expect(await rows(f.e.employmentId)).toEqual(ledger);expect(await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,f.e.employmentId))).toEqual(recorded);
+ });
+ it('keeps missing company history Unknown for replacements while preserving the original calendar compatibility fallback',async()=>{
+  const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);
+  await owner.db.update(schema.assignment).set({companyId:null}).where(eq(schema.assignment.employmentId,f.e.employmentId));
+  const calendar=await withTenant(f.ctx,tx=>holidayDatesFor(tx,{employmentId:f.e.employmentId,startDate:day(1),endDate:day(2)}));expect(calendar).toEqual(new Set([day(1)]));
+  expect((await replacementHolidayReviewRows(f.ctx,b.companyId)).rows[0].coverageReason).toBe('assignment_missing');
+  await reconcileReplacementHolidays(f.ctx,f.e.employmentId);expect((await rows(f.e.employmentId))[0]).toMatchObject({status:'review',reason:'company_coverage_unknown',replacementDate:day(2)});
  });
  it('refuses company-scoped and cross-tenant administrators outside the allocation’s scope',async()=>{
   const f=await fixture();await reconcileReplacementHolidays(f.ctx,f.e.employmentId);const [row]=await rows(f.e.employmentId);

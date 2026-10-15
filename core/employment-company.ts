@@ -363,3 +363,43 @@ export function segmentForCompany(
   if (mine.length === 0) return null;
   return { from: mine[0].from, to: mine[0].to, split: mine.length > 1 };
 }
+
+/** Strict evidence for an employee/date. Unlike payroll compatibility segments, this never fills a
+ * missing or NULL entity history from today's company. A projection that needs proof stays Unknown. */
+export type ProvenCompanyDate = {
+  companyId: string | null;
+  reason: 'assignment_missing' | 'assignment_ambiguous' | 'outside_tenure' | 'employment_unavailable' | null;
+};
+export async function provenCompanyDatesTx(
+  tx: Tx,
+  requested: readonly { employmentId: string; date: string }[],
+): Promise<Map<string, ProvenCompanyDate>> {
+  const out = new Map<string, ProvenCompanyDate>();
+  if (!requested.length) return out;
+  const ids = [...new Set(requested.map(row => row.employmentId))];
+  const from = requested.reduce((date, row) => row.date < date ? row.date : date, requested[0].date);
+  const to = requested.reduce((date, row) => row.date > date ? row.date : date, requested[0].date);
+  const [people, versions] = await Promise.all([
+    tx.select({ id: employment.id, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+      .from(employment).where(inArray(employment.id, ids)),
+    tx.select({ employmentId: assignment.employmentId, companyId: assignment.companyId, from: assignment.validFrom, to: assignment.validTo })
+      .from(assignment).where(and(inArray(assignment.employmentId, ids), isNull(assignment.supersededAt),
+        lte(assignment.validFrom, to), or(isNull(assignment.validTo), gt(assignment.validTo, from))))
+      .orderBy(asc(assignment.employmentId), asc(assignment.validFrom), asc(assignment.id)),
+  ]);
+  const byEmployee = new Map(people.map(row => [row.id, row]));
+  const versionsByEmployee = new Map<string, typeof versions>();
+  for (const version of versions) { const list=versionsByEmployee.get(version.employmentId)??[];list.push(version);versionsByEmployee.set(version.employmentId,list); }
+  for (const row of requested) {
+    const employee = byEmployee.get(row.employmentId);
+    const applicable = (versionsByEmployee.get(row.employmentId)??[]).filter(version => version.from <= row.date && (!version.to || version.to > row.date));
+    const proof: ProvenCompanyDate = !employee ? { companyId: null, reason: 'employment_unavailable' }
+      : row.date < employee.hiredOn || employee.terminatedOn && row.date > employee.terminatedOn
+        ? { companyId: null, reason: 'outside_tenure' }
+        : applicable.length > 1 ? { companyId: null, reason: 'assignment_ambiguous' }
+          : applicable.length !== 1 || !applicable[0].companyId ? { companyId: null, reason: 'assignment_missing' }
+            : { companyId: applicable[0].companyId, reason: null };
+    out.set(`${row.employmentId}|${row.date}`, proof);
+  }
+  return out;
+}

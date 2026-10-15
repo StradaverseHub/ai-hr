@@ -477,12 +477,10 @@ describe('r298 — the Daily Attendance loader reads the batched calendars', () 
     // custom group still can, which is ADR-0067 §(a) surviving, and `grpCustom` is what proves it.
     expect(ctxOn(onNat, 'grpCustom')).toEqual([null]);
     expect(ctxOn(onNat, 'locCustomCal')).toEqual(['holiday']);
-    expect(ctxOn(onNat, 'childCompanyCustomCal')).toEqual(['holiday']);
-    // NOT in this list, deliberately: `childCompany`. Its March calendar is only ADHOC_G, but the Step-1
-    // company override is WINDOW-scoped — on a one-day window holding no company row it does not fire, and
-    // the day falls through to the gazette. That is holidayDatesFor's behaviour on main, and the loop below
-    // holds the loader to it.
-    expect(ctxOn(onNat, 'childCompany')).toEqual(['holiday']);
+    expect(ctxOn(onNat, 'childCompanyCustomCal')).toEqual([null]);
+    // ADR-0120: the company override is selected for the whole year in each dated company context.
+    // A day read and a month read therefore omit the same national date when the company calendar omits it.
+    expect(ctxOn(onNat, 'childCompany')).toEqual([null]);
 
     // ADHOC_G (a Tuesday): the parent company's day reaches the child company, not the unrelated one.
     const onAdhoc = await attendanceForDate(adminCtx(b), ADHOC_G);

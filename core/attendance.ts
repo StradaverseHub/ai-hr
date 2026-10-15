@@ -1,4 +1,5 @@
 import { exceptionDecisionsTx } from './schedule-group-controls';
+import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
@@ -6408,13 +6409,23 @@ export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:strin
   });
 }
 
-/** Same dated Schedule owner without any original/replacement holiday overlay. */
-export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to:string){
+/** Same dated Schedule owner without any original/replacement holiday overlay. The replacement-only
+ * seam reports historical policy fallback as Unknown when the dated entity differs from today's company;
+ * it never borrows the new employer's weekdays or changes ordinary Attendance resolution. */
+export async function rawScheduleDayFactsTx(tx:Tx,employmentId:string,from:string,to:string){
  const memo=await newScheduleMemo(tx,{employmentIds:[employmentId],from,to});memo.originalSchedule=true;
- const out=new Map<string,'full'|'half'|'off'|'rest'|'unknown'>();
- for(let date=from;date<=to;date=addDays(date,1)){
-  const schedule=await scheduleFor(tx,employmentId,date,memo);
-  out.set(date,schedule.dayType==='rest_day'?(schedule.scheduleDayKind==='off'?'off':'rest'):schedule.dayType==='workday'?(schedule.scheduleDayKind==='half'?'half':'full'):'unknown');
+ const dates:string[]=[];for(let date=from;date<=to;date=addDays(date,1))dates.push(date);
+ const [employee]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ const companies=await provenCompanyDatesTx(tx,dates.map(date=>({employmentId,date})));
+ const out=new Map<string,{kind:'full'|'half'|'off'|'rest'|'unknown';reason:'historical_schedule_policy_unknown'|null}>();
+ for(const date of dates){
+  const schedule=await scheduleFor(tx,employmentId,date,memo),company=companies.get(`${employmentId}|${date}`);
+  const missingPolicy=schedule.source==='policy'&&company?.companyId&&company.companyId!==employee?.companyId;
+  const kind=missingPolicy?'unknown':schedule.dayType==='rest_day'?(schedule.scheduleDayKind==='off'?'off':'rest'):schedule.dayType==='workday'?(schedule.scheduleDayKind==='half'?'half':'full'):'unknown';
+  out.set(date,{kind,reason:missingPolicy?'historical_schedule_policy_unknown':null});
  }
  return out;
+}
+export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to:string){
+ return new Map([...(await rawScheduleDayFactsTx(tx,employmentId,from,to))].map(([date,fact])=>[date,fact.kind]));
 }
