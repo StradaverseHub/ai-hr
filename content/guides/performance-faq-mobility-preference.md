@@ -1,0 +1,1 @@
+Mobility says how far you would move for the right role: stay in your current role, move within your company, move within your business group, move across business groups, or relocate. It is not a promise -- it tells HR and your leaders how open you are to a move. Be honest; a narrow preference is fine.

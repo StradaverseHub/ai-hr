@@ -1,0 +1,823 @@
+{
+  "source": "AST-isolated source helpers; no original app import",
+  "figures": [
+    {
+      "pct": null,
+      "key": "normal",
+      "text": ""
+    },
+    {
+      "pct": -104.5,
+      "key": "negative",
+      "text": "-104%"
+    },
+    {
+      "pct": -9.95,
+      "key": "negative",
+      "text": "-9.9%"
+    },
+    {
+      "pct": 0,
+      "key": "negative",
+      "text": "0%"
+    },
+    {
+      "pct": 9.95,
+      "key": "negative",
+      "text": "10%"
+    },
+    {
+      "pct": 10.5,
+      "key": "negative",
+      "text": "11%"
+    },
+    {
+      "pct": 69.999999999,
+      "key": "negative",
+      "text": "70%"
+    },
+    {
+      "pct": 70,
+      "key": "normal",
+      "text": "70%"
+    },
+    {
+      "pct": 104.5,
+      "key": "normal",
+      "text": "105%"
+    },
+    {
+      "pct": 130,
+      "key": "normal",
+      "text": "130%"
+    },
+    {
+      "pct": 130.000000001,
+      "key": "positive",
+      "text": "130%"
+    },
+    {
+      "pct": 200,
+      "key": "positive",
+      "text": "200%"
+    }
+  ],
+  "distributions": [
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 0,
+        "Mid": 0,
+        "High": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 0,
+        "Mid": 0,
+        "High": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 1,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 1,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 1,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 0,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 1,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 0,
+        "Mid": 0,
+        "High": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 1,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": -1,
+        "Mid": 1,
+        "High": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 2,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": -1,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 2,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": -1,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 2,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": -1,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 2,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 0,
+        "Mid": -1,
+        "High": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 2,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": -2,
+        "Mid": 1,
+        "High": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 3,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 1,
+        "ME": -1,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 3,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": -1,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 3,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": -1,
+        "AE": 1,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 3,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 0,
+        "Mid": -1,
+        "High": 0
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 3,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": -3,
+        "Mid": 2,
+        "High": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 10,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 1,
+        "BE": 2,
+        "ME": -4,
+        "AE": 0,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 10,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 1,
+        "ME": -3,
+        "AE": 1,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 10,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 0,
+        "ME": -4,
+        "AE": 2,
+        "OU": 1
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 10,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 2,
+        "Mid": -3,
+        "High": 2
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 10,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": -8,
+        "Mid": 7,
+        "High": 2
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 25,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 2,
+        "BE": 6,
+        "ME": -10,
+        "AE": 1,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 25,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 1,
+        "BE": 2,
+        "ME": -7,
+        "AE": 2,
+        "OU": 1
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 25,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 1,
+        "ME": -10,
+        "AE": 6,
+        "OU": 2
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 25,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 4,
+        "Mid": -7,
+        "High": 4
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 25,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": -21,
+        "Mid": 18,
+        "High": 4
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 100,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 10,
+        "BE": 25,
+        "ME": 60,
+        "AE": 5,
+        "OU": 0
+      },
+      "gaps": {
+        "UA": 10,
+        "BE": 25,
+        "ME": -40,
+        "AE": 5,
+        "OU": 0
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 100,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 5,
+        "BE": 10,
+        "ME": 70,
+        "AE": 10,
+        "OU": 5
+      },
+      "gaps": {
+        "UA": 5,
+        "BE": 10,
+        "ME": -30,
+        "AE": 10,
+        "OU": 5
+      }
+    },
+    {
+      "axis": "performance",
+      "counts": {
+        "UA": 0,
+        "BE": 0,
+        "ME": 100,
+        "AE": 0,
+        "OU": 0
+      },
+      "target": {
+        "UA": 0,
+        "BE": 5,
+        "ME": 60,
+        "AE": 25,
+        "OU": 10
+      },
+      "gaps": {
+        "UA": 0,
+        "BE": 5,
+        "ME": -40,
+        "AE": 25,
+        "OU": 10
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 0,
+        "Mid": 100,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": 15,
+        "Mid": -30,
+        "High": 15
+      }
+    },
+    {
+      "axis": "potential",
+      "counts": {
+        "Low": 100,
+        "Mid": 0,
+        "High": 0
+      },
+      "target": {
+        "Low": 15,
+        "Mid": 70,
+        "High": 15
+      },
+      "gaps": {
+        "Low": -85,
+        "Mid": 70,
+        "High": 15
+      }
+    }
+  ]
+}

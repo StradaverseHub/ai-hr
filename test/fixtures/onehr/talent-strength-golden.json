@@ -1,0 +1,1260 @@
+[
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Fully demonstrated"
+      },
+      {
+        "name": "Principle 1",
+        "label": "Fully demonstrated"
+      }
+    ],
+    "bottom": [],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [],
+    "bottom": [],
+    "even": "Seen by few"
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [],
+    "bottom": [],
+    "even": "Mixed"
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 3",
+        "label": "Mixed"
+      },
+      {
+        "name": "Principle 2",
+        "label": "Mixed"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 0",
+        "label": "Mixed"
+      },
+      {
+        "name": "Principle 1",
+        "label": "Mixed"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P6",
+        "description": "Principle 6",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P6",
+        "description": "Principle 6",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 6",
+        "label": "Mixed"
+      },
+      {
+        "name": "Principle 0",
+        "label": "Mixed"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 1",
+        "label": "Seen by few"
+      },
+      {
+        "name": "Principle 2",
+        "label": "Seen by few"
+      },
+      {
+        "name": "Principle 3",
+        "label": "Seen by few"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 5",
+        "label": "Seen by most"
+      },
+      {
+        "name": "Principle 0",
+        "label": "Seen by most"
+      },
+      {
+        "name": "Principle 2",
+        "label": "Seen by most"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 4",
+        "label": "Seen by few"
+      },
+      {
+        "name": "Principle 1",
+        "label": "Seen by few"
+      },
+      {
+        "name": "Principle 3",
+        "label": "Mixed"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Mixed"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 1",
+        "label": "Mixed"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Fully demonstrated"
+      }
+    ],
+    "bottom": [],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      }
+    ],
+    "letter": false,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Mixed"
+      }
+    ],
+    "bottom": [],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Demonstrated"
+      },
+      {
+        "name": "Principle 1",
+        "label": "Demonstrated"
+      }
+    ],
+    "bottom": [],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [],
+    "bottom": [],
+    "even": "Not demonstrated yet"
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [],
+    "bottom": [],
+    "even": "Partly demonstrated"
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 3",
+        "label": "Partly demonstrated"
+      },
+      {
+        "name": "Principle 2",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 0",
+        "label": "Partly demonstrated"
+      },
+      {
+        "name": "Principle 1",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P6",
+        "description": "Principle 6",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P6",
+        "description": "Principle 6",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 6",
+        "label": "Partly demonstrated"
+      },
+      {
+        "name": "Principle 0",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 1",
+        "label": "Rarely demonstrated"
+      },
+      {
+        "name": "Principle 2",
+        "label": "Rarely demonstrated"
+      },
+      {
+        "name": "Principle 3",
+        "label": "Rarely demonstrated"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P2",
+        "description": "Principle 2",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P3",
+        "description": "Principle 3",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P4",
+        "description": "Principle 4",
+        "future": true,
+        "yes": 0,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P5",
+        "description": "Principle 5",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 5",
+        "label": "Mostly demonstrated"
+      },
+      {
+        "name": "Principle 0",
+        "label": "Mostly demonstrated"
+      },
+      {
+        "name": "Principle 2",
+        "label": "Mostly demonstrated"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 4",
+        "label": "Rarely demonstrated"
+      },
+      {
+        "name": "Principle 1",
+        "label": "Rarely demonstrated"
+      },
+      {
+        "name": "Principle 3",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 1,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": false,
+        "yes": 3,
+        "total": 4
+      },
+      {
+        "name": "P1",
+        "description": "Principle 1",
+        "future": true,
+        "yes": 1,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "bottom": [
+      {
+        "name": "Principle 1",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 4,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 4,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Demonstrated"
+      }
+    ],
+    "bottom": [],
+    "even": null
+  },
+  {
+    "rows": [
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": false,
+        "yes": 2,
+        "total": 4
+      },
+      {
+        "name": "P0",
+        "description": "Principle 0",
+        "future": true,
+        "yes": 2,
+        "total": 4
+      }
+    ],
+    "letter": true,
+    "top": [
+      {
+        "name": "Principle 0",
+        "label": "Partly demonstrated"
+      }
+    ],
+    "bottom": [],
+    "even": null
+  }
+]

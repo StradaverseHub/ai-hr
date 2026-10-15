@@ -1,0 +1,90 @@
+{
+  "function": "_pm_parse_idp_goals",
+  "sourceFunctionSha256": "ab930305b7745a90497af83cc9293f45774c40493ce9f8dffcdcff8e8b5d7d91",
+  "method": "Executed only the isolated pure function AST; no app import or startup.",
+  "cases": [
+    {
+      "raw": "[{\"area\": \"Practical planning\", \"item_ids\": [\"tc:0\", \"not-owned\"], \"experience\": \"Lead a small planning cycle\", \"exposure\": \"Ask for mentor feedback\", \"education\": \"Study a planning method\", \"dueOn\": \"2099-01-01\"}, {\"title\": \"Facilitation\", \"item_ids\": [\"lp:0\"], \"experience\": \"Lead a workshop\"}, {\"area\": \"Invented\", \"item_ids\": [\"foreign-subject\"]}]",
+      "validIds": [
+        "tc:0",
+        "lp:0"
+      ],
+      "maximum": 2,
+      "expected": [
+        {
+          "area": "Practical planning",
+          "title": "Practical planning",
+          "itemIds": [
+            "tc:0"
+          ],
+          "onJob": "Lead a small planning cycle",
+          "fromOthers": "Ask for mentor feedback",
+          "formalLearning": "Study a planning method"
+        },
+        {
+          "area": "Facilitation",
+          "title": "Facilitation",
+          "itemIds": [
+            "lp:0"
+          ],
+          "onJob": "Lead a workshop",
+          "fromOthers": "",
+          "formalLearning": ""
+        }
+      ]
+    },
+    {
+      "raw": "```json\n[{\"area\": \"Practical planning\", \"item_ids\": [\"tc:0\", \"not-owned\"], \"experience\": \"Lead a small planning cycle\", \"exposure\": \"Ask for mentor feedback\", \"education\": \"Study a planning method\", \"dueOn\": \"2099-01-01\"}, {\"title\": \"Facilitation\", \"item_ids\": [\"lp:0\"], \"experience\": \"Lead a workshop\"}, {\"area\": \"Invented\", \"item_ids\": [\"foreign-subject\"]}]\n```",
+      "validIds": [
+        "tc:0",
+        "lp:0"
+      ],
+      "maximum": 1,
+      "expected": [
+        {
+          "area": "Practical planning",
+          "title": "Practical planning",
+          "itemIds": [
+            "tc:0"
+          ],
+          "onJob": "Lead a small planning cycle",
+          "fromOthers": "Ask for mentor feedback",
+          "formalLearning": "Study a planning method"
+        }
+      ]
+    },
+    {
+      "raw": "[{\"area\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"title\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\", \"item_ids\": [\"tc:0\"], \"experience\": \"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\"}]",
+      "validIds": [
+        "tc:0"
+      ],
+      "maximum": 6,
+      "expected": [
+        {
+          "area": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "itemIds": [
+            "tc:0"
+          ],
+          "onJob": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+          "fromOthers": "",
+          "formalLearning": ""
+        }
+      ]
+    },
+    {
+      "raw": "unreadable",
+      "validIds": [
+        "tc:0"
+      ],
+      "maximum": 6,
+      "expected": []
+    },
+    {
+      "raw": "[{\"area\": \"Practical planning\", \"item_ids\": [\"tc:0\", \"not-owned\"], \"experience\": \"Lead a small planning cycle\", \"exposure\": \"Ask for mentor feedback\", \"education\": \"Study a planning method\", \"dueOn\": \"2099-01-01\"}, {\"title\": \"Facilitation\", \"item_ids\": [\"lp:0\"], \"experience\": \"Lead a workshop\"}, {\"area\": \"Invented\", \"item_ids\": [\"foreign-subject\"]}]",
+      "validIds": [],
+      "maximum": 6,
+      "expected": []
+    }
+  ]
+}

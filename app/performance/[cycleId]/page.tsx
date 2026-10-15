@@ -39,15 +39,15 @@ export default async function CyclePage({
   searchParams,
 }: {
   params: Promise<{ cycleId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; progressModule?:string;progressKind?:string;progressGroup?:string;progressCompany?:string }>;
 }) {
   const s = await requirePerfCompAccess();
   const t = await getTranslations('performance.cycle');
   const tl = await getTranslations('performance.lifecycle');
   const { cycleId } = await params;
-  const { error } = await searchParams;
+  const { error,...initialProgress } = await searchParams;
   const onehr = await getOnehrCycle(s, cycleId);
-  if (onehr) return <OnehrCycleView v={onehr} error={error}/>;
+  if (onehr) return <OnehrCycleView v={onehr} error={error} initialProgress={initialProgress}/>;
   const onehrText = await getTranslations('onehr');
   const data = await cycleDetail(s, cycleId);
   if (!data) notFound();

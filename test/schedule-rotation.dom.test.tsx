@@ -43,6 +43,8 @@ describe('integrated allowed-shift and cycle editor',()=>{
     vi.mocked(saveRotationAction).mockResolvedValueOnce({saved:true,revision:'fresh-revision',savedVersionId:'version-1',savedEffectiveFrom:date});
     fireEvent.submit(container.querySelector('#attendance-rotation-group')!);
     await waitFor(()=>expect((container.querySelector('[name="revision"]') as HTMLInputElement).value).toBe('fresh-revision'));
+    // The optimistic revision appears before the action transition finishes committing its navigation baseline.
+    await waitFor(()=>expect(container.querySelector('#attendance-rotation-group')).toHaveAttribute('aria-busy','false'));
     const link=screen.getByRole('link',{name:'Back to settings'});let intercepted=false;
     link.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault();},{once:true});
     fireEvent.click(link);
@@ -56,6 +58,7 @@ describe('integrated allowed-shift and cycle editor',()=>{
       .mockResolvedValueOnce({saved:true,revision:'next-revision',savedVersionId:'version-2'});
     const form=container.querySelector('#attendance-rotation-group')!;fireEvent.submit(form);
     await waitFor(()=>expect((container.querySelector('[name="revision"]') as HTMLInputElement).value).toBe('fresh-revision'));
+    await waitFor(()=>expect(form).toHaveAttribute('aria-busy','false'));
     const nextDate=new Date(Date.parse(`${date}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
     fireEvent.change(container.querySelector('[name="rotationEffectiveDraft"]')!,{target:{value:nextDate}});
     fireEvent.change(screen.getByRole('combobox',{name:'Day type 1'}),{target:{value:'half'}});fireEvent.submit(form);

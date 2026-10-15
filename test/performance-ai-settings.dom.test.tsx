@@ -1,0 +1,38 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { createTranslator } from 'next-intl';
+import en from '../messages/en.json';
+const ports = vi.hoisted(() => ({ state: vi.fn() }));
+vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as never }) }));
+vi.mock('../packs/performance/service', () => ({ ASSESSMENT_AI_FEATURES: ['360', 'tc', 'pm', 'review', 'idp', 'calib'], getAssessmentAiSwitches: ports.state }));
+vi.mock('../app/admin/ai/actions', () => ({ setAssessmentAiSwitchAction: vi.fn() }));
+import { AssessmentAiSettings } from '../app/admin/ai/assessment-ai-settings';
+afterEach(cleanup);
+const switches = { '360': true, tc: true, pm: false, review: true, idp: true, calib: true };
+it('shows six controls, distinguishes provider availability, and posts explicit values for independent switches', async () => {
+  ports.state.mockResolvedValue({ switches, providerConfigured: false, mayWrite: true });
+  render(await AssessmentAiSettings({ session: { tenantId: 'fixture' } }));
+  expect(screen.getAllByRole('listitem')).toHaveLength(6);
+  expect(screen.getAllByText(en.admin.ai.assessment.providerMissing)).toHaveLength(5);
+  const pm = screen.getByRole('button', { name: 'Turn on Performance' }).closest('form')!;
+  expect(new FormData(pm).get('feature')).toBe('pm');
+  expect(new FormData(pm).get('on')).toBe('true');
+  const idp = screen.getByRole('button', { name: 'Turn off Career Plan' }).closest('form')!;
+  expect(new FormData(idp).get('feature')).toBe('idp');
+  expect(new FormData(idp).get('on')).toBe('false');
+});
+it('shows tenant-wide settings read-only to company HR', async () => {
+  ports.state.mockResolvedValue({ switches, providerConfigured: true, mayWrite: false });
+  render(await AssessmentAiSettings({ session: { tenantId: 'fixture' } }));
+  expect(screen.getAllByRole('listitem')).toHaveLength(6);
+  expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.getByText(en.admin.ai.assessment.readOnly)).toBeTruthy();
+  expect(screen.queryByText(en.admin.ai.assessment.providerMissing)).toBeNull();
+});
+
+it('keeps the configured switch distinct from unavailable module access',async()=>{
+  ports.state.mockResolvedValue({switches,providerConfigured:true,moduleHeld:false,mayWrite:false});
+  render(await AssessmentAiSettings({session:{tenantId:'fixture'}}));
+  expect(screen.getAllByText(en.admin.ai.assessment.moduleMissing)).toHaveLength(5);
+  expect(screen.getByText(en.admin.ai.assessment.off)).toBeTruthy();
+});

@@ -1,3 +1,4 @@
+import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
 import { rewardNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
@@ -31,7 +32,6 @@ import {
   notificationCursor,
   noticeRecipient,
   payslip,
-  performanceReview,
   peerFeedbackRequest,
   reportingLine,
   roleAssignment,
@@ -221,18 +221,16 @@ type Spec = {
   recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null) => Promise<string[]>;
 };
 
-/** Generic task notices carry no assessment, peer identity or evidence text. */
-async function performanceManagerRecipient(tx:Tx,ev:EventRef):Promise<string[]> {
- const [r]=await tx.select({id:performanceReview.reviewerEmploymentId}).from(performanceReview).where(eq(performanceReview.id,ev.aggregateId));
- if(!r?.id)return [];
- const live=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(eq(employment.id,r.id),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>(now() at time zone 'Asia/Kuala_Lumpur')::date)`));
- return [...new Set(live.map(e=>e.id))];
-}
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
 // different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  'assessment.reminder-queued': {
+    kind:'performance.reminder',category:'performance',
+    recipients:(tx,ev)=>assessmentReminderRecipientsTx(tx,ev.aggregateId),
+    render:()=>({severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'}),
+  },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
     render: (_p, ev) => ({ severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
@@ -603,12 +601,12 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     },
   },
   ...Object.fromEntries(['results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
-    kind:'performance.review-task',category:'performance' as const,recipients:performanceManagerRecipient,
+    kind:'performance.review-task',category:'performance' as const,recipients:(tx:Tx,ev:EventRef)=>assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,event==='results-submitted'?'results':event==='competencies-submitted'?'competencies':'plan'),
     render:()=>({severity:'action' as const,title:'Performance review task',body:'An employee has submitted information for your review. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
   'onehr.kpi-approval-needed': {
     kind:'performance.review-task',category:'performance',
-    recipients:async (_tx,_ev,payload)=>Array.isArray(payload?.employmentIds)?payload.employmentIds.filter((id):id is string=>typeof id==='string'&&/^[0-9a-f-]{36}$/i.test(id)):[],
+    recipients:(tx,ev,payload)=>payload?.phase==='setting'||payload?.phase==='results'?assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,payload.phase):Promise.resolve([]),
     render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
   },
   ...Object.fromEntries(['scorecard-approved','scorecard-returned','result-released','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
@@ -854,12 +852,15 @@ export type DispatchResult = { processed: number; created: number };
  * per-tenant cursor; idempotent (only events after the cursor are processed). Gated ⇒ no-op.
  */
 export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number } = {}): Promise<DispatchResult> {
-  if (!enabled(ctx)) return { processed: 0, created: 0 };
+  const allCategories=enabled(ctx);
+  const scopedReminders=(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));
+  if(!allCategories&&!scopedReminders)return {processed:0,created:0};
   const limit = Math.min(Math.max(opts.limit ?? 1000, 1), 5000);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
-    const after = cur?.lastSequence != null ? gt(domainEvent.sequence, cur.lastSequence) : undefined;
+    const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
+    const after=cursor!=null?gt(domainEvent.sequence,cursor):undefined;
     const rows = await tx
       .select({
         id: domainEvent.id,
@@ -870,7 +871,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         sequence: domainEvent.sequence,
       })
       .from(domainEvent)
-      .where(after)
+      .where(and(after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
       .orderBy(asc(domainEvent.sequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
@@ -890,6 +891,9 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
         if (recipients.length === 0) continue;
         const r = spec.render((ev.payload as Record<string, unknown> | null) ?? null, evRef);
         for (const recipient of recipients) {
+          // A company-only reminder cursor never consumes other categories. Global dispatch may later
+          // encounter the same event, so retain one projection per event/kind/recipient.
+          if(spec.kind==='performance.reminder'){const [prior]=await tx.execute<{present:boolean}>(sql`select app.assessment_reminder_projected(${ev.id}::uuid,${recipient}::uuid) as present`);if(prior?.present)continue;}
           const notificationId = randomUUID();
           await tx.insert(notification).values({
             id: notificationId,
@@ -912,10 +916,10 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
     if (cur) {
       await tx
         .update(notificationCursor)
-        .set({ lastSequence: last.sequence, updatedAt: sql`now()` })
+        .set({...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence}),updatedAt:sql`now()`})
         .where(eq(notificationCursor.tenantId, ctx.tenantId));
     } else {
-      await tx.insert(notificationCursor).values({ tenantId: ctx.tenantId, lastSequence: last.sequence });
+      await tx.insert(notificationCursor).values({tenantId:ctx.tenantId,...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence})});
     }
     return { processed: rows.length, created };
   });

@@ -4,6 +4,7 @@
  * legacy `max_tokens`).
  */
 import OpenAI from 'openai';
+import { AiImageReadError,imageReadError,imageReadInstruction } from '../image-protocol';
 import {
   AiGatewayError,
   finiteOrZero,
@@ -34,17 +35,25 @@ function converseClient(apiKey: string, timeoutMs: number | undefined): OpenAI {
 
 export const openaiAdapter: AiAdapter = {
   provider: 'openai',
+  async readImage(cfg,args){
+    try{
+      const result=await new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).chat.completions.create({model:cfg.model,max_completion_tokens:2500,messages:[{role:'developer',content:imageReadInstruction},{role:'user',content:[{type:'image_url',image_url:{url:`data:${args.mimeType};base64,${Buffer.from(args.data).toString('base64')}`,detail:'high'}}]}]},{signal:args.signal});
+      if(result.choices[0]?.message.refusal)throw new AiImageReadError(false);
+      return result.choices[0]?.message.content??'';
+    }catch(error){throw imageReadError(error);}
+  },
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const completion = await client(cfg.apiKey).chat.completions.create({
+      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
           { role: 'developer', content: args.system },
           { role: 'user', content: args.prompt },
         ],
-      });
+      },args.signal?{signal:args.signal}:undefined);
+      if(args.signal&&(completion.choices[0]?.finish_reason==='length'||completion.choices[0]?.message.refusal))throw new AiGatewayError('No complete assessment was produced.');
       return (completion.choices[0]?.message?.content ?? '').trim();
     } catch (e) {
       throw mapError(e);

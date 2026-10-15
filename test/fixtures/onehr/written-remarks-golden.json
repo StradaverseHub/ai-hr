@@ -1,0 +1,437 @@
+[
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "They wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "Their own competency remark: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "They wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "Their own competency remark: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "They wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "Their own remark when they moved High to Mid: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "They wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "Their own remark when they moved High to Mid: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their own note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their own note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their own note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "self",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their own note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Their line manager wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "Their line manager's competency remark: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Their line manager wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "Their line manager's competency remark: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Their line manager wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "Their line manager's remark when they moved High to Mid: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Their line manager wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "Their line manager's remark when they moved High to Mid: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their line manager's note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their line manager's note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their line manager's note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "Their line manager's note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "The HOD wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "The HOD's competency remark: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "The HOD wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "The HOD's competency remark: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "The HOD (moved High → Mid) wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "The HOD's remark when they moved High to Mid: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "The HOD (moved High → Mid) wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "The HOD's remark when they moved High to Mid: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The HOD's note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The HOD's note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The HOD's note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "hod",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The HOD's note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "The BU CEO wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "The BU CEO's competency remark: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": null,
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "The BU CEO wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "The BU CEO's competency remark: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "The BU CEO (moved High → Mid) wrote: “Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>”",
+    "source": "The BU CEO's remark when they moved High to Mid: <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": null,
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "The BU CEO (moved High → Mid) wrote: “Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery.…”",
+    "source": "The BU CEO's remark when they moved High to Mid: <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The BU CEO's note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": null,
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The BU CEO's note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Delivered 5 units worth RM 14.3 mil. <<<Thank you>>>"
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The BU CEO's note on Service (next level): <<<Delivered 5 units worth RM 14.3 mil. ‹‹‹Thank you›››>>>"
+  },
+  {
+    "entries": [
+      {
+        "role": "buceo",
+        "who": "Reviewer",
+        "on": "Service (next level)",
+        "move": "moved High → Mid",
+        "text": "Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. "
+      }
+    ],
+    "plain": "Only notes on individual competencies so far (1).",
+    "source": "The BU CEO's note on Service (next level): <<<Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. Practise service recovery. >>>"
+  },
+  {
+    "entries": [],
+    "plain": "No written remarks yet.",
+    "source": ""
+  },
+  {
+    "entries": [
+      {
+        "role": "lm",
+        "who": "Approver — Marcus",
+        "on": null,
+        "move": null,
+        "text": "Verified service.",
+        "src": "Another approver's overall remark"
+      }
+    ],
+    "plain": "Their line manager wrote: “Verified service.”",
+    "source": "Another approver's overall remark: <<<Verified service.>>>"
+  }
+]

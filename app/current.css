@@ -200,7 +200,7 @@
     grid-template-rows: auto auto minmax(0,1fr);
     grid-template-areas: 'header' 'navigation' 'content';
   }
-  :root[data-ui-theme='current'] [data-app-content] { display: contents; }
+  :root[data-ui-theme='current'] [data-app-shell]:has([data-current-navigation]) [data-app-content] { display: contents; }
   :root[data-ui-theme='current'] [data-app-header] { grid-area: header; position: relative; z-index: 40; padding-inline: clamp(1rem,3vw,3rem); min-height: 5.5rem; }
   :root[data-ui-theme='current'] [data-app-content] > main { grid-area: content; padding: 2.25rem clamp(1rem,4vw,4.5rem) 3rem; }
   :root[data-ui-theme='current'] [data-shell-group-label] { display: none; }

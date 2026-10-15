@@ -98,7 +98,17 @@ export type ProposalTypeId =
    */
   | 'readiness_fix'
   /** Native OneHR: selected evidence references, resolved into verbatim authorized passages. */
-  | 'onehr_narrative';
+  | 'onehr_narrative'
+  | 'performance_draft_command'
+  /** Bounded image transcription status only; neither image pixels nor transcribed words enter telemetry. */
+  | 'performance_file_transcription'
+  | 'performance_insight'
+  | 'competency_insight'
+  | 'potential_insight'
+  | 'written_remarks'
+  | 'personal_record_insight'
+  | 'talent_insight'
+  | 'development_plan_insight';
 
 /** The adjudication contract (§2.4). Every proposal type supplies one; the reason is stored on failure. */
 export type Adjudication = { ok: true } | { ok: false; reason: string };

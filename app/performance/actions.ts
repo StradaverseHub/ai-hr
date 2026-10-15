@@ -2,6 +2,7 @@
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
+import { assessmentReturnPath } from '@/lib/performance-navigation';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
@@ -105,6 +106,7 @@ export async function createCycleAction(formData: FormData) {
       meritBudget,
       eligibilityRules: parseEligibilityRules(formData),
       stages,
+      assessmentWorkflow:formData.get('workflow')==='assessment',
     });
     cycleId = res.cycleId;
   } catch (e) {
@@ -125,6 +127,7 @@ export async function previewEligibilityAction(formData: FormData): Promise<{ co
     const { count } = await previewEligibleCount(s, {
       companyId: str(formData.get('companyId')) ?? null,
       eligibilityRules: parseEligibilityRules(formData),
+      assessmentWorkflow:formData.get('workflow')==='assessment',
     });
     return { count };
   } catch (e) {
@@ -464,6 +467,7 @@ export async function closeReviewAction(formData: FormData) {
 export async function uploadAttachmentAction(formData: FormData) {
   const s = await getSession();
   const reviewId = String(formData.get('reviewId'));
+  const returnTo=assessmentReturnPath(formData.get('returnTo'),`/performance/review/${reviewId}`);
   const rawStage = str(formData.get('stageKind'));
   const stageKind = rawStage && (ALL_STAGE_KINDS as string[]).includes(rawStage) ? (rawStage as StageKind) : null;
   const file = formData.get('file');
@@ -475,10 +479,13 @@ export async function uploadAttachmentAction(formData: FormData) {
       fileName: file.name,
       mimeType: file.type || 'application/octet-stream',
       content: Buffer.from(await file.arrayBuffer()),
+      kpiId:str(formData.get('kpiId'))||undefined,
+      evidenceId:str(formData.get('evidenceId'))||undefined,
     });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
+    redirect(`${returnTo}${returnTo.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
-  reviewRedirect(reviewId, 'File uploaded');
+  revalidatePath('/performance/workspace');
+  redirect(returnTo);
 }

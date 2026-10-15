@@ -1,0 +1,3698 @@
+[
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 0
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results on record yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 1,
+        "below": 0,
+        "n": 1
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Their one KPI landed on target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 2,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Both KPIs landed above target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 1,
+        "below": 1,
+        "n": 3
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 3 KPIs, 1 above target, 1 on target and 1 below target. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 1,
+        "on": 0,
+        "below": 1,
+        "n": 4
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "Of 4 KPIs, 1 above target and 1 below target (the rest not rated yet). Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Weigh how well their results, 360 and plan agree before deciding where they sit."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "You moved them here from Star; check the evidence still supports the move."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": false,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their line manager hasn't approved every result yet; weigh that before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": null,
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "Shared",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: shared.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  },
+  {
+    "facts": {
+      "kpis": {
+        "above": 0,
+        "on": 0,
+        "below": 0,
+        "n": 2
+      },
+      "lm_pending": true,
+      "default": [
+        "performance",
+        "potential"
+      ],
+      "moved_from": "Star",
+      "plan": "None shared yet",
+      "top": [
+        "Service"
+      ],
+      "dev": [
+        "Leadership"
+      ]
+    },
+    "plain": {
+      "insight": "No KPI results rated yet. Some results are still with their line manager. Their 360 is strongest at Service; still developing Leadership. Development plan: none shared yet.",
+      "decision": "Their performance and potential band is only the default -- there is no record yet; check it before deciding."
+    }
+  }
+]

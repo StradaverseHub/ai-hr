@@ -91,6 +91,7 @@ export async function workbookToCsvText(buf: ArrayBuffer | Uint8Array): Promise<
 export async function workbookToCsvTexts(
   buf: ArrayBuffer | Uint8Array,
   extraSheetNames: readonly string[] = [],
+  includeFirstNamed=false,
 ): Promise<{ first: string; extra: Record<string, string> }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -131,10 +132,10 @@ export async function workbookToCsvTexts(
   const byKey = new Map(wb.SheetNames.map((n) => [key(n), n]));
   const extra: Record<string, string> = {};
   for (const wanted of extraSheetNames) {
-    // Never re-read the data sheet as an extra: a workbook whose ONLY sheet is called "Family" would
-    // otherwise be read as both the employee rows and the family rows.
+    // By default the first data sheet is not repeated as an extra (employee/Family import).
+    // A named-sheet architecture can explicitly include it without decoding the workbook twice.
     const found = byKey.get(key(wanted));
-    if (!found || found === firstName) continue;
+    if (!found || found === firstName && !includeFirstNamed) continue;
     const csv = sheetCsv(found);
     if (csv !== '') extra[wanted] = csv;
   }

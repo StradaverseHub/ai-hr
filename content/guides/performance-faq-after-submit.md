@@ -1,0 +1,1 @@
+After you confirm your annual KPI submission, assigned moderators review the results. Authorized leaders then complete the configured calibration stages. Employees see results only when HR releases the relevant component. A released interim result can change as later calibration completes; a finalized rating record preserves the confirmed outcome.

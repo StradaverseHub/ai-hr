@@ -4,12 +4,14 @@ import { notificationEmailRequest, notificationEmailCategory, notificationEmailL
   type NotificationEmailCategory, type NotificationEmailLocale, type NotificationEmailOutcome, type NotificationEmailError } from '../../lib/notification-email-model';
 import { emailConfigSchema, type EmailConfig } from '../../lib/identity/email-model';
 import type { EmailState } from './service';
+import { assessmentReminderMailSchema,type AssessmentReminderTask,type AssessmentReminderWords } from '../../lib/assessment-reminder-mail';
 export type WorkflowMailTarget={user_id:string;subject:string;email:string;category:string;link_path:string|null;severity:string;locale:string};
-export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string};
+export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string;assessmentTasks?:AssessmentReminderTask[];assessmentWords?:AssessmentReminderWords|null};
 export interface WorkflowEmailDependencies {
   ready():Promise<boolean>;
   target(id:string,token:string):Promise<WorkflowMailTarget|null>;
   verifyRecipient(target:WorkflowMailTarget):Promise<'verified'|'changed'|'unavailable'>;
+  assessmentTasks?(id:string,token:string):Promise<unknown>;
   start(id:string,token:string,target:WorkflowMailTarget):Promise<boolean>;
   finish(id:string,token:string,outcome:NotificationEmailOutcome,error:NotificationEmailError|null):Promise<boolean>;
   send(target:WorkflowMailTarget,mail:WorkflowMail):Promise<void>;
@@ -31,7 +33,7 @@ export function createNotificationEmailService(d:WorkflowEmailDependencies) {
     if(request.op==='status') {
       // Validate the configured origin even before there is a queued job.
       notificationEmailLink(d.origin,'/');
-      return {version:1 as const,ready:await d.ready()};
+      return {version:1 as const,ready:await d.ready(),assessmentReminders:!!d.assessmentTasks,assessmentReminderWords:!!d.assessmentTasks};
     }
     const {deliveryId:id,leaseToken:token}=request;
     if(!await d.ready())return {outcome:'unavailable'};
@@ -44,11 +46,20 @@ export function createNotificationEmailService(d:WorkflowEmailDependencies) {
     const verified=await d.verifyRecipient(target);
     if(verified==='unavailable')return {outcome:'unavailable'}; // No SMTP started; lease can expire safely.
     if(verified!=='verified'){await d.finish(id,token,'skipped','recipientChanged');return {outcome:'skipped'};}
+    let assessmentTasks:AssessmentReminderTask[]|undefined,assessmentWords:AssessmentReminderWords|null|undefined;
+    if(d.assessmentTasks){
+      const prepared=await d.assessmentTasks(id,token);
+      if(prepared!==undefined){
+        const parsed=assessmentReminderMailSchema.safeParse(prepared);
+        if(!parsed.success||!parsed.data.tasks.length){await d.finish(id,token,'skipped','notEligible');return {outcome:'skipped'};}
+        assessmentTasks=parsed.data.tasks;assessmentWords=parsed.data.words;
+      }
+    }
     if(!await d.start(id,token,target))return {outcome:'busy'};
     const locale=(['en','ms','zh','vi','ta','th'] as const).find(l=>l===target.locale)??'en';
     let outcome:NotificationEmailOutcome='sent',error:NotificationEmailError|null=null;
     try {
-      await d.send(target,{category:category.data,locale,link,action:target.severity==='action',messageId:`<notification-${id}@${new URL(d.origin).hostname}>`});
+      await d.send(target,{category:category.data,locale,link,action:target.severity==='action',messageId:`<notification-${id}@${new URL(d.origin).hostname}>`,...(assessmentTasks?{assessmentTasks,assessmentWords}:{})});
     }catch(e){({outcome,error}=notificationSmtpFailure(e));}
     // A DB failure after SMTP is never rewritten as rejection. The durable started lease holds it
     // uncertain on expiry, so no caller retries an already accepted message blindly.

@@ -32,6 +32,7 @@ export function NewCycleForm({
   today: string;
 }) {
   const t = useTranslations('performance.list');
+  const ta = useTranslations('onehr');
   const te = useTranslations('performance.eligibility');
   const tl = useTranslations('performance.lifecycle');
   const formRef = useRef<HTMLFormElement>(null);
@@ -51,6 +52,7 @@ export function NewCycleForm({
 
   return (
     <form ref={formRef} action={createCycleAction} className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
+      <Field label={ta('workflowKind')}><select name="workflow" defaultValue="assessment" className={inputCls}><option value="assessment">{ta('workflowNative')}</option><option value="standard">{ta('workflowStandard')}</option></select></Field>
       <Field label={t('fieldName')}>
         <input name="name" required className={inputCls} placeholder={t('namePlaceholder')} />
       </Field>

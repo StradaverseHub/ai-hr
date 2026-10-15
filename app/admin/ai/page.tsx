@@ -3,6 +3,8 @@ import { requireAdmin } from '@/lib/authz';
 import { getAiConfigView } from '@/core/ai-config';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { AiConfigForm } from '@/components/ai-config-form';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { AssessmentAiSettings } from './assessment-ai-settings';
 
 export default async function AiConfigPage({
   searchParams,
@@ -37,6 +39,7 @@ export default async function AiConfigPage({
       <Card className="p-4 text-xs text-muted-foreground">{t('privacyNote')}</Card>
 
       <AiConfigForm config={config} />
+      {isModuleEnabledOrFalse(s, 'performance') && <AssessmentAiSettings session={s}/>}
     </div>
   );
 }

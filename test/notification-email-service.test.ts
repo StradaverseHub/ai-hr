@@ -40,6 +40,20 @@ describe('isolated workflow email orchestration',()=>{
  it('rejects arbitrary destinations and body fields at the service boundary',async()=>{
   await expect(createNotificationEmailService(d)({...job,to:'attacker@example.test',body:'secret'})).rejects.toThrow();expect(d.target).not.toHaveBeenCalled();
  });
+ it('loads only structured assessment tasks and refuses missing, stale or malformed summaries before SMTP',async()=>{
+  d.assessmentTasks=vi.fn().mockResolvedValue({tasks:[{key:'team_results',count:4,closesAt:null,people:['Aina','Siti','Arun']}]});
+  expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'sent'});expect(d.send).toHaveBeenLastCalledWith(target,expect.objectContaining({assessmentTasks:[expect.objectContaining({key:'team_results',count:4})]}));
+  for(const payload of [null,{tasks:[]},{tasks:[{key:'payroll_salary',count:1,closesAt:null}]},{tasks:[{key:'team_results',count:1,closesAt:null,html:'private text'}]}]){
+   vi.mocked(d.send).mockClear();vi.mocked(d.start).mockClear();vi.mocked(d.assessmentTasks).mockResolvedValue(payload);expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'skipped'});expect(d.start).not.toHaveBeenCalled();expect(d.send).not.toHaveBeenCalled();
+  }
+ });
+ it('advertises wording support and passes only validated prepared templates to the isolated mail writer',async()=>{
+  d.assessmentTasks=vi.fn().mockResolvedValue({tasks:[{key:'own_plan',count:1,closesAt:null}],words:{subject:'Employee: annual review',opening:'Your next step is ready.'}});
+  expect(await createNotificationEmailService(d)({op:'status'})).toMatchObject({assessmentReminders:true,assessmentReminderWords:true});
+  await createNotificationEmailService(d)(job);expect(d.send).toHaveBeenLastCalledWith(target,expect.objectContaining({assessmentWords:{subject:'Employee: annual review',opening:'Your next step is ready.'}}));
+  vi.mocked(d.send).mockClear();vi.mocked(d.start).mockClear();vi.mocked(d.assessmentTasks).mockResolvedValue({tasks:[{key:'own_plan',count:1,closesAt:null}],words:{subject:'Bad\r\nBcc: elsewhere',opening:'Hello'}});
+  expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'skipped'});expect(d.start).not.toHaveBeenCalled();expect(d.send).not.toHaveBeenCalled();
+ });
  it('requires the managed secret reference as well as matching relay settings',()=>{
   const config={...defaultEmailConfig,host:'smtp.example.test',from:'hr@example.test',user:'relay'},vaultKey='smtp-'+randomUUID();
   const smtpServer={host:config.host,port:'465',ssl:'true',starttls:'false',auth:'true',authType:'basic',from:config.from,fromDisplayName:config.fromName,replyTo:'',user:'relay',password:'${vault.'+vaultKey+'}'};

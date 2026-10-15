@@ -421,7 +421,7 @@ export async function importOnehrRewardResults(ctx: SessionContext, unitId: stri
       await tx.update(rewardEntry).set({ source: {...entry.source, onehr, onehrFactImport:{resultId:onehr.id,digest:onehr.digest,importedAt:new Date().toISOString()}, performanceReviewId:onehr.reviewId, performanceRating:null}, facts:factsFromOnehr(onehr,entry.facts), updatedAt:new Date() }).where(eq(rewardEntry.id,entry.id));
       imported++;
     }
-    if (!imported) throw new RewardError('No finalized OneHR results are available for this roster and reward year.');
+    if (!imported) throw new RewardError('No finalized assessment results are available for this roster and reward year.');
     await touch(tx,unitId); await stamp(tx,ctx,unitId,'onehr-results-imported',{count:imported});
     return { imported };
   });

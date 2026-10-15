@@ -5,11 +5,15 @@ import vi from '../../messages/vi.json';
 import ta from '../../messages/ta.json';
 import th from '../../messages/th.json';
 import type { WorkflowMail } from './notifications';
+import {assessmentReminderMessage} from '../../lib/assessment-reminder-message';
 const catalogues={en:en.workflowEmail,ms:ms.workflowEmail,zh:zh.workflowEmail,vi:vi.workflowEmail,ta:ta.workflowEmail,th:th.workflowEmail};
 const escape=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-/** Only fixed translated copy and a validated application link leave the application. */
+/** Fixed alerts or validated assessment summaries; the isolated service owns delivery. */
 export function workflowEmailMessage(mail:WorkflowMail) {
   const copy=catalogues[mail.locale],label=copy.categories[mail.category];
+  if(mail.assessmentTasks){
+    return assessmentReminderMessage({tasks:mail.assessmentTasks,words:mail.assessmentWords},mail.locale,mail.link);
+  }
   const subject=copy.subject.replace('{category}',label),alert=mail.action?copy.actionAlert:copy.alert;
   return {subject,text:`${alert}\n\n${copy.openApp}: ${mail.link}\n`,html:`<!doctype html><html lang="${mail.locale}"><body><p>${escape(alert)}</p><p><a href="${escape(mail.link)}">${escape(copy.openApp)}</a></p></body></html>`};
 }

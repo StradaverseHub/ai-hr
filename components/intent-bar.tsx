@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { openCommandBar } from '@/lib/command-bar-events';
 import { useIsMonolith } from '@/components/ui-theme-context';
@@ -22,10 +23,12 @@ import { useIsMonolith } from '@/components/ui-theme-context';
  */
 export function IntentBar() {
   const monolith = useIsMonolith();
+  const pathname = usePathname();
   const t = useTranslations('commandBar');
   const id = useId();
   const [value, setValue] = useState('');
-  if (!monolith) return null;
+  // The review workspace already has its own conversation composer. The global palette remains on ⌘K.
+  if (!monolith || pathname === '/performance/workspace') return null;
 
   return (
     <form

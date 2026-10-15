@@ -1,0 +1,898 @@
+[
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": null,
+      "report": null,
+      "plan": null
+    },
+    "plain": "Nothing from this cycle has been released to you yet.",
+    "source": "Cycle: Annual review"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": null,
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": null
+    },
+    "plain": "Your talent status was Star.",
+    "source": "Cycle: Annual review\nYour talent status (released to you): Star."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your talent status was Star. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour talent status (released to you): Star.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "Your talent status was Star. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your talent status was Star. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": null,
+      "report": null,
+      "plan": null
+    },
+    "plain": "Your final potential band was High.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": null,
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your final potential band was High. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "Your final potential band was High. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your final potential band was High. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": null
+    },
+    "plain": "Your final potential band was High. Your talent status was Star.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your final potential band was High. Your talent status was Star. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "Your final potential band was High. Your talent status was Star. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": null,
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "Your final potential band was High. Your talent status was Star. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": null,
+      "report": null,
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": null,
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your talent status was Star.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour talent status (released to you): Star."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your talent status was Star. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour talent status (released to you): Star.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your talent status was Star. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": null
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your talent status was Star. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": null,
+      "report": null,
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": null,
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": null,
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your talent status was Star.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star."
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": null,
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your talent status was Star. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star.\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": null
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your talent status was Star. Your colleagues saw Trust most.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)"
+  },
+  {
+    "panel": {
+      "name": "Annual review",
+      "final": {
+        "pm": {
+          "band": "ME",
+          "name": "Meet Expectation"
+        },
+        "pot": "High"
+      },
+      "talent": {
+        "name": "Star"
+      },
+      "report": {
+        "strong": [
+          {
+            "name": "Trust",
+            "words": "seen by most"
+          }
+        ],
+        "grow": [
+          {
+            "name": "Delivery",
+            "words": "seen by some"
+          }
+        ],
+        "even": false
+      },
+      "plan": {
+        "year": 2027,
+        "status_label": "Shared with your manager",
+        "goals": [
+          {
+            "area": "Service"
+          }
+        ],
+        "lm_remark": "Practise service recovery."
+      }
+    },
+    "plain": "After calibration your final performance band was Meet Expectation. Your final potential band was High. Your talent status was Star. Your colleagues saw Trust most. Your 2027 plan had 1 goal.",
+    "source": "Cycle: Annual review\nYour final performance band after calibration (released to you): Meet Expectation.\nYour final potential band after calibration (released to you): High.\nYour talent status (released to you): Star.\nYour 360 (released to you), strongest: Trust (seen by most)\nYour 360, where colleagues would like to see more: Delivery (seen by some)\nYour development plan for 2027 (shared with your manager): Service.\nYour line manager's remark on the plan: \"Practise service recovery.\""
+  }
+]

@@ -1,0 +1,1 @@
+The career profile captures where you'd like to head -- your aspirations, how far you'd move for the right role (mobility), and your strengths. It helps your leaders and HR see where you want to go and match you to opportunities. It is not a promise of a role, there is no approval step, and being honest helps more than playing safe.

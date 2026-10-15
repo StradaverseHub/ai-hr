@@ -2,6 +2,7 @@
 import { createDb,type SessionContext } from '../db/client';
 import { loadSweepScope,describeSkips } from '../core/sweep-scope';
 import { resolveEntitlementsTx,isModuleEnabled } from '../core/entitlements';
+import { sweepAssessmentReminders } from '../packs/performance/service';
 import { dispatchNotifications } from '../core/notifications';
 import { deliverNotificationEmails } from '../core/notification-email-delivery';
 async function main(){
@@ -13,7 +14,8 @@ async function main(){
    try{
     const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id));
     const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],entitlements};
-    if(!isModuleEnabled(ctx,'notifications'))continue;
+    if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
+    await sweepAssessmentReminders(ctx);
     const projected=await dispatchNotifications(ctx),delivered=await deliverNotificationEmails(ctx);
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
     console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,...delivered}));

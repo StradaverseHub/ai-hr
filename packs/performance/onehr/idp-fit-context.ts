@@ -1,0 +1,30 @@
+import {z} from 'zod';
+import {bandFor,careerSchema,competencySchema,goalSchema,kpiSchema,policySchema,scorecard,scoreKPI,pmBands} from './model';
+import {assessmentDraftSchema} from './journey-model';
+import {competencyBand} from './competency-band';
+import type {IdpFitFacts} from './idp-fit-model';
+import source from './idp-fit-source.json';
+export const idpFitSourceSchema=z.object({name:z.string(),status:z.string(),mine:z.boolean(),companyId:z.uuid(),goals:z.array(goalSchema.omit({managerComment:true})),career:careerSchema.nullable(),bands:z.object({aBands:policySchema.shape.aBands,bBands:policySchema.shape.bBands,lowMaxPct:policySchema.shape.lowMaxPct,midMaxPct:policySchema.shape.midMaxPct}),hasFramework:z.boolean(),hasKpis:z.boolean(),kpis:z.array(kpiSchema),editableKpiIds:z.array(z.string()),competencyStatus:z.string(),competencies:z.array(competencySchema),competencyRemark:z.string(),drafts:z.array(assessmentDraftSchema)});
+export type IdpFitSource=z.infer<typeof idpFitSourceSchema>;
+const mobilityLabels={stay:'Happy where I am',role_in_unit:'Open to another role in my business unit',company_in_group:'Open to another company in my BG',other_group:'Open to another Business Group',relocate:'Open to relocating'};
+/** Source context is built from the authorized projection, with the same score owners as the PM and TM forms. */
+export function idpFitContext(s:IdpFitSource){
+ const career=s.career,goals=s.goals.map(g=>({area:g.area.trim(),text:[g.area,g.onJob,g.fromOthers,g.formalLearning].map(v=>v.trim()).join(' ')})),facts:IdpFitFacts={goals,no_action:s.goals.filter(g=>![g.onJob,g.fromOthers,g.formalLearning].some(v=>v.trim())).map(g=>g.area.trim()||'a goal'),direction:[career?.aspirationNow,career?.aspiration,career?.aspirationLong].filter(v=>v?.trim()).map(v=>v!.trim()).join('; '),step_text:[career?.aspiration,career?.aspirationLong].filter(v=>v?.trim()).map(v=>v!.trim()).join(' '),developing:[],weak_kpis:[],pm_self:null,pm_mod:null,tm_self:null,tm_mod:null,self_ahead:false,has_kpis:s.hasKpis,pm_lines:[]};
+ const lines:string[]=['THEIR PLAN (their own words):'],extra:string[]=[s.name,String(goals.length),(source._IDP_NUMWORD as Record<string,string>)[goals.length]??''];
+ for(const g of s.goals){lines.push(`Goal: ${g.area.trim()}.`);if(g.dueOn){lines.push(`By ${g.dueOn}.`);const date=new Date(g.dueOn+'T00:00:00Z');if(Number.isFinite(date.getTime()))extra.push(date.toLocaleString('en',{month:'long',timeZone:'UTC'}),String(date.getUTCFullYear()));}for(const [label,value] of [['On the job',g.onJob],['From others',g.fromOthers],['Formal learning',g.formalLearning],['Progress',`${g.status} ${g.progressNote??''}`]])if(value.trim())lines.push(`${label}: ${value.trim()}.`);}
+ if(career)for(const [label,value] of [['Aspiration now',career.aspirationNow],['In 1-3 years',career.aspiration],['Longer term',career.aspirationLong],['Strengths',career.strengths],['Mobility',career.mobility?mobilityLabels[career.mobility]:''],['Mobility note',career.mobilityNote],['Preferences',career.preferences],['Mentor',career.mentor]])if(value?.trim())lines.push(`${label}: ${value.trim()}.`);
+ const draft=s.mine?s.drafts.find(d=>d.kind==='moderation'):undefined,mine=s.kpis.filter(k=>!k.hrOwned),preview=mine.map(k=>{const override=draft?.kind==='moderation'&&s.editableKpiIds.includes(k.id)?draft.lines.find(l=>l.id===k.id)?.actual:null;return {...k,locked:true,approvedActual:override??k.approvedActual??k.actual};});
+ const self=scorecard(mine,s.bands,s.companyId,false),mod=preview.every(k=>k.approvedActual!=null)?scorecard(preview,s.bands,s.companyId,true):null;
+ if(mine.length&&self.band){facts.pm_self=self.band;facts.pm_mod=mod?.band??null;lines.push(`THEIR KPI RESULTS OVERALL -- their own view: ${source._IDP_BAND_WORDS[self.band]}; your moderated view: ${mod?.band?source._IDP_BAND_WORDS[mod.band]:'not moderated yet'}.`);
+  for(const [index,k] of mine.entries()){const current=preview[index],minima=k.scoring.mechanism==='A'?[1,2,3,4,5]:s.bands.bBands.find(b=>b.companyId===s.companyId)?.minima??[],sb=k.actual==null?null:bandFor(scoreKPI(k.actual,k.scoring),minima),mb=current.approvedActual==null?null:bandFor(scoreKPI(current.approvedActual,k.scoring),minima);facts.pm_lines.push({kpi:k.title,self:sb,mod:mb});if(mb==='UA'||mb==='BE')facts.weak_kpis.push(k.title);lines.push(`- ${k.title}: their view ${sb?source._IDP_BAND_WORDS[sb]:'not rated'}, moderated ${mb?source._IDP_BAND_WORDS[mb]:'not moderated yet'}.`);extra.push(k.title);}
+  facts.self_ahead=!!facts.pm_mod&&pmBands.indexOf(self.band)>pmBands.indexOf(facts.pm_mod);
+ }
+ const tc=s.mine&&s.competencyStatus==='submitted'?s.drafts.find(d=>d.kind==='competency_manager'):undefined,rows=s.competencies.map(c=>({...c,manager:tc?.kind==='competency_manager'?tc.answers[c.id]?.answer??c.manager:c.manager}));
+ if(rows.length){facts.tm_self=competencyBand(rows,Object.fromEntries(rows.map(c=>[c.id,c.self??''])),s.bands,s.hasFramework);facts.tm_mod=competencyBand(rows,Object.fromEntries(rows.map(c=>[c.id,c.manager??c.self??''])),s.bands,s.hasFramework);lines.push("THEIR COMPETENCIES (their answer / your call, 'next level' = the level above their current one):");
+  for(const c of rows){const title=c.skillTitle??c.text,effective=c.manager??c.self;lines.push(`- ${title}${c.future?' (next level)':''}: they said ${c.self==='yes'?'Demonstrate':c.self==='no'?'Developing':'no answer'}; ${c.manager?`you said ${c.manager==='yes'?'Demonstrate':'Developing'}`:'not reviewed by you yet'}.`);extra.push(title);if(!c.future&&effective==='no'&&!facts.developing.includes(title))facts.developing.push(title);}
+  if(s.competencyRemark.trim())lines.push(`THEIR COMPETENCY REMARK (their words): ${s.competencyRemark.trim()}`);
+  if(facts.tm_self&&facts.tm_mod&&['Low','Mid','High'].indexOf(facts.tm_self)>['Low','Mid','High'].indexOf(facts.tm_mod))facts.self_ahead=true;
+ }
+ const text=lines.join('\n');for(const n of text.match(/\d[\d,]*(?:\.\d+)?/g)??[]){const value=Number(n.replaceAll(',',''));if(Number.isInteger(value))extra.push((source._IDP_NUMWORD as Record<string,string>)[value]??'');}
+ return {facts,text,extra:extra.join(' ')};
+}
