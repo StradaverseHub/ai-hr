@@ -65,7 +65,7 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
       days.push(day);
       if(version===3){
        const approved=leave?.get(employee.id+':'+date);
-       day.v3Facts={shortMinutes:attended?(day.complete?working?row?.underMinutes??null:0:null):0,incomplete:attended&&!day.complete,fixedClockApplicable:schedule.fixedClockApplicable??true,leave:approved?approved.leave:[],leaveTypesPresent:approved?.types??[],source:approved?.source??'canonical-approved-leave-empty'};
+       day.v3Facts={shortMinutes:attended?(day.complete?working?row?.underMinutes??null:0:null):0,incomplete:attended&&!day.complete,fixedClockApplicable:schedule.fixedClockApplicable??true,leave:approved?approved.leave:[],leaveTypesPresent:approved?.types??[],leaveUnknownTypeIds:approved?.unknownTypes??[],absenceKnown:!(approved?.unknownTypes.length),source:approved?.source??'canonical-approved-leave-empty'};
       }
     }
     result.push({employmentId:employee.id,name:employee.name,days,factsByDate});

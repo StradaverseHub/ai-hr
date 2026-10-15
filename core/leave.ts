@@ -11656,12 +11656,19 @@ async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:
     const stored=dates.filter(d=>d.leaveRequestId===req.id);
     const inclusion=normalizeDayTypeInclusion(type.dayTypeInclusion);
     const session=req.durationType==='half_day_am' ? 'AM' as const : req.durationType==='half_day_pm' ? 'PM' as const : req.durationType==='hourly' ? 'hourly' as const : 'full_day' as const;
+    const legacyDates=()=>{
+      if(p.purpose!=='allowance')return eachDate(req.startDate,req.endDate).filter(date=>isDeductibleDay(date,sched,hols,inclusion)).map(date=>({date,days:session==='full_day'?dayWeight(date,sched,hols,inclusion):Number(req.days),status:req.status as 'approved'|'pending'}));
+      // A financial reader cannot redistribute an old approval using today's company/calendar.
+      // One known date or a full one-day-per-calendar-date amount has a recoverable allocation.
+      // Otherwise keep each affected date explicitly Unknown rather than inventing charge dates.
+      const span=(Date.parse(req.endDate+'T00:00:00Z')-Date.parse(req.startDate+'T00:00:00Z'))/86400000+1;
+      const amount=Number(req.days),single=span===1&&amount>0&&amount<=1,full=session==='full_day'&&amount===span;
+      return eachDate(req.startDate<p.from?p.from:req.startDate,req.endDate>p.to?p.to:req.endDate).map(date=>({date,days:single?amount:full?1:0,status:req.status as 'approved'|'pending',...(!single&&!full?{measurementUnknown:true as const}:{})}));
+    };
     const projected=stored.length ? stored.filter(d=>d.status==='approved'||d.status==='pending')
-      .map(d=>({date:d.leaveDate,days:Number(d.days),status:d.status as 'approved'|'pending'})) :
-      eachDate(p.purpose==='allowance'&&req.startDate<p.from?p.from:req.startDate,p.purpose==='allowance'&&req.endDate>p.to?p.to:req.endDate).filter(d=>p.purpose==='allowance'&&type.counting!=='working_days'||isDeductibleDay(d,sched,hols,inclusion)).map(date=>({date,
-        days:session==='full_day'?(p.purpose==='allowance'&&type.counting!=='working_days'?1:dayWeight(date,sched,hols,inclusion)):Number(req.days),status:req.status as 'approved'|'pending'}));
+      .map(d=>({date:d.leaveDate,days:Number(d.days),status:d.status as 'approved'|'pending'})) : legacyDates();
     result.push({requestId:req.id,employmentId,leaveTypeId:type.id,code:type.code,name:type.name,color:type.color,
-      session,fromTime:req.fromTime,toTime:req.toTime,dates:projected,...(p.purpose==='allowance'?{paid:type.paid&&Number(req.unpaidDays??0)>0?null:!type.paid||req.allowanceEligible===false?false:true,projectionSource:stored.length?'recorded-approved-dates':'canonical-leave-schedule'}:{})});
+      session,fromTime:req.fromTime,toTime:req.toTime,dates:projected,...(p.purpose==='allowance'?{paid:type.paid&&Number(req.unpaidDays??0)>0?null:!type.paid||req.allowanceEligible===false?false:true,hours:req.hours==null?null:Number(req.hours),projectionSource:stored.length?'recorded-approved-dates':'recorded-legacy-approved-amount'}:{})});
    }
   }
   return result;
@@ -11670,16 +11677,23 @@ async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:
 
 /** Canonical approved leave measurements for Attendance. Counts remain known when overlapping legacy
  * approvals cannot supply an unambiguous duration. No request span is counted by the consumer. */
+export type ApprovedAllowanceLeavePiece={typeId:string;paid:boolean|null;days:number;requestIds:string[];session:'AM'|'PM'|'hourly'|'full_day';minutes:number|null};
 export async function approvedLeaveMeasurementsTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string}) {
  const projected=await leaveProjectionTx(tx,{...p,purpose:'allowance'});
- type Piece={typeId:string;paid:boolean|null;days:number;requestId:string;session:string;from:string|null;to:string|null;source:string};
+ type Piece={typeId:string;paid:boolean|null;days:number;requestId:string;session:'AM'|'PM'|'hourly'|'full_day';minutes:number|null;from:string|null;to:string|null;source:string;unknown:boolean};
+ const hourlyMinutes=(req:typeof projected[number]):number|null=>{
+  const clock=(value:string)=>{const match=/^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);return match?Number(match[1])*3600+Number(match[2])*60+Number(match[3]??0):null;};
+  if(req.fromTime&&req.toTime){const from=clock(req.fromTime),to=clock(req.toTime);return from!=null&&to!=null&&to>from?(to-from)/60:null;}
+  return req.hours!=null&&Number.isFinite(req.hours)&&req.hours>0?Math.round(req.hours*6000)/100:null;
+ };
  const raw=new Map<string,Piece[]>();
  for(const req of projected)for(const day of req.dates){
-  if(day.status!=='approved'||day.date<p.from||day.date>p.to||day.date>p.today||day.days<=0)continue;
+  const unknown='measurementUnknown' in day&&day.measurementUnknown===true;
+  if(day.status!=='approved'||day.date<p.from||day.date>p.to||day.date>p.today||!unknown&&day.days<=0)continue;
   const key=req.employmentId+':'+day.date;
-  const pieces=raw.get(key)??[];pieces.push({typeId:req.leaveTypeId,paid:req.paid===undefined?null:req.paid,days:day.days,requestId:req.requestId,session:req.session,from:req.fromTime,to:req.toTime,source:req.projectionSource??'canonical-leave-schedule'});raw.set(key,pieces);
+  const pieces=raw.get(key)??[];pieces.push({typeId:req.leaveTypeId,paid:req.paid===undefined?null:req.paid,days:day.days,requestId:req.requestId,session:req.session,minutes:req.session==='hourly'?hourlyMinutes(req):null,from:req.fromTime,to:req.toTime,source:req.projectionSource??'recorded-legacy-approved-amount',unknown});raw.set(key,pieces);
  }
- const out=new Map<string,{types:string[];leave:{typeId:string;paid:boolean|null;days:number;requestIds:string[]}[]|null;source:string}>();
+ const out=new Map<string,{types:string[];unknownTypes:string[];leave:ApprovedAllowanceLeavePiece[]|null;source:string}>();
  for(const [key,pieces]of raw){
   const sameSlot=new Map<string,Piece>();
   for(const piece of pieces){const slot=JSON.stringify([piece.typeId,piece.session,piece.from,piece.to]);const prior=sameSlot.get(slot);sameSlot.set(slot,!prior?piece:{...(piece.days>prior.days?piece:prior),paid:prior.paid===piece.paid?piece.paid:null});}
@@ -11690,12 +11704,12 @@ export async function approvedLeaveMeasurementsTx(tx:Tx,p:{employmentIds:string[
    if(a.session==='hourly'&&b.session==='hourly'&&a.from&&a.to&&b.from&&b.to)return a.from<b.to&&b.from<a.to;
    return true; // A legacy hourly/half-day mix has no frozen common working-time basis.
   };
-  let ambiguous=false;
+  let ambiguous=pieces.some(piece=>piece.unknown);
   for(let i=0;i<unique.length;i++)for(let j=i+1;j<unique.length;j++)if(overlap(unique[i],unique[j]))ambiguous=true;
   const total=unique.reduce((sum,p)=>sum+Math.round(p.days*100),0);
   if(total>100)ambiguous=true;
-  const leave=ambiguous?null:unique.map(piece=>({typeId:piece.typeId,paid:piece.paid,days:piece.days,requestIds:pieces.filter(p=>p.typeId===piece.typeId&&p.session===piece.session&&p.from===piece.from&&p.to===piece.to).map(p=>p.requestId).sort()}));
-  out.set(key,{types:[...new Set(pieces.map(p=>p.typeId))].sort(),leave,source:ambiguous?'approved-leave-overlap-duration-unknown':unique.map(p=>p.source).sort().join(';')});
+  const leave=ambiguous?null:unique.map(piece=>({typeId:piece.typeId,paid:piece.paid,days:piece.days,session:piece.session,minutes:piece.minutes,requestIds:pieces.filter(p=>p.typeId===piece.typeId&&p.session===piece.session&&p.from===piece.from&&p.to===piece.to).map(p=>p.requestId).sort()}));
+  out.set(key,{types:[...new Set(pieces.filter(piece=>!piece.unknown).map(piece=>piece.typeId))].sort(),unknownTypes:[...new Set(pieces.filter(piece=>piece.unknown).map(piece=>piece.typeId))].sort(),leave,source:pieces.some(piece=>piece.unknown)?'legacy-approved-date-allocation-unknown':ambiguous?'approved-leave-overlap-duration-unknown':unique.map(piece=>piece.source).sort().join(';')});
  }
  return out;
 }
