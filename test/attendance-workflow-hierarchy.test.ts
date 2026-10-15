@@ -3,18 +3,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { hireEmployee, setReportingLine } from '../core/org';
+import { hireEmployee, setReportingLine, editDelegation } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
-import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, reassignAttendanceWorkflowStageToHr, decideAttendanceWorkflowStageTx, previewAttendanceWorkflow } from '../core/attendance-workflow';
+import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, reassignAttendanceWorkflowStageToHr, decideAttendanceWorkflowStageTx, previewAttendanceWorkflow, snapshotAttendanceWorkflowTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail } from '../core/attendance-application-history';
-import { createBatch, generatePayslips } from '../packs/payroll/service';
+import { createBatch, generatePayslips, closeBatch, unlockClosedBatch } from '../packs/payroll/service';
 import { setCompensation } from '../core/comp';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { AttendancePayrollClosedError } from '../core/attendance-punch-change';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from '../core/profile-options';
 import type { AttendanceWorkflowInput } from '../lib/attendance-workflow';
-import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, entitledCtx, setSetting, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b: Base;
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 // A recent Wednesday, derived from the KL business date rather than a hardcoded future fixture.
@@ -63,12 +63,11 @@ async function rawFinal(tx: Tx, actor: SessionContext, id: string, employmentId:
   await tx.execute(sql`select id from attendance_correction where id=${id}::uuid for update`);
   await decideAttendanceWorkflowStageTx(tx, actor, { correctionId: id, employmentId, decision: 'approved', expectedStageIndex: 2 });
 }
-async function refused(tx: Tx, command: () => Promise<unknown>) {
-  await tx.execute(sql`savepoint hierarchy_denial`);
-  let failed = false;
-  try { await command(); } catch { failed = true; }
-  await tx.execute(sql`rollback to savepoint hierarchy_denial`);
-  await tx.execute(sql`release savepoint hierarchy_denial`);
+async function refused(tx: Tx, command: (attempt:Tx) => Promise<unknown>) {
+  // Use the driver's nested scope as well as SQL SAVEPOINT: manual rollback alone leaves
+  // postgres.js's outer uncaughtError latch set and falsely rejects a later normal commit.
+  let failed=false;
+  try {await tx.transaction(attempt=>command(attempt));}catch {failed=true;}
   expect(failed).toBe(true);
 }
 
@@ -175,7 +174,7 @@ describe('797ba70b: untrusted request hints and current-transaction final-effect
       const [proof] = await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${date}::date) as own,app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${addDays(date,-1)}::date) as other_date,app.attendance_workflow_effect_scope(${f.first.employmentId}::uuid,${date}::date) as other_person`) as unknown as { own: boolean; other_date: boolean; other_person: boolean }[];
       expect(proof).toEqual({ own: true, other_date: false, other_person: false });
       expect(await tx.update(schema.attendance).set({ remarks: 'forged other day' }).where(eq(schema.attendance.id, otherDay.id)).returning()).toEqual([]);
-      await refused(tx, () => tx.execute(sql`select app.attendance_workflow_begin_effect(${randomUUID()}::uuid)`));
+      await refused(tx, attempt => attempt.execute(sql`select app.attendance_workflow_begin_effect(${randomUUID()}::uuid)`));
       // It is not enough to reuse the valid hint under another authenticated identity.
       await tx.execute(sql`select set_config('app.user_id',${f.actors[0].userId!},true)`);
       const [switched] = await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${date}::date) as ok`) as unknown as { ok: boolean }[];
@@ -203,7 +202,7 @@ describe('797ba70b: untrusted request hints and current-transaction final-effect
       await tx.execute(sql`savepoint downstream_overtime_effect`);
       await rawFinal(tx,f.actors[2],id,f.d.employmentId);
       await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
-      await tx.update(schema.attendancePunch).set({voidedAt:new Date()}).where(eq(schema.attendancePunch.attendanceId,day.id));
+      await tx.update(schema.attendancePunch).set({voidedAt:new Date(),voidedBy:f.actors[2].userId!,voidReason:'Verified request-bound clock correction'}).where(eq(schema.attendancePunch.attendanceId,day.id));
       await tx.insert(schema.attendancePunch).values([
         {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'web'},
         {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'web'},
@@ -236,20 +235,20 @@ describe('797ba70b: untrusted request hints and current-transaction final-effect
     await expect(withTenant(f.actors[2],async tx=>{
       await rawFinal(tx,f.actors[2],id,f.d.employmentId); await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
       const [notMember]=await tx.execute(sql`select app.mark_attendance_payroll_recalc(${f.d.employmentId}::uuid,${other.batchId}::uuid) as ok`) as unknown as {ok:boolean}[]; expect(notMember.ok).toBe(false);
-      await refused(tx,()=>tx.execute(sql`select app.mark_attendance_payroll_recalc(${f.first.employmentId}::uuid,${other.batchId}::uuid)`));
+      await refused(tx,attempt=>attempt.execute(sql`select app.mark_attendance_payroll_recalc(${f.first.employmentId}::uuid,${other.batchId}::uuid)`));
       expect(await tx.update(schema.payrollBatch).set({status:'closed'}).where(eq(schema.payrollBatch.id,batchId)).returning()).toEqual([]);
       throw new Error('Rollback Payroll capability diagnostic');
     })).rejects.toThrow('Rollback Payroll capability');
     expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,other.batchId)))[0]).toEqual(otherBefore);
 
     expect(await withTenant(f.actors[2],tx=>tx.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId)))).toHaveLength(0);
-    await owner.db.update(schema.payrollBatch).set({status:'closed'}).where(eq(schema.payrollBatch.id,batchId));
+    await closeBatch(f.a,{batchId});
     const closed=(await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId)))[0];
     await expect(decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2})).rejects.toBeInstanceOf(AttendancePayrollClosedError);
     expect(await readDecisions()).toHaveLength(2); expect((await readCorrection(id)).status).toBe('pending');
     expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId)))[0]).toEqual(closed);
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(slips);
-    await owner.db.update(schema.payrollBatch).set({status:'processed'}).where(eq(schema.payrollBatch.id,batchId));
+    await setSetting(b.tenantId,'payroll.unlock_enabled',true);await unlockClosedBatch(await entitledCtx(b),{batchId,reason:'Reopen the fixture run for verified Attendance correction'});
     await decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2});
     const batch=(await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId)))[0];
     expect(batch.needsRecalcAt).not.toBeNull(); expect(batch.recalcEmploymentIds).toContain(f.d.employmentId);
@@ -281,7 +280,7 @@ describe('797ba70b: savepoint proof and canonical same-day plan dependencies', (
       await tx.execute(sql`select set_config('app.attendance_workflow_effect',${id},true)`);
       const [proof]=await tx.execute(sql`select app.attendance_workflow_effect_scope(${f.d.employmentId}::uuid,${date}::date) as ok`) as unknown as {ok:boolean}[];
       expect(proof.ok).toBe(false);
-      await refused(tx,()=>tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`));
+      await refused(tx,attempt=>attempt.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`));
       throw new Error('Rollback released-savepoint diagnostic');
     })).rejects.toThrow('Rollback released-savepoint');
     expect(await readDecisions()).toHaveLength(2);
@@ -306,20 +305,33 @@ describe('797ba70b: savepoint proof and canonical same-day plan dependencies', (
   it('refuses arbitrary plan stamps, status/input changes, pending plans, another date and another subject', async () => {
     const f = await fixture(); await enable(f.a); const id=await submit(f.self,f.d.employmentId); await approveFirstTwo(f,id);
     const makePlan=async (employmentId:string,on:string,status:'approved'|'pending'='approved')=>(await owner.db.insert(schema.attendanceCorrection).values({tenantId:b.tenantId,employmentId,attendanceDate:on,requestedOtMinutes:60,reason:'Historic approved plan',status,decidedAt:status==='approved'?new Date():null,otApprovalMethod:'requested'}).returning())[0];
-    const own=await makePlan(f.d.employmentId,date),pending=await makePlan(f.d.employmentId,date,'pending'),otherDate=await makePlan(f.d.employmentId,addDays(date,-1)),otherPerson=await makePlan(f.first.employmentId,date);
+    const own=await makePlan(f.d.employmentId,date),otherDate=await makePlan(f.d.employmentId,addDays(date,-1)),otherPerson=await makePlan(f.first.employmentId,date);
+    const day=await readDay(f.d.employmentId);
     await expect(withTenant(f.actors[2],async tx=>{
       await rawFinal(tx,f.actors[2],id,f.d.employmentId); await tx.execute(sql`savepoint plan_effect`); await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
-      for(const plan of [pending,otherDate,otherPerson]) await refused(tx,()=>tx.update(schema.attendanceCorrection).set({appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,plan.id)));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({reason:'Forged approved input',appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id)));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'pending',appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id)));
+      // Complete the exact request effect before adding another pending request for this day.
+      // The one-pending-request constraint must remain active throughout this diagnostic.
+      await tx.update(schema.attendancePunch).set({voidedAt:new Date(),voidedBy:f.actors[2].userId!,voidReason:'Verified request-bound clock correction'}).where(eq(schema.attendancePunch.attendanceId,day.id));
+      await tx.insert(schema.attendancePunch).values([
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'09:00:00',direction:'in',method:'web'},
+        {tenantId:b.tenantId,attendanceId:day.id,employmentId:f.d.employmentId,attendanceDate:date,punchAt:'18:00:00',direction:'out',method:'web'},
+      ]);
+      await tx.update(schema.attendance).set({checkInAt:'09:00:00',checkOutAt:'18:00:00',workedMinutes:540}).where(eq(schema.attendance.id,day.id));
+      await tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id));
+      const [pending]=await tx.insert(schema.attendanceCorrection).values({tenantId:b.tenantId,employmentId:f.d.employmentId,attendanceDate:date,requestedOtMinutes:60,reason:'Independent pending plan',status:'pending',otApprovalMethod:'requested'}).returning();
+      for(const plan of [pending,otherDate,otherPerson]) await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,plan.id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({reason:'Forged approved input',appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({status:'pending',appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id)));
       const current=await readDay(f.d.employmentId); expect(current.calcTrace?.overtime).toBeTruthy();
       await tx.update(schema.attendance).set({calcTrace:{...current.calcTrace!,overtime:{...current.calcTrace!.overtime!,approvedMinutes:60}}}).where(eq(schema.attendance.id,current.id));
       await tx.update(schema.attendanceCorrection).set({appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({approvedOtMinutes:61}).where(eq(schema.attendanceCorrection.id,own.id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({approvedOtMinutes:61}).where(eq(schema.attendanceCorrection.id,own.id)));
       const [stamped]=await tx.update(schema.attendanceCorrection).set({approvedOtMinutes:60}).where(eq(schema.attendanceCorrection.id,own.id)).returning(); expect(stamped.approvedOtMinutes).toBe(60);
+      const [stillPending]=await tx.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,pending.id));expect(stillPending.status).toBe('pending');expect(stillPending.appliedAt).toBeNull();
       throw new Error('Rollback plan-boundary diagnostic');
     })).rejects.toThrow('Rollback plan-boundary');
-    expect((await readCorrection(own.id)).appliedAt).toBeNull(); expect((await readCorrection(pending.id)).status).toBe('pending');
+    expect((await readCorrection(own.id)).appliedAt).toBeNull(); expect((await readCorrection(id)).status).toBe('pending');
+    expect(await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.reason,'Independent pending plan'))).toEqual([]);
   });
 });
 
@@ -352,10 +364,11 @@ describe('797ba70b: Personnel-owned assignment criteria and request-bound delega
   });
   it('admits only the frozen superior’s valid Attendance delegation, logs the real delegate and refuses wrong org coverage', async () => {
     const f=await fixture(), stand=await hire('Level two delegate'), delegate=await login(stand.personId);
-    await setReportingLine(f.a,{subordinateEmploymentId:f.second.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01',reason:'Temporary level two cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptB,businessUnitId:null}});
+    const standReport=await hire('Delegate real downline',b.deptB);await setReportingLine(f.a,{subordinateEmploymentId:standReport.employmentId,managerEmploymentId:stand.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+    const cover=await setReportingLine(f.a,{subordinateEmploymentId:f.second.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01',reason:'Temporary level two cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptB,businessUnitId:null}});
     await enable(f.a); const id=await submit(f.self,f.d.employmentId); await decideAttendanceCorrection(f.actors[0],{correctionId:id,decision:'approved',expectedStageIndex:0});
     await expect(decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1})).rejects.toThrow();
-    await setReportingLine(f.a,{subordinateEmploymentId:f.second.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01',reason:'Correct scoped cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}});
+    await editDelegation(f.a,{reportingLineId:cover.reportingLineId,managerEmploymentId:stand.employmentId,validFrom:'2020-01-01',validTo:null,reason:'Correct scoped cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}});
     expect((await listAttendanceCorrections(delegate,{status:'pending'})).map(r=>r.id)).toContain(id);
     await decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1});
     const decision=(await readDecisions()).find(d=>d.stageIndex===1)!;
@@ -374,11 +387,11 @@ describe('797ba70b: actual final effects and immutable approved inputs', () => {
     await expect(withTenant(f.actors[2],async tx=>{
       await rawFinal(tx,f.actors[2],id,f.d.employmentId);await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
       await tx.insert(schema.domainEvent).values({tenantId:b.tenantId,aggregateType:'attendance-correction',aggregateId:id,eventType:'attendance-correction.effect.recorded',actorType:'user',actorId:f.actors[2].userId,subjectEmploymentId:f.d.employmentId,payload:{forged:true}});
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
       if(!lostScope){
         // A meaningless active day write does not establish that the requested punches were applied.
         await tx.update(schema.attendance).set({remarks:'Forged noop marker'}).where(eq(schema.attendance.id,before.id));
-        await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+        await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
       }
       throw new Error('Rollback forged-event diagnostic');
     })).rejects.toThrow('Rollback forged-event');
@@ -386,20 +399,29 @@ describe('797ba70b: actual final effects and immutable approved inputs', () => {
   });
   it.each([false,true])('accepts the canonical no-op correction, including unchanged punch IDs (clock entries=%s)',async entries=>{
     const f=await fixture();await enable(f.a);const before=await readDay(f.d.employmentId),clocks=await attendanceClockData(f.a,f.d.employmentId,date);
-    const id=(await requestAttendanceCorrection(f.self,{employmentId:f.d.employmentId,date,reason:'Reviewed no-op is an explicit human decision',...(entries?{clockChanges:{version:1 as const,baseline:clocks.baseline,entries:clocks.rows.filter(p=>!p.voidedAt).map(p=>({id:p.id,punchAt:p.punchAt,direction:p.direction}))}}:{checkIn:'08:00',checkOut:'17:00'})})).correctionId;
+    let id:string;
+    if(entries){
+      const clockChanges={version:1 as const,baseline:clocks.baseline,entries:clocks.rows.filter(p=>!p.voidedAt).map(p=>({id:p.id,punchAt:p.punchAt,direction:p.direction}))};
+      await expect(requestAttendanceCorrection(f.self,{employmentId:f.d.employmentId,date,reason:'Unchanged clock set',clockChanges})).rejects.toThrow('Only an authorised administrator may edit clock data');
+      await expect(requestAttendanceCorrection(f.a,{employmentId:f.d.employmentId,date,reason:'Unchanged clock set',clockChanges})).rejects.toThrow('Change at least one clocking before saving');
+      // Existing captured requests still need a valid final-effect proof when the requested set is
+      // already equal. Seed that historical row as authorized HR, then freeze its real v2 workflow.
+      id=await withTenant(f.a,async tx=>{const [row]=await tx.insert(schema.attendanceCorrection).values({tenantId:b.tenantId,employmentId:f.d.employmentId,attendanceDate:date,reason:'Existing reviewed no-op request',clockChanges}).returning({id:schema.attendanceCorrection.id});await snapshotAttendanceWorkflowTx(tx,f.a,row.id,f.d.employmentId,'irregularity');return row.id;});
+    }else id=(await requestAttendanceCorrection(f.self,{employmentId:f.d.employmentId,date,reason:'Reviewed no-op is an explicit human decision',checkIn:'08:00',checkOut:'17:00'})).correctionId;
     await approveFirstTwo(f,id);await decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2});
     expect((await readCorrection(id)).status).toBe('approved');expect(await readDay(f.d.employmentId)).toMatchObject({checkInAt:before.checkInAt,checkOutAt:before.checkOutAt,workedMinutes:before.workedMinutes,otMinutes:before.otMinutes});
+    if(entries)expect((await attendanceClockData(f.a,f.d.employmentId,date)).rows.filter(p=>!p.voidedAt).map(p=>p.id)).toEqual(clocks.rows.filter(p=>!p.voidedAt).map(p=>p.id));
   });
   it('approves genuine future OT without an attendance placeholder, freezes agreed inputs and lands through the canonical owner later',async()=>{
     const f=await fixture(),future=addDays(todayInKualaLumpur(),8);await enable(f.a,input({applicationType:'self_overtime'}));const id=await submit(f.self,f.d.employmentId,true,future);
     await approveFirstTwo(f,id);expect(await decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2})).toMatchObject({status:'approved',deferred:true});
     expect(await readDay(f.d.employmentId,future)).toBeUndefined();const original=await readCorrection(id);expect(original.appliedAt).toBeNull();
     await withTenant(f.self,async tx=>{
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({requestedOtMinutes:original.requestedOtMinutes!+60}).where(eq(schema.attendanceCorrection.id,id)));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({otApprovalMethod:original.otApprovalMethod==='requested'?'system_calculated':'requested'}).where(eq(schema.attendanceCorrection.id,id)));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'pending'}).where(eq(schema.attendanceCorrection.id,id)));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({approvedOtMinutes:999,appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,id)));
-      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({decidedByEmploymentId:f.d.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({requestedOtMinutes:original.requestedOtMinutes!+60}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({otApprovalMethod:original.otApprovalMethod==='requested'?'system_calculated':'requested'}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({status:'pending'}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({approvedOtMinutes:999,appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({decidedByEmploymentId:f.d.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
     });
     expect(await readCorrection(id)).toEqual(original);
     vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(`${addDays(future,1)}T12:00:00+08:00`));
@@ -418,7 +440,7 @@ it('does not treat an administrator-amended future OT request as an effect-free 
   await approveFirstTwo(f,id);
   await expect(withTenant(f.actors[2],async tx=>{
     await rawFinal(tx,f.actors[2],id,f.d.employmentId);await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
-    await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+    await refused(tx,attempt=>attempt.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
     throw new Error('Rollback amended-deferral diagnostic');
   })).rejects.toThrow('Rollback amended-deferral');
   expect((await readCorrection(id)).status).toBe('pending');expect(await readDay(f.d.employmentId,future)).toBeUndefined();expect(await readDecisions()).toHaveLength(2);
