@@ -664,6 +664,8 @@ export const appInvitation = pgTable(
   ],
 );
 
+export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
+
 /** Account-email intent and delivery only. Invitation tokens and reset links are never copied here. */
 export const accountEmailDelivery=pgTable('account_email_delivery',{
  id:id(),tenantId:tenantId(),kind:text('kind').notNull(),
@@ -5322,7 +5324,6 @@ export const replacementLeaveRequestDate = pgTable(
 // notification_cursor are dispatcher-internal (app.is_admin). ────────────────────────────────────────────
 export const notificationSeverityEnum = pgEnum('notification_severity', ['info', 'action', 'warning']);
 export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'whatsapp', 'push']);
-export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
 export type NotificationSeverity = (typeof notificationSeverityEnum.enumValues)[number];
 export type NotificationChannel = (typeof notificationChannelEnum.enumValues)[number];
 export type NotificationDeliveryStatus = (typeof notificationDeliveryStatusEnum.enumValues)[number];

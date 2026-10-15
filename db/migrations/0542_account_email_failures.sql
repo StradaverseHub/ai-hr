@@ -3,7 +3,7 @@ CREATE TABLE account_email_delivery (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
  kind text NOT NULL CHECK(kind IN ('invitation','recovery')),
  invitation_id uuid REFERENCES app_invitation(id),recovery_email text,
- replaces_delivery_id uuid UNIQUE REFERENCES account_email_delivery(id),
+ replaces_delivery_id uuid REFERENCES account_email_delivery(id),
  requested_by uuid REFERENCES app_user(id),
  status notification_delivery_status NOT NULL DEFAULT 'pending',attempts integer NOT NULL DEFAULT 0 CHECK(attempts>=0),
  last_error text CHECK(last_error IN ('relayUnavailable','providerUnavailable','notEligible','uncertain')),
@@ -17,6 +17,7 @@ CREATE TABLE account_email_delivery (
  CHECK(status<>'sent' OR started_at IS NOT NULL AND sent_at IS NOT NULL)
 );
 CREATE UNIQUE INDEX account_email_invitation_uq ON account_email_delivery(invitation_id) WHERE invitation_id IS NOT NULL;
+CREATE UNIQUE INDEX account_email_replaces_delivery_id_key ON account_email_delivery(replaces_delivery_id);
 CREATE INDEX account_email_recent_idx ON account_email_delivery(created_at DESC,id DESC);
 CREATE INDEX account_email_recovery_rate_idx ON account_email_delivery(recovery_email,created_at DESC) WHERE kind='recovery';
 ALTER TABLE account_email_delivery ENABLE ROW LEVEL SECURITY;

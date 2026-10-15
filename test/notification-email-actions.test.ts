@@ -1,14 +1,16 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),identity:vi.fn(),internal:vi.fn(),policy:vi.fn(),preferences:vi.fn(),retry:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),identity:vi.fn(),internal:vi.fn(),policy:vi.fn(),preferences:vi.fn(),retry:vi.fn(),accountRetry:vi.fn(),emailAdmin:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/identity/session',()=>({currentIdentitySession:m.identity}));
 vi.mock('../lib/identity/config',()=>({keycloakSelected:m.internal}));
 vi.mock('../core/notification-email',()=>({saveNotificationEmailPolicy:m.policy,saveNotificationEmailPreferences:m.preferences,retryNotificationEmail:m.retry}));
+vi.mock('../core/auth',()=>({retryAccountEmail:m.accountRetry}));
+vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:m.emailAdmin}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw new Error('REDIRECT '+p);}}));
-import { saveWorkflowEmailPolicy,retryWorkflowEmail } from '../app/admin/settings/notifications/actions';
+import { saveWorkflowEmailPolicy,retryWorkflowEmail,retryAccountEmailAction } from '../app/admin/settings/notifications/actions';
 import { saveMyWorkflowEmailPreferences } from '../app/me/notifications/actions';
 const session={tenantId:'tenant',userId:'server-user'},identity={issuer:'https://hr.test',subject:'server-subject',email:'verified@example.test',emailVerified:true};
-beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.identity.mockResolvedValue(identity);m.internal.mockReturnValue(true);m.policy.mockResolvedValue(undefined);m.preferences.mockResolvedValue(undefined);m.retry.mockResolvedValue(undefined);});
+beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.identity.mockResolvedValue(identity);m.internal.mockReturnValue(true);m.policy.mockResolvedValue(undefined);m.preferences.mockResolvedValue(undefined);m.retry.mockResolvedValue(undefined);m.accountRetry.mockResolvedValue(undefined);m.emailAdmin.mockResolvedValue({session,actor:{...identity,...session}});});
 describe('workflow email server action identity boundaries',()=>{
  it.each([saveWorkflowEmailPolicy,saveMyWorkflowEmailPreferences,retryWorkflowEmail])('requires a current session before any mutation',async action=>{
   m.session.mockRejectedValue(new Error('sign in required'));await expect(action(new FormData())).rejects.toThrow('sign in required');expect(m.policy).not.toHaveBeenCalled();expect(m.preferences).not.toHaveBeenCalled();expect(m.retry).not.toHaveBeenCalled();
@@ -26,5 +28,27 @@ describe('workflow email server action identity boundaries',()=>{
  });
  it('does not reflect sensitive provider or database errors into a URL',async()=>{
   m.policy.mockRejectedValue(new Error('smtp secret and employee address'));await expect(saveWorkflowEmailPolicy(new FormData())).rejects.toThrow('error=save');
+ });
+});
+
+describe('account email retry server action boundaries',()=>{
+ it('requires a server session for invitation retry before mutation',async()=>{
+  m.session.mockRejectedValue(Error('sign in required'));
+  await expect(retryAccountEmailAction(new FormData())).rejects.toThrow('sign in required');expect(m.accountRetry).not.toHaveBeenCalled();
+ });
+ it('requires the installation email guard for recovery and never trusts form actor claims',async()=>{
+  const f=new FormData();for(const [k,v] of Object.entries({returnTo:'/admin/settings/email',deliveryId:'delivery',acknowledged:'true',issuer:'evil',subject:'attacker',userId:'attacker'}))f.set(k,v);
+  await expect(retryAccountEmailAction(f)).rejects.toThrow('accountRetry=1');
+  expect(m.accountRetry).toHaveBeenCalledWith(session,'delivery',true,{...identity,...session});
+  m.emailAdmin.mockRejectedValue(Error('owner required'));m.accountRetry.mockClear();
+  await expect(retryAccountEmailAction(f)).rejects.toThrow('owner required');expect(m.accountRetry).not.toHaveBeenCalled();
+ });
+ it('whitelists the return path and does not accept checkbox presence as acknowledgement',async()=>{
+  const f=new FormData();f.set('returnTo','https://evil.test');f.set('deliveryId','delivery');f.set('acknowledged','false');
+  await expect(retryAccountEmailAction(f)).rejects.toThrow('REDIRECT /admin/settings/notifications?accountRetry=1');
+  expect(m.emailAdmin).not.toHaveBeenCalled();expect(m.accountRetry).toHaveBeenCalledWith(session,'delivery',false,undefined);
+ });
+ it('keeps secret provider errors out of redirects',async()=>{
+  m.accountRetry.mockRejectedValue(Error('secret reset link'));await expect(retryAccountEmailAction(new FormData())).rejects.toThrow('REDIRECT /admin/settings/notifications?error=account-retry');
  });
 });

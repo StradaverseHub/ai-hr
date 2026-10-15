@@ -1,7 +1,7 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { render,screen,cleanup } from '@testing-library/react';
 import en from '../messages/en.json';
-const m=vi.hoisted(()=>({policy:vi.fn(),deliveries:vi.fn(),relay:vi.fn(),preferences:vi.fn(),identity:vi.fn(),internal:vi.fn(),group:vi.fn()}));
+const m=vi.hoisted(()=>({policy:vi.fn(),deliveries:vi.fn(),relay:vi.fn(),preferences:vi.fn(),identity:vi.fn(),internal:vi.fn(),group:vi.fn(),accounts:vi.fn()}));
 const t=(key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],en.workflowEmail)??key;
 vi.mock('next-intl/server',()=>({getTranslations:async()=>t,getLocale:async()=>'en'}));
 vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{userId:'user'}}),scopedSession:async()=>({s:{userId:'user'}})}));
@@ -9,11 +9,13 @@ vi.mock('../lib/authz',()=>({requireModule:vi.fn(),isGroupAdmin:m.group}));
 vi.mock('../lib/identity/config',()=>({keycloakSelected:m.internal}));vi.mock('../lib/identity/session',()=>({currentIdentitySession:m.identity}));
 vi.mock('../core/notification-email',()=>({readNotificationEmailPolicy:m.policy,readNotificationEmailDeliveries:m.deliveries,readNotificationEmailPreferences:m.preferences}));
 vi.mock('../core/notification-email-delivery',()=>({readNotificationEmailTransport:m.relay}));
+vi.mock('../core/account-email',()=>({readAccountEmailDeliveries:m.accounts}));
+vi.mock('../components/account-email-deliveries',()=>({AccountEmailDeliveries:()=>null}));
 vi.mock('../app/admin/settings/notifications/actions',()=>({saveWorkflowEmailPolicy:vi.fn(),retryWorkflowEmail:vi.fn()}));
 vi.mock('../app/me/notifications/actions',()=>({saveMyWorkflowEmailPreferences:vi.fn()}));
 import AdminPage from '../app/admin/settings/notifications/page';
 import MyPage from '../app/me/notifications/page';
-beforeEach(()=>{cleanup();vi.clearAllMocks();m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
+beforeEach(()=>{cleanup();vi.clearAllMocks();m.accounts.mockResolvedValue([]);m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
 describe('workflow email configuration screens',()=>{
  it('does not claim mail is active when the root-installed service has not been upgraded',async()=>{
   render(await AdminPage({searchParams:Promise.resolve({})}));expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();expect(screen.getAllByRole('checkbox')).toHaveLength(13);expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).checked)).toBe(true);

@@ -14027,7 +14027,7 @@
       "subtitle": "Nhập email của bạn và chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.",
       "emailLabel": "Email",
       "submit": "Gửi liên kết đặt lại",
-      "sent": "Nếu có tài khoản cho email đó, liên kết đặt lại mật khẩu đang được gửi đến.",
+      "sent": "Yêu cầu khôi phục đã được ghi nhận. Nếu có thể gửi email và tài khoản đủ điều kiện khớp, nhà cung cấp sẽ gửi liên kết bảo mật. Nếu chưa nhận được email, bạn có thể yêu cầu lại sau.",
       "backToLogin": "Quay lại đăng nhập"
     },
     "error": {
@@ -17110,7 +17110,7 @@
     "statuses": {
       "pending": "Đang chờ",
       "sent": "Máy chủ đã chấp nhận",
-      "failed": "Thất bại hoặc chưa rõ",
+      "failed": "Thất bại",
       "skipped": "Đã bỏ qua"
     },
     "errors": {
@@ -18941,5 +18941,33 @@
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
     "reload": "Tải lại lịch hiện tại"
+  },
+  "accountEmail": {
+    "title": "Lịch sử gửi email tài khoản",
+    "help": "Lời mời và yêu cầu khôi phục được lưu ngay cả khi gửi email thất bại. Cấu hình SMTP không tự động gửi lại email thất bại. Chọn từng lần gửi lại bên dưới.",
+    "empty": "Chưa có lần gửi email tài khoản nào.",
+    "attempts": "Số lần thử",
+    "reissue": "Cấp lại lời mời",
+    "retryRecovery": "Gửi lại email khôi phục",
+    "invitationAck": "Tôi hiểu thao tác này thu hồi liên kết mời cũ, cấp lời mời mới và có thể gửi email trùng.",
+    "recoveryAck": "Tôi muốn yêu cầu email khôi phục mới. Lần gửi trước chưa rõ kết quả có thể tạo email trùng.",
+    "retryError": "Không thể gửi lại email này. Kiểm tra quyền truy cập và liệu yêu cầu đã được thay thế hoặc lời mời không còn chờ xử lý.",
+    "retryProcessed": "Đã xử lý yêu cầu gửi lại. Kiểm tra trạng thái gửi mới nhất.",
+    "kinds": {
+      "invitation": "Lời mời tài khoản",
+      "recovery": "Khôi phục mật khẩu"
+    },
+    "statuses": {
+      "pending": "Đang thử gửi",
+      "sent": "Nhà cung cấp đã chấp nhận",
+      "failed": "Thất bại",
+      "skipped": "Đã bỏ qua"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP chưa được cấu hình hoặc không khả dụng. Yêu cầu đã được lưu và email này chưa được gửi.",
+      "providerUnavailable": "Dịch vụ đăng nhập không khả dụng hoặc chưa được cấu hình. Yêu cầu đã được lưu.",
+      "notEligible": "Lời mời hoặc người nhận email khôi phục không còn đủ điều kiện.",
+      "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
+    }
   }
 }

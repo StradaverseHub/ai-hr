@@ -14027,7 +14027,7 @@
       "subtitle": "Enter your email and we'll send you a link to set a new password.",
       "emailLabel": "Email",
       "submit": "Send reset link",
-      "sent": "If an account exists for that email, a password reset link is on its way.",
+      "sent": "Your recovery request has been recorded. If delivery is available and an eligible account matches, the provider will send a secure link. If no email arrives, you can request another later.",
       "backToLogin": "Back to sign in"
     },
     "error": {
@@ -17110,7 +17110,7 @@
     "statuses": {
       "pending": "Pending",
       "sent": "Accepted by relay",
-      "failed": "Failed or uncertain",
+      "failed": "Failed",
       "skipped": "Skipped"
     },
     "errors": {
@@ -18941,5 +18941,33 @@
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
     "reload": "Reload current schedule"
+  },
+  "accountEmail": {
+    "title": "Account email deliveries",
+    "help": "Invitations and recovery requests are saved even when email fails. Configuring SMTP does not resend failures automatically. Choose individual retries below.",
+    "empty": "No account emails have been attempted.",
+    "attempts": "Attempts",
+    "reissue": "Reissue invitation",
+    "retryRecovery": "Retry recovery email",
+    "invitationAck": "I understand that this revokes the old invitation link, issues a new invitation and may send a duplicate email.",
+    "recoveryAck": "I want to request a fresh recovery email. An earlier uncertain delivery may cause a duplicate.",
+    "retryError": "This email could not be retried. Check your access and whether it has already been replaced or the invitation is no longer pending.",
+    "retryProcessed": "Retry processed. Check the latest delivery status.",
+    "kinds": {
+      "invitation": "Account invitation",
+      "recovery": "Password recovery"
+    },
+    "statuses": {
+      "pending": "Attempt in progress",
+      "sent": "Accepted by provider",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP is not configured or available. The request is saved and this email was not sent.",
+      "providerUnavailable": "The sign-in provider is unavailable or not configured. The request is saved.",
+      "notEligible": "The invitation or recovery recipient is no longer eligible.",
+      "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
+    }
   }
 }

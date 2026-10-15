@@ -14027,7 +14027,7 @@
       "subtitle": "Masukkan e-mel anda dan kami akan menghantar pautan untuk menetapkan kata laluan baharu.",
       "emailLabel": "E-mel",
       "submit": "Hantar pautan set semula",
-      "sent": "Jika akaun wujud untuk e-mel itu, pautan set semula kata laluan sedang dalam perjalanan.",
+      "sent": "Permintaan pemulihan anda telah direkodkan. Jika penghantaran tersedia dan akaun yang layak sepadan, penyedia akan menghantar pautan selamat. Jika tiada e-mel diterima, anda boleh meminta semula kemudian.",
       "backToLogin": "Kembali ke log masuk"
     },
     "error": {
@@ -17110,7 +17110,7 @@
     "statuses": {
       "pending": "Menunggu",
       "sent": "Diterima oleh geganti",
-      "failed": "Gagal atau tidak pasti",
+      "failed": "Gagal",
       "skipped": "Dilangkau"
     },
     "errors": {
@@ -18941,5 +18941,33 @@
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
     "reload": "Muat semula jadual semasa"
+  },
+  "accountEmail": {
+    "title": "Penghantaran e-mel akaun",
+    "help": "Jemputan dan permintaan pemulihan disimpan walaupun e-mel gagal. Menyediakan SMTP tidak menghantar semula e-mel gagal secara automatik. Pilih cubaan semula di bawah.",
+    "empty": "Belum ada cubaan e-mel akaun.",
+    "attempts": "Cubaan",
+    "reissue": "Keluarkan semula jemputan",
+    "retryRecovery": "Cuba semula e-mel pemulihan",
+    "invitationAck": "Saya faham tindakan ini membatalkan pautan jemputan lama, mengeluarkan jemputan baharu dan mungkin menghantar e-mel pendua.",
+    "recoveryAck": "Saya mahu meminta e-mel pemulihan baharu. Penghantaran terdahulu yang tidak pasti mungkin menyebabkan pendua.",
+    "retryError": "E-mel ini tidak dapat dicuba semula. Semak akses anda dan sama ada ia telah diganti atau jemputan tidak lagi menunggu.",
+    "retryProcessed": "Cubaan semula diproses. Semak status penghantaran terkini.",
+    "kinds": {
+      "invitation": "Jemputan akaun",
+      "recovery": "Pemulihan kata laluan"
+    },
+    "statuses": {
+      "pending": "Cubaan sedang berjalan",
+      "sent": "Diterima oleh penyedia",
+      "failed": "Gagal",
+      "skipped": "Dilangkau"
+    },
+    "errors": {
+      "relayUnavailable": "SMTP belum dikonfigurasi atau tidak tersedia. Permintaan disimpan dan e-mel ini tidak dihantar.",
+      "providerUnavailable": "Penyedia log masuk tidak tersedia atau belum dikonfigurasi. Permintaan disimpan.",
+      "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
+      "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
+    }
   }
 }

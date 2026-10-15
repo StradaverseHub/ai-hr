@@ -5,14 +5,17 @@ import { defaultEmailConfig, emailFailureCodes, EmailSettingsError } from '@/lib
 import { PageHeader, Card, SectionHeader, Field, inputCls, ErrorBanner } from '@/components/ui';
 import { EmailSubmit } from './submit-button';
 import { saveEmailDraft, testEmailDraft, activateEmailDraft } from './actions';
+import {AccountEmailDeliveries} from '@/components/account-email-deliveries';
+import {readAccountEmailDeliveries} from '@/core/account-email';
 
-export default async function IdentityEmailPage({searchParams}:{searchParams:Promise<{error?:string;success?:string}>}) {
+export default async function IdentityEmailPage({searchParams}:{searchParams:Promise<{error?:string;success?:string;accountRetry?:string}>}) {
  // Authenticated-role eligibility is refined by a separately enrolled installation capability.
- await scopedSession();const {actor}=await requireIdentityEmailAdmin();
- const t=await getTranslations('identityEmail'),query=await searchParams;
+ await scopedSession();const {session,actor}=await requireIdentityEmailAdmin();
+ const [t,accountT,query]=await Promise.all([getTranslations('identityEmail'),getTranslations('accountEmail'),searchParams]);
+ const deliveries=await readAccountEmailDeliveries(session,actor);
  let view;
  try{view=await readIdentityEmailSettings(actor);}catch(e){
-  return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/></div>;
+  return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/><AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/></div>;
  }
  const config=view.draft?.config??view.active??defaultEmailConfig;
  const error=emailFailureCodes.find(c=>c===query.error);
@@ -20,7 +23,8 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
  return <div className="max-w-4xl space-y-6">
   <PageHeader title={t('title')} description={t('description')}/>
   <p className="text-sm text-muted-foreground">{t('scope')}</p>
-  <ErrorBanner message={error?t(`errors.${error}`):undefined}/>
+  <ErrorBanner message={query.error==='account-retry'?accountT('retryError'):error?t(`errors.${error}`):undefined}/>
+  {query.accountRetry==='1'?<p role="status" className="text-sm">{accountT('retryProcessed')}</p>:null}
   {success&&<p role="status" className="rounded-xl border border-border bg-card p-4 text-sm">{t(`success.${success}`)}</p>}
   <Card><SectionHeader title={t('activeTitle')}/><div className="space-y-2 p-5 text-sm">
    <p>{view.active?t('activeSummary',{host:view.active.host,port:view.active.port,from:view.active.from}):t('notConfigured')}</p>
@@ -49,5 +53,6 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
     <EmailSubmit type="submit">{t('activate')}</EmailSubmit>
    </form>}
   </div></Card>}
- </div>;
+  <AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/>
+  </div>;
 }

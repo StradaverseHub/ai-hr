@@ -43,7 +43,7 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'leave.approved'))).toHaveLength(2);
   const send=vi.fn().mockResolvedValue(undefined);
   const service=createNotificationEmailService({origin:'https://hr.test',ready:async()=>true,
-   target:async(id,token)=>(await target(id,token))[0] as WorkflowMailTarget??null,
+   target:async(id,token)=>{const [row]=await target(id,token);return row?row as WorkflowMailTarget:null;},
    verifyRecipient:async()=> 'verified',
    start:async(id,token,expected)=>(await raw`select identity_email.start_delivery(${id}::uuid,${token}::uuid,${issuer},${raw.json(expected)}::jsonb) as started`)[0].started,
    finish:async(id,token,outcome,error)=>(await raw`select identity_email.finish_delivery(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0].finished,
@@ -125,6 +125,10 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   expect((await readNotificationEmailDeliveries(scoped)).map(d=>d.id)).toEqual([ownJob.id]);
   const due=await withTenant(scoped,tx=>tx.execute(sql`select * from app.notification_email_due(50)`)) as unknown as {id:string}[];
   expect(due.map(d=>d.id)).toEqual([ownJob.id]);
+  const offline:NotificationEmailTransport=async<T>()=>({version:1,ready:false} as T);
+  expect(await deliverNotificationEmails(scoped,offline)).toMatchObject({attempted:1,unavailable:true});
+  expect((await deliveries()).find(d=>d.id===ownJob.id)).toMatchObject({status:'failed',lastError:'relayUnavailable'});
+  expect((await deliveries()).find(d=>d.id===foreignJob.id)).toMatchObject({status:'pending',lastError:null,attempts:0});
   const changed=await withTenant(scoped,tx=>tx.update(schema.notificationDelivery).set({status:'failed'}).where(eq(schema.notificationDelivery.id,foreignJob.id)).returning({id:schema.notificationDelivery.id}));expect(changed).toEqual([]);
   await owner.db.delete(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,foreignJob.id));
   await withTenant(scoped,tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect((await deliveries()).map(d=>d.id)).toEqual([ownJob.id]);
