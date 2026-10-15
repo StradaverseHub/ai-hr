@@ -1,13 +1,13 @@
 /**
  * Tenant provisioning runner — the out-of-band half of the operator console.
  *
- * ENV CONTRACT: MIGRATION_DATABASE_URL ONLY.
+ * ENV CONTRACT: owner provisioning uses MIGRATION_DATABASE_URL; domain sweeps use DATABASE_URL.
  * ------------------------------------------
  * This process holds the OWNER role, which bypasses RLS, and that is the entire reason it exists as a
  * separate process: the web application must never be able to create a tenant (migration 0001), so the
- * credentials that can are kept out of it. DATABASE_URL is deliberately NOT read — after the seeder
- * transaction-injection refactor, no app-role service is called from here. The four existing sweeps
- * documented in DEPLOY.md 5b are the precedent for this shape.
+ * credentials that can are kept out of it. Provisioning retains its injected owner connection. The
+ * replacement holiday pass uses canonical app-role writers with a trusted tenant-scoped runner context;
+ * it never passes the owner connection into an app service.
  *
  * INSTALLED AS A ONE-MINUTE CRON TICK (DEPLOY.md 5b). Nothing in the app starts it; a customer is
  * therefore ready up to a minute after the click, which is the accepted UX. No websockets, no SSE — the
@@ -17,7 +17,8 @@
  *
  * PER TICK, IN ORDER: stale reclaim → claim one → email pre-check → provision → reissue pass.
  */
-import { createDb } from '../db/client';
+import { createDb, client } from '../db/client';
+import { sweepReplacementHolidayQueue } from './replacement-holiday-sweep';
 import { ProvisionStepError, provisionTenant, INVITE_TTL_DAYS } from '../db/provision';
 import { appendEvent } from '../db/events';
 import { appInvitation, appUser, person, tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
@@ -334,10 +335,14 @@ async function main() {
   const owner = createDb(url, { max: 2 });
   try {
     const r = await runProvisionTick(owner);
+    const holidays=await sweepReplacementHolidayQueue(owner);
+    if(holidays.processed||holidays.failed)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed`);
+    if(holidays.failed)process.exitCode=1;
     if (r.reclaimed) console.log(`· reclaimed ${r.reclaimed} stale request(s)`);
     if (!r.provisioned && !r.reclaimed && !r.reissued) console.log('· nothing to do');
   } finally {
     await owner.client.end({ timeout: 5 });
+    await client.end({timeout:5});
   }
 }
 
