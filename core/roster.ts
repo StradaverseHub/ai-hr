@@ -2949,7 +2949,8 @@ export type RosterVarianceRow = {
 /**
  * Compare the roster (expected) to attendance (actual) over a date range. For each rostered shift: a
  * no-show (rostered, no attendance, not on leave, date ≤ today), a late check-in, short hours (worked <
- * the shift's scheduled minutes), or on-track. A rostered rest day with an attendance row is rest_worked.
+ * the recorded normal-hours target), or on-track. Recorded attendance owns its target and shortfall;
+ * editing a live shift must not reinterpret its history. A rostered rest day with attendance is rest_worked.
  * RLS scopes which employees are visible. Read-only.
  */
 export function rosterVariance(
@@ -2966,6 +2967,8 @@ export function rosterVariance(
         shiftDate: rosterAssignment.shiftDate,
         isRestDay: rosterAssignment.isRestDay,
         shiftName: shift.name,
+        shiftType: shift.type,
+        normalMinutesOverride: shift.normalMinutesOverride,
         start: shift.startTime,
         end: shift.endTime,
         brk: shift.breakMinutes,
@@ -2998,6 +3001,8 @@ export function rosterVariance(
           checkInAt: attendance.checkInAt,
           checkOutAt: attendance.checkOutAt,
           workedMinutes: attendance.workedMinutes,
+          underMinutes: attendance.underMinutes,
+          calcTrace: attendance.calcTrace,
           status: attendance.status,
         })
         .from(attendance)
@@ -3029,10 +3034,20 @@ export function rosterVariance(
     const out: RosterVarianceRow[] = [];
     for (const r of ras) {
       const att = attBy.get(`${r.employmentId}|${r.shiftDate}`) ?? null;
-      // cf21e554 — one shared helper, never an inlined copy. This was the FIFTH inlined span−break and the
-      // only one rounding never reached, so /roster could call a fully-worked day 'short'.
-      const expectedMinutes =
-        r.isRestDay || !r.start || !r.end ? null : netScheduledMinutes(r.start, r.end, r.crosses ?? false, r.brk ?? 0, r.rounding);
+      // Attendance owns the recorded day's requirement and shortfall, including Full Flexi with no
+      // fixed anchors. A live shift edit must not change a saved result. Older rows without a trace
+      // have an unknown target; their recorded underMinutes can still establish short/satisfied hours.
+      const recordedSchedule = att?.calcTrace?.schedule;
+      const expectedMinutes = r.isRestDay ? null : att
+        ? recordedSchedule?.dayType === 'workday'
+          ? recordedSchedule.normalMinutesOverride ?? recordedSchedule.scheduledMinutes
+          : null
+        : r.shiftType === 'full_flexi' ? r.normalMinutesOverride
+          : !r.start || !r.end ? null
+            : netScheduledMinutes(r.start, r.end, r.crosses ?? false, r.brk ?? 0, r.rounding);
+      const short = att?.underMinutes != null
+        ? att.underMinutes > 0
+        : att?.workedMinutes != null && expectedMinutes != null && att.workedMinutes < expectedMinutes;
       let kind: RosterVarianceKind;
       if (r.isRestDay) {
         if (!att) continue; // rest day with no work is expected
@@ -3043,7 +3058,7 @@ export function rosterVariance(
         kind = 'no_show';
       } else if (att.status === 'late') {
         kind = 'late';
-      } else if (att.workedMinutes != null && expectedMinutes != null && att.workedMinutes < expectedMinutes) {
+      } else if (short) {
         kind = 'short';
       } else {
         kind = 'on_track';
@@ -3079,8 +3094,8 @@ export const isRosterException = (v: RosterVarianceRow): boolean => v.kind !== '
  *
  * ⚠️ THIS IS DELIBERATELY NOT A SECOND, CHEAPER SQL READ, and saying so is the point. What counts as an
  * exception is decided in JavaScript above — approved full-day leave per date (ADR-0068 §4A), half/hourly
- * leave spans, `shiftDate > today`, and `netScheduledMinutes` with the shift's own Normal-Hours Rounding
- * (cf21e554). A `select count(*)` could not ask any of those questions, and a second implementation that
+ * leave spans, `shiftDate > today`, recorded Attendance targets/shortfall and the rounded shift target
+ * for dates without attendance. A `select count(*)` could not ask any of those questions, and a second implementation that
  * approximated them would be a second source of truth for "is this an exception" — exactly the drift that
  * once let /roster call a fully-worked rounded day 'short' while /attendance called it on track. The
  * saving here is the PAYLOAD, not the query; buying the query back means moving the whole rule into SQL,

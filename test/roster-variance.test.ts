@@ -5,10 +5,12 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { checkIn, checkOut } from '../core/attendance';
-import { assignShift, createShift, rosterVariance, setRestDay } from '../core/roster';
+import { assignShift, createShift, updateShift, rosterVariance, setRestDay } from '../core/roster';
 
 let b: Base;
 let emp1: string;
@@ -78,6 +80,42 @@ describe('roster variance (ADR-0032 C4)', () => {
     expect(kindFor(rows, emp1, '2026-07-06')).toBe('on_track');
     expect(kindFor(rows, emp1, '2026-07-07')).toBeUndefined(); // on leave ⇒ not a no-show
     expect(kindFor(rows, emp1, '2026-07-20')).toBeUndefined(); // future ⇒ not yet due
+  });
+
+  it('uses frozen Full Flexi hours with null anchors, even after the live requirement changes', async () => {
+    const ctx = adminCtx(b);
+    const today = todayInKualaLumpur();
+    const dateAt = (offset: number) => new Date(Date.parse(`${today}T00:00:00Z`) + offset * 86400000).toISOString().slice(0, 10);
+    const shortDate = dateAt(-2), satisfiedDate = dateAt(-1);
+    const input = {
+      companyId: b.companyId, name: 'Duration only', code: 'DURATION', type: 'full_flexi' as const,
+      startTime: null, endTime: null, normalMinutesOverride: 480, breakMinutes: 0,
+      weeklyPattern: [1, 2, 3, 4, 5, 6, 7],
+    };
+    const flex = await createShift(ctx, input);
+    for (const date of [shortDate, satisfiedDate]) {
+      await assignShift(ctx, { employmentId: emp1, shiftDate: date, shiftId: flex.id });
+      await checkIn(ctx, { employmentId: emp1, date, time: '09:00' });
+      await checkOut(ctx, { employmentId: emp1, date, time: date === shortDate ? '16:00' : '17:00' });
+    }
+    const frozen = await owner.db.select().from(schema.attendance).where(and(
+      eq(schema.attendance.employmentId, emp1), eq(schema.attendance.attendanceDate, shortDate),
+    ));
+    expect(frozen[0]).toMatchObject({ workedMinutes: 420, underMinutes: 60 });
+    expect(frozen[0].calcTrace?.schedule).toMatchObject({ startAbs: null, endAbs: null, normalMinutesOverride: 480 });
+    const read = () => rosterVariance(ctx, { from: shortDate, to: satisfiedDate, today });
+    const before = await read();
+    expect(before.map(row => [row.shiftDate, row.expectedMinutes, row.kind])).toEqual([
+      [shortDate, 480, 'short'], [satisfiedDate, 480, 'on_track'],
+    ]);
+    await updateShift(ctx, { ...input, shiftId: flex.id, normalMinutesOverride: 600 });
+    expect(await read()).toEqual(before);
+
+    // A legacy row can lack its target trace while retaining the canonical measured shortfall. Do
+    // not reconstruct a historical target from today's 600-minute setting.
+    await owner.db.update(schema.attendance).set({ calcTrace: null }).where(eq(schema.attendance.id, frozen[0].id));
+    const legacy = (await read()).find(row => row.shiftDate === shortDate);
+    expect(legacy).toMatchObject({ expectedMinutes: null, workedMinutes: 420, kind: 'short' });
   });
 
   it('a worked rostered rest day is rest_worked', async () => {
