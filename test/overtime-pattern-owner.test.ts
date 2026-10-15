@@ -32,6 +32,24 @@ describe('Canonical source and immutable exact evidence',()=>{
  it('captures current Personnel once and never substitutes a later profile edit',async()=>{await withTenant(adminCtx(b),tx=>captureOvertimePersonnelContextTx(tx,adminCtx(b),{employmentId,date:day(),facts:{orgTeam:known(null)}}));await owner.db.update(s.employment).set({orgTeam:'Changed later'}).where(eq(s.employment.id,employmentId));const saved=await withTenant(adminCtx(b),tx=>captureOvertimePersonnelContextTx(tx,adminCtx(b),{employmentId,date:day(),facts:{orgTeam:known('Changed later')}}));expect(saved.facts.orgTeam).toMatchObject({state:'known',value:null});await expect(withTenant(adminCtx(b),tx=>captureOvertimePersonnelContextTx(tx,adminCtx(b),{employmentId,date:plus(-1),facts:{}}))).rejects.toThrow();});
  it('rejects forged opaque handles before reading or writing a calculation',async()=>{const api=createOvertimeCalculationOwner(async()=>snapshot());await expect(withTenant(adminCtx(b),tx=>api.recordTx(tx,adminCtx(b),{prepared:{} as never,expectedCurrentRevision:0}))).rejects.toMatchObject({code:'permission'});});
  it('refuses changed canonical input between prepare and record in the same transaction',async()=>{await activated();let snap=snapshot();const api=createOvertimeCalculationOwner(async()=>snap);await expect(withTenant(adminCtx(b),async tx=>{const prepared=await api.prepareTx(tx,adminCtx(b),{employmentId,date:day()});snap={...snap,referenceDigest:'d'.repeat(64)};return api.recordTx(tx,adminCtx(b),{prepared,expectedCurrentRevision:0});})).rejects.toMatchObject({code:'stale'});});
+ it('rolls back unexpected reference-read faults instead of saving private database text as a refusal',async()=>{
+  await activated();const ctx=adminCtx(b),fault=new Error('PRIVATE SQL reference connection failure');
+  const api=createOvertimeCalculationOwner(async()=>snapshot());
+  await expect(withTenant(ctx,async tx=>{
+   const failingTx=new Proxy(tx,{get(target,key){
+    if(key==='select')return (...args:Parameters<typeof tx.select>)=>{
+     const query=target.select(...args),from=query.from.bind(query);
+     query.from=((table:Parameters<typeof query.from>[0])=>{if(table===s.payComponent)throw fault;return from(table);}) as typeof query.from;
+     return query;
+    };
+    const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+   }});
+   const prepared=await api.prepareTx(failingTx,ctx,{employmentId,date:day()});
+   return api.recordTx(failingTx,ctx,{prepared,expectedCurrentRevision:0});
+  })).rejects.toBe(fault);
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculation)).toHaveLength(0);
+  expect(await owner.db.select().from(s.attendanceOvertimeCalculationEvidence)).toHaveLength(0);
+ });
  it('records exact fractional duration without fabricating legacy integer buckets',async()=>{const result=await recorded();expect(result.status).toBe('recorded');const rows=await withTenant(adminCtx(b),tx=>readOvertimeDurationsTx(tx,adminCtx(b),{entries:[{employmentId,date:day()}]}));expect(rows[0].payableExact).toEqual({unit:'minutes',numerator:'121',denominator:'2'});expect(rows[0].durationStatus).toBe('ready');expect((await owner.db.select().from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0].otMinutes).toBe(120);});
  it('keeps recorded duration/evidence accessible to its financial owner after Attendance is disabled',async()=>{await recorded();await setModule(b.tenantId,'attendance','disabled');const ctx=adminCtx(b);await expect(withTenant(ctx,tx=>readOvertimeCalculationTx(tx,ctx,{employmentId,date:day()}))).resolves.toHaveProperty('calculation');await expect(withTenant(ctx,tx=>readOvertimePersonnelContextTx(tx,ctx,{employmentId,date:day()}))).resolves.toBeNull();});
 });

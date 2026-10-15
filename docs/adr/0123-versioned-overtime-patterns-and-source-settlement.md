@@ -28,6 +28,10 @@ The same internal duration stage serves cash calculation and a separate immutabl
 
 Payroll policy and jurisdiction remain subsequent canonical owners. A configurable wage-base cap is not the statutory wage-eligibility gate. Rate, hour and amount policy caps, mapped-item statutory character and actual cycle routing must be evidenced in the final payment.
 
+FACT (existing source): the country owner identifies its modelled statutory entitlement, while the current Payroll owner permits deliberate manual contractual/ex-gratia OT above that threshold. A false statutory-eligibility result therefore establishes no modelled statutory floor; it does not prohibit an explicitly activated contractual formula payment. When the country minimum applies, retain it and any established assigned-policy minimum. Do not invent worker exceptions or imply legal entitlement from this configuration.
+
+Mixed-source composition preserves the existing policy owner's all-worked-OT-hours denominator. Day-type filtering removes cash; excluded day hours must affect the common cap consistently whether their source is legacy or formula. Formula prices are not multiplied again as if they were legacy statutory prices. Allocate capped cents deterministically within each original positive earning-line capacity; a zero-valued mapping cannot receive rounding residue. Unknown manual/transaction hours cannot be guessed when an hours cap needs them.
+
 ### Honest historical evidence
 
 Facts are Known with recorded/effective-dated provenance, or Unknown with a finite reason. Mutable current Personnel axes cannot establish a past grade, division, branch, region, line, section, team, base or category. Capture prospective context at the actual current-day attendance boundary and retain it through corrections; never backfill history with today's profile. Dated company/assignment/compensation readers retain their existing authority.
@@ -51,6 +55,8 @@ A bound canonical input reader supplies an opaque transaction/principal-bound ha
 A canonical source is tenant + employment + attendance date, with exact attendance ID and proven company. Version, revision and tier IDs describe that source; they never create another payout identity. Append-only calculation revisions retain complete inputs, approval digest, rule version, lines and evidence. Controlled replacement switches the current revision with compare-and-set and audit.
 
 Cash and TOIL coordinate through the existing tenant/employment Attendance advisory lock before source or financial rows. Lock order must include canonical Payroll batch/run and TOIL owners. A settlement references those actual owners and contains no second money or leave ledger. Cash-first and TOIL-first both refuse a conflicting claim. Reversal releases a source only after the actual owner completes its permitted reversal; closed Payroll is never rewritten.
+
+Attendance mutations lock the existing Attendance day, then source, before a Payroll batch. Direct row-trigger writes follow that same order; the pre-batch seam must not acquire source and later wait on Attendance. Transfer and TOIL claim paths hold employment then source and never acquire an Attendance row lock afterwards. Payroll generation/close holds its batch and reads source evidence through MVCC, without a later employment/source lock. Actual lock/concurrency execution remains required evidence.
 
 Actual Payroll consumption must validate approved current source, earning mapping, company/currency, period/cycle and jurisdiction/policy. Covered days are suppressed from legacy prefill and weekly-cycle reads for exactly those facts. Unassigned legacy days and independent manual amounts remain under existing owners. Retries reproduce one contribution; changed tier counts/mappings replace all current source lines before finalization. A disabled generated-transaction feature cannot turn an apparently successful transfer into record-only integration.
 
