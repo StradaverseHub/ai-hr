@@ -163,3 +163,35 @@ DO $$ BEGIN
  END IF;
 END $$;
 ALTER TABLE performance_assessment_reminder_epoch NO FORCE ROW LEVEL SECURITY;
+
+--> statement-breakpoint
+-- The private mail worker has no app tenant/session GUCs. Bind dispatcher scope only to an
+-- already validated lease, within the function SET stack, which restores the caller on exit.
+-- Keep FORCE RLS on reminder content and keep this helper inaccessible to ai_hr_app/PUBLIC.
+CREATE OR REPLACE FUNCTION identity_email.assessment_tasks(p_id uuid,p_token uuid,p_issuer text)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,public,pg_temp
+SET app.tenant_id='' SET app.user_id='' SET app.roles='hr_admin'
+SET app.grants='[{"role":"hr_admin","companyId":null}]' AS $$
+DECLARE bound_tenant uuid;payload jsonb;
+BEGIN
+ SELECT d.tenant_id INTO bound_tenant FROM notification_delivery d
+ JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
+ WHERE d.id=p_id;
+ IF bound_tenant IS NULL THEN RETURN NULL;END IF;
+ PERFORM set_config('app.tenant_id',bound_tenant::text,true);
+
+ SELECT jsonb_build_object('tasks',r.tasks,'words',r.mail_words) INTO payload FROM notification_delivery d
+ JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
+ JOIN domain_event ev ON ev.id=d.source_event_id AND ev.tenant_id=d.tenant_id AND ev.event_type='assessment.reminder-queued'
+ JOIN performance_assessment_reminder_recipient r ON r.source_event_id=ev.id AND r.id=ev.aggregate_id AND r.tenant_id=d.tenant_id AND r.user_id=target.user_id
+ JOIN performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+ JOIN review_cycle c ON c.id=run.cycle_id AND c.tenant_id=run.tenant_id AND c.status IN ('open','calibration')
+ WHERE d.id=p_id AND r.outcome='queued' AND r.prepared_until>now() AND r.prepared_at>now()-interval '60 seconds'
+ AND r.tenant_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id='00000000-0000-0000-0000-000000000000'),0)
+ AND r.cycle_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id=c.id),0)
+ AND jsonb_array_length(r.tasks)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.tasks) task WHERE task->>'closesAt' IS NOT NULL AND (task->>'closesAt')::timestamptz<=now())
+;
+ RETURN payload;
+END $$;
+REVOKE ALL ON FUNCTION identity_email.assessment_tasks(uuid,uuid,text) FROM PUBLIC,ai_hr_app;

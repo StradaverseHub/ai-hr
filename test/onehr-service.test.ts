@@ -28,6 +28,31 @@ vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof i
 import { generateDraft,readImage } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
 
+// Match the production non-bypass owner at the private-worker/FORCE-RLS boundary.
+async function restrictedReminderMailOwner(run:(role:string)=>Promise<void>){
+  const role='reminder_mail_owner_'+randomUUID().replaceAll('-','');
+  const tables=['performance_assessment_reminder_run','performance_assessment_reminder_recipient','notification_delivery','domain_event','review_cycle','performance_assessment_reminder_epoch'];
+  const initial=await owner.client`select c.relname,pg_get_userbyid(c.relowner) as owner from pg_class c where c.relnamespace='public'::regnamespace and c.relname=ANY(${tables}) order by c.relname`;
+  const [fn]=await owner.client`select pg_get_userbyid(proowner) as owner from pg_proc where oid='identity_email.assessment_tasks(uuid,uuid,text)'::regprocedure`;
+  for(const name of [...initial.map(r=>r.owner),fn.owner])if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))throw Error('Unexpected fixture owner identifier');
+  await owner.client.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
+  try{
+    await owner.client.unsafe(`GRANT USAGE,CREATE ON SCHEMA public,app,identity_email TO "${role}"`);
+    await owner.client.unsafe(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${role}"`);
+    await owner.client.unsafe(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app,identity_email TO "${role}"`);
+    for(const table of tables)await owner.client.unsafe(`ALTER TABLE ${table} OWNER TO "${role}"`);
+    await owner.client.unsafe(`ALTER FUNCTION identity_email.assessment_tasks(uuid,uuid,text) OWNER TO "${role}"`);
+    const [flags]=await owner.client`select r.rolsuper,r.rolbypassrls,p.prosecdef,pg_has_role('ai_hr_app',r.oid,'USAGE') as app_member from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='identity_email.assessment_tasks(uuid,uuid,text)'::regprocedure`;
+    expect(flags).toEqual({rolsuper:false,rolbypassrls:false,prosecdef:true,app_member:false});
+    expect((await owner.client`select relforcerowsecurity from pg_class where oid in ('performance_assessment_reminder_run'::regclass,'performance_assessment_reminder_recipient'::regclass) order by relname`).map(r=>r.relforcerowsecurity)).toEqual([true,true]);
+    await run(role);
+  }finally{
+    await owner.client.unsafe(`ALTER FUNCTION identity_email.assessment_tasks(uuid,uuid,text) OWNER TO "${fn.owner}"`);
+    for(const row of initial)await owner.client.unsafe(`ALTER TABLE ${row.relname} OWNER TO "${row.owner}"`);
+    await owner.client.unsafe(`DROP OWNED BY "${role}"`);await owner.client.unsafe(`DROP ROLE "${role}"`);
+  }
+}
+
 const year=Number(todayInKualaLumpur().slice(0,4));
 describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   let b:Base,a:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},self:SessionContext,mgr:SessionContext,cycleId:string,reviewId:string;
@@ -2438,21 +2463,42 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
     const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,recipient.sourceEventId!)),token=randomUUID();
     await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+60000)}).where(eq(schema.notificationDelivery.id,delivery.id));
-    const [payload]=await owner.db.execute<{value:{tasks:{key:string}[];words:{subject:string;opening:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`);
-    expect(payload.value.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);expect(payload.value.words).toEqual({subject:'Assessment: review Native annual assessment',opening:'Please complete 1 task groups.'});
-    await perf.saveAssessmentReminderWords({...a,grants:[{role:'hr_admin',companyId:null}]},{subject:'Changed reminder',opening:'Updated opening'});
-    expect((await owner.db.execute<{value:unknown}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value).toBeNull();
-    expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
-    expect((await owner.db.execute<{value:{words:{subject:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value.words.subject).toBe('Changed reminder');
-    await expect(withTenant(self,tx=>tx.select().from(schema.assessmentReminderRecipient))).resolves.toEqual([]);
-    expect((await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','identity_email.assessment_tasks(uuid,uuid,text)','EXECUTE') as allowed`))[0].allowed).toBe(false);
-    await expect(withTenant(a,tx=>tx.execute(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer})`))).rejects.toThrow();
-    const [target]=await owner.db.execute(sql`select * from identity_email.delivery_target(${delivery.id}::uuid,${token}::uuid,${issuer})`);
-    await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(eq(schema.onehrReview.reviewId,reviewId));
-    expect((await owner.db.execute<{value:unknown}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value).toBeNull();
-    expect((await owner.db.execute<{started:boolean}>(sql`select identity_email.start_delivery(${delivery.id}::uuid,${token}::uuid,${issuer},${JSON.stringify(target)}::jsonb) as started`))[0].started).toBe(false);
-    expect((await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id)))[0].startedAt).toBeNull();
-    expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([]);
+    await restrictedReminderMailOwner(async role=>{
+      await owner.client.begin(async tx=>{
+        await tx.unsafe(`SET LOCAL ROLE "${role}"`);
+        expect((await tx`select (select count(*)::int from notification_delivery where id=${delivery.id}::uuid) as delivery,(select count(*)::int from performance_assessment_reminder_run) as runs,(select count(*)::int from performance_assessment_reminder_recipient) as recipients`)[0]).toEqual({delivery:1,runs:0,recipients:0});
+      });
+      const [payload]=await owner.db.execute<{value:{tasks:{key:string}[];words:{subject:string;opening:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`);
+      expect(payload.value).not.toBeNull();
+      expect(payload.value.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);expect(payload.value.words).toEqual({subject:'Assessment: review Native annual assessment',opening:'Please complete 1 task groups.'});
+      for(const [id,nonce,who] of [[delivery.id,randomUUID(),issuer],[randomUUID(),token,issuer],[delivery.id,token,'https://foreign.fixture.test']])expect((await owner.client`select identity_email.assessment_tasks(${id}::uuid,${nonce}::uuid,${who}) as value`)[0].value).toBeNull();
+      expect((await owner.client`select * from identity_email.delivery_summary(${delivery.id}::uuid,${token}::uuid,${issuer})`)[0]).toMatchObject({required:true,summary:payload.value});
+      await owner.client.begin(async tx=>{
+        const foreign=randomUUID(),actor=randomUUID(),grants=JSON.stringify([{role:'employee',companyId:randomUUID()}]);
+        await tx`select set_config('app.tenant_id',${foreign},true),set_config('app.user_id',${actor},true),set_config('app.roles','employee',true),set_config('app.grants',${grants},true)`;
+        expect((await tx`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`)[0].value).toEqual(payload.value);
+        expect((await tx`select current_setting('app.tenant_id') as tenant,current_setting('app.user_id') as actor,current_setting('app.roles') as roles,current_setting('app.grants') as grants`)[0]).toEqual({tenant:foreign,actor,roles:'employee',grants});
+      });
+      const rollback=Error('Rollback the private start acceptance fixture');
+      await expect(owner.client.begin(async tx=>{
+        const [target]=await tx`select * from identity_email.delivery_target(${delivery.id}::uuid,${token}::uuid,${issuer})`;
+        expect((await tx`select identity_email.start_delivery(${delivery.id}::uuid,${token}::uuid,${issuer},${JSON.stringify(target)}::jsonb) as started`)[0].started).toBe(true);
+        throw rollback;
+      })).rejects.toBe(rollback);
+      await perf.saveAssessmentReminderWords({...a,grants:[{role:'hr_admin',companyId:null}]},{subject:'Changed reminder',opening:'Updated opening'});
+      expect((await owner.db.execute<{value:unknown}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value).toBeNull();
+      expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
+      expect((await owner.db.execute<{value:{words:{subject:string}}}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value.words.subject).toBe('Changed reminder');
+      await expect(withTenant(self,tx=>tx.select().from(schema.assessmentReminderRecipient))).resolves.toEqual([]);
+      expect((await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','identity_email.assessment_tasks(uuid,uuid,text)','EXECUTE') as allowed`))[0].allowed).toBe(false);
+      await expect(withTenant(a,tx=>tx.execute(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer})`))).rejects.toThrow();
+      const [target]=await owner.db.execute(sql`select * from identity_email.delivery_target(${delivery.id}::uuid,${token}::uuid,${issuer})`);
+      await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(eq(schema.onehrReview.reviewId,reviewId));
+      expect((await owner.db.execute<{value:unknown}>(sql`select identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as value`))[0].value).toBeNull();
+      expect((await owner.db.execute<{started:boolean}>(sql`select identity_email.start_delivery(${delivery.id}::uuid,${token}::uuid,${issuer},${JSON.stringify(target)}::jsonb) as started`))[0].started).toBe(false);
+      expect((await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id)))[0].startedAt).toBeNull();
+      expect(await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([]);
+    });
   });
 
   it('batches current pending metadata for authorized dispatchers without review text, amounts or peer answers',async()=>{
