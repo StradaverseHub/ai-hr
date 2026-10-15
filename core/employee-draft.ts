@@ -72,7 +72,7 @@ import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employe
 // own module, shared with core/org.ts (which cannot import this file: it is the other end of the cycle).
 import { findEmployeeCodeClaim } from './employee-code-claims';
 import { isDatabaseError } from '../lib/db-error';
-import { labelUsableByCompany } from './system-labels';
+import { labelUsableByCompany,lockLabelCriteriaTx } from './system-labels';
 import { requirePackFor } from '../localization/registry';
 import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
@@ -825,6 +825,8 @@ export async function completeEmployeeDraft(
   const employeeCodeToIssue = reservedCode ?? (decision.mode === 'manual' ? typedCode : undefined);
   if(employeeCodeToIssue)try{requireEmployeeCode(employeeCodeToIssue);}catch{throw new DraftActivationValidationError('employee_code_invalid',[{tab:'profile',field:'employeeCode'}]);}
 
+  // Use the Criteria owner's order before label row locks, including the later assignment trigger.
+  await lockLabelCriteriaTx(tx,ctx.tenantId);
   // Lock selected references; canonical shared-label eligibility remains the authority.
   const references=[['department',str(e.departmentId),department,'department'],['position',str(e.positionId),position,'position'],['cost_center',str(e.costCenterId),costCenter,'costCenter']] as const;
   for(const [kind,referenceId,table,field] of references) {

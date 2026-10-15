@@ -96,4 +96,12 @@ describe('activation transaction composition boundary', () => {
     expect(compliance.length).toBeGreaterThan(200);
     expect(compliance).not.toContain('catch');
   });
+  it('takes canonical Criteria coordination before label share locks used by assignment creation',()=>{
+    const source=readFileSync(new URL('../core/employee-draft.ts',import.meta.url),'utf8');
+    const start=source.indexOf('export async function completeEmployeeDraft(');expect(start).toBeGreaterThanOrEqual(0);
+    const activation=source.slice(start),lock=activation.indexOf('await lockLabelCriteriaTx(tx,ctx.tenantId)'),references=activation.indexOf('const references=');
+    expect(activation.length).toBeGreaterThan(15000);expect(lock).toBeGreaterThanOrEqual(0);expect(references).toBeGreaterThan(lock);
+    expect(activation.slice(references)).toContain(".for('share')");
+  });
+
 });
