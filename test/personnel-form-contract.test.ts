@@ -124,4 +124,10 @@ describe('Personnel shared form contract',()=>{
     ])expect(auditPersonnelFormSource('fixture.tsx',bad,PERSONNEL_FIELDS).issues.length).toBeGreaterThan(0);
     expect(auditPersonnelFormSource('fixture.tsx',good,PERSONNEL_FIELDS,{exemptions:[{tag:'input',name:'missing',reason:'Transport-only ID owned by its server action.'}]}).issues[0].message).toContain('Stale');
   });
+  it('validates hidden compatibility transport without assigning it the visible control caption',()=>{
+    const source=`<PersonnelField fieldId="bank_statutory.income_tax_pcb.taxcircumstance"><input {...personnelCarry('bank_statutory.income_tax_pcb.taxcategory')} /></PersonnelField>`;
+    expect(auditPersonnelFormSource('fixture.tsx',source,PERSONNEL_FIELDS).issues).toEqual([]);
+    expect(auditPersonnelFormSource('fixture.tsx',source.replace('taxcategory','unknowntransport'),PERSONNEL_FIELDS).issues.some(issue=>issue.message.includes('Unknown Personnel'))).toBe(true);
+    expect(auditPersonnelFormSource('fixture.tsx',source.replace('personnelCarry','personnelInput'),PERSONNEL_FIELDS).issues.some(issue=>issue.message.includes('different facts'))).toBe(true);
+  });
 });

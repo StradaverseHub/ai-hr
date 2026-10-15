@@ -98,6 +98,10 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
             const resolved=ids(expression);
             if(!resolved.length)report(expression,`Unresolved Personnel binding: ${expression.getText(source)}.`);
             for(const id of resolved){const field=byId.get(id);if(!field?.form)report(expression,`Unknown Personnel form field: ${id}.`);else {const issue=personnelFormMetadataIssue(field);if(issue)report(expression,issue);}}
+            // Canonical carry adapters are hidden transport identities, not controls with captions.
+            // Still validate their exact descriptor above and their metadata below.
+            const carryOnly=calls.length>0&&calls.every(call=>['personnelCarry','personnelPresence','personnelWorkflowCarry'].includes(call.expression.getText(source)));
+            if(carryOnly)continue;
             let ancestor:ts.Node|undefined=node.parent;while(ancestor){if(ts.isJsxElement(ancestor)&&ancestor.openingElement.tagName.getText(source)==='PersonnelField'){
               const value=attribute(ancestor.openingElement,'fieldId')?.initializer;
               const captionIds=value&&ts.isStringLiteral(value)?[value.text]:value&&ts.isJsxExpression(value)&&value.expression?ids(value.expression):[];

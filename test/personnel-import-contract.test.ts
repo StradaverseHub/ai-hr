@@ -6,10 +6,13 @@ import { buildTemplateCsv,employeeTemplate } from '../lib/import-template';
 import { sectionColumns } from '../lib/import-sections';
 import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
 const columns=[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional];
-const resolve=(locale:string)=>(key:string,fallback:string)=>{
-  let value:unknown=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+const resolve=(locale:string)=>{
+  const messages:unknown=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+  return (key:string,fallback:string)=>{
+  let value:unknown=messages;
   for(const part of key.split('.'))value=value && typeof value==='object' ? (value as Record<string,unknown>)[part] : undefined;
   return typeof value==='string'?value:fallback;
+  };
 };
 describe('Personnel forms and file contract',()=>{
   it('round-trips every generated column and existing sample value after required-order changes',()=>{

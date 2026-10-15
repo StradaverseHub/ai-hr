@@ -139,7 +139,7 @@ export function DocumentsManager({
         <>
           <label className={labelCls}>
             {personnelFormLabel('documents.employee_documents.content',(key,fallback)=>t.has(key.slice(24))?t(key.slice(24)):fallback)} <span className="text-destructive">*</span>
-            <input {...personnelInput('documents.employee_documents.content','record')} accept={ACCEPT} required className={fileCls} />
+            <input {...personnelInput('documents.employee_documents.content','record')} accept={ACCEPT} className={fileCls} />
           </label>
           <p className="text-xs text-muted-foreground">{t('supportedTypes')}</p>
         </>
@@ -157,7 +157,7 @@ export function DocumentsManager({
       <input type="hidden" name="tab" value="documents" data-tab-tracker="" />
       <label className={labelCls}>
         {t('replaceHint')}
-        <input {...personnelInput('documents.employee_documents.content','record')} accept={ACCEPT} required className={fileCls} />
+        <input {...personnelInput('documents.employee_documents.content','record')} accept={ACCEPT} className={fileCls} />
       </label>
       <p className="text-xs text-muted-foreground">{t('supportedTypes')}</p>
       <div className="flex justify-end">

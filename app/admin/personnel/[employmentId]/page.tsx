@@ -3412,7 +3412,7 @@ export default async function EmployeePage({
         <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.year" mode="edit">
-            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.year','edit')} max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.year','edit')} defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
           </PersonnelField>
           <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.netremuneration" mode="edit">
             <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.netremuneration','edit')} defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
@@ -5316,7 +5316,6 @@ export default async function EmployeePage({
 
                     {...personnelInput('profile.personal_details.photo')}
                     accept="image/png,image/jpeg"
-                    required
                     className="w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
                   />
                   {photoExists ? (

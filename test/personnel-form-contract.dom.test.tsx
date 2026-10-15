@@ -11,11 +11,31 @@ import {sectionTemplateColumns} from '../lib/import-sections';
 import {personnelColumnLabel,personnelColumnGuidance,personnelFieldChoices,personnelScalarIssue} from '../lib/personnel-import-contract';
 import {personnelFormRequired} from '../lib/personnel-form-contract';
 import {parsePersonnelCsv} from '../lib/personnel-csv';
+import {EmploymentPeriodField} from '../components/employment-period-fields';
 const resolve=(key:string,fallback:string)=>{let value:unknown=messages;for(const part of key.split('.'))value=value&&typeof value==='object'?(value as Record<string,unknown>)[part]:undefined;return typeof value==='string'?value:fallback;};
 const words={required:'Required',optional:'Optional',reference:'Reference',blankRetains:'Blank retains'};
 const contact=()=>render(<NextIntlClientProvider locale="en" messages={messages}><PersonContactExtraFields mode="controlled" value={{}} onChange={()=>{}} /></NextIntlClientProvider>);
 afterEach(cleanup);
 describe('Actual Personnel widget consumers follow the shared file contract',()=>{
+  it.each([
+    ['probationPeriod','probationValue','probationUnit'],
+    ['extendedProbationPeriod','extendedProbationValue','extendedProbationUnit'],
+    ['noticeBeforeConfirmation','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit'],
+    ['noticeAfterConfirmation','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'],
+  ] as const)('renders %s in both persisted and draft modes using the same period constraints', (labelKey,valueName,unitName)=>{
+    for(const controlled of [false,true]){
+      const props=controlled
+        ? {mode:'controlled' as const,onChange:()=>{}}
+        : {mode:'form' as const,valueName,unitName};
+      const {container}=render(<NextIntlClientProvider locale="en" messages={messages}><EmploymentPeriodField {...props} labelKey={labelKey} value={3} unit="week"/></NextIntlClientProvider>);
+      const value=container.querySelector('input')!;
+      const unit=container.querySelector('select')!;
+      expect(value).toHaveAttribute('type','number');expect(value).toHaveAttribute('min','0');expect(value).toHaveAttribute('step','1');
+      expect(value.value).toBe('3');expect(unit.value).toBe('week');
+      expect(value.name).toBe(controlled?'':valueName);expect(unit.name).toBe(controlled?'':unitName);
+      cleanup();
+    }
+  });
   it('a changed label/type/required-create declaration reaches the real widget, full CSV and section guidance',()=>{
     const field=PERSONNEL_FIELDS.find(field=>field.id==='profile.contact_and_permanent_address.homephone')!;
     const before=structuredClone(field);
