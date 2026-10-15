@@ -60,6 +60,15 @@ import { adjudicateDayTypes, isLeaveCreditDayType } from '../lib/leave-credit-da
 import { approvedOvertimeForDateTx, assertNoPendingClaimForGrantTx, type ApprovedOvertimeOnDate } from './credit-ot-overlap';
 import type { ExtendedHoursTiers } from '../lib/extended-hours';
 import type { LeaveCreditRowInput } from './leave-credit-request';
+import {OvertimePatternError} from '../lib/overtime-pattern-model';
+
+/** Translate formula evidence refusals into the existing TOIL eligibility contract. */
+async function provenToilDurationTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string,claimWindow?:{start:string;end:string}) {
+  const {resolveOvertimeToilDurationTx,OvertimeToilEligibilityError,OvertimeOwnerError}=await import('../packs/attendance/service');
+  try{return await resolveOvertimeToilDurationTx(tx,ctx,{employmentId,date,claimWindow});}
+  catch(error){if(error instanceof OvertimeToilEligibilityError||error instanceof OvertimeOwnerError||error instanceof OvertimePatternError)throw new ToilNotEligibleError(error.message);throw error;}
+}
+
 
 export class ToilDisabledError extends Error {
   constructor(msg = 'Time off in lieu is not enabled.') {
@@ -784,6 +793,8 @@ export async function accrueToilTx(
 ): Promise<AccrueToilResult> {
   if (p.requireDecideAuth) await assertCanDecide(tx, ctx, p.employmentId, 'time off in lieu');
 
+  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+
   // 1 · the worked day + its company/country (one attendance row per employee per day).
   const [att] = await tx
     .select({
@@ -802,8 +813,9 @@ export async function accrueToilTx(
     .where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.workedDate)))
     .limit(1);
   // "block if no eligible attendance": no approved attendance row, or no OT recorded ⇒ nothing to bank.
-  if (!att || !att.dayType || (att.otMinutes ?? 0) <= 0) throw new ToilNoOvertimeError();
-  const otMinutes = att.otMinutes ?? 0;
+  if (!att || !att.dayType || (formula.kind==='formula'?formula.minutes:(att.otMinutes ?? 0)) <= 0) throw new ToilNoOvertimeError();
+  if(formula.kind==='formula'){att.companyId=formula.companyId;att.country=formula.country;}
+  const otMinutes = formula.kind==='formula'?formula.minutes:att.otMinutes ?? 0;
   const dayType = att.dayType;
 
   // 1b · "only RL for Rest Day/PH": a plain workday's OT is cash-only, never banked — UNLESS the company
@@ -919,7 +931,9 @@ async function extendedWorkdayCreditTx(
   const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
   if (kind !== 'workday') throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
 
-  const extendedMinutes = extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
+  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+  if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded clock placement and scheduled shift end are required to bank extended ordinary-day formula overtime.');
+  const extendedMinutes = formula.kind==='formula'?formula.afterShiftMinutes!:extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
   const { countedMinutes, days } = extendedHoursCreditDays(extendedMinutes, policy);
   if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(p.workedDate, countedMinutes, policy.extendedHalfDayMinutes);
 
@@ -1017,47 +1031,21 @@ export async function bankToilCreditTx(
     auditDetail?: { claimStart: string; claimEnd: string; eligibleMinutes: number; overtimeSuppressedMinutes: number };
   },
 ): Promise<AccrueToilResult> {
+  // Same lock order as Attendance calculation and Payroll source reservation, before any ledger write.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+  if(formula.kind==='formula'&&(p.companyId!==formula.companyId||!Number.isSafeInteger(p.otMinutes)||p.otMinutes<0||p.otMinutes>formula.minutes))throw new ToilNotEligibleError('The Leave Credit must use the proven source company and a reviewed subset of its current formula duration.');
+  // Counted subsets already passed through the canonical break/grace/tier owner. Never expand them here.
+  if(formula.kind==='formula'&&await payrollStartedForDateTx(tx,p.workedDate))throw new ToilNotEligibleError('Payroll for this worked period has already started. Release and remove an unfinalized draft run before electing Leave Credit; closed Payroll cannot be changed.');
+
   // 2 · the company policy must be enabled.
   const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, p.companyId)).limit(1);
   if (!policy || !policy.enabled) throw new ToilDisabledError('Time off in lieu is not enabled for this company.');
 
   // 3 · no double-banking (the unique index also guards; this is the friendly error).
   //
-  // THE CASH-XOR-TOIL INVARIANT IS ONE-SIDED, AND THAT IS WORTH STATING WHERE SOMEONE WILL SEE IT.
-  // core/payroll.ts's `EXCLUDE_TOIL_BANKED_DAYS` closes the TOIL-then-cash ordering: BOTH reads of
-  // `attendance.otMinutes` — the OT prefill and the weekly/bi-weekly cross-cycle weighting — skip any
-  // day that already carries a non-lapsed accrual, and slice 3 made that clause unconditional so a
-  // lapsed entitlement cannot re-monetise a banked day.
-  //
-  // There is NO mirror guard here: prefill a rest day's OT into `payroll_input` first, then bank the
-  // same day as TOIL, and the day is compensated twice — nothing below reads `payroll_input` or
-  // `payslip`. Nor is that ordering exotic. `maybeAutoAccrueOnApprovalTx` banks on approval of an
-  // attendance correction (core/attendance.ts), which routinely lands after a draft batch has been
-  // prefilled.
-  //
-  // SLICE 3 IS WHAT MAKES IT REACHABLE, and an earlier version of this comment claimed the opposite
-  // ("it predates ADR-0077 and is untouched by it, so it is not a slice-3 regression"). That is the
-  // same argument 0314's header refuses on the identical facts: both `accrueToil` and
-  // `maybeAutoAccrueOnApprovalTx` used to open with `if (!toilEnabled()) throw`, and TOIL_ENABLED is
-  // set in NO tracked env file (packs/catalog.ts), so no accrual could ever be created and the double
-  // payment could not happen on any deployment. Replacing that with a per-tenant `toil` entitlement
-  // means the first customer who buys the module makes this reachable for the first time. The CODE is
-  // untouched by slice 3; the REACHABILITY is created by it, and only the second one matters.
-  //
-  // WHY IT IS NOT CLOSED HERE, concretely rather than as a deferral. The obvious mirror — "refuse if a
-  // `payroll_input` OT row already exists for this employment" — cannot be written, because
-  // `payroll_input.overtime_amount` is a single per-(batch, employment) AGGREGATE with no per-day
-  // breakdown (db/schema.ts). It carries no attribution back to a worked date, so that test cannot
-  // tell "this rest day is already in the prefill" from "this employee had overtime on some OTHER day
-  // this cycle" and would refuse nearly every legitimate accrual in a month where anyone worked any
-  // overtime. That asymmetry is real: payroll's `EXCLUDE_TOIL_BANKED_DAYS` works because
-  // `toil_accrual` IS per-day. Closing this properly means deciding what a legitimate correction
-  // (prefill, then elect TOIL instead, then re-prefill) does to a draft batch — an ADR-0033 question
-  // about payroll-run state, not an entitlement one.
-  //
-  // test/toil.test.ts pins the double payment as a characterization test ("OT-then-TOIL"), so the next
-  // change to this area starts from a fixture rather than a paragraph and closing the gap is a visible,
-  // deliberate edit to a named assertion.
+  // Recorded sources now reserve cash XOR TOIL under the shared employment advisory. Legacy payroll
+  // aggregates without per-day sources retain their existing caller-side payroll-started protections.
   // 3fb1a611: a REVERSED credit does not count — it was never banked (payroll agrees, see
   // EXCLUDE_TOIL_BANKED_DAYS), and migration 0469 made the unique index skip it for the same reason.
   const [dupe] = await tx
@@ -1198,6 +1186,10 @@ export async function bankToilCreditTx(
       ledgerEntryId: ledger.id,
     })
     .returning({ id: toilAccrual.id });
+
+  const {readOvertimeSettlementForDayTx,reserveOvertimeSettlementTx}=await import('../packs/attendance/service');
+  const recordedSource=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate});
+  if(recordedSource)await reserveOvertimeSettlementTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,mode:'toil',toilAccrualId:acc.id});
 
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
@@ -1349,6 +1341,7 @@ export async function accrueSelfDeclaredToilTx(
     firstScheduleConsent?: boolean;
   },
 ): Promise<AccrueToilResult> {
+  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
   // The company + country the First-Schedule ceiling is resolved from. `accrueToilTx` gets these off the
   // attendance join; with no attendance row they come straight off the employment.
   const [emp] = await tx
@@ -1358,6 +1351,7 @@ export async function accrueSelfDeclaredToilTx(
     .where(eq(employment.id, p.employmentId))
     .limit(1);
   if (!emp) throw new ToilNotEligibleError('No employment on record for this request.');
+  if(formula.kind==='formula'){emp.companyId=formula.companyId;emp.country=formula.country;}
   // 3fb1a611 (r299) — THE DAY-TYPE GATE THIS PATH NEVER HAD. The roster and auto paths have always refused
   // anything but a rest day or public holiday (RL_ELIGIBLE_DAY_TYPES); this one accepted any date, so an
   // employee could claim a credit for an ordinary working day. Resolved HERE, at approval — the binding
@@ -1444,6 +1438,7 @@ export async function accrueExtendedWorkdayToilTx(
     firstScheduleConsent?: boolean;
   },
 ): Promise<AccrueToilResult & { eligibleMinutes: number; shiftEnd: string | null; actualClockOut: string | null }> {
+  const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate,{start:p.claimStart,end:p.claimEnd});
   const [emp] = await tx
     .select({ companyId: employment.companyId, country: company.country })
     .from(employment)
@@ -1451,6 +1446,7 @@ export async function accrueExtendedWorkdayToilTx(
     .where(eq(employment.id, p.employmentId))
     .limit(1);
   if (!emp) throw new ToilNotEligibleError('No employment on record for this request.');
+  if(formula.kind==='formula'){emp.companyId=formula.companyId;emp.country=formula.country;}
 
   const policy = await extendedHoursPolicyForCompanyTx(tx, emp.companyId);
   // Gate 1 — the switch, first and alone, with r334's pre-r334 sentence unchanged.
@@ -1470,7 +1466,8 @@ export async function accrueExtendedWorkdayToilTx(
   // then 0.5 from the half-day figure and 1.0 from the full-day figure, rounded down, one day the cap.
   // r406 — Gates 3 and 4 run through `leaveCreditWindowCredit`, the one window → days step the employee
   // submit and HR's `grantLeaveCreditRows` share; Gate 2 above is what makes `ordinaryWorkingDay` true.
-  const { countedMinutes, days } = leaveCreditWindowCredit({
+  if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('The claimed window requires recorded formula clock placement and shift end.');
+  const { countedMinutes, days } = formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,policy):leaveCreditWindowCredit({
     ordinaryWorkingDay: true,
     claimStart: p.claimStart,
     claimEnd: p.claimEnd,
@@ -1528,6 +1525,8 @@ export async function maybeAutoAccrueOnApprovalTx(
     .where(eq(employment.id, p.employmentId))
     .limit(1);
   if (!att) return false;
+  try {const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);if(formula.kind==='formula')att.companyId=formula.companyId;}
+  catch(error){if(error instanceof ToilNotEligibleError)return false;throw error;}
   const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, att.companyId)).limit(1);
   if (!policy || !policy.enabled || !policy.autoAccrueOnApproval) return false;
   // r334 · THE DAY-TYPE PRE-FILTER MOVED BELOW THE POLICY READ, and only because it had to. It used to
@@ -2186,6 +2185,8 @@ export async function previewLeaveCredit(
       .limit(1);
     if (!emp) throw new LeaveCreditError('That employee could not be found.');
     assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
+    const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+    if(formula.kind==='formula'){emp.companyId=formula.companyId;emp.country=formula.country;}
     const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
     const approvedOnDate = todayInKualaLumpur(p.approvedOn ?? new Date());
@@ -2204,7 +2205,7 @@ export async function previewLeaveCredit(
     // off day and a public holiday are unchanged: they answer null here and stay eligible on their own rule.
     const extended =
       kind === 'workday' && policy?.extendedHoursEnabled
-        ? await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy)
+        ? formula.kind==='formula'?(formula.afterShiftMinutes===null?null:extendedHoursCreditDays(formula.afterShiftMinutes,policy)):await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy)
         : null;
     return {
       workedDayKind: kind,
@@ -2212,7 +2213,7 @@ export async function previewLeaveCredit(
       extendedHoursEnabled: policy?.extendedHoursEnabled === true,
       extendedHoursMinutes: extended?.countedMinutes ?? null,
       extendedHoursDays: extended != null && extended.days > 0 ? extended.days : null,
-      overtimeMinutes: await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
+      overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
       // The same arithmetic bankToilCreditTx applies on save (approval instant → resolveExpiry), so the date
       // the form pre-fills is the date an untouched save freezes.
       defaultExpiresOn: policy?.enabled ? resolveExpiry(approvedOnDate, policy) : null,
@@ -2302,6 +2303,8 @@ export async function grantLeaveCredit(
     if (p.workedDate < emp.hiredOn || (emp.terminatedOn != null && p.workedDate > emp.terminatedOn)) {
       throw new LeaveCreditError(`The date worked must fall within this employee's service (${emp.hiredOn} onwards${emp.terminatedOn ? `, until ${emp.terminatedOn}` : ''}).`);
     }
+    const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+    if(formula.kind==='formula'){emp.companyId=formula.companyId;emp.country=formula.country;}
     const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     // ── r334 928f0454 · AN ORDINARY WORKING DAY, BEHIND THE SWITCH ──────────────────────────────────────
     //
@@ -2319,7 +2322,8 @@ export async function grantLeaveCredit(
     if (kind === 'workday') {
       const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
       if (!policy?.extendedHoursEnabled) throw new ToilOrdinaryWorkingDayError([p.workedDate]);
-      const extended = await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
+      if(formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
+      const extended = formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,policy):await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
       if (!extended || extended.days <= 0) {
         throw new ToilExtendedHoursBelowThresholdError(p.workedDate, extended?.countedMinutes ?? 0, policy.extendedHalfDayMinutes);
       }
@@ -2330,7 +2334,7 @@ export async function grantLeaveCredit(
       }
       extendedCounted = extended.countedMinutes;
     }
-    const overtime = await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate);
+    const overtime = formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate);
     if (overtime > 0 && (await payrollStartedForDateTx(tx, p.workedDate))) {
       throw new LeaveCreditError(
         `${p.workedDate} has overtime recorded, and payroll for that month has already been started. A credit for a day with overtime can only be added before its payroll is started, or it could pay the day twice — as overtime and as leave. If that payroll is still a draft, delete it, add the credit, then start the payroll again.`,
@@ -2448,6 +2452,8 @@ export async function leaveCreditGrantDayFacts(
   return withTenant(ctx, async (tx) => {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, p.workedDate);
+    const formula=await provenToilDurationTx(tx,ctx,p.employmentId,p.workedDate);
+    if(formula.kind==='formula'&&day.kind==='workday'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('Recorded formula clock placement and shift end are required.');
     const [dupe] = await tx
       .select({ id: toilAccrual.id })
       .from(toilAccrual)
@@ -2461,8 +2467,9 @@ export async function leaveCreditGrantDayFacts(
       .limit(1);
     return {
       ...day,
+      ...(formula.kind==='formula'?{measuredExtendedMinutes:day.kind==='workday'?formula.afterShiftMinutes!:formula.minutes}:{}),
       approvedOtPlan: await approvedOvertimeForDateTx(tx, p.employmentId, p.workedDate),
-      overtimeMinutes: await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
+      overtimeMinutes: formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
       alreadyCredited: dupe != null,
     };
   });
@@ -2597,25 +2604,27 @@ export async function grantLeaveCreditRows(
     }
 
     const tiers = await extendedHoursPolicyForCompanyTx(tx, emp.companyId);
-    const ordinary = p.rows.filter((r) => kinds.get(r.workedDate) === 'workday').map((r) => r.workedDate);
-    if (ordinary.length > 0 && !tiers.extendedHoursEnabled) throw new ToilOrdinaryWorkingDayError(ordinary);
 
     // ── THE DERIVATION — `leaveCreditWindowCredit`, shared with the employee paths. Nothing typed is a figure.
-    const derived: { row: LeaveCreditRowInput; kind: ToilWorkedDayKind; countedMinutes: number; days: number }[] = [];
+    const derived: { row: LeaveCreditRowInput; kind: ToilWorkedDayKind; countedMinutes: number; days: number; companyId:string;country:string|null }[] = [];
     for (const r of p.rows) {
       const kind = kinds.get(r.workedDate)!;
       const workingDay = kind === 'workday';
+      const formula=await provenToilDurationTx(tx,ctx,p.employmentId,r.workedDate,workingDay?{start:r.claimStart!,end:r.claimEnd!}:undefined);
+      const datedTiers=formula.kind==='formula'?await extendedHoursPolicyForCompanyTx(tx,formula.companyId):tiers;
+      if(workingDay&&!datedTiers.extendedHoursEnabled)throw new ToilOrdinaryWorkingDayError([r.workedDate]);
+      if(workingDay&&formula.kind==='formula'&&formula.afterShiftMinutes===null)throw new ToilNotEligibleError('The claimed window requires recorded formula clock placement and shift end.');
       const day = workingDay ? await extendedHoursDayForEmploymentTx(tx, p.employmentId, r.workedDate) : null;
-      const { countedMinutes, days } = leaveCreditWindowCredit({
+      const { countedMinutes, days } = workingDay&&formula.kind==='formula'?extendedHoursCreditDays(formula.afterShiftMinutes!,datedTiers):leaveCreditWindowCredit({
         ordinaryWorkingDay: workingDay,
         claimStart: r.claimStart!,
         claimEnd: r.claimEnd!,
         shiftEnd: day?.shiftEnd ?? null,
         actualClockOut: day?.actualClockOut ?? null,
-        tiers,
+        tiers:datedTiers,
       });
-      if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(r.workedDate, countedMinutes, tiers.extendedHalfDayMinutes);
-      derived.push({ row: r, kind, countedMinutes, days });
+      if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(r.workedDate, countedMinutes, datedTiers.extendedHalfDayMinutes);
+      derived.push({ row: r, kind, countedMinutes, days,companyId:formula.kind==='formula'?formula.companyId:emp.companyId,country:formula.kind==='formula'?formula.country:emp.country });
     }
 
     // The duplicate guard, every offending date at once (bankToilCreditTx re-checks per row).
@@ -2637,7 +2646,8 @@ export async function grantLeaveCreditRows(
     const overtimeByDate = new Map<string, number>();
     const payrollBlocked: string[] = [];
     for (const r of p.rows) {
-      const ot = await overtimeMinutesOnTx(tx, p.employmentId, r.workedDate);
+      const formula=await provenToilDurationTx(tx,ctx,p.employmentId,r.workedDate);
+      const ot = formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, r.workedDate);
       overtimeByDate.set(r.workedDate, ot);
       if (ot > 0 && (await payrollStartedForDateTx(tx, r.workedDate))) payrollBlocked.push(r.workedDate);
     }
@@ -2654,8 +2664,8 @@ export async function grantLeaveCreditRows(
       const res = await bankToilCreditTx(tx, ctx, {
         employmentId: p.employmentId,
         workedDate: d.row.workedDate,
-        companyId: emp.companyId,
-        country: emp.country,
+        companyId: d.companyId,
+        country: d.country,
         // ⚠️ MONEY — NULL, as both employee paths: see the header.
         dayType: null,
         workedDayKind: d.kind,
@@ -2736,7 +2746,10 @@ export async function reverseLeaveCredit(
   const today = p.today ?? todayInKualaLumpur();
 
   return withTenant(ctx, async (tx) => {
-    const [acc] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
+    const [initial] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
+    if (!initial) throw new LeaveCreditError('That Leave Credit could not be found.');
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+initial.employmentId},0))`);
+    const [acc] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, initial.id)).limit(1).for('update');
     if (!acc) throw new LeaveCreditError('That Leave Credit could not be found.');
     await assertAdminForEmploymentTx(tx, acc.employmentId, 'reverse a Leave Credit');
     const [owner] = await tx
@@ -2757,7 +2770,9 @@ export async function reverseLeaveCredit(
     if (acc.expiresOn < today) throw new LeaveCreditError(`That Leave Credit expired on ${acc.expiresOn} and cannot be reversed.`);
     // r299 fix pass — a reversal only puts the overtime back if payroll has not already worked that date out
     // without it. See payrollRunHoldingOvertimeTx.
-    if ((await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0 && (await payrollStartedForDateTx(tx, acc.workedDate))) {
+    const {readOvertimeSettlementForDayTx,releaseOvertimeSettlementTx}=await import('../packs/attendance/service');
+    const recordedSource=await readOvertimeSettlementForDayTx(tx,ctx,{employmentId:acc.employmentId,date:acc.workedDate});
+    if (((await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0||recordedSource?.source.currentCalculationId) && (await payrollStartedForDateTx(tx, acc.workedDate))) {
       throw new LeaveCreditError(
         `${acc.workedDate} has overtime recorded, and payroll for that month has already been started without it. Reversing the credit now could leave that overtime unpaid. If that payroll is still a draft, delete it, reverse the credit, then start the payroll again.`,
       );
@@ -2795,6 +2810,11 @@ export async function reverseLeaveCredit(
       .where(and(eq(toilAccrual.id, acc.id), eq(toilAccrual.status, 'active'), eq(toilAccrual.daysTaken, acc.daysTaken)))
       .returning({ id: toilAccrual.id });
     if (updated.length !== 1) throw new LeaveCreditError('That Leave Credit changed while it was being reversed. Reload and try again.');
+    // Release only this exact TOIL owner after the canonical accrual is actually reversed in this transaction.
+    if(recordedSource?.settlement?.mode==='toil'){
+      if(recordedSource.settlement.toilAccrualId!==acc.id)throw new LeaveCreditError('The recorded overtime claim belongs to another Leave Credit.');
+      await releaseOvertimeSettlementTx(tx,ctx,{settlementId:recordedSource.settlement.id,expectedRevision:recordedSource.settlement.revision,reason});
+    }
 
     const overtime = await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate);
     await appendEvent(tx, {
