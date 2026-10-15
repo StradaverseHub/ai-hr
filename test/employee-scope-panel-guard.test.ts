@@ -37,7 +37,7 @@ const { scope } = vi.hoisted(() => ({ scope: { s: null as unknown, scopeIds: [] 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn(() => undefined), notFound: vi.fn(() => undefined) }));
 vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
-vi.mock('@/lib/authz', () => ({ requireAdmin: vi.fn(async () => scope.s) }));
+vi.mock('@/lib/authz', async (importOriginal) => ({ ...await importOriginal<typeof import('../lib/authz')>(), requireAdmin: vi.fn(async () => scope.s) }));
 // The collapse state is read from a cookie. Empty by default, so every panel reports "absent" ⇒ expanded,
 // which is what every case below except bd14b7e2's default-open one assumes; that one writes into this map
 // to drive the panel's remembered state, and `beforeEach` clears it so it cannot leak between cases.
@@ -714,21 +714,25 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       expect(panelSelection(ok)).toBe(mine.employmentId);
 
       const tampered = await leaveRender(tab, { emp: foreign.employmentId });
-      expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
+      expect(findByType(tampered, EmployeeScopePanel)).toHaveLength(0);
+      expect(JSON.stringify(tampered)).toContain('invalidQuery');
 
       const unknown = await leaveRender(tab, { emp: randomUUID() });
-      expect(panelSelection(unknown), 'an unknown id is refused rather than erroring').toBeNull();
+      expect(findByType(unknown, EmployeeScopePanel)).toHaveLength(0);
+      expect(JSON.stringify(unknown)).toContain('invalidQuery');
     },
   );
 
   it.each(LEAVE_TAB_NAMES)(
-    'Leave Inquiry %s: NO employee asked for selects NOBODY — the first-employee fallback is gone',
+    '23e87eef Leave Inquiry %s: absent employee selects All without first-person fallback',
     async (tab) => {
       // THE RETIRED RULE, QUOTED: "No employee picked ⇒ the first by company then name (20c699f8 §1)."
       // This is the assertion that catches it coming back, and it cannot be satisfied by prose: the value is
       // what the page handed the panel.
       const none = await leaveRender(tab, {});
-      expect(panelSelection(none), 'nothing asked for ⇒ nothing selected').toBeNull();
+      expect(panelSelection(none), 'All is selected without an individual id').toBeNull();
+      expect(findByType(none, EmployeeScopePanel)[0].props.allowAll).toBe(true);
+      expect(findByType(none, EmployeeScopePanel)[0].props.resetToAll).toBe(true);
       // …and the screen really does hold somebody it COULD have fallen back to, so the case is not vacuous.
       const offered: string[] = findByType(none, EmployeeScopePanel)[0].props.employees.map(
         (e: { employmentId: string }) => e.employmentId,

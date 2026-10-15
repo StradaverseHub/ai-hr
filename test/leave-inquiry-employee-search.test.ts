@@ -102,38 +102,30 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
        * the fallback and both export route handlers keep calling it (asserted below), because a route has no
        * screen to prompt on.
        */
-      expect(src).toContain('selectInquiryEmployee(employees, sp.emp)');
+      expect(src).toContain('await leaveInquiryContext(session, scopeIds, query)');
       expect(src.includes('pickInquiryEmployee('), `${rel} must not fall back to the first employee`).toBe(false);
       // And the selection is written the same way into every outgoing link.
       expect(src).toContain("p.set('emp', selected.employmentId)");
       // The employee still rides the screen's own GET form, so submitting a date or a search cannot clear it.
       expect(src).toContain('<input type="hidden" name="emp" value={selected.employmentId} />');
     }
-    // "Clearing filters must not clear the employee" (the chip base action) still carries the selection.
+    // 23e87eef: chips carry the employee and date through their foreign hidden parameters.
     expect(read('app/leave/employee-balances/page.tsx')).toContain(
-      "const chipAction = `/leave/employee-balances${selected ? `?emp=${selected.employmentId}` : ''}`",
+      "const chipAction = '/leave/employee-balances';",
     );
   });
 
-  it('the EXPORT ROUTES are untouched and keep the first-employee fallback', () => {
-    // The behaviour change is the SCREENS'. A route that lost the fallback would answer 500 or an empty
-    // workbook for a link somebody had bookmarked without `?emp=`.
-    for (const rel of [
-      'app/leave/employee-balances/export/route.ts',
-      'app/leave/employee-records/export/route.ts',
-    ]) {
-      const src = read(rel);
-      expect(src, `${rel} still resolves its employee the way it always did`).toContain('pickInquiryEmployee(');
-      expect(src.includes('selectInquiryEmployee('), `${rel} must NOT adopt the screens' rule`).toBe(false);
+  it('23e87eef: BOTH exports use the same explicit All/single authorization and complete filtered query', () => {
+    for (const rel of ['app/leave/employee-balances/export/route.ts', 'app/leave/employee-records/export/route.ts']) {
+      const src = code(read(rel));
+      expect(src).toContain('await leaveInquiryContext(session, scopeIds, query)');
+      expect(src).toContain('collectInquiryExport(');
+      expect(src).not.toContain('pickInquiryEmployee(');
     }
-  });
-
-  it('each screen offers the export only when somebody IS selected', () => {
-    // The route's fallback is why: a pill clicked with nobody chosen would hand back a workbook about the
-    // first employee in the list. The route keeps its rule; the link is simply not drawn.
     for (const rel of REL) {
-      const src = read(rel);
-      expect(src).toMatch(/\{selected && \(\s*<div className="flex items-center gap-1 rounded-md/);
+      const src = code(read(rel));
+      expect(src).toContain('allowAll'); expect(src).toContain('resetToAll');
+      expect(src).not.toMatch(/\{selected && \(\s*<div className="flex items-center gap-1 rounded-md/);
     }
   });
 
@@ -142,7 +134,8 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       const src = read(rel);
       // The fence must stay the panel's fence: one `listEmployees` call per page, mapped to ScopeEmployee.
       // Counted over CODE, not prose — a comment naming the call reads to a plain match as the call itself.
-      expect((code(src).match(/listEmployees\(/g) ?? []).length, `${rel} reads employees exactly once`).toBe(1);
+      expect(code(src)).toContain('const employees = sortInquiryEmployees(inquiry.employees, locale)');
+      expect(code(read('core/leave-inquiry.ts'))).toContain('await listEmployees(ctx, companyIds)');
       expect(src).toContain('const panelEmployees: ScopeEmployee[] = employees.map((e) => ({');
       // The DERIVED status is computed on the SERVER — in the browser it is wrong by a day across MYT midnight.
       expect(src).toContain("status: e.terminatedOn == null ? 'active' : 'ended',");
@@ -164,8 +157,8 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(src.includes('title={tInq}')).toBe(false);
     }
     // The prompt the reporter asked for, one per screen — and they are DIFFERENT sentences.
-    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('pickEmployeeBalances')");
-    expect(read('app/leave/employee-records/page.tsx')).toContain("tInq('pickEmployeeRecords')");
+    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('allEmployeesHeader'");
+    expect(read('app/leave/employee-records/page.tsx')).toContain("tInq('allEmployeesHeader'");
   });
 
   it('the new captions exist in all six catalogues, and the retired ones are RETIRED not deleted', () => {

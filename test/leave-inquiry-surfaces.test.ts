@@ -173,11 +173,15 @@ describe('20c699f8: Employee Balances', () => {
     // HR keeps seeing a balance standing under a leave type the employee is not eligible for (the 55
     // wrongly-granted Maternity balances are read from this screen). Same read, same asOf, same helper.
     expect(rowsHelper).toContain(
-      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf })',
+      '{ includeHidden: true, includeArchived: true, includeIneligible: true, asOf }',
     );
     // r303 (31492f74) UPDATED THIS PIN, it did not retire it: the SAME read at the SAME asOf and locale, now
     // asking for the per-line working HR's Explain panel prints (`derivation: true`). Still ONE read.
-    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale, { derivation: true })');
+    // Inquiry exports pass an explicit snapshot tx; both branches retain the same options/owners.
+    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale, balanceOptions)');
+    expect(rowsHelper).toContain('leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions)');
+    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, id, asOf, locale, { derivation: true })');
+    expect(rowsHelper).toContain('leaveEntitlementBreakdownTx(opts.tx, employmentId, id, asOf, locale, { derivation: true })');
     expect(rowsHelper).toContain('deriveBalanceRow(');
     // ESS per-component hiding is a self-service rule; HR sees the figure.
     expect(rowsHelper).toContain('essView: {}');
@@ -308,7 +312,8 @@ describe('20c699f8: Employee Balances', () => {
 
   it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {
     expect(balancesPage).toContain('name="asOf"');
-    expect(balancesPage).toContain('employeeBalanceRows(session, selected.employmentId, asOf, locale');
+    expect(balancesPage).toContain('inquiryBalancePage(session, inquiry, query, locale)');
+    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('employeeBalanceRows(ctx, employmentId, query.asOf, locale');
     // 3ddae357 — the title of this case was true of the BREAKDOWN and false of the balances, which is how
     // the defect passed review for four releases. The claim is only worth making if both reads take the
     // date, so the second half is pinned here too. Point-in-time behaviour itself is proven against real
@@ -319,7 +324,7 @@ describe('20c699f8: Employee Balances', () => {
 
   it('sorts by leave code A→Z by default and can flip to Z→A', () => {
     expect(rowsHelper).toContain("const mul = filter.dir === 'desc' ? -1 : 1;");
-    expect(balancesPage).toContain("const dir: 'asc' | 'desc' = sp.dir === 'desc' ? 'desc' : 'asc';");
+    expect(read('lib/leave-inquiry-query.ts')).toContain("kind === 'records' ? 'desc' : 'asc'");
   });
 
   it('carries search, a multi-select filter with bulk controls, and both export formats', () => {
@@ -336,14 +341,16 @@ describe('20c699f8: Employee Balances', () => {
 
 describe('953be4b0: Employee Leave Record', () => {
   it('reads the existing projection narrowed to (employment, leave type)', () => {
-    expect(recordsPage).toContain('listLeaveRequestsPage(session, {');
-    expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
-    expect(recordsPage).toContain('leaveTypeIds: typeIds.length ? typeIds : undefined');
+    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    const owner = read('core/leave-inquiry.ts');
+    expect(owner).toContain('listLeaveRequestsPage(ctx, {');
+    expect(owner).toContain('employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
+    expect(owner).toContain('leaveTypeIds: query.typeIds');
   });
 
   it('defaults to newest request first', () => {
-    expect(recordsPage).toContain("const sort = sp.sort || 'applied';");
-    expect(recordsPage).toContain("const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';");
+    expect(read('lib/leave-inquiry-query.ts')).toContain("kind === 'records' ? 'applied' : 'employeeCode'");
+    expect(read('lib/leave-inquiry-query.ts')).toContain("kind === 'records' ? 'desc' : 'asc'");
   });
 
   it('renders all ten originally requested columns, plus the three fe3eb141 added', () => {
@@ -428,8 +435,8 @@ describe('r378 · the old employee listing is gone, while scoped inquiry selecti
     for(const name of ['employee-balances','employee-records']) {
       const source=read(`app/leave/${name}/page.tsx`);
       expect(source).toContain('await scopedAdmin()');
-      expect(source).toContain('listEmployees(session, scopeIds)');
-      expect(source).toContain('selectInquiryEmployee(employees, sp.emp)');
+      expect(source).toContain('await leaveInquiryContext(session, scopeIds, query)');
+      expect(source).toContain('const selected = inquiry.selected;');
       expect(source).toContain('preservePicker');
     }
   });

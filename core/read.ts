@@ -175,8 +175,10 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
 export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, tx => listEmployeesTx(tx, companyIds));
+}
+export function listEmployeesTx(tx: Tx, companyIds?: string[]) {
+  return tx
       .select({
         employmentId: employment.id,
         name: person.fullName,
@@ -240,8 +242,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
-      .orderBy(person.fullName),
-  );
+      .orderBy(person.fullName);
 }
 
 /**
@@ -1541,9 +1542,7 @@ export function countLeaveRequestsByStatus(ctx: SessionContext, p: Omit<LeaveReq
   });
 }
 
-export function listLeaveRequestsPage(
-  ctx: SessionContext,
-  p: {
+export type LeaveRequestPageOptions = {
     companyIds?: string[]; // scope fence (company switcher) — ALWAYS applied
     q?: string; // name / employeeCode / uuid-prefix reference
     companyId?: string;
@@ -1581,9 +1580,11 @@ export function listLeaveRequestsPage(
     dir?: string; // default: applied desc (today's order)
     limit: number;
     offset: number;
-  },
-): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
-  return withTenant(ctx, async (tx) => {
+  };
+export function listLeaveRequestsPage(ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
+  return withTenant(ctx, tx => listLeaveRequestsPageTx(tx, ctx, p));
+}
+export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
     const { where, currentAssignment } = leaveRequestPageWhere(p);
     // Sort whitelist — NEVER interpolate user input into the ORDER BY.
     const sortCol: Record<string, AnyColumn> = {
@@ -1620,7 +1621,6 @@ export function listLeaveRequestsPage(
       .where(where);
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return { rows: withDates, total: Number(count) };
-  });
 }
 
 /**
@@ -2684,6 +2684,25 @@ async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string
   return out;
 }
 
+/** HR inquiry row membership only. Bounded employment chunks; figures remain owned by leaveBalances.
+ * Matches its includeHidden/includeArchived/includeIneligible HR contract, including zero eligible rows.
+ */
+export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
+  return withTenant(ctx, tx => leaveBalanceInquiryMembershipTx(tx, ctx, employmentIds, asOf, locale));
+}
+export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
+  if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
+    if (!employmentIds.length) return [];
+    const [types, profiles, ledger, pending] = await Promise.all([
+      tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType),
+      tx.select({ employmentId: employment.id, gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory }).from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, employmentIds)),
+      tx.selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(and(inArray(leaveLedger.employmentId, employmentIds), lte(leaveLedger.effectiveOn, asOf))),
+      tx.selectDistinct({ employmentId: leaveRequest.employmentId, leaveTypeId: leaveRequest.leaveTypeId }).from(leaveRequest).where(and(inArray(leaveRequest.employmentId, employmentIds), eq(leaveRequest.status, 'pending'), lte(leaveRequest.startDate, asOf))),
+    ]);
+    const historical = new Set([...ledger, ...pending].map(r => `${r.employmentId}|${r.leaveTypeId}`));
+    return profiles.flatMap(emp => types.filter(lt => historical.has(`${emp.employmentId}|${lt.id}`) || (lt.archivedAt == null && isProfileEligible(lt.eligibility as LeaveEligibility | null, emp, 'exclude'))).map(lt => ({ employmentId: emp.employmentId, leaveTypeId: lt.id, code: lt.code ?? '', leaveType: pickName(lt.name, lt.i18n, locale) })));
+}
+
 /**
  * One employment's balance per leave type — the source for the employee's own Leave page AND for the two
  * admin surfaces (Employee Balances, the Personnel profile's leave card).
@@ -2736,28 +2755,76 @@ async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string
  *   • the leave-type NAME, visual and ESS-placement joins are present-tense metadata, not figures. A type
  *     renamed since `asOf` should read under the name HR uses now.
  */
-/** HR inquiry row membership only. Bounded employment chunks; figures remain owned by leaveBalances.
- * Matches its includeHidden/includeArchived/includeIneligible HR contract, including zero eligible rows.
- */
-export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
-  if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
-  return withTenant(ctx, async (tx) => {
-    if (!employmentIds.length) return [];
-    const [types, profiles, ledger, pending] = await Promise.all([
-      tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType),
-      tx.select({ employmentId: employment.id, gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory }).from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, employmentIds)),
-      tx.selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(and(inArray(leaveLedger.employmentId, employmentIds), lte(leaveLedger.effectiveOn, asOf))),
-      tx.selectDistinct({ employmentId: leaveRequest.employmentId, leaveTypeId: leaveRequest.leaveTypeId }).from(leaveRequest).where(and(inArray(leaveRequest.employmentId, employmentIds), eq(leaveRequest.status, 'pending'), lte(leaveRequest.startDate, asOf))),
-    ]);
-    const historical = new Set([...ledger, ...pending].map(r => `${r.employmentId}|${r.leaveTypeId}`));
-    return profiles.flatMap(emp => types.filter(lt => historical.has(`${emp.employmentId}|${lt.id}`) || (lt.archivedAt == null && isProfileEligible(lt.eligibility as LeaveEligibility | null, emp, 'exclude'))).map(lt => ({ employmentId: emp.employmentId, leaveTypeId: lt.id, code: lt.code ?? '', leaveType: pickName(lt.name, lt.i18n, locale) })));
-  });
-}
-
 export type LeaveBalanceReadOptions = {
+  /** Keep leave types HR has hidden from employee self-service. Two callers, and only two:
+   *
+   *  1. ADMIN reads (Employee Balances, the Personnel leave card, 994a5287). A hidden type is hidden from
+   *     the EMPLOYEE by design (7b11f1c1); it was never meant to vanish from HR's own screens.
+   *
+   *  2. 46afcc48 — `sharedLeaveGroupBalances`, which is a SELF-SERVICE caller and passes this ON PURPOSE.
+   *     It does NOT display these rows: it sums them into ONE pooled figure for a shared leave group. The
+   *     reporter's requirement is that hiding a member type is a display decision that changes nothing
+   *     about the pool, and the group guard (`enforceSharedLeaveGroupLimit`, core/leave.ts) has never
+   *     consulted visibility either — so summing the FILTERED list would make the number on screen
+   *     disagree with the verdict the engine gives, which is the one thing that must not happen. No
+   *     hidden type's own name or figure reaches the employee through this path.
+   *
+   *  Any THIRD caller on an employee-facing path is a leak until it can say which of these it is. */
   includeHidden?: boolean;
+  /**
+   * ⚠️ d272834b — KEEP LEAVE TYPES THIS EMPLOYEE IS NOT ELIGIBLE FOR. Default false: an employee's own
+   * screens never draw a card for a leave type that is not theirs, however the rows got into the ledger.
+   *
+   * THE DEFECT THIS EXISTS FOR. The eligible-but-inactive tail below has gated on `isProfileEligible`
+   * since 508d3acd, but it only decides whether to INVENT a row. A row that came from the ledger or from
+   * a pending request was never asked the question at all — so a male employee (EMP-0002 on the
+   * reporting account) kept a Maternity Leave card reading Entitlement 98.00 / Balance 0.00, because a
+   * pre-508d3acd year-open had credited him 98 days and the corrective adjustment had taken them back
+   * again. Both rows are still in the ledger; the card was summing them. The apply dropdown
+   * (`mayAppearInApplyMenu`) HAD always gated, which is why the same screen said he could apply for 0.00
+   * of a type it was still showing him.
+   *
+   * WHY IT IS A FLAG AND NOT AN UNCONDITIONAL FILTER, which is the part that must not be simplified
+   * away. HR has to be able to SEE those rows — they are the 5,390 days of wrongly-granted Maternity
+   * Leave this item's remediation report lists (`scripts/report-ineligible-leave-balances.ts`), and a
+   * reversal nobody can see is a reversal nobody can check. So it follows `includeHidden` exactly: the
+   * restrictive answer is the default, employee self-service keeps it, and the two ADMIN screens plus
+   * the shared-pool summer opt out and say why at their call sites.
+   *
+   * IT IS THE IDENTITY HALF ONLY — `isProfileEligible`, never `isLeaveEligible`. Minimum service and
+   * probation say when somebody may TAKE leave, not whose leave it is, and the reporter asked in these
+   * words that minimum service must not hide a card. See 508d3acd's note on the tail below.
+   */
   includeIneligible?: boolean;
+  /**
+   * ec991c2a — keep leave types an administrator has ARCHIVED. Default false: self-service does not show
+   * a retired type, which is the whole of this item.
+   *
+   * WHY THE DEFAULT IS THE RESTRICTIVE ONE, matching `includeHidden`: every one of the three tails below
+   * can only produce an archived row from HISTORY (an old ledger entry or an old pending request) — the
+   * eligible-but-inactive tail reads `types`, which has excluded archived types since R18. So "archived"
+   * on this read always means "a type this employee once used and HR has since retired", and an employee
+   * choosing from this list must not be offered it. A future caller that forgets the flag therefore gets
+   * the employee-safe answer, and only a caller that can say why opts out.
+   *
+   * WHO OPTS OUT, and there are three:
+   *   1. Employee Balances and 2. the Personnel leave card — the ADMIN screens, same reason as
+   *      `includeHidden`: retiring a type is a statement about what EMPLOYEES see, and HR answering
+   *      "what does this person hold" must still see the 759 days sitting under a retired ANNUAL.
+   *   3. `sharedLeaveGroupBalances` — the shared-pool summer, which displays no type name at all and must
+   *      keep summing every member type or the figure on screen stops matching the engine's verdict.
+   *
+   * WHAT THIS DOES NOT TOUCH: `leaveRequestsFor` / the ledger. A request already applied for or approved
+   * under an archived type keeps rendering in leave history exactly as it does today
+   * (test/leave-archived-type-hidden.test.ts pins it). This hides the type from the list an employee
+   * CHOOSES from; it does not rewrite what they have already taken.
+   */
   includeArchived?: boolean;
+  /**
+   * 3ddae357 — POINT-IN-TIME cut-off, `YYYY-MM-DD`. Ledger rows count when `effective_on <= asOf`, and a
+   * pending request counts when it STARTS on or before it. OMIT for the running total: absent ⇒ the
+   * whole ledger and every pending request, which is what every caller but Employee Balances wants.
+   */
   asOf?: string;
 };
 export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}) {
@@ -6304,13 +6371,14 @@ export function allowedCompanies(ctx: SessionContext) {
  * picker when a delegated admin assigns a scoped role. Group admins get every company.
  */
 export function adminCompanies(ctx: SessionContext) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, tx => adminCompaniesTx(tx));
+}
+export function adminCompaniesTx(tx: Tx) {
+  return tx
       .select({ id: company.id, name: company.legalName })
       .from(company)
       .where(sql`app.is_admin_for(company.id)`)
-      .orderBy(company.legalName),
-  );
+      .orderBy(company.legalName);
 }
 
 /** Companies with their parent link — the group tree (ADR-0009). */

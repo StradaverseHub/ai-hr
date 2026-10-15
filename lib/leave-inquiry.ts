@@ -20,42 +20,18 @@ export type InquiryEmployee = {
  */
 export function sortInquiryEmployees<T extends InquiryEmployee>(rows: T[], locale?: string): T[] {
   const cmp = (a: string, b: string) => a.localeCompare(b, locale, { sensitivity: 'base' });
-  return [...rows].sort((a, b) => cmp(a.company, b.company) || cmp(a.name, b.name));
+  return [...rows].sort((a, b) => cmp(a.company, b.company) || cmp(a.name, b.name) || a.employmentId.localeCompare(b.employmentId));
 }
 
-/**
- * Which employee an EXPORT ROUTE serves: the requested one when it is actually in the (already
- * access-fenced) list, otherwise the first by company-then-name — "landing on Employee Balances without
- * having picked anyone shows the first employee" (20c699f8 §1).
- *
- * Falling back rather than erroring on an unknown id is deliberate: the id comes from a URL an admin may
- * have bookmarked before an employee left, or edited by hand. It is NOT an authorization decision — the
- * caller passes a list RLS already fenced, so an id outside it simply is not selectable here.
- *
- * ⚠️ 9949f91a (r369) — THE TWO SCREENS NO LONGER USE THIS, and the sentence above used to open "Which
- * employee the SCREEN shows". The reporter asked for "Select an employee to view their leave balances"
- * instead of quietly opening on whoever sorted first, so the screens resolve their selection through
- * `selectInquiryEmployee` below and this function keeps exactly the behaviour it always had for the two
- * export route handlers — which have no screen to prompt on and must answer SOMETHING or hand back a
- * workbook about nobody. `test/leave-balance-as-at-date.test.ts` pins that the screen and its export
- * validate `asOf` identically; that is a claim about the DATE and is untouched by this split.
+/** Legacy first-person selection helper, retained for compatibility.
+ * 23e87eef: inquiry screens AND downloads now use the explicit All/single authorized contract in
+ * core/leave-inquiry.ts. They never call this fallback, including for stale or inaccessible IDs.
  */
 export function pickInquiryEmployee<T extends InquiryEmployee>(sorted: T[], requestedId?: string): T | undefined {
   return (requestedId ? sorted.find((e) => e.employmentId === requestedId) : undefined) ?? sorted[0];
 }
 
-/**
- * 9949f91a (r369) — which employee a leave inquiry SCREEN shows: the requested one, or NOBODY.
- *
- * THE FALLBACK IS THE THING THIS REMOVES, on the screens only. With the employee panel down the left-hand
- * side, opening the tab on whoever sorted first is worse than saying nothing: the reader is shown a real
- * person's real leave position without having asked for them, and the panel beside it marks nobody as
- * Selected, so the two halves of the screen disagree about who is being looked at.
- *
- * STILL NOT AN AUTHORIZATION DECISION, and the shape says so: the caller passes a list RLS has already
- * fenced, and this only ever NARROWS — an id that is not in that list selects nothing. That is also the
- * post-guard value the panel must be handed (`selectedId`), never the raw query param.
- */
+/** Legacy optional-single selector. The inquiry owner now distinguishes absent All from refused IDs. */
 export function selectInquiryEmployee<T extends InquiryEmployee>(sorted: T[], requestedId?: string): T | undefined {
   return requestedId ? sorted.find((e) => e.employmentId === requestedId) : undefined;
 }

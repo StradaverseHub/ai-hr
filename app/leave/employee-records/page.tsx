@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees, listLeaveRequestsPage, listLeaveTypes } from '@/core/read';
+import { listLeaveTypes } from '@/core/read';
 import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
@@ -14,7 +14,9 @@ import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { TableFullscreen } from '@/components/leave/table-fullscreen';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { adminCancelLeaveAction } from '@/app/leave/actions';
-import { selectInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
+import { leaveInquiryContext, leaveInquiryRecordsPage, type LeaveInquiryContext } from '@/packs/leave/service';
 import { durationLabel } from '@/lib/leave-duration';
 // 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
 // drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
@@ -24,7 +26,7 @@ import { leaveDisplaySplit } from '@/lib/leave-split';
 import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Pager, type PagerHrefOver } from '@/components/pager';
-import { pageState, parsePageQuery } from '@/lib/pagination';
+import { pageState } from '@/lib/pagination';
 
 /**
  * Employee Leave Record (feedback 953be4b0) — the transactions behind a balance: every leave request for
@@ -65,6 +67,8 @@ export default async function EmployeeLeaveRecordPage({
 }: {
   searchParams: Promise<{
     emp?: string;
+    department?: string | string[];
+    dateMode?: string;
     pickerQ?: string;
     pickerCompany?: string;
     pickerBusinessUnit?: string;
@@ -89,19 +93,18 @@ export default async function EmployeeLeaveRecordPage({
   const tInq = await getTranslations('leave.inquiry');
   const locale = await getLocale();
   const sp = await searchParams;
-  const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 
-  const employees = sortInquiryEmployees(await listEmployees(session, scopeIds), locale);
-  /**
-   * 9949f91a (r369) — NO EMPLOYEE PICKED ⇒ NOBODY. The retired rule, quoted from lib/leave-inquiry.ts: "No
-   * employee picked ⇒ the first by company then name (20c699f8 §1)." The reporter asked for
-   * "Select an employee to view their leave records" instead of the screen quietly opening on whoever sorted
-   * first — which, with the panel beside it marking nobody Selected, made the two halves of the screen
-   * disagree about who was being looked at. SCREENS ONLY: the export route keeps the fallback.
-   *
-   * POST-GUARD: an id outside the fenced list selects nothing, and this is the value the panel is handed.
-   */
-  const selected = selectInquiryEmployee(employees, sp.emp);
+  let query: ReturnType<typeof parseInquiryQuery>;
+  let inquiry: LeaveInquiryContext;
+  try {
+    query = parseInquiryQuery(sp, 'records');
+    inquiry = await leaveInquiryContext(session, scopeIds, query);
+  } catch (error) {
+    if (!(error instanceof InquiryQueryError)) throw error;
+    return <Card><p role="alert" className="p-6">{tInq('invalidQuery')}</p><Link href="/leave/employee-records" className="p-6 text-primary">{tInq('resetInquiry')}</Link></Card>;
+  }
+  const employees = sortInquiryEmployees(inquiry.employees, locale);
+  const selected = inquiry.selected;
   /** The panel is fed from the SAME `listEmployees` read — a `.map`, never a second, wider employee source. */
   const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
@@ -120,44 +123,24 @@ export default async function EmployeeLeaveRecordPage({
   const panelCookies = await cookies();
   const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
-  const typeIds = arr(sp.type);
-  const statuses = arr(sp.status).filter((s) => (LEAVE_STATUSES as readonly string[]).includes(s));
-  const q = sp.q?.trim() || undefined;
-  const from = sp.from || undefined;
-  const to = sp.to || undefined;
-  // Default order is newest REQUEST first — `applied` desc is exactly that (leave_request.created_at).
-  const sort = sp.sort || 'applied';
-  const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';
-  const pq = parsePageQuery(sp);
-
+  const { typeIds, statuses, q, from, to, sort, dir, pq, dateMode } = query;
   const [leaveTypes, result] = await Promise.all([
     listLeaveTypes(session, { locale }),
-    selected
-      ? listLeaveRequestsPage(session, {
-          companyIds: scopeIds,
-          employmentIds: [selected.employmentId],
-          leaveTypeIds: typeIds.length ? typeIds : undefined,
-          statuses: statuses.length ? statuses : undefined,
-          q,
-          from,
-          to,
-          sort,
-          dir,
-          limit: pq.limit,
-          offset: pq.offset,
-        })
-      : Promise.resolve({ rows: [], total: 0 }),
+    leaveInquiryRecordsPage(session, inquiry, query),
   ]);
   const { rows, total } = result;
 
   const params = () => {
     const p = new URLSearchParams();
     if (selected) p.set('emp', selected.employmentId);
+    for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const) if (sp[key]) p.set(key, sp[key]);
     for (const id of typeIds) p.append('type', id);
     for (const s of statuses) p.append('status', s);
     if (q) p.set('q', q);
     if (from) p.set('from', from);
     if (to) p.set('to', to);
+    p.set('dateMode', dateMode);
+    p.set('size', String(pq.size));
     return p;
   };
   const withSort = (p: URLSearchParams) => {
@@ -198,6 +181,7 @@ export default async function EmployeeLeaveRecordPage({
    */
 
   const filterFields: FilterField[] = [
+    { kind: 'select', name: 'dateMode', label: tInq('dateMode'), ariaLabel: tInq('dateMode'), allLabel: tInq('leaveDates'), options: [{ value: 'applied', label: t('colApplied') }], removeAriaLabel: t('filters.removeFilter', { label: tInq('dateMode') }) },
     {
       kind: 'multi',
       name: 'type',
@@ -229,9 +213,9 @@ export default async function EmployeeLeaveRecordPage({
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.dateTo') }),
     },
   ];
-  const filterValues = { type: typeIds, status: statuses, from, to };
+  const filterValues = { type: typeIds, status: statuses, from, to, dateMode: dateMode === 'applied' ? dateMode : undefined };
   const activeCount =
-    (typeIds.length ? 1 : 0) + (statuses.length ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0);
+    (typeIds.length ? 1 : 0) + (statuses.length ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0) + (dateMode === 'applied' ? 1 : 0);
   const filterLabels = {
     filter: t('filters.filter'),
     apply: t('filters.apply'),
@@ -241,7 +225,7 @@ export default async function EmployeeLeaveRecordPage({
     deselectAll: t('filters.deselectAll'),
   };
   // Clearing every filter keeps the employee — otherwise "clear all" silently jumps to someone else.
-  const chipAction = `/leave/employee-records${selected ? `?emp=${selected.employmentId}` : ''}`;
+  const chipAction = '/leave/employee-records';
 
   /**
    * 9949f91a (r369) — what the EMPLOYEE PANEL carries when the reader switches person: everything this screen
@@ -257,6 +241,7 @@ export default async function EmployeeLeaveRecordPage({
   if (q) panelPreserve.q = q;
   if (from) panelPreserve.from = from;
   if (to) panelPreserve.to = to;
+  panelPreserve.dateMode = dateMode;
 
   // Layout (feedback 026e16b9) — presentation only, and the SAME three moves as Employee Balances so the
   // two tabs do not read as different screens: a wider container cap, a narrower inquiry rail (in
@@ -341,7 +326,7 @@ export default async function EmployeeLeaveRecordPage({
                 {t('requestsCountTotal', { count: total })}
               </span>
             </div>
-          ) : undefined
+          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
         }
         panel={
           <Card className="p-4">
@@ -355,6 +340,8 @@ export default async function EmployeeLeaveRecordPage({
                 selectParam="emp"
                 preserve={panelPreserve}
                 preservePicker
+                allowAll
+                resetToAll
               />
             </div>
           </Card>
@@ -367,6 +354,8 @@ export default async function EmployeeLeaveRecordPage({
                 submitting the record search cannot silently clear the selection. Same shape as Employee
                 Balances and as app/attendance/individual/page.tsx. */}
             {selected && <input type="hidden" name="emp" value={selected.employmentId} />}
+            {(['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const).map(key => sp[key] ? <input key={key} type="hidden" name={key} value={sp[key]} /> : null)}
+            <input type="hidden" name="dateMode" value={dateMode} />
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('filters.search')}
               <input
@@ -377,6 +366,9 @@ export default async function EmployeeLeaveRecordPage({
                 className={`${inputCls} w-56`}
               />
             </label>
+            <input type="hidden" name="sort" value={sort} />
+            <input type="hidden" name="dir" value={dir} />
+            <input type="hidden" name="size" value={String(pq.size)} />
             {typeIds.map((id) => (
               <input key={id} type="hidden" name="type" value={id} />
             ))}
@@ -401,11 +393,10 @@ export default async function EmployeeLeaveRecordPage({
               fields={filterFields}
               values={filterValues}
               labels={filterLabels}
+              hidden={[...withSort(params())].filter(([key]) => !['type', 'status', 'from', 'to', 'department', 'dateMode'].includes(key))}
             />
-            {/* 9949f91a — NOT OFFERED WITH NOBODY SELECTED: the export ROUTE keeps 20c699f8's
-                first-employee fallback, so the link would hand back a workbook about somebody the reader never
-                chose. The route is untouched; the link is not drawn. */}
-            {selected && (
+            {/* 23e87eef: All is an explicit authorized view; empty scope remains distinct. */}
+            {(
               <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                 <span className="text-muted-foreground">{t('filters.export')}:</span>
                 <Link href={exportHref('csv')} className="font-medium text-primary hover:underline">
@@ -419,44 +410,42 @@ export default async function EmployeeLeaveRecordPage({
             )}
           </div>
 
-          <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
+          <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} hidden={[...withSort(params())].filter(([key]) => !['type', 'status', 'from', 'to', 'department', 'dateMode'].includes(key))} />
 
           {/* d990f14a — see the note on the Employee Balances tab: under the search bar and its chips,
               above the table. `carry` hands on the leave-code search and the leave-type filter only. */}
           <LeaveInquiryNav active="records" employmentId={selected?.employmentId} carry={{ ...panelPreserve, q, type: typeIds }} />
 
-          {/* 9949f91a — THE PROMPT, in the reference mount's own shape: the filter row and the tab bar stay
-              drawn so a reader with nobody selected can still switch tabs, and only the table is replaced.
-              `tInq('noEmployees')` is a different statement — the scope holds nobody — and keeps its own case.
-              The "Name · Company" strip and the record count moved into the shell's header bar above, so the
-              identity is stated once rather than twice. */}
-          {!selected ? (
+          {/* 23e87eef: All is an explicit authorized view; empty scope remains distinct. */}
+          {employees.length === 0 ? (
             <Card className="overflow-hidden">
               <p className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="pick-employee">
-                {employees.length === 0 ? tInq('noEmployees') : tInq('pickEmployeeRecords')}
+                {tInq('noEmployees')}
               </p>
             </Card>
           ) : (
           <Card className="overflow-hidden">
             <TableFullscreen
               title={tInq('employeeLeaveRecord')}
-              subtitle={selected ? `${selected.name} · ${selected.company}` : undefined}
+              subtitle={selected ? `${selected.name} · ${selected.company}` : tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}
               openLabel={tInq('fullScreen')}
               closeLabel={tInq('fullScreenClose')}
               escHint={tInq('fullScreenEsc')}
             >
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" role="region" aria-label={tInq('recordsTitle')} tabIndex={0}>
               <table className="w-full text-sm">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
                       cost this header row 23px across eleven columns — the last of the horizontal overflow.
                       Uppercase small-caps headings read fine without it. */}
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className={th}>{t('filters.employeeId')}</th>
+                    {sortableTh('employeeCode', t('filters.employeeId'))}
                     {/* fe3eb141 — the short leave reference the Requests subsection shows under its
                         Applied date. It is a working handle: the `q` box above matches a uuid prefix. */}
                     <th className={th}>{t('filters.reference')}</th>
                     {sortableTh('name', t('colEmployee'))}
+                    <th className={th}>{t('filters.company')}</th>
+                    <th className={th}>{t('filters.department')}</th>
                     {sortableTh('start', t('filters.dateFrom'))}
                     {sortableTh('end', t('filters.dateTo'))}
                     <th className={th}>{t('colDays')}</th>
@@ -474,7 +463,7 @@ export default async function EmployeeLeaveRecordPage({
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={15} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRecords')}
                       </td>
                     </tr>
@@ -486,6 +475,8 @@ export default async function EmployeeLeaveRecordPage({
                         #{r.id.slice(0, 8)}
                       </td>
                       <td className="px-2 py-2 font-medium">{r.employee}</td>
+                      <td className="px-2 py-2">{r.company}</td>
+                      <td className="px-2 py-2">{r.department ?? '—'}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.startDate}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.endDate}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums">
