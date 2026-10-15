@@ -1981,7 +1981,8 @@
       "unexpectedSheet": "Buku kerja mengandungi helaian tidak dijangka atau pendua. Gunakan templat semasa dan kekalkan nama helaian data supaya tiada jadual diabaikan.",
       "registerExistingEmployeeId": "ID Pekerja untuk rekod semasa",
       "registerDownloadExisting": "Muat turun CSV rekod semasa",
-      "registerLimit": "Maksimum 500 baris bagi setiap fail daftar. Muat turun rekod semasa menyertakan ID Rekod tersimpan; semak setiap baris sebelum menerapkan."
+      "registerLimit": "Maksimum 500 baris bagi setiap fail daftar. Muat turun rekod semasa menyertakan ID Rekod tersimpan; semak setiap baris sebelum menerapkan.",
+      "registerRequiredCreate": "Wajib apabila ID Rekod kosong."
     },
     "wizard": {
       "fields": {

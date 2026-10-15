@@ -1981,7 +1981,8 @@
       "unexpectedSheet": "工作簿包含意外或重复的工作表。请使用当前模板并保留数据工作表名称，避免任何表格被忽略。",
       "registerExistingEmployeeId": "要下载当前记录的员工编号",
       "registerDownloadExisting": "下载当前记录 CSV",
-      "registerLimit": "每个登记文件最多 500 行。当前记录下载包含已保存的记录 ID；应用前请逐行核对。"
+      "registerLimit": "每个登记文件最多 500 行。当前记录下载包含已保存的记录 ID；应用前请逐行核对。",
+      "registerRequiredCreate": "记录 ID 为空时必填。"
     },
     "wizard": {
       "fields": {

@@ -165,7 +165,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
         sheetName: SECTION_SHEET_NAMES[section],
         textColumns: sectionTextColumnIndexes(section),
-        headerNotes:columns.map(key=>guidance(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee','update')),
+        headerNotes:columns.map(key=>[guidance(key,isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee','update'),isPersonnelRegisterKind(section)&&personnelImportFields(section).find(field=>field.import.column===key)?.import.requiredCreate?t('registerRequiredCreate'):null].filter(Boolean).join(' · ')),
         extraSheets,
         validationLists:referenceLists.flatMap(list=>{const column=columns.findIndex(key=>employeeColumnLabel(key)===list.label);return column>=0?[{column,values:list.values}]:[];}),
       });
@@ -337,7 +337,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">
           <div className="border-b border-border bg-emerald-50/60 px-4 py-3 dark:bg-emerald-500/10">
             <h2 className="text-sm font-semibold">
-              {t('sectionUpdatedCount', { count: result.updated })}
+              {isPersonnelRegisterKind(section)?t('registerSavedCount',{count:result.updated}):t('sectionUpdatedCount', { count: result.updated })}
               {result.skipped > 0 && ` · ${t('skippedCount', { count: result.skipped })}`}
               {result.failed.length > 0 && ` · ${t('failedCount', { count: result.failed.length })}`}
             </h2>
@@ -420,7 +420,7 @@ function SectionPreview({
           </span>{' '}
           {t('preview')} ·{' '}
           <span className="text-emerald-600 dark:text-emerald-400">
-            {t('sectionUpdateCount', { count: preview.updateCount })}
+            {isPersonnelRegisterKind(preview.section)?t('readyCount',{count:preview.updateCount}):t('sectionUpdateCount', { count: preview.updateCount })}
           </span>
           {preview.skipCount > 0 && (
             <>
@@ -529,7 +529,7 @@ function SectionPreview({
           {preview.fileErrors.length > 0 ? t('step5Blocked') : t('sectionStep5Hint')}
         </span>
         <Button onClick={onImport} disabled={busy || preview.updateCount === 0 || preview.fileErrors.length > 0} size="sm">
-          {busy ? t('importing') : t('sectionImportButton', { count: preview.updateCount })}
+          {busy ? t('importing') : isPersonnelRegisterKind(preview.section)?t('importValid',{count:preview.updateCount}):t('sectionImportButton', { count: preview.updateCount })}
         </Button>
       </div>
     </Card>

@@ -1,4 +1,4 @@
-import {personnelRegisterColumns} from './personnel-register-import';
+import {personnelRegisterColumns,type PersonnelRegisterKind} from './personnel-register-import';
 import { PERSONNEL_FIELDS } from './personnel-field-registry';
 import { PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS } from './personnel-import-contract';
 /**
@@ -68,6 +68,7 @@ export type ImportSectionDef = {
    *  rather than the main employee sheet's. Family is the one section whose columns are a different
    *  contract entirely — `full_name` there names a spouse, not the employee. */
   family: boolean;
+  register?:PersonnelRegisterKind;
 };
 
 /**
@@ -145,8 +146,8 @@ const EMPLOYMENT_COLUMNS = [
 const BANK_STATUTORY_COLUMNS = ['tax_number', 'tax_category', 'num_children',...PERSONNEL_FIELDS.filter(field=>['statutory-registration','bank'].includes(field.import.writer??'')).map(field=>field.import.column!)] as const;
 
 export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
-  qualification:{key:'qualification',required:[],optional:personnelRegisterColumns('qualification').filter(c=>c!=='employee_code'),family:false},
-  emergency:{key:'emergency',required:[],optional:personnelRegisterColumns('emergency').filter(c=>c!=='employee_code'),family:false},
+  qualification:{key:'qualification',register:'qualification',required:[],optional:personnelRegisterColumns('qualification').filter(c=>c!=='employee_code'),family:false},
+  emergency:{key:'emergency',register:'emergency',required:[],optional:personnelRegisterColumns('emergency').filter(c=>c!=='employee_code'),family:false},
   profile: { key: 'profile', required: [], optional: PROFILE_COLUMNS, family: false },
   employment: { key: 'employment', required: [], optional: EMPLOYMENT_COLUMNS, family: false },
   bank_statutory: { key: 'bank_statutory', required: [], optional: BANK_STATUTORY_COLUMNS, family: false },
@@ -233,7 +234,7 @@ export function foreignColumns(section: ImportSection, present: readonly string[
  * the employee's, so Profile is the section they are pointed at.
  */
 export function sectionOwning(column: string): ImportSection | null {
-  const order = [...IMPORT_SECTION_KEYS].sort((a, b) => Number(IMPORT_SECTION_DEFS[a].family) - Number(IMPORT_SECTION_DEFS[b].family));
+  const order = [...IMPORT_SECTION_KEYS].sort((a, b) => Number(Boolean(IMPORT_SECTION_DEFS[a].family||IMPORT_SECTION_DEFS[a].register)) - Number(Boolean(IMPORT_SECTION_DEFS[b].family||IMPORT_SECTION_DEFS[b].register)));
   for (const s of order) {
     const def = IMPORT_SECTION_DEFS[s];
     if (def.required.includes(column) || def.optional.includes(column)) return s;

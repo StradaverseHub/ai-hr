@@ -1981,7 +1981,8 @@
       "unexpectedSheet": "Sổ làm việc có trang không xác định hoặc trùng lặp. Hãy dùng mẫu hiện tại và giữ nguyên tên trang dữ liệu để không bỏ qua bảng nào.",
       "registerExistingEmployeeId": "Mã nhân viên để tải bản ghi hiện tại",
       "registerDownloadExisting": "Tải CSV bản ghi hiện tại",
-      "registerLimit": "Tối đa 500 dòng mỗi tệp. Bản tải hiện tại có ID đã lưu; hãy kiểm tra từng dòng trước khi áp dụng."
+      "registerLimit": "Tối đa 500 dòng mỗi tệp. Bản tải hiện tại có ID đã lưu; hãy kiểm tra từng dòng trước khi áp dụng.",
+      "registerRequiredCreate": "Bắt buộc khi ID bản ghi để trống."
     },
     "wizard": {
       "fields": {

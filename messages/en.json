@@ -1981,7 +1981,8 @@
       "unexpectedSheet": "This workbook contains an unexpected or duplicate sheet. Use the current template and keep its data sheet names so no table is ignored.",
       "registerExistingEmployeeId": "Employee ID for current records",
       "registerDownloadExisting": "Download current records CSV",
-      "registerLimit": "Up to 500 rows per register file. Current-record downloads include saved Record IDs; review every row before applying."
+      "registerLimit": "Up to 500 rows per register file. Current-record downloads include saved Record IDs; review every row before applying.",
+      "registerRequiredCreate": "Required when Record ID is blank."
     },
     "wizard": {
       "fields": {

@@ -1,6 +1,7 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as schema from '../db/schema';
+import type {ImportRecord} from '../lib/import-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {employeeDetail} from '../core/read';
@@ -97,7 +98,7 @@ describe('Qualification and Emergency Contact register imports',()=>{
   });
   it('uses the canonical effective-date validator in preview and apply, without truncating months',async()=>{
     const e=await hire('REG001');const q=await addQualification(ctx,{employmentId:e.employmentId,qualification:'Bachelor',fromYm:'2020-01',toYm:'2020-12'});
-    for(const record of [{from_ym:'2021-01'},{from_ym:'0000-01'},{from_ym:'2020-01-01'},{graduation_date:'2023-02-29'}]) {
+    for(const record of [{from_ym:'2021-01'},{from_ym:'0000-01'},{from_ym:'2020-01-01'},{graduation_date:'2023-02-29'}] as ImportRecord[]) {
       const records=[{employee_code:'REG001',record_id:q.id,...record}];
       expect((await validateSectionImport(ctx,{section:'qualification',records})).rows[0].ok).toBe(false);
       expect((await commitSectionImport(ctx,{section:'qualification',records})).updated).toBe(0);
@@ -117,6 +118,18 @@ describe('Qualification and Emergency Contact register imports',()=>{
     expect((await validateSectionImport(ctx,{section:'qualification',records:[{employee_code:'REG001',qualification:'New qualification'}]})).rows[0].ok).toBe(false);
     expect((await validateSectionImport(ctx,{section:'emergency',records:[{employee_code:'REG001',full_name:'New',relationship:'New relationship'}]})).rows[0].ok).toBe(false);
   });
+  it('resolves an unambiguous active catalogue label to its saved code and refuses ambiguous names',async()=>{
+    const e=await hire('REG001');
+    await owner.db.insert(schema.profileOption).values([
+      {tenantId:b.tenantId,category:'qualificationLevel',value:'QUAL-A',label:'Unique qualification',isActive:true},
+      {tenantId:b.tenantId,category:'qualificationLevel',value:'QUAL-B',label:'Ambiguous qualification',isActive:true},
+      {tenantId:b.tenantId,category:'qualificationLevel',value:'QUAL-C',label:'Ambiguous qualification',isActive:true},
+    ]);
+    const named=await commitSectionImport(ctx,{section:'qualification',records:[{employee_code:'REG001',qualification:'Unique qualification'}]});
+    expect(named.updated).toBe(1);expect((await listQualifications(ctx,{employmentId:e.employmentId}))[0].qualification).toBe('QUAL-A');
+    const ambiguous=await validateSectionImport(ctx,{section:'qualification',records:[{employee_code:'REG001',qualification:'Ambiguous qualification'}]});
+    expect(ambiguous.rows[0].errors.join(' ')).toContain('ambiguous');
+  });
   it('adds register rows through the full employee transaction and refuses orphan/explicit-existing-ID rows',async()=>{
     const records=[fullRow('REG001')];
     const registerRecords={qualification:[{employee_code:'REG001',qualification:'Bachelor',from_ym:'2010-03',to_ym:'2014-08',is_highest:'true'}],emergency:[{employee_code:'REG001',full_name:'Contact',priority:'primary',mobile_phone:'001234'}]};
@@ -131,15 +144,19 @@ describe('Qualification and Emergency Contact register imports',()=>{
   });
   it('rolls back newly created employee, family and canonical events when a later register writer refuses',async()=>{
     // Real DB refusal after hire, statutory, compensation and Family owners have written in this Tx.
-    await owner.sql.unsafe(`create function public.test_register_refusal() returns trigger language plpgsql as $$ begin raise exception 'test register refusal'; end $$`);
-    await owner.sql.unsafe('create trigger test_register_refusal before insert on employee_qualification for each row execute function public.test_register_refusal()');
+    const beforeEvents=(await owner.db.select().from(schema.domainEvent)).length;
+    const beforeCompensation=(await owner.db.select().from(schema.compensation)).length;
+    await owner.client.unsafe(`create function public.test_register_refusal() returns trigger language plpgsql as $$ begin raise exception 'test register refusal'; end $$`);
+    await owner.client.unsafe('create trigger test_register_refusal before insert on employee_qualification for each row execute function public.test_register_refusal()');
     try {
       const result=await commitEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('REG001')],dependentRecords:[{employee_code:'REG001',full_name:'Child',relationship:'child',date_of_birth:'2020-01-01'}],registerRecords:{qualification:[{employee_code:'REG001',qualification:'Bachelor'}]}});
       expect(result.imported).toBe(0);expect(result.dependentsImported).toBe(0);expect(result.registersImported).toEqual({qualification:0,emergency:0});expect(result.fileErrors.length).toBeGreaterThan(0);
       expect(await owner.db.select().from(schema.person).where(eq(schema.person.primaryEmail,'reg001@register.test'))).toEqual([]);
       expect(await owner.db.select().from(schema.employeeDependent)).toEqual([]);
       expect(await owner.db.select().from(schema.employeeQualification)).toEqual([]);
-    }finally {await owner.sql.unsafe('drop trigger test_register_refusal on employee_qualification');await owner.sql.unsafe('drop function public.test_register_refusal()');}
+      expect((await owner.db.select().from(schema.compensation)).length).toBe(beforeCompensation);
+      expect((await owner.db.select().from(schema.domainEvent)).length).toBe(beforeEvents);
+    }finally {await owner.client.unsafe('drop trigger test_register_refusal on employee_qualification');await owner.client.unsafe('drop function public.test_register_refusal()');}
   });
   it('refuses over-limit rows before consulting the database and refuses unknown register columns',async()=>{
     await expect(validateSectionImport(ctx,{section:'qualification',records:Array.from({length:501},()=>({employee_code:'REG001',qualification:'Bachelor'}))})).rejects.toThrow('500');

@@ -157,7 +157,7 @@ describe('2983802f §1 · the section catalogue accounts for every column', () =
     const all = [...IMPORT_COLUMNS.required, ...IMPORT_COLUMNS.optional];
     const owners = new Map<string, string[]>();
     for (const s of IMPORT_SECTION_KEYS) {
-      if (IMPORT_SECTION_DEFS[s].family) continue; // the family sheet is its own contract
+      if (IMPORT_SECTION_DEFS[s].family || IMPORT_SECTION_DEFS[s].register) continue; // repeated registers have independent row contracts
       for (const c of [...IMPORT_SECTION_DEFS[s].required, ...IMPORT_SECTION_DEFS[s].optional]) {
         owners.set(c, [...(owners.get(c) ?? []), s]);
       }

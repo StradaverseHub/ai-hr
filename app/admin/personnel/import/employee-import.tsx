@@ -519,7 +519,7 @@ export function EmployeeImport({
                 {t('stepNum', { num: 6 })}
               </span>{' '}
               {t('importedCount', { count: result.imported })}
-              {result.registersImported && <span> · {t('registerSavedCount',{count:result.registersImported.qualification+result.registersImported.emergency})}</span>}
+              {result.registersImported && result.registersImported.qualification+result.registersImported.emergency>0 && <span> · {t('registerSavedCount',{count:result.registersImported.qualification+result.registersImported.emergency})}</span>}
               {result.dependentsImported > 0 &&
                 ` · ${t('dependentsImportedCount', { count: result.dependentsImported })}`}
               {result.skipped > 0 && ` · ${t('skippedCount', { count: result.skipped })}`}
