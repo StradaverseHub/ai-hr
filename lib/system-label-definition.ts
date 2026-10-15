@@ -11,7 +11,7 @@ export const ORGANISATION_LABEL_COLUMNS = {
 
 export const LABEL_IMPORT_DEFINITIONS = [
   ...ORGANISATION_LABEL_KINDS.map(kind => ({ kind, scope: 'company' as const,
-    columns: ['Company', 'Scope', 'Shared Companies', ...ORGANISATION_LABEL_COLUMNS[kind].map(c => ({code:'Code',label:'Label',description:'Description'}[c.headerKey])),
+    columns: ['Company', 'Criteria', 'Criteria Companies', ...ORGANISATION_LABEL_COLUMNS[kind].map(c => ({code:'Code',label:'Label',description:'Description'}[c.headerKey])),
       ...(['department', 'business_unit'].includes(kind) ? ['Head Employee Code'] : [])] })),
   ...EMPLOYMENT_LABEL_CATEGORIES.map(kind => ({ kind, scope: 'tenant' as const, columns: ['Code', 'Label', 'Description', 'Sort Order'] })),
   { kind: 'grades', scope: 'tenant' as const, columns: ['Code', 'Label', 'Description', 'Rank'] },
@@ -19,7 +19,7 @@ export const LABEL_IMPORT_DEFINITIONS = [
 ];
 export type LabelImportKind = typeof LABEL_IMPORT_DEFINITIONS[number]['kind'];
 export type LabelImportMode = 'add' | 'update' | 'merge';
-export type LabelImportRow = { sheet: string; row: number; values: Record<string, string> };
+export type LabelImportRow = { sheet: string; row: number; values: Record<string, string>; warnings?:string[] };
 export type LabelImportPreviewRow = LabelImportRow & {
   outcome: 'add' | 'update' | 'skip' | 'error'; message: string;
   before: Record<string, string> | null; after: Record<string, string>;

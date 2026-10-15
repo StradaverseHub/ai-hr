@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { bulkSaveLabels, createJobGrade, updateJobGrade, type LabelCreateInput, type LabelUpdateInput } from './admin';
 import { createProfileOption, updateProfileOption } from './profile-options';
-import { assignLabelToCompanies, setLabelGlobal, visibleLabelIdsCondition } from './system-labels';
+import { setLabelCriteria, visibleLabelIdsCondition } from './system-labels';
 import { createGradeGroup, updateGradeGroup } from '../packs/leave/service';
 import { EMPLOYMENT_LABEL_CATEGORIES, LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS,
   ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind, type LabelImportMode,
@@ -45,8 +45,8 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
   const normalise = (kind: OrganisationLabelKind, rows: (typeof departments[number] | typeof positions[number] | typeof costs[number] | typeof units[number])[]) => {
     for (const r of rows) {
       const field = (key: string) => String((r as unknown as Record<string,unknown>)[key] ?? '');
-      const shared = assignments.filter(a => a.labelId === r.id && a.labelKind === kind && a.companyId !== r.companyId).map(a => a.companyId).sort();
-      const values: Record<string,string> = { Company:companyCell(companies,r.companyId), Scope:r.isGlobal?'global':shared.length?'shared':'own', 'Shared Companies':r.isGlobal?'':shared.map(id=>companyCell(companies,id)).sort().join(';') };
+      const shared = assignments.filter(a => a.labelId === r.id && a.labelKind === kind).map(a => a.companyId).sort();
+      const values: Record<string,string> = { Company:companyCell(companies,r.companyId), Criteria:r.isGlobal?'global':'companies', 'Criteria Companies':r.isGlobal?'':shared.map(id=>companyCell(companies,id)).sort().join(';') };
       for (const c of ORGANISATION_LABEL_COLUMNS[kind]) values[{code:'Code',label:'Label',description:'Description'}[c.headerKey]] = field(c.field);
       if (kind === 'department' || kind === 'business_unit') values['Head Employee Code'] = employees.find(e => e.id === field('headEmploymentId'))?.code ?? '';
       orgs.push({kind,id:r.id,companyId:r.companyId,archived:r.archivedAt!=null,values,
@@ -134,7 +134,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
       const mergeBefore=(before:Record<string,string>|null)=>{
        if(!merge)return;
        for(const key of Object.keys(v)){
-        if(v[key]==='[CLEAR]'){if(['Company','Code','Name','Scope','Shared Companies'].includes(key))throw new Error(key+' cannot be cleared.');v[key]='';}
+        if(v[key]==='[CLEAR]'){if(['Company','Code','Name','Criteria'].includes(key))throw new Error(key+' cannot be cleared.');v[key]='';}
         else if(before&&v[key]==='')v[key]=before[key]??'';
        }
       };
@@ -166,11 +166,12 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
         const twins=c.orgs.filter(x=>x.kind===kind&&x.companyId===companyId&&lower(x.values.Code)===lower(code));
         const old=twins.find(x=>!x.archived)??twins[0];
         mergeBefore(old?.values??null);
+        if(row.values.Criteria==='global' && row.values['Criteria Companies']==='')v['Criteria Companies']='';
         if(merge&&old&&same(old.values,v)){classify(old.values,async()=>{});continue;}
-        if(!['own','shared','global'].includes(v.Scope))throw new Error('Scope must be own, shared or global.');
-        const shared=list(v['Shared Companies']).map(value=>{const matches=c.companies.filter(x=>x.id===value||x.name===value);if(matches.length!==1)throw new Error('A shared company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();v['Shared Companies']=shared.map(id=>companyCell(c.companies,id)).sort().join(';');
-        guard(v.Scope==='global'&&!c.groupAdmin,'Global options require a group administrator.');
-        if((v.Scope==='shared')!==(shared.length>0)||shared.includes(companyId))throw new Error('Shared scope needs additional company IDs; own/global scope must leave Shared Companies blank.');
+        if(!['companies','global'].includes(v['Criteria']))throw new Error('Criteria must be companies or global.');
+        const shared=list(v['Criteria Companies']).map(value=>{const matches=c.companies.filter(x=>x.id===value||x.name===value);if(matches.length!==1)throw new Error('A shared company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();v['Criteria Companies']=shared.map(id=>companyCell(c.companies,id)).sort().join(';');
+        guard((v['Criteria']==='global'||old?.values.Criteria==='global')&&!c.groupAdmin,'Global criteria changes require a group administrator.');
+        if((v['Criteria']==='companies')!==(shared.length>0))throw new Error('Companies criteria require a complete nonempty company list; Global must leave Criteria Companies blank.');
         guard(shared.some(id=>!c.companies.some(x=>x.id===id&&x.writable&&!x.archived)),'A shared company is archived or outside your administrator scope.');
         const head=merge&&row.values['Head Employee Code']===''?'':v['Head Employee Code'];
         const headMatches=head?c.employees.filter(e=>e.companyId===companyId&&e.code===head&&e.active):[];
@@ -178,17 +179,15 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])if('required' in col&&col.required)requireValue({code:'Code',label:'Label',description:'Description'}[col.headerKey]);
         guard(!!old?.archived,'Restore the archived option in System Labels first.');
         if(old&&old.values.Code!==code)throw new Error('Keep the existing Code spelling; import cannot rename an identifier.');
-        if(old&&(old.values.Scope!==v.Scope||old.values['Shared Companies']!==v['Shared Companies']))throw new Error('Existing company scope cannot change through import. Use the scope editor.');
         if(!identify(`${kind}|${companyId}|${lower(code)}`))continue;
         const fields:Partial<LabelCreateInput>={companyId,label:v.Label};
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])Object.assign(fields,{[col.field]:v[{code:'Code',label:'Label',description:'Description'}[col.headerKey]]});
         if('Head Employee Code' in v&&(!merge||row.values['Head Employee Code']!==''))fields.headEmploymentId=headMatches[0]?.id??null;
         classify(old?.values??null,async()=>{
-          if(old)return bulkSaveLabels(ctx,kind,{creates:[],updates:[{...old.original,...fields,key:old.id,id:old.id}]},tx);
-          const created=await bulkSaveLabels(ctx,kind,{creates:[{...fields,key:`${row.sheet}:${row.row}`,companyId} as LabelCreateInput],updates:[]},tx);
+          if(old){const updated=await bulkSaveLabels(ctx,kind,{creates:[],updates:[{...old.original,...fields,key:old.id,id:old.id}]},tx);await setLabelCriteria(ctx,{kind,labelId:old.id,isGlobal:v.Criteria==='global',companyIds:shared},tx);return updated;}
+          const created=await bulkSaveLabels(ctx,kind,{creates:[{...fields,key:`${row.sheet}:${row.row}`,companyId,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput],updates:[]},tx);
           const id=created.createdIds[0].id;
-          if(v.Scope==='global')await setLabelGlobal(ctx,{kind,labelId:id,isGlobal:true},tx);
-          if(shared.length)await assignLabelToCompanies(ctx,{kind,labelId:id,companyIds:shared},tx);
+          await setLabelCriteria(ctx,{kind,labelId:id,isGlobal:v.Criteria==='global',companyIds:shared},tx);
           return created;
         });
       } else if ((EMPLOYMENT_LABEL_CATEGORIES as readonly string[]).includes(row.sheet)) {
@@ -240,6 +239,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], mode
       result.outcome='error';result.message=error instanceof Error?error.message:'Invalid label row.';
     }
   }
+  for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
   const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,mode,c,audit,output])).digest('hex');
   return {preview:{token,rows:output,valid:output.length>0&&!output.some(x=>x.selected&&x.outcome==='error'),mode} satisfies LabelImportPreview,writes:writes.filter(w=>output.some(r=>r.selected&&r.sheet+':'+r.row===w.key)).map(w=>w.apply)};
 }
@@ -252,6 +252,7 @@ export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,mode:La
 export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode:LabelImportMode;token:string;confirmUpdates:boolean;selectedKeys?:string[]}): Promise<{imported:number;updated:number;skipped:number;failed:number}> {
   const rows=readSystemLabelWorkbook(p.bytes);
   return withTenant(ctx,async tx=>{
+    for(const kind of ORGANISATION_LABEL_KINDS)await tx.execute(sql`select app.lock_system_label_criteria(${ctx.tenantId}::uuid, ${kind})`);
     // Existing editors use these same tables. Hold their writers until revalidation and the batch commit.
     await tx.execute(sql`LOCK TABLE department, "position", cost_center, business_unit, profile_option, job_grade,
       grade_group, grade_group_member, label_company_assignment, company, employment IN SHARE ROW EXCLUSIVE MODE`);
