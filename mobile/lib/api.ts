@@ -15,7 +15,7 @@ import type {
   PayslipsResponse,
 } from '../../lib/mobile-api/contract';
 import { assertAuthGeneration, authGeneration, getAccessToken, refresh } from './auth';
-import { apiOriginProblem, config } from './config';
+import { apiOriginProblem, config, configProblem } from './config';
 import { SignInRequiredError, UnavailableError, RequestRejectedError } from './errors';
 import { appLocale } from './i18n';
 
@@ -40,10 +40,11 @@ function url(path: string, params: Record<string, string | undefined>): string {
 }
 
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean}):Promise<T> {
-  if (!config.apiUrl || apiOriginProblem(config.apiUrl)) throw new UnavailableError('The API origin is not configured securely.');
+  if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
   const owner = authGeneration();
   const send = async (token: string) => {
     assertAuthGeneration(owner);
+    if(configProblem())throw new UnavailableError('The approved company connection is no longer valid.');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
@@ -51,6 +52,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
         headers: { authorization: `Bearer ${token}`, 'accept-language': appLocale(), ...(request?.json ? {'content-type':'application/json'} : {}) },
         ...(request ? {method:'POST',body:request.body} : {}),
         redirect: 'error',
+        credentials: 'omit',
         signal: controller.signal,
       });
       return response;

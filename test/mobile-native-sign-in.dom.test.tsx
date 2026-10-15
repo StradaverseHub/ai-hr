@@ -53,6 +53,7 @@ function fixture() {
     './Discovery': { resolveDiscoveryAsync: async (value: unknown) => value } });
   let owner = 0;
   const auth = { beginSignIn: vi.fn(() => ++owner), completeSignIn: vi.fn(async () => {}),
+    assertAuthGeneration: vi.fn(),
     redirectUri: () => 'aihr://auth/callback', discovery: { authorizationEndpoint: 'https://api.workos.com/user_management/authorize' } };
   const session = { status: 'signedOut', error: false, markSignedIn: vi.fn(async () => {}) };
   const router = { replace: vi.fn() };
@@ -62,6 +63,8 @@ function fixture() {
     'expo-router': { router, Redirect: () => null }, react: React, 'react/jsx-runtime': jsx,
     'react-native': { View: Container, Text: Container, StyleSheet: { create: (value: unknown) => value } },
     '../lib/auth': auth, '../lib/config': { config: { workosClientId: 'public-client' }, configProblem: () => null, identityClientId: () => 'public-client' },
+    '../lib/company-connection': { useCompanyConnection: () => null, companyCopy: () => ({ change: 'Change company' }) },
+    '../lib/connection-probe': { verifyCompanyServer: vi.fn() },
     '../lib/i18n': { t: (key: string) => key }, '../lib/session': { useSession: () => session },
     '../lib/ui': { colors: {}, Button: ({ title, disabled, onPress }: any) => <button disabled={disabled} onClick={onPress}>{title}</button> },
   });

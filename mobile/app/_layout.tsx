@@ -1,4 +1,5 @@
 import { JourneyDraftProvider } from '../lib/journey-drafts';
+import { CompanyConnectionProvider } from '../lib/company-connection';
 import { TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -40,10 +41,10 @@ function Gate() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <SessionProvider>
+      <CompanyConnectionProvider><SessionProvider>
         <StatusBar style="dark" />
         <JourneyDraftProvider><Gate /></JourneyDraftProvider>
-      </SessionProvider>
+      </SessionProvider></CompanyConnectionProvider>
     </SafeAreaProvider>
   );
 }

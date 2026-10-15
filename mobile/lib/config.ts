@@ -3,12 +3,18 @@
  * live here — and nothing does: the WorkOS client id is public by design (PKCE, ADR-0088 §1), and the
  * API URL is just an address. See .env.example.
  */
+import type { VerifiedCompanyProfile } from './company-profile';
+import { validCompanyProfile } from '../../lib/mobile-connection';
+export const runtimeConnections = process.env.EXPO_PUBLIC_RUNTIME_CONNECTIONS === '1';
+let selected: VerifiedCompanyProfile | null = null;
+/** Called only after signature verification and successful session/file cleanup. */
+export function applyCompanyConnection(profile: VerifiedCompanyProfile | null) { selected = profile; }
 export const config = {
-  authProvider: process.env.EXPO_PUBLIC_AUTH_PROVIDER ?? 'workos',
-  issuer: (process.env.EXPO_PUBLIC_KEYCLOAK_ISSUER ?? '').replace(/\/+$/, ''),
-  keycloakClientId: process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? '',
+  get authProvider() { return selected ? 'keycloak' : process.env.EXPO_PUBLIC_AUTH_PROVIDER ?? 'workos'; },
+  get issuer() { return selected?.issuer ?? (runtimeConnections ? '' : (process.env.EXPO_PUBLIC_KEYCLOAK_ISSUER ?? '').replace(/\/+$/, '')); },
+  get keycloakClientId() { return selected?.clientId ?? (runtimeConnections ? '' : process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? ''); },
   /** The AI HR server, e.g. https://hr.example.com. No trailing slash. */
-  apiUrl: (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, ''),
+  get apiUrl() { return selected?.apiOrigin ?? (runtimeConnections ? '' : (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '')); },
   /** The WorkOS client id of the environment this build signs in against (Staging or Production). */
   workosClientId: process.env.EXPO_PUBLIC_WORKOS_CLIENT_ID ?? '',
   /** The custom URL scheme registered with WorkOS as `aihr://auth/callback` (placeholder until the store name is chosen). */
@@ -17,6 +23,7 @@ export const config = {
 
 /** A human-readable reason the build cannot sign anyone in, or null when it is configured. */
 export function configProblem(): string | null {
+  if (selected) { try { validCompanyProfile(selected); } catch { return 'The company setup has expired. Ask your administrator for a new setup file.'; } }
   if (!config.apiUrl) return 'EXPO_PUBLIC_API_URL is not set for this build.';
   const originProblem = apiOriginProblem(config.apiUrl);
   if (originProblem) return originProblem;
@@ -43,4 +50,4 @@ export function apiOriginProblem(value: string): string | null {
 }
 
 export function identityClientId(): string { return config.authProvider === 'keycloak' ? config.keycloakClientId : config.workosClientId; }
-export function identityNamespace(): string { return JSON.stringify([config.authProvider, config.apiUrl, config.issuer, identityClientId()]); }
+export function identityNamespace(): string { const base=[config.authProvider,config.apiUrl,config.issuer,identityClientId()];return JSON.stringify(selected?[...base,selected.id,selected.audience]:base); }

@@ -4,6 +4,8 @@ import { useTenantDesign } from '../../lib/design';
  * payslips, and sign out.
  */
 import { Pressable } from 'react-native';
+import { router } from 'expo-router';
+import { companyCopy, useCompanyConnection } from '../../lib/company-connection';
 import { DesignText as Text } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
@@ -11,6 +13,7 @@ import { useSession } from '../../lib/session';
 import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title, colors, fmtMoney } from '../../lib/ui';
 
 export default function Me() {
+  const company=useCompanyConnection();
   const { palette } = useTenantDesign();
   const { signOut, employmentId, setEmploymentId } = useSession();
   const me = useApi('me', {}, signOut);
@@ -55,6 +58,7 @@ export default function Me() {
       ))}
 
       <Button title={t('signOut')} onPress={() => void signOut()} kind="quiet" />
+      {company&&<Button title={companyCopy().change} onPress={()=>router.push('/company')} kind="quiet"/>}
     </Screen>
   );
 }

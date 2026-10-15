@@ -60,6 +60,29 @@ Self-hosting gives deployment control and removes a mandatory hosted identity de
 
 This ADR records the approved migration direction. The Keycloak adapter, additive identity mapping, native exchange and installation package are being implemented under the approved work. Their existence in source is not evidence of a completed production cutover. Trusted runtime connection enrollment, private-network/device acceptance and WorkOS retirement remain explicit delivery stages. The visual composer remains a separate implementation workstream and must not control authentication endpoints or credentials.
 
+## Runtime mobile company setup — 2026-10-15
+
+The owner's Android/iPhone test-build request confirms that future private customers must use the same
+binary. The initial runtime enrollment consumes offline Ed25519-signed public setup files, verified by
+the maintained noble curve implementation against trust anchors shipped in the app. The file's own key
+cannot establish trust. Profiles pin the installation, Keycloak API/issuer/client/audience, version and
+validity window; they do not select a tenant or grant HR access. Before opening login the app compares
+public operator metadata and OIDC discovery with those exact settings. Cloud and on-premise use the
+same mechanism. Customers need private DNS/TLS and network/VPN access, not a mandatory cloud directory.
+
+Switching closes private views before awaiting serialized credential/device and file cleanup. Only
+successful cleanup permits endpoint replacement. Old generations cannot commit tokens or API results.
+Cold launch re-verifies the saved signature/expiry. Legacy build-time WorkOS configurations remain a
+separate adapter; imported runtime profiles support Keycloak, not arbitrary OIDC providers.
+
+The test binary carries a test-only trust anchor and separate native application identifiers. Its private
+signing key is outside source/build/upload inputs. Customer production keys, distribution and rotation
+remain operator provisioning work. Offline signatures do not provide instant revocation; bounded expiry,
+server account/client revocation and an app update removing a compromised anchor are explicit limits.
+Signed setup file import is delivered first; QR scanning, MDM enrollment, a hosted directory, new
+cross-tenant account adoption and production/store distribution are excluded from this test slice.
+Physical-device login and private-network acceptance remain claims requiring actual device evidence.
+
 ## Standards and provider references (checked 2026-10-10)
 
 - [Keycloak administration](https://www.keycloak.org/docs/latest/server_admin/index.html): identity brokering, OIDC/SAML, LDAP/Active Directory, passkeys and session administration.

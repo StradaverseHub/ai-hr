@@ -11,10 +11,9 @@ import { providerLogoutUrl, sessionIdFromToken } from './provider-logout';
 
 const REFRESH_KEY = 'aihr.refreshToken';
 const STORE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
-const AUTHENTICATE_URL = config.authProvider === 'keycloak' ? `${config.issuer}/protocol/openid-connect/token` : 'https://api.workos.com/user_management/authenticate';
 export const discovery: AuthSession.DiscoveryDocument = {
-  authorizationEndpoint: config.authProvider === 'keycloak' ? `${config.issuer}/protocol/openid-connect/auth` : 'https://api.workos.com/user_management/authorize',
-  tokenEndpoint: AUTHENTICATE_URL,
+  get authorizationEndpoint() { return config.authProvider === 'keycloak' ? `${config.issuer}/protocol/openid-connect/auth` : 'https://api.workos.com/user_management/authorize'; },
+  get tokenEndpoint() { return config.authProvider === 'keycloak' ? `${config.issuer}/protocol/openid-connect/token` : 'https://api.workos.com/user_management/authenticate'; },
 };
 export function redirectUri(): string {
   return AuthSession.makeRedirectUri({ scheme: config.scheme, path: 'auth/callback' });
@@ -26,12 +25,13 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const params = { client_id: identityClientId(), ...body, ...(config.authProvider === 'keycloak' && body.grant_type === 'authorization_code' ? { redirect_uri: redirectUri() } : {}) };
-    const res = await fetch(AUTHENTICATE_URL, {
+    const res = await fetch(discovery.tokenEndpoint!, {
       method: 'POST',
       headers: { 'content-type': config.authProvider === 'keycloak' ? 'application/x-www-form-urlencoded' : 'application/json' },
       body: config.authProvider === 'keycloak' ? new URLSearchParams(params).toString() : JSON.stringify(params),
       signal: controller.signal,
       redirect: 'error',
+      credentials: 'omit',
     });
     // Throttling, bad configuration and outages preserve the credentials for a retry.
     if ([400, 401, 403].includes(res.status)) throw new SignInRequiredError();

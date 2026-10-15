@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "AI HR",
-    "slug": "ai-hr",
+    "name": "AI HR Test",
+    "slug": "ai-hr-test",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,7 +10,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSFaceIDUsageDescription": "Unlock AI HR with Face ID instead of signing in again."
-      }
+      },
+      "bundleIdentifier": "ai.stradaverse.aihr.test",
+      "buildNumber": "1"
     },
     "android": {
       "blockedPermissions": [
@@ -28,7 +30,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "ai.stradaverse.aihr.test",
+      "versionCode": 1
     },
     "plugins": [
       "expo-router",
