@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
-import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
+import { afterAll,beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
 import { and,eq,sql } from 'drizzle-orm';
 import { adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base } from './harness';
 import { withTenant,type SessionContext } from '../db/client';
@@ -11,6 +11,7 @@ import { deliverNotificationEmails,type NotificationEmailTransport } from '../co
 import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,readNotificationEmailPreferences,readNotificationEmailDeliveries,retryNotificationEmail } from '../core/notification-email';
 import { erasePersonPii } from '../core/pdpa';
 import { workflowEmailDatabaseGrants } from '../deploy/identity-email/database';
+import { createNotificationEmailService,type WorkflowMailTarget } from '../deploy/identity-email/notifications';
 import * as schema from '../db/schema';
 const raw=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:2});
 let b:Base;const issuer='https://hr.test/identity/realms/ai-hr';
@@ -32,6 +33,57 @@ const deliveries=()=>owner.db.select().from(schema.notificationDelivery).where(e
 async function lease(id:string){const token=randomUUID();await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+30_000)}).where(eq(schema.notificationDelivery.id,id));return token;}
 const target=(id:string,token:string)=>raw`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${issuer})`;
 describe('workflow email configuration and outbox in the actual database',()=>{
+ it('records missing SMTP as failed, preserves notifications, and sends only the failures explicitly retried after setup',async()=>{
+  const first=await employee(),second=await employee('second@example.test');await consent(first);await consent(second);
+  await event(first.employmentId);await event(second.employmentId);await dispatchNotifications(adminCtx(b));
+  const jobs=await deliveries();expect(jobs).toHaveLength(2);
+  const offline:NotificationEmailTransport=async<T>(request)=>{expect(request.op).toBe('status');return {version:1,ready:false} as T;};
+  expect(await deliverNotificationEmails(adminCtx(b),offline)).toMatchObject({attempted:2,unavailable:true});
+  expect((await deliveries()).every(d=>d.status==='failed'&&d.lastError==='relayUnavailable'&&d.attempts===1&&d.startedAt===null&&d.leaseToken===null)).toBe(true);
+  expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'leave.approved'))).toHaveLength(2);
+  const send=vi.fn().mockResolvedValue(undefined);
+  const service=createNotificationEmailService({origin:'https://hr.test',ready:async()=>true,
+   target:async(id,token)=>(await target(id,token))[0] as WorkflowMailTarget??null,
+   verifyRecipient:async()=> 'verified',
+   start:async(id,token,expected)=>(await raw`select identity_email.start_delivery(${id}::uuid,${token}::uuid,${issuer},${raw.json(expected)}::jsonb) as started`)[0].started,
+   finish:async(id,token,outcome,error)=>(await raw`select identity_email.finish_delivery(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0].finished,
+   send});
+  const online:NotificationEmailTransport=async<T>(request)=>await service(request) as T;
+  expect(await deliverNotificationEmails(adminCtx(b),online)).toMatchObject({attempted:0});expect(send).not.toHaveBeenCalled();
+  const selected=jobs.find(d=>d.recipientUserId===first.ctx.userId)!;
+  await retryNotificationEmail(adminCtx(b),selected.id,true);
+  expect(await deliverNotificationEmails(adminCtx(b),online)).toMatchObject({attempted:1});expect(send).toHaveBeenCalledOnce();
+  const final=await deliveries();expect(final.find(d=>d.id===selected.id)).toMatchObject({status:'sent',lastError:null});
+  expect(final.find(d=>d.id!==selected.id)).toMatchObject({status:'failed',lastError:'relayUnavailable',attempts:1});
+  expect(await deliverNotificationEmails(adminCtx(b),online)).toMatchObject({attempted:0});expect(send).toHaveBeenCalledOnce();
+ });
+ it('records an unavailable private transport once across concurrent sweeps without marking SMTP started',async()=>{
+  const e=await employee();await consent(e);await event(e.employmentId);await dispatchNotifications(adminCtx(b));
+  const offline:NotificationEmailTransport=async()=>{throw Error('private transport unavailable');};
+  const results=await Promise.all([deliverNotificationEmails(adminCtx(b),offline),deliverNotificationEmails(adminCtx(b),offline)]);
+  expect(results.reduce((n,result)=>n+result.attempted,0)).toBe(1);
+  expect((await deliveries())[0]).toMatchObject({status:'failed',lastError:'relayUnavailable',attempts:1,startedAt:null,leaseToken:null,leaseUntil:null});
+  expect(await deliverNotificationEmails(adminCtx(b),offline)).toMatchObject({attempted:0});
+ });
+ it('records a definitive pre-send outage after readiness changes, but never overwrites an SMTP attempt that already started',async()=>{
+  const e=await employee();await consent(e);await event(e.employmentId);await dispatchNotifications(adminCtx(b));const [job]=await deliveries();
+  let ready=true;
+  const changed:NotificationEmailTransport=async<T>(request)=>{
+   if(request.op==='status')return {version:1,ready} as T;
+   ready=false;return {outcome:'unavailable'} as T;
+  };
+  expect(await deliverNotificationEmails(adminCtx(b),changed)).toMatchObject({attempted:1,unavailable:true});
+  expect((await deliveries())[0]).toMatchObject({status:'failed',lastError:'relayUnavailable',startedAt:null,attempts:1});
+  await retryNotificationEmail(adminCtx(b),job.id,true);
+  const started:NotificationEmailTransport=async<T>(request)=>{
+   if(request.op==='status')return {version:1,ready:true} as T;
+   const [expected]=await target(request.deliveryId,request.leaseToken);
+   await raw`select identity_email.start_delivery(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${issuer},${raw.json(expected)}::jsonb)`;
+   return {outcome:'unavailable'} as T;
+  };
+  await deliverNotificationEmails(adminCtx(b),started);
+  expect((await deliveries())[0]).toMatchObject({status:'pending',lastError:null,attempts:1});expect((await deliveries())[0].startedAt).not.toBeNull();
+ });
  it('requires both controls and explicit recorded consent; historical enabled preferences do not opt anyone in',async()=>{
   const e=await employee();await event(e.employmentId);await dispatchNotifications(adminCtx(b));expect(await deliveries()).toEqual([]);
   await saveNotificationEmailPolicy(adminCtx(b),['leave']);

@@ -16,7 +16,7 @@ import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults, setRewardMember } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
-import { saveNotificationEmailPolicy,saveNotificationEmailPreferences } from '../core/notification-email';
+import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,retryNotificationEmail } from '../core/notification-email';
 import { deliverNotificationEmails } from '../core/notification-email-delivery';
 import { dispatchNotifications,notificationStillTargets } from '../core/notifications';
 import { appendEvent,actorOf } from '../db/events';
@@ -2331,6 +2331,26 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await expect(perf.saveAssessmentReminderWords({...group,grants:[{role:'hr_admin',companyId:b.companyId}]},{subject:'Other',opening:'Other'})).rejects.toThrow(/group HR/);
     await perf.saveAssessmentReminderWords(group,null);expect((await perf.getAssessmentReminders(group,cycleId)).words).toBeNull();expect((await perf.getAssessmentReminders(group,cycleId)).rules.everyDays).toBe(7);
     await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(eq(schema.onehrReview.reviewId,reviewId));expect((await perf.previewAssessmentReminder(group,cycleId,employee.employeeCode!)).mail.tasks).toEqual([]);
+  });
+
+  it('prepares reminders without SMTP, lets assessment work finish, and skips obsolete work on an explicit retry',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);self={...self,entitlements:a.entitlements};
+    const issuer='https://hr.test/identity/realms/ai-hr',subjectId=randomUUID(),[person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId));
+    await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:subjectId,appUserId:self.userId!});
+    await saveNotificationEmailPolicy(a,['performance']);await saveNotificationEmailPreferences(self,subject.employmentId,['performance'],'en',{issuer,subject:subjectId,email:person.primaryEmail,emailVerified:true});
+    expect(await perf.queueAssessmentReminders(a,cycleId,'manual')).toMatchObject({queued:1});await dispatchNotifications(a);
+    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.kind,'performance.reminder'));
+    const offline=async<T>():Promise<T>=>({version:1,ready:false,assessmentReminders:true,assessmentReminderWords:true} as T);
+    expect(await deliverNotificationEmails(a,offline)).toMatchObject({attempted:1,unavailable:true});
+    expect((await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id)))[0]).toMatchObject({status:'failed',lastError:'relayUnavailable',startedAt:null});
+    const [draft]=await owner.db.select().from(schema.assessmentReminderRecipient).where(eq(schema.assessmentReminderRecipient.sourceEventId,delivery.sourceEventId!));
+    expect(draft.tasks).toEqual([expect.objectContaining({key:'own_competency',count:1})]);
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I have completed my self-assessment.');
+    expect((await view(self)).competencyStatus).toBe('submitted');
+    await retryNotificationEmail(a,delivery.id,true);
+    const online=vi.fn(async<T>():Promise<T>=>({version:1,ready:true,assessmentReminders:true,assessmentReminderWords:true} as T));
+    expect(await deliverNotificationEmails(a,online)).toMatchObject({attempted:0,skipped:1});expect(online).toHaveBeenCalledTimes(1);
+    expect((await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id)))[0]).toMatchObject({status:'skipped',lastError:'notEligible'});
   });
 
   it('queues unified reminders only after consent, previews without mail, and observes the 20-hour sent cooldown',async()=>{
