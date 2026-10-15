@@ -38,13 +38,36 @@ export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:nu
  const address=server.address();if(!address||typeof address==='string')throw new Error('Fixture sink did not bind.');
  return {port:address.port,messages,setMode:(next:SinkMode)=>{mode=next;},disconnect:()=>{for(const socket of sockets)socket.destroy();},close:async()=>{for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
 }
+/** Unfold continuation lines only in the MIME header section, never in encoded body data. */
+function mimePart(part:string):{headers:Map<string,string[]>;body:string} {
+ const split=part.indexOf('\r\n\r\n');if(split<0||split>16384)throw new Error('Missing or oversized MIME headers.');
+ const header=part.slice(0,split).replace(/\r\n[ \t]+/g,' '),headers=new Map<string,string[]>();
+ for(const line of header.split('\r\n')){
+  const match=line.match(/^([a-zA-Z0-9-]+):[ \t]*(.*)$/);if(!match)throw new Error('Invalid MIME header.');
+  const key=match[1].toLowerCase(),values=headers.get(key)??[];values.push(match[2].trim());headers.set(key,values);
+ }
+ return {headers,body:part.slice(split+4)};
+}
+function oneHeader(headers:Map<string,string[]>,name:string):string {
+ const values=headers.get(name);if(values?.length!==1)throw new Error('Missing or repeated MIME header.');return values[0];
+}
 /** Reads the attachment emitted by the real Nodemailer transport, never a caller-supplied workbook. */
 export function reportAttachment(raw:Buffer):Buffer {
- const text=raw.toString('ascii'),boundary=text.match(/boundary="([^"]+)"/)?.[1];if(!boundary)throw new Error('Missing multipart boundary.');
- const parts=text.split('--'+boundary).filter(part=>/Content-Disposition: attachment;/i.test(part));
+ const outer=mimePart(raw.toString('ascii')),type=oneHeader(outer.headers,'content-type');
+ if(type.split(';')[0].trim().toLowerCase()!=='multipart/mixed')throw new Error('Missing multipart workbook.');
+ const boundary=type.match(/(?:^|;)\s*boundary="([^"\r\n]{1,200})"(?:;|$)/i)?.[1];if(!boundary)throw new Error('Missing multipart boundary.');
+ const parts:{headers:Map<string,string[]>;body:string}[]=[];
+ for(const segment of outer.body.split('--'+boundary).slice(1)){
+  if(segment.startsWith('--'))break;
+  if(!segment.startsWith('\r\n'))throw new Error('Invalid multipart delimiter.');
+  const part=mimePart(segment.slice(2)),dispositions=part.headers.get('content-disposition')??[];
+  if(dispositions.some(value=>value.split(';')[0].trim().toLowerCase()==='attachment')){
+   if(dispositions.length!==1)throw new Error('Repeated attachment disposition.');parts.push(part);
+  }
+ }
  if(parts.length!==1)throw new Error('Expected one workbook attachment.');
- const part=parts[0];if(!/Content-Type: application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/i.test(part)||!/Content-Transfer-Encoding: base64/i.test(part))throw new Error('Unexpected attachment encoding.');
- const split=part.indexOf('\r\n\r\n');if(split<0)throw new Error('Missing attachment body.');
- const encoded=part.slice(split+4).trim();if(!/^[a-zA-Z0-9+/=\r\n]+$/.test(encoded))throw new Error('Invalid attachment encoding.');
+ const part=parts[0],mediaType=oneHeader(part.headers,'content-type').split(';')[0].trim().toLowerCase(),encoding=oneHeader(part.headers,'content-transfer-encoding').toLowerCase();
+ if(mediaType!=='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'||encoding!=='base64')throw new Error('Unexpected attachment encoding.');
+ const encoded=part.body.trim();if(!/^[a-zA-Z0-9+/=\r\n]+$/.test(encoded))throw new Error('Invalid attachment encoding.');
  const result=Buffer.from(encoded.replace(/\s/g,''),'base64');if(result.length<4||result.subarray(0,2).toString()!=='PK')throw new Error('Attachment is not an XLSX archive.');return result;
 }
