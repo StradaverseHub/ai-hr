@@ -19,8 +19,8 @@ function fixture() {
  const clear=vi.fn(async()=>{}),picker=vi.fn(async()=>({canceled:false,assets:[{uri:'cache/company.json'}]}));
  const Container=({children}:React.PropsWithChildren)=><div>{children}</div>;
  const ports:Record<string,unknown>={react:React,'react/jsx-runtime':jsx,
-  'react-native':{ActivityIndicator:()=> <div>Loading</div>,ScrollView:Container,Text:Container,View:Container,StyleSheet:{create:(x:unknown)=>x}},
-  'react-native-safe-area-context':{SafeAreaView:Container},'expo-file-system':{File,Directory,Paths:{document:'doc',cache:'cache'}},'expo-document-picker':{getDocumentAsync:picker},'expo-router':{router:{replace:vi.fn(),back:vi.fn()}},
+  'react-native':{ActivityIndicator:()=> <div>Loading</div>,BackHandler:{addEventListener:()=>({remove:()=>{}})},ScrollView:Container,Text:Container,View:Container,StyleSheet:{create:(x:unknown)=>x}},
+  'react-native-safe-area-context':{SafeAreaView:Container},'expo-file-system':{File,Directory,Paths:{document:'doc',cache:'cache'}},'expo-document-picker':{getDocumentAsync:picker},'expo-router':{router:{replace:vi.fn(),back:vi.fn()},SplashScreen:{hideAsync:vi.fn(async()=>{})}},
   './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':{verifyCompanyProfile},'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en'},
   './ui':{colors:{},Button:({title,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{title}</button>},'../connections/trust.json':trust,'../connections/profiles.json':[setup('Test cloud','https://cloud.example.test')]};
  const output={exports:{} as any};

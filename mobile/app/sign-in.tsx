@@ -36,7 +36,7 @@ export default function SignIn() {
     setConnectionError('');
     setBusy(true);
     try {
-      if(company) { try{await verifyCompanyServer(company);}catch{setConnectionError('Unable to verify company sign-in. It may not be activated yet, or your company network/VPN may be unavailable. Contact your administrator.');return;} }
+      if(company) { try{await verifyCompanyServer(company);}catch{setConnectionError(companyCopy().signInUnavailable);return;} }
       assertAuthGeneration(owner);
       if(configProblem())throw new Error('Company setup is no longer valid.');
       // A hook-held request reuses its state/verifier after cancellation. Each browser attempt
