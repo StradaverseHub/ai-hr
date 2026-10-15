@@ -23,17 +23,19 @@ describe('Personnel shared form contract',()=>{
     expect(personnelFormIssue(birth,'2025-02-29')).toBe('date');
     expect(personnelFormIssue(birth,'2024-02-29')).toBeNull();
     expect(personnelFormIssue('profile.personal_details.fullname','','create')).toBe('required');
-    expect(personnelFormIssue('profile.personal_details.fullname','','draft')).toBeNull();
+    expect(personnelFormIssue('profile.personal_details.fullname','','draft')).toBe('required');
+    expect(personnelControl('profile.personal_details.fullname','draft').required).toBe(false);
     expect(personnelFormChoices('employment.employment_dates_and_service.probationunit').map(option=>option.value)).toEqual(['month','week','day']);
   });
   it('reads actual Birth Date JSX and every Employment period control, including unnamed controlled inputs',()=>{
     const read=(file:string)=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const valueIds=['probationvalue','extendedprobationvalue','noticebeforeconfirmationvalue','noticeafterconfirmationvalue'].map(key=>'employment.employment_dates_and_service.'+key);
     const unitIds=['probationunit','extendedprobationunit','noticebeforeconfirmationunit','noticeafterconfirmationunit'].map(key=>'employment.employment_dates_and_service.'+key);
-    for(const [file,dynamicBindings] of [
-      ['components/birth-date-fields.tsx',{fieldId:[birth]}],
-      ['components/employment-period-fields.tsx',{fieldId:[initial],valueId:valueIds,unitId:unitIds}],
-    ] as const) {
+    const cases:{file:string;dynamicBindings:Record<string,readonly string[]>}[]=[
+      {file:'components/birth-date-fields.tsx',dynamicBindings:{fieldId:[birth]}},
+      {file:'components/employment-period-fields.tsx',dynamicBindings:{fieldId:[initial],valueId:valueIds,unitId:unitIds}},
+    ];
+    for(const {file,dynamicBindings} of cases) {
       const result=auditPersonnelFormSource(file,read(file),PERSONNEL_FIELDS,{dynamicBindings});
       expect(result.controls).toBeGreaterThan(1);expect(result.issues).toEqual([]);
     }
