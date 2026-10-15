@@ -350,9 +350,8 @@ async function analyze(
     // already created. Same rule as `assertProfileValueAllowed`: an EMPTY catalog means the tenant never
     // configured that list and free text is accepted, exactly as it is on the Personnel screens.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label })
-      .from(profileOption)
-      .where(eq(profileOption.isActive, true));
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label,isActive:profileOption.isActive })
+      .from(profileOption);
     // Item 06f0cb8f — an unfinished DRAFT holds an Employee ID too, so an import can collide with a
     // record that has no employment row yet. `hireEmployee` refuses it either way (that is the
     // authority, and it is what makes the rule true for every path at once); reading it here as well
@@ -408,7 +407,7 @@ async function analyze(
    */
   const catalogAllows = (category: string, value: string): boolean => {
     const active = catalog.get(category);
-    if (!active || active.size === 0) return true;
+    if (!active) return true;
     return active.has(value);
   };
 

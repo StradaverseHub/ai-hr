@@ -34,3 +34,9 @@ it('resolves fresh catalog display names to saved values and refuses ambiguous l
  expect(normalizePersonnelCatalogRecord({religion:'CODE-A'},'employee',catalog).record.religion).toBe('CODE-A');
  expect(personnelCatalogReferenceValues(options)).toEqual(['CODE-A','CODE-B','CODE-C','Distinct faith']);
 });
+
+it('retains configured-but-inactive catalogue state instead of treating it as never configured',()=>{
+ const catalog=new PersonnelImportCatalog();catalog.addOption({category:'religion',value:'retired',label:'Retired',isActive:false});
+ expect(catalog.has('religion')).toBe(true);expect(catalog.get('religion')?.size).toBe(0);expect(catalog.has('race')).toBe(false);
+ expect(catalog.resolve('religion','Retired').value).toBeUndefined();
+});

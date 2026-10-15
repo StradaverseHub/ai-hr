@@ -29,7 +29,7 @@ export function personnelFamilyCatalogErrors(record:Record<string,string>,catalo
   const errors:string[]=[];
   for(const field of PERSONNEL_FIELDS.filter(field=>field.import.writer==='dependent' && field.import.catalog)) {
     const raw=(record[field.import.column!]??'').trim();const values=catalog.get(field.import.catalog!);
-    if(raw && values?.size && !values.has(raw))errors.push(`${field.import.column} is not an active ${field.import.catalog} option`);
+    if(raw && values!==undefined && !values.has(raw))errors.push(`${field.import.column} is not an active ${field.import.catalog} option`);
   }
   return errors;
 }

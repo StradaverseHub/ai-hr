@@ -558,9 +558,8 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     // where the spreadsheet can still be fixed. An EMPTY catalog means the tenant never configured that
     // list and free text is accepted — the same rule the Personnel screens apply.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label })
-      .from(profileOption)
-      .where(eq(profileOption.isActive, true));
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label,isActive:profileOption.isActive })
+      .from(profileOption);
     const catalog = new PersonnelImportCatalog();
     for(const option of options)catalog.addOption(option);
     const icOwners = new Map<string, string>();
@@ -595,7 +594,7 @@ function catalogValue(
   const category = PROFILE_CATALOG_CATEGORY[column];
   if (!category) return raw;
   const active = catalog.get(category);
-  if (!active || active.size === 0) return raw; // never configured ⇒ free text, as on the screens
+  if (!active) return raw; // never configured ⇒ free text, as on the screens
   if (active.has(raw)) return raw;
   errors.push(`"${raw}" is not an active ${category} option — column ${column}`);
   return undefined;
