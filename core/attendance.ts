@@ -3,7 +3,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { captureCanonicalOvertimePersonnelContextTx } from '../packs/attendance/service';
+import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { myEmployment } from './read';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -2094,6 +2094,7 @@ export async function checkInTx(
       sched,
       fallbackCheckInAt: p.time,
     });
+    await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Recorded clock-in'});
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -2282,6 +2283,7 @@ export async function checkOutTx(
       systemOtMinutes: derived.otMinutes,
     });
     const otMinutes = plannedOt ?? derived.otMinutes;
+    if (plannedOt == null) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Recorded clock-out'});
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -3826,6 +3828,7 @@ export async function decideAttendanceCorrection(
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
     let finalizedV2 = false;
+    let approvedCredit: {dayType: DayType; requestedOn: string} | null = null;
 
     // V2 keeps the real actor and installs only a same-transaction request/date capability.
     // Legacy delegated effects retain their existing fixed identity seam. No caller callback executes.
@@ -4159,59 +4162,21 @@ export async function decideAttendanceCorrection(
         });
       }
 
-      // *** 1e9145d4 — THE SILENT REGRESSION GUARD. READ THIS BEFORE TOUCHING THE CONDITION. ***
-      //
-      // For a DEFERRED approval the accrual below MUST NOT run here, and it must not simply be dropped
-      // either. accrueToilTx reads the attendance row for the day and throws ToilNoOvertimeError when there
-      // is none or ot_minutes <= 0 — and that error is SWALLOWED (see the helper) so auto-accrual can never
-      // block an approval. Leave the call where it is and pre-approving a rest-day or public-holiday plan
-      // would silently stop minting the replacement-leave credit that the very same approval mints today:
-      // no error, no log, nothing, until an employee asks where their day went. So for the deferred case
-      // the accrual MOVES to applyApprovedOtPlanTx, which runs it after the hours land on a real day — with
-      // this correction's own created_at still supplied as `requestedOn`, so the credit's Request Date stays
-      // the employee's request date. The immediate path keeps calling it exactly where it always has.
-      if (!deferred) {
-        // RL Control Engine (0113): auto-create the replacement-leave credit when this is the only reviewed
-        // attendance-decision path. The approver above already passed assertCanDecide, so the auto-accrual runs
-        // with requireDecideAuth:false (re-checking would hard-throw). It self-gates on dayType ∈ {rest_day,
-        // holiday}, otMinutes>0, TOIL_ENABLED, and the company's enabled + autoAccrueOnApproval policy; eligibility
-        // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise. Per ADR-0069
-        // it reads the POLICY-ADJUSTED attendance.otMinutes written above (single source of truth).
-        //
-        // r334 928f0454 — "dayType ∈ {rest_day, holiday}" ABOVE IS NO LONGER THE WHOLE GATE, and the sentence
-        // is left standing rather than quietly rewritten because it is still the gate for every company that
-        // has not opted in. A company with `toil_policy.extended_hours_enabled` on also admits an ORDINARY
-        // WORKING DAY here, where the hours past the scheduled shift end are tiered into a 0.5 / 1.0-day
-        // credit; `maybeAutoAccrueOnApprovalTx` reads that flag itself (it had to move its day-type filter
-        // BELOW the policy read to do so) and `accrueToilTx` re-checks it. Nothing changes for a company with
-        // the switch off, which is every company on release. ⚠️ MONEY: such a credit suppresses that day's
-        // overtime pay, so this call now reaches the payslip on a workday too.
-        await maybeAutoAccrueOnApprovalTx(tx, ctx, {
-          employmentId: cor.employmentId,
-          workedDate: cor.attendanceDate,
-          dayType,
-          // 00307068: THIS correction is the employee's request for the credit, so its own creation date is
-          // the credit's Request Date. Passed rather than re-queried inside the accrual because the status
-          // flip to 'approved' happens BELOW this call — a lookup would still see 'pending' and could not
-          // identify the row it was looking for.
-          // ⚠️ THE KUALA LUMPUR DATE, NOT THE UTC ONE (r324). This read `cor.createdAt.toISOString()`,
-          // which is a DATE DERIVED FROM AN INSTANT IN UTC — the thing CLAUDE.md §8 forbids, and the
-          // exact defect r299 fixed one line away in core/toil.ts for `approvedOn`. For any correction
-          // filed between midnight and 08:00 in Malaysia it stamped the credit's Request Date A DAY
-          // EARLY, while the EXPIRY on the very same row was resolved in KL — so one accrual carried two
-          // dates that disagreed about what day it was. Found by a gate run that happened to start at
-          // 01:07 MYT; it passes for sixteen hours out of every twenty-four.
-          requestedOn: todayInKualaLumpur(cor.createdAt),
-        });
-      }
+      // Deferred plans bank only when actual work lands. Immediate decisions bank after their
+      // approved status is written, so the canonical formula reader sees this exact approval.
+      if (!deferred) approvedCredit = {dayType, requestedOn: todayInKualaLumpur(cor.createdAt)};
       deferredApproval = deferred;
     }
     // Keep v2's writing savepoint active until SQL verifies the actual target-day result.
     // Event markers are audit data and supply no authority to finalize an application.
-    if (workflowStage.versionedFinalEffect) {
+    if (workflowStage.versionedFinalEffect || approvedCredit) {
       if (workflowStage.finalApprovalEvent) await appendEvent(tx, workflowStage.finalApprovalEvent);
       await tx.update(attendanceCorrection).set({ status: p.decision, rejectReason, decidedByEmploymentId: actualDeciderEmploymentId, decidedAt: sql`now()` }).where(eq(attendanceCorrection.id, cor.id));
       finalizedV2 = true;
+    }
+    if (approvedCredit) {
+      await refreshOvertimePatternDayTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate,reason:'Approved attendance decision'});
+      await maybeAutoAccrueOnApprovalTx(tx,ctx,{employmentId:cor.employmentId,workedDate:cor.attendanceDate,...approvedCredit});
     }
 
     } catch (effectError) {
@@ -5313,6 +5278,7 @@ async function applyApprovedOtPlanTx(
   //
   // r334 928f0454 — and, for a company that has switched extended hours ON, on an ordinary working day too:
   // see the longer note at the immediate call site. The gate is read inside the helper, not restated here.
+  await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Approved overtime plan landed'});
   await maybeAutoAccrueOnApprovalTx(tx, ctx, {
     employmentId: p.employmentId,
     workedDate: p.date,
@@ -6129,6 +6095,8 @@ export async function addImportedPunchesBatchTx(
     });
     if (planned != null) plannedBy.set(keyOf(o.employmentId, o.day), planned);
   }
+
+  for (const d of days) if (!plannedBy.has(keyOf(d.employmentId,d.day))) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'});
 
   // 5 · One `attendance.imported` event per day.
   const events = days.map((d) => {

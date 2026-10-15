@@ -7,7 +7,7 @@ import {attendance, attendanceOvertimeSource} from '../../db/schema';
 import {OVERTIME_LIMITS, type OvertimeInput, type OvertimeEvaluation, type OvertimeDurationEvaluation} from '../../lib/overtime-pattern-model';
 import {parseRecordedOvertimeEvaluation, parseRecordedOvertimeDurationEvaluation} from '../../lib/overtime-pattern-result';
 import {canonicalOvertimeInputTx} from './overtime-input';
-import {createOvertimeCalculationOwner, readOvertimeCalculationTx, hasOvertimePatternForDayTx, OvertimeOwnerError} from './overtime-patterns';
+import {createOvertimeCalculationOwner, readOvertimeCalculationTx, hasOvertimePatternForDayTx, OvertimeOwnerError, type OvertimeRecordOutcome} from './overtime-patterns';
 
 const calculationOwner = createOvertimeCalculationOwner(canonicalOvertimeInputTx);
 export function previewOvertimePatternEmployee(ctx: SessionContext, p: {patternId: string; versionId: string; employmentId: string; date: string}) {
@@ -22,7 +22,19 @@ export function previewOvertimePatternSample(ctx: SessionContext, p: {patternId:
 /** Internal writer seam: authority and source digests are re-read by the bound owner inside this Tx. */
 export async function reconcileOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string; expectedCurrentRevision: number; reason: string}) {
   const prepared = await calculationOwner.prepareTx(tx, ctx, {employmentId: p.employmentId, date: p.date});
-  return calculationOwner.recordTx(tx, ctx, {prepared, expectedCurrentRevision: p.expectedCurrentRevision, reason: p.reason});
+  const result = await calculationOwner.recordTx(tx, ctx, {prepared, expectedCurrentRevision: p.expectedCurrentRevision, reason: p.reason});
+  const [day] = await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
+  if (!day) throw new OvertimeOwnerError('unavailable','The overtime day is unavailable.');
+  await storeResultMarkerTx(tx,day.id,result);
+  return result;
+}
+async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutcome) {
+  if (result.status === 'legacy') {
+    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,dayId));
+    return;
+  }
+  const marker = {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
+  await tx.update(attendance).set({calcTrace:sql`jsonb_set(coalesce(${attendance.calcTrace},'{}'::jsonb),'{overtimePattern}',${JSON.stringify(marker)}::jsonb,true)`}).where(eq(attendance.id,dayId));
 }
 /** Automatic OT stage after the canonical raw day/approval writer. Legacy quantities stay under
  * their existing owner; a formula reference selects the separately stored exact result. */
@@ -48,12 +60,7 @@ export async function refreshOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance',aggregateId:day.id,eventType:'attendance.overtime-pattern.refused',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{date:p.date,reason:marker.reason}});
     return marker;
   }
-  if (result.status === 'legacy') {
-    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,day.id));
-    return result;
-  }
-  const marker = {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
-  await tx.update(attendance).set({calcTrace:sql`jsonb_set(coalesce(${attendance.calcTrace},'{}'::jsonb),'{overtimePattern}',${JSON.stringify(marker)}::jsonb,true)`}).where(eq(attendance.id,day.id));
+  await storeResultMarkerTx(tx,day.id,result);
   return result;
 }
 /** Deliberate administrative recalculation before review/transfer; no client facts or computed amount. */
