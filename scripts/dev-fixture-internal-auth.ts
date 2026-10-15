@@ -21,8 +21,9 @@ const temporary = 'A synthetic private passphrase 771!', password = 'A different
 try {
   const existing = await readFile(output, 'utf8').then(JSON.parse, () => null);
   if (existing) {
-    const credential = await credentialByLogin('browser-cloud', 'owner');
-    if (credential?.subject === existing.cloud.subject) {
+    const entries = [existing.cloud, existing.onPrem, existing.enrollment];
+    const credentials = await Promise.all(entries.map(value => value ? credentialByLogin(value.organization, value.username) : null));
+    if (entries.every((value, index) => value && credentials[index]?.subject === value.subject)) {
       console.log('Existing isolated authentication fixture verified; no records changed.');
       return;
     }
@@ -44,9 +45,15 @@ try {
       personId: null, secret: setup.secret, recoveryCodes: complete.recoveryCodes, companyId: base.companyId, departmentId: base.deptA };
   }
   const cloud = await create('browser-cloud', true), onPrem = await create('browser-private', false);
+  const initial = await seedBase();
+  await owner.client`update company set legal_name='Enrollment Authentication Fixture' where id=${initial.companyId}::uuid`;
+  await bootstrapInternalOwner(owner.client, { appUserId: initial.adminUserId, organization: 'browser-enrollment', username: 'owner', email: 'owner@example.test', password: temporary, installationOperator: false });
+  const enrollmentCredential = (await credentialByLogin('browser-enrollment', 'owner'))!;
+  const enrollment = { organization: 'browser-enrollment', username: 'owner', password: temporary, subject: enrollmentCredential.subject,
+    tenantId: initial.tenantId, userId: initial.adminUserId, personId: null, companyId: initial.companyId };
   await mkdir(dirname(output), { recursive: true, mode: 0o700 });
-  await writeFile(output, JSON.stringify({ notice: 'DISPOSABLE LOCAL SYNTHETIC ACCOUNTS ONLY. Never use these passwords outside this fixture.', cloud, onPrem }, null, 2), { mode: 0o600, flag: 'wx' });
-  console.log('Created two isolated organization login fixtures; private synthetic details are in the local fixture file.');
+  await writeFile(output, JSON.stringify({ notice: 'DISPOSABLE LOCAL SYNTHETIC ACCOUNTS ONLY. Never use these passwords outside this fixture.', cloud, onPrem, enrollment }, null, 2), { mode: 0o600, flag: 'wx' });
+  console.log('Created isolated cloud/private and pending owner-enrollment fixtures; private synthetic details are in the local fixture file.');
 } finally { await closeAll(); }
 }
 main().then(() => process.exit(0), () => { console.error('Isolated authentication fixture failed.'); process.exit(1); });
