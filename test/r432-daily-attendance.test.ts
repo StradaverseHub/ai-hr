@@ -1,7 +1,7 @@
 /**
  * r432 (e721a355) — Daily Attendance is "Individual Attendance, for everyone, on one day".
  *
- * Two halves. A: source guards that the two lists share one set of cells and the same ten columns. B: the
+ * Two halves. A: source guards that the two lists share one set of cells and the same eleven columns. B: the
  * paged read (`attendanceForDatePage`) against a real database — search by name and by employee ID, the page
  * holds only its own people with a correct total, the page is derived from the SAME body as
  * `attendanceForDate`, and a MANAGER sees only their reporting line (the UNKNOWN the plan asked to verify:
@@ -33,15 +33,15 @@ function headerKeys(rel: string): string[] {
   expect(b, `${rel}: </thead> found`).toBeGreaterThan(a);
   const slice = src.slice(a, b);
   expect(slice.length, `${rel}: header slice is substantial`).toBeGreaterThan(300);
-  return [...slice.matchAll(/t\('(col\w+)'\)/g)].map((m) => m[1]);
+  return [...slice.matchAll(/t\('((?:col\w+|overtimeRecords\.duration))'\)/g)].map((m) => m[1]);
 }
 
-describe('r432 · Daily and Individual are the same ten columns, drawn by one component', () => {
+describe('r432 · Daily and Individual are the same eleven columns, drawn by one component', () => {
   it('Daily headers equal Individual headers apart from the two leading identity cells', () => {
     const daily = headerKeys(DAILY);
     const indiv = headerKeys(INDIVIDUAL);
-    expect(daily.length).toBe(10);
-    expect(indiv.length).toBe(10);
+    expect(daily.length).toBe(11);
+    expect(indiv.length).toBe(11);
     expect(indiv.slice(0, 2)).toEqual(['colDate', 'colDay']);
     expect(daily.slice(0, 2)).toEqual(['colEmployeeCode', 'colEmployeeName']);
     expect(daily.slice(2)).toEqual(indiv.slice(2));
@@ -62,11 +62,11 @@ describe('r432 · Daily and Individual are the same ten columns, drawn by one co
     expect(shared).not.toMatch(/from '(@\/|\.\.\/)?(core\/attendance|packs\/attendance)/);
   });
 
-  it('every full-width Daily row spans the ten columns, and the Action opens the day screen for that person', () => {
+  it('every full-width Daily row spans the eleven columns, and the Action opens the day screen for that person', () => {
     const src = read(DAILY);
     const spans = [...src.matchAll(/colSpan=\{(\d+)\}/g)].map((m) => Number(m[1]));
     expect(spans.length).toBeGreaterThanOrEqual(2);
-    for (const n of spans) expect(n).toBe(10);
+    for (const n of spans) expect(n).toBe(11);
     expect(src).toContain('/attendance/individual/${date}?emp=${encodeURIComponent(r.employmentId)}');
     expect(src).toContain("t('dayViewEdit')");
   });

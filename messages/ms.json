@@ -3579,7 +3579,27 @@
       "detected": "Dikesan: {type}. Ini keadaan yang dikira, berasingan daripada permohonan dihantar.",
       "saveFailed": "Simpanan tidak dapat disahkan. Muat semula hari sebelum mencuba lagi."
     },
-    "statusExempt": "Dikecualikan"
+    "statusExempt": "Dikecualikan",
+    "overtimeRecords": {
+      "duration": "Tempoh OT",
+      "minutes": "{value} min",
+      "unavailable": "Tidak tersedia",
+      "formula": "Hasil formula",
+      "ineligible": "Tidak layak",
+      "sourceUnavailable": "Syarikat yang direkodkan tidak dapat disahkan untuk pengiraan ini.",
+      "recordUnavailable": "Pengiraan yang direkodkan tiada atau tidak boleh dibaca.",
+      "durationRefused": "Tempoh yang direkodkan tidak dapat disahkan.",
+      "cashUnavailable": "Tempoh diketahui; pengiraan tunai tidak tersedia.",
+      "storedOnly": "Menggunakan hasil yang disimpan. Tetapan semasa tidak mengira semula rekod ini.",
+      "version": "Versi corak",
+      "reference": "Rujukan pengiraan",
+      "incompleteTotal": "{value} min diketahui; {count} hari tidak tersedia",
+      "capUnknown": "Sesetengah keputusan kerja lebih masa tidak tersedia. Had bulanan belum dapat dinilai; anda masih boleh menghantar permohonan ini.",
+      "capWarningExact": "Permohonan ini menambah {requested} minit, menjadikan jumlah bulan ini {total} minit, melebihi had bulanan. Ini ialah amaran; anda masih boleh menghantar.",
+      "capProgress": "{used} / {cap} minit",
+      "recordedDuration": "Kerja lebih masa direkodkan",
+      "summaryNote": "Jumlah kerja lebih masa menggunakan pengiraan yang direkodkan bagi setiap hari dan mengekalkan minit tepat. Hari yang tidak tersedia menjadikan jumlah tidak lengkap. Waktu kerja, ketidakhadiran dan penanda mingguan mengekalkan peraturan Kehadiran. Amaran bulanan menggunakan had sedia ada 104 jam."
+    }
   },
   "org": {
     "title": "Carta organisasi",

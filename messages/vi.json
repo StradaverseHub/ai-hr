@@ -3579,7 +3579,27 @@
       "detected": "Phát hiện: {type}. Đây là trạng thái tính toán, tách biệt với yêu cầu đã gửi.",
       "saveFailed": "Không thể xác nhận lưu. Tải lại ngày trước khi thử lại."
     },
-    "statusExempt": "Được miễn"
+    "statusExempt": "Được miễn",
+    "overtimeRecords": {
+      "duration": "Thời lượng làm thêm",
+      "minutes": "{value} phút",
+      "unavailable": "Không có dữ liệu",
+      "formula": "Kết quả công thức",
+      "ineligible": "Không đủ điều kiện",
+      "sourceUnavailable": "Không xác định được công ty đã ghi nhận cho phép tính này.",
+      "recordUnavailable": "Phép tính đã ghi nhận bị thiếu hoặc không thể đọc.",
+      "durationRefused": "Không xác định được thời lượng đã ghi nhận.",
+      "cashUnavailable": "Đã xác định thời lượng; chưa có kết quả tính tiền.",
+      "storedOnly": "Sử dụng kết quả đã lưu. Cài đặt hiện tại không tính lại bản ghi này.",
+      "version": "Phiên bản mẫu",
+      "reference": "Mã tham chiếu phép tính",
+      "incompleteTotal": "Đã xác định {value} phút; {count} ngày chưa có dữ liệu",
+      "capUnknown": "Một số kết quả làm thêm chưa có. Chưa thể đánh giá giới hạn tháng; bạn vẫn có thể gửi yêu cầu này.",
+      "capWarningExact": "Yêu cầu này thêm {requested} phút, nâng tổng tháng lên {total} phút, vượt giới hạn tháng. Đây là cảnh báo; bạn vẫn có thể gửi.",
+      "capProgress": "{used} / {cap} phút",
+      "recordedDuration": "Làm thêm đã ghi nhận",
+      "summaryNote": "Tổng làm thêm dùng kết quả đã ghi nhận của từng ngày và giữ số phút chính xác. Ngày chưa có kết quả khiến tổng không đầy đủ. Giờ làm, vắng mặt và cờ tuần vẫn theo quy tắc Chấm công. Cảnh báo tháng dùng giới hạn hiện có là 104 giờ."
+    }
   },
   "org": {
     "title": "Sơ đồ tổ chức",

@@ -33,7 +33,7 @@ import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtSplit } f
 // tests are never scanned by the pack ratchet, so the assertion can live here, and a mismatch fails tsc
 // rather than one test file.
 import type { OtByRate as EngineOtByRate } from '../core/attendance-derive';
-type PanelOtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
+type PanelOtByRate = { flat: number|null; ot00: number|null; ot10: number|null; ot15: number|null; ot20: number|null; ot30: number|null };
 type _PanelMatchesEngine = PanelOtByRate extends EngineOtByRate ? true : never;
 type _EngineMatchesPanel = EngineOtByRate extends PanelOtByRate ? true : never;
 const _tieA: _PanelMatchesEngine = true;

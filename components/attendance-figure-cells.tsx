@@ -23,7 +23,7 @@ import { AnchoredPanel, useAnchoredPanel } from '@/components/ui/anchored-panel'
  * a TYPE-LEVEL assertion that this stays assignable to the real OtByRate — tests are never scanned by
  * the ratchet, so the check lives where it is allowed to and a divergence fails tsc, not just one file.
  */
-type OtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
+type OtByRate = { flat: number|null; ot00: number|null; ot10: number|null; ot15: number|null; ot20: number|null; ot30: number|null };
 import { fmtClock, fmtHours2, fmtShort } from './attendance-format';
 
 /**
@@ -260,7 +260,7 @@ export function AttendanceFigureCells({
   if (only) {
     const isOt = only !== 'lateness' && only !== 'earlyOut';
     const text = only === 'lateness' ? fmtShort(lateMinutes) : only === 'earlyOut' ? fmtShort(earlyOutMinutes) : fmtHours2(ot[only]);
-    if (!hasRow) return <td className={CELL}>{text}</td>;
+    if (!hasRow||(isOt&&ot[only as keyof OtByRate]===null)) return <td className={CELL}>{text}</td>;
     return <td className={CELL}>{explainable(isOt ? `ot-${only}` : only, isOt ? 'overtime' : only, text)}</td>;
   }
 
@@ -284,7 +284,7 @@ export function AttendanceFigureCells({
       <td className={CELL}>{explainable('earlyOut', 'earlyOut', fmtShort(earlyOutMinutes))}</td>
       {(['flat', 'ot00', 'ot10', 'ot15', 'ot20', 'ot30'] as const).map((k) => (
         <td key={k} className={CELL}>
-          {explainable(`ot-${k}`, 'overtime', fmtHours2(ot[k]))}
+          {ot[k]===null?'—':explainable(`ot-${k}`, 'overtime', fmtHours2(ot[k]))}
         </td>
       ))}
     </>

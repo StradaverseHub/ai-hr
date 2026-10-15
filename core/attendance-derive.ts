@@ -1,3 +1,4 @@
+import type {FormulaOvertimeRecord} from '../lib/overtime-records';
 /**
  * Attendance Records Table Enhancement (feedback bbada39c) — READ-TIME derivations.
  *
@@ -26,6 +27,7 @@ export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 
 /** The minimal row shape the derivations read — a subset of both loader row types. */
 export type AttendanceDeriveRow = {
+  formulaOvertime?:FormulaOvertimeRecord|null;
   exceptionExempt?:boolean;
   attendanceId: string | null;
   status: string | null;
@@ -62,12 +64,12 @@ export type AttendanceDeriveRow = {
  * Sum(flat, ot00, ot10, ot15, ot20, ot30) === the day's otMinutes. Normal-within-schedule hours are NOT in
  * here — they are the Actual Working Hours column, which already carries the day's whole worked total.
  */
-export type OtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
+export type OtByRate = { flat: number|null; ot00: number|null; ot10: number|null; ot15: number|null; ot20: number|null; ot30: number|null };
 
 /** The row shape otByRate reads. */
 type OtByRateInput = Pick<
   AttendanceDeriveRow,
-  'workedMinutes' | 'otMinutes' | 'dayType' | 'otFlatMinutes' | 'ot00Minutes' | 'ot10Minutes' | 'ot15Minutes' | 'ot20Minutes' | 'ot30Minutes'
+  'formulaOvertime' | 'workedMinutes' | 'otMinutes' | 'dayType' | 'otFlatMinutes' | 'ot00Minutes' | 'ot10Minutes' | 'ot15Minutes' | 'ot20Minutes' | 'ot30Minutes'
 >;
 
 /**
@@ -95,6 +97,7 @@ type OtByRateInput = Pick<
  * nothing to split → all zero (the caller renders those as "—").
  */
 export function otByRate(row: OtByRateInput): OtByRate {
+  if(row.formulaOvertime)return {flat:null,ot00:null,ot10:null,ot15:null,ot20:null,ot30:null};
   const worked = row.workedMinutes ?? 0;
   const ot = Math.max(0, Math.min(row.otMinutes ?? 0, worked)); // OT can never exceed worked
 

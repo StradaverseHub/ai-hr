@@ -1,3 +1,4 @@
+import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { placeStickyColumns } from '@/lib/sticky-columns';
 import { cookies } from 'next/headers';
@@ -319,7 +320,7 @@ export default async function AttendanceBreakdownPage({
                       <td className={tdNum}>{fmtMin(r.earlyOutMinutes)}</td>
                       <td className={tdNum}>{fmtMin(r.earlyOutDeductMinutes)}</td>
                       <td className={tdNum}>{fmtMin(r.underMinutes)}</td>
-                      <td className={`${tdNum} font-medium text-foreground`}>{fmtMin(r.otMinutes)}</td>
+                      <td className={`${tdNum} font-medium text-foreground`}><FormulaOvertimeDuration record={r.formulaOvertime} legacyMinutes={r.otMinutes}/></td>
                       <td className={tdNum}>{fmtMin(ot.flat)}</td>
                       <td className={tdNum}>{fmtMin(ot.ot00)}</td>
                       <td className={tdNum}>{fmtMin(ot.ot10)}</td>

@@ -115,7 +115,11 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
         const profileOptions = await tx.select({ category: profileOption.category, id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(inArray(profileOption.category, [...EMPLOYMENT_PROFILE_CATEGORIES]), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label), asc(profileOption.id));
         const profileFields: Partial<Record<keyof AttendanceWorkflowCriteria, { id: string; name: string }[]>> = {};
         for (const option of profileOptions) {
-            const key = CATEGORY_EMPLOYMENT_COLUMN[option.category]?.[0] as keyof AttendanceWorkflowCriteria;
+            const category=EMPLOYMENT_PROFILE_CATEGORIES.find(value=>value===option.category);
+            if(!category)continue;
+            const field=CATEGORY_EMPLOYMENT_COLUMN[category]?.[0];
+            if(!field)continue;
+            const key=field as keyof AttendanceWorkflowCriteria;
             const values = profileFields[key] ?? []; values.push({ id: option.id, name: option.name }); profileFields[key] = values;
         }
         const employees=await tx.select({id:employment.id,name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.companyId,companies.map(c=>c.id))).orderBy(asc(person.fullName),asc(employment.id));

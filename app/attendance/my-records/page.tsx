@@ -1,3 +1,4 @@
+import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -266,7 +267,7 @@ export default async function MyAttendanceRecordsPage({
                       {/* An em dash where no engine computed the day, never a confident 0.00 — the same
                           distinction fmtMin makes for the hour columns. */}
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-                        {r.otMinutes == null ? '—' : fmtHours2(r.otMinutes)}
+                        {r.formulaOvertime?<FormulaOvertimeDuration record={r.formulaOvertime}/>:r.otMinutes==null?'—':fmtHours2(r.otMinutes)}
                       </td>
                       <td className="px-3 py-2.5">
                         <span

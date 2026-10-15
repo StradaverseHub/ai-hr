@@ -1,9 +1,11 @@
+import {isCalendarDate} from '../lib/calendar-date';
+import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
 import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx } from '../packs/attendance/service';
+import { captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { myEmployment } from './read';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -1220,7 +1222,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
         // the break too would deduct it twice over.
         flexibleBreakMinutes: ds.flexOn && ds.flexMin != null ? ds.flexMin : null,
         normalMinutesOverride: override,
-        flexiDuration: ds.shiftType === 'full_flexi' || ds.shiftType === 'semi_flexi',
+        flexiDuration: ds.shiftType === 'semi_flexi',
         otRule: ds.otRule ?? null,
         otWindows,
         rule,
@@ -2005,7 +2007,7 @@ export async function checkInTx(
     await assertDayNotOwnedByCorrectionTx(tx, p.employmentId, p.date);
 
     const [existing] = await tx
-      .select({ id: attendance.id, dayType: attendance.dayType })
+      .select({ id: attendance.id, dayType: attendance.dayType, checkInAt:attendance.checkInAt })
       .from(attendance)
       .where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date)))
       .limit(1);
@@ -2084,16 +2086,15 @@ export async function checkInTx(
       ...punchGeoValues(geo),
     });
 
-    // Record mutable Personnel axes only at first current-day observation. Corrections/repeated
-    // clock-ins retain that original context; historical imports never borrow today's profile.
-    if (!existing) await captureCanonicalOvertimePersonnelContextTx(tx, ctx, {employmentId: p.employmentId, date: p.date});
-
     const derived = await recomputeDayFromPunches(tx, {
       attendanceId,
       attendanceDate: p.date,
       sched,
       fallbackCheckInAt: p.time,
     });
+    // Capture after deriving the first actual in, including out-first rows. Repeated in-punches retain
+    // the original context; historical imports never borrow today's profile.
+    if (!existing||existing.checkInAt==null) await captureCanonicalOvertimePersonnelContextTx(tx, ctx, {employmentId: p.employmentId, date: p.date});
     await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Recorded clock-in'});
 
     await appendEvent(tx, {
@@ -2538,7 +2539,7 @@ export function attendanceForDate(
   companyIds?: string[],
   opts?: { departmentId?: string },
 ) {
-  return withTenant(ctx, (tx) => attendanceDayRowsTx(tx, date, companyIds, opts));
+  return withTenant(ctx, (tx) => attendanceDayRowsTx(tx, ctx, date, companyIds, opts));
 }
 
 /**
@@ -2594,7 +2595,7 @@ export function attendanceForDatePage(
       .offset(opts.offset);
     const ids = idRows.map((r) => r.id);
     if (!ids.length) return { rows: [], total };
-    const derived = await attendanceDayRowsTx(tx, date, companyIds, { employmentIds: ids });
+    const derived = await attendanceDayRowsTx(tx, ctx, date, companyIds, { employmentIds: ids });
     const order = new Map(ids.map((id, i) => [id, i]));
     derived.sort((a, b) => order.get(a.employmentId)! - order.get(b.employmentId)!);
     return { rows: derived, total };
@@ -2626,6 +2627,7 @@ export function attendancePunchesForDays(ctx: SessionContext, attendanceIds: str
 
 async function attendanceDayRowsTx(
   tx: Tx,
+  ctx: SessionContext,
   date: string,
   companyIds?: string[],
   opts?: { departmentId?: string; employmentIds?: string[] },
@@ -2854,6 +2856,7 @@ async function attendanceDayRowsTx(
 
     const datedOverrides=await attendanceDateOverridesTx(tx,empIds,date,date);
     const exceptionOn=await exceptionDecisionsTx(tx,empIds,date,date);
+    const formulaByDay=await formulaOvertimeForRowsTx(tx,ctx,rows.filter(r=>r.attendanceId).map(r=>({employmentId:r.employmentId,date,calcTrace:r.calcTrace})));
     return rows.map(({ companyId, ...r }) => {
       const isWorkingDay = (daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow);
       // bbada39c — shift-display subset (code / scheduled minutes / start-end / rostered-rest) for the row.
@@ -2874,12 +2877,13 @@ async function attendanceDayRowsTx(
         else if (dated ? !dated.working : isScheduledOffDay(date, roster, def, isWorkingDay, deductAbsence.has(r.employmentId)))
           context = 'rest_day';
       }
-      return { ...r, ...(exceptionOn(r.employmentId,date).enabled?{exceptionExempt:true,exceptionRevisionId:exceptionOn(r.employmentId,date).revisionId}:{}), ...(dated?{dayType:dated.dayKind==='holiday'?'holiday' as const:dated.dayKind==='rest_day'?'rest_day' as const:'workday' as const}:{}),context, ...shiftDisplay };
+      return { ...r, formulaOvertime:formulaByDay.get(r.employmentId+'|'+date)??null, ...(exceptionOn(r.employmentId,date).enabled?{exceptionExempt:true,exceptionRevisionId:exceptionOn(r.employmentId,date).revisionId}:{}), ...(dated?{dayType:dated.dayKind==='holiday'?'holiday' as const:dated.dayKind==='rest_day'?'rest_day' as const:'workday' as const}:{}),context, ...shiftDisplay };
     });
   }
 }
 
 export type AttendanceRangeRow = {
+  formulaOvertime?:FormulaOvertimeRecord|null;
   date: string;
   attendanceId: string | null;
   checkInAt: string | null;
@@ -3008,6 +3012,7 @@ export function attendanceForEmploymentsRange(
     const rangeRotations = await rotationLookupTx(tx);
     const datedOverrides=await attendanceDateOverridesTx(tx,ids,from,to);
     const exceptionOn=await exceptionDecisionsTx(tx,ids,from,to);
+    const formulaByDay=await formulaOvertimeForRowsTx(tx,ctx,rows);
     const rowsByEmployment=new Map<string,typeof rows>();
     const rosterByEmployment=new Map<string,typeof rosters>();
     for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
@@ -3065,6 +3070,7 @@ export function attendanceForEmploymentsRange(
         dayType: dated ? dated.dayKind==='holiday'?'holiday':dated.dayKind==='rest_day'?'rest_day':'workday' : row?.dayType ?? null,
         workedMinutes: row?.workedMinutes ?? null,
         otMinutes: row?.otMinutes ?? null,
+        formulaOvertime:formulaByDay.get(employmentId+'|'+d)??null,
         lateMinutes: row?.lateMinutes ?? null,
         earlyOutMinutes: row?.earlyOutMinutes ?? null,
         underMinutes: row?.underMinutes ?? null,
@@ -3154,6 +3160,8 @@ export function attendancePunchesForRange(
 }
 
 export type MonthSummaryRow = {
+  overtimeSummary:OvertimeRecordSummary;
+  overtimeCapState:'exceeded'|'within'|'unknown';
   employmentId: string;
   name: string;
   employeeCode: string | null;
@@ -3219,6 +3227,7 @@ export function attendanceMonthSummary(
         dayType: attendance.dayType,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
+        calcTrace:attendance.calcTrace,
       })
       .from(attendance)
       .where(
@@ -3270,6 +3279,7 @@ export function attendanceMonthSummary(
         until: today,measurement:p.measurement,
       })),
     ]);
+    const formulaByDay=p.measurement==='raw'?new Map<string,FormulaOvertimeRecord|null>():await formulaOvertimeForRowsTx(tx,ctx,rows);
     const rowsByEmp = new Map<string, typeof rows>();
     for (const r of rows) {
       const arr = rowsByEmp.get(r.employmentId);
@@ -3318,8 +3328,14 @@ export function attendanceMonthSummary(
       const { absentDays: absent, leaveDays } = absence.get(e.employmentId) ?? { absentDays: 0, leaveDays: 0 };
 
       const totalOt = otWorkday + otRestDay + otHoliday;
+      // The numeric legacy fields remain the raw measurement consumed by existing allowance owners.
+      // Records display uses this explicit selected-stage projection, with unknown days preserved.
+      const selectedRows=myRows.map(row=>({...row,formulaOvertime:formulaByDay.get(row.employmentId+'|'+row.date)??null}));
+      const overtimeSummary=summarizeOvertimeRecords(selectedRows);
+      const overtimeCapState=overtimeSummary.complete?(BigInt(overtimeSummary.knownMinutes.numerator)>BigInt(OT_CAP_MINUTES)*BigInt(overtimeSummary.knownMinutes.denominator)?'exceeded' as const:'within' as const):'unknown' as const;
       return {
         employmentId: e.employmentId,
+        overtimeSummary,overtimeCapState,
         name: e.name,
         employeeCode: e.employeeCode,
         present,
@@ -3817,7 +3833,7 @@ export async function decideAttendanceCorrection(
     if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
     // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
     const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
-    let actualDeciderEmploymentId = actualDecider?.id ?? null;
+    let actualDeciderEmploymentId:string|null = actualDecider?.id ?? null;
     const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex });
     if (workflowStage.actualDeciderEmploymentId !== undefined) actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId;
     if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
@@ -4870,6 +4886,16 @@ export function otMonthToDateMinutes(
       capMinutes: OT_CAP_MINUTES,
     };
   });
+}
+
+/** Selected stored duration plus each approved/unlanded plan once. Old numeric API remains raw compatibility. */
+export function otMonthToDateDuration(ctx:SessionContext,employmentId:string,date:string):Promise<{recorded:OvertimeRecordSummary;plannedMinutes:number;total:OvertimeRecordSummary;capMinutes:number}>{
+ if(!isCalendarDate(date))throw new Error('Invalid attendance date');
+ const monthStart=date.slice(0,7)+'-01',end=new Date(date+'T00:00:00Z');end.setUTCMonth(end.getUTCMonth()+1,0);const monthEnd=end.toISOString().slice(0,10);
+ return withTenant(ctx,async tx=>{const rows=await tx.select({employmentId:attendance.employmentId,date:attendance.attendanceDate,otMinutes:attendance.otMinutes,calcTrace:attendance.calcTrace}).from(attendance).where(and(eq(attendance.employmentId,employmentId),gte(attendance.attendanceDate,monthStart),lte(attendance.attendanceDate,monthEnd)));const formulas=await formulaOvertimeForRowsTx(tx,ctx,rows),selected=rows.map(row=>({...row,formulaOvertime:formulas.get(row.employmentId+'|'+row.date)??null}));
+  const plans=await tx.select({id:attendanceCorrection.id,minutes:attendanceCorrection.requestedOtMinutes}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,employmentId),gte(attendanceCorrection.attendanceDate,monthStart),lte(attendanceCorrection.attendanceDate,monthEnd),eq(attendanceCorrection.status,'approved'),isNull(attendanceCorrection.appliedAt),isNull(attendanceCorrection.proposedCheckIn),sql`${attendanceCorrection.requestedOtMinutes} is not null`));
+  const planRows=[...new Map(plans.map(plan=>[plan.id,plan])).values()].map(plan=>({otMinutes:plan.minutes,formulaOvertime:null}));return {recorded:summarizeOvertimeRecords(selected),plannedMinutes:planRows.reduce((sum,row)=>sum+(row.otMinutes??0),0),total:summarizeOvertimeRecords([...selected,...planRows]),capMinutes:OT_CAP_MINUTES};
+ });
 }
 
 /**

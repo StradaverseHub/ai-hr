@@ -4,6 +4,7 @@
  * it mirrors app/analytics/export/route.ts (ADR-0047) for scoping, format dispatch, and the RFC-5987
  * Content-Disposition. Read-only — downloading mutates nothing.
  *
+ * Formula amounts are immutable recorded results, separately labelled from legacy calculation and actual settlement.
  * `format` selects the serializer: csv (default) | xlsx | pdf. Export-payload column headers stay ENGLISH
  * (resolved from constants, not getTranslations) to keep CSV byte-identical for external consumers and to
  * avoid the unenforceable present-but-English i18n gap (ADR-0047 §9).

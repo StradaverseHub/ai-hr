@@ -3579,7 +3579,27 @@
       "detected": "检测到：{type}。这是计算出的情况，与已提交的申请不同。",
       "saveFailed": "无法确认保存。请刷新该日期后重试。"
     },
-    "statusExempt": "已豁免"
+    "statusExempt": "已豁免",
+    "overtimeRecords": {
+      "duration": "加班时长",
+      "minutes": "{value} 分钟",
+      "unavailable": "无法取得",
+      "formula": "公式结果",
+      "ineligible": "不符合条件",
+      "sourceUnavailable": "无法确定此计算所属的已记录公司。",
+      "recordUnavailable": "已记录的计算缺失或无法读取。",
+      "durationRefused": "无法确定已记录的时长。",
+      "cashUnavailable": "时长已确定，但现金计算无法取得。",
+      "storedOnly": "使用已保存的结果。当前设置不会重新计算此记录。",
+      "version": "方案版本",
+      "reference": "计算参考编号",
+      "incompleteTotal": "已确定 {value} 分钟；{count} 天无法取得",
+      "capUnknown": "部分加班结果尚不可用，暂时无法评估每月上限。您仍可提交此申请。",
+      "capWarningExact": "此申请增加 {requested} 分钟，使本月总计达到 {total} 分钟，超过每月上限。这只是提醒，您仍可提交。",
+      "capProgress": "{used} / {cap} 分钟",
+      "recordedDuration": "已记录加班",
+      "summaryNote": "加班总计使用每天已记录的计算结果，并保留精确分钟数。存在不可用的日期时，总计不完整。工时、缺勤及每周标记仍沿用考勤规则。每月提醒使用现有的 104 小时上限。"
+    }
   },
   "org": {
     "title": "组织架构图",
