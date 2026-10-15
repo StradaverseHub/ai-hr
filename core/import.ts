@@ -1,3 +1,4 @@
+import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { PersonnelImportLookup, addUniqueImportAlias } from '../lib/personnel-import-lookup';
 import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
 import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
@@ -344,7 +345,7 @@ async function analyze(
     // already created. Same rule as `assertProfileValueAllowed`: an EMPTY catalog means the tenant never
     // configured that list and free text is accepted, exactly as it is on the Personnel screens.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value })
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label })
       .from(profileOption)
       .where(eq(profileOption.isActive, true));
     // Item 06f0cb8f — an unfinished DRAFT holds an Employee ID too, so an import can collide with a
@@ -355,12 +356,8 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
-    const catalog = new Map<string, Set<string>>();
-    for (const o of options) {
-      const set = catalog.get(o.category) ?? new Set<string>();
-      set.add(o.value);
-      catalog.set(o.category, set);
-    }
+    const catalog = new PersonnelImportCatalog();
+    for(const option of options)catalog.addOption(option);
     const superiorByCode = new Map<string, string>();
     const superiorByEmail = new Map<string, string|null>();
     for (const e of superiorCandidates) {
@@ -410,8 +407,8 @@ async function analyze(
     return active.has(value);
   };
 
-  records.forEach((rec, idx) => {
-    const errors: string[] = [];
+  records.forEach((rawRecord, idx) => {
+    const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'employee',catalog);
     const warnings: string[] = [];
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
@@ -956,8 +953,8 @@ function analyzeDependents(
   const dependents: ResolvedDependent[] = [];
   const unmatchedCodes: string[] = [];
 
-  records.forEach((rec, idx) => {
-    const errors: string[] = [];
+  records.forEach((rawRecord, idx) => {
+    const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'family',ctx.catalog);
     const codeRaw = norm(rec.employee_code);
     const fullName = norm(rec.full_name);
     const relationship = norm(rec.relationship);

@@ -174,9 +174,32 @@ export async function buildXlsx(
     }
     XLSX.utils.book_append_sheet(wb, sheet, extra.name);
   }
+  const validationLists:{sheetIndex:number;column:number;name:string;lastRow:number}[]=[];
+  const sources=[opts,...(opts?.extraSheets??[])];
+  const optionColumns:string[][]=[];
+  for(const [sheetIndex,source] of sources.entries())for(const list of source?.validationLists??[]) {
+    const values=[...new Set(list.values.filter(value=>value.trim()!==''))];
+    // Larger catalogs remain on the visible reference sheet; never produce an unbounded dropdown.
+    if(!values.length || values.length>1000)continue;
+    if(!Number.isSafeInteger(list.column)||list.column<0||list.column>255 || optionColumns.length>=256)throw new Error('Too many template choice columns.');
+    const column=optionColumns.length;optionColumns.push(values);
+    const name=`AIHR_Personnel_${sheetIndex}_${list.column}`;
+    wb.Workbook??={};wb.Workbook.Names??=[];
+    wb.Workbook.Names.push({Name:name,Ref:`'__PersonnelLists'!$${XLSX.utils.encode_col(column)}$1:$${XLSX.utils.encode_col(column)}$${values.length}`});
+    validationLists.push({sheetIndex,column:list.column,name,lastRow:501});
+  }
+  if(optionColumns.length) {
+    if(wb.SheetNames.includes('__PersonnelLists'))throw new Error('Reserved template sheet name.');
+    const count=Math.max(...optionColumns.map(values=>values.length));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(Array.from({length:count},(_,row)=>optionColumns.map(values=>values[row]??''))),'__PersonnelLists');
+    wb.Workbook??={};wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name==='__PersonnelLists'?2:0}));
+  }
   // type:'array' → SheetJS returns an ArrayBuffer (despite older typings suggesting Uint8Array);
   // wrap it so callers always get real bytes, safe for a browser Blob or Buffer.from().
-  return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  const bytes=new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  if(!validationLists.length)return bytes;
+  const {addXlsxListValidation}=await import('./xlsx-list-validation');
+  return addXlsxListValidation(bytes,validationLists);
 }
 
 export type BuildXlsxOptions = {
@@ -187,8 +210,9 @@ export type BuildXlsxOptions = {
   /** Additional sheets appended after the data sheet — reference lists, instructions, and (2983802f)
    *  the employee importer's Family sheet, which is filled in and therefore takes `textColumns` of its
    *  own so its Employee ID and identity columns survive Excel. */
-  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];headerNotes?:string[] }[];
+  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];headerNotes?:string[];validationLists?:{column:number;values:readonly string[]}[] }[];
   headerNotes?:string[];
+  validationLists?:{column:number;values:readonly string[]}[];
   /** How many rows below the samples get the text format pre-applied. */
   textRowFloor?: number;
 };

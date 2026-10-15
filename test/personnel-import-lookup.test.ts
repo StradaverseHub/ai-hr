@@ -1,3 +1,4 @@
+import {PersonnelImportCatalog,normalizePersonnelCatalogRecord,personnelCatalogReferenceValues} from '../lib/personnel-import-catalog';
 import {it,expect} from 'vitest';
 import {PersonnelImportLookup,addUniqueImportAlias} from '../lib/personnel-import-lookup';
 import {dependentImportMatch} from '../lib/dependent-identity';
@@ -23,4 +24,13 @@ it('retains distinct same-name children and refuses uncertain identity instead o
  expect(dependentImportMatch([first],{...first,icOrPassport:''})).toBe('ambiguous');
  expect(dependentImportMatch([first],{...first})).toBe('existing');
  expect(dependentImportMatch([first],{...first,icOrPassport:'',passportNumber:'OTHER'})).toBe('ambiguous');
+});
+
+it('resolves fresh catalog display names to saved values and refuses ambiguous labels',()=>{
+ const options=[{category:'religion',value:'CODE-A',label:'Shared faith'},{category:'religion',value:'CODE-B',label:'Shared faith'},{category:'religion',value:'CODE-C',label:'Distinct faith'}];
+ const catalog=new PersonnelImportCatalog();for(const option of options)catalog.addOption(option);
+ expect(normalizePersonnelCatalogRecord({religion:'Distinct faith'},'employee',catalog)).toEqual({record:{religion:'CODE-C'},errors:[]});
+ expect(normalizePersonnelCatalogRecord({religion:'Shared faith'},'employee',catalog).errors[0]).toContain('ambiguous');
+ expect(normalizePersonnelCatalogRecord({religion:'CODE-A'},'employee',catalog).record.religion).toBe('CODE-A');
+ expect(personnelCatalogReferenceValues(options)).toEqual(['CODE-A','CODE-B','CODE-C','Distinct faith']);
 });

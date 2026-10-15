@@ -1,3 +1,4 @@
+import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { dependentImportMatch, type DependentIdentity } from '../lib/dependent-identity';
 import { addUniqueImportAlias } from '../lib/personnel-import-lookup';
 import { PERSONNEL_FIELDS } from '../lib/personnel-field-registry';
@@ -280,8 +281,8 @@ async function analyze(
   const seenIcs = new Map<string, number>();
   const resolved: ResolvedSectionRow[] = [];
 
-  records.forEach((rec, idx) => {
-    const errors: string[] = [];
+  records.forEach((rawRecord, idx) => {
+    const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,section==='family'?'family':'employee',catalog);
     const warnings: string[] = [];
     const changes: string[] = [];
     const codeRaw = norm(rec[SECTION_KEY_COLUMN]);
@@ -535,18 +536,11 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     // where the spreadsheet can still be fixed. An EMPTY catalog means the tenant never configured that
     // list and free text is accepted — the same rule the Personnel screens apply.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value })
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label })
       .from(profileOption)
       .where(eq(profileOption.isActive, true));
-    const catalog = new Map<string, Set<string>>();
-    for (const o of options) {
-      const set = catalog.get(o.category) ?? new Set<string>();
-      set.add(o.value);
-      catalog.set(o.category, set);
-    }
-
-    // Who currently owns which IC, so a Profile file that re-keys an NRIC onto the wrong person is
-    // refused in the preview rather than by a raw unique-constraint violation at write.
+    const catalog = new PersonnelImportCatalog();
+    for(const option of options)catalog.addOption(option);
     const icOwners = new Map<string, string>();
     // …and who owns which WORK EMAIL, which is the login identity and has NO unique index behind it
     // (db/schema.ts: `primaryEmail` carries only `person_tenant_idx`). Without this check a Profile

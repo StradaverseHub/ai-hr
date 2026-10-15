@@ -124,31 +124,13 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
     setError(null);
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
-      const referenceLists =
-        section === 'profile'
-          ? [
-              ...['gender','marital_status'].map(column=>({label:employeeColumnLabel(column),values:personnelFieldChoices(personnelImportField(column)!).map(option=>personnelLabels(option.labelKey))})),
-                {label:employeeColumnLabel('salutation'),values:reference.salutations??[]},
-                {label:employeeColumnLabel('religion'),values:reference.religions??[]},
-                {label:employeeColumnLabel('race'),values:reference.races??[]},
-                {label:employeeColumnLabel('nationality'),values:reference.nationalities},
-                { label: employeeColumnLabel('state'), values: reference.states },
-              { label: employeeColumnLabel('country'), values: reference.countries },
-              { label: employeeColumnLabel('passport_issuing_country'), values: reference.nationalities },
-              { label: employeeColumnLabel('emergency_contact_relationship'), values: reference.relationships },
-            ]
-          : section === 'bank_statutory'
-            ? [{ label: employeeColumnLabel('tax_category'), values: [...EMPLOYEE_ENUM_VALUES.tax_category] }]
-            : section === 'family'
-              ? [
-                  ...familyChoices,
-                  { label: t('familyRelationshipLabel'), values: reference.familyRelationships },
-                  { label: t('familyGenderLabel'), values: [...DEPENDENT_ENUM_VALUES.gender] },
-                ]
-              : [];
+      const sheet=section==='family'?'family':'employee';
+      const referenceLists=personnelImportFields(sheet).filter(field=>columns.includes(field.import.column!) && (field.import.catalog || personnelFieldChoices(field).length)).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)}));
+      if(section==='profile')referenceLists.push({label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities});
+      if(section==='family')referenceLists.push({label:t('familyRelationshipLabel'),values:reference.familyRelationships});
+      if(section==='bank_statutory')referenceLists.push({label:employeeColumnLabel('tax_category'),values:[...EMPLOYEE_ENUM_VALUES.tax_category]});
       const extraSheets: { name: string; rows: (string | number)[][] }[] = [];
-      // Employment has no catalog-governed column, so it gets no Reference sheet rather than an empty
-      // one: a sheet that lists nothing teaches nothing and invites the reader to look for a list.
+      // Registry-owned choices and fresh catalogs follow the selected section.
       if (referenceLists.length > 0) {
         extraSheets.push({
           name: 'Reference',
@@ -171,6 +153,7 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
         textColumns: sectionTextColumnIndexes(section),
         headerNotes:columns.map(key=>guidance(key,section==='family'?'family':'employee','update')),
         extraSheets,
+        validationLists:referenceLists.flatMap(list=>{const column=columns.findIndex(key=>employeeColumnLabel(key)===list.label);return column>=0?[{column,values:list.values}]:[];}),
       });
       const url = URL.createObjectURL(
         new Blob([bytes as BlobPart], {

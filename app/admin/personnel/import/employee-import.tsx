@@ -50,6 +50,7 @@ export type ImportReference = {
   relationships: string[];
   familyRelationships: string[];
   salutations?:string[];religions?:string[];races?:string[];
+  catalogs?:Record<string,string[]>;
 };
 
 export function EmployeeImport({
@@ -169,6 +170,7 @@ export function EmployeeImport({
           sheetName: EMPLOYEE_XLSX_SHEETS.data,
           textColumns: employeeTextColumnIndexes(),
           headerNotes: employeeTemplate.columns.map(column=>guidance(column.key,'employee','create')),
+          validationLists:personnelImportFields('employee').flatMap(field=>{const column=employeeTemplate.columns.findIndex(item=>item.key===field.import.column);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
           extraSheets: [
             // Item 2983802f — THE FAMILY SHEET, second so it reads as the other sheet to fill in. It is
             // read back BY NAME on upload, so its position is free but its name is not.
@@ -177,6 +179,7 @@ export function EmployeeImport({
               rows: [DEPENDENT_XLSX_COLUMNS.map(key=>descriptorColumnLabel(key,'family',(labelKey,fallback)=>personnelLabels.has(labelKey)?personnelLabels(labelKey):fallback)), ...DEPENDENT_SAMPLE_ROWS.map((r) => [...r])],
               textColumns: dependentTextColumnIndexes(),
               headerNotes: DEPENDENT_XLSX_COLUMNS.map(key=>guidance(key,'family','create')),
+              validationLists:personnelImportFields('family').flatMap(field=>{const column=DEPENDENT_XLSX_COLUMNS.indexOf(field.import.column!);const values=field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value);return column>=0&&values.length?[{column,values}]:[];}),
             },
             {
               name: EMPLOYEE_XLSX_SHEETS.reference,
@@ -185,24 +188,10 @@ export function EmployeeImport({
                 { label: employeeColumnLabel('department'), values: reference.departments },
                 { label: employeeColumnLabel('position'), values: reference.positions },
                 { label: employeeColumnLabel('cost_center'), values: reference.costCenters },
-                // Item 2983802f — the catalog-governed vocabularies the new columns write into. These are
-                // the SAME active options core/import validates a cell against, read from the live catalog
-                // by the server component, so a value on this sheet is a value the file may carry.
-                ...['gender','marital_status'].map(column=>({label:employeeColumnLabel(column),values:personnelFieldChoices(personnelImportField(column)!).map(option=>personnelLabels(option.labelKey))})),
-                {label:employeeColumnLabel('salutation'),values:reference.salutations??[]},
-                {label:employeeColumnLabel('religion'),values:reference.religions??[]},
-                {label:employeeColumnLabel('race'),values:reference.races??[]},
-                {label:employeeColumnLabel('nationality'),values:reference.nationalities},
-                { label: employeeColumnLabel('state'), values: reference.states },
-                { label: employeeColumnLabel('country'), values: reference.countries },
-                {
-                  label: employeeColumnLabel('passport_issuing_country'),
-                  values: reference.nationalities,
-                },
-                { label: employeeColumnLabel('emergency_contact_relationship'), values: reference.relationships },
+                ...personnelImportFields('employee').filter(field=>field.import.catalog || personnelFieldChoices(field).length).map(field=>({label:employeeColumnLabel(field.import.column!),values:field.import.catalog?reference.catalogs?.[field.import.catalog]??[]:personnelFieldChoices(field).map(option=>personnelLabels.has(option.labelKey)?personnelLabels(option.labelKey):option.value)})),
+                {label:employeeColumnLabel('passport_issuing_country'),values:reference.nationalities},
                 ...familyChoices,
-                { label: t('familyRelationshipLabel'), values: reference.familyRelationships },
-                { label: t('familyGenderLabel'), values: [...DEPENDENT_ENUM_VALUES.gender] },
+                {label:t('familyRelationshipLabel'),values:reference.familyRelationships},
                 enumList('employment_type'),
                 enumList('pay_mode'),
                 enumList('payment_term'),
