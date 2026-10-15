@@ -154,6 +154,9 @@ export type OvertimeTrace = {
 };
 
 export type AttendanceTraceV1 = {
+  /** Reference only: exact quantities and evidence remain in the immutable OT owner. A refusal
+   * prevents financial consumers from silently using the legacy OT fields for this formula day. */
+  overtimePattern?: {status:'recorded';sourceId:string;calculationId:string;revision:number} | {status:'refused';reason:'sourceUnavailable'};
   exemption?:{revisionId:string;effectiveFrom:string;types:readonly ['absent','late','early_out']};
   v: typeof ATTENDANCE_TRACE_VERSION;
   schedule: {

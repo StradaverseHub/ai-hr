@@ -22,6 +22,10 @@ New formula raw input is canonical recorded worked duration before legacy OT sha
 
 The stage order is named base transformation/cap; eligible duration; independent approval bound; minute deductions and zero floor; explicit duration rounding and approval re-bound; rates/tiers; targeted money deductions and zero floor; configured payment cap; explicit money rounding. A deduction resource cannot be consumed again through another rule ID, session, or unit. Flat charges have an explicit day/session/tier/slice basis and stable identity. All positive payable slices need an unambiguous configured rate/mapping.
 
+Qualifying counts do not by themselves locate overtime on a recorded interval. A required, explicit earliest/latest allocation policy attributes eligible, approved, deducted and rounded counts across recorded partitions and time bands. For example, 600 worked minutes less 480 required minutes can attribute 120 qualifying minutes to the beginning or end according to that chosen policy; the backend chooses neither. Trace distinguishes policy attribution from physically approved intervals. Clock eligibility compares original recorded work boundaries, with gaps excluded from duration, rather than pretending those boundaries are derived overtime endpoints.
+
+The same internal duration stage serves cash calculation and a separate immutable duration outcome. Missing salary used only in pricing can refuse cash while retaining proven payable duration for the canonical TOIL owner. Salary required by eligibility or duration remains necessary. Duration metadata contains no salary or payment amount; complete evidence remains separately financially scoped. TOIL must still establish freshness, its own policy, consent and source exclusivity before banking credit.
+
 Payroll policy and jurisdiction remain subsequent canonical owners. A configurable wage-base cap is not the statutory wage-eligibility gate. Rate, hour and amount policy caps, mapped-item statutory character and actual cycle routing must be evidenced in the final payment.
 
 ### Honest historical evidence

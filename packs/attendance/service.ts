@@ -48,7 +48,7 @@ export * from '../../core/attendance-shortfall';
 // ADR0123 — canonical recorded inputs, consumed through this facade by Attendance writers.
 export { captureCanonicalOvertimePersonnelContextTx } from './overtime-input';
 
-export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, overtimeSourceRevisionTx } from './overtime-calculation';
+export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, overtimeSourceRevisionTx } from './overtime-calculation';
 export { canonicalOvertimeInputTx, canonicalOvertimePayrollInputTx } from './overtime-input';
 
 export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type OvertimePatternCalculationReview } from './overtime-calculation';
