@@ -15,7 +15,10 @@
  * in order — the same anti-clipping argument as ADMIN_GROUP_FLAT_HREFS below. A genuinely new row is
  * declared there; it is not enough for it to simply not break the three original assertions.
  *
- * Deliberately NOT asserted here:
+ * 3f44a539 / 4a8a4fff additionally pin the relocated rows’ per-child admin flags: an installation
+ * email operator can open this node, so inherited group gating alone would no longer preserve access.
+ *
+ * Deliberately NOT asserted for the original rows here:
  *   - the per-child `adminOnly: true` flags — they are redundant today (the admin group is gated
  *     adminOnly wholesale before per-child filtering runs) and kept only for consistency with
  *     REPORTS_NODE; leaving them unasserted lets a future cleanup remove them without a red build;
@@ -69,6 +72,10 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
   '/admin/settings/profile-requests',
   '/admin/settings/email',
+  // 3f44a539 / 4a8a4fff — relocated existing rows; AI remains a flat Administration destination.
+  '/admin/settings/notifications',
+  '/admin/scheduled-actions',
+  '/admin/privacy',
   '/admin/system-explorer',
   // e6be5a3b (r330) — System Testing, the test-case library. DECLARED here, and last: like System
   // Analysis directly above it, it is a vendor-facing reference surface rather than company setup, and
@@ -85,8 +92,7 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
  * /admin/leave → packs/leave) — are asserted separately by position.
  */
 const ADMIN_GROUP_FLAT_HREFS = [
-  // Workflow email category policy; separate from installation-wide SMTP settings.
-  '/admin/settings/notifications',
+  // 3f44a539 / 4a8a4fff moved workflow email, scheduled actions and privacy into System Settings.
   '/admin/organization',
   // 639bf4a5 (r336) — '/admin/work-locations' (Physical Work Location) STOOD HERE, immediately after
   // Organization, having come from the attendance pack's settings node. rev 2 (r338) — IT IS GONE FROM
@@ -108,8 +114,6 @@ const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/notice-board',
   '/analytics',
   '/admin/audit',
-  '/admin/scheduled-actions',
-  '/admin/privacy',
   '/admin/ai',
   '/admin/users',
 ] as const;
@@ -121,7 +125,9 @@ function adminGroupBlock(): string {
   expect(start, 'admin group exists in sidebar.tsx').toBeGreaterThan(-1);
   const end = SIDEBAR.indexOf('\n];', start);
   expect(end, 'GROUPS array is terminated after the admin group').toBeGreaterThan(start);
-  return SIDEBAR.slice(start, end);
+  const block = SIDEBAR.slice(start, end);
+  expect(block.length, 'admin group slice is substantive').toBeGreaterThan(500);
+  return block;
 }
 
 describe('sidebar System Settings group (a4e49748 consolidation)', () => {
@@ -129,6 +135,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
 
   it('declares a SYSTEM_SETTINGS_NODE labelled with the nav.systemSettings key', () => {
     expect(node, 'SYSTEM_SETTINGS_NODE declaration exists in sidebar.tsx').not.toBeNull();
+    expect(node!.length, 'System Settings slice is substantive').toBeGreaterThan(500);
     expect(node!).toMatch(/labelKey:\s*'systemSettings'/);
   });
 
@@ -148,6 +155,26 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   it('carries EVERY child in the declared order — no row appended, clipped or reshuffled unnoticed', () => {
     const hrefs = [...node!.matchAll(/href: '([^']+)'/g)].map((m) => m[1]);
     expect(hrefs).toEqual([...SYSTEM_SETTINGS_CHILD_HREFS]);
+  });
+
+  it('relocates the exact three entries once, preserving keys, icons and the inherited admin audience', () => {
+    const rows = [
+      ['/admin/settings/notifications', 'workflowEmail', 'Bell'],
+      ['/admin/scheduled-actions', 'scheduledActions', 'Timer'],
+      ['/admin/privacy', 'dataPrivacy', 'Lock'],
+    ] as const;
+    for (const [href, labelKey, icon] of rows) {
+      expect(node!).toContain(`{ href: '${href}', labelKey: '${labelKey}', icon: ${icon}, adminOnly: true }`);
+      expect([...SIDEBAR.matchAll(/\{ href: '([^']+)'/g)].filter(match => match[1] === href)).toHaveLength(1);
+      expect(adminGroupBlock()).not.toContain(`href: '${href}'`);
+    }
+    expect(adminGroupBlock()).toContain("{ href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles }");
+    expect(node!).not.toContain("href: '/admin/ai'");
+    expect(SIDEBAR).toContain("['/admin/settings/notifications','notifications'] as const");
+    const source = (file: string) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
+    expect(source('app/admin/settings/notifications/page.tsx')).toContain("await scopedAdmin();await requireModule('notifications')");
+    expect(source('app/admin/scheduled-actions/page.tsx')).toContain("if (!isGroupAdmin(s)) redirect('/')");
+    expect(source('app/admin/privacy/page.tsx')).toContain('await requireAdmin()');
   });
 
   it('4509d2b8: the Holidays row sits between Hiring Defaults and System Analysis', () => {
