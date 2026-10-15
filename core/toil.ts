@@ -3178,8 +3178,9 @@ export async function listOwnEarnedLeaveCredits(ctx:SessionContext,p:CreditRegis
 
 async function earnedCreditRegisterTx(tx:Tx,ctx:SessionContext,p:CreditRegisterRead,audience:'hr'|'own') {
     const today=p.today??todayInKualaLumpur();
-    const limit=Math.max(1,Math.min(audience==='own'?2000:500,p.limit??500));
-    const offset=Number.isSafeInteger(p.offset)&&p.offset!>0?p.offset!:0;
+    const requestedLimit=Number.isFinite(p.limit)?Math.trunc(p.limit!):500;
+    const limit=Math.max(1,Math.min(audience==='own'?2000:500,requestedLimit));
+    const offset=Number.isSafeInteger(p.offset)&&(p.offset??0)>0?p.offset!:0;
     const empty={rows:[] as EarnedLeaveCreditRow[],matched:0,truncated:false,summary:{earned:0,used:0,expired:0,available:0}};
     if(p.companyIds?.length===0||(audience==='own'&&!ctx.personId))return empty;
     const accruals=await tx.select({lot:toilAccrual,name:person.fullName,code:employment.employeeCode})
@@ -3231,10 +3232,17 @@ async function earnedCreditRegisterTx(tx:Tx,ctx:SessionContext,p:CreditRegisterR
     }
     const creditIds=accruals.map(x=>x.lot.ledgerEntryId).filter((x):x is string=>!!x);
     const ledger=creditIds.length?await tx.select().from(leaveLedger).where(inArray(leaveLedger.id,creditIds)):[];
-    const grantActors=await tx.select({event:{aggregateId:domainEvent.aggregateId,occurredAt:domainEvent.occurredAt,subjectEmploymentId:domainEvent.subjectEmploymentId,actorType:domainEvent.actorType},name:person.fullName}).from(domainEvent)
+    const grantActors=await tx.select({event:{id:domainEvent.id,aggregateId:domainEvent.aggregateId,occurredAt:domainEvent.occurredAt,subjectEmploymentId:domainEvent.subjectEmploymentId,actorType:domainEvent.actorType},name:person.fullName}).from(domainEvent)
       .leftJoin(appUser,eq(appUser.id,domainEvent.actorId)).leftJoin(person,eq(person.id,appUser.personId))
       .where(and(inArray(domainEvent.subjectEmploymentId,empIds),eq(domainEvent.tenantId,ctx.tenantId)))
       .orderBy(asc(domainEvent.sequence));
+    // The employee can read their grant event, but RLS deliberately hides the HR actor's person row.
+    // The name-only reader independently checks login ownership of each lot, and returns only the same
+    // grant event selected below. It does not make that actor's profile readable.
+    const ownActorRows=audience==='own'?await tx.execute(sql`
+      SELECT event_id, actor_name FROM app.own_earned_credit_actors(${`{${lotIds.join(',')}}`}::uuid[])
+    `) as unknown as {event_id:string;actor_name:string|null}[]:[];
+    const ownActorNames=new Map(ownActorRows.map(row=>[row.event_id,row.actor_name]));
     const claims=await tx.select({accrualId:replacementLeaveRequestDate.accrualId,reason:replacementLeaveRequest.reason})
       .from(replacementLeaveRequestDate).innerJoin(replacementLeaveRequest,eq(replacementLeaveRequest.id,replacementLeaveRequestDate.requestId))
       .where(inArray(replacementLeaveRequestDate.accrualId,lotIds));
@@ -3246,7 +3254,7 @@ async function earnedCreditRegisterTx(tx:Tx,ctx:SessionContext,p:CreditRegisterR
       const usage=usageByLot.get(lot.id)??[];
       return {accrualId:lot.id,employmentId:lot.employmentId,employeeName:name,employeeCode:code,workedDate:lot.workedDate,
         workedDayKind:lot.workedDayKind??lot.dayType,expiresOn:lot.expiresOn,...facts,reason:lot.note??claims.find(x=>x.accrualId===lot.id)?.reason??null,
-        actorName:actor?.name??null,actorIsSystem:actor?.event.actorType==='system',recordedAt:(credit?.createdAt??lot.createdAt).toISOString(),
+        actorName:actor?(audience==='own'?ownActorNames.get(actor.event.id)??null:actor.name):null,actorIsSystem:actor?.event.actorType==='system',recordedAt:(credit?.createdAt??lot.createdAt).toISOString(),
         usage,unattributedUsed:round2(Math.max(0,facts.used-usage.reduce((sum,x)=>sum+x.days,0))),settled:lot.settledLedgerEntryId!=null,reversalReason:lot.reversalReason};
     });
     const filtered=all.filter(row=>(!p.status||row.status===p.status)&&(!p.from||row.workedDate>=p.from)&&(!p.to||row.workedDate<=p.to));
