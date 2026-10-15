@@ -154,3 +154,13 @@ steps; this feature must not claim those were completed by shipping code.
 The administrator delivery log includes an employee code only through a narrow tenant-matched lookup
 using the existing company-scoped delivery authorization, plus the delivery reference, so individual failures can be
 distinguished. It does not copy addresses, employee names, message contents or relay responses.
+# Reminder invalidation ownership
+
+The assessment reminder epoch is a derived invalidation counter maintained by canonical database
+triggers. Its table and SECURITY DEFINER trigger share the migration owner, which is not a superuser
+and has no BYPASSRLS privilege in production. The counter retains enabled RLS and its tenant/admin
+SELECT policy for the application; it does not FORCE that policy onto the private table owner.
+PUBLIC and application table privileges are revoked before restoring application SELECT alone,
+including removal of bootstrap write/TRUNCATE grants. Migration refuses an inherited table or column
+write capability. Direct trigger execution remains revoked. Verify employee draft activation under a
+restricted table/function owner; a postgres-owned test cannot establish this production contract.
