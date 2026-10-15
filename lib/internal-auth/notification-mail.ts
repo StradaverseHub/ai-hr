@@ -28,7 +28,9 @@ export async function internalNotificationEmailRequest<T>(input: NotificationEma
       } catch (error) { if (error instanceof InternalAuthError) return 'changed'; return 'unavailable'; }
     },
     async start(id, token, target) {
-      return (await client`select app.internal_auth_notification_start(${id}::uuid,${token}::uuid,${origin},${client.json(target)}::jsonb) started`)[0]?.started === true;
+      // Drizzle configures this shared client's JSON serializers for pre-serialized values. The
+      // standalone private email agent has different client options, so its sql.json is not portable.
+      return (await client`select app.internal_auth_notification_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(target)}::jsonb) started`)[0]?.started === true;
     },
     async finish(id, token, outcome, error) {
       return (await client`select app.internal_auth_notification_finish(${id}::uuid,${token}::uuid,${outcome},${error}) finished`)[0]?.finished === true;
