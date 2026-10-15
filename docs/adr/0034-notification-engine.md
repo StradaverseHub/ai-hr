@@ -167,8 +167,15 @@ write capability. Direct trigger execution remains revoked. Verify employee draf
 restricted table/function owner; a postgres-owned test cannot establish this production contract.
 
 The isolated Performance mail reader binds its dispatcher context to the tenant of an already
-validated delivery lease. Its function-scoped tenant/user/role/grant settings restore the caller on
-exit. Reminder run and recipient content retain FORCE RLS, and the application cannot execute the
+validated delivery lease. Its transaction-local tenant/user/role/grant settings restore the caller
+on normal return; an escaping error rolls back the exception-block subtransaction. Reminder run and recipient content retain FORCE RLS, and the application cannot execute the
 private reader. Verification must use a NOSUPERUSER/NOBYPASSRLS owner matching production; a
 postgres-owned helper can conceal missing private-worker context. Invalid leases, issuer changes,
 expired preparation and changed or completed work still produce no payload.
+
+Define the private reader as the restricted migration owner during verification, then invoke it under
+that owner. [PostgreSQL 16 stored-setting validation](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/backend/utils/misc/guc.c#L6151-L6193) separately checks function-level custom `SET` clauses and transient
+`set_config`: the former requires additional placeholder privileges. Use the existing kernel's
+transaction-local setter, retaining only the built-in `search_path` function setting; grant no new
+parameter privilege. Verify a valid payload, rejected leases, normal return and an actual payload
+query error with the caller's scope preserved.
