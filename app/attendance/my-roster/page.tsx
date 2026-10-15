@@ -282,7 +282,7 @@ function sourceKey(d: MyRosterDay): 'sourceRostered' | 'sourceUsual' | 'sourceRe
  * ONE day, drawn the same way in all three views. A `usual` day is GREY ITALIC — the legend's sentence
  * says what that means — and a rostered day carries its shift's own colour token.
  */
-function DayBody({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string) => string }) {
+function DayBody({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string | null) => string }) {
   if (d.cell.kind === 'rest') {
     return (
       <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-xs font-medium">
@@ -335,7 +335,7 @@ function MonthGrid({
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
-  hhmm: (v: string) => string;
+  hhmm: (v: string | null) => string;
 }) {
   const pad = isoWeekdayOf(view.days[0]!.date) - 1;
   return (
@@ -387,7 +387,7 @@ function WeekCards({
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
-  hhmm: (v: string) => string;
+  hhmm: (v: string | null) => string;
   fmtHrs: (min: number) => string;
 }) {
   return (
@@ -435,7 +435,7 @@ function DayPanel({
   w: MyRosterWindow;
   t: T;
   fmtWeekday: (iso: string) => string;
-  hhmm: (v: string) => string;
+  hhmm: (v: string | null) => string;
   fmtHrs: (min: number) => string;
   fmtLongDate: (iso: string) => string;
 }) {

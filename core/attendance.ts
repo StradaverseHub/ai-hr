@@ -1306,7 +1306,7 @@ function deriveAttendance(
   const exemption=exceptionRevisionOn(s.rule?.exceptions,attendanceDate);
   const exceptionActive=exemption?.enabled===true;
   let status: 'present' | 'late' | 'half_day' =
-    s.dayType === 'workday' && !s.flexiDuration && !exceptionActive && toMinutes(checkInAt) > toMinutes(s.lateAfter)
+    s.dayType === 'workday' && !s.flexiDuration && toMinutes(checkInAt) > toMinutes(s.lateAfter)
       ? 'late'
       : 'present';
 
@@ -1410,7 +1410,6 @@ function deriveAttendance(
   if (
     s.dayType === 'workday' &&
     !s.crossesMidnight &&
-    !exceptionActive &&
     !s.flexiDuration &&
     status !== 'late' &&
     toMinutes(checkOutAt) < toMinutes(s.halfDayBefore)

@@ -241,6 +241,7 @@ const MATRIX: { why: string; t: AttendanceTraceV1 }[] = [
       }),
     }),
   },
+  { why:'a dated exemption explains suppressed deductions while retaining measured clocks',t:trace({exemption:{revisionId:'exception-1',effectiveFrom:'2026-01-01',types:['absent','late','early_out']}}) },
   {
     why: 'an OPEN day — clocked in, not yet out: lateness is knowable, overtime is not',
     t: trace({ punch: { inAbs: 545, outAbs: null, spanMinutes: null, workedMinutes: null }, lateness: late(5, false) }),

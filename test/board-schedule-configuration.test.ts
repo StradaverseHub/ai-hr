@@ -74,7 +74,7 @@ describe('dated exemptions preserve observations',()=>{
   expect(await attendanceOf(e.employmentId,day())).toMatchObject({status:'late',lateMinutes:60});
   await saveScheduleGroupControl(ctx,{ruleId:g.id,kind:'exception',enabled:true});
   await checkIn(ctx,{employmentId:e.employmentId,date:day(1),time:'10:00'});await checkOut(ctx,{employmentId:e.employmentId,date:day(1),time:'17:00'});
-  const after=await attendanceOf(e.employmentId,day(1));expect(after).toMatchObject({status:'present',lateMinutes:60,earlyOutMinutes:59,lateDeductMinutes:0,earlyOutDeductMinutes:0,underMinutes:120});
+  const after=await attendanceOf(e.employmentId,day(1));expect(after).toMatchObject({status:'late',lateMinutes:60,earlyOutMinutes:59,lateDeductMinutes:0,earlyOutDeductMinutes:0,underMinutes:120});
   expect(after.calcTrace?.exemption?.effectiveFrom).toBe(day(1));expect((await attendanceOf(e.employmentId,day())).calcTrace?.exemption).toBeUndefined();
   const measurement=await withTenant(ctx,tx=>absenceBreakdownByEmployment(tx,day(2),day(2),[e.employmentId],{rules:'scheduled',until:day(2),measurement:'raw'}));
   const decisions=await withTenant(ctx,tx=>absenceBreakdownByEmployment(tx,day(2),day(2),[e.employmentId],{rules:'scheduled',until:day(2)}));

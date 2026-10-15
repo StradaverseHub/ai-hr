@@ -158,7 +158,7 @@ describe('approved Schedule Group rotation workflow',()=>{
     await expect(save(f,{...f.cycle,effectiveFrom:add(f.date,8)})).rejects.toThrow(/archived/);
     await expect(setRuleShifts(f.a,{ruleId:f.rule.id,shiftIds:[f.morning.id]})).rejects.toThrow(/together/);
     await expect(updateShift(f.a,{shiftId:f.morning.id,name:'Morning',code:'AM',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5],ruleId:null})).rejects.toThrow(/together/);
-    await expect(deleteShift(f.a,{shiftId:f.night.id})).rejects.toThrow(/rotation|referenced/i);
+    await expect(deleteShift(f.a,{shiftId:f.night.id})).rejects.toThrow(/allowed by a Schedule Group/i);
   });
   it('attendance displays, OT calendar and roster ghosts use the saved cycle',async()=>{
     const f=await fixture();await save(f);
