@@ -4411,12 +4411,12 @@ export default async function EmployeePage({
           <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
             {readOnlyValue("employment.organisation_assignment.positionname", current?.position)}
           </PersonnelField>
-          <Field label={t('employmentInfo.jobGrade')}>
+          <PersonnelField fieldId="employment.organisation_assignment.gradename" mode="edit">
             {readOnlyValue("employment.organisation_assignment.gradename", gradeName)}
-          </Field>
-          <Field label={t('employmentInfo.employmentType')}>
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.employmenttype" mode="edit">
             {readOnlyValue("employment.organisation_assignment.employmenttype", employmentTypeLabel)}
-          </Field>
+          </PersonnelField>
           {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
               The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
               on the employee summary Card. A third copy inside the form added noise without adding
@@ -4506,18 +4506,18 @@ export default async function EmployeePage({
               carries a `name` any more, and setEmploymentInfo ignores both fields without the matching
               movement tag, so a forged submit cannot set them either. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('employmentInfo.groupJoinDate')}>
+            <PersonnelField fieldId="employment.employment_dates_and_service.hiredon" mode="edit">
               {readOnlyValue("employment.employment_dates_and_service.hiredon", emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
               </p>
-            </Field>
-            <Field label={t('employmentInfo.joinDate')}>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.employment_dates_and_service.joindate" mode="edit">
               {readOnlyValue("employment.employment_dates_and_service.joindate", emp.joinDate ? formatDmy(emp.joinDate) : null)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
               </p>
-            </Field>
+            </PersonnelField>
           </div>
           <p className="text-xs text-muted-foreground">
             {t('employmentInfo.joinDatesViewOnlyNote')}{' '}

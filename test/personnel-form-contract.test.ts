@@ -1,13 +1,21 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelWorkflowControl,personnelWorkflowCarry} from '../lib/personnel-form-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelWorkflowControl,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
 import {personnelFieldChoices,personnelFieldLabel} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
 const final='employment.employment_dates_and_service.finalconfirmationdate';
 describe('Personnel shared form contract',()=>{
+  it('resolves the mounted read-only employment values without exposing a writable join-date field',()=>{
+    for(const id of ['employment.organisation_assignment.gradename','employment.organisation_assignment.employmenttype','employment.employment_dates_and_service.hiredon','employment.employment_dates_and_service.joindate'])expect(personnelDisplay(id)).toEqual({'data-personnel-field':id});
+    const join='employment.employment_dates_and_service.joindate';
+    expect(personnelControl(join)).not.toHaveProperty('name');
+    expect(()=>personnelInput(join)).toThrow(/specialized/);
+    expect(PERSONNEL_FIELDS.find(field=>field.id===join)).toMatchObject({ownerField:'joinDate',form:{widget:'display'},history:'current'});
+  });
+
   it('keeps draft JSON controls unnamed while form controls post the declared canonical name',()=>{
     expect(personnelInput(birth)).toMatchObject({name:'dateOfBirth',type:'date',required:false});
     expect(personnelInput(birth,'draft')).not.toHaveProperty('name');
