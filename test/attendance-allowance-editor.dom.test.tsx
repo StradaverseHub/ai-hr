@@ -26,15 +26,30 @@ const options = {
 };
 const components = [{id:earningId,code:'ATTENDANCE',name:'Attendance earning',kind:'allowance'},{id:deductionId,code:'ATT_DEDUCT',name:'Attendance deduction',kind:'deduction'}];
 const submit = vitest.fn(async () => ({error:'Synthetic validation refusal'}));
-function mount(locale:keyof typeof catalogs='en',policy?:Parameters<typeof AttendanceAllowanceEditor>[0]['policy']) {
+function mount(locale:keyof typeof catalogs='en',policy?:Parameters<typeof AttendanceAllowanceEditor>[0]['policy'],setup:Parameters<typeof AttendanceAllowanceEditor>[0]['options']=options) {
   const errors:unknown[]=[];
-  render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]} onError={error=>errors.push(error)}><AttendanceAllowanceEditor options={options} components={components} policy={policy} action={submit}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]} onError={error=>errors.push(error)}><AttendanceAllowanceEditor options={setup} components={components} policy={policy} action={submit}/></NextIntlClientProvider>);
   return errors;
 }
 const form = () => document.getElementById('attendance-allowance-editor') as HTMLFormElement;
 const submittedRules = () => JSON.parse(String(new FormData(form()).get('rules')));
 
 describe('four-section allowance editor', () => {
+  it('clears the visible leave-type choice when changing to a different leave measure, matching the saved rule',async()=>{
+    const leaveId='77777777-7777-4777-8777-777777777777';
+    mount('en',undefined,{...options,leaveTypes:[{id:leaveId,label:'Annual leave',companyId,archived:false}]});
+    const user=userEvent.setup(),t=en.allowanceV2,v=en.allowanceV3;
+    await user.click(screen.getByRole('button',{name:t.addAttendanceCriterion}));
+    await user.selectOptions(screen.getByLabelText(t.field),'leaveDays');
+    await user.click(screen.getByRole('button',{name:v.leaveTypes}));
+    await user.click(screen.getByRole('checkbox',{name:'Annual leave'}));
+    expect(submittedRules().attendance.expression.children[0].leaveTypeIds).toEqual([leaveId]);
+    expect(screen.getByRole('button',{name:'Remove Annual leave'})).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(t.field),'leaveCount');
+    expect(submittedRules().attendance.expression.children[0].leaveTypeIds).toEqual([]);
+    expect(screen.queryByRole('button',{name:'Remove Annual leave'})).not.toBeInTheDocument();
+  });
+
   it('keeps current flat draft edits when explicitly switching to grouped conditions and requires review again',async()=>{
     const rules=emptyAllowanceRules();rules.attendance.criteria=[{field:'actualMinutes',operator:'gte',value:'8',unit:'hours'}];
     const policy={id:'66666666-6666-4666-8666-666666666666',tenantId:companyId,companyId,code:'V2',name:'Existing flat policy',method:'daily',amount:'20.00',payComponentId:earningId,effectiveFrom:'2025-01-01',status:'active',policyType:'earning',version:2,rules,criteria:{},scope:{},archivedAt:null,createdAt:new Date('2025-01-01T00:00:00Z')};
