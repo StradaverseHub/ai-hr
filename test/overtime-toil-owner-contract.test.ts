@@ -11,7 +11,7 @@ describe('canonical TOIL source lifecycle',()=>{
   expect(lock).toBeGreaterThan(0);expect(proof).toBeGreaterThan(lock);expect(ledger).toBeGreaterThan(proof);expect(accrual).toBeGreaterThan(ledger);expect(reserve).toBeGreaterThan(accrual);
   expect(bank).toContain("mode:'toil',toilAccrualId:acc.id");expect(bank).toContain('if(recordedSource)');expect(bank).not.toContain('lockOvertimeSourceTx');
   expect(bank).toContain('p.otMinutes>formula.minutes');expect(bank).not.toMatch(/p\.otMinutes\s*=\s*formula\.minutes/);
-  expect(bank).toContain('overtimePattern:{...formula.audit,qualificationBasis:');expect(bank).toContain('consumedMinutes:otMinutes');expect(bank).toContain('p.otMinutes>formula.afterShiftMinutes');
+  expect(bank).toContain('overtimePattern:{...formula.audit,qualificationBasis:');expect(bank).toContain('consumedMinutes:otMinutes');expect(bank).toContain('p.otMinutes>formula.afterShiftMinutes');expect(bank).toContain('p.workedDayKind!==formula.recordedWorkedDayKind');
  });
  it('releases only the exact active claim after successful canonical reversal, preserving payroll closure',()=>{
   const reverse=section('export async function reverseLeaveCredit(', 'const LEAVE_CREDIT');
@@ -19,6 +19,13 @@ describe('canonical TOIL source lifecycle',()=>{
   expect(reverse).toContain('payrollStartedForDateTx');expect(reverse).toContain("eq(toilAccrual.status, 'active')");expect(reverse).toContain("status: 'reversed'");
   expect(reverse.indexOf('if (updated.length !== 1)')).toBeLessThan(reverse.indexOf('await releaseOvertimeSettlementTx'));
   expect(reverse).toContain('recordedSource.settlement.toilAccrualId!==acc.id');expect(reverse).toContain('expectedRevision:recordedSource.settlement.revision');
+ });
+ it('routes courtesy checks through the real context and captured formula classification',()=>{
+  expect(core).toContain("formula.kind==='formula'?formula.recordedWorkedDayKind:await resolveWorkedDayKindTx");
+  const request=readFileSync(resolve(__dirname,'../core/replacement-request.ts'),'utf8');
+  expect(request).toContain('resolveWorkedDayKindTx(tx, employmentId, date,ctx)');expect(request).toContain('extendedHoursDayForEmploymentTx(tx, p.employmentId, l.workedDate,ctx)');
+  expect(readFileSync(resolve(__dirname,'../core/leave-credit-request.ts'),'utf8')).toContain('leaveCreditRosterKindsTx(tx, employmentId, dates,ctx)');
+  const lock=adapter.indexOf(".for('update')"),read=adapter.indexOf('const [day]');expect(lock).toBeGreaterThan(0);expect(read).toBeGreaterThan(lock);expect(adapter.slice(read)).not.toContain(".for('update')");
  });
  it('uses one shared allocation stage and salary-free metadata, never cash traces or another formula implementation',()=>{
   expect(adapter).toContain('canonicalOvertimeToilInputTx');expect(adapter).toContain('readOvertimeDurationDefinitionTx');expect(adapter).toContain('overtimeDurationProofInput');expect(adapter).toContain('evaluateOvertimePatternDuration');expect(adapter).toContain('intersectOvertimeDurationAfter');
