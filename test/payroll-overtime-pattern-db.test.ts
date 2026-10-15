@@ -19,7 +19,7 @@ let b:Base;const day=()=>todayInKualaLumpur();
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);});
 async function fixture(amount='60',options:{salary?:number;cappedBase?:boolean}={}){
  const ctx=await entitledCtx(b);
- const e=await hireEmployee(ctx,{person:{fullName:'Fictional formula cash worker'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const e=await hireEmployee(ctx,{person:{fullName:'Fictional formula cash worker',primaryEmail:'fictional-formula-cash@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:options.salary??3000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
  await setStatutoryProfileMY(ctx,{personId:e.personId,icNumber:'900101011234'});
  await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'09:00',workEnd:'17:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
@@ -134,7 +134,7 @@ describe('independent pinned financial verification',()=>{
   const c=read.calculation,inputs=validateOvertimeInput(read.evidence.inputs),payload=structuredClone(read.evidence.evidence) as Record<string,unknown>;
   let versionId=c.versionId,assignmentId=c.assignmentId;
   if(kind==='assignment'){
-   const peer=await hireEmployee(f.ctx,{person:{fullName:'Fictional other assignment worker'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+   const peer=await hireEmployee(f.ctx,{person:{fullName:'Fictional other assignment worker',primaryEmail:'fictional-other-assignment@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
    const saved=await saveOvertimePatternDraft(f.ctx,{draft:{code:'OTHER_'+randomUUID().slice(0,8),creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Only the other employee',definition:f.definition}});
    const check=await validateOvertimePatternActivation(f.ctx,{versionId:saved.versionId,expectedRevision:saved.revision});if(!check.validationDigest)throw new Error('Expected valid alternative fixture');
    await activateOvertimePattern(f.ctx,{versionId:saved.versionId,expectedRevision:saved.revision,validationDigest:check.validationDigest,effectiveFrom:day()});

@@ -657,15 +657,20 @@ describe('2983802f §7 · an import that reports success must be visible on the 
     expect(moved.fileErrors.join(' ')).toContain('address_line_1');
     expect(moved.fileErrors.join(' ')).toContain('Profile'); // the door exists, so name it
 
-    // epf_number is owned by NO section. The old refusal told the reader to "choose the section that
-    // owns them" — on the single likeliest bulk update HR would attempt, that was a door that is not
-    // there. It has to say so instead.
+    // EPF registration now has its canonical partial owner; the approved Personnel contract exposes it.
+    const registrationRecords=recs('employee_code,epf_number',['SEC0074,EPF-9']);
+    const registration=await validateSectionImport(a,{section:'bank_statutory',records:registrationRecords});
+    expect(registration.fileErrors).toEqual([]);
+    expect((await commitSectionImport(a,{section:'bank_statutory',records:registrationRecords})).updated).toBe(1);
+    const registered=await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,(await owner.db.select().from(schema.employment).where(eq(schema.employment.employeeCode,'SEC0074')))[0].personId));
+    expect(registered[0].epfNumber).toBe('EPF-9');
+    // Salary still requires an effective-dated compensation workflow; no section file owns it.
     const homeless = await validateSectionImport(a, {
       section: 'bank_statutory',
-      records: recs('employee_code,bank_name,epf_number', ['SEC0074,CIMB,EPF-9']),
+      records: recs('employee_code,bank_name,basic_salary', ['SEC0074,CIMB,5000']),
     });
     const joined = homeless.fileErrors.join(' ');
-    expect(joined).toContain('epf_number');
+    expect(joined).toContain('basic_salary');
     expect(joined).toContain('No section file can change these columns');
     expect(joined).not.toContain('choose the section that owns');
   });

@@ -25,7 +25,7 @@ async function blocked(backend:number){
 }
 async function fixture(kind:'rest_day'|'workday'='rest_day'){
  const ctx=await entitledCtx(b),date=todayInKualaLumpur();
- const e=await hireEmployee(ctx,{person:{fullName:'Fictional TOIL source race'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const e=await hireEmployee(ctx,{person:{fullName:'Fictional TOIL source race',primaryEmail:'fictional-toil-race@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
  await setAttendancePolicy(ctx,{companyId:b.companyId,workStart:'09:00',workEnd:'17:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
  if(kind==='rest_day')await setRestDay(ctx,{employmentId:e.employmentId,shiftDate:date});

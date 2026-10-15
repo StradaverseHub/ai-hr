@@ -18,7 +18,7 @@ it('installs the OT owner under a restricted migration role with FORCE RLS and p
  try{await owner.db.transaction(async tx=>{
   // Existing 0551 objects belong to the throwaway template. Transaction rollback restores them.
   const functionNames=[...migration.matchAll(/CREATE (?:OR REPLACE )?FUNCTION app\.([a-z_]+)\(/g)].map(match=>match[1]);
-  const functions=await tx.execute(sql`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname=any(${functionNames}::text[])`) as unknown as {signature:string}[];
+  const functions=await tx.execute(sql`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname=any(ARRAY[${sql.join(functionNames.map(value=>sql`${value}`),sql`, `)}]::text[])`) as unknown as {signature:string}[];
   for(const fn of functions)await tx.execute(sql.raw('DROP FUNCTION '+fn.signature+' CASCADE'));
   const tables=[...migration.matchAll(/CREATE TABLE ([a-z_]+)\(/g)].map(match=>match[1]);
   for(const table of [...tables].reverse())await tx.execute(sql.raw('DROP TABLE IF EXISTS public.'+table+' CASCADE'));
@@ -32,9 +32,9 @@ it('installs the OT owner under a restricted migration role with FORCE RLS and p
   for(const statement of migration.split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await tx.execute(sql.raw(statement));
   const actual=await tx.execute(sql`select rolname,rolsuper,rolbypassrls from pg_roles where rolname=current_user`) as unknown as {rolname:string;rolsuper:boolean;rolbypassrls:boolean}[];
   expect(actual).toEqual([{rolname:role,rolsuper:false,rolbypassrls:false}]);
-  const installed=await tx.execute(sql`select c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) as owner,has_table_privilege('ai_hr_app',c.oid,'TRUNCATE') as trunc from pg_class c where c.relnamespace='public'::regnamespace and c.relname=any(${tables}::text[])`) as unknown as {relname:string;relrowsecurity:boolean;relforcerowsecurity:boolean;owner:string;trunc:boolean}[];
+  const installed=await tx.execute(sql`select c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) as owner,has_table_privilege('ai_hr_app',c.oid,'TRUNCATE') as trunc from pg_class c where c.relnamespace='public'::regnamespace and c.relname=any(ARRAY[${sql.join(tables.map(value=>sql`${value}`),sql`, `)}]::text[])`) as unknown as {relname:string;relrowsecurity:boolean;relforcerowsecurity:boolean;owner:string;trunc:boolean}[];
   expect(installed).toHaveLength(tables.length);for(const table of installed)expect(table).toMatchObject({owner:role,relrowsecurity:true,relforcerowsecurity:true,trunc:false});
-  const helpers=await tx.execute(sql`select p.proname,p.prosecdef,p.proconfig,exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_exec from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname=any(${functionNames}::text[])`) as unknown as {proname:string;prosecdef:boolean;proconfig:string[];public_exec:boolean}[];
+  const helpers=await tx.execute(sql`select p.proname,p.prosecdef,p.proconfig,exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_exec from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname=any(ARRAY[${sql.join(functionNames.map(value=>sql`${value}`),sql`, `)}]::text[])`) as unknown as {proname:string;prosecdef:boolean;proconfig:string[];public_exec:boolean}[];
   expect(helpers).toHaveLength(functionNames.length);for(const helper of helpers){expect(helper.public_exec).toBe(false);expect(helper.proconfig).toContain('search_path=pg_catalog, public, pg_temp');}
   // The caller can see the legacy day, but this trigger's NOBYPASS/FORCE owner cannot prove
   // source absence without context. An RLS-filtered empty lookup must never authorize a skip.

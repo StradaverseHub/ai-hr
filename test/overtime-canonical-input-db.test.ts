@@ -14,7 +14,7 @@ afterAll(closeAll);
 beforeEach(async () => {await resetDb(); base = await seedBase();});
 async function employee() {
   const ctx = adminCtx(base);
-  const hired = await hireEmployee(ctx, {person: {fullName: 'Recorded OT Worker'}, companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2024-01-01'});
+  const hired = await hireEmployee(ctx, {person: {fullName: 'Recorded OT Worker',primaryEmail:'recorded-ot-worker@example.test'}, companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2024-01-01'});
   await setCompensation(ctx, {employmentId: hired.employmentId, basicSalary: 3000, monthlyAllowance: 200, effectiveFrom: '2024-01-01'});
   await setAttendancePolicy(ctx, {companyId: base.companyId, workStart: '09:00', workEnd: '17:00', breakMinutes: 0, lateAfter: '09:00', halfDayBefore: '13:00', workingDays: [1, 2, 3, 4, 5, 6, 7]});
   return {ctx, employmentId: hired.employmentId};
