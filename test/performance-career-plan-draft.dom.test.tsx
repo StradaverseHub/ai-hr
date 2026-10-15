@@ -15,13 +15,15 @@ function show(existingLong=''){
 it('previews without changing form values or submitting; explicit Keep carries the latest unsaved human fields',async()=>{
  const submitted=show();fireEvent.click(screen.getByRole('button',{name:en.onehr.careerDraft.generate}));await screen.findByText(en.onehr.careerDraft.preview);
  expect(mocks.apply).not.toHaveBeenCalled();expect((screen.getByRole('textbox',{name:'Longer-term aspiration'}) as HTMLTextAreaElement).value).toBe('');expect((screen.getByRole('combobox',{name:'Mobility'}) as HTMLSelectElement).value).toBe('');
- fireEvent.change(screen.getByRole('textbox',{name:'Human goal'}),{target:{value:'My newer unsaved goal'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.careerDraft.keep}));
- await waitFor(()=>expect(mocks.apply).toHaveBeenCalledOnce());const [data,goals,long,sourceDigest]=mocks.apply.mock.calls[0];expect(data.get('human-goal.area')).toBe('My newer unsaved goal');expect(data.get('mobility')).toBe('');expect(goals).toEqual(result.goals);expect(long).toBe(result.aspirationLong);expect(sourceDigest).toBe(result.sourceDigest);expect(submitted).not.toHaveBeenCalled();expect(mocks.refresh).toHaveBeenCalledOnce();
+ fireEvent.change(screen.getByRole('textbox',{name:'Human goal'}),{target:{value:'My newer unsaved goal'}});
+ const keep=screen.getByRole('button',{name:en.onehr.careerDraft.keep});await waitFor(()=>expect(keep).toBeEnabled());fireEvent.click(keep);
+ await waitFor(()=>expect(mocks.apply).toHaveBeenCalledOnce());const [data,goals,long,sourceDigest]=mocks.apply.mock.calls[0];expect(data.get('human-goal.area')).toBe('My newer unsaved goal');expect(data.get('mobility')).toBe('');expect(goals).toEqual(result.goals);expect(long).toBe(result.aspirationLong);expect(sourceDigest).toBe(result.sourceDigest);expect(submitted).not.toHaveBeenCalled();await waitFor(()=>expect(mocks.refresh).toHaveBeenCalledOnce());
 });
 it('does not select an AI aspiration over existing human words and discards without saving',async()=>{
  show('My own longer-term words');fireEvent.click(screen.getByRole('button',{name:en.onehr.careerDraft.generate}));await screen.findByText(en.onehr.careerDraft.preview);
  expect((screen.getByRole('checkbox',{name:en.onehr.careerDraft.keepAspiration}) as HTMLInputElement).checked).toBe(false);
- fireEvent.click(screen.getByRole('button',{name:en.onehr.developmentSuggestions.discard}));expect(mocks.apply).not.toHaveBeenCalled();expect((screen.getByRole('textbox',{name:'Longer-term aspiration'}) as HTMLTextAreaElement).value).toBe('My own longer-term words');
+ const discard=screen.getByRole('button',{name:en.onehr.developmentSuggestions.discard});await waitFor(()=>expect(discard).toBeEnabled());fireEvent.click(discard);
+ expect(screen.queryByText(en.onehr.careerDraft.preview)).not.toBeInTheDocument();expect(mocks.apply).not.toHaveBeenCalled();expect((screen.getByRole('textbox',{name:'Longer-term aspiration'}) as HTMLTextAreaElement).value).toBe('My own longer-term words');
 });
 it('requires the newly chosen direction to be saved before requesting a grounded draft',()=>{
  show();fireEvent.change(screen.getByRole('combobox',{name:'Direction'}),{target:{value:'other'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.careerDraft.generate}));expect(screen.getByRole('alert').textContent).toBe(en.onehr.careerDraft.saveDirection);expect(mocks.generate).not.toHaveBeenCalled();
