@@ -62,4 +62,16 @@ describe('native embedded sign-in — rendered shipped screen',()=>{
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.en.errors.invalidCode);expect(screen.getByLabelText(copy.en.codeOrRecovery)).toHaveValue('');
     expect(f.auth.completeInternalSignIn).not.toHaveBeenCalled();expect(f.mark).not.toHaveBeenCalled();
   });
+  it('can retry local session completion after MFA without showing nonexistent backup codes',async()=>{
+    const f=fixture(),user=userEvent.setup();
+    f.request.mockResolvedValueOnce({step:'mfa',challenge:'m'.repeat(43)}).mockResolvedValueOnce({step:'complete',access_token:'aihr_'+'a'.repeat(43),refresh_token:'aihr_refresh_'+'b'.repeat(43),expires_in:900});
+    f.auth.completeInternalSignIn.mockRejectedValueOnce(new Error('Device storage temporarily unavailable'));
+    render(<f.View/>);await login(user);await screen.findByRole('heading',{name:copy.en.mfaTitle});
+    await user.type(screen.getByLabelText(copy.en.codeOrRecovery),'123456');await user.click(screen.getByRole('button',{name:copy.en.continue}));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.en.errors.unavailable);
+    expect(screen.queryByText(copy.en.codesHelp)).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:copy.en.codesSaved})).not.toBeInTheDocument();
+    expect(f.mark).not.toHaveBeenCalled();expect(f.router.replace).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:copy.en.signIn}));
+    await waitFor(()=>expect(f.mark).toHaveBeenCalledOnce());expect(f.auth.completeInternalSignIn).toHaveBeenCalledTimes(2);expect(f.request).toHaveBeenCalledTimes(2);expect(f.router.replace).toHaveBeenCalledWith('/');
+  });
 });

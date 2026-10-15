@@ -47,13 +47,14 @@ export function InternalSignIn() {
   if (session.status === 'signedIn') return <Redirect href="/"/>;
   const errorText = copy.errors[error as keyof typeof copy.errors] || copy.errors.unavailable;
   const state = step?.step || 'login';
+  const hasRecoveryCodes = Boolean(step?.recoveryCodes?.length);
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.wrap}>
-    <Text style={styles.brand}>AI HR</Text><Text accessibilityRole="header" style={styles.title}>{state === 'complete' ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
+    <Text style={styles.brand}>AI HR</Text><Text accessibilityRole="header" style={styles.title}>{state === 'complete' && hasRecoveryCodes ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
     {company && <Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text>}
     {error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
     {state === 'complete' ? <View style={styles.fields}>
-      <Text style={styles.body}>{copy.codesHelp}</Text><Text selectable style={styles.codes}>{step?.recoveryCodes?.join('\n')}</Text>
-      <Button title={copy.codesSaved} onPress={() => {
+      {hasRecoveryCodes && <><Text style={styles.body}>{copy.codesHelp}</Text><Text selectable style={styles.codes}>{step?.recoveryCodes?.join('\n')}</Text></>}
+      <Button title={busy ? copy.working : hasRecoveryCodes ? copy.codesSaved : copy.signIn} onPress={() => {
         if (pending.current) return;
         pending.current = true; setBusy(true); setError('');
         void finish(step!).catch(() => setError('unavailable')).finally(() => { pending.current = false; setBusy(false); });
