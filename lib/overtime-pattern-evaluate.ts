@@ -602,15 +602,17 @@ function durationAllocations(stage: ReturnType<typeof runDurationStage>): Overti
 }
 /** Intersect already allocated counts with a canonical recorded absolute shift-end boundary.
  * Unknown placement remains Unknown. No rate evaluation, new allocation or physical-approval claim. */
-export function intersectOvertimeDurationAfter(result: OvertimeDurationEvaluation, boundaryEpochSeconds: string): OvertimeValue {
+export function intersectOvertimeDurationAfter(result: OvertimeDurationEvaluation, boundaryEpochSeconds: string, upperBoundaryEpochSeconds?: string): OvertimeValue {
     if (result.status === 'refused') return unknown('durationRefused');
     if (!/^\d{1,12}$/.test(boundaryEpochSeconds)) return unknown('shiftEndUnavailable');
-    const boundary = q(BigInt(boundaryEpochSeconds)); let seconds = ZERO;
+    const boundary = q(BigInt(boundaryEpochSeconds));
+    if (upperBoundaryEpochSeconds !== undefined && (!/^\d{1,12}$/.test(upperBoundaryEpochSeconds) || BigInt(upperBoundaryEpochSeconds) <= BigInt(boundaryEpochSeconds))) return unknown('claimedWindowUnavailable');
+    const upper = upperBoundaryEpochSeconds === undefined ? null : q(BigInt(upperBoundaryEpochSeconds)); let seconds = ZERO;
     for (const allocation of result.allocations) {
         if (BigInt(allocation.payableMinutes.numerator) === 0n) continue;
         if (!allocation.attribution) return unknown('durationPlacementUnavailable');
         const a = allocation.attribution, start = q(BigInt(a.startEpochSeconds.numerator), BigInt(a.startEpochSeconds.denominator)), end = q(BigInt(a.endEpochSeconds.numerator), BigInt(a.endEpochSeconds.denominator));
-        seconds = add(seconds, max(ZERO, sub(end, max(start, boundary))));
+        seconds = add(seconds, max(ZERO, sub(upper ? min(end, upper) : end, max(start, boundary))));
     }
     return known(div(seconds, SIXTY), 'minutes');
 }
