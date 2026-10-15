@@ -1,6 +1,6 @@
 import { BlockList, isIP } from 'node:net';
 
-// Conservative egress policy: no internal, special-use, documentation or transition addresses.
+// Conservative egress policy: reject internal, non-public special-use and transition addresses.
 // IANA special-purpose registries; IPv6 is limited to native global unicast.
 const blocked = new BlockList();
 for (const [address, prefix] of [
