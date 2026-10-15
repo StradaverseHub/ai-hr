@@ -1,3 +1,4 @@
+import type { NotificationEmailRequest } from '../lib/notification-email-model';
 import {leadershipPrinciples} from '../packs/performance/onehr/framework-model';
 import { kpiLibraryImportHeaders } from '../packs/performance/onehr/import-model';
 import { architectureHeaders } from '../packs/performance/onehr/architecture-model';
@@ -17,7 +18,7 @@ import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults, setRewardMember } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,retryNotificationEmail } from '../core/notification-email';
-import { deliverNotificationEmails } from '../core/notification-email-delivery';
+import { deliverNotificationEmails,type NotificationEmailTransport } from '../core/notification-email-delivery';
 import { dispatchNotifications,notificationStillTargets } from '../core/notifications';
 import { appendEvent,actorOf } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -2348,8 +2349,9 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
     await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I have completed my self-assessment.');
     expect((await view(self)).competencyStatus).toBe('submitted');
     await retryNotificationEmail(a,delivery.id,true);
-    const online=vi.fn(async<T>():Promise<T>=>({version:1,ready:true,assessmentReminders:true,assessmentReminderWords:true} as T));
-    expect(await deliverNotificationEmails(a,online)).toMatchObject({attempted:0,skipped:1});expect(online).toHaveBeenCalledTimes(1);
+    const onlineCalls=vi.fn();
+    const online:NotificationEmailTransport=async<T>(request:NotificationEmailRequest)=>{onlineCalls(request);return {version:1,ready:true,assessmentReminders:true,assessmentReminderWords:true} as T;};
+    expect(await deliverNotificationEmails(a,online)).toMatchObject({attempted:0,skipped:1});expect(onlineCalls).toHaveBeenCalledTimes(1);
     expect((await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id)))[0]).toMatchObject({status:'skipped',lastError:'notEligible'});
   });
 

@@ -65,6 +65,6 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
     <EmailSubmit type="submit">{t('activate')}</EmailSubmit>
    </form>}
   </div></Card>}
-  <AccountEmailDeliveries items={deliveries} returnTo={mayConfigure?'/admin/settings/email':'/admin/settings/notifications'}/>
+  <AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/>
  </div>;
 }

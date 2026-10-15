@@ -54,7 +54,7 @@ describe('account requests independent of SMTP delivery',()=>{
   const provider=fake(),ctx=adminCtx(b);
   const accepted=await inviteUser(ctx,{email:'accepted@example.test',role:'employee'},provider);
   const revoked=await inviteUser(ctx,{email:'revoked@example.test',role:'employee'},provider);
-  await acceptInvitation({token:accepted.token,subject:'accepted-subject'});await revokeInvitation(ctx,revoked.invitationId);
+  await acceptInvitation({token:accepted.token,subject:'accepted-subject'});await revokeInvitation(ctx,{invitationId:revoked.invitationId});
   for(const job of await jobs())await expect(retryAccountEmail(ctx,job.id,true,undefined,provider)).rejects.toThrow(/no longer pending/);
   expect((await readAccountEmailDeliveries(ctx)).every(job=>!job.canRetry)).toBe(true);expect(provider.sendInvitation).not.toHaveBeenCalled();
  });

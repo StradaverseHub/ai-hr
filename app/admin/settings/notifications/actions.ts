@@ -17,7 +17,9 @@ export async function retryWorkflowEmail(form:FormData) {
 }
 export async function retryAccountEmailAction(form:FormData){
   const path=form.get('returnTo')==='/admin/settings/email'?'/admin/settings/email':'/admin/settings/notifications';
-  const identity=path==='/admin/settings/email'?await requireIdentityEmailAdmin():null;
+  // A form kind selects the stronger guard; it grants no capability. Core/RLS refuse recovery
+  // without the verified installation actor, even if a caller claims this is an invitation.
+  const identity=form.get('kind')==='recovery'?await requireIdentityEmailAdmin():null;
   const session=identity?.session??await getSession();
   try{
     await retryAccountEmail(session,String(form.get('deliveryId')??''),form.get('acknowledged')==='true',identity?.actor);

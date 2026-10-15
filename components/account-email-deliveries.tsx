@@ -14,7 +14,7 @@ export async function AccountEmailDeliveries({items,returnTo}:{items:AccountEmai
    </div>
    {item.error?<p className="text-sm text-muted-foreground">{t(`errors.${item.error}`)}</p>:null}
    {item.canRetry?<form action={retryAccountEmailAction} className="flex flex-wrap items-center gap-3">
-    <input type="hidden" name="deliveryId" value={item.id}/><input type="hidden" name="returnTo" value={returnTo}/>
+    <input type="hidden" name="deliveryId" value={item.id}/><input type="hidden" name="kind" value={item.kind}/><input type="hidden" name="returnTo" value={returnTo}/>
     <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" value="true" required className="mt-1"/>{t(item.kind==='invitation'?'invitationAck':'recoveryAck')}</label>
     <button type="submit" className={btnPrimary}>{t(item.kind==='invitation'?'reissue':'retryRecovery')}</button>
    </form>:null}

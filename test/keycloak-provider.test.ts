@@ -31,7 +31,7 @@ describe('Keycloak invitation enrollment', () => {
         return new Response(null, { status: deliveries === 1 ? 500 : 204 });
       }
       if (init?.method === 'POST') {
-        account = { ...JSON.parse(String(init.body)), id: 'created-user' };
+        account = { ...JSON.parse(String(init?.body)), id: 'created-user' };
         return new Response(null, { status: 201 });
       }
       return Response.json(account ? [account] : []);
@@ -79,7 +79,7 @@ describe('Keycloak recovery email',()=>{
   const remote=vi.fn<typeof fetch>(async(input,init)=>{
    const url=new URL(String(input));expect(url.origin).toBe('http://127.0.0.1:18080');expect(init?.redirect).toBe('error');
    if(url.pathname.endsWith('/token'))return Response.json({access_token:'disposable-service-token'});
-   if(url.pathname.endsWith('/execute-actions-email')){expect(url.search).toBe('');expect(init?.method).toBe('PUT');expect(JSON.parse(String(init.body))).toEqual(['UPDATE_PASSWORD']);return new Response(null,{status:204});}
+   if(url.pathname.endsWith('/execute-actions-email')){expect(url.search).toBe('');expect(init?.method).toBe('PUT');expect(JSON.parse(String(init?.body))).toEqual(['UPDATE_PASSWORD']);return new Response(null,{status:204});}
    expect(url.searchParams.get('email')).toBe(email);expect(url.searchParams.get('exact')).toBe('true');return Response.json([{id:'local-user',email,enabled:true,emailVerified:true}]);
   });vi.stubGlobal('fetch',remote);await expect(sendIdentityPasswordReset(email)).resolves.toBeUndefined();expect(remote).toHaveBeenCalledTimes(3);
  });

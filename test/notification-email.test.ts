@@ -1,3 +1,4 @@
+import type { NotificationEmailRequest } from '../lib/notification-email-model';
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { afterAll,beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
@@ -37,7 +38,7 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   const first=await employee(),second=await employee('second@example.test');await consent(first);await consent(second);
   await event(first.employmentId);await event(second.employmentId);await dispatchNotifications(adminCtx(b));
   const jobs=await deliveries();expect(jobs).toHaveLength(2);
-  const offline:NotificationEmailTransport=async<T>(request)=>{expect(request.op).toBe('status');return {version:1,ready:false} as T;};
+  const offline:NotificationEmailTransport=async<T>(request:NotificationEmailRequest)=>{expect(request.op).toBe('status');return {version:1,ready:false} as T;};
   expect(await deliverNotificationEmails(adminCtx(b),offline)).toMatchObject({attempted:2,unavailable:true});
   expect((await deliveries()).every(d=>d.status==='failed'&&d.lastError==='relayUnavailable'&&d.attempts===1&&d.startedAt===null&&d.leaseToken===null)).toBe(true);
   expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'leave.approved'))).toHaveLength(2);
@@ -48,7 +49,7 @@ describe('workflow email configuration and outbox in the actual database',()=>{
    start:async(id,token,expected)=>(await raw`select identity_email.start_delivery(${id}::uuid,${token}::uuid,${issuer},${raw.json(expected)}::jsonb) as started`)[0].started,
    finish:async(id,token,outcome,error)=>(await raw`select identity_email.finish_delivery(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0].finished,
    send});
-  const online:NotificationEmailTransport=async<T>(request)=>await service(request) as T;
+  const online:NotificationEmailTransport=async<T>(request:NotificationEmailRequest)=>await service(request) as T;
   expect(await deliverNotificationEmails(adminCtx(b),online)).toMatchObject({attempted:0});expect(send).not.toHaveBeenCalled();
   const selected=jobs.find(d=>d.recipientUserId===first.ctx.userId)!;
   await retryNotificationEmail(adminCtx(b),selected.id,true);
@@ -68,14 +69,14 @@ describe('workflow email configuration and outbox in the actual database',()=>{
  it('records a definitive pre-send outage after readiness changes, but never overwrites an SMTP attempt that already started',async()=>{
   const e=await employee();await consent(e);await event(e.employmentId);await dispatchNotifications(adminCtx(b));const [job]=await deliveries();
   let ready=true;
-  const changed:NotificationEmailTransport=async<T>(request)=>{
+  const changed:NotificationEmailTransport=async<T>(request:NotificationEmailRequest)=>{
    if(request.op==='status')return {version:1,ready} as T;
    ready=false;return {outcome:'unavailable'} as T;
   };
   expect(await deliverNotificationEmails(adminCtx(b),changed)).toMatchObject({attempted:1,unavailable:true});
   expect((await deliveries())[0]).toMatchObject({status:'failed',lastError:'relayUnavailable',startedAt:null,attempts:1});
   await retryNotificationEmail(adminCtx(b),job.id,true);
-  const started:NotificationEmailTransport=async<T>(request)=>{
+  const started:NotificationEmailTransport=async<T>(request:NotificationEmailRequest)=>{
    if(request.op==='status')return {version:1,ready:true} as T;
    const [expected]=await target(request.deliveryId,request.leaseToken);
    await raw`select identity_email.start_delivery(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${issuer},${raw.json(expected)}::jsonb)`;

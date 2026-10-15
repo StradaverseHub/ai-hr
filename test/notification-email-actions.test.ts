@@ -37,7 +37,7 @@ describe('account email retry server action boundaries',()=>{
   await expect(retryAccountEmailAction(new FormData())).rejects.toThrow('sign in required');expect(m.accountRetry).not.toHaveBeenCalled();
  });
  it('requires the installation email guard for recovery and never trusts form actor claims',async()=>{
-  const f=new FormData();for(const [k,v] of Object.entries({returnTo:'/admin/settings/email',deliveryId:'delivery',acknowledged:'true',issuer:'evil',subject:'attacker',userId:'attacker'}))f.set(k,v);
+  const f=new FormData();for(const [k,v] of Object.entries({returnTo:'/admin/settings/email',kind:'recovery',deliveryId:'delivery',acknowledged:'true',issuer:'evil',subject:'attacker',userId:'attacker'}))f.set(k,v);
   await expect(retryAccountEmailAction(f)).rejects.toThrow('accountRetry=1');
   expect(m.accountRetry).toHaveBeenCalledWith(session,'delivery',true,{...identity,...session});
   m.emailAdmin.mockRejectedValue(Error('owner required'));m.accountRetry.mockClear();
@@ -48,7 +48,12 @@ describe('account email retry server action boundaries',()=>{
   await expect(retryAccountEmailAction(f)).rejects.toThrow('REDIRECT /admin/settings/notifications?accountRetry=1');
   expect(m.emailAdmin).not.toHaveBeenCalled();expect(m.accountRetry).toHaveBeenCalledWith(session,'delivery',false,undefined);
  });
- it('keeps secret provider errors out of redirects',async()=>{
+ it('lets an HR invitation retry return to Email delivery without requiring the paid notifications module or installation role',async()=>{
+  const f=new FormData();f.set('returnTo','/admin/settings/email');f.set('kind','invitation');f.set('deliveryId','delivery');f.set('acknowledged','true');
+  await expect(retryAccountEmailAction(f)).rejects.toThrow('REDIRECT /admin/settings/email?accountRetry=1');
+  expect(m.emailAdmin).not.toHaveBeenCalled();expect(m.accountRetry).toHaveBeenCalledWith(session,'delivery',true,undefined);
+ });
+ it('keeps secret provider errors out of redirects' ,async()=>{
   m.accountRetry.mockRejectedValue(Error('secret reset link'));await expect(retryAccountEmailAction(new FormData())).rejects.toThrow('REDIRECT /admin/settings/notifications?error=account-retry');
  });
 });
