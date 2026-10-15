@@ -28,7 +28,7 @@ export async function allowanceInputsTx(tx:Tx,companyId:string,from:string,to:st
   // Per-date reads are bounded to the period window; a shared date-map seam can optimize this later.
   const absenceByDay=new Map<string,Map<string,{absentDays:number;leaveDays:number}>>();
   for(const date of datesBetween(from,to)){
-    if(date<=today)absenceByDay.set(date,await absenceBreakdownByEmployment(tx,date,date,ids,{rules:'scheduled',until:today}));
+    if(date<=today)absenceByDay.set(date,await absenceBreakdownByEmployment(tx,date,date,ids,{rules:'scheduled',until:today,measurement:'raw'}));
   }
   const leave=version===3?await approvedLeaveMeasurementsTx(tx,{employmentIds:ids,from,to,today}):null;
   const recordByDay=new Map(records.map(r=>[`${r.employmentId}:${r.attendanceDate}`,r]));

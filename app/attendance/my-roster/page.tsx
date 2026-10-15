@@ -5,7 +5,7 @@ import { requireModule } from '@/lib/authz';
 import { myRosterWindow, type MyRosterDay, type MyRosterView } from '@/core/roster';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { isoWeekdayOf, rosterDateLocale } from '@/lib/roster-month';
-import { shiftChipClass } from '@/lib/shift-visual';
+import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   MY_ROSTER_VIEWS,
@@ -115,7 +115,7 @@ export default async function MyRosterPage({
   // Hours to one decimal: the tile says "180 hrs", not "180.00". Minutes are the stored unit everywhere
   // else on this screen, so the division happens once, here.
   const fmtHrs = (min: number) => (min / 60).toLocaleString(dl, { maximumFractionDigits: 1 });
-  const hhmm = (t24: string) => t24.slice(0, 5);
+  const hhmm = (t24:string|null) => t24?.slice(0,5)??'—';
 
   const caption =
     w.view === 'month' ? fmtMonth(w.month) : w.view === 'week' ? `${fmtDate(w.from)} – ${fmtDate(w.to)}` : fmtLongDate(w.focus ?? w.from);
@@ -202,6 +202,7 @@ export default async function MyRosterPage({
           {view.legend.map((sh) => (
             <span
               key={sh.id}
+              style={shiftChipStyle(sh.color)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs ${
                 shiftChipClass(sh.color) ?? 'border-border bg-muted text-muted-foreground'
               }`}
@@ -299,6 +300,7 @@ function DayBody({ d, t, hhmm }: { d: MyRosterDay; t: T; hhmm: (v: string) => st
         <span className="font-mono text-xs italic text-muted-foreground">{d.shift.code}</span>
       ) : (
         <span
+          style={shiftChipStyle(d.shift.color)}
           className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs font-medium ${
             shiftChipClass(d.shift.color) ?? 'border-border bg-muted text-foreground'
           }`}

@@ -53,6 +53,7 @@ import {
 export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceRuleView[] }) {
   const t = await getTranslations('admin.scheduleConfig');
   const tr = await getTranslations('admin.attendanceRule');
+  const tb=await getTranslations('boardSchedule');
   const tp = await getTranslations('admin.attendancePolicy');
 
   const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -102,6 +103,7 @@ export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceR
           <thead>
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-4 py-2 font-medium">{tr('colName')}</th>
+              <th className="px-4 py-2 font-medium">{tb('groupLabel')}</th>
               <th className="px-4 py-2 font-medium">{tr('colDescription')}</th>
               <th className="px-4 py-2 font-medium">{t('colWeek')}</th>
               <th className="px-4 py-2 font-medium">{tr('colDefault')}</th>
@@ -113,6 +115,7 @@ export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceR
             {rules.map((r) => (
               <tr key={r.id} className="border-b border-border/60">
                 <td className="px-4 py-2 font-medium text-foreground">{r.name}</td>
+                <td className="px-4 py-2 text-muted-foreground">{r.label?.trim()||r.name}</td>
                 <td className="px-4 py-2 text-muted-foreground">{r.description ?? '—'}</td>
                 <td className="px-4 py-2 text-muted-foreground">{weekCell(r) ?? t('weekNoneShort')}</td>
                 <td className="px-4 py-2">

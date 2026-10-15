@@ -42,7 +42,7 @@ async function resolveGeneral(node:ReactNode):Promise<ReactNode> {
   return cloneElement(node,{children:await resolveGeneral(node.props.children)});
 }
 const rule: AttendanceRuleView = {
-  id: 'group', tenantId: 'tenant', companyId: null, description: null,
+  id: 'group', tenantId: 'tenant', companyId: null,label:null,dutyRosterControl:false, description: null,
   createdAt: new Date('2026-01-01T00:00:00Z'), updatedAt: new Date('2026-01-01T00:00:00Z'),
   name: 'Day group', isDefault: false, status: 'active',
   weeklyPattern: [1, 2, 3, 4, 5], halfPattern: [], offPattern: [],

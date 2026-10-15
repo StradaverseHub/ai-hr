@@ -1,3 +1,6 @@
+import { exceptionDecisionsTx } from './schedule-group-controls';
+import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
+import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { myEmployment } from './read';
@@ -635,18 +638,21 @@ const perRowBreakMinutes = (
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
 /** The default-shift schedule owner's full/half threshold and effective clock window. No module/DB dependency. */
-export function workingShiftSchedule(input:{start:string;end:string;crosses:boolean;breakMinutes:number;
-  roundingMinutes?:number|null;normalMinutesOverride?:number|null},kind:'full'|'half'){
-  const full=netScheduledMinutes(input.start,input.end,input.crosses,input.breakMinutes,input.roundingMinutes);
-  const scheduledMinutes=kind==='half'?Math.floor(full/2):full;
-  const shiftEnd=kind==='half'
-    ? fmtTime((toMinutes(input.start)+Math.floor(shiftSpan(input.start,input.end,input.crosses)/2))%MINS_PER_DAY)
-    : input.end;
-  const crosses=kind==='half'?toMinutes(shiftEnd)<toMinutes(input.start):input.crosses;
-  const normalMinutesOverride=input.normalMinutesOverride==null?null:
-    kind==='half'?Math.floor(input.normalMinutesOverride/2):input.normalMinutesOverride;
-  return {scheduledMinutes,normalMinutes:normalMinutesOverride??scheduledMinutes,
-    shiftStart:input.start,shiftEnd,crosses,normalMinutesOverride};
+export function workingShiftSchedule(input:{start:string|null;end:string|null;crosses:boolean;breakMinutes:number;
+ roundingMinutes?:number|null;normalMinutesOverride?:number|null;type?:string|null},kind:'full'|'half'){
+ const durationOnly=input.type==='full_flexi'||input.start==null||input.end==null;
+ if(durationOnly){
+  const required=input.normalMinutesOverride;
+  if(required==null||required<=0)throw new Error('Full Flexi requires positive normal working minutes.');
+  const normalMinutes=kind==='half'?Math.floor(required/2):required;
+  return {scheduledMinutes:normalMinutes,normalMinutes,shiftStart:null,shiftEnd:null,crosses:false,normalMinutesOverride:normalMinutes};
+ }
+ const full=netScheduledMinutes(input.start!,input.end!,input.crosses,input.breakMinutes,input.roundingMinutes);
+ const scheduledMinutes=kind==='half'?Math.floor(full/2):full;
+ const shiftEnd=kind==='half'?fmtTime((toMinutes(input.start!)+Math.floor(shiftSpan(input.start!,input.end!,input.crosses)/2))%MINS_PER_DAY):input.end!;
+ const crosses=kind==='half'?toMinutes(shiftEnd)<toMinutes(input.start!):input.crosses;
+ const normalMinutesOverride=input.normalMinutesOverride==null?null:kind==='half'?Math.floor(input.normalMinutesOverride/2):input.normalMinutesOverride;
+ return {scheduledMinutes,normalMinutes:normalMinutesOverride??scheduledMinutes,shiftStart:input.start!,shiftEnd,crosses,normalMinutesOverride};
 }
 
 type ResolvedSchedule = {
@@ -694,6 +700,8 @@ type ResolvedSchedule = {
    * FALSE on the company-policy branch, which has no shift at all.
    */
   flexiDuration: boolean;
+  durationOnly?:boolean;
+  fullDayNormalMinutes?:number;
   // R17 3e8350db — the resolved shift's per-shift OT rule (eligibility / minimum block / daily cap). Shapes
   // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
   // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
@@ -980,6 +988,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     lateAfter: pol.lateAfter,
     halfDayBefore: pol.halfDayBefore,
     scheduledMinutes: scheduledMinutes(pol),
+    fullDayNormalMinutes:scheduledMinutes(pol),
     breakMinutes: pol.breakMinutes,
     shiftStart: null,
     shiftEnd: null,
@@ -1012,6 +1021,21 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     scheduleDayKind: pol.halfWorkingDays.includes(isoWeekday(date)) ? 'half' : 'full',
   });
 
+  const fullFlexiSchedule=(row:{shiftId:string|null;code:string|null;name:string|null;override:number|null;brk:number|null;periods:BreakPeriod[]|null;cutoffOn:boolean|null;cutoffAt:string|null;flexOn:boolean|null;flexMin:number|null;otRule:ShiftOtRule|null},rule:ResolvedAttendanceRule|null,kind:'full'|'half',source:'roster-shift'|'default-shift'):ResolvedSchedule=>{
+   if(row.override==null||row.override<=0)throw new Error('Full Flexi normal working hours are unavailable. Ask HR to correct the shift.');
+   const required=kind==='half'?Math.floor(row.override/2):row.override;
+   return {dayType:isHoliday?'holiday':'workday',lateAfter:pol.lateAfter,halfDayBefore:pol.halfDayBefore,
+    scheduledMinutes:required,normalMinutesOverride:required,fullDayNormalMinutes:row.override,breakMinutes:row.brk??0,breakPeriods:row.periods,
+    shiftStart:null,shiftEnd:null,scheduledStart:null,scheduledEnd:null,crossesMidnight:false,
+    dailyCutoffMinutes:row.cutoffOn&&row.cutoffAt?toMinutes(row.cutoffAt):null,flexibleBreakMinutes:row.flexOn?row.flexMin:null,
+    flexiDuration:true,durationOnly:true,otRule:row.otRule,otWindows:null,rule,lateGraceMinutes:0,earlyGraceMinutes:0,
+    source,scheduleDayKind:kind,displayShiftId:row.shiftId,displayShiftCode:row.code,displayShiftName:row.name};
+  };
+  if(ra&&!ra.isRestDay&&ra.shiftType==='full_flexi'){
+    const rule=await ruleFor(ra.ruleId);const resolved=fullFlexiSchedule(ra,rule,'full','roster-shift');
+    resolved.otWindows=await otWindowsFor(ra.shiftId);return resolved;
+  }
+
   // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
   // from the calendar (holiday) so OT is classified at the right premium.
   if (ra && !ra.isRestDay && ra.start && ra.end) {
@@ -1042,6 +1066,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
         earlyGrace,
       }),
       scheduledMinutes: sched,
+      fullDayNormalMinutes:ra.override??sched,
       breakMinutes: ra.brk!,
       shiftStart: ra.start,
       shiftEnd: ra.end,
@@ -1148,7 +1173,10 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     // A shift written before migration 0429 has empty half/off arrays, so this resolves Full-where-ticked
     // and Rest-otherwise — byte-identically to the two-way test it replaces.
     const kind = rotation?.day.kind ?? shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
-    if (isWorkingDayKind(kind)) {
+    if (isWorkingDayKind(kind) && ds.shiftType==='full_flexi') {
+      const resolved=fullFlexiSchedule(ds,rule,kind==='half'?'half':'full','default-shift');resolved.otWindows=await otWindowsFor(ds.shiftId);return resolved;
+    }
+    if (isWorkingDayKind(kind) && ds.start && ds.end) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
       // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
       // R17 per-shift grace override, and the 88e94371 rule grace fallback.
@@ -1171,12 +1199,13 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
           type: ds.shiftType,
           explicit: ds.halfDayFirstOut,
           start: ds.start,
-          end: shiftEnd,
+          end: shiftEnd!,
           crosses,
           normalMinutes: override ?? sched,
           earlyGrace,
         }),
         scheduledMinutes: sched,
+        fullDayNormalMinutes:workingShiftSchedule({start:ds.start,end:ds.end,crosses:ds.crosses,breakMinutes:ds.brk,roundingMinutes:ds.rounding,normalMinutesOverride:ds.override},'full').normalMinutes,
         breakMinutes: ds.brk,
         shiftStart: ds.start,
         shiftEnd,
@@ -1268,13 +1297,16 @@ function deriveAttendance(
   checkInAt: string,
   checkOutAt: string | null,
   attendanceDate: string,
+  closedIntervals?: readonly ClosedClockInterval[],
 ): DerivedDay {
   // r274 (439565ff) — A DURATION-BASED FLEXI DAY HAS NO FIXED ARRIVAL PENALTY. `lateAfter` is still resolved (it is
   // shift start + grace, and the column is NOT NULL), but on this type the shift's start is the earliest
   // clocking accepted rather than a time anybody must arrive by, so comparing against it would record a
   // 08:31 arrival as late on a shift whose only requirement is nine hours.
+  const exemption=exceptionRevisionOn(s.rule?.exceptions,attendanceDate);
+  const exceptionActive=exemption?.enabled===true;
   let status: 'present' | 'late' | 'half_day' =
-    s.dayType === 'workday' && !s.flexiDuration && toMinutes(checkInAt) > toMinutes(s.lateAfter)
+    s.dayType === 'workday' && !s.flexiDuration && !exceptionActive && toMinutes(checkInAt) > toMinutes(s.lateAfter)
       ? 'late'
       : 'present';
 
@@ -1284,7 +1316,7 @@ function deriveAttendance(
   const inAbsSched = schedStartAbs != null ? anchorToShift(toMinutes(checkInAt), schedStartAbs, s.dailyCutoffMinutes) : null;
   // The gate on the only downward-capable figures in this change. FALSE for every rule at release, and
   // FALSE for any date before the rule's switch-on date, forever.
-  const deductible = deductionsApplyOn(s.rule, attendanceDate);
+  const deductible = deductionsApplyOn(s.rule, attendanceDate) && !exceptionActive;
   // Lateness is a workday concept measured against a schedule; rest-day / holiday work has no start to be
   // late against (the same reason `status` never reads 'late' on those days).
   // NULL on duration-based flexi, not 0: zero minutes late asserts they arrived on time against a start that does
@@ -1333,9 +1365,12 @@ function deriveAttendance(
         };
   const baseTrace = (): AttendanceTraceV1 => ({
     v: ATTENDANCE_TRACE_VERSION,
+    ...(exceptionActive?{exemption:{revisionId:exemption!.id,effectiveFrom:exemption!.effectiveFrom,types:['absent','late','early_out'] as const}}:{}),
     schedule: {
       source: s.source,
       dayType: s.dayType,
+      fixedClockApplicable:s.dayType==='workday'&&!s.flexiDuration,
+      ...(s.fullDayNormalMinutes==null?{}:{fullDayNormalMinutes:s.fullDayNormalMinutes}),
       startAbs: schedStartAbs,
       endAbs: s.scheduledEnd != null ? toMinutes(s.scheduledEnd) + (s.crossesMidnight ? MINS_PER_DAY : 0) : null,
       scheduledMinutes: s.scheduledMinutes,
@@ -1375,12 +1410,15 @@ function deriveAttendance(
   if (
     s.dayType === 'workday' &&
     !s.crossesMidnight &&
+    !exceptionActive &&
+    !s.flexiDuration &&
     status !== 'late' &&
     toMinutes(checkOutAt) < toMinutes(s.halfDayBefore)
   ) {
     status = 'half_day';
   }
-  const span = spanMinutes(checkInAt, checkOutAt);
+  const intervals=s.durationOnly?(closedIntervals??[{inAbs:toMinutes(checkInAt),outAbs:toMinutes(checkInAt)+spanMinutes(checkInAt,checkOutAt)}]):undefined;
+  const span = intervals?intervals.reduce((n,p)=>n+p.outAbs-p.inAbs,0):spanMinutes(checkInAt, checkOutAt);
   // b7b886e2 — with a resolved SHIFT we know where each minute fell, not just how many there were.
   const w: PunchWindow | null =
     s.shiftStart && s.shiftEnd
@@ -1415,7 +1453,8 @@ function deriveAttendance(
   const perRowBreak = w ? perRowBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes, span) : null;
   const spannedBreak =
     flexibleBreak ?? perRowBreak ?? (w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
-  const workedMinutes = spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
+  const durationBreak=intervals?fullFlexiBreakMinutes(intervals,s.breakPeriods,s.breakMinutes,s.flexibleBreakMinutes):null;
+  const workedMinutes = durationBreak!=null?Math.max(0,span-durationBreak):spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
   // b7b886e2 — workday OT is the time worked BEYOND the shift's time-out, not the amount by which the day's
   // TOTAL overshot the scheduled duration. The old duration comparison ignored where the minutes fell, so a
   // late arrival who stayed an hour past the shift end accrued nothing, while an early arrival who left dead
@@ -1434,7 +1473,7 @@ function deriveAttendance(
   if (s.dayType !== 'workday') {
     otMinutes = workedMinutes;
     otBasis = 'nonWorkday';
-  } else if (w && s.otWindows && s.otWindows.length > 0) {
+  } else if ((w || intervals) && s.otWindows && s.otWindows.length > 0) {
     // cf21e554 stage 2 — the shift declares its overtime BY CLOCK TIME ("05:00–08:00", "17:00–23:59"), so
     // those windows decide which minutes count and the duration/past-the-end comparisons below do not run.
     //
@@ -1446,8 +1485,9 @@ function deriveAttendance(
     //
     // Pre-shift minutes are NOT folded in on this branch: a before-shift window (the reporter's 05:00–08:00)
     // already counts them, and adding them again through the rule's applyToEarlyOt would pay them twice.
-    earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
-    const fromWindows = otMinutesFromWindows(s.otWindows, { inAbs: w.inAbs, outAbs: w.outAbs }, w.startAbs);
+    earlyOtMinutes = w?Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs):0;
+    const firstInterval=intervals?.[0];
+    const fromWindows = otMinutesFromWindows(s.otWindows, w?{inAbs:w.inAbs,outAbs:w.outAbs}:firstInterval!, w?.startAbs??firstInterval!.inAbs,intervals);
     otMinutes = fromWindows.total;
     otWindowRows = fromWindows.rows;
     otBasis = 'shiftWindows';
@@ -1535,7 +1575,7 @@ function deriveAttendance(
 
   // ── 7c834696 POINT 3 · finish the trace. Reads the finished figures; writes none of them. ───────────
   const trace = baseTrace();
-  trace.schedule.breakSpanned = spannedBreak;
+  trace.schedule.breakSpanned = durationBreak ?? spannedBreak;
   trace.punch = { inAbs: inAbsRaw, outAbs: inAbsRaw + span, spanMinutes: span, workedMinutes };
   trace.earlyOut =
     earlyOut == null || schedEndAbs == null || outAbsSched == null
@@ -1700,7 +1740,8 @@ export async function payableHoursForCycle(
     .select({
       shiftDate: rosterAssignment.shiftDate,
       isRestDay: rosterAssignment.isRestDay,
-      start: shift.startTime,
+      type:shift.type,override:shift.normalMinutesOverride,
+      shiftType:shift.type,start: shift.startTime,
       end: shift.endTime,
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
@@ -1720,6 +1761,7 @@ export async function payableHoursForCycle(
   const rosteredDates = new Set<string>(); // ANY roster row (shift or rest) — a roster row always wins
   for (const r of ras) {
     rosteredDates.add(r.shiftDate);
+    if(r.type==='full_flexi'&&!r.isRestDay&&r.override!=null){schedByDate.set(r.shiftDate,r.override);continue;}
     if (r.isRestDay || !r.start || !r.end) continue; // a rostered rest day is not an assigned shift
     // cf21e554 — was an inlined copy of netScheduledMinutes; now the shared helper, so the shift's
     // Normal-Hours Rounding reaches the hourly clamp's ceiling too. A clamp measured against an unrounded
@@ -1740,7 +1782,8 @@ export async function payableHoursForCycle(
   const periods = await arrangementsForEmploymentTx(tx, employmentId);
   const defShiftCols = {
     id: shift.id,
-    start: shift.startTime,
+    type:shift.type,override:shift.normalMinutesOverride,
+    shiftType:shift.type,start: shift.startTime,
     end: shift.endTime,
     brk: shift.breakMinutes,
     crosses: shift.crossesMidnight,
@@ -1778,14 +1821,14 @@ export async function payableHoursForCycle(
   const clampWeek = await weekLookupTx(tx, clampEmp?.ruleId, [...ladderShifts, ...(cachedRow ? [cachedRow] : [])].map((r) => r.ruleId));
   for (const sr of ladderShifts) {
     clampByShiftId.set(sr.id, {
-      net: netScheduledMinutes(sr.start, sr.end, sr.crosses, sr.brk, sr.rounding),
+      net:sr.type==='full_flexi'?sr.override??0:netScheduledMinutes(sr.start!,sr.end!,sr.crosses,sr.brk,sr.rounding),
       ...clampWeek(sr.ruleId, sr),
     });
   }
   let cachedClamp: ClampShift | null = null;
   if (cachedRow) {
     cachedClamp = {
-      net: netScheduledMinutes(cachedRow.start, cachedRow.end, cachedRow.crosses, cachedRow.brk, cachedRow.rounding),
+      net:cachedRow.type==='full_flexi'?cachedRow.override??0:netScheduledMinutes(cachedRow.start!,cachedRow.end!,cachedRow.crosses,cachedRow.brk,cachedRow.rounding),
       ...clampWeek(cachedRow.ruleId, cachedRow),
     };
   }
@@ -1797,7 +1840,7 @@ export async function payableHoursForCycle(
     if (rotation) {
       const row = rotationScheduleRow(rotation, d);
       const sched = workingShiftSchedule({start:row.start,end:row.end,crosses:row.crosses,breakMinutes:row.brk,
-        roundingMinutes:row.rounding,normalMinutesOverride:row.override},'full');
+        roundingMinutes:row.rounding,normalMinutesOverride:row.override,type:row.shiftType},'full');
       return { ...row, net: sched.normalMinutes };
     }
     return p ? (clampByShiftId.get(p.shiftId) ?? null) : cachedClamp;
@@ -1880,6 +1923,13 @@ function deriveDayFromPunchList(
   punches: { punchAt: string; direction: 'in' | 'out' }[],
   fallbackCheckInAt: string | null,
 ) {
+  if(sched.durationOnly){
+   const paired=fullFlexiIntervals(punches,fallbackCheckInAt,sched.dailyCutoffMinutes);
+   if(!paired.checkInAt)return {set:{checkInAt:null,checkOutAt:null,status:'present' as const,workedMinutes:null,otMinutes:null},result:{checkInAt:null,checkOutAt:null,status:'present' as const,workedMinutes:null,otMinutes:null}};
+   const d=deriveAttendance(sched,paired.checkInAt,paired.checkOutAt,attendanceDate,paired.intervals);
+   const {status,workedMinutes,otMinutes}=d;
+   return {set:{checkInAt:paired.checkInAt,checkOutAt:paired.checkOutAt,status,workedMinutes,otMinutes,...stage1Columns(d)},result:{status,workedMinutes,otMinutes,checkInAt:paired.checkInAt,checkOutAt:paired.checkOutAt}};
+  }
   const ins = punches.filter((x) => x.direction === 'in').map((x) => x.punchAt);
   const outs = punches.filter((x) => x.direction === 'out').map((x) => x.punchAt);
   // Preserve the payroll minute owner; seconds only resolve equal-minute clock metadata.
@@ -1958,7 +2008,7 @@ export async function checkInTx(
 
     // R45: a SECOND (or later) clock-in of the day is now allowed (multiple clocking). Keep punches monotonic
     // on a non-cross-midnight day: a new clocking must be later than every punch already recorded today.
-    if (existing && !sched.crossesMidnight && !p.preciseOrder) {
+    if (existing && !sched.crossesMidnight && !sched.durationOnly && !p.preciseOrder) {
       const [last] = await tx
         .select({ punchAt: attendancePunch.punchAt })
         .from(attendancePunch)
@@ -2128,7 +2178,7 @@ export async function checkOutTx(
     const anchor = existingPunches.length
       ? existingPunches.reduce((a, b) => (toMinutes(b.punchAt) > toMinutes(a.punchAt) ? b : a)).punchAt
       : rec.checkInAt;
-    if (!p.preciseOrder && !sched.crossesMidnight && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
+    if (!p.preciseOrder && !sched.crossesMidnight && !sched.durationOnly && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
       throw new Error('Check-out must be after check-in');
     }
     if (!p.preciseOrder && anchor != null && toMinutes(p.time) === toMinutes(anchor)) {
@@ -2272,6 +2322,8 @@ export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 
 /** The per-row shift-display fields surfaced by both Records loaders (all derived, none stored). */
 export type ShiftDisplay = {
+  exceptionExempt?:boolean;
+  exceptionRevisionId?:string|null;
   /** Assigned Shift Code for the date (fixed default shift or rostered shift); null on a policy/rest day. */
   shiftCode: string | null;
   /** Net scheduled work minutes for the resolved shift/policy working day; null on a no-work (rest/off) day. */
@@ -2289,7 +2341,7 @@ const NO_SHIFT: ShiftDisplay = { shiftCode: null, scheduledMinutes: null, shiftS
 // module's own comment gives two lines below: the table must not disagree with the engine. Without it a
 // shift that rounds its normal hours would render 7h 50m in the Scheduled column while scheduleFor
 // measured the day against 7h 45m. Null on every legacy row ⇒ byte-identical.
-type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null; rounding: number | null };
+type RosterDisplayRow = {shiftType?:string|null;override?:number|null; isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null; rounding: number | null };
 /**
  * 07ebd04d (r331, migration 0483) — THE BATCHED "WHOSE WORKING WEEK IS THIS" LOOKUP.
  *
@@ -2336,8 +2388,8 @@ export async function weekLookupTx(
 type DefaultShiftRow = {
   rotationKind?: 'full' | 'half' | 'off' | 'rest';
   code: string | null;
-  start: string;
-  end: string;
+  start: string | null;
+  end: string | null;
   brk: number;
   crosses: boolean;
   pattern: number[] | null;
@@ -2346,6 +2398,8 @@ type DefaultShiftRow = {
   halfPattern?: number[] | null;
   offPattern?: number[] | null;
   rounding: number | null;
+  shiftType?:string|null;
+  override?:number|null;
 };
 
 /**
@@ -2369,7 +2423,7 @@ function classifyScheduleDay(
   def: DefaultShiftRow | undefined,
   companyWorkingDay: boolean,
 ): ScheduleClass {
-  if (roster) return !roster.isRestDay && roster.start && roster.end ? 'roster_shift' : 'roster_rest';
+  if (roster) return !roster.isRestDay && (roster.shiftType==='full_flexi'||(roster.start&&roster.end)) ? 'roster_shift' : 'roster_rest';
   // b8aa3466 — Full and Half are both scheduled work; Rest and Off are not. An Off day is still a
   // "no work scheduled" day for the DISPLAY ladder — the difference between Rest and Off is what working
   // it PAYS, not whether it was scheduled — so a missing row on either is explained, not an absence.
@@ -2427,9 +2481,9 @@ function resolveShiftDisplay(
     case 'roster_shift':
       return {
         shiftCode: roster!.code,
-        scheduledMinutes: netScheduledMinutes(roster!.start!, roster!.end!, roster!.crosses!, roster!.brk!, roster!.rounding),
-        shiftStart: roster!.start!.slice(0, 5),
-        shiftEnd: roster!.end!.slice(0, 5),
+        scheduledMinutes:roster!.shiftType==='full_flexi'?roster!.override??null:netScheduledMinutes(roster!.start!,roster!.end!,roster!.crosses!,roster!.brk!,roster!.rounding),
+        shiftStart: roster!.shiftType==='full_flexi'?null:roster!.start!.slice(0,5),
+        shiftEnd: roster!.shiftType==='full_flexi'?null:roster!.end!.slice(0,5),
         isRosterRest: false,
       };
     case 'roster_rest':
@@ -2438,12 +2492,12 @@ function resolveShiftDisplay(
       // `def` already carries the effective group week. Use the calculation owner's exact half window,
       // so Records cannot display a full shift while the engine and My Roster use half a day.
       const schedule=workingShiftSchedule({start:def!.start,end:def!.end,crosses:def!.crosses,
-        breakMinutes:def!.brk,roundingMinutes:def!.rounding},shiftDayKindFor(def!,date)==='half'?'half':'full');
+        breakMinutes:def!.brk,roundingMinutes:def!.rounding,normalMinutesOverride:def!.override,type:def!.shiftType},shiftDayKindFor(def!,date)==='half'?'half':'full');
       return {
         shiftCode: def!.code,
         scheduledMinutes: schedule.scheduledMinutes,
-        shiftStart: schedule.shiftStart.slice(0, 5),
-        shiftEnd: schedule.shiftEnd.slice(0, 5),
+        shiftStart: schedule.shiftStart?.slice(0,5)??null,
+        shiftEnd: schedule.shiftEnd?.slice(0,5)??null,
         isRosterRest: false,
       };
     }
@@ -2670,7 +2724,7 @@ async function attendanceDayRowsTx(
         employmentId: rosterAssignment.employmentId,
         isRestDay: rosterAssignment.isRestDay,
         code: shift.code,
-        start: shift.startTime,
+        shiftType:shift.type,override:shift.normalMinutesOverride,start: shift.startTime,
         end: shift.endTime,
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
@@ -2711,7 +2765,7 @@ async function attendanceDayRowsTx(
     const gridShiftCols = {
       id: shift.id,
       code: shift.code,
-      start: shift.startTime,
+      shiftType:shift.type,override:shift.normalMinutesOverride,start: shift.startTime,
       end: shift.endTime,
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
@@ -2784,6 +2838,7 @@ async function attendanceDayRowsTx(
     );
 
     const datedOverrides=await attendanceDateOverridesTx(tx,empIds,date,date);
+    const exceptionOn=await exceptionDecisionsTx(tx,empIds,date,date);
     return rows.map(({ companyId, ...r }) => {
       const isWorkingDay = (daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow);
       // bbada39c — shift-display subset (code / scheduled minutes / start-end / rostered-rest) for the row.
@@ -2804,7 +2859,7 @@ async function attendanceDayRowsTx(
         else if (dated ? !dated.working : isScheduledOffDay(date, roster, def, isWorkingDay, deductAbsence.has(r.employmentId)))
           context = 'rest_day';
       }
-      return { ...r, ...(dated?{dayType:dated.dayKind==='holiday'?'holiday' as const:dated.dayKind==='rest_day'?'rest_day' as const:'workday' as const}:{}),context, ...shiftDisplay };
+      return { ...r, ...(exceptionOn(r.employmentId,date).enabled?{exceptionExempt:true,exceptionRevisionId:exceptionOn(r.employmentId,date).revisionId}:{}), ...(dated?{dayType:dated.dayKind==='holiday'?'holiday' as const:dated.dayKind==='rest_day'?'rest_day' as const:'workday' as const}:{}),context, ...shiftDisplay };
     });
   }
 }
@@ -2920,7 +2975,7 @@ export function attendanceForEmploymentsRange(
       approvedLeaveDates(tx,ids,from,to),
       holidayDatesByEmployment(tx,{employmentIds:ids,startDate:from,endDate:to}),
       tx.select({employmentId:rosterAssignment.employmentId,shiftDate:rosterAssignment.shiftDate,
-        isRestDay:rosterAssignment.isRestDay,code:shift.code,start:shift.startTime,end:shift.endTime,
+        isRestDay:rosterAssignment.isRestDay,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,end:shift.endTime,
         brk:shift.breakMinutes,crosses:shift.crossesMidnight,rounding:shift.normalHoursRoundingMinutes})
         .from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId))
         .where(and(inArray(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))),
@@ -2930,13 +2985,14 @@ export function attendanceForEmploymentsRange(
       const periods=arrangements.get(e.id)??[];
       return periods.length ? periods.map(p=>p.shiftId) : e.defShiftId ? [e.defShiftId] : [];
     }))];
-    const rangeShifts=shiftIds.length ? await tx.select({id:shift.id,code:shift.code,start:shift.startTime,
+    const rangeShifts=shiftIds.length ? await tx.select({id:shift.id,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,
       end:shift.endTime,brk:shift.breakMinutes,crosses:shift.crossesMidnight,pattern:shift.weeklyPattern,
       halfPattern:shift.halfPattern,offPattern:shift.offPattern,ruleId:shift.ruleId,rounding:shift.normalHoursRoundingMinutes})
       .from(shift).where(inArray(shift.id,shiftIds)) : [];
     const rangeWeek=await weekLookupTx(tx,null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]);
     const rangeRotations = await rotationLookupTx(tx);
     const datedOverrides=await attendanceDateOverridesTx(tx,ids,from,to);
+    const exceptionOn=await exceptionDecisionsTx(tx,ids,from,to);
     const rowsByEmployment=new Map<string,typeof rows>();
     const rosterByEmployment=new Map<string,typeof rosters>();
     for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
@@ -2986,6 +3042,7 @@ export function attendanceForEmploymentsRange(
       out.push({
         ...(opts.includePunchReviews ? {punchReview:row ? {fingerprint:row.punchReviewFingerprint!,reviewed:row.punchReviewed!}:null} : {}),
         date: d,
+        ...(exceptionOn(employmentId,d).enabled?{exceptionExempt:true,exceptionRevisionId:exceptionOn(employmentId,d).revisionId}:{}),
         attendanceId: row?.attendanceId ?? null,
         checkInAt: row?.checkInAt ?? null,
         checkOutAt: row?.checkOutAt ?? null,
@@ -3109,7 +3166,7 @@ const WEEK_LIMIT_MINUTES = 45 * 60;
 /** Per-employee month roll-up: status counts, hours, OT split by day type, compliance flags. */
 export function attendanceMonthSummary(
   ctx: SessionContext,
-  p: { month: string; companyIds?: string[]; today?: string },
+  p: { month: string; companyIds?: string[]; today?: string; measurement?:'raw' },
 ): Promise<MonthSummaryRow[]> {
   return withTenant(ctx, async (tx) => {
     const monthStart = `${p.month}-01`;
@@ -3191,11 +3248,11 @@ export function attendanceMonthSummary(
     const absence = new Map<string, AbsenceBreakdown>([
       ...(await absenceBreakdownByEmployment(tx, monthStart, monthEnd, legacyIds, {
         rules: 'legacy',
-        until: today,
+        until: today,measurement:p.measurement,
       })),
       ...(await absenceBreakdownByEmployment(tx, monthStart, monthEnd, scheduledIds, {
         rules: 'scheduled',
-        until: today,
+        until: today,measurement:p.measurement,
       })),
     ]);
     const rowsByEmp = new Map<string, typeof rows>();
@@ -4479,7 +4536,7 @@ export function otPlanCalendarMonth(
           isRestDay: rosterAssignment.isRestDay,
           code: shift.code,
           name: shift.name,
-          start: shift.startTime,
+          shiftType:shift.type,override:shift.normalMinutesOverride,start: shift.startTime,
           end: shift.endTime,
           brk: shift.breakMinutes,
           periods: shift.breakPeriods,
@@ -4514,7 +4571,7 @@ export function otPlanCalendarMonth(
       id: shift.id,
       code: shift.code,
       name: shift.name,
-      start: shift.startTime,
+      shiftType:shift.type,override:shift.normalMinutesOverride,start: shift.startTime,
       end: shift.endTime,
       brk: shift.breakMinutes,
       periods: shift.breakPeriods,
@@ -5761,7 +5818,7 @@ export async function assignPunchBusinessDays(
       .select({
         employmentId: rosterAssignment.employmentId,
         shiftDate: rosterAssignment.shiftDate,
-        start: shift.startTime,
+        shiftType:shift.type,override:shift.normalMinutesOverride,start: shift.startTime,
         end: shift.endTime,
         crosses: shift.crossesMidnight,
       })
@@ -5775,6 +5832,8 @@ export async function assignPunchBusinessDays(
         ),
       );
     for (const r of ras) {
+      if(r.shiftType==='full_flexi'){continue;}
+      if(!r.start||!r.end)throw new Error('A fixed shift has no clock anchors.');
       const endDay = r.crosses ? addDays(r.shiftDate, 1) : r.shiftDate;
       const arr = windowsByEmp.get(r.employmentId) ?? [];
       arr.push({

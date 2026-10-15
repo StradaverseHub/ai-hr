@@ -3132,10 +3132,17 @@
       "breakpoints": true
     },
     {
-      "idx": 541,
+      "idx": 544,
       "version": "7",
       "when": 1791900000024,
       "tag": "0544_own_earned_credit_actors",
+      "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1791900000025,
+      "tag": "0545_schedule_configuration",
       "breakpoints": true
     }
   ]

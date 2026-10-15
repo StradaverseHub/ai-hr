@@ -6,8 +6,8 @@ import { saveRotationAction, type RotationActionState } from '@/app/admin/attend
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '@/components/attendance-settings-action-form';
 import { btnPrimary, inputCls } from '@/components/ui';
-type ShiftChoice = { id: string; name: string; code: string | null; startTime: string; endTime: string;
-  fullMinutes: number; halfMinutes: number; halfEnd: string; archived: boolean; available: boolean; selected: boolean };
+type ShiftChoice = { id: string; name: string; code: string | null; startTime: string | null; endTime: string | null;
+  fullMinutes: number; halfMinutes: number; halfEnd: string | null; archived: boolean; available: boolean; selected: boolean };
 export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minimumDate, editing}: {
   ruleId: string; revision: string; initial: RotationCycle; shifts: ShiftChoice[]; minimumDate: string; editing: boolean;
 }) {
@@ -55,7 +55,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
         {shifts.map(s=><label key={s.id} className="flex items-start gap-2 rounded border border-border p-2 text-sm">
           <input type="checkbox" name="allowedShiftIds" value={s.id} checked={pool.includes(s.id)}
             disabled={!s.available&&!pool.includes(s.id)} onChange={e=>{setPool(e.target.checked?[...pool,s.id]:pool.filter(id=>id!==s.id));setDirty(true);}}/>
-          <span>{s.code?`${s.code} · `:''}{s.name}<span className="block text-xs text-muted-foreground">{s.startTime.slice(0,5)}–{s.endTime.slice(0,5)}{s.archived?` · ${t('archived')}`:!s.available?` · ${t('otherGroup')}`:''}</span></span>
+          <span>{s.code?`${s.code} · `:''}{s.name}<span className="block text-xs text-muted-foreground">{(s.startTime?.slice(0,5)??'—')}–{(s.endTime?.slice(0,5)??'—')}{s.archived?` · ${t('archived')}`:!s.available?` · ${t('otherGroup')}`:''}</span></span>
         </label>)}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -76,7 +76,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
           <td className="p-2"><select name={`rotationDayKind_${index}`} aria-label={`${t('dayType')} ${index+1}`} className={inputCls} value={day.kind} onChange={e=>{const kind=e.target.value as WeekDayKind;changeDay(index,{kind,shiftId:kind==='full'||kind==='half'?day.shiftId??chosen.find(s=>s.available)?.id??null:null});}}>{(['full','half','off','rest'] as const).map(k=><option key={k} value={k}>{t(k)}</option>)}</select></td>
           <td className="p-2">{day.kind==='full'||day.kind==='half'?<select name={`rotationDayShift_${index}`} aria-label={`${t('shift')} ${index+1}`} className={inputCls} value={day.shiftId??''} onChange={e=>changeDay(index,{...day,shiftId:e.target.value||null})}>
             <option value="">{t('chooseShift')}</option>{day.shiftId&&!chosen.some(s=>s.id===day.shiftId)&&<option value={day.shiftId}>{t('removedShift')}</option>}{chosen.map(s=><option key={s.id} value={s.id} disabled={!s.available}>{s.code?`${s.code} · `:''}{s.name}{s.archived?` · ${t('archived')}`:''}</option>)}</select>:t('notRequired')}</td>
-          <td className="p-2 whitespace-nowrap">{sh?`${sh.startTime.slice(0,5)}–${(day.kind==='half'?sh.halfEnd:sh.endTime).slice(0,5)} · ${t('minutes',{n:day.kind==='half'?sh.halfMinutes:sh.fullMinutes})}`:'—'}</td>
+          <td className="p-2 whitespace-nowrap">{sh?`${(sh.startTime?.slice(0,5)??'—')}–${((day.kind==='half'?sh.halfEnd:sh.endTime)?.slice(0,5)??'—')} · ${t('minutes',{n:day.kind==='half'?sh.halfMinutes:sh.fullMinutes})}`:'—'}</td>
         </tr>;})}</tbody>
       </table></div>
     </fieldset>

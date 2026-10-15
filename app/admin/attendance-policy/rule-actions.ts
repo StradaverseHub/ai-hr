@@ -101,6 +101,7 @@ function parseOtRows(raw: string): OtRowInput[] {
 function ruleFields(fd: FormData): AttendanceRuleInput {
   return {
     name: String(fd.get('name') ?? '').trim(),
+    label:String(fd.get('label')??'').trim()||null,
     description: String(fd.get('description') ?? '').trim() || null,
     status: fd.get('status') === 'inactive' ? 'inactive' : 'active',
     lateGracePeriodMinutes: num(fd, 'lateGracePeriodMinutes'),
@@ -173,7 +174,7 @@ export async function saveScheduleGroupGeneralAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
   try {
     await updateAttendanceRuleSection(s, {ruleId,section:'general',
-      name:String(fd.get('name')??'').trim(),description:String(fd.get('description')??'').trim()||null,
+      name:String(fd.get('name')??'').trim(),label:String(fd.get('label')??'').trim()||null,description:String(fd.get('description')??'').trim()||null,
       status:fd.get('status')==='inactive'?'inactive':'active',applyDeductions:bool(fd,'applyDeductions'),
       otRows:parseOtRows(String(fd.get('otRows')??'')),
     });

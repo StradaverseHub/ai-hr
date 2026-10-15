@@ -82,6 +82,7 @@ export function otMinutesFromWindows(
   windows: ShiftOtWindowSpec[],
   punch: { inAbs: number; outAbs: number },
   shiftStartAbs: number,
+  intervals?:readonly {inAbs:number;outAbs:number}[],
 ): ShiftOtWindowResult {
   const rows: ShiftOtWindowMatch[] = [];
   let total = 0;
@@ -89,7 +90,7 @@ export function otMinutesFromWindows(
     const startAbs = anchorToShift(toMin(w.startTime), shiftStartAbs);
     const lengthMinutes = toMin(w.endTime) + (w.endNextDay ? MINS_PER_DAY : 0) - toMin(w.startTime);
     const endAbs = startAbs + lengthMinutes;
-    const raw = Math.max(0, Math.min(punch.outAbs, endAbs) - Math.max(punch.inAbs, startAbs));
+    const raw = (intervals??[punch]).reduce((sum,part)=>sum+Math.max(0,Math.min(part.outAbs,endAbs)-Math.max(part.inAbs,startAbs)),0);
     let minutes = raw;
     if (w.minMinutes != null && minutes < w.minMinutes) minutes = 0;
     if (w.maxMinutes != null) minutes = Math.min(minutes, w.maxMinutes);

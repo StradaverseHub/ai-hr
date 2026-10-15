@@ -77,7 +77,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
 import { EmployeeCode } from '@/components/ui';
-import { shiftChipClass } from '@/lib/shift-visual';
+import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
 import {
   ROSTER_TEMPLATE_ID_COLUMNS,
   breachesRestDayRule,
@@ -98,8 +98,8 @@ export type ShiftLite = {
   id: string;
   code: string | null;
   name: string;
-  startTime: string;
-  endTime: string;
+  startTime: string | null;
+  endTime: string | null;
   color?: string | null;
 };
 /** a57f0584 rev 2 — `department` and `company` are NOT on this type any more. The grid stopped drawing
@@ -127,7 +127,7 @@ const AUTO_SHIFT_COLORS = [
   'bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-300',
 ];
 
-const hhmm = (t: string) => t.slice(0, 5);
+const hhmm = (t:string|null) => t?.slice(0,5)??'—';
 
 /**
  * The pinned block. Widths are explicit because sticky columns need a known left offset each, and THIS
@@ -309,13 +309,14 @@ export function RosterGrid({
     );
     if (value == null || !canEdit)
       return (
-        <span key={value ?? label} className={`rounded-full border px-2.5 py-1 text-xs ${cls}`}>
+        <span key={value ?? label} style={shiftChipStyle(value ? shiftById.get(value)?.color : null)} className={`rounded-full border px-2.5 py-1 text-xs ${cls}`}>
           {content}
         </span>
       );
     return (
       <button
         key={value}
+        style={shiftChipStyle(shiftById.get(value)?.color)}
         type="button"
         onClick={() => setBrush(value)}
         className={`rounded-full border px-2.5 py-1 text-xs transition ${cls} ${
@@ -490,6 +491,7 @@ export function RosterGrid({
                         <button
                           type="button"
                           onClick={() => paint(e.employmentId, d.iso)}
+                          style={cell.kind === 'shift' ? shiftChipStyle(shiftById.get(cell.shiftId)?.color) : undefined}
                           className={`${box} transition hover:ring-1 hover:ring-foreground/30`}
                         >
                           {label}
@@ -498,7 +500,7 @@ export function RosterGrid({
                         // TEXT, not a disabled control. A supervisor is not momentarily blocked from
                         // painting this cell — a supervisor does not paint cells, and a greyed-out button
                         // says "not yet" where the truth is "not you".
-                        <span className={`${box} block`}>{label}</span>
+                        <span style={cell.kind === 'shift' ? shiftChipStyle(shiftById.get(cell.shiftId)?.color) : undefined} className={`${box} block`}>{label}</span>
                       )}
                     </td>
                   );

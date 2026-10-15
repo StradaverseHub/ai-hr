@@ -186,7 +186,7 @@ export default async function ShiftArrangementPage({
    */
   const groupId = row.scheduleGroupId;
   const shifts = groupId
-    ? liveShifts.filter((sh) => sh.ruleId === groupId || sh.id === row.shiftId)
+    ? liveShifts.filter((sh) => sh.allowedRuleIds.includes(groupId) || sh.id === row.shiftId)
     : liveShifts;
   const narrowedOut = liveShifts.length - shifts.length;
   // ACTIVE groups plus the one already assigned — the rule library's own convention is that an inactive
@@ -336,7 +336,7 @@ export default async function ShiftArrangementPage({
             defaultEffectiveFrom={typedEffectiveFrom ?? today}
             shifts={shifts.map((sh) => ({
               id: sh.id,
-              label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
+              label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
             }))}
           />
           <div className="flex items-center gap-3">

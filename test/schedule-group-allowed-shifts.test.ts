@@ -1,3 +1,5 @@
+import {saveScheduleGroupControl} from '../core/schedule-group-controls';
+import type {SessionContext} from '../db/client';
 /**
  * 870b79e2 (r277) — "refuse an employee being put on a shift that is not in their group's allowed list,
  * with a clear message saying which shifts are allowed".
@@ -22,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { createAttendanceRule, ensureStandardRule, setRuleShifts, type AttendanceRuleInput } from '../core/attendance-rule';
+import { createAttendanceRule as createRule, ensureStandardRule as ensureRule, setRuleShifts, type AttendanceRuleInput } from '../core/attendance-rule';
 import {
   ShiftNotInScheduleGroupError,
   assignDefaultShift,
@@ -33,6 +35,10 @@ import {
 } from '../core/roster';
 import { assignEmployeeShiftDated } from '../core/shift-arrangement';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+// These eligibility fixtures explicitly enable manual overrides; default-Off is tested separately.
+async function createAttendanceRule(ctx:SessionContext,input:AttendanceRuleInput){const group=await createRule(ctx,input);await saveScheduleGroupControl(ctx,{ruleId:group.id,kind:'duty',enabled:true});return group;}
+async function ensureStandardRule(ctx:SessionContext){const group=await ensureRule(ctx);await saveScheduleGroupControl(ctx,{ruleId:group.id,kind:'duty',enabled:true});return group;}
 
 const WED = '2026-07-01';
 const NEXT_WED = '2026-07-08';
@@ -221,7 +227,7 @@ describe('870b79e2 — all four writers refuse a shift the group does not allow'
 });
 
 describe('870b79e2 — setRuleShifts is the editor that decides what the refusal allows', () => {
-  it('ticking attaches, unticking detaches to NO group — never to a group it is not listed under', async () => {
+  it('ticking adds membership and unticking removes only that group without changing defaults', async () => {
     const a = adminCtx(b);
     await ensureStandardRule(a);
     const groupA = await createAttendanceRule(a, ruleInput('A'));
@@ -229,17 +235,19 @@ describe('870b79e2 — setRuleShifts is the editor that decides what the refusal
     const s1 = await createShift(a, workdayShift('One'));
     const s2 = await createShift(a, workdayShift('Two', { ruleId: groupB.id }));
 
-    // Attach both to A — s2 MOVES out of B, because a shift belongs to exactly one group.
+    // Attach both to A; s2 remains allowed in B and keeps B as its legacy calculation default.
     const moved = await setRuleShifts(a, { ruleId: groupA.id, shiftIds: [s1.id, s2.id] });
     expect(moved).toEqual({ attached: 2, detached: 0 });
     const after = await owner.db
       .select({ id: schema.shift.id, ruleId: schema.shift.ruleId })
       .from(schema.shift)
       .orderBy(schema.shift.name);
-    expect(after.find((r) => r.id === s1.id)?.ruleId).toBe(groupA.id);
-    expect(after.find((r) => r.id === s2.id)?.ruleId).toBe(groupA.id);
+    expect(after.find((r) => r.id === s1.id)?.ruleId).toBeNull();
+    expect(after.find((r) => r.id === s2.id)?.ruleId).toBe(groupB.id);
+    const memberships=await owner.db.select().from(schema.attendanceRuleShift);
+    expect(memberships.filter(m=>m.shiftId===s2.id).map(m=>m.ruleId).sort()).toEqual([groupA.id,groupB.id].sort());
 
-    // Untick s1 — it goes to NULL (⇒ the tenant Standard), not to B and not left pointing at A.
+    // Untick s1 removes only A membership; its pre-existing null default stays unchanged.
     const back = await setRuleShifts(a, { ruleId: groupA.id, shiftIds: [s2.id] });
     expect(back).toEqual({ attached: 0, detached: 1 });
     const [s1row] = await owner.db

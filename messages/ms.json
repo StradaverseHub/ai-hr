@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "Tiada rehat ditolak — hari itu tidak cukup panjang untuk mencapai rehat {minutes}.",
       "otBreakNoneSpanned": "Tiada rehat ditolak — masa direkodkan tidak merentasi tetingkap rehat syif.",
       "otBasisShiftWindows": "Kerja lebih masa datang daripada jadual lebih masa syif itu sendiri ({count} tetingkap): {minutes}.",
-      "otShiftWindowRow": "Tetingkap {label}: {raw} berada di dalamnya, dikira sebagai {minutes}."
+      "otShiftWindowRow": "Tetingkap {label}: {raw} berada di dalamnya, dikira sebagai {minutes}.",
+      "exceptionEnabled": "Dikecualikan daripada penilaian dan potongan Lewat Masuk serta Keluar Awal mengikut semakan Kumpulan Jadual berkuat kuasa {from}. Minit yang diukur kekal direkodkan."
     },
     "recompute": {
       "entryLabel": "Kira semula",
@@ -3518,7 +3519,8 @@
       "noApplications": "Tiada permohonan ketidakaturan bagi pekerja dan tarikh ini.",
       "detected": "Dikesan: {type}. Ini keadaan yang dikira, berasingan daripada permohonan dihantar.",
       "saveFailed": "Simpanan tidak dapat disahkan. Muat semula hari sebelum mencuba lagi."
-    }
+    },
+    "statusExempt": "Dikecualikan"
   },
   "org": {
     "title": "Carta organisasi",
@@ -15897,7 +15899,9 @@
     "occupation": "Jawatan",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "Dikecualikan",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "Orientasi & IT",
@@ -19034,5 +19038,19 @@
     "unpaid": "Tanpa gaji",
     "unknownPaid": "Status gaji tidak diketahui",
     "noLeave": "Tiada cuti diluluskan pada tarikh ini"
+  },
+  "boardSchedule": {
+    "payHint": "Urus tempoh kerja lebih masa dan premium setiap syif di sini. Suntingan asas syif mengekalkan tetapan ini.",
+    "confirmClear": "Saya mengesahkan pemadaman tempoh kerja lebih masa atau premium tersimpan yang telah saya kosongkan.",
+    "groupName": "Nama Kumpulan Jadual",
+    "groupLabel": "Label Kumpulan Jadual",
+    "exception": "Aktifkan Pengecualian",
+    "exceptionHint": "Kecualikan penilaian Tidak Hadir, Lewat Masuk dan Keluar Awal serta potongannya mulai esok. Ukuran masa kerja, cuti, kerja lebih masa dan elaun tidak berubah.",
+    "duty": "Kawalan Jadual Bertugas",
+    "dutyHint": "Benarkan perubahan jadual individu oleh pihak berkuasa. Kumpulan baharu bermula Tidak Aktif; kumpulan sedia ada kekal Aktif sehingga diubah.",
+    "fullFlexiHint": "Jam yang diperlukan menentukan penyempurnaan. Selang rekod yang ditutup dikira selepas rehat berkenaan; sesi terbuka kekal tidak lengkap.",
+    "legacyAnchor": "Masa tetap sedia ada disimpan sebagai konfigurasi sejarah; Full Flexi tidak menggunakannya untuk menilai masa masuk atau keluar.",
+    "on": "Aktif",
+    "off": "Tidak Aktif"
   }
 }

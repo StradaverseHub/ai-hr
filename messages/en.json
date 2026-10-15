@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "No break was deducted — the day was not long enough to reach the {minutes} break.",
       "otBreakNoneSpanned": "No break was deducted — the time clocked did not span the shift’s break window.",
       "otBasisShiftWindows": "Overtime came from the shift’s own overtime schedule ({count} windows): {minutes}.",
-      "otShiftWindowRow": "Window {label}: {raw} fell inside it, counted as {minutes}."
+      "otShiftWindowRow": "Window {label}: {raw} fell inside it, counted as {minutes}.",
+      "exceptionEnabled": "Exempt from Late In and Early Out judgments and deductions under the Schedule Group revision effective {from}. Measured minutes remain recorded."
     },
     "recompute": {
       "entryLabel": "Recompute",
@@ -3518,7 +3519,8 @@
       "noApplications": "No irregularity requests for this employee and date.",
       "detected": "Detected: {type}. This is a calculated condition, separate from submitted requests.",
       "saveFailed": "The save could not be confirmed. Reload the day before trying again."
-    }
+    },
+    "statusExempt": "Exempt"
   },
   "org": {
     "title": "Org chart",
@@ -15897,7 +15899,9 @@
     "occupation": "Occupation",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "Exempt",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "Onboarding & IT",
@@ -19034,5 +19038,19 @@
     "unpaid": "Unpaid",
     "unknownPaid": "Paid status unknown",
     "noLeave": "No approved leave on this date"
+  },
+  "boardSchedule": {
+    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
+    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
+    "groupName": "Schedule Group Name",
+    "groupLabel": "Schedule Group Label",
+    "exception": "Enable Exception",
+    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
+    "duty": "Duty Roster Control",
+    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
+    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
+    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure.",
+    "on": "On",
+    "off": "Off"
   }
 }

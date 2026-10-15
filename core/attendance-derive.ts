@@ -26,6 +26,7 @@ export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 
 /** The minimal row shape the derivations read — a subset of both loader row types. */
 export type AttendanceDeriveRow = {
+  exceptionExempt?:boolean;
   attendanceId: string | null;
   status: string | null;
   context: DayContext;
@@ -141,12 +142,12 @@ export type AttendanceFlag = 'late' | 'under' | 'odd' | null;
  *             the displayed schedule. Rest/holiday work has no required-hours shortfall.
  *   • null  — clean day / no attendance row.
  */
-export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'checkInAt' | 'checkOutAt' | 'dayType' | 'workedMinutes' | 'scheduledMinutes' | 'underMinutes'>): AttendanceFlag {
+export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'checkInAt' | 'checkOutAt' | 'dayType' | 'workedMinutes' | 'scheduledMinutes' | 'underMinutes' | 'exceptionExempt'>): AttendanceFlag {
   if (!row.attendanceId) return null;
   const hasIn = row.checkInAt != null;
   const hasOut = row.checkOutAt != null;
   if (hasIn !== hasOut) return 'odd';
-  if (row.status === 'late') return 'late';
+  if (row.status === 'late' && !row.exceptionExempt) return 'late';
   if (
     row.dayType === 'workday' &&
     (row.underMinutes != null
@@ -159,7 +160,7 @@ export function flagOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' 
 }
 
 /** The v1 Status set. Sub-codes (AL/ML/EL/RL) and Travel/Training are a documented follow-up. */
-export type AttendanceStatus = 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'on_leave';
+export type AttendanceStatus = 'exempt' | 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'on_leave';
 
 /**
  * The single attendance Status the request wants ALWAYS shown — one clean state per row, with the
@@ -171,14 +172,14 @@ export type AttendanceStatus = 'present' | 'absent' | 'rest' | 'off' | 'ph' | 'o
  *     came from an explicit rostered rest day, else OFF (a policy / default-shift pattern non-working day).
  *   • No row, no context, a working day → Absent.
  */
-export function statusOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'context' | 'isRosterRest'>): AttendanceStatus {
+export function statusOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status' | 'context' | 'isRosterRest' | 'exceptionExempt'>): AttendanceStatus {
   if (row.attendanceId && row.status) {
-    return row.status === 'absent' ? 'absent' : 'present';
+    return row.status === 'absent' ? row.exceptionExempt?'exempt':'absent' : 'present';
   }
   if (row.context === 'on_leave') return 'on_leave';
   if (row.context === 'holiday') return 'ph';
   if (row.context === 'rest_day') return row.isRosterRest ? 'rest' : 'off';
-  return 'absent';
+  return row.exceptionExempt?'exempt':'absent';
 }
 
 /** Scheduled span less net work, shared by employee and HR day views. */

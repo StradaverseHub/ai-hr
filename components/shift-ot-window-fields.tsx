@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { inputCls } from '@/components/ui';
 
 export type OtWindowRow = {
+  id?:string;
   label: string;
   startTime: string;
   endTime: string;

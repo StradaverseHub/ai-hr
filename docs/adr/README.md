@@ -64,3 +64,5 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 | [0108](0108-attendance-board-read-and-retry.md) | Clock retry identity, independent settings save scopes, earned-credit read model and Semi Flexi duration rules | Accepted; verification pending |
 
 | [0115](0115-native-performance-journey-parity.md) | Native Performance journey parity, retained decisions, reminders and Rewards ownership | Accepted |
+
+| [0118](0118-schedule-membership-and-dated-exceptions.md) | Allowed shift membership separate from calculation defaults, dated exception decisions and controlled manual rosters | Accepted |

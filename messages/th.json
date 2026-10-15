@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "ไม่มีการหักเวลาพัก — ชั่วโมงทำงานของวันนั้นไม่ถึงเกณฑ์พัก {minutes}",
       "otBreakNoneSpanned": "ไม่มีการหักเวลาพัก — ช่วงเวลาที่บันทึกไม่คร่อมช่วงพักของกะ",
       "otBasisShiftWindows": "ล่วงเวลามาจากตารางล่วงเวลาของกะเอง ({count} ช่วง): {minutes}",
-      "otShiftWindowRow": "ช่วง {label}: มี {raw} อยู่ภายใน นับเป็น {minutes}"
+      "otShiftWindowRow": "ช่วง {label}: มี {raw} อยู่ภายใน นับเป็น {minutes}",
+      "exceptionEnabled": "ยกเว้นการตัดสินเข้างานสายและออกก่อนเวลา รวมถึงการหัก ตามฉบับแก้ไขของกลุ่มตารางงานที่มีผล {from} นาทีที่วัดได้ยังคงบันทึกไว้"
     },
     "recompute": {
       "entryLabel": "คำนวณใหม่",
@@ -3518,7 +3519,8 @@
       "noApplications": "ไม่มีคำขอแก้ไขความผิดปกติของพนักงานในวันนี้",
       "detected": "ตรวจพบ: {type} เป็นผลการคำนวณแยกจากคำขอที่ส่ง",
       "saveFailed": "ยืนยันการบันทึกไม่ได้ โปรดโหลดวันนี้ใหม่ก่อนลองอีกครั้ง"
-    }
+    },
+    "statusExempt": "ได้รับยกเว้น"
   },
   "org": {
     "title": "ผังองค์กร",
@@ -15897,7 +15899,9 @@
     "occupation": "ตำแหน่ง",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "ได้รับยกเว้น",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "การปฐมนิเทศและไอที",
@@ -19034,5 +19038,19 @@
     "unpaid": "ไม่ได้รับค่าจ้าง",
     "unknownPaid": "ไม่ทราบสถานะค่าจ้าง",
     "noLeave": "ไม่มีการลาที่อนุมัติในวันนี้"
+  },
+  "boardSchedule": {
+    "payHint": "จัดการช่วงเวลาล่วงเวลาและเบี้ยประจำกะได้ที่นี่ การแก้ไขข้อมูลพื้นฐานของกะจะคงการตั้งค่าเหล่านี้ไว้",
+    "confirmClear": "ฉันยืนยันการลบช่วงเวลาล่วงเวลาหรือเบี้ยประจำกะที่บันทึกไว้ซึ่งฉันได้ล้างค่า",
+    "groupName": "ชื่อกลุ่มตารางงาน",
+    "groupLabel": "ป้ายชื่อกลุ่มตารางงาน",
+    "exception": "เปิดใช้ข้อยกเว้น",
+    "exceptionHint": "ยกเว้นการตัดสินขาดงาน เข้างานสาย และออกก่อนเวลา รวมถึงการหักที่เกี่ยวข้องตั้งแต่พรุ่งนี้ การวัดเวลาทำงาน การลา ล่วงเวลา และเบี้ยเลี้ยงไม่เปลี่ยนแปลง",
+    "duty": "การควบคุมตารางเวร",
+    "dutyHint": "อนุญาตให้ผู้มีสิทธิ์เปลี่ยนตารางรายบุคคล กลุ่มใหม่เริ่มที่ปิด กลุ่มเดิมคงเปิดจนกว่าจะเปลี่ยน",
+    "fullFlexiHint": "ชั่วโมงที่กำหนดใช้ตัดสินความครบถ้วน นับช่วงเวลาที่ลงเวลาออกแล้วหลังหักช่วงพักที่เกี่ยวข้อง ช่วงเวลาที่ยังเปิดอยู่ถือว่าไม่สมบูรณ์",
+    "legacyAnchor": "เวลาอ้างอิงคงที่เดิมเก็บไว้เป็นการตั้งค่าในอดีต กะแบบยืดหยุ่นเต็มรูปแบบไม่ใช้เวลาเหล่านี้ตัดสินเวลาเข้าหรือออก",
+    "on": "เปิด",
+    "off": "ปิด"
   }
 }

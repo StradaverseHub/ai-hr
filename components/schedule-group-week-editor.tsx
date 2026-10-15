@@ -130,7 +130,7 @@ export function ScheduleGroupWeekEditor({
                       {sh.name}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
-                      {sh.startTime.slice(0, 5)}–{sh.endTime.slice(0, 5)}
+                      {(sh.startTime?.slice(0, 5)??'—')}–{(sh.endTime?.slice(0, 5)??'—')}
                     </td>
                     <td className="py-2 pr-3">
                       {dayText(before)}

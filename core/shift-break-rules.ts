@@ -27,7 +27,7 @@
 
 /** The three facts about a shift a break row is judged against. Times are 'HH:MM' or 'HH:MM:SS' — only
  *  lexicographic comparison and the first five characters are used, so either shape works unmodified. */
-export type BreakRuleShift = { startTime: string; endTime: string; crossesMidnight: boolean };
+export type BreakRuleShift = { startTime: string; endTime: string; crossesMidnight: boolean; durationOnly?: boolean };
 
 /** One row's classification. `ok` is the only shape that carries a usable duration. */
 export type BreakRowCheck =
@@ -67,6 +67,7 @@ export function checkBreakRow(row: { start: string; end: string }, shift: BreakR
   const end = row.end.slice(0, 5);
   if (start === end) return { kind: 'zero' };
   const wrapped = end < start;
+  if(shift.durationOnly)return {kind:'ok',wrapped,minutes:breakRowMinutes(start,end)};
   if (wrapped && !shift.crossesMidnight) return { kind: 'reversed' };
   const shiftStart = shift.startTime.slice(0, 5);
   const shiftEnd = shift.endTime.slice(0, 5);
@@ -94,7 +95,7 @@ export function findBreakOverlaps(
   rows: readonly { start: string; end: string }[],
   shift: BreakRuleShift,
 ): Array<[number, number]> {
-  const startAbs = toMin(shift.startTime);
+  const startAbs = shift.durationOnly?0:toMin(shift.startTime);
   const anchored = rows
     .map((r, i) => {
       const check = checkBreakRow(r, shift);
@@ -109,6 +110,7 @@ export function findBreakOverlaps(
   for (let k = 1; k < anchored.length; k++) {
     if (anchored[k].s < anchored[k - 1].e) pairs.push([anchored[k - 1].i, anchored[k].i]);
   }
+  if(shift.durationOnly&&anchored.length>1){const first=anchored[0],last=anchored.reduce((a,b)=>b.s>a.s?b:a);if(last.e>first.s+1440)pairs.push([last.i,first.i]);}
   return pairs;
 }
 

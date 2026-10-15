@@ -3186,7 +3186,8 @@
       "otBreakNoneCliff": "Không trừ giờ nghỉ — ngày làm chưa đủ dài để đạt mức nghỉ {minutes}.",
       "otBreakNoneSpanned": "Không trừ giờ nghỉ — thời gian chấm công không bắc qua khung giờ nghỉ của ca.",
       "otBasisShiftWindows": "Tăng ca đến từ lịch tăng ca của chính ca làm ({count} khung): {minutes}.",
-      "otShiftWindowRow": "Khung {label}: có {raw} nằm trong đó, được tính là {minutes}."
+      "otShiftWindowRow": "Khung {label}: có {raw} nằm trong đó, được tính là {minutes}.",
+      "exceptionEnabled": "Miễn đánh giá Vào muộn và Ra sớm cùng các khoản khấu trừ theo phiên bản nhóm lịch có hiệu lực từ {from}. Số phút đo được vẫn được ghi nhận."
     },
     "recompute": {
       "entryLabel": "Tính lại",
@@ -3518,7 +3519,8 @@
       "noApplications": "Không có yêu cầu bất thường cho nhân viên và ngày này.",
       "detected": "Phát hiện: {type}. Đây là trạng thái tính toán, tách biệt với yêu cầu đã gửi.",
       "saveFailed": "Không thể xác nhận lưu. Tải lại ngày trước khi thử lại."
-    }
+    },
+    "statusExempt": "Được miễn"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -15897,7 +15899,9 @@
     "occupation": "Chức danh",
     "cancel": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
-    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]"
+    "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
+    "status_exempt": "Được miễn",
+    "exemptCode": "EX"
   },
   "lifecycle": {
     "title": "Tiếp nhận & IT",
@@ -19034,5 +19038,19 @@
     "unpaid": "Không lương",
     "unknownPaid": "Chưa rõ trạng thái lương",
     "noLeave": "Không có nghỉ phép đã duyệt ngày này"
+  },
+  "boardSchedule": {
+    "payHint": "Quản lý khung giờ làm thêm và phụ cấp của từng ca tại đây. Sửa thông tin cơ bản của ca sẽ giữ nguyên các thiết lập này.",
+    "confirmClear": "Tôi xác nhận xóa khung giờ làm thêm hoặc phụ cấp đã lưu mà tôi đã bỏ trống.",
+    "groupName": "Tên nhóm lịch",
+    "groupLabel": "Nhãn nhóm lịch",
+    "exception": "Bật ngoại lệ",
+    "exceptionHint": "Miễn đánh giá Vắng mặt, Vào muộn và Ra sớm cùng các khoản khấu trừ tương ứng từ ngày mai. Số đo giờ làm, nghỉ phép, làm thêm và phụ cấp không thay đổi.",
+    "duty": "Kiểm soát lịch trực",
+    "dutyHint": "Cho phép người có quyền thay đổi lịch cá nhân. Nhóm mới mặc định Tắt; nhóm hiện có giữ Bật cho đến khi được thay đổi.",
+    "fullFlexiHint": "Số giờ yêu cầu quyết định hoàn thành. Các khoảng chấm công đã kết thúc được tính sau giờ nghỉ áp dụng; phiên còn mở vẫn chưa hoàn tất.",
+    "legacyAnchor": "Mốc giờ cố định hiện có được giữ làm cấu hình lịch sử; ca linh hoạt hoàn toàn không dùng chúng để đánh giá giờ vào hoặc ra.",
+    "on": "Bật",
+    "off": "Tắt"
   }
 }

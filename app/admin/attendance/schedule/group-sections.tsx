@@ -1,3 +1,6 @@
+import { scheduleGroupControls } from '@/core/schedule-group-controls';
+import { saveScheduleGroupControlAction } from './actions';
+import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
 import type { ReactNode } from 'react';
 import { ScheduleOvertimeDraftFields } from '@/components/schedule-overtime-draft-fields';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
@@ -164,13 +167,18 @@ export async function ScheduleGroupSections({
 
   const rotationT = await getTranslations('admin.rotation');
   const editing = mode === 'edit';
+  const tb=await getTranslations('boardSchedule');
+  const controls=await scheduleGroupControls(s,rule.id);
+  const pendingException=controls.revisions.reduce<typeof controls.revisions[number]|null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
+  const controlPanel=(kind:'exception'|'duty')=><Card className="space-y-3 p-4"><h3 className="text-sm font-semibold">{tb(kind)}</h3><p className="text-xs text-muted-foreground">{tb(kind==='duty'?'dutyHint':'exceptionHint')}</p>{editing?<form action={saveScheduleGroupControlAction} className="space-y-3"><input type="hidden" name="ruleId" value={rule.id}/><input type="hidden" name="kind" value={kind}/><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" value="1" defaultChecked={kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false} className="accent-primary"/>{tb(kind)}</label><button className={btnPrimary}>{tr('save')}</button></form>:<p className="text-sm">{(kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false)?tb('on'):tb('off')}</p>}{kind==='exception'&&<ul className="space-y-1 text-xs text-muted-foreground">{controls.revisions.map(r=><li key={r.id}>{r.effectiveFrom} · {r.enabled?tb('on'):tb('off')}</li>)}</ul>}</Card>;
   const shifts = await listShiftsForTenant(s, { includeArchived: true });
   const rotationState = await getScheduleRotation(s, rule.id);
   const kinds = dayKindsOf(rule, typedWeek);
   const declaresWeek = ISO_DAYS.some((d) => kinds[d] !== 'rest');
   // r429 (f6819e19) · D7 — "Shifts in this group" (shift.rule_id = group; for Standard, rule_id NULL on
   // every shift that never joined one — this filter already reads that correctly, nothing special-cased).
-  const groupShifts = shifts.filter((sh) => sh.ruleId === rule.id);
+  const membershipIds=new Set(rotationState.memberships.map(m=>m.shiftId));
+  const groupShifts = shifts.filter((sh) => membershipIds.has(sh.id));
   const groupEmploymentCount = await countEmploymentsInRule(s, rule.id);
 
   /** A refusal is shown INSIDE the section it belongs to, and nowhere else, so it is never printed twice. */
@@ -221,6 +229,7 @@ export async function ScheduleGroupSections({
               )}
             </dd>
           </div>
+          <div className="flex items-start justify-between gap-4 px-4 py-3"><dt className="text-sm font-medium">{tb('groupLabel')}</dt><dd className="text-sm">{rule.label?.trim()||rule.name}</dd></div>
           <div className="flex items-start justify-between gap-4 px-4 py-3">
             <dt className="text-sm font-medium">{tr('colDescription')}</dt>
             <dd className="text-right text-sm text-muted-foreground">{rule.description ?? '—'}</dd>
@@ -241,15 +250,15 @@ export async function ScheduleGroupSections({
       <Card>
         <SectionHeader
           title={tr('shiftsAllowedTitle')}
-          count={shifts.filter((sh) => sh.ruleId === rule.id).length}
+          count={groupShifts.length}
           subtitle={tr('shiftsAllowedHint')}
         />
-        {shifts.filter((sh) => sh.ruleId === rule.id).length === 0 ? (
+        {groupShifts.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">{tr('shiftsAllowedEmpty')}</p>
         ) : (
           <ul className="divide-y divide-border">
             {shifts
-              .filter((sh) => sh.ruleId === rule.id)
+              .filter((sh) => membershipIds.has(sh.id))
               .map((sh) => (
                 <li key={sh.id} className="flex items-center justify-between gap-4 px-4 py-2 text-sm">
                   <Link href={`/admin/attendance/${sh.id}`} className="text-primary hover:underline">
@@ -322,17 +331,18 @@ export async function ScheduleGroupSections({
     : { effectiveFrom: minimumDate, anchorDate: monday.toISOString().slice(0,10), unit:'week',length:1,
       days:ISO_DAYS.map(d=>({kind:kinds[d],shiftId:kinds[d]==='full'||kinds[d]==='half'?groupShifts.find(sh=>!sh.archivedAt)?.id??null:null})) };
   const workingDay = <>
+    {controlPanel('duty')}
     <ErrorBanner message={bannerFor('workingDay')} />
     <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
       {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
       : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
           minimumDate={minimumDate} initial={initialRotation} editing={editing}
-          shifts={shifts.map(sh=>{const input={start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
+          shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
             breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
             const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
             return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
               fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
-              archived:!!sh.archivedAt,available:!sh.archivedAt&&(!sh.ruleId||sh.ruleId===rule.id),selected:latest?latest.allowedShiftIds.includes(sh.id):sh.ruleId===rule.id};})}/>
+              archived:!!sh.archivedAt,available:!sh.archivedAt,selected:latest?latest.allowedShiftIds.includes(sh.id):membershipIds.has(sh.id)};})}/>
       }
       {!latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
       {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
@@ -460,6 +470,7 @@ export async function ScheduleGroupSections({
 
   const attendance = (
     <>
+      {controlPanel('exception')}
       <ErrorBanner message={bannerFor('attendance')} />
       {editing ? (
         <AttendanceSettingsActionForm submitAction={saveScheduleGroupAttendanceAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'attendance' ? savedReceipt : undefined} className="space-y-6">
@@ -658,21 +669,8 @@ export async function ScheduleGroupSections({
   return (
     <div className="space-y-8">
       <ErrorBanner message={orphanError} />
-      {/* A jump list, not a tab strip. Every section is rendered and on the page at once — "one Schedule
-          Group is one screen" — so these are anchors into what is already there, which is what makes a
-          save's `#section-<key>` land somewhere. */}
-      <nav aria-label={t('sectionsAria')} className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-        {SCHEDULE_SECTION_KEYS.map((key) => (
-          <a key={key} href={`#${sectionAnchor(key)}`} className="text-primary hover:underline">
-            {SECTION_LABEL[key]}
-          </a>
-        ))}
-      </nav>
-      {SCHEDULE_SECTION_KEYS.map((key) => (
-        <section key={key} id={sectionAnchor(key)} className="scroll-mt-6 space-y-6">
-          {bodyFor[key]}
-        </section>
-      ))}
+      <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')}
+        tabs={(['general','attendance','overtime','workingDay'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
       {mode === 'view' && (
         <div className="flex items-center gap-3">
           <Link href={scheduleGroupEditPath(rule.id)} className={btnPrimary}>

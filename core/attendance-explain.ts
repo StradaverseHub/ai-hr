@@ -206,5 +206,6 @@ export function explainAttendanceDay(raw: unknown): AttendanceExplanation {
       }
     : { minutes: null, steps: [{ key: 'otNotApplicable' }] };
 
+  if(t.exemption){const note={key:'exceptionEnabled',args:{from:t.exemption.effectiveFrom}};lateness.steps.unshift(note);earlyOut.steps.unshift(note);}
   return { kind: 'explained', schedule: t.schedule, punch: t.punch, lateness, earlyOut, overtime };
 }

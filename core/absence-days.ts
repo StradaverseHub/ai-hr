@@ -1,3 +1,4 @@
+import { exceptionDecisionsTx } from './schedule-group-controls';
 /**
  * e2632276 — ABSENCE DAYS, counted once, for the screens AND for the money.
  *
@@ -229,12 +230,13 @@ export async function absenceBreakdownByEmployment(
   periodStart: string,
   periodEnd: string,
   employmentIds: string[],
-  opts: { rules: AbsenceRules; until?: string | null },
+  opts: { rules: AbsenceRules; until?: string | null; measurement?:'raw' },
 ): Promise<Map<string, AbsenceBreakdown>> {
   const out = new Map<string, AbsenceBreakdown>();
   const ids = [...new Set(employmentIds)].filter(Boolean);
   if (ids.length === 0) return out;
 
+  const exceptionOn=await exceptionDecisionsTx(tx,ids,periodStart,periodEnd);
   const scheduled = opts.rules === 'scheduled';
   const rotations = await rotationLookupTx(tx);
   const readSchedule = scheduled || rotations.versions.length > 0;
@@ -248,6 +250,7 @@ export async function absenceBreakdownByEmployment(
       hiredOn: employment.hiredOn,
       terminatedOn: employment.terminatedOn,
       defaultShiftId: employment.defaultShiftId,
+      groupId:employment.attendanceRuleId,
       // Only ever read to KEY the holiday memo below — never to resolve a calendar here. See holidayKeyOf.
       workState: employment.workState,
       holidayGroupId: employment.holidayGroupId,
@@ -321,6 +324,7 @@ export async function absenceBreakdownByEmployment(
             employmentId: rosterAssignment.employmentId,
             shiftDate: rosterAssignment.shiftDate,
             isRestDay: rosterAssignment.isRestDay,
+            shiftType:shift.type,
             start: shift.startTime,
             end: shift.endTime,
           })
@@ -333,7 +337,7 @@ export async function absenceBreakdownByEmployment(
               lte(rosterAssignment.shiftDate, lastCounted),
             ),
           )
-      : Promise.resolve([] as { employmentId: string; shiftDate: string; isRestDay: boolean; start: string | null; end: string | null }[]),
+      : Promise.resolve([] as { employmentId: string; shiftDate: string; isRestDay: boolean; start: string | null; end: string | null;shiftType:string|null }[]),
     // ec4cbf63 — the employee's DEFAULT shift and its weekly pattern, which decides working-vs-rest BEFORE
     // the flat company policy. A pattern-less shift has no working days (deliberate; see scheduleFor).
     // `scheduled` only, for the same reason as the roster.
@@ -474,7 +478,7 @@ export async function absenceBreakdownByEmployment(
   for (const rr of rosterRows) {
     let m = rosterByEmp.get(rr.employmentId);
     if (!m) rosterByEmp.set(rr.employmentId, (m = new Map()));
-    m.set(rr.shiftDate, { isRestDay: rr.isRestDay, hasShift: !!(rr.start && rr.end) });
+    m.set(rr.shiftDate, { isRestDay: rr.isRestDay, hasShift: rr.shiftType==='full_flexi'||!!(rr.start && rr.end) });
   }
 
   for (const e of emps) {
@@ -514,6 +518,7 @@ export async function absenceBreakdownByEmployment(
       if (dateCorrection ? dateCorrection.dayKind==='holiday' : holidays.has(d)) continue;
 
       const rotated = rotationOn(e.employmentId,d);
+      const absenceExempt=opts.measurement!=='raw'&&exceptionOn(e.employmentId,d).enabled;
       if (!scheduled) {
         // ── LEGACY: main's loop, transcribed. Company weekday pattern only; ANY attendance row means the
         //    day is spoken for (so an explicitly-Absent row is NOT an absence, and the month roll-up's
@@ -527,7 +532,7 @@ export async function absenceBreakdownByEmployment(
         if (!working) continue;
         if (recorded.has(d)) continue;
         if (onLeave.has(d)) leaveDays += 1;
-        else absentDays += 1;
+        else if(!absenceExempt) absentDays += 1;
         continue;
       }
 
@@ -559,7 +564,7 @@ export async function absenceBreakdownByEmployment(
       // days for half a day off. Not counted as a leave DAY either — see the header.
       if (onPartialLeave.has(d)) continue;
       // Counted when the day was explicitly marked Absent, or when nothing was recorded at all.
-      if (markedAbsent.has(d) || !recorded.has(d)) absentDays += 1;
+      if (!absenceExempt && (markedAbsent.has(d) || !recorded.has(d))) absentDays += 1;
     }
     out.set(e.employmentId, { absentDays, leaveDays });
   }
