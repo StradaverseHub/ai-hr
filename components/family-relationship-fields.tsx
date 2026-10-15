@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { Field, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelOwnedChoices } from '@/lib/personnel-form-contract';
 
 /**
  * ea36b7fa — Family & Dependents consolidation: the unified Add/Edit family-member dialog asks the natural
@@ -25,7 +27,6 @@ import { Field, inputCls } from '@/components/ui';
  * swaps panels, and the server's relationship-change gating NULLs the now-irrelevant columns on save.
  */
 export function FamilyRelationshipFields({
-  label,
   placeholder,
   options,
   initialValue = '',
@@ -48,10 +49,9 @@ export function FamilyRelationshipFields({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-        <Field label={label}>
+        <PersonnelField fieldId="family.family_and_dependents.relationship" mode="record">
           <select
-            name="relationship"
-            required
+            {...personnelControl('family.family_and_dependents.relationship', 'record')}
             value={relationship}
             onChange={(e) => setRelationship(e.target.value)}
             className={inputCls}
@@ -59,13 +59,13 @@ export function FamilyRelationshipFields({
             <option value="" disabled>
               {placeholder}
             </option>
-            {options.map((o) => (
+            {personnelOwnedChoices('family.family_and_dependents.relationship','dependent.relationship',options).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </select>
-        </Field>
+        </PersonnelField>
       </div>
       <fieldset disabled={panel !== 'spouse'} hidden={panel !== 'spouse'}>
         {spousePanel}

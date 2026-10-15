@@ -28,6 +28,22 @@ describe('Personnel shared form contract',()=>{
     expect(personnelControl('profile.personal_details.fullname','draft').required).toBe(false);
     expect(personnelFormChoices('employment.employment_dates_and_service.probationunit').map(option=>option.value)).toEqual(['month','week','day']);
   });
+  it('uses domain-owned conditional requirements without a second required-create boolean',()=>{
+    const remarks='payroll.basic_salary_and_salary_history.remarks';
+    expect(personnelFormRequired(remarks,'draft',{noBasicSalary:true})).toBe(true);
+    expect(personnelFormRequired(remarks,'draft',{noBasicSalary:false})).toBe(false);
+    expect(personnelControl(remarks,'draft',{noBasicSalary:true}).required).toBe(false);
+    const company='employment.organisation_assignment.companyname';
+    expect(personnelFormRequired(company,'create',{selectCompany:true})).toBe(true);
+    expect(PERSONNEL_FIELDS.find(field=>field.id===company)?.import.requiredCreate).toBe(false);
+  });
+  it('distinguishes selection IDs from code/name projections and binds the real draft end-date payload',()=>{
+    expect(personnelFormName('employment.direct_superior_and_history.superioremploymentid')).toBe('superiorEmploymentId');
+    expect(personnelFormName('employment.approval_delegations.delegateemploymentid')).toBe('delegateEmploymentId');
+    expect(personnelFormName('attendance.work_location_and_shift_arrangement.locationid')).toBe('locationId');
+    for(const id of ['employment.direct_superior_and_history.superioremploymentid','employment.approval_delegations.delegateemploymentid','attendance.work_location_and_shift_arrangement.locationid'])expect(PERSONNEL_FIELDS.find(field=>field.id===id)?.report.enabled).toBe(false);
+    expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.draft_only_employment_fields.internshipenddate')).toMatchObject({ownerField:'provisionalEndOn',form:{draftPath:'employment.provisionalEndOn'}});
+  });
   it('rejects a stale specialized override when canonical type changes',()=>{
     const field=structuredClone(PERSONNEL_FIELDS.find(field=>field.id==='profile.contact_and_permanent_address.personalemail')!);
     field.type='date';expect(personnelFormMetadataIssue(field)).toContain('canonical type');

@@ -4,7 +4,7 @@ import { PAYMENT_METHODS } from './payment-methods';
 /** Client-safe Personnel form presentation. Domain owners retain authorization and cross-field rules. */
 import { personnelField, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { personnelFieldChoices, personnelFieldLabel, personnelScalarIssue, type PersonnelLabelResolver } from './personnel-import-contract';
-export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean};
+export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean};
 export type PersonnelFormMode = 'create' | 'edit' | 'draft' | 'record';
 export function personnelFormField(id:string):PersonnelFieldDescriptor {
   const field=personnelField(id);
@@ -17,8 +17,8 @@ export function personnelFormLabel(id:string,resolve:PersonnelLabelResolver) {
 }
 export function personnelFormRequired(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const field=personnelFormField(id);
-  if(mode!=='create'&&mode!=='draft'&&field.form!.requiredOwner)return context[field.form!.requiredOwner]??false;
-  return mode==='create'||mode==='draft' ? field.import.requiredCreate : field.form!.required?.[mode] ?? false;
+  const base=mode==='create'||mode==='draft' ? field.import.requiredCreate : field.form!.required?.[mode] ?? false;
+  return base || (field.form!.requiredOwner ? context[field.form!.requiredOwner] ?? false : false);
 }
 /** Draft controls deliberately have no name: that screen submits its JSON draft, never FormData. */
 export function personnelControl(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
@@ -65,7 +65,8 @@ export function personnelFormWidget(id:string) {
 
 export function personnelFormMetadataIssue(field:PersonnelFieldDescriptor):string|null {
   const widget=field.form?.widget;
-  if(widget==='email'&&field.type!=='text' || widget==='month'&&field.type!=='date')return `Personnel widget contradicts canonical type: ${field.id}`;
+  const expected=({text:'text',date:'date',number:'number',currency:'number',boolean:'checkbox',choice:'choice',file:'file',status:'display'} as const)[field.type];
+  if(widget && widget!=='display' && widget!==expected && !(widget==='email'&&field.type==='text') && !(widget==='month'&&field.type==='date'))return `Personnel widget contradicts canonical type: ${field.id}`;
   if(widget==='display'&&!field.form?.workflowReason)return `Personnel display field needs its derived/owner reason: ${field.id}`;
   if(field.form?.required?.create!=null||field.form?.required?.draft!=null)return `Personnel create requirement has a duplicate authority: ${field.id}`;
   return null;

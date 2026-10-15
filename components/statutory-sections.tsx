@@ -17,6 +17,7 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { personnelInput, personnelFormLabel } from '@/lib/personnel-form-contract';
 
 const legendBoxed =
   '-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground';
@@ -59,12 +60,12 @@ export function SocsoEisSection({
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('subjectToLegend')}</p>
           <label className="flex items-center gap-2 text-sm" title={t('subjectToSkbbkHint')}>
             <input
-              type="checkbox"
+              {...personnelInput('bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk','draft')}
               checked={subjectToSkbbk === 'yes'}
               onChange={(e) => onSubjectToSkbbk(e.target.checked ? 'yes' : 'no')}
               className="size-4 rounded"
             />
-            {t('subjectToSkbbk')}
+            {personnelFormLabel('bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}
           </label>
         </div>
         <div className="flex flex-col gap-2">
@@ -108,12 +109,12 @@ export function IncomeTaxSection({
       <fieldset className="flex flex-col gap-2">
         <label className="flex items-center gap-2 text-sm" title={t('employerBearsTaxHint')}>
           <input
-            type="checkbox"
+            {...personnelInput('bank_statutory.income_tax_pcb.employerbearstax','draft')}
             checked={employerBearsTax === 'yes'}
             onChange={(e) => onEmployerBearsTax(e.target.checked ? 'yes' : 'no')}
             className="size-4 rounded"
           />
-          {t('employerBearsTax')}
+          {personnelFormLabel('bank_statutory.income_tax_pcb.employerbearstax',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}
         </label>
         <p className="text-xs text-muted-foreground">{t('employerBearsTaxHint')}</p>
       </fieldset>
@@ -126,8 +127,8 @@ export function TaxNumberField({ value, onChange }: { value: string | undefined;
   const t = useTranslations('people.detail');
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{t('taxNumber')}</span>
-      <input className={inputCls} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      <span className="text-xs font-medium text-muted-foreground">{personnelFormLabel('bank_statutory.income_tax_pcb.taxnumber',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</span>
+      <input {...personnelInput('bank_statutory.income_tax_pcb.taxnumber','draft')} className={inputCls} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }

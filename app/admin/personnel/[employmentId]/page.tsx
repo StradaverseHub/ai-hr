@@ -1526,20 +1526,20 @@ export default async function EmployeePage({
     <fieldset disabled>
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
         <PersonnelField fieldId="payroll.cp38_deduction.reference" mode="edit">
-          <input defaultValue={r.cp38Ref} className={inputCls} />
+          <input {...personnelDisplay("payroll.cp38_deduction.reference")} defaultValue={r.cp38Ref} className={inputCls} />
         </PersonnelField>
         <PersonnelField fieldId="payroll.cp38_deduction.monthlyamount" mode="edit">
-          <input defaultValue={fmtMoney(Number(r.amount))} className={inputCls} />
+          <input {...personnelDisplay("payroll.cp38_deduction.monthlyamount")} defaultValue={fmtMoney(Number(r.amount))} className={inputCls} />
         </PersonnelField>
         <PersonnelField fieldId="payroll.cp38_deduction.validfrom" mode="edit">
-          <input defaultValue={r.validFrom} className={inputCls} />
+          <input {...personnelDisplay("payroll.cp38_deduction.validfrom")} defaultValue={r.validFrom} className={inputCls} />
         </PersonnelField>
         <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
-          <input defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
+          <input {...personnelDisplay("payroll.cp38_deduction.validto")} defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
         </PersonnelField>
         <div className="sm:col-span-2">
           <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
-            <input defaultValue={r.remarks ?? ''} className={inputCls} />
+            <input {...personnelDisplay("payroll.cp38_deduction.remarks")} defaultValue={r.remarks ?? ''} className={inputCls} />
           </PersonnelField>
         </div>
       </div>
@@ -1912,7 +1912,7 @@ export default async function EmployeePage({
                 </select>
               </PersonnelField>
               <PersonnelField fieldId="family.family_and_dependents.age" mode="edit">
-                <input
+                <input {...personnelDisplay("family.family_and_dependents.age")}
                   readOnly
                   disabled
                   data-child-age=""
@@ -2032,7 +2032,7 @@ export default async function EmployeePage({
       <fieldset disabled>
         <div className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}>
           <PersonnelField fieldId="family.family_and_dependents.relationship" mode="edit">
-            <input readOnly value={familyRelationshipLabel(d.relationship)} className={inputCls} />
+            <input {...personnelDisplay("family.family_and_dependents.relationship")} readOnly value={familyRelationshipLabel(d.relationship)} className={inputCls} />
           </PersonnelField>
           {dependentFields(section, d)}
         </div>
@@ -2577,7 +2577,7 @@ export default async function EmployeePage({
       <SectionHeader title={t('gradeCardTitle')} />
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
         <PersonnelField fieldId="leave.grade_and_benefit_scheme.gradename" mode="edit">
-          <input
+          <input {...personnelDisplay("leave.grade_and_benefit_scheme.gradename")}
             value={(emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null) ?? t('gradeNone')}
             disabled
             readOnly
@@ -2973,18 +2973,18 @@ export default async function EmployeePage({
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={t('effectiveDate')}>
-          <DateField
-            name="effectiveFrom"
-            required
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.validfrom" mode="record">
+          <DateField {...personnelControl("payroll.basic_salary_and_salary_history.validfrom", 'record')}
+
+
             defaultValue={salaryRows.length ? today : emp.hiredOn}
             className={inputCls}
-            label={t('effectiveDate')}
+            label={personnelLabel("payroll.basic_salary_and_salary_history.validfrom")}
           />
           {salaryRows.length === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
           )}
-        </Field>
+        </PersonnelField>
         {/* r374 (item 7dbaf677) — `required` DROPPED, `min="0"` KEPT. A Director paid Director Fees
             quarterly has no monthly basic; `required` meant HR could type a zero but not leave the box
             empty, and an empty box is the honest answer. A blank POST is read as an explicit zero by
@@ -2998,7 +2998,7 @@ export default async function EmployeePage({
             Preselects the open row's currency (carry-forward made visible) or the company default for
             a brand-new first record; the service validates + carries forward server-side. */}
         <PersonnelField fieldId="payroll.basic_salary_and_salary_history.currency" mode="edit">
-          <CurrencySelect name="currency" value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
+          <CurrencySelect name={personnelFormName("payroll.basic_salary_and_salary_history.currency")} value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
         </PersonnelField>
         <PersonnelField fieldId="payroll.basic_salary_and_salary_history.remarks" mode="edit">
           <input {...personnelInput('payroll.basic_salary_and_salary_history.remarks','edit')}
@@ -4233,8 +4233,8 @@ export default async function EmployeePage({
   // A lowercase helper, not a component: defining a component inside render creates a new component type on
   // every render (react-hooks/static-components), and this needs the request-scoped `t` anyway. Same shape as
   // the `row` helper in movement-new-event.tsx.
-  const readOnlyValue = (value: string | null | undefined, title?: string) => (
-    <input
+  const readOnlyValue = (fieldId:string, value: string | null | undefined, title?: string) => (
+    <input {...personnelDisplay(fieldId)}
       value={value ?? t('optionNotSet')}
       disabled
       readOnly
@@ -4328,8 +4328,8 @@ export default async function EmployeePage({
                 ))}
               </select>
             </PersonnelField>
-            <Field label={t('locationSelect')}>
-              <select name="locationId" defaultValue="" className={inputCls}>
+            <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
+              <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue="" className={inputCls}>
                 <option value="">{t('locationNone')}</option>
                 {orgLocations.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -4337,7 +4337,7 @@ export default async function EmployeePage({
                   </option>
                 ))}
               </select>
-            </Field>
+            </PersonnelField>
           </div>
           <div className="flex items-center gap-3">
             <button className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</button>
@@ -4352,15 +4352,15 @@ export default async function EmployeePage({
       ) : companyEditable ? (
         <form method="get" className="space-y-2 border-b border-border p-4">
           <input type="hidden" name="tab" value={tab ?? ''} />
-          <Field label={t('employmentInfo.company')}>
-            <select name="companyChange" defaultValue={emp.companyId} className={inputCls}>
+          <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="record">
+            <select {...personnelControl("employment.organisation_assignment.companyname", 'record')}  defaultValue={emp.companyId} className={inputCls}>
               {managedCompanies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </select>
-          </Field>
+          </PersonnelField>
           <div className="flex items-center gap-3">
             <button className={btnGhost}>{t('employmentInfo.companyChangeContinue')}</button>
           </div>
@@ -4386,10 +4386,10 @@ export default async function EmployeePage({
       <div className="space-y-3 border-b border-border p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label={t('employmentInfo.company')}>
+          <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="record">
             {/* 9464bd56 — read-only here; the correction (pre-transaction only) lives in the block above. When
                 the employee has activity the field is locked and points HR to Movement / Transfer. */}
-            <input
+            <input {...personnelDisplay("employment.organisation_assignment.companyname")}
               value={emp.company}
               disabled
               className={inputCls}
@@ -4399,19 +4399,19 @@ export default async function EmployeePage({
             {!companyEditable && (
               <p className="text-xs text-muted-foreground">{t('employmentInfo.companyLockedNote')}</p>
             )}
-          </Field>
+          </PersonnelField>
           {/* 8ebabbf2 — Business Unit / Department / Position / Job Grade / Employment Type are shown as
               STORED, resolved through the same `current` assignment projection the editable selects used, so
               a value that is no longer in its company-scoped option list still displays (the 570e3311
               pinned-current problem disappears entirely once nothing is a <select>). */}
           <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
-            {readOnlyValue(current?.businessUnit)}
+            {readOnlyValue("employment.organisation_assignment.businessunitname", current?.businessUnit)}
           </PersonnelField>
           <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="edit">
-            {readOnlyValue(current?.department)}
+            {readOnlyValue("employment.organisation_assignment.departmentname", current?.department)}
           </PersonnelField>
           <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
-            {readOnlyValue(current?.position)}
+            {readOnlyValue("employment.organisation_assignment.positionname", current?.position)}
           </PersonnelField>
           <Field label={t('employmentInfo.jobGrade')}>
             {readOnlyValue(gradeName)}
@@ -4435,28 +4435,28 @@ export default async function EmployeePage({
             catalog validation, because it writes through the same setEmploymentInfo. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <PersonnelField fieldId="employment.additional_organisation_labels.orgdivision" mode="edit">
-            {readOnlyValue(emp.orgDivision)}
+            {readOnlyValue("employment.additional_organisation_labels.orgdivision", emp.orgDivision)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgbranch" mode="edit">
-            {readOnlyValue(emp.orgBranch)}
+            {readOnlyValue("employment.additional_organisation_labels.orgbranch", emp.orgBranch)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgregion" mode="edit">
-            {readOnlyValue(emp.orgRegion)}
+            {readOnlyValue("employment.additional_organisation_labels.orgregion", emp.orgRegion)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgline" mode="edit">
-            {readOnlyValue(emp.orgLine)}
+            {readOnlyValue("employment.additional_organisation_labels.orgline", emp.orgLine)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgsection" mode="edit">
-            {readOnlyValue(emp.orgSection)}
+            {readOnlyValue("employment.additional_organisation_labels.orgsection", emp.orgSection)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgteam" mode="edit">
-            {readOnlyValue(emp.orgTeam)}
+            {readOnlyValue("employment.additional_organisation_labels.orgteam", emp.orgTeam)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.orgbase" mode="edit">
-            {readOnlyValue(emp.orgBase)}
+            {readOnlyValue("employment.additional_organisation_labels.orgbase", emp.orgBase)}
           </PersonnelField>
           <PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory" mode="edit">
-            {readOnlyValue(emp.employmentCategory)}
+            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", emp.employmentCategory)}
           </PersonnelField>
         </div>
 
@@ -4708,9 +4708,9 @@ export default async function EmployeePage({
             <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
             <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
             <div className="sm:col-span-2">
-              <Field label={t('directSuperiorLabel')}>
-                <Combobox
-                  name="superiorEmploymentId"
+              <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
+                <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
+
                   value={currentSuperior?.employmentId ?? ''}
                   options={superiorOptions}
                   placeholder={t('directSuperiorNone')}
@@ -4718,7 +4718,7 @@ export default async function EmployeePage({
                   noResultsLabel={t('directSuperiorNoResults')}
                   legacySuffix=""
                 />
-              </Field>
+              </PersonnelField>
             </div>
             <div>
               <button className={btnPrimary}>{t('directSuperiorSave')}</button>
@@ -4789,15 +4789,15 @@ export default async function EmployeePage({
             className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('delegationDelegate')}>
-              <select name="delegateEmploymentId" required className={inputCls}>
+            <PersonnelField fieldId="employment.approval_delegations.delegateemploymentid" mode="record">
+              <select {...personnelControl("employment.approval_delegations.delegateemploymentid", 'record')}   className={inputCls}>
                 {others.map((o) => (
                   <option key={o.employmentId} value={o.employmentId}>
                     {o.name}
                   </option>
                 ))}
               </select>
-            </Field>
+            </PersonnelField>
             <PersonnelField fieldId="employment.approval_delegations.validfrom" mode="record">
               <DateField {...personnelControl('employment.approval_delegations.validfrom','record')} defaultValue={today} className={inputCls} label={personnelLabel('employment.approval_delegations.validfrom')} />
             </PersonnelField>
@@ -4937,14 +4937,14 @@ export default async function EmployeePage({
           <div className="sm:col-span-3 text-xs font-medium text-primary">
             {t('locationSuggestedFromBranch', { branch: branchLocationSuggestion.branch })}
           </div>
-          <Field label={t('locationSelect')}>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
             <div className={`${inputCls} bg-muted`}>
               {branchLocationSuggestion.name} ({branchLocationSuggestion.code})
             </div>
-          </Field>
-          <Field label={t('effectiveDate')}>
-            <DateField name="effectiveDate" required defaultValue={suggestedEffectiveDate} className={inputCls} label={t('effectiveDate')} />
-          </Field>
+          </PersonnelField>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
+            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={suggestedEffectiveDate} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
+          </PersonnelField>
           <div>
             <button className={btnPrimary}>{t('locationConfirm')}</button>
           </div>
@@ -4970,8 +4970,8 @@ export default async function EmployeePage({
           {/* Anything picked here is a deliberate human choice — stamped `manual` so a later report can
               tell a hand-set location from one taken off the Branch. */}
           <input type="hidden" name="source" value="manual" />
-          <Field label={t('locationSelect')}>
-            <select name="locationId" defaultValue={emp.locationId ?? ''} className={inputCls}>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
+            <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue={emp.locationId ?? ''} className={inputCls}>
               <option value="">{t('locationNone')}</option>
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>
@@ -4979,10 +4979,10 @@ export default async function EmployeePage({
                 </option>
               ))}
             </select>
-          </Field>
-          <Field label={t('effectiveDate')}>
-            <DateField name="effectiveDate" required defaultValue={today} className={inputCls} label={t('effectiveDate')} />
-          </Field>
+          </PersonnelField>
+          <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationeffectivefrom" mode="record">
+            <DateField {...personnelControl("attendance.work_location_and_shift_arrangement.locationeffectivefrom", 'record')}   defaultValue={today} className={inputCls} label={personnelLabel("attendance.work_location_and_shift_arrangement.locationeffectivefrom")} />
+          </PersonnelField>
           <div>
             <button className={btnPrimary}>{t('setLocation')}</button>
           </div>

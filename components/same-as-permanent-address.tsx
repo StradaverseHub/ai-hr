@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ADDRESS_COPY_PAIRS } from '@/lib/address-blocks';
+import { useTranslations } from 'next-intl';
+import { personnelInput, personnelFormLabel } from '@/lib/personnel-form-contract';
 
 /**
  * Item 3a25f5ee — "Same as Permanent Address" convenience for the Contact & Address card. The Permanent and
@@ -27,7 +29,6 @@ import { ADDRESS_COPY_PAIRS } from '@/lib/address-blocks';
 const FIELD_SUFFIXES = ADDRESS_COPY_PAIRS.map((p) => p.idSuffix);
 
 export function SameAsPermanentAddress({
-  label,
   viaInputName,
   className,
 }: {
@@ -35,6 +36,7 @@ export function SameAsPermanentAddress({
   viaInputName: string;
   className?: string;
 }) {
+  const t = useTranslations();
   const [checked, setChecked] = useState(false);
   const checkedRef = useRef(false);
   const viaRef = useRef<HTMLInputElement | null>(null);
@@ -111,12 +113,12 @@ export function SameAsPermanentAddress({
     <label className={className ?? 'flex items-center gap-2 text-sm text-foreground'}>
       <input type="hidden" name={viaInputName} ref={viaRef} defaultValue="" />
       <input
-        type="checkbox"
+        {...personnelInput('profile.correspondence_address.copypermanentaddress','draft')}
         checked={checked}
         onChange={(e) => onToggle(e.target.checked)}
         className="h-4 w-4 rounded border-input"
       />
-      {label}
+      {personnelFormLabel('profile.correspondence_address.copypermanentaddress',(key,fallback)=>t.has(key)?t(key):fallback)}
     </label>
   );
 }
@@ -144,7 +146,6 @@ export function SameAsPermanentAddress({
  * grepping for a form name must never be able to conclude that this copy submits anything).
  */
 export function SameAsPermanentAddressControlled({
-  label,
   checked,
   onChange,
   className,
@@ -154,15 +155,16 @@ export function SameAsPermanentAddressControlled({
   onChange: (checked: boolean) => void;
   className?: string;
 }) {
+  const t = useTranslations();
   return (
     <label className={className ?? 'flex items-center gap-2 text-sm text-foreground'}>
       <input
-        type="checkbox"
+        {...personnelInput('profile.draft_only_saved_address_choice.sameaspermanent','draft')}
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="h-4 w-4 rounded border-input"
       />
-      {label}
+      {personnelFormLabel('profile.draft_only_saved_address_choice.sameaspermanent',(key,fallback)=>t.has(key)?t(key):fallback)}
     </label>
   );
 }
