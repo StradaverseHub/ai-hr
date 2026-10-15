@@ -117,6 +117,26 @@ describe('Personal earned-credit actor names and identity boundaries', () => {
     expect(await actorNames(ctx, [lot.id])).toEqual([]);
   });
 
+  it('ignores an event linked to the wrong owned employment instead of inventing a grant actor', async () => {
+    const employee = await hire('Two own employment identities'), wrongActor = await hire('Wrongly linked actor'), rightActor = await hire('Legitimate grant actor');
+    const ctx = await login(employee.personId), wrong = await login(wrongActor.personId, 'hr_admin'), right = await login(rightActor.personId, 'hr_admin');
+    const [secondEmployment] = await owner.db.insert(s.employment).values({ tenantId: b.tenantId, personId: employee.personId, companyId: b.companyId, hiredOn: day(-730), terminatedOn: day(-400), employeeCode: 'OLD-SAME-PERSON' }).returning();
+    const recordedAt = new Date(`${day(-39)}T01:00:00Z`);
+    const [firstLot] = await owner.db.insert(s.toilAccrual).values({ tenantId: b.tenantId, employmentId: employee.employmentId, workedDate: day(-40), createdAt: recordedAt, otMinutes: 0, daysCredited: '1.00', daysTaken: '0.00', accrualBasis: 'hours_worked', expiresOn: day(90) }).returning();
+    await owner.db.insert(s.toilAccrual).values({ tenantId: b.tenantId, employmentId: secondEmployment.id, workedDate: day(-41), otMinutes: 0, daysCredited: '1.00', daysTaken: '0.00', accrualBasis: 'hours_worked', expiresOn: day(90) });
+    // Both employments are in the shared register's SQL scope, so only the subject correlation can
+    // distinguish the damaged event. There is no ledger fallback on this legacy lot.
+    await owner.db.insert(s.domainEvent).values({ tenantId: b.tenantId, aggregateType: 'toil-accrual', aggregateId: firstLot.id, eventType: 'toil.accrued', subjectEmploymentId: secondEmployment.id, actorType: 'user', actorId: wrong.userId, occurredAt: recordedAt });
+    const unknown = await listOwnEarnedLeaveCredits(ctx, { today });
+    expect(unknown).toEqual(await listEarnedLeaveCredits(admin, { today }));
+    expect(unknown.rows.find(row => row.accrualId === firstLot.id)?.actorName).toBeNull();
+    expect(await actorNames(ctx, [firstLot.id])).toEqual([]);
+    await owner.db.insert(s.domainEvent).values({ tenantId: b.tenantId, aggregateType: 'toil-accrual', aggregateId: firstLot.id, eventType: 'toil.accrued', subjectEmploymentId: employee.employmentId, actorType: 'user', actorId: right.userId, occurredAt: recordedAt });
+    const known = await listOwnEarnedLeaveCredits(ctx, { today });
+    expect(known).toEqual(await listEarnedLeaveCredits(admin, { today }));
+    expect(known.rows.find(row => row.accrualId === firstLot.id)?.actorName).toBe('Legitimate grant actor');
+  });
+
   it('uses date, recorded instant and immutable ID ordering across equal-date page boundaries', async () => {
     const employee = await hire('Equal-date credit corrections'), ctx = await login(employee.personId);
     const rows = Array.from({ length: 31 }, (_, i) => ({ id: randomUUID(), tenantId: b.tenantId, employmentId: employee.employmentId, workedDate: day(-40), createdAt: new Date(`${day(-39)}T${String(i % 3).padStart(2, '0')}:00:00Z`), otMinutes: 0, daysCredited: '1.00', daysTaken: '0.00', accrualBasis: 'hours_worked' as const, expiresOn: day(90), status: 'reversed' as const }));
