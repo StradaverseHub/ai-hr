@@ -11643,14 +11643,14 @@ async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:
    .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId))
    .where(and(inArray(leaveRequest.employmentId,p.employmentIds),inArray(leaveRequest.status,['approved','pending']),
     p.purpose==='allowance'?and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)):or(eq(leaveRequest.status,'pending'),and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
-   .orderBy(asc(leaveRequest.startDate));
+   .orderBy(asc(leaveRequest.startDate),...(p.purpose==='allowance'?[asc(leaveRequest.id)]:[]));
   const ids=requests.map(r=>r.request.id);
-  const dates=ids.length ? await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)) : [];
+  const dates=ids.length ? await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)).orderBy(...(p.purpose==='allowance'?[asc(leaveRequestDate.leaveDate),asc(leaveRequestDate.id)]:[])) : [];
   const result=[];
   for(const employmentId of [...new Set(requests.map(r=>r.request.employmentId))]){
    const own=requests.filter(r=>r.request.employmentId===employmentId);
-   const from=own.reduce((a,r)=>r.request.startDate<a?r.request.startDate:a,own[0].request.startDate);
-   const to=own.reduce((a,r)=>r.request.endDate>a?r.request.endDate:a,own[0].request.endDate);
+   const from=p.purpose==='allowance'?p.from:own.reduce((a,r)=>r.request.startDate<a?r.request.startDate:a,own[0].request.startDate);
+   const to=p.purpose==='allowance'?p.to:own.reduce((a,r)=>r.request.endDate>a?r.request.endDate:a,own[0].request.endDate);
    const sched=await resolveSchedule(tx,employmentId),hols=await resolveHolidaySet(tx,employmentId,from,to);
    for(const {request:req,type} of own){
     const stored=dates.filter(d=>d.leaveRequestId===req.id);
@@ -11658,7 +11658,7 @@ async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:
     const session=req.durationType==='half_day_am' ? 'AM' as const : req.durationType==='half_day_pm' ? 'PM' as const : req.durationType==='hourly' ? 'hourly' as const : 'full_day' as const;
     const projected=stored.length ? stored.filter(d=>d.status==='approved'||d.status==='pending')
       .map(d=>({date:d.leaveDate,days:Number(d.days),status:d.status as 'approved'|'pending'})) :
-      eachDate(req.startDate,req.endDate).filter(d=>p.purpose==='allowance'&&type.counting!=='working_days'||isDeductibleDay(d,sched,hols,inclusion)).map(date=>({date,
+      eachDate(p.purpose==='allowance'&&req.startDate<p.from?p.from:req.startDate,p.purpose==='allowance'&&req.endDate>p.to?p.to:req.endDate).filter(d=>p.purpose==='allowance'&&type.counting!=='working_days'||isDeductibleDay(d,sched,hols,inclusion)).map(date=>({date,
         days:session==='full_day'?(p.purpose==='allowance'&&type.counting!=='working_days'?1:dayWeight(date,sched,hols,inclusion)):Number(req.days),status:req.status as 'approved'|'pending'}));
     result.push({requestId:req.id,employmentId,leaveTypeId:type.id,code:type.code,name:type.name,color:type.color,
       session,fromTime:req.fromTime,toTime:req.toTime,dates:projected,...(p.purpose==='allowance'?{paid:type.paid&&Number(req.unpaidDays??0)>0?null:!type.paid||req.allowanceEligible===false?false:true,projectionSource:stored.length?'recorded-approved-dates':'canonical-leave-schedule'}:{})});
