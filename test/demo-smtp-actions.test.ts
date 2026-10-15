@@ -1,5 +1,6 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),demo:vi.fn(),probe:vi.fn(),acquire:vi.fn(),audit:vi.fn(),release:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),headers:vi.fn(),demo:vi.fn(),probe:vi.fn(),acquire:vi.fn(),audit:vi.fn(),release:vi.fn()}));
+vi.mock('next/headers',()=>({headers:m.headers}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:m.demo}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>false}));
@@ -10,10 +11,13 @@ vi.mock('../db/events',()=>({appendEvent:m.audit,actorOf:(s:{userId:string})=>({
 import {testDemoSmtpConnection} from '../app/admin/settings/email/demo-actions';
 const session={tenantId:'11111111-1111-1111-1111-111111111111',userId:'22222222-2222-2222-2222-222222222222',roles:['hr_admin']};
 function form(){const f=new FormData();for(const [k,v]of Object.entries({host:'smtp.example.com',port:'465',security:'tls',auth:'true',user:'synthetic-user',password:'synthetic-secret',from:'ignored@example.test',actor:'forged'}))f.set(k,v);return f;}
-beforeEach(()=>{vi.clearAllMocks();m.demo.mockReturnValue(true);m.session.mockResolvedValue(session);m.probe.mockResolvedValue({status:'success',authenticated:true});m.acquire.mockReturnValue(m.release);m.audit.mockResolvedValue(undefined);});
+beforeEach(()=>{vi.clearAllMocks();m.demo.mockReturnValue(true);m.headers.mockResolvedValue(new Headers({'x-pathname':'/admin/settings/email'}));m.session.mockResolvedValue(session);m.probe.mockResolvedValue({status:'success',authenticated:true});m.acquire.mockReturnValue(m.release);m.audit.mockResolvedValue(undefined);});
 describe('demo connection action boundary',()=>{
  it.each(['employee','manager','payroll_partner','performance_comp_partner'])('refuses %s before any audit or network activity',async role=>{
   m.session.mockResolvedValue({...session,roles:[role]});expect(await testDemoSmtpConnection(form())).toEqual({status:'error',code:'forbidden'});expect(m.probe).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();
+ });
+ it.each(['/login','/callback','/invite','/reset-password','/api/mobile/v1/me',null])('refuses an action invoked outside its protected settings route: %s',async path=>{
+  m.headers.mockResolvedValue(new Headers(path?{'x-pathname':path}:{}));expect(await testDemoSmtpConnection(form())).toEqual({status:'error',code:'forbidden'});expect(m.session).not.toHaveBeenCalled();expect(m.probe).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();
  });
  it('refuses real deployments even for an HR administrator',async()=>{
   m.demo.mockReturnValue(false);expect(await testDemoSmtpConnection(form())).toEqual({status:'error',code:'forbidden'});expect(m.session).not.toHaveBeenCalled();expect(m.probe).not.toHaveBeenCalled();

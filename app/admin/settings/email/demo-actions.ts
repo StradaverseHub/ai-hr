@@ -1,5 +1,6 @@
 'use server';
 import {randomUUID} from 'node:crypto';
+import {headers} from 'next/headers';
 import {getSession} from '@/lib/session';
 import {isAdmin} from '@/lib/authz';
 import {demoSwitcherEnabled} from '@/lib/demo-mode';
@@ -13,6 +14,9 @@ export async function testDemoSmtpConnection(form:FormData):Promise<DemoSmtpResu
   let release:(()=>void)|undefined;
   try{
     if(!demoSwitcherEnabled())return {status:'error',code:'forbidden'};
+    // Middleware overwrites this header. Auth-flow routes bypass the hosting challenge;
+    // an action ID invoked there must not grant access to this demo network capability.
+    if((await headers()).get('x-pathname')!=='/admin/settings/email')return {status:'error',code:'forbidden'};
     const s=await getSession();
     if(!s.userId||!isAdmin(s))return {status:'error',code:'forbidden'};
     const text=(key:string)=>typeof form.get(key)==='string'?form.get(key) as string:undefined;
