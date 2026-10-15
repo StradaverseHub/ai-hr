@@ -19057,6 +19057,7 @@
     "revokeAssistant": "撤销 HR 助手权限",
     "actor": "调用者",
     "scheduledActor": "定时代理",
-    "required": "需要约 {tokens} 个令牌"
+    "required": "需要约 {tokens} 个令牌",
+    "sections": "AI 管理栏目"
   }
 }

@@ -19057,6 +19057,7 @@
     "revokeAssistant": "Thu hồi quyền trợ lý HR",
     "actor": "Người gọi",
     "scheduledActor": "Tác tử định kỳ",
-    "required": "Cần khoảng {tokens} token"
+    "required": "Cần khoảng {tokens} token",
+    "sections": "Các phần quản lý AI"
   }
 }

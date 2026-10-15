@@ -43,7 +43,14 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
       <p className="min-w-0 break-words">{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
       <div className="flex flex-wrap gap-3"><Link href="/admin/ai" className={btnGhost}>{t('configureProvider')}</Link><Link href="/control-tower/agents" className={btnGhost}>{t('refresh')}</Link></div>
     </div>
-    <Card className="overflow-hidden">
+    <nav aria-label={t('sections')} className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+      <a href="#ai-features" className="text-primary hover:underline">{t('inventory')}</a>
+      <a href="#company-limits" className="text-primary hover:underline">{t('companyLimits')}</a>
+      {view.mayWriteUsers&&<a href="#user-limits" className="text-primary hover:underline">{t('userLimits')}</a>}
+      <a href="#orchestrator" className="text-primary hover:underline">{t('orchestrator')}</a>
+      <a href="#ai-runs" className="text-primary hover:underline">{t('recentRuns')}</a>
+    </nav>
+    <Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
       <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><caption className="sr-only">{t('inventory')}</caption>
         <thead className="border-y border-border bg-muted/40"><tr>{['feature','state','activity','control'].map(key=><th key={key} scope="col" className="px-5 py-3 font-medium">{t(key)}</th>)}</tr></thead>
@@ -58,7 +65,7 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
         })}</tbody></table></div>
       <p className="border-t border-border p-5 text-xs text-muted-foreground">{t('noHistory')} {t('reservationHelp')}</p>
     </Card>
-    <Card className="p-5">
+    <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>
       <ul className="mt-2 divide-y divide-border">{view.companies.map(c=>{
         const rows=view.companyUsage.filter(u=>u.company_id===c.id);
@@ -66,15 +73,15 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
         return allowance('company',c.id,c.label,total);
       })}</ul>{view.companies.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noCompanies')}</p>}
     </Card>
-    {view.mayWriteUsers&&<Card id="user-limits" className="p-5">
+    {view.mayWriteUsers&&<Card id="user-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('userLimits')}/><p className="mt-1 text-sm text-muted-foreground">{t('userHelp')}</p>
       <form method="get" className="mt-4 flex max-w-lg gap-2"><label className="flex-1"><span className="sr-only">{t('searchUsers')}</span><input name="q" defaultValue={sp.q??''} placeholder={t('searchUsers')} className={inputCls}/></label><button className={btnGhost} type="submit">{t('search')}</button></form>
       <ul className="mt-2 divide-y divide-border">{view.users.map(u=>allowance('user',u.id,u.label,view.userUsage.find(r=>r.user_id===u.id)))}</ul>
       {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
     <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>
-    <details className="rounded-xl border border-border p-5"><summary className="cursor-pointer font-semibold">{t('orchestrator')}</summary><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue returnTo="/control-tower/agents" view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></details>
-    <Card className="overflow-hidden"><div className="p-5"><SectionHeader title={t('recentRuns')}/><p className="mt-1 text-sm text-muted-foreground">{t('runsHelp')}</p></div>
+    <details id="orchestrator" className="scroll-mt-4 rounded-xl border border-border p-5"><summary className="cursor-pointer font-semibold">{t('orchestrator')}</summary><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue returnTo="/control-tower/agents" view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></details>
+    <Card id="ai-runs" className="scroll-mt-4 overflow-hidden"><div className="p-5"><SectionHeader title={t('recentRuns')}/><p className="mt-1 text-sm text-muted-foreground">{t('runsHelp')}</p></div>
       {!isGroupAdmin(s)?<p className="px-5 pb-5 text-sm text-muted-foreground">{t('runsScoped')}</p>:view.runs.length===0?<p className="px-5 pb-5 text-sm text-muted-foreground">{t('noRuns')}</p>:<div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-y border-border bg-muted/40"><tr>{['time','actor','feature','state','tokens'].map(key=><th key={key} scope="col" className="px-5 py-3 font-medium">{t(key)}</th>)}</tr></thead><tbody className="divide-y divide-border">{view.runs.map(run=><tr key={run.id}><td className="px-5 py-3 whitespace-nowrap">{f.dateTime(run.startedAt,{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}</td><td className="px-5 py-3">{run.actor?<Link className="text-primary hover:underline" href={`/control-tower/agents?q=${encodeURIComponent(run.actor)}#user-limits`}>{run.actor}</Link>:t('scheduledActor')}</td><td className="px-5 py-3">{t.has(`features.${run.feature}`)?t(`features.${run.feature}`):run.feature}<p className="text-xs text-muted-foreground">{run.provider} · {run.model} · {t(`operations.${run.operation}`)}</p></td><td className="px-5 py-3">{t(`runStates.${run.state}`)}{run.reason&&<p className="text-xs text-muted-foreground">{t(`reasons.${run.reason}`)}</p>}</td><td className="px-5 py-3 tabular-nums">{run.state==='blocked'?(run.reason==='monthly_limit'?t('required',{tokens:numbers(run.reserved)}):'—'):run.actual==null?t('held',{tokens:numbers(run.reserved)}):numbers(run.actual)}</td></tr>)}</tbody></table></div>}
     </Card>
   </div>;

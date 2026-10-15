@@ -19057,6 +19057,7 @@
     "revokeAssistant": "Revoke HR assistant",
     "actor": "Caller",
     "scheduledActor": "Scheduled agent",
-    "required": "Needs {tokens} estimated tokens"
+    "required": "Needs {tokens} estimated tokens",
+    "sections": "AI management sections"
   }
 }

@@ -19057,6 +19057,7 @@
     "revokeAssistant": "เพิกถอนผู้ช่วย HR",
     "actor": "ผู้เรียก",
     "scheduledActor": "เอเจนต์ตามเวลา",
-    "required": "ต้องใช้ประมาณ {tokens} โทเคน"
+    "required": "ต้องใช้ประมาณ {tokens} โทเคน",
+    "sections": "ส่วนการจัดการ AI"
   }
 }

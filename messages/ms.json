@@ -19057,6 +19057,7 @@
     "revokeAssistant": "Tarik balik akses pembantu HR",
     "actor": "Pemanggil",
     "scheduledActor": "Ejen berjadual",
-    "required": "Memerlukan anggaran {tokens} token"
+    "required": "Memerlukan anggaran {tokens} token",
+    "sections": "Bahagian pengurusan AI"
   }
 }

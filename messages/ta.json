@@ -19057,6 +19057,7 @@
     "revokeAssistant": "HR உதவியாளர் அணுகலை நீக்கு",
     "actor": "அழைப்பவர்",
     "scheduledActor": "திட்டமிட்ட முகவர்",
-    "required": "சுமார் {tokens} டோக்கன்கள் தேவை"
+    "required": "சுமார் {tokens} டோக்கன்கள் தேவை",
+    "sections": "AI நிர்வாகப் பிரிவுகள்"
   }
 }
