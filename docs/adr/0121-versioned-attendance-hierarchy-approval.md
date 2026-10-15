@@ -64,3 +64,16 @@ approval pipeline checks its decision before releasing the outer/item savepoint 
 plan/attendance stamps before releasing its inner effect savepoint. It does not use a general-purpose
 same-top-transaction predicate. See [PostgreSQL 16 subtransactions](https://www.postgresql.org/docs/16/subxacts.html)
 and [CommitSubTransaction source](https://raw.githubusercontent.com/postgres/postgres/REL_16_STABLE/src/backend/access/transam/xact.c).
+
+Final v2 approval is stamped inside the active effect savepoint after the fixed owner effect. The database
+independently requires live original Personnel/calculation visibility and an actively written exact-day
+Attendance row; clock corrections must have the effective requested punch set and pair, while OT-only
+approval must match the owner's stored approved amount. Domain events remain audit data and cannot prove
+an effect. A genuine future OT-only deferral deliberately creates no attendance row. No-op corrections
+still pass through the canonical owner write and remain valid. No attendance or OT formula is duplicated.
+
+Submitted v2 inputs remain immutable after approval, rejection or cancellation, including requested OT.
+The final decision identity and frozen OT method cannot be edited or reopened after completion. Deferred
+landing may change only applied_at and approved_ot_minutes: it requires a freshly written same-day owner
+result, with a separate claim and an amount stamp equal to the fresh trace's approvedMinutes. Cancellation
+retains its existing applicant/scoped-HR owner path and never rewrites the original decision history.

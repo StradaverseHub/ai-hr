@@ -9,6 +9,7 @@ import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, reassignAttendanc
 import { attendanceApplicationDetail } from '../core/attendance-application-history';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
 import { setCompensation } from '../core/comp';
+import { attendanceClockData } from '../core/attendance-clock-data';
 import { AttendancePayrollClosedError } from '../core/attendance-punch-change';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from '../core/profile-options';
@@ -282,9 +283,9 @@ describe('797ba70b: savepoint proof and canonical same-day plan dependencies', (
       for(const plan of [pending,otherDate,otherPerson]) await refused(tx,()=>tx.update(schema.attendanceCorrection).set({appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,plan.id)));
       await refused(tx,()=>tx.update(schema.attendanceCorrection).set({reason:'Forged approved input',appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id)));
       await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'pending',appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id)));
-      await tx.update(schema.attendanceCorrection).set({appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id));
       const current=await readDay(f.d.employmentId); expect(current.calcTrace?.overtime).toBeTruthy();
       await tx.update(schema.attendance).set({calcTrace:{...current.calcTrace!,overtime:{...current.calcTrace!.overtime!,approvedMinutes:60}}}).where(eq(schema.attendance.id,current.id));
+      await tx.update(schema.attendanceCorrection).set({appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,own.id));
       await refused(tx,()=>tx.update(schema.attendanceCorrection).set({approvedOtMinutes:61}).where(eq(schema.attendanceCorrection.id,own.id)));
       const [stamped]=await tx.update(schema.attendanceCorrection).set({approvedOtMinutes:60}).where(eq(schema.attendanceCorrection.id,own.id)).returning(); expect(stamped.approvedOtMinutes).toBe(60);
       throw new Error('Rollback plan-boundary diagnostic');
@@ -332,5 +333,51 @@ describe('797ba70b: Personnel-owned assignment criteria and request-bound delega
     expect(decision).toMatchObject({assignedEmploymentId:f.second.employmentId,actualUserId:delegate.userId,actualPersonId:stand.personId,actualEmploymentId:null,actingMode:'delegate'});
     await decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2});
     expect((await readCorrection(id)).status).toBe('approved');
+  });
+});
+
+
+describe('797ba70b: actual final effects and immutable approved inputs', () => {
+  it.each([false,true])('rejects an app-forged effect event with unchanged Attendance (lost live scope=%s)', async lostScope=>{
+    const f=await fixture();await enable(f.a);const id=await submit(f.self,f.d.employmentId);await approveFirstTwo(f,id);
+    if(lostScope){const replacement=await hire('Unrelated new superior');await login(replacement.personId);await setReportingLine(f.a,{subordinateEmploymentId:f.d.employmentId,managerEmploymentId:replacement.employmentId,lineType:'administrative',validFrom:'2020-01-01'});}
+    const before=await readDay(f.d.employmentId);
+    await expect(withTenant(f.actors[2],async tx=>{
+      await rawFinal(tx,f.actors[2],id,f.d.employmentId);await tx.execute(sql`select app.attendance_workflow_begin_effect(${id}::uuid)`);
+      await tx.insert(schema.domainEvent).values({tenantId:b.tenantId,aggregateType:'attendance-correction',aggregateId:id,eventType:'attendance-correction.effect.recorded',actorType:'user',actorId:f.actors[2].userId,subjectEmploymentId:f.d.employmentId,payload:{forged:true}});
+      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+      if(!lostScope){
+        // A meaningless active day write does not establish that the requested punches were applied.
+        await tx.update(schema.attendance).set({remarks:'Forged noop marker'}).where(eq(schema.attendance.id,before.id));
+        await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'approved',decidedAt:sql`now()`,decidedByEmploymentId:f.third.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+      }
+      throw new Error('Rollback forged-event diagnostic');
+    })).rejects.toThrow('Rollback forged-event');
+    expect(await readDay(f.d.employmentId)).toEqual(before);expect((await readCorrection(id)).status).toBe('pending');expect(await readDecisions()).toHaveLength(2);
+  });
+  it.each([false,true])('accepts the canonical no-op correction, including unchanged punch IDs (clock entries=%s)',async entries=>{
+    const f=await fixture();await enable(f.a);const before=await readDay(f.d.employmentId),clocks=await attendanceClockData(f.a,f.d.employmentId,date);
+    const id=(await requestAttendanceCorrection(f.self,{employmentId:f.d.employmentId,date,reason:'Reviewed no-op is an explicit human decision',...(entries?{clockChanges:{version:1 as const,baseline:clocks.baseline,entries:clocks.rows.filter(p=>!p.voidedAt).map(p=>({id:p.id,punchAt:p.punchAt,direction:p.direction}))}}:{checkIn:'08:00',checkOut:'17:00'})})).correctionId;
+    await approveFirstTwo(f,id);await decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2});
+    expect((await readCorrection(id)).status).toBe('approved');expect(await readDay(f.d.employmentId)).toMatchObject({checkInAt:before.checkInAt,checkOutAt:before.checkOutAt,workedMinutes:before.workedMinutes,otMinutes:before.otMinutes});
+  });
+  it('approves genuine future OT without an attendance placeholder, freezes agreed inputs and lands through the canonical owner later',async()=>{
+    const f=await fixture(),future=addDays(todayInKualaLumpur(),8);await enable(f.a,input({applicationType:'self_overtime'}));const id=await submit(f.self,f.d.employmentId,true,future);
+    await approveFirstTwo(f,id);expect(await decideAttendanceCorrection(f.actors[2],{correctionId:id,decision:'approved',expectedStageIndex:2})).toMatchObject({status:'approved',deferred:true});
+    expect(await readDay(f.d.employmentId,future)).toBeUndefined();const original=await readCorrection(id);expect(original.appliedAt).toBeNull();
+    await withTenant(f.self,async tx=>{
+      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({requestedOtMinutes:original.requestedOtMinutes!+60}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({otApprovalMethod:original.otApprovalMethod==='requested'?'system_calculated':'requested'}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({status:'pending'}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({approvedOtMinutes:999,appliedAt:sql`now()`}).where(eq(schema.attendanceCorrection.id,id)));
+      await refused(tx,()=>tx.update(schema.attendanceCorrection).set({decidedByEmploymentId:f.d.employmentId}).where(eq(schema.attendanceCorrection.id,id)));
+    });
+    expect(await readCorrection(id)).toEqual(original);
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(`${addDays(future,1)}T12:00:00+08:00`));
+    try{
+      await checkIn(f.a,{employmentId:f.d.employmentId,date:future,time:'08:00',manual:true});await checkOut(f.a,{employmentId:f.d.employmentId,date:future,time:'19:00',manual:true});
+      const landed=await readCorrection(id),day=await readDay(f.d.employmentId,future);expect(landed.appliedAt).not.toBeNull();expect(day.calcTrace?.overtime?.approvedMinutes).toBe(landed.approvedOtMinutes);
+      expect(landed).toMatchObject({status:'approved',requestedOtMinutes:original.requestedOtMinutes,otApprovalMethod:original.otApprovalMethod,decidedAt:original.decidedAt,decidedByEmploymentId:original.decidedByEmploymentId});
+    }finally{vi.useRealTimers();}
   });
 });

@@ -421,6 +421,36 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   AND (app.can_see_employment(e.id) OR app.attendance_workflow_delegate_request(c.id) OR app.attendance_workflow_v2_read(c.id));
 $$;
 --> statement-breakpoint
+-- Independently verify the owner's actual target-day effect while its writing savepoint is active.
+-- Tenant-appended domain events are history, never authorization or proof of a completed effect.
+CREATE FUNCTION app.attendance_workflow_final_effect(p_correction_id uuid, approved_minutes integer) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.attendance_correction; a public.attendance; expected jsonb; expected_in time; expected_out time;
+BEGIN
+ SELECT r.* INTO c FROM public.attendance_correction r WHERE r.id=p_correction_id AND r.tenant_id=app.current_tenant_id() AND r.status='pending';
+ IF NOT FOUND OR NOT app.can_see_employment(c.employment_id) OR NOT app.attendance_workflow_effect_scope(c.employment_id,c.attendance_date) THEN RETURN false; END IF;
+ IF c.requested_ot_minutes IS NOT NULL AND c.proposed_check_in IS NULL AND c.proposed_check_out IS NULL AND c.clock_changes IS NULL AND c.attendance_date>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RETURN true; END IF;
+ SELECT d.* INTO a FROM public.attendance d WHERE d.tenant_id=c.tenant_id AND d.employment_id=c.employment_id AND d.attendance_date=c.attendance_date AND app.attendance_workflow_active_write(d.xmin);
+ IF NOT FOUND THEN RETURN false; END IF;
+ IF c.clock_changes IS NOT NULL THEN expected:=c.clock_changes->'entries';
+ ELSE
+  expected_in:=CASE WHEN c.admin_amendment IS NOT NULL THEN (c.admin_amendment->>'checkIn')::time ELSE c.proposed_check_in END;
+  expected_out:=CASE WHEN c.admin_amendment IS NOT NULL THEN (c.admin_amendment->>'checkOut')::time ELSE c.proposed_check_out END;
+  IF expected_in IS NOT NULL THEN
+   IF a.check_in_at IS DISTINCT FROM expected_in OR a.check_out_at IS DISTINCT FROM expected_out THEN RETURN false; END IF;
+   expected:=jsonb_build_array(jsonb_build_object('punchAt',expected_in::text,'direction','in'));
+   IF expected_out IS NOT NULL THEN expected:=expected||jsonb_build_array(jsonb_build_object('punchAt',expected_out::text,'direction','out')); END IF;
+  ELSIF c.requested_ot_minutes IS NOT NULL THEN RETURN a.ot_minutes IS NOT DISTINCT FROM approved_minutes;
+  ELSE RETURN false; END IF;
+ END IF;
+ IF jsonb_typeof(expected)<>'array' THEN RETURN false; END IF;
+ RETURN jsonb_array_length(expected)=(SELECT count(*) FROM public.attendance_punch p WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.attendance_date=c.attendance_date AND p.attendance_id=a.id AND p.voided_at IS NULL)
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(expected) entry WHERE NOT EXISTS(SELECT 1 FROM public.attendance_punch p
+    WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.attendance_date=c.attendance_date AND p.attendance_id=a.id AND p.voided_at IS NULL
+      AND p.punch_at=(entry->>'punchAt')::time AND p.direction::text=entry->>'direction'));
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_workflow_final_effect(uuid,integer) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- A v2 application cannot be finalized by updating its status around the frozen decision pipeline.
 CREATE FUNCTION app.attendance_workflow_v2_correction_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -432,7 +462,8 @@ BEGIN
   IF OLD.status='approved' AND OLD.requested_ot_minutes IS NOT NULL AND OLD.proposed_check_in IS NULL AND OLD.proposed_check_out IS NULL AND OLD.clock_changes IS NULL
    AND app.attendance_workflow_effect_scope(OLD.employment_id,OLD.attendance_date)
    AND (to_jsonb(OLD)-ARRAY['applied_at','approved_ot_minutes']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['applied_at','approved_ot_minutes']) THEN
-   IF OLD.applied_at IS NULL AND NEW.applied_at=transaction_timestamp() AND NEW.approved_ot_minutes IS NOT DISTINCT FROM OLD.approved_ot_minutes THEN RETURN NEW; END IF;
+   IF OLD.applied_at IS NULL AND NEW.applied_at=transaction_timestamp() AND NEW.approved_ot_minutes IS NOT DISTINCT FROM OLD.approved_ot_minutes
+    AND EXISTS(SELECT 1 FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id AND a.attendance_date=OLD.attendance_date AND app.attendance_workflow_active_write(a.xmin)) THEN RETURN NEW; END IF;
    IF OLD.applied_at IS NOT NULL AND NEW.applied_at=OLD.applied_at
     AND EXISTS(SELECT 1 FROM public.attendance_correction c WHERE c.id=OLD.id AND c.tenant_id=OLD.tenant_id AND app.attendance_workflow_active_write(c.xmin))
     AND EXISTS(SELECT 1 FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id AND a.attendance_date=OLD.attendance_date
@@ -445,8 +476,24 @@ BEGIN
  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status='cancelled' AND NOT app.is_admin_for(w.company_id)
   AND NOT EXISTS(SELECT 1 FROM public.app_user u JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=w.tenant_id AND e.id=w.employment_id)
   THEN RAISE EXCEPTION 'Only the applicant or scoped HR may cancel this application'; END IF;
- IF OLD.status='pending' AND (to_jsonb(OLD)-allowed) IS DISTINCT FROM (to_jsonb(NEW)-allowed)
+ IF (to_jsonb(OLD)-allowed) IS DISTINCT FROM (to_jsonb(NEW)-allowed)
   THEN RAISE EXCEPTION 'Submitted Attendance application inputs are frozen; withdraw and submit a new application'; END IF;
+ IF OLD.status<>'pending' AND (NEW.decided_by_employment_id,NEW.decided_at,NEW.reject_reason,NEW.ot_approval_method) IS DISTINCT FROM (OLD.decided_by_employment_id,OLD.decided_at,OLD.reject_reason,OLD.ot_approval_method)
+  THEN RAISE EXCEPTION 'Saved approval identity, outcome and overtime method are immutable'; END IF;
+ IF OLD.status<>'pending' AND NEW.status IS DISTINCT FROM OLD.status AND NOT (OLD.status='approved' AND NEW.status='cancelled')
+  THEN RAISE EXCEPTION 'A completed Attendance application cannot be reopened or decided again'; END IF;
+ IF OLD.status='approved' AND (NEW.approved_ot_minutes,NEW.applied_at) IS DISTINCT FROM (OLD.approved_ot_minutes,OLD.applied_at) THEN
+  IF (to_jsonb(OLD)-ARRAY['applied_at','approved_ot_minutes']) IS DISTINCT FROM (to_jsonb(NEW)-ARRAY['applied_at','approved_ot_minutes']) THEN RAISE EXCEPTION 'Plan landing cannot alter approval status, inputs or identity'; END IF;
+  IF OLD.requested_ot_minutes IS NULL OR OLD.proposed_check_in IS NOT NULL OR OLD.proposed_check_out IS NOT NULL OR OLD.clock_changes IS NOT NULL
+   OR NOT app.can_see_employment(OLD.employment_id)
+   OR NOT EXISTS(SELECT 1 FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id AND a.attendance_date=OLD.attendance_date AND app.attendance_workflow_active_write(a.xmin))
+   THEN RAISE EXCEPTION 'Only a freshly written canonical same-day attendance result may land an approved overtime plan'; END IF;
+  IF OLD.applied_at IS NULL AND NEW.applied_at=transaction_timestamp() AND NEW.approved_ot_minutes IS NOT DISTINCT FROM OLD.approved_ot_minutes THEN RETURN NEW; END IF;
+  IF OLD.applied_at IS NOT NULL AND NEW.applied_at=OLD.applied_at
+   AND EXISTS(SELECT 1 FROM public.attendance_correction p WHERE p.id=OLD.id AND p.tenant_id=OLD.tenant_id AND app.attendance_workflow_active_write(p.xmin))
+   AND EXISTS(SELECT 1 FROM public.attendance a WHERE a.tenant_id=OLD.tenant_id AND a.employment_id=OLD.employment_id AND a.attendance_date=OLD.attendance_date AND app.attendance_workflow_active_write(a.xmin) AND a.calc_trace->'overtime'->'approvedMinutes'=to_jsonb(NEW.approved_ot_minutes)) THEN RETURN NEW; END IF;
+  RAISE EXCEPTION 'Approved overtime plan stamps must equal the freshly written canonical amount';
+ END IF;
  IF OLD.status='pending' AND (NEW.approved_ot_minutes,NEW.ot_approval_method,NEW.applied_at) IS DISTINCT FROM (OLD.approved_ot_minutes,OLD.ot_approval_method,OLD.applied_at)
   AND NOT app.attendance_workflow_effect_scope(OLD.employment_id,OLD.attendance_date)
   THEN RAISE EXCEPTION 'Only the verified final request effect may stamp approved overtime'; END IF;
@@ -456,9 +503,8 @@ BEGIN
    AND w.current_stage=jsonb_array_length(w.stages) AND (NEW.status='rejected' OR d.stage_index=jsonb_array_length(w.stages)-1)
    AND app.attendance_workflow_v2_assigned_allowed(OLD.id,d.stage_index,d.assigned_kind,d.assigned_employment_id,d.acting_mode))
    THEN RAISE EXCEPTION 'A same-transaction final frozen workflow decision is required'; END IF;
-  IF NEW.status='approved' AND NOT (OLD.requested_ot_minutes IS NOT NULL AND OLD.proposed_check_in IS NULL AND OLD.proposed_check_out IS NULL AND OLD.clock_changes IS NULL AND OLD.attendance_date>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND NOT EXISTS(SELECT 1 FROM public.domain_event ev WHERE ev.tenant_id=OLD.tenant_id AND ev.aggregate_id=OLD.id AND ev.subject_employment_id=OLD.employment_id AND ev.actor_id=app.current_user_id() AND ev.event_type='attendance-correction.effect.recorded')
-   THEN RAISE EXCEPTION 'The canonical attendance effect must be recorded before approval'; END IF;
+  IF NEW.status='approved' AND NOT app.attendance_workflow_final_effect(OLD.id,NEW.approved_ot_minutes)
+   THEN RAISE EXCEPTION 'Final approval requires live calculation access and the verified canonical target-day effect, or a genuine future overtime-only deferral'; END IF;
  END IF;
  IF coalesce(current_setting('app.attendance_workflow_effect',true),'')<>'' AND current_setting('app.attendance_workflow_effect',true)<>OLD.id::text
   THEN RAISE EXCEPTION 'A request effect cannot mutate another attendance application'; END IF;

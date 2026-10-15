@@ -3811,6 +3811,7 @@ export async function decideAttendanceCorrection(
     // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
+    let finalizedV2 = false;
 
     // V2 keeps the real actor and installs only a same-transaction request/date capability.
     // Legacy delegated effects retain their existing fixed identity seam. No caller callback executes.
@@ -4191,6 +4192,13 @@ export async function decideAttendanceCorrection(
       }
       deferredApproval = deferred;
     }
+    // Keep v2's writing savepoint active until SQL verifies the actual target-day result.
+    // Event markers are audit data and supply no authority to finalize an application.
+    if (workflowStage.versionedFinalEffect) {
+      if (workflowStage.finalApprovalEvent) await appendEvent(tx, workflowStage.finalApprovalEvent);
+      await tx.update(attendanceCorrection).set({ status: p.decision, rejectReason, decidedByEmploymentId: actualDeciderEmploymentId, decidedAt: sql`now()` }).where(eq(attendanceCorrection.id, cor.id));
+      finalizedV2 = true;
+    }
 
     } catch (effectError) {
       // A SQL error aborts the subtransaction. Restore its savepoint before resetting identity.
@@ -4218,9 +4226,9 @@ export async function decideAttendanceCorrection(
 
     // Final approval emits its stage audit only after the effect, payroll/recalc work and delegated
     // identity restoration. The original actor and database decidedAt were frozen with the decision.
-    if (workflowStage.finalApprovalEvent) await appendEvent(tx, workflowStage.finalApprovalEvent);
+    if (workflowStage.finalApprovalEvent && !finalizedV2) await appendEvent(tx, workflowStage.finalApprovalEvent);
 
-    await tx
+    if (!finalizedV2) await tx
       .update(attendanceCorrection)
       .set({
         status: p.decision,
