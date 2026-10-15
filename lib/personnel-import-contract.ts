@@ -31,11 +31,11 @@ export function personnelImportField(column: string, sheet: PersonnelImportSheet
     ?? (column === 'employee_code' ? PERSONNEL_FIELDS.find(f => f.owner === 'employment' && f.ownerField === 'employeeCode') : undefined);
 }
 /** Temporary month/day compatibility adapters refer to one compound owner field. */
-const LEGACY_COMPOUND_COLUMNS: Record<string,{id:string;unit:string}> = {
-  probation_months:{id:'employment.employment_dates_and_service.probationvalue',unit:'month'},
-  probation_days:{id:'employment.employment_dates_and_service.probationvalue',unit:'day'},
-  resignation_notice_months:{id:'employment.employment_dates_and_service.noticebeforeconfirmationvalue',unit:'month'},
-  resignation_notice_days:{id:'employment.employment_dates_and_service.noticebeforeconfirmationvalue',unit:'day'},
+const LEGACY_COMPOUND_COLUMNS: Record<string,{id:string;unit:string;label:string}> = {
+  probation_months:{id:'employment.employment_dates_and_service.probationvalue',unit:'month',label:'Probation Period'},
+  probation_days:{id:'employment.employment_dates_and_service.probationvalue',unit:'day',label:'Probation Period'},
+  resignation_notice_months:{id:'employment.employment_dates_and_service.noticebeforeconfirmationvalue',unit:'month',label:'Notice Before Confirmation'},
+  resignation_notice_days:{id:'employment.employment_dates_and_service.noticebeforeconfirmationvalue',unit:'day',label:'Notice Before Confirmation'},
 };
 export function personnelColumnLabel(column: string, sheet: PersonnelImportSheet = 'employee', resolve?: PersonnelLabelResolver): string {
   if(column==='record_id')return resolve?.('people.import.registerRecordId','Record ID (existing records only)')??'Record ID (existing records only)';
@@ -84,6 +84,12 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
     }
     if((options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1) {
       register(column,column);register(column.replaceAll('_',' '),column);
+      const compound=LEGACY_COMPOUND_COLUMNS[column];
+      if(compound){
+        const owner=PERSONNEL_FIELDS.find(field=>field.id===compound.id)!;
+        register(`${compound.label} (${compound.unit})`,column);
+        for(const resolve of options.resolvers??[])register(`${resolve(owner.labelKey,compound.label)} (${compound.unit})`,column);
+      }
       const field=personnelImportField(column,sheet);
       for(const alias of field?.import.aliases??[])register(alias,column);
       // Former unqualified display labels are also bounded aliases. Keep all possible identities so
