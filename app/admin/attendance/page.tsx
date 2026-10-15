@@ -153,8 +153,8 @@ export default async function ShiftSettingsPage({
                             {t(SHIFT_TYPE_KEY[sh.type] ?? 'shiftTypeNormal')}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 tabular-nums">{sh.startTime.slice(0, 5)}</td>
-                        <td className="px-4 py-2.5 tabular-nums">{sh.endTime.slice(0, 5)}</td>
+                        <td className="px-4 py-2.5 tabular-nums">{(sh.startTime?.slice(0, 5)??'—')}</td>
+                        <td className="px-4 py-2.5 tabular-nums">{(sh.endTime?.slice(0, 5)??'—')}</td>
                         <td className="px-4 py-2.5">
                           {brk.rows.length > 0 ? (
                             // cf21e554 — Sequence No. + each row's own duration + the Paid tick, which is

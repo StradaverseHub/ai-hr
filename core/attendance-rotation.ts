@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { attendanceRotation, attendanceRule, employment, shift } from '../db/schema';
+import { attendanceRotation, attendanceRule, attendanceRuleShift, employment, shift } from '../db/schema';
 import { assertModuleGate } from './module-gate';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { normalizeRotation, rotationDayOn, rotationVersionOn, type RotationCycle } from './week-pattern';
@@ -38,7 +38,7 @@ export function rotationScheduleRow(rotation: RotationResolvedDay, date: string)
   const dow0 = new Date(`${date}T00:00:00Z`).getUTCDay(); const dow = dow0 || 7;
   return {
     id: sh?.id ?? '', shiftId: sh?.id ?? null, code: sh?.code ?? null, name: sh?.name ?? '',
-    start: sh?.startTime ?? '00:00:00', end: sh?.endTime ?? '00:00:00', brk: sh?.breakMinutes ?? 0,
+    start: sh?.startTime ?? null, end: sh?.endTime ?? null, brk: sh?.breakMinutes ?? 0,
     crosses: sh?.crossesMidnight ?? false, rounding: sh?.normalHoursRoundingMinutes ?? null,
     override: sh?.normalMinutesOverride ?? null, periods: sh?.breakPeriods ?? null,
     pattern: rotation.day.kind === 'full' ? [dow] : [], halfPattern: rotation.day.kind === 'half' ? [dow] : [],
@@ -51,13 +51,13 @@ export function rotationScheduleRow(rotation: RotationResolvedDay, date: string)
   };
 }
 
-const revisionOf = (versions: readonly AttendanceRotationVersion[], shifts: readonly {id: string; ruleId: string | null}[], ruleId: string) =>
-  createHash('sha256').update(JSON.stringify({ versions: versions.map(v => v.id).sort(), pool: shifts.filter(s => s.ruleId === ruleId).map(s => s.id).sort() })).digest('hex');
+const revisionOf = (versions: readonly AttendanceRotationVersion[], memberships: readonly {shiftId:string}[]) =>
+ createHash('sha256').update(JSON.stringify({versions:versions.map(v=>v.id).sort(),pool:memberships.map(m=>m.shiftId).sort()})).digest('hex');
 export async function getScheduleRotation(ctx: SessionContext, ruleId: string) {
   return withTenant(ctx, async tx => {
     const versions = await tx.select().from(attendanceRotation).where(eq(attendanceRotation.ruleId, ruleId)).orderBy(asc(attendanceRotation.effectiveFrom));
-    const shifts = await tx.select({ id: shift.id, ruleId: shift.ruleId }).from(shift).orderBy(asc(shift.id));
-    return { versions, revision: revisionOf(versions, shifts, ruleId) };
+    const memberships = await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,ruleId)).orderBy(asc(attendanceRuleShift.shiftId));
+    return { versions, memberships, revision: revisionOf(versions, memberships) };
   });
 }
 export async function saveScheduleRotation(ctx: SessionContext, p: {
@@ -72,7 +72,9 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
     if (!rule || rule.isDefault) throw new Error('Choose a non-Standard Schedule Group in this tenant.');
     const all = await tx.select().from(shift).orderBy(asc(shift.id)).for('update');
     const versions = await tx.select().from(attendanceRotation).where(eq(attendanceRotation.ruleId, p.ruleId)).orderBy(asc(attendanceRotation.effectiveFrom));
-    if (p.expectedRevision !== revisionOf(versions, all, p.ruleId)) throw new Error('This schedule was changed by another administrator. Reload before saving.');
+    const memberships=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,p.ruleId));
+    if (p.expectedRevision !== revisionOf(versions, memberships)) throw new Error('This schedule was changed by another administrator. Reload before saving.');
+    if(new Set(p.allowedShiftIds).size!==p.allowedShiftIds.length)throw new Error('Select each allowed shift once.');
     const pool = [...new Set(p.allowedShiftIds)].sort();
     const cycle = normalizeRotation(p.cycle, pool);
     if (cycle.effectiveFrom <= todayInKualaLumpur()) throw new Error('Choose an effective date tomorrow or later. Recorded attendance is not changed.');
@@ -83,12 +85,6 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       if (!sh) throw new Error('A selected shift is unavailable in this tenant.');
       // Existing assignments may keep archived sources; a new revision must use active ones.
       if (sh.archivedAt) throw new Error(`Shift ${sh.name} is archived. Select an active shift for the new rotation.`);
-      if (sh.ruleId && sh.ruleId !== rule.id) throw new Error(`Shift ${sh.name} belongs to another Schedule Group. Move it there first before using it in this rotation.`);
-      if (!sh.ruleId) {
-        const [inherited] = await tx.select({id:employment.id}).from(employment)
-          .where(sql`${employment.attendanceRuleId} IS NULL AND (${employment.defaultShiftId}=${sh.id} OR EXISTS(SELECT 1 FROM employment_shift_arrangement a WHERE a.employment_id=${employment.id} AND a.superseded_at IS NULL AND a.shift_id=${sh.id}))`).limit(1);
-        if (inherited) throw new Error(`Shift ${sh.name} is used by an employee without an explicit Schedule Group. Set the employee’s intended group before adding this shift to the rotation.`);
-      }
     }
     // Tenant-wide rules cannot bypass a company's payroll lock through payslip RLS.
     // This seam returns only operational window/status facts and locks the runs.
@@ -98,7 +94,7 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       if (batches.some(b => b.status === 'closed')) throw new Error('This rotation would change a closed payroll attendance period. Choose a later effective date.');
       await markPayrollForAttendanceChange(tx, ctx, batches, member.id);
     }
-    if (pool.length) await tx.update(shift).set({ ruleId: rule.id }).where(inArray(shift.id, pool));
+
     // ruleId is also the inherited group for legacy employee assignments. Keep those
     // links when a shift leaves the allowed pool; version.allowedShiftIds owns the pool.
     const [version] = await tx.insert(attendanceRotation).values({ tenantId: ctx.tenantId, ruleId: rule.id,
@@ -107,8 +103,7 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       eventType: 'attendance-rule.rotation-saved', actor: actorOf(ctx),
       payload: { versionId: version.id, effectiveFrom: cycle.effectiveFrom, anchorDate: cycle.anchorDate,
         unit: cycle.unit, length: cycle.length, allowedShiftIds: pool, days: cycle.days, previousVersionIds: versions.map(v => v.id) } });
-    const linked=all.map(s=>pool.includes(s.id)?{...s,ruleId:rule.id}:s);
-    return { id: version.id, revision:revisionOf([...versions,version],linked,rule.id), effectiveFrom:version.effectiveFrom };
+    return { id: version.id, revision:revisionOf([...versions,version],memberships), effectiveFrom:version.effectiveFrom };
   });
 }
 

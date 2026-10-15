@@ -19035,14 +19035,17 @@
     "noLeave": "Không có nghỉ phép đã duyệt ngày này"
   },
   "boardSchedule": {
-    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
-    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
-    "groupLabel": "Schedule Group Label",
-    "exception": "Enable Exception",
-    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
-    "duty": "Duty Roster Control",
-    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
-    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
-    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure."
+    "payHint": "Quản lý khung giờ làm thêm và phụ cấp của từng ca tại đây. Sửa thông tin cơ bản của ca sẽ giữ nguyên các thiết lập này.",
+    "confirmClear": "Tôi xác nhận xóa khung giờ làm thêm hoặc phụ cấp đã lưu mà tôi đã bỏ trống.",
+    "groupName": "Tên nhóm lịch",
+    "groupLabel": "Nhãn nhóm lịch",
+    "exception": "Bật ngoại lệ",
+    "exceptionHint": "Miễn đánh giá Vắng mặt, Vào muộn và Ra sớm cùng các khoản khấu trừ tương ứng từ ngày mai. Số đo giờ làm, nghỉ phép, làm thêm và phụ cấp không thay đổi.",
+    "duty": "Kiểm soát lịch trực",
+    "dutyHint": "Cho phép người có quyền thay đổi lịch cá nhân. Nhóm mới mặc định Tắt; nhóm hiện có giữ Bật cho đến khi được thay đổi.",
+    "fullFlexiHint": "Số giờ yêu cầu quyết định hoàn thành. Các khoảng chấm công đã kết thúc được tính sau giờ nghỉ áp dụng; phiên còn mở vẫn chưa hoàn tất.",
+    "legacyAnchor": "Mốc giờ cố định hiện có được giữ làm cấu hình lịch sử; ca linh hoạt hoàn toàn không dùng chúng để đánh giá giờ vào hoặc ra.",
+    "on": "Bật",
+    "off": "Tắt"
   }
 }

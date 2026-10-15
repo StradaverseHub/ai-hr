@@ -131,7 +131,7 @@ export function ShiftTimeFields({
   // end ≤ start ⇒ crosses midnight (mirrors shiftCrossesMidnight; times are HH:MM, lexicographic = chronological)
   const crosses = !!start && !!end && end <= start;
   const span = start && end ? (crosses ? toMin(end) + 1440 - toMin(start) : toMin(end) - toMin(start)) : 0;
-  const shiftShape = { startTime: start || '00:00', endTime: end || '00:00', crossesMidnight: crosses };
+  const shiftShape = { startTime:start, endTime:end, crossesMidnight:crosses, durationOnly:fullFlexi };
 
   /** A row counts as "real" once either time is typed — the table's one blank row does not. */
   const hasRealRows = breaks.some((bp) => bp.start || bp.end);
@@ -244,7 +244,7 @@ export function ShiftTimeFields({
               <option value="full_flexi">{ta('shiftTypeFullFlexi')}</option>
             </select>
           </Field>
-          <Field label={semiFlexi ? t('semiFlexiWindowStart') : t('timeIn')}>
+          {!fullFlexi && <><Field label={semiFlexi ? t('semiFlexiWindowStart') : t('timeIn')}>
             <input
               name="startTime"
               type="time"
@@ -273,7 +273,7 @@ export function ShiftTimeFields({
               <input type="checkbox" checked={crosses} disabled readOnly className="h-3.5 w-3.5 accent-primary" />
               {crosses ? ta('crossMidnightAutoYes') : ta('crossMidnightAutoNo')}
             </label>
-          </div>
+          </div></>}
         </div>
 
         {/* 3 — Total normal working hours, rounding, and the half-day pair, ONE row (the mockup's layout). */}
@@ -306,7 +306,7 @@ export function ShiftTimeFields({
             </Field>
             <input type="hidden" name="normalMinutesOverride" value={postedOverride} />
           </div>
-          <Field label={ta('shiftNormalHoursRounding')}>
+          {!fullFlexi && <><Field label={ta('shiftNormalHoursRounding')}>
             <input
               name="normalHoursRoundingMinutes"
               type="number"
@@ -336,7 +336,7 @@ export function ShiftTimeFields({
           )}
           <Field label={ta('shiftHalfDaySecondIn')}>
             <input name="halfDaySecondIn" type="time" defaultValue={defaultHalfDaySecondIn} className={inputCls} />
-          </Field>
+          </Field></>}
         </div>
         <p className="mt-1.5 text-xs text-muted-foreground">
           {hoursRequired ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
@@ -348,7 +348,7 @@ export function ShiftTimeFields({
         <div className="mt-5 border-t border-border pt-4">
           <span className="mb-2 block text-sm font-semibold text-foreground">{ta('clockingWindowCutoffLegend')}</span>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={ta('shiftEarlyIn')}>
+            {!fullFlexi&&<><Field label={ta('shiftEarlyIn')}>
               <input name="earlyIn" type="time" defaultValue={defaultEarlyIn} className={inputCls} />
             </Field>
             <div>
@@ -365,7 +365,7 @@ export function ShiftTimeFields({
                 {ta('shiftLateOutNextDay')}
               </label>
             </div>
-            <div>
+            </>}<div>
               <span className="mb-1.5 block text-sm font-medium text-foreground">{t('dailyCutoffLegend')}</span>
               <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
                 <input

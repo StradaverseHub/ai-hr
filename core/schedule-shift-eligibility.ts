@@ -1,7 +1,9 @@
+import { rotationVersionOn } from './week-pattern';
+import { todayInKualaLumpur } from '../lib/hr-date';
 /** Shared shift eligibility; deliberately independent of roster and attendance initialization. */
 import { and,asc,eq,inArray,isNotNull,or } from 'drizzle-orm';
 import type { Tx } from '../db/client';
-import { attendanceRule,employment,shift } from '../db/schema';
+import { attendanceRule,attendanceRuleShift,attendanceRotation,employment,shift } from '../db/schema';
 
 // ── The Schedule Group's allowed shifts (870b79e2, r277) ───────────────────────────────────────────
 
@@ -71,9 +73,9 @@ export async function groupRuleIdTx(tx: Tx, employmentId: string): Promise<strin
 
 export async function assertShiftsAllowedForEmploymentsTx(
   tx: Tx,
-  pairs: readonly { employmentId: string; shiftId: string | null }[],
+  pairs: readonly { employmentId: string; shiftId: string | null; shiftDate?:string }[],
 ): Promise<void> {
-  const real = pairs.filter((p): p is { employmentId: string; shiftId: string } => !!p.shiftId);
+  const real = pairs.filter((p): p is { employmentId: string; shiftId: string; shiftDate?:string } => !!p.shiftId);
   if (real.length === 0) return;
   const employmentIds = [...new Set(real.map((p) => p.employmentId))];
 
@@ -90,24 +92,15 @@ export async function assertShiftsAllowedForEmploymentsTx(
   const ruleIds = [...new Set(groupOf.values())];
   const attemptedShiftIds = [...new Set(real.filter((p) => groupOf.has(p.employmentId)).map((p) => p.shiftId))];
 
-  // 2. Every shift that matters in one read: the ones these groups ALLOW (rule_id ∈ ruleIds) and the ones
-  //    actually being assigned (so the refusal can name the shift by name rather than by uuid).
-  //    ORDER BY name — the allowed list goes into an error message, and an unordered list from a query
-  //    makes the same refusal read differently on two runs (CLAUDE.md §8, pin invariants not positions).
-  const shifts = await tx
-    .select({ id: shift.id, name: shift.name, ruleId: shift.ruleId })
-    .from(shift)
-    .where(or(inArray(shift.ruleId, ruleIds), inArray(shift.id, attemptedShiftIds)))
-    .orderBy(asc(shift.name), asc(shift.id));
-  const shiftName = new Map(shifts.map((r) => [r.id, r.name]));
-  const allowedByRule = new Map<string, { ids: Set<string>; names: string[] }>(ruleIds.map((r) => [r, { ids: new Set<string>(), names: [] }]));
-  for (const r of shifts) {
-    if (!r.ruleId) continue;
-    const bucket = allowedByRule.get(r.ruleId);
-    if (!bucket) continue;
-    bucket.ids.add(r.id);
-    bucket.names.push(r.name);
-  }
+  const membership=await tx.select().from(attendanceRuleShift).where(inArray(attendanceRuleShift.ruleId,ruleIds));
+  const versions=await tx.select().from(attendanceRotation).where(inArray(attendanceRotation.ruleId,ruleIds)).orderBy(asc(attendanceRotation.effectiveFrom));
+  const ids=[...new Set([...attemptedShiftIds,...membership.map(r=>r.shiftId),...versions.flatMap(v=>v.allowedShiftIds)])];
+  const shifts=ids.length?await tx.select({id:shift.id,name:shift.name,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,ids)).orderBy(asc(shift.name),asc(shift.id)):[];
+  const shiftName=new Map(shifts.map(r=>[r.id,r.name]));
+  const allowedByRule=new Map<string,{ids:Set<string>;names:string[]}>(ruleIds.map(ruleId=>{
+   const pool=new Set(membership.filter(r=>r.ruleId===ruleId).map(r=>r.shiftId));
+   return [ruleId,{ids:pool,names:shifts.filter(sh=>pool.has(sh.id)&&!sh.archivedAt).map(sh=>sh.name)}];
+  }));
 
   // 3. The group NAMES, for the message. The reporter reads these refusals, not uuids.
   const ruleRows = await tx
@@ -120,7 +113,10 @@ export async function assertShiftsAllowedForEmploymentsTx(
     const ruleId = groupOf.get(pair.employmentId);
     if (!ruleId) continue;
     const bucket = allowedByRule.get(ruleId);
-    if (bucket?.ids.has(pair.shiftId)) continue;
+    const version=rotationVersionOn(versions.filter(v=>v.ruleId===ruleId),pair.shiftDate??todayInKualaLumpur());
+    const pool=version?new Set(version.allowedShiftIds):bucket?.ids;
+    const selected=shifts.find(sh=>sh.id===pair.shiftId);
+    if (pool?.has(pair.shiftId) && selected && !selected.archivedAt) continue;
     throw new ShiftNotInScheduleGroupError({
       groupName: ruleName.get(ruleId) ?? 'this Schedule Group',
       shiftName: shiftName.get(pair.shiftId) ?? null,

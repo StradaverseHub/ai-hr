@@ -154,6 +154,7 @@ export type OvertimeTrace = {
 };
 
 export type AttendanceTraceV1 = {
+  exemption?:{revisionId:string;effectiveFrom:string;types:readonly ['absent','late','early_out']};
   v: typeof ATTENDANCE_TRACE_VERSION;
   schedule: {
     source: TraceScheduleSource;

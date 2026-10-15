@@ -4203,6 +4203,8 @@ export const attendanceRule = pgTable(
     // NULLABLE only so the FK/history survives; every row is NULL and nothing reads it.
     companyId: uuid('company_id').references(() => company.id),
     name: text('name').notNull(),
+    label: text('label'),
+    dutyRosterControl: boolean('duty_roster_control').notNull().default(false),
     description: text('description'),
     // The tenant's un-deletable "Standard" rule. Exactly one per TENANT (partial unique index). A shift with
     // no rule_id — and a day with no shift at all — resolves to this rule.
@@ -4715,8 +4717,8 @@ export const shift = pgTable(
     // f3321963 — Shift Settings Enhancement: shift template type (see ShiftType). DEFAULT 'normal' so every
     // legacy row is byte-identical. CHECK ('normal','semi_flexi','full_flexi') lives in migration 0181.
     type: text('type').notNull().default('normal').$type<ShiftType>(),
-    startTime: time('start_time').notNull(),
-    endTime: time('end_time').notNull(),
+    startTime: time('start_time'),
+    endTime: time('end_time'),
     breakMinutes: integer('break_minutes').notNull().default(0),
     // R7 Multi-Shift Phase 1: multiple break windows. b7b886e2 ended the storage-only phase for the DAY
     // derivation — core/attendance.ts now deducts the break minutes a clocking actually SPANNED (capped at
@@ -10274,3 +10276,14 @@ export const assessmentGuideUse = pgTable('performance_assessment_guide_use', {
  id:id(),tenantId:tenantId(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
  status:text('status').notNull().default('reserved'),question:text('question'),createdAt:createdAt(),
 },t=>[index('assessment_guide_actor_time').on(t.tenantId,t.actorUserId,t.createdAt)]);
+
+/** Allowed membership is independent of the shift's legacy default calculation group. */
+export const attendanceRuleShift = pgTable('attendance_rule_shift', {
+  tenantId:tenantId(), ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id,{onDelete:'cascade'}),
+  shiftId:uuid('shift_id').notNull().references(()=>shift.id,{onDelete:'restrict'}), createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.ruleId,t.shiftId]})]);
+/** Immutable service-stamped exception decisions; never rewrites raw observations. */
+export const attendanceExceptionRevision = pgTable('attendance_exception_revision',{
+ id:id(),tenantId:tenantId(),ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),
+ effectiveFrom:date('effective_from').notNull(),enabled:boolean('enabled').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_exception_revision_rule_date_uq').on(t.ruleId,t.effectiveFrom)]);

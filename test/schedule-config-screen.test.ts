@@ -126,17 +126,14 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
    */
   it('…and this screen RENDERS what both held; their old addresses are guarded redirects to the matching card', () => {
     const src = read(PAGE_REL);
-    // The three consolidated cards are mounted by this page, in the approved order.
-    const order = ['<ScheduleGroupCard', "t('shiftsTitle')", '<CompanyPolicyCard', '<WorkScheduleOvertimeCard', "t('gapsTitle')"].map((m) =>
-      src.indexOf(m),
-    );
-    expect(order.every((i) => i > -1), 'all three cards and the gaps card are rendered on the list page').toBe(true);
-    // 665de026 — THE ORDER FLIPPED AT THE TOP, DELIBERATELY. "Shifts available" led the General tab in
-    // r301 because the tab was a reference screen. The reporter asked for this page to BE the list of
-    // Schedule Groups, so the Schedule Group card leads it and the tenant- and company-wide cards follow;
-    // a list whose first card is something other than the thing being listed is the crowding complaint in
-    // a different costume. The other four keep their approved relative order.
-    expect([...order].sort((a, b) => a - b), 'in the approved order, Schedule Groups first').toEqual(order);
+    expect(src).toContain('<ScheduleGroupCard');
+    for(const marker of ["t('shiftsTitle')",'<CompanyPolicyCard','<WorkScheduleOvertimeCard',"t('gapsTitle')"])
+      expect(src,`${marker} has its own destination`).not.toContain(marker);
+    for(const [destination,component] of [['company-policy','CompanyPolicyCard'],['work-schedule-overtime','WorkScheduleOvertimeCard'],['registered-devices','RegisteredDevicesCard']] as const){
+      const page=read(`app/admin/attendance/settings/${destination}/page.tsx`);
+      expect(page).toContain('scopedAdmin()');expect(page).toContain(`<${component}`);
+      expect(REGISTERED_ROUTES.has(`/admin/attendance/settings/${destination}`)).toBe(true);
+    }
     // The two links away are GONE — an href to either old page would be a way off the one setup screen.
     expect(src, 'the General tab no longer links to the Work Schedule page').not.toContain(`href="${OLD_WORK_SCHEDULE_ROUTE}"`);
     expect(src, 'nor to the Schedule Group list').not.toContain(`href="${OLD_SCHEDULE_GROUP_ROUTE}"`);
@@ -156,7 +153,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     for (const [route, anchor] of stubs) {
       const stub = read(`app${route}/page.tsx`);
       expect(stub, `${route} still refuses a non-administrator itself`).toMatch(/await requireAdmin\(\);\s*redirect\(/);
-      expect(stub, `${route} redirects to its card on the General tab`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+      expect(stub, `${route} redirects to its owning destination`).toContain(`redirect(\`\${${route===OLD_WORK_SCHEDULE_ROUTE?'WORK_SCHEDULE_OVERTIME':'SCHEDULE'}}#\${${anchor}}\`)`);
     }
     const panel = read('app/admin/attendance-policy/schedule-panel.ts');
     expect(panel).toContain(`export const SCHEDULE = '${NEW_ROUTE}';`);

@@ -1,6 +1,9 @@
 'use server';
+import { saveScheduleGroupControl } from '@/core/schedule-group-controls';
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { publicErrorMessage } from '@/lib/public-error';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
@@ -345,4 +348,12 @@ export async function saveScheduleGroupWeekAction(fd: FormData) {
   }
   const t = await getTranslations('admin.scheduleConfig');
   okScheduleGroup(ruleId, t('savedToast'), 'workingDay');
+}
+
+export async function saveScheduleGroupControlAction(fd:FormData) {
+ const s=await getSession();const ruleId=String(fd.get('ruleId')??'');
+ const kind=String(fd.get('kind')??'');const section=kind==='duty'?'workingDay':'attendance';
+ try {if(kind!=='duty'&&kind!=='exception')throw new Error('Unknown Schedule Group control.');await saveScheduleGroupControl(s,{ruleId,kind,enabled:fd.get('enabled')==='1'});}
+ catch(e){redirect(`/admin/attendance/schedule/${encodeURIComponent(ruleId)}/edit?error=${encodeURIComponent(publicErrorMessage(e))}&section=${section}#section-${section}`);}
+ revalidatePath('/admin/attendance/schedule');redirect(`/admin/attendance/schedule/${encodeURIComponent(ruleId)}/edit?section=${section}#section-${section}`);
 }

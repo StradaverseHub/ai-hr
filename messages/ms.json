@@ -19035,14 +19035,17 @@
     "noLeave": "Tiada cuti diluluskan pada tarikh ini"
   },
   "boardSchedule": {
-    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
-    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
-    "groupLabel": "Schedule Group Label",
-    "exception": "Enable Exception",
-    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
-    "duty": "Duty Roster Control",
-    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
-    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
-    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure."
+    "payHint": "Urus tempoh kerja lebih masa dan premium setiap syif di sini. Suntingan asas syif mengekalkan tetapan ini.",
+    "confirmClear": "Saya mengesahkan pemadaman tempoh kerja lebih masa atau premium tersimpan yang telah saya kosongkan.",
+    "groupName": "Nama Kumpulan Jadual",
+    "groupLabel": "Label Kumpulan Jadual",
+    "exception": "Aktifkan Pengecualian",
+    "exceptionHint": "Kecualikan penilaian Tidak Hadir, Lewat Masuk dan Keluar Awal serta potongannya mulai esok. Ukuran masa kerja, cuti, kerja lebih masa dan elaun tidak berubah.",
+    "duty": "Kawalan Jadual Bertugas",
+    "dutyHint": "Benarkan perubahan jadual individu oleh pihak berkuasa. Kumpulan baharu bermula Tidak Aktif; kumpulan sedia ada kekal Aktif sehingga diubah.",
+    "fullFlexiHint": "Jam yang diperlukan menentukan penyempurnaan. Selang rekod yang ditutup dikira selepas rehat berkenaan; sesi terbuka kekal tidak lengkap.",
+    "legacyAnchor": "Masa tetap sedia ada disimpan sebagai konfigurasi sejarah; Full Flexi tidak menggunakannya untuk menilai masa masuk atau keluar.",
+    "on": "Aktif",
+    "off": "Tidak Aktif"
   }
 }

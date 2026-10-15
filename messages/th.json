@@ -19035,14 +19035,17 @@
     "noLeave": "ไม่มีการลาที่อนุมัติในวันนี้"
   },
   "boardSchedule": {
-    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
-    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
-    "groupLabel": "Schedule Group Label",
-    "exception": "Enable Exception",
-    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
-    "duty": "Duty Roster Control",
-    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
-    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
-    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure."
+    "payHint": "จัดการช่วงเวลาล่วงเวลาและเบี้ยประจำกะได้ที่นี่ การแก้ไขข้อมูลพื้นฐานของกะจะคงการตั้งค่าเหล่านี้ไว้",
+    "confirmClear": "ฉันยืนยันการลบช่วงเวลาล่วงเวลาหรือเบี้ยประจำกะที่บันทึกไว้ซึ่งฉันได้ล้างค่า",
+    "groupName": "ชื่อกลุ่มตารางงาน",
+    "groupLabel": "ป้ายชื่อกลุ่มตารางงาน",
+    "exception": "เปิดใช้ข้อยกเว้น",
+    "exceptionHint": "ยกเว้นการตัดสินขาดงาน เข้างานสาย และออกก่อนเวลา รวมถึงการหักที่เกี่ยวข้องตั้งแต่พรุ่งนี้ การวัดเวลาทำงาน การลา ล่วงเวลา และเบี้ยเลี้ยงไม่เปลี่ยนแปลง",
+    "duty": "การควบคุมตารางเวร",
+    "dutyHint": "อนุญาตให้ผู้มีสิทธิ์เปลี่ยนตารางรายบุคคล กลุ่มใหม่เริ่มที่ปิด กลุ่มเดิมคงเปิดจนกว่าจะเปลี่ยน",
+    "fullFlexiHint": "ชั่วโมงที่กำหนดใช้ตัดสินความครบถ้วน นับช่วงเวลาที่ลงเวลาออกแล้วหลังหักช่วงพักที่เกี่ยวข้อง ช่วงเวลาที่ยังเปิดอยู่ถือว่าไม่สมบูรณ์",
+    "legacyAnchor": "เวลาอ้างอิงคงที่เดิมเก็บไว้เป็นการตั้งค่าในอดีต กะแบบยืดหยุ่นเต็มรูปแบบไม่ใช้เวลาเหล่านี้ตัดสินเวลาเข้าหรือออก",
+    "on": "เปิด",
+    "off": "ปิด"
   }
 }

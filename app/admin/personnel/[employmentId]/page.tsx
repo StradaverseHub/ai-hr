@@ -536,7 +536,7 @@ export default async function EmployeePage({
   const assignableShifts = libraryShifts.filter(
     (sh) =>
       (!sh.archivedAt || sh.id === emp.defaultShiftId) &&
-      (!scheduleGroupCurrentId || sh.ruleId === scheduleGroupCurrentId || sh.id === emp.defaultShiftId),
+      (!scheduleGroupCurrentId || sh.allowedRuleIds.includes(scheduleGroupCurrentId) || sh.id === emp.defaultShiftId),
   );
   // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
   // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
@@ -2364,7 +2364,7 @@ export default async function EmployeePage({
               dmyDisplay
               shifts={assignableShifts.map((sh) => ({
                 id: sh.id,
-                label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
+                label: `${sh.code ?? '—'} — ${sh.name} (${(sh.startTime?.slice(0, 5)??'—')}–${(sh.endTime?.slice(0, 5)??'—')})`,
               }))}
             />
             <button className={btnPrimary}>{t('defaultShiftSave')}</button>

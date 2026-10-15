@@ -19035,14 +19035,17 @@
     "noLeave": "此日期无已批准休假"
   },
   "boardSchedule": {
-    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
-    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
-    "groupLabel": "Schedule Group Label",
-    "exception": "Enable Exception",
-    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
-    "duty": "Duty Roster Control",
-    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
-    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
-    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure."
+    "payHint": "在此管理各班次的加班时段和津贴。编辑班次基本信息会保留这些设置。",
+    "confirmClear": "我确认删除已清空的已保存加班时段或班次津贴。",
+    "groupName": "排班组名称",
+    "groupLabel": "排班组标签",
+    "exception": "启用例外",
+    "exceptionHint": "从明天起免除缺勤、迟到和早退判定及其扣减。工作时间、休假、加班和津贴计量保持不变。",
+    "duty": "值班表控制",
+    "dutyHint": "允许获授权人员修改个人排班。新组默认为关闭；现有组保持开启，直至修改。",
+    "fullFlexiHint": "所需工时决定是否完成。已结束的打卡时段扣除适用休息后计入；未结束的时段仍属不完整。",
+    "legacyAnchor": "现有固定时间保留为历史配置；全弹性班次不据此判断到岗或离岗时间。",
+    "on": "开启",
+    "off": "关闭"
   }
 }

@@ -13,13 +13,13 @@ import type { RuleShiftChoice } from './rule-form';
  * taken FROM, because that is the fact an administrator needs before they tick it.
  */
 export function ruleShiftChoices(
-  shifts: readonly { id: string; name: string; code: string | null; ruleId: string | null }[],
+  shifts: readonly { id: string; name: string; code: string | null; ruleId: string | null; allowedRuleIds?: readonly string[]; archivedAt?:Date|null }[],
   rules: readonly Pick<AttendanceRuleView, 'id' | 'name'>[],
   ruleId: string | null,
 ): RuleShiftChoice[] {
   const nameOf = new Map(rules.map((r) => [r.id, r.name]));
-  return shifts.map((sh) => {
-    const inThisGroup = ruleId != null && sh.ruleId === ruleId;
+  return shifts.filter(sh=>!sh.archivedAt || (ruleId!=null && sh.allowedRuleIds?.includes(ruleId))).map((sh) => {
+    const inThisGroup = ruleId != null && (sh.allowedRuleIds??[]).includes(ruleId);
     return {
       id: sh.id,
       name: sh.name,
@@ -27,7 +27,7 @@ export function ruleShiftChoices(
       inThisGroup,
       // Only when it is somewhere ELSE. A shift already in this group needs no "now in …" note, and a
       // shift in no group at all gets the explicit "no group yet" label from the form rather than a blank.
-      otherGroupName: !inThisGroup && sh.ruleId ? (nameOf.get(sh.ruleId) ?? null) : null,
+      otherGroupName: null,
     };
   });
 }

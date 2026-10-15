@@ -19035,14 +19035,17 @@
     "noLeave": "இத்தேதியில் ஒப்புதல் பெற்ற விடுப்பு இல்லை"
   },
   "boardSchedule": {
-    "payHint": "Maintain each shift’s overtime windows and premium here. Basic shift edits preserve these settings.",
-    "confirmClear": "I confirm removal of any saved overtime windows or premium that I cleared.",
-    "groupLabel": "Schedule Group Label",
-    "exception": "Enable Exception",
-    "exceptionHint": "Exempt Absent, Late In and Early Out judgments and their deductions from tomorrow. Working time, leave, overtime and allowance measurements remain unchanged.",
-    "duty": "Duty Roster Control",
-    "dutyHint": "Allow authorized individual roster changes. New groups start Off; existing groups retain On until changed.",
-    "fullFlexiHint": "Required hours determine completion. Closed recorded intervals count after applicable breaks; an open session remains incomplete.",
-    "legacyAnchor": "Existing clock anchors are retained as historical configuration; Full Flexi does not use them to judge arrival or departure."
+    "payHint": "ஒவ்வொரு பணிமுறையின் மிகைநேரச் சாளரங்களையும் கூடுதல் ஊதியத்தையும் இங்கே பராமரிக்கவும். அடிப்படைத் திருத்தங்கள் இவற்றை மாற்றாது.",
+    "confirmClear": "நான் காலியாக்கிய சேமிக்கப்பட்ட மிகைநேரச் சாளரங்கள் அல்லது கூடுதல் ஊதியத்தை நீக்குவதை உறுதிசெய்கிறேன்.",
+    "groupName": "அட்டவணைக் குழுப் பெயர்",
+    "groupLabel": "அட்டவணைக் குழுக் குறிப்பு",
+    "exception": "விதிவிலக்கை இயக்கு",
+    "exceptionHint": "நாளை முதல் வராமை, தாமத வருகை மற்றும் முன்கூட்டிய வெளியேற்றத் தீர்ப்புகளுக்கும் அவற்றின் பிடித்தங்களுக்கும் விலக்கு அளிக்கவும். வேலைநேரம், விடுப்பு, மிகைநேரம் மற்றும் கொடுப்பனவு அளவீடுகள் மாறாது.",
+    "duty": "பணி அட்டவணைக் கட்டுப்பாடு",
+    "dutyHint": "அங்கீகரிக்கப்பட்ட தனிநபர் அட்டவணை மாற்றங்களை அனுமதிக்கவும். புதிய குழுக்கள் அணைக்கப்பட்ட நிலையில் தொடங்கும்; தற்போதைய குழுக்கள் மாற்றப்படும் வரை இயங்கும்.",
+    "fullFlexiHint": "தேவையான மணிநேரங்கள் நிறைவைத் தீர்மானிக்கும். முடிக்கப்பட்ட பதிவுக் காலங்கள் பொருந்தும் இடைவேளைகளுக்குப் பிறகு கணக்கிடப்படும்; திறந்த அமர்வு முழுமையற்றதாகவே இருக்கும்.",
+    "legacyAnchor": "தற்போதைய நிரந்தர நேரங்கள் வரலாற்று அமைப்பாக வைக்கப்படும்; முழு நெகிழ்வுப் பணிமுறை வருகை அல்லது வெளியேற்றத்தை மதிப்பிட அவற்றைப் பயன்படுத்தாது.",
+    "on": "இயக்கு",
+    "off": "அணை"
   }
 }

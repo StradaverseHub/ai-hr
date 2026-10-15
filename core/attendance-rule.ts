@@ -26,6 +26,8 @@ import {
   ATTENDANCE_OT_ROUNDING_MODES,
   attendancePolicy,
   attendanceRule,
+  attendanceRuleShift,
+  attendanceExceptionRevision,
   attendanceRotation,
   attendanceRuleOtRow,
   employment,
@@ -54,6 +56,7 @@ export type ResolvedOtRow = {
 };
 export type ResolvedAttendanceRule = {
   id: string;
+  exceptions?: {id:string;effectiveFrom:string;enabled:boolean}[];
   isDefault: boolean;
   lateGracePeriodMinutes: number;
   earlyGracePeriodMinutes: number;
@@ -202,7 +205,8 @@ export async function resolveRuleTx(
   }
   if (!rule) return null;
   const rows = await tx.select().from(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, rule.id));
-  return toResolved(rule, rows);
+  const exceptions=await tx.select({id:attendanceExceptionRevision.id,effectiveFrom:attendanceExceptionRevision.effectiveFrom,enabled:attendanceExceptionRevision.enabled}).from(attendanceExceptionRevision).where(eq(attendanceExceptionRevision.ruleId,rule.id)).orderBy(asc(attendanceExceptionRevision.effectiveFrom));
+  return {...toResolved(rule, rows),exceptions};
 }
 
 // ── Read layer (UI) ───────────────────────────────────────────────────────────────────────────────────
@@ -245,66 +249,29 @@ export async function countEmploymentsInRule(ctx: SessionContext, ruleId: string
   });
 }
 
-/**
- * 870b79e2 (r277) — THE SCHEDULE GROUP'S "SHIFTS ALLOWED" LIST, read and written from the group's side.
- *
- * The reporter asked for a "Shifts allowed" field on the group. The link they are describing already
- * exists — it is `shift.rule_id` — but it can only be set one shift at a time from the shift's own form,
- * which is why they read it as missing: nothing on the group's screen said which shifts belonged to it.
- *
- * ⚠️ NO JUNCTION TABLE AND NO NEW COLUMN, AND THAT IS A DESIGN DECISION, NOT A SHORTCUT. A shift points at
- * exactly ONE rule. That cardinality is what makes rule resolution single-valued: core/attendance.ts
- * ruleFor asks a shift for "its" rule and must get one answer. A many-to-many here would make two lateness
- * rules applicable to the same person on the same day with nothing in the system able to choose — which is
- * the case the approved plan asks the reporter to reject the design over if they ever need it.
- *
- * DETACHING IS NOT DELETING. A shift removed from a group has its rule_id set to NULL, which means it
- * resolves the tenant's Standard rule — the same thing a shift that was never given a rule does. It is
- * never left pointing at a rule it is not listed under.
- *
- * ⚠️ KNOWN AND ACCEPTED: this does NOT retroactively re-examine employees. Removing a shift from a group
- * that one of the group's members is already rostered onto leaves that roster row alone. The refusal is on
- * ASSIGNMENT (core/roster.ts assertShiftsAllowedForEmploymentsTx) and attendance already recorded is never
- * re-derived, exactly as changing a backup shift has always behaved. Building the reverse check would mean
- * a rule screen that can refuse a legitimate reorganisation because of one rostered day, and no plan asks
- * for it. Disclosed rather than hidden.
- */
-export function setRuleShifts(
-  ctx: SessionContext,
-  p: { ruleId: string; shiftIds: readonly string[] },
-): Promise<{ attached: number; detached: number }> {
-  return withTenant(ctx, async (tx) => {
-    const [rule] = await tx.select({ id: attendanceRule.id }).from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1);
-    if (!rule) throw new Error('Rule not found');
-    // Only shifts that actually exist in this tenant can be attached; RLS scopes the read, so a posted id
-    // from another tenant simply is not in this list and is dropped rather than written.
-    const all = await tx.select({ id: shift.id, ruleId: shift.ruleId }).from(shift);
-    const touched = [...new Set([p.ruleId,...all.filter(s=>p.shiftIds.includes(s.id)).map(s=>s.ruleId)].filter((id):id is string=>!!id))];
-    await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,touched)).orderBy(asc(attendanceRule.id)).for('update');
-    const [rotation] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(inArray(attendanceRotation.ruleId,touched)).limit(1);
-    if (rotation) throw new Error('Save allowed shifts together with the dated rotation in the Schedule Group.');
-    const known = new Set(all.map((r) => r.id));
-    const wanted = new Set([...p.shiftIds].filter((id) => known.has(id)));
-    const current = new Set(all.filter((r) => r.ruleId === p.ruleId).map((r) => r.id));
-    const toAttach = [...wanted].filter((id) => !current.has(id));
-    const toDetach = [...current].filter((id) => !wanted.has(id));
-    if (toAttach.length === 0 && toDetach.length === 0) return { attached: 0, detached: 0 };
-    if (toAttach.length > 0) {
-      await tx.update(shift).set({ ruleId: p.ruleId }).where(inArray(shift.id, toAttach));
-    }
-    if (toDetach.length > 0) {
-      await tx.update(shift).set({ ruleId: null }).where(inArray(shift.id, toDetach));
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'attendance-rule',
-      aggregateId: p.ruleId,
-      eventType: 'attendance-rule.shifts-assigned',
-      actor: actorOf(ctx),
-      payload: { attached: toAttach, detached: toDetach },
-    });
-    return { attached: toAttach.length, detached: toDetach.length };
-  });
+/** Replace only this group's allowed pool. A shared shift keeps every other membership and default. */
+export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:readonly string[]}):Promise<{attached:number;detached:number}> {
+ return withTenant(ctx,async tx=>{
+  const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
+  if(!rule)throw new Error('Schedule Group not found');
+  if(new Set(p.shiftIds).size!==p.shiftIds.length)throw new Error('Select each shift once.');
+  const [rotation]=await tx.select({id:attendanceRotation.id}).from(attendanceRotation).where(eq(attendanceRotation.ruleId,p.ruleId)).limit(1);
+  if(rotation)throw new Error('Save allowed shifts together with the dated rotation in the Schedule Group.');
+  const all=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).orderBy(asc(shift.id)).for('update');
+  const known=new Map(all.map(sh=>[sh.id,sh]));
+  const current=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,p.ruleId));
+  const old=new Set(current.map(r=>r.shiftId)), wanted=new Set(p.shiftIds);
+  for(const id of wanted){const sh=known.get(id);if(!sh)throw new Error('A selected shift is unavailable in this tenant.');if(sh.archivedAt&&!old.has(id))throw new Error('An archived shift cannot be newly allowed. Choose an active shift.');}
+  const attach=[...wanted].filter(id=>!old.has(id)),detach=[...old].filter(id=>!wanted.has(id));
+  if(attach.length)await tx.insert(attendanceRuleShift).values(attach.map(shiftId=>({tenantId:ctx.tenantId,ruleId:p.ruleId,shiftId})));
+  if(detach.length)await tx.delete(attendanceRuleShift).where(and(eq(attendanceRuleShift.ruleId,p.ruleId),inArray(attendanceRuleShift.shiftId,detach)));
+  if(attach.length||detach.length)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-rule',aggregateId:p.ruleId,eventType:'attendance-rule.shifts-assigned',actor:actorOf(ctx),payload:{attached:attach,detached:detach}});
+  return {attached:attach.length,detached:detach.length};
+ });
+}
+
+export function listScheduleGroupMemberships(ctx:SessionContext) {
+ return withTenant(ctx,tx=>tx.select().from(attendanceRuleShift).orderBy(asc(attendanceRuleShift.ruleId),asc(attendanceRuleShift.shiftId)));
 }
 
 /** One rule by id (with OT rows), or null. Read-only — no event. */
@@ -427,6 +394,7 @@ export type OtRowInput = {
 };
 export type AttendanceRuleInput = {
   name: string;
+  label?: string | null;
   description?: string | null;
   status?: 'active' | 'inactive';
   /** 07ebd04d (migration 0483) — THE SCHEDULE GROUP'S WORKING WEEK: Full days, Half days, Off days, as
@@ -566,6 +534,8 @@ function validateOtLadder(rows: { fromMinutes: number; toMinutes: number }[]): v
 function normalizeInput(p: AttendanceRuleInput) {
   const name = p.name.trim();
   if (!name) throw new Error('Rule name is required.');
+  const label=p.label===undefined?undefined:p.label?.trim()||null;
+  if(label && (label.length>80 || /[\x00-\x1F\x7F]/.test(label)))throw new Error('Schedule Group Label must contain at most 80 readable characters.');
   const status = p.status === 'inactive' ? 'inactive' : 'active';
   const otRows = (p.otRows ?? []).map((r, i) => {
     const fromMinutes = nonNeg(r.fromMinutes, 'OT “From”');
@@ -642,6 +612,7 @@ function normalizeInput(p: AttendanceRuleInput) {
   const week = normalizeWeekPattern(p);
   return {
     name,
+    label,
     description: p.description?.trim() || null,
     status,
     hasWeekInput,
@@ -697,6 +668,7 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
         .values({
           tenantId: ctx.tenantId,
           name: n.name,
+          label:n.label??null,
           description: n.description,
           isDefault: false, // only the seeded Standard is default
           status: n.status,
@@ -758,7 +730,7 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
 export type AttendanceSectionFields = Pick<AttendanceRuleInput, 'lateGracePeriodMinutes' | 'lateAfterMinutes' | 'lateDeductMinutes' | 'includeGraceInLateness' | 'earlyGracePeriodMinutes' | 'earlyAfterMinutes' | 'earlyDeductMinutes' | 'includeGraceInEarlyOut'>;
 type GeneralBand = Pick<OtRowInput, 'fromMinutes' | 'toMinutes' | 'ratePattern' | 'rate' | 'phRate'>;
 export type AttendanceRuleSectionUpdate = { ruleId: string } & (
-  | { section: 'general'; name: string; description: string | null; status: 'active' | 'inactive'; applyDeductions: boolean; otRows: GeneralBand[] }
+  | { section: 'general'; label?: string|null; name: string; description: string | null; status: 'active' | 'inactive'; applyDeductions: boolean; otRows: GeneralBand[] }
   | { section: 'attendance'; fields: Partial<AttendanceSectionFields> }
   | { section: 'overtime'; applyToEarlyOt?: boolean; bands: OtRowInput[] }
 );
@@ -777,7 +749,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
       ratePattern:row.ratePattern,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate),
       roundingMode:row.roundingMode,roundToMinutes:row.roundToMinutes}));
     const merged: AttendanceRuleInput = {
-      name:rule.name,description:rule.description,status:rule.status==='inactive'?'inactive':'active',
+      name:rule.name,label:rule.label,description:rule.description,status:rule.status==='inactive'?'inactive':'active',
       lateGracePeriodMinutes:rule.lateGracePeriodMinutes,lateAfterMinutes:rule.lateAfterMinutes,
       lateDeductMinutes:rule.lateDeductMinutes,includeGraceInLateness:rule.includeGraceInLateness,
       earlyGracePeriodMinutes:rule.earlyGracePeriodMinutes,earlyAfterMinutes:rule.earlyAfterMinutes,
@@ -785,7 +757,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
       applyToEarlyOt:rule.applyToEarlyOt,applyDeductions:rule.applyDeductions,otRows:currentRows,
     };
     if (p.section === 'general') {
-      merged.name=p.name;merged.description=p.description;merged.status=p.status;merged.applyDeductions=p.applyDeductions;
+      merged.name=p.name;if(p.label!==undefined)merged.label=p.label;merged.description=p.description;merged.status=p.status;merged.applyDeductions=p.applyDeductions;
       merged.otRows=p.otRows.map(row=>{
         const current=currentRows.find(band=>band.fromMinutes===row.fromMinutes);
         return {fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,ratePattern:row.ratePattern,rate:row.rate,phRate:row.phRate,
@@ -844,6 +816,7 @@ async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: 
       .update(attendanceRule)
       .set({
         name: n.name,
+        ...(n.label===undefined?{}:{label:n.label}),
         description: n.description,
         status: n.status,
         lateGracePeriodMinutes: n.lateGracePeriodMinutes,
@@ -960,6 +933,8 @@ export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): 
         .values({
           tenantId: ctx.tenantId,
           name,
+          label:src.label,
+          dutyRosterControl:false,
           description: src.description,
           isDefault: false,
           status: 'active',
@@ -987,6 +962,9 @@ export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): 
       if (isUniqueViolation(e)) throw new Error(`A rule named “${name}” already exists.`);
       throw e;
     }
+
+    const pools=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).innerJoin(shift,eq(shift.id,attendanceRuleShift.shiftId)).where(and(eq(attendanceRuleShift.ruleId,p.ruleId),isNull(shift.archivedAt)));
+    if(pools.length)await tx.insert(attendanceRuleShift).values(pools.map(m=>({tenantId:ctx.tenantId,ruleId,shiftId:m.shiftId})));
 
     // The OT bands ARE the pattern — a copy that lost them would be worse than no copy at all.
     const rows = await tx
@@ -1040,6 +1018,8 @@ export function setAttendanceRuleStatus(
   ctx: SessionContext,
   p: { ruleId: string; status: 'active' | 'inactive' },
 ): Promise<{ id: string }> {
+  const label=p.label===undefined?undefined:p.label?.trim()||null;
+  if(label && (label.length>80 || /[\x00-\x1F\x7F]/.test(label)))throw new Error('Schedule Group Label must contain at most 80 readable characters.');
   const status = p.status === 'inactive' ? 'inactive' : 'active';
   return withTenant(ctx, async (tx) => {
     const [rule] = await tx
