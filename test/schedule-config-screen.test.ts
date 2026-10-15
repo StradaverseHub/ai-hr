@@ -153,7 +153,8 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     for (const [route, anchor] of stubs) {
       const stub = read(`app${route}/page.tsx`);
       expect(stub, `${route} still refuses a non-administrator itself`).toMatch(/await requireAdmin\(\);\s*redirect\(/);
-      expect(stub, `${route} redirects to its owning destination`).toContain(`redirect(\`\${${route===OLD_WORK_SCHEDULE_ROUTE?'WORK_SCHEDULE_OVERTIME':'SCHEDULE'}}#\${${anchor}}\`)`);
+      if(route===OLD_WORK_SCHEDULE_ROUTE)expect(stub).toContain('redirect(legacyWorkScheduleRedirect(await searchParams))');
+      else expect(stub, `${route} redirects to its owning destination`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
     }
     const panel = read('app/admin/attendance-policy/schedule-panel.ts');
     expect(panel).toContain(`export const SCHEDULE = '${NEW_ROUTE}';`);
