@@ -154,7 +154,8 @@ steps; this feature must not claim those were completed by shipping code.
 The administrator delivery log includes an employee code only through a narrow tenant-matched lookup
 using the existing company-scoped delivery authorization, plus the delivery reference, so individual failures can be
 distinguished. It does not copy addresses, employee names, message contents or relay responses.
-# Reminder invalidation ownership
+
+## Reminder invalidation ownership
 
 The assessment reminder epoch is a derived invalidation counter maintained by canonical database
 triggers. Its table and SECURITY DEFINER trigger share the migration owner, which is not a superuser
