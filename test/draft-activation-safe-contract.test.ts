@@ -50,6 +50,12 @@ describe('safe Draft activation validation projection', () => {
     safe(problem);
   });
 
+  it.each(['toString', '__proto__', 'fullName.private', privateValue])('refuses forged Family metadata %s without reflecting it', field => {
+    const error = new DependentValidationError(privateValue, field as never);
+    expect(draftActivationValidation(error)).toEqual({ code: 'family_invalid', fields: [{ tab: 'family', field: 'familyMemberRelationship' }] });
+    safe(draftActivationValidation(error));
+  });
+
   it('allowlists an EPF owner pointer rather than reflecting an arbitrary field', () => {
     const error = Object.assign(new Error(privateValue), { name: 'InvalidEpfElectionError', field: privateValue });
     expect(draftActivationValidation(error)).toEqual({ code: 'statutory_invalid', fields: [{ tab: 'bankStatutory', field: 'epfMode' }] });

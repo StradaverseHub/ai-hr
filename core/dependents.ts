@@ -88,8 +88,12 @@ export type {
  */
 export const DEPENDENT_RELATIONSHIP_CATEGORY = 'dependentRelationship' as const;
 
+/** Canonical register field, independent of any screen's field names. Optional for legacy refusals. */
+export type DependentValidationField =
+  | 'fullName' | 'relationship' | 'gender' | 'marriageStatus'
+  | 'childReliefCategory' | 'childReliefPercentage';
 export class DependentValidationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly field?: DependentValidationField) {
     super(message);
     this.name = 'DependentValidationError';
   }
@@ -182,7 +186,7 @@ async function assertRelationshipAllowed(tx: Tx, v: string): Promise<void> {
       ),
     )
     .limit(1);
-  if (!row) throw new DependentValidationError('Dependent relationship is invalid.');
+  if (!row) throw new DependentValidationError('Dependent relationship is invalid.', 'relationship');
 }
 
 /**
@@ -692,7 +696,7 @@ export async function syncChildReliefFromFamily(
 function normGender(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(DEPENDENT_GENDERS as readonly string[]).includes(v)) {
-    throw new DependentValidationError('Dependent gender is invalid.');
+    throw new DependentValidationError('Dependent gender is invalid.', 'gender');
   }
   return v;
 }
@@ -700,7 +704,7 @@ function normGender(v: string | null | undefined): string | null {
 function normMarriageStatus(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(DEPENDENT_MARRIAGE_STATUSES as readonly string[]).includes(v)) {
-    throw new DependentValidationError('Marriage status is invalid.');
+    throw new DependentValidationError('Marriage status is invalid.', 'marriageStatus');
   }
   return v;
 }
@@ -714,7 +718,7 @@ function trimOrNull(v: string | null | undefined): string | null {
 function normChildReliefCategory(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(CHILD_RELIEF_CATEGORIES as readonly string[]).includes(v)) {
-    throw new DependentValidationError('Child relief category is invalid.');
+    throw new DependentValidationError('Child relief category is invalid.', 'childReliefCategory');
   }
   return v;
 }
@@ -723,7 +727,7 @@ function normChildReliefCategory(v: string | null | undefined): string | null {
 function normChildReliefPercentage(v: number | null | undefined): number | null {
   if (v == null) return null;
   if (!(CHILD_RELIEF_PERCENTAGES as readonly number[]).includes(v)) {
-    throw new DependentValidationError('Child relief percentage must be 100 or 50.');
+    throw new DependentValidationError('Child relief percentage must be 100 or 50.', 'childReliefPercentage');
   }
   return v;
 }
@@ -841,7 +845,7 @@ export async function addDependentTx(
   p: DependentInput,
 ): Promise<{ id: string }> {
   const fullName = (p.fullName ?? '').trim();
-  if (fullName === '') throw new DependentValidationError('Dependent name is required.');
+  if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
   // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
   await assertRelationshipAllowed(tx, p.relationship);
   const gender = normGender(p.gender);
@@ -907,8 +911,8 @@ export async function assertDependentsValid(ctx: SessionContext, members: Depend
   if (members.length === 0) return;
   const run=async(tx:Tx)=>{
     for (const [i, m] of members.entries()) {
-      const at = (msg: string) => new DependentValidationError(`Family member ${i + 1}: ${msg}`);
-      if ((m.fullName ?? '').trim() === '') throw at('Dependent name is required.');
+      const at = (msg: string, field?: DependentValidationField) => new DependentValidationError(`Family member ${i + 1}: ${msg}`, field);
+      if ((m.fullName ?? '').trim() === '') throw at('Dependent name is required.', 'fullName');
       try {
         await assertRelationshipAllowed(tx, m.relationship);
         normGender(m.gender);
@@ -922,9 +926,9 @@ export async function assertDependentsValid(ctx: SessionContext, members: Depend
         }
       } catch (e) {
         // In an enclosing activation, infrastructure faults remain system errors at the safe action
-        // boundary. Canonical typed validation keeps the existing Family pointer/message behavior.
+        // boundary. Canonical typed validation preserves the field through the positional message wrapper.
         if (outerTx && !(e instanceof DependentValidationError)) throw e;
-        throw at(e instanceof Error ? e.message : String(e));
+        throw at(e instanceof Error ? e.message : String(e), e instanceof DependentValidationError ? e.field : undefined);
       }
     }
   };
@@ -1033,7 +1037,7 @@ export async function updateDependent(
     const patch: Record<string, unknown> = {};
     if (p.fullName !== undefined) {
       const fullName = p.fullName.trim();
-      if (fullName === '') throw new DependentValidationError('Dependent name is required.');
+      if (fullName === '') throw new DependentValidationError('Dependent name is required.', 'fullName');
       patch.fullName = fullName;
     }
     if (p.relationship !== undefined) {
