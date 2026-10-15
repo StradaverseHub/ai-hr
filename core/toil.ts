@@ -49,7 +49,7 @@ import { packFor } from '../localization/registry';
 // 3fb1a611 (r299) — `assertModuleEnabled` is BACK: setToilPolicy is gated on the `toil` entitlement again
 // (see its header for why 1cf5b37c's removal was reversed), and so is the HR grant. `isModuleEnabled` still
 // gates both accrual paths.
-import { assertModuleEnabled, isModuleEnabled } from './entitlements';
+import { assertModuleEnabled, isModuleEnabled, ModuleNotEnabledError } from './entitlements';
 import { isAttendanceTrace, type AttendanceTraceV1 } from './attendance-trace';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
@@ -2475,7 +2475,13 @@ export async function leaveCreditClaimReviewTx(tx:Tx,ctx:SessionContext,p:{emplo
     if(assessed.countedMinutes>formula.minutes)return {...base,status:'refused',reason:'exceedsBound',claimedMinutes:claimed.countedMinutes,eligibleMinutes:null,creditDays:null};
     if(assessed.days<=0)return {...base,status:'refused',reason:'belowThreshold',claimedMinutes:claimed.countedMinutes,eligibleMinutes:assessed.countedMinutes,creditDays:null};
     return {...base,status:'ready',reason:null,claimedMinutes:claimed.countedMinutes,eligibleMinutes:assessed.countedMinutes,creditDays:assessed.days};
-  }catch(error){if(error instanceof ToilNotEligibleError)return {basis:'unavailable',reason:error.formulaReason??'unavailable'};throw error;}
+  }catch(error){
+    // Retained pending requests must remain reviewable/rejectable after module removal.
+    // This courtesy projection cannot grant a legacy basis or bypass a financial write gate.
+    if(error instanceof ModuleNotEnabledError)return {basis:'unavailable',reason:'unavailable'};
+    if(error instanceof ToilNotEligibleError)return {basis:'unavailable',reason:error.formulaReason??'unavailable'};
+    throw error;
+  }
 }
 export function leaveCreditClaimReview(ctx:SessionContext,p:{employmentId:string;workedDate:string;claimStart?:string;claimEnd?:string}) {
   if(!ISO_DATE.test(p.workedDate))return Promise.resolve<LeaveCreditClaimReview>({basis:'unavailable',reason:'unavailable'});

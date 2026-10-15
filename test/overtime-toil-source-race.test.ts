@@ -66,6 +66,17 @@ describe('duration-only Leave Credit review uses the same formula source and kee
   expect((await owner.db.select().from(s.replacementLeaveRequest).where(eq(s.replacementLeaveRequest.id,submitted.requestId)))[0].status).toBe('pending');
   expect(await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId))).toEqual([]);
  });
+ it('retains pending formula requests as unavailable after canonical TOIL module removal and fresh context',async()=>{
+  const f=await fixture('rest_day','60');
+  const submitted=await submitLeaveCreditRequest(f.ctx,{employmentId:f.employmentId,rows:[{workedDate:f.date,dayType:'rest_day',claimStart:'09:00',claimEnd:'19:01'}],reason:'Fictional retained pending review',today:f.date});
+  await setModule(b.tenantId,'toil','disabled');
+  const fresh=await entitledCtx(b);
+  const requests=await listPendingReplacementLeaveRequests(fresh),request=requests.find(row=>row.id===submitted.requestId);
+  expect(request).toBeDefined();expect(request?.totalDays).toBe(1);
+  expect(request?.dates[0].claimReview).toEqual({basis:'unavailable',reason:'unavailable'});
+  expect((await owner.db.select().from(s.replacementLeaveRequest).where(eq(s.replacementLeaveRequest.id,submitted.requestId)))[0].status).toBe('pending');
+  expect(await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId))).toEqual([]);
+ });
  it('uses canonical post-shift intersection rather than a typed ordinary-day window',async()=>{
   const f=await fixture('workday');
   expect(await leaveCreditClaimReview(f.ctx,{employmentId:f.employmentId,workedDate:f.date,claimStart:'18:00',claimEnd:'23:00'})).toMatchObject({basis:'formula',status:'refused',reason:'belowThreshold',eligibleMinutes:0,creditDays:null});
