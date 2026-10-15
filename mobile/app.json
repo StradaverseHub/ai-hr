@@ -9,7 +9,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Unlock AI HR with Face ID instead of signing in again."
+        "NSFaceIDUsageDescription": "Unlock AI HR with Face ID instead of signing in again.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
       "buildNumber": "1"

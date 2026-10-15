@@ -109,6 +109,11 @@ the exported JavaScript and configuration, not a signed APK/IPA or physical-devi
 Development/build inputs still need control while the two tooling advisories remain open. No audit
 ignore or forced SDK downgrade conceals these findings.
 
+Rechecked 2026-10-15: npm audit reports 19 high findings propagated from those two advisories.
+The runtime-enabled Android/iOS Hermes export maps contain neither `braces` nor `node-forge`
+(1,351 Android modules and 1,220 iOS modules); both contain the patched decoder and the signed-profile
+verifier. This is exported-JavaScript evidence, separate from native binary/device verification.
+
 ## Online Monolith journeys
 
 The Clock tab and Home share one private draft. A preparation slide collects one foreground location
