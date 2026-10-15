@@ -18960,7 +18960,8 @@
       "clockRestored": "Rekod waktu asal dipulihkan",
       "clockAdded": "Rekod waktu dibetulkan ditambah",
       "recorded": "Tindakan permohonan direkodkan",
-      "administratorAmended": "Pindaan pentadbir"
+      "administratorAmended": "Pindaan pentadbir",
+      "stageReassigned": "Peringkat kelulusan ditugaskan semula"
     },
     "hrApprover": "Pentadbir HR",
     "administratorAmendment": "Pindaan pentadbir",
@@ -18989,7 +18990,13 @@
     "close": "Tutup",
     "bulkFailed": "Keputusan tidak dapat disahkan. Muat semula sebelum mencuba lagi.",
     "hideFilters": "Sembunyikan penapis",
-    "showFilters": "Tunjukkan penapis"
+    "showFilters": "Tunjukkan penapis",
+    "reassignHr": "Tugaskan semula peringkat ini kepada HR",
+    "reassignmentHelp": "HR boleh menugaskan semula peringkat yang belum selesai apabila pelulus tersimpan tidak dapat bertindak. Tugasan asal kekal dalam sejarah; setiap peringkat mesti diputuskan oleh orang berbeza yang diberi kuasa.",
+    "confirmReassign": "Tugaskan semula peringkat kelulusan yang belum selesai kepada pentadbir HR dalam skop?",
+    "reassignmentReason": "Sebab penugasan semula",
+    "originalAssignment": "Tugasan asal",
+    "reassignedBy": "Ditugaskan semula oleh"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",

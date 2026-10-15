@@ -18960,7 +18960,8 @@
       "clockRestored": "Đã khôi phục lần chấm công gốc",
       "clockAdded": "Đã thêm lần chấm công điều chỉnh",
       "recorded": "Đã ghi nhận thao tác của đơn",
-      "administratorAmended": "Chỉnh sửa của quản trị viên"
+      "administratorAmended": "Chỉnh sửa của quản trị viên",
+      "stageReassigned": "Đã phân công lại cấp phê duyệt"
     },
     "hrApprover": "Quản trị viên nhân sự",
     "administratorAmendment": "Chỉnh sửa của quản trị viên",
@@ -18989,7 +18990,13 @@
     "close": "Đóng",
     "bulkFailed": "Không thể xác nhận kết quả. Tải lại trước khi thử lại.",
     "hideFilters": "Ẩn bộ lọc",
-    "showFilters": "Hiện bộ lọc"
+    "showFilters": "Hiện bộ lọc",
+    "reassignHr": "Phân công lại cấp này cho Nhân sự",
+    "reassignmentHelp": "Nhân sự có thể phân công lại cấp đang chờ khi người duyệt đã lưu không thể xử lý. Phân công gốc được giữ trong lịch sử; mỗi cấp phải do một người có thẩm quyền khác quyết định.",
+    "confirmReassign": "Phân công lại cấp phê duyệt đang chờ cho quản trị viên Nhân sự trong phạm vi?",
+    "reassignmentReason": "Lý do phân công lại",
+    "originalAssignment": "Phân công gốc",
+    "reassignedBy": "Người phân công lại"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",

@@ -18960,7 +18960,8 @@
       "clockRestored": "Original clocking restored",
       "clockAdded": "Corrected clocking added",
       "recorded": "Application action recorded",
-      "administratorAmended": "Administrator amendment"
+      "administratorAmended": "Administrator amendment",
+      "stageReassigned": "Approval level reassigned"
     },
     "hrApprover": "HR administrators",
     "administratorAmendment": "Administrator amendment",
@@ -18989,7 +18990,13 @@
     "close": "Close",
     "bulkFailed": "The decisions could not be confirmed. Refresh the list before retrying.",
     "hideFilters": "Hide filters",
-    "showFilters": "Show filters"
+    "showFilters": "Show filters",
+    "reassignHr": "Reassign this level to HR",
+    "reassignmentHelp": "HR can reassign the pending level when its saved approver cannot act. The original assignment remains in history; a different authorized person must decide each level.",
+    "confirmReassign": "Reassign the pending approval level to scoped HR administrators?",
+    "reassignmentReason": "Reassignment reason",
+    "originalAssignment": "Original assignment",
+    "reassignedBy": "Reassigned by"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",

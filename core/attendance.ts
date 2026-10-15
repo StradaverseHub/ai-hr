@@ -18,7 +18,7 @@ import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validate
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz';
-import { snapshotAttendanceWorkflowTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
@@ -38,7 +38,7 @@ import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { randomUUID } from 'node:crypto';
-import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
+import { filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
@@ -3794,7 +3794,7 @@ export async function decideAttendanceCorrection(
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
-    await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction', scopeOf('attendance.correction'));
+    await assertCanDecideAttendanceApplicationTx(tx, ctx, cor.id, cor.employmentId);
     if (!['approved', 'rejected'].includes(p.decision)) throw new Error('Invalid attendance decision');
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
     if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
@@ -3811,8 +3811,14 @@ export async function decideAttendanceCorrection(
     // tell "approved and counted" from "approved, waiting for the day".
     let deferredApproval = false;
 
-    // This fixed effect closure may assume only the frozen manager's live database authority.
-    // Audit/event contexts always retain the real delegate. No caller-provided callback executes here.
+    // V2 keeps the real actor and installs only a same-transaction request/date capability.
+    // Legacy delegated effects retain their existing fixed identity seam. No caller callback executes.
+    let restoreEffectHint: string | undefined;
+    if (workflowStage.versionedFinalEffect) {
+      const [before] = await tx.execute(sql`select coalesce(current_setting('app.attendance_workflow_effect',true),'') as hint`) as unknown as { hint: string }[];
+      restoreEffectHint = before.hint;
+      await tx.execute(sql`SAVEPOINT attendance_workflow_v2_effect`);
+    }
     let restoreIdentity: { userId: string; roles: string; grants: string } | undefined;
     let delegatedIdentity: {user_id:string;roles:string;grants:unknown} | undefined;
     if (workflowStage.delegatedFinalStageIndex != null) {
@@ -3824,6 +3830,11 @@ export async function decideAttendanceCorrection(
       await tx.execute(sql`SAVEPOINT attendance_workflow_effect`);
     }
     try {
+      if (workflowStage.versionedFinalEffect) {
+        await tx.execute(sql`select app.attendance_workflow_begin_effect(${cor.id}::uuid)`);
+        const [readable] = await tx.select({ id: employment.id }).from(employment).where(eq(employment.id, cor.employmentId)).limit(1);
+        if (!readable) throw new Error('The frozen approver no longer has calculation access to this employee. Ask a scoped HR administrator to complete or reassign the pending level.');
+      }
       if (delegatedIdentity) {
         await tx.execute(sql`select set_config('app.user_id',${delegatedIdentity.user_id},true),set_config('app.roles',${delegatedIdentity.roles},true),set_config('app.grants',${JSON.stringify(delegatedIdentity.grants)},true)`);
       }
@@ -4183,10 +4194,15 @@ export async function decideAttendanceCorrection(
     } catch (effectError) {
       // A SQL error aborts the subtransaction. Restore its savepoint before resetting identity.
       if (restoreIdentity) await tx.execute(sql`ROLLBACK TO SAVEPOINT attendance_workflow_effect`);
+      if (restoreEffectHint != null) await tx.execute(sql`ROLLBACK TO SAVEPOINT attendance_workflow_v2_effect`);
       throw effectError;
     } finally {
       if (restoreIdentity) await tx.execute(sql`select set_config('app.user_id',${restoreIdentity.userId},true),set_config('app.roles',${restoreIdentity.roles},true),set_config('app.grants',${restoreIdentity.grants},true)`);
       if (restoreIdentity) await tx.execute(sql`RELEASE SAVEPOINT attendance_workflow_effect`);
+      if (restoreEffectHint != null) {
+        await tx.execute(sql`select set_config('app.attendance_workflow_effect',${restoreEffectHint},true)`);
+        await tx.execute(sql`RELEASE SAVEPOINT attendance_workflow_v2_effect`);
+      }
     }
 
     if (restoreIdentity) {
@@ -4297,7 +4313,11 @@ export function listAttendanceCorrections(
       .limit(100);
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage
     // from the approver-facing list (a no-op for rows the caller sees in their own right).
-    const visible = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const genericVisible = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    // Frozen v2 routing grants request visibility only; it does not add Personnel scope.
+    const v2Visible = rows.length ? await tx.execute(sql`select c.id from public.attendance_correction c where c.id in (${sql.join(rows.map(r => sql`${r.id}::uuid`), sql`,`)}) and app.attendance_workflow_v2_read(c.id)`) as unknown as { id: string }[] : [];
+    const visibleIds = new Set([...genericVisible, ...v2Visible].map(r => r.id));
+    const visible = rows.filter(r => visibleIds.has(r.id));
     const workflows = await attendanceWorkflowsForTx(tx, visible.map(r => r.id));
     return visible.map(r => ({ ...r, workflow: workflows.get(r.id) ?? null }));
   });

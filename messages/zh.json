@@ -18960,7 +18960,8 @@
       "clockRestored": "原始打卡记录已恢复",
       "clockAdded": "已添加更正的打卡记录",
       "recorded": "已记录申请操作",
-      "administratorAmended": "管理员修订"
+      "administratorAmended": "管理员修订",
+      "stageReassigned": "审批级别已重新分配"
     },
     "hrApprover": "人事管理员",
     "administratorAmendment": "管理员修订",
@@ -18989,7 +18990,13 @@
     "close": "关闭",
     "bulkFailed": "无法确认处理结果。请刷新后重试。",
     "hideFilters": "隐藏筛选",
-    "showFilters": "显示筛选"
+    "showFilters": "显示筛选",
+    "reassignHr": "将此级别重新分配给人事",
+    "reassignmentHelp": "当已保存的审批人无法处理时，人事可重新分配待审批级别。原始分配保留在历史中；每个级别须由不同的获授权人员决定。",
+    "confirmReassign": "将当前待审批级别重新分配给范围内的人事管理员？",
+    "reassignmentReason": "重新分配原因",
+    "originalAssignment": "原始分配",
+    "reassignedBy": "重新分配人"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

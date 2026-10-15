@@ -10289,3 +10289,13 @@ export const attendanceExceptionRevision = pgTable('attendance_exception_revisio
  id:id(),tenantId:tenantId(),ruleId:uuid('rule_id').notNull().references(()=>attendanceRule.id),
  effectiveFrom:date('effective_from').notNull(),enabled:boolean('enabled').notNull(),createdBy:text('created_by').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_exception_revision_rule_date_uq').on(t.ruleId,t.effectiveFrom)]);
+
+// Immutable, reasoned overrides keep the original submitted chain and decisions intact.
+export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reassignment', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    stageIndex: integer('stage_index').notNull(),
+    previousApprovers: jsonb('previous_approvers').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    approvers: jsonb('approvers').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    reason: text('reason').notNull(), actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id),
+    actualPersonId: uuid('actual_person_id').references(() => person.id), actualActorName: text('actual_actor_name').notNull().default(''), occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('attendance_workflow_reassignment_stage').on(t.requestId, t.stageIndex, t.occurredAt, t.id)]);
