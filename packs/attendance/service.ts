@@ -42,3 +42,4 @@ export * from '../../core/attendance-application-history';
 export * from './day-adjustment';
 
 export * from './history-decisions';
+export * from '../../core/schedule-group-controls';
