@@ -31,7 +31,8 @@ import {
   payrollPolicy,
   person,
 } from '../db/schema';
-import { daysInMonth } from './payroll';
+import { daysInMonth, resolveBatchScopeFilter, type BatchScope } from './payroll';
+import { employedByCompanyDuring } from './employment-company';
 import { compensationEffectiveOn } from './comp';
 
 export type ReadinessStatus = 'ok' | 'warning' | 'blocker';
@@ -74,17 +75,22 @@ const currentPayPeriod = () => new Date().toISOString().slice(0, 7);
 
 /**
  * Aggregate every config-level readiness check for one company against a target pay month (defaults to the
- * current month). Pure reads; safe to call on any page. RLS confines every query to the caller's scope.
+ * current month). Optional run scope uses the canonical batch resolver; omitted scope keeps the full
+ * period-active company population. RLS confines every query to the caller's authority.
  */
 export function payrollReadiness(
   ctx: SessionContext,
-  p: { companyId: string; payPeriod?: string; statutoryStale?: boolean },
+  p: { companyId: string; payPeriod?: string; statutoryStale?: boolean; scope?: BatchScope | null },
 ): Promise<PayrollReadiness> {
   const payPeriod = /^\d{4}-\d{2}$/.test(p.payPeriod ?? '') ? (p.payPeriod as string) : currentPayPeriod();
   return withTenant(ctx, async (tx) => {
     const [y, m] = payPeriod.split('-').map(Number);
     const periodStart = `${payPeriod}-01`;
     const periodEnd = `${payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+    // The persisted run subset is resolved by the same owner as Generate and its employee pre-checks.
+    // Absent scope keeps Settings company-wide; a department that resolves to nobody stays empty.
+    const population = await resolveBatchScopeFilter(tx, p.scope ?? null);
+    const companyDuringPeriod = employedByCompanyDuring(p.companyId, periodStart, periodEnd);
 
     // ── masterData ── the same period-active population as generatePayslips, compensation/statutory LEFT-
     // joined so gaps surface instead of silently dropping. Missing salary = blocker (the run's inner-join
@@ -103,7 +109,8 @@ export function payrollReadiness(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(
         and(
-          eq(employment.companyId, p.companyId),
+          companyDuringPeriod,
+          population.filter,
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         ),
@@ -115,7 +122,7 @@ export function payrollReadiness(
       key: 'masterData',
       status: missingComp > 0 ? 'blocker' : missingStat > 0 ? 'warning' : 'ok',
       detail: { total: totalEmployees, missingCompensation: missingComp, missingStatutory: missingStat },
-      href: '/people',
+      href: '/admin/personnel',
     };
 
     // ── payrollItems ── the pay-item master catalog (tenant-scoped). No active component ⇒ warning: the
@@ -251,7 +258,8 @@ export function payrollReadiness(
       )
       .where(
         and(
-          eq(employment.companyId, p.companyId),
+          companyDuringPeriod,
+          population.filter,
           eq(compensation.payMode, 'custom_period'),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
@@ -263,16 +271,17 @@ export function payrollReadiness(
       status: payModeRows.length > 0 ? 'blocker' : 'ok',
       detail: { unpayable: payModeRows.length },
       ...(payModeRows.length > 0 ? { names: payModeRows.map((r) => r.name) } : {}),
-      href: '/people',
+      href: '/admin/personnel',
     };
 
     // ── transactions ── an informational signpost (never blocks): how many individual (one-off) txns are
-    // already keyed for this company+month — attached to a run OR unattached (batch_id NULL, pre-run). The
+    // already keyed for this company+month and resolved run subset — attached OR unattached. The
     // reporter's "enter transactions before you process" reminder; entering none is a legitimate month.
     const [txnRow] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(payrollIndividualTxn)
-      .where(and(eq(payrollIndividualTxn.companyId, p.companyId), eq(payrollIndividualTxn.payPeriod, payPeriod)));
+      .where(and(eq(payrollIndividualTxn.companyId, p.companyId), eq(payrollIndividualTxn.payPeriod, payPeriod),
+        population.employmentIds === null ? undefined : inArray(payrollIndividualTxn.employmentId, population.employmentIds)));
     const txnCount = txnRow?.n ?? 0;
     const transactions: ReadinessCheck = {
       key: 'transactions',

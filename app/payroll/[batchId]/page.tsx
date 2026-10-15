@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listReprocessEmployeeOutcomes, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
+import { batchDetail, listReprocessEmployeeOutcomes, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
+import { payrollPrecheckProfileHref } from '@/lib/payroll-precheck-profile';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -81,6 +82,7 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  const scope = (batch.scope ?? null) as BatchScope | null;
   const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
   const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
@@ -184,6 +186,7 @@ export default async function BatchPage({
       ? await payrollReadiness(s, {
           companyId: batch.companyId,
           payPeriod: batch.payPeriod,
+          scope,
           statutoryStale: await statutoryPackStale(s),
         })
       : null;
@@ -276,7 +279,6 @@ export default async function BatchPage({
         return { country, state: state || null, year, loaded, required };
       })
     : [];
-  const scope = (batch.scope ?? null) as { departmentIds?: string[]; employmentIds?: string[] } | null;
   const isScoped = !!(scope?.departmentIds?.length || scope?.employmentIds?.length);
 
   // ── Feedback d0d2c9d1 — money entered for this month that has never reached a payslip. ──
@@ -831,7 +833,7 @@ export default async function BatchPage({
                           </span>
                         </span>
                         <Link
-                          href={`/people/${r.employmentId}`}
+                          href={payrollPrecheckProfileHref(r.employmentId, 'nothingPayable')}
                           className="shrink-0 text-xs font-medium text-primary hover:underline"
                         >
                           {t('preChecksOpenProfile')} →
@@ -878,7 +880,7 @@ export default async function BatchPage({
                             <span className="font-medium">{r.name}</span>
                           </span>
                           <Link
-                            href={`/people/${r.employmentId}`}
+                            href={payrollPrecheckProfileHref(r.employmentId, key)}
                             className="text-xs font-medium text-primary hover:underline"
                           >
                             {t('preChecksOpenProfile')} →
