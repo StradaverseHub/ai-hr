@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeOvertimePattern, validateOvertimeAssignmentTarget, validateOvertimePattern, validateOvertimePatternDraft } from '../lib/overtime-pattern-schema';
 import { parseRecordedOvertimeEvaluation, parseRecordedOvertimeDurationEvaluation } from '../lib/overtime-pattern-result';
-import { evaluateOvertimePattern, evaluateOvertimePatternDuration, resolveOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
+import { evaluateOvertimePattern, evaluateOvertimePatternDuration, intersectOvertimeDurationAfter, resolveOvertimePattern, validateOvertimeInput } from '../lib/overtime-pattern-evaluate';
 import { overtimeSourceKey, OvertimePatternError, type OvertimeCandidate, type OvertimeCondition, type OvertimeEvaluation, type OvertimeExpression, type OvertimeFact, type OvertimeFacts, type OvertimeInput, type OvertimePattern, type OvertimeRate, type OvertimeResource, type OvertimeTier, type OvertimeUnit } from '../lib/overtime-pattern-model';
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const date = '2026-03-02', currency = { code: 'MYR', minorScale: 2 };
@@ -295,4 +295,29 @@ describe('explicit earliest/latest OT count attribution', () => {
     it('keeps latest allocation through day approval, policy deduction and rounding across recorded segments', () => { const p = definition(), data = input(); secondSegment(data); precise(data, 9 * 3600, 3600); precise(data, 18 * 3600, 3600, 0, 1); p.durationAllocation = 'latest'; data.approval.minutes = fact('90', 'approval'); data.resources = [resource()]; deduction(p); p.durationRounding = { step: '30', mode: 'down' }; const r = ready(evaluateOvertimePattern(p, data)); expect(minutes(r.payableMinutes)).toBe('60/1'); expect(r.lines.map(l => l.segmentId)).toEqual(['segment_2']); });
     it('uses latest chronological partition inside a canonical overnight session, then preserves ordered output', () => { const p = definition(), data = input(); secondSegment(data, '60', 'session_1'); precise(data, 23 * 3600, 3600); precise(data, 0, 3600, 1, 1); p.eligibilityBasis = 'session'; p.durationAllocation = 'latest'; p.eligibleMinutes = literal('minutes', '60'); const r = ready(evaluateOvertimePattern(p, data)); expect(r.lines.map(l => l.segmentId)).toEqual(['segment_2']); expect(evaluateOvertimePatternDuration(p, data).status).toBe('ready'); });
     it('requires an explicit policy direction for Save and activation', () => { const p = definition(); delete (p as Partial<OvertimePattern>).durationAllocation; expect(() => validateOvertimePatternDraft(p)).toThrow(OvertimePatternError); expect(() => validateOvertimePattern(p)).toThrow(OvertimePatternError); });
+});
+
+describe('typed duration count attribution for recorded shift-end TOIL', () => {
+    it('intersects the configured latest count after a recorded shift boundary without reading price facts', () => {
+        const p=definition(),data=input('600');precise(data,9*3600,10*3600);p.durationAllocation='latest';p.eligibleMinutes=literal('minutes','120');data.facts.basicSalary=missing();
+        const duration=evaluateOvertimePatternDuration(p,data);expect(duration.status).toBe('ready');if(duration.status==='refused')throw new Error('duration refused');
+        const start=data.segments[0].clock;if(start.state!=='known')throw new Error('fixture clock missing');
+        const boundary=(BigInt(start.value.startEpochSeconds)+8n*3600n).toString();
+        expect(intersectOvertimeDurationAfter(duration,boundary)).toEqual({state:'known',value:{unit:'minutes',numerator:'120',denominator:'1'}});
+        expect(duration.allocations[0].attribution?.physicalApproval).toBe(false);
+        expect(parseRecordedOvertimeDurationEvaluation(duration)).toEqual(duration);
+        p.durationAllocation='earliest';const early=evaluateOvertimePatternDuration(p,data);
+        expect(intersectOvertimeDurationAfter(early,boundary)).toEqual({state:'known',value:{unit:'minutes',numerator:'0',denominator:'1'}});
+    });
+    it('keeps Unknown placement and a refused duration nonqualifying',()=>{
+        const p=definition(),data=input();const r=evaluateOvertimePatternDuration(p,data);
+        expect(intersectOvertimeDurationAfter(r,'1772442000')).toEqual({state:'unknown',reason:'durationPlacementUnavailable'});
+        data.approval.status='pending';expect(intersectOvertimeDurationAfter(evaluateOvertimePatternDuration(p,data),'1772442000')).toEqual({state:'unknown',reason:'durationRefused'});
+    });
+    it('rejects forged count placement, extra allocation and mismatched summed duration',()=>{
+        const p=definition(),data=input('120');precise(data,18*3600,2*3600);const r=evaluateOvertimePatternDuration(p,data);if(r.status==='refused')throw new Error('duration refused');
+        const bad=copy(r);bad.allocations[0].attribution!.endEpochSeconds.numerator=String(BigInt(bad.allocations[0].attribution!.endEpochSeconds.numerator)+60n);expect(parseRecordedOvertimeDurationEvaluation(bad)).toBeNull();
+        expect(parseRecordedOvertimeDurationEvaluation({...r,allocations:[...r.allocations,...r.allocations]})).toBeNull();
+        const amount=copy(r);amount.allocations[0].payableMinutes.numerator='119';expect(parseRecordedOvertimeDurationEvaluation(amount)).toBeNull();
+    });
 });

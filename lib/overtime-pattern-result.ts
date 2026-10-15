@@ -1,7 +1,7 @@
 /** Structural reader for immutable evidence, never a replay using today's configuration or facts.
  * Passing this parser proves shape/arithmetic consistency only. The server must bind all source,
  * calculation/version/assignment/digest and persisted line identities under its real read authority. */
-import { OVERTIME_ISSUE_CODES, OVERTIME_LIMITS as L, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeExact, type OvertimeIssue, type OvertimeLine, type OvertimeSource, type OvertimeTrace, type OvertimeValue } from './overtime-pattern-model';
+import { OVERTIME_ISSUE_CODES, OVERTIME_LIMITS as L, type OvertimeEvaluation, type OvertimeDurationEvaluation, type OvertimeDurationAllocation, type OvertimeClockSpan, type OvertimeFact, type OvertimeExact, type OvertimeIssue, type OvertimeLine, type OvertimeSource, type OvertimeTrace, type OvertimeValue } from './overtime-pattern-model';
 import { overtimeCurrency, overtimeDate, overtimeId, overtimeInteger, overtimeKeys, overtimeList, overtimeObject, overtimeRefuse as fail, overtimeSourceId, overtimeUuid } from './overtime-pattern-schema';
 type Fraction = {
     n: bigint;
@@ -23,7 +23,7 @@ function integer(raw: unknown, path: string, positive = false): bigint {
         fail('limit', path, 'Integer exceeds the supported range.');
     return n;
 }
-function exact(raw: unknown, path: string, unit: 'minutes' | 'money'): OvertimeExact {
+function exact(raw: unknown, path: string, unit: 'minutes' | 'money' | 'scalar'): OvertimeExact {
     const r = overtimeObject(raw, path);
     overtimeKeys(r, ['unit', 'numerator', 'denominator'], path);
     if (r.unit !== unit)
@@ -212,6 +212,31 @@ export function parseRecordedOvertimeEvaluation(raw: unknown): OvertimeEvaluatio
         return null;
     }
 }
+function recordedClock(raw: unknown): OvertimeFact<OvertimeClockSpan> {
+    const f = overtimeObject(raw, 'rawClock');
+    if (f.state === 'unknown') { overtimeKeys(f, ['state','reason'], 'rawClock'); return { state:'unknown',reason:text(f.reason,'reason',200) }; }
+    overtimeKeys(f,['state','value','provenance'],'rawClock'); if(f.state!=='known') fail('invalid','rawClock','Invalid recorded clock state.');
+    const c=overtimeObject(f.value,'rawClock.value'); overtimeKeys(c,['startEpochSeconds','localDate','localStartSecond','elapsedSeconds'],'rawClock.value');
+    if(typeof c.startEpochSeconds!=='string'||!/^\d{1,12}$/.test(c.startEpochSeconds)) fail('source','rawClock','Invalid absolute clock.');
+    const localStartSecond=overtimeInteger(c.localStartSecond,0,86399,'localStartSecond'),elapsedSeconds=overtimeInteger(c.elapsedSeconds,1,86400,'elapsedSeconds');
+    if(localStartSecond+elapsedSeconds>86400)fail('source','rawClock','Unsplit midnight span.');
+    const p=overtimeObject(f.provenance,'provenance'); overtimeKeys(p,['owner','reference','asOf','basis'],'provenance');
+    if(!['attendance','approval','personnel','payroll','sample'].includes(p.owner as string)||!['recorded','effectiveDated','sample'].includes(p.basis as string))fail('source','provenance','Invalid clock provenance.');
+    return {state:'known',value:{startEpochSeconds:c.startEpochSeconds,localDate:overtimeDate(c.localDate,'localDate'),localStartSecond,elapsedSeconds},provenance:{owner:p.owner as 'attendance',reference:text(p.reference,'reference',200),asOf:overtimeDate(p.asOf,'asOf'),basis:p.basis as 'recorded'}};
+}
+function durationAllocation(raw: unknown): OvertimeDurationAllocation {
+    const r=overtimeObject(raw,'allocation');overtimeKeys(r,['segmentId','sessionId','payableMinutes','rawClock','attribution'],'allocation');
+    const segmentId=overtimeSourceId(r.segmentId,'segmentId'),sessionId=overtimeSourceId(r.sessionId,'sessionId'),payableMinutes=exact(r.payableMinutes,'payableMinutes','minutes'),rawClock=recordedClock(r.rawClock);
+    let attribution:OvertimeDurationAllocation['attribution']=null;
+    if(r.attribution!==null){const a=overtimeObject(r.attribution,'attribution');overtimeKeys(a,['policy','physicalApproval','startEpochSeconds','endEpochSeconds'],'attribution');
+        if(!['earliest','latest'].includes(a.policy as string)||a.physicalApproval!==false||rawClock.state!=='known')fail('source','attribution','Invalid policy count attribution.');
+        const start=exact(a.startEpochSeconds,'startEpochSeconds','scalar'),end=exact(a.endEpochSeconds,'endEpochSeconds','scalar'),sf=fraction(start),ef=fraction(end),span=rawClock.value;
+        const lower={n:BigInt(span.startEpochSeconds),d:1n},upper={n:BigInt(span.startEpochSeconds)+BigInt(span.elapsedSeconds),d:1n};
+        if(compare(sf,lower)<0||compare(ef,upper)>0||compare(sf,ef)>0||compare(add(ef,{n:-sf.n,d:sf.d}),{n:BigInt(payableMinutes.numerator)*60n,d:BigInt(payableMinutes.denominator)})!==0||a.policy==='earliest'&&compare(sf,lower)!==0||a.policy==='latest'&&compare(ef,upper)!==0)fail('source','attribution','Recorded count placement does not agree with span and policy.');
+        attribution={policy:a.policy as 'earliest'|'latest',physicalApproval:false,startEpochSeconds:start,endEpochSeconds:end};
+    }
+    return {segmentId,sessionId,payableMinutes,rawClock,attribution};
+}
 /** Structural immutable duration reader. No rate calculation, salary read, authorization or current rule replay. */
 export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeDurationEvaluation | null {
     try {
@@ -225,7 +250,7 @@ export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeD
                 fail('invalid', 'issues', 'A duration refusal needs an issue.');
             return { status: 'refused', source: src, patternVersionId, assignmentId, transferable: false, issues, trace: evidence };
         }
-        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'mode', 'transferable', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'trace'], 'duration');
+        overtimeKeys(r, ['status', 'source', 'patternVersionId', 'assignmentId', 'mode', 'transferable', 'rawMinutes', 'eligibleMinutes', 'approvedMinutes', 'payableMinutes', 'allocations', 'trace'], 'duration');
         if (!['ready', 'ineligible'].includes(r.status as string) || !['preview', 'actual'].includes(r.mode as string) || typeof r.transferable !== 'boolean')
             fail('invalid', 'status', 'Invalid recorded duration status.');
         const rawMinutes = value(r.rawMinutes, 'rawMinutes'), eligibleMinutes = value(r.eligibleMinutes, 'eligibleMinutes'), approvedMinutes = value(r.approvedMinutes, 'approvedMinutes'), payableMinutes = exact(r.payableMinutes, 'payableMinutes', 'minutes');
@@ -234,7 +259,10 @@ export function parseRecordedOvertimeDurationEvaluation(raw: unknown): OvertimeD
         const positive = BigInt(payableMinutes.numerator) > 0n;
         if ((r.status === 'ready') !== positive || r.transferable !== (r.mode === 'actual' && positive))
             fail('invalid', 'status', 'Recorded duration state disagrees with its count or sample mode.');
-        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, mode: r.mode as 'actual' | 'preview', transferable: r.transferable, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, trace: evidence };
+        const allocations=overtimeList(r.allocations,L.segments,'allocations').map(durationAllocation);
+        if(new Set(allocations.map(a=>a.segmentId)).size!==allocations.length||compare(total(allocations.map(a=>a.payableMinutes)),fraction(payableMinutes))!==0)fail('source','allocations','Duration allocations must be unique and sum exactly.');
+        let previousEnd:Fraction|null=null;for(const a of allocations){if(a.rawClock.state==='known'){const start={n:BigInt(a.rawClock.value.startEpochSeconds),d:1n};if(previousEnd&&compare(start,previousEnd)<0)fail('source','allocations','Clock allocations must remain ordered and disjoint.');previousEnd={n:start.n+BigInt(a.rawClock.value.elapsedSeconds),d:1n};}}
+        return { status: r.status as 'ready' | 'ineligible', source: src, patternVersionId, assignmentId, mode: r.mode as 'actual' | 'preview', transferable: r.transferable, rawMinutes, eligibleMinutes, approvedMinutes, payableMinutes, allocations, trace: evidence };
     }
     catch {
         return null;
