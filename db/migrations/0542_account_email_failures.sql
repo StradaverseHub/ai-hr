@@ -166,20 +166,25 @@ ALTER TABLE performance_assessment_reminder_epoch NO FORCE ROW LEVEL SECURITY;
 
 --> statement-breakpoint
 -- The private mail worker has no app tenant/session GUCs. Bind dispatcher scope only to an
--- already validated lease, within the function SET stack, which restores the caller on exit.
+-- already validated lease. Restore the caller on return; an escaping error rolls back the
+-- exception-block subtransaction, including context changes. Function-level custom SET clauses
+-- require extra PostgreSQL placeholder privileges and are deliberately absent.
 -- Keep FORCE RLS on reminder content and keep this helper inaccessible to ai_hr_app/PUBLIC.
 CREATE OR REPLACE FUNCTION identity_email.assessment_tasks(p_id uuid,p_token uuid,p_issuer text)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
-SET search_path=pg_catalog,public,pg_temp
-SET app.tenant_id='' SET app.user_id='' SET app.roles='hr_admin'
-SET app.grants='[{"role":"hr_admin","companyId":null}]' AS $$
+SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE bound_tenant uuid;payload jsonb;
+ prior_tenant text:=coalesce(current_setting('app.tenant_id',true),'');
+ prior_user text:=coalesce(current_setting('app.user_id',true),'');
+ prior_roles text:=coalesce(current_setting('app.roles',true),'');
+ prior_grants text:=coalesce(current_setting('app.grants',true),'');
 BEGIN
  SELECT d.tenant_id INTO bound_tenant FROM notification_delivery d
  JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
  WHERE d.id=p_id;
  IF bound_tenant IS NULL THEN RETURN NULL;END IF;
- PERFORM set_config('app.tenant_id',bound_tenant::text,true);
+ PERFORM set_config('app.tenant_id',bound_tenant::text,true),set_config('app.user_id','',true),
+  set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true);
 
  SELECT jsonb_build_object('tasks',r.tasks,'words',r.mail_words) INTO payload FROM notification_delivery d
  JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
@@ -192,6 +197,10 @@ BEGIN
  AND r.cycle_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id=c.id),0)
  AND jsonb_array_length(r.tasks)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.tasks) task WHERE task->>'closesAt' IS NOT NULL AND (task->>'closesAt')::timestamptz<=now())
 ;
+ PERFORM set_config('app.tenant_id',prior_tenant,true),set_config('app.user_id',prior_user,true),
+  set_config('app.roles',prior_roles,true),set_config('app.grants',prior_grants,true);
  RETURN payload;
+EXCEPTION WHEN OTHERS THEN
+ RAISE;
 END $$;
 REVOKE ALL ON FUNCTION identity_email.assessment_tasks(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
