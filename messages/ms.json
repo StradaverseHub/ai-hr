@@ -847,6 +847,7 @@
         "partiallyApproved": "diluluskan sebahagian"
       },
       "epfContribTitle": "Caruman KWSP",
+      "epfStoredModeLabel": "Mod pengiraan KWSP (disimpan)",
       "epfMode": "Kategori KWSP",
       "epfCitizenship": "Kewarganegaraan KWSP",
       "epfCitizenshipCitizen": "Warganegara Malaysia",
@@ -1987,6 +1988,36 @@
       "registerRequiredCreate": "Wajib apabila ID Rekod kosong."
     },
     "wizard": {
+      "deleteRecord": "Padam Rekod",
+      "deleteRecordTitle": "Padam Rekod Pekerja?",
+      "deleteRecordDescription": "Padam rekod Draf bagi {name} (ID Pekerja: {code})? Rekod ini akan dibuang daripada sistem dan tindakan ini tidak boleh dibatalkan.",
+      "deleteRecordConfirm": "Ya, Padam",
+      "deleteRecordCancel": "Tidak, Batal",
+      "deletingRecord": "Memadam…",
+      "deleteNoHeldCode": "Belum dikeluarkan",
+      "deleteFailed": "Pemadaman tidak dapat disahkan. Semak senarai Personel sebelum mencuba lagi.",
+      "activationFailed": "Pengaktifan tidak dapat disahkan. Semak senarai Personel sebelum mencuba lagi.",
+      "saveFailed": "Perubahan anda tidak dapat disimpan. Sila cuba lagi.",
+      "failureReference": "Rujukan: {reference}",
+      "validationFields": {
+        "details": "Butiran lain",
+        "employmentPeriods": "Tempoh pekerjaan"
+      },
+      "activationValidation": {
+        "draft_unavailable": "Draf ini tidak lagi tersedia. Kembali ke Personel dan buka semula rekod.",
+        "permission": "Anda tidak lagi mempunyai kebenaran untuk mengaktifkan Draf ini.",
+        "required_fields": "Lengkapkan butiran wajib, kemudian aktifkan semula.",
+        "invalid_data": "Semak butiran Draf dan betulkan nilai yang tidak sah.",
+        "company_changed": "Syarikat bagi Draf ini telah berubah. Muat semula rekod sebelum meneruskan.",
+        "company_unavailable": "Syarikat bagi Draf ini tidak lagi tersedia untuk pengaktifan.",
+        "reference_invalid": "Pilihan organisasi atau nilai rujukan tidak lagi tersedia. Pilih nilai yang tersedia.",
+        "employee_code_invalid": "Semak ID Pekerja. ID mesti mematuhi peraturan penomboran syarikat dan masih tersedia.",
+        "employee_code_not_allowed": "ID Pekerja manual tidak dibenarkan oleh peraturan penomboran syarikat ini.",
+        "profile_invalid": "Semak butiran Profil sebelum pengaktifan.",
+        "statutory_invalid": "Semak butiran Bank & Berkanun sebelum pengaktifan.",
+        "payroll_invalid": "Semak butiran Penggajian sebelum pengaktifan.",
+        "family_invalid": "Semak butiran Keluarga sebelum pengaktifan."
+      },
       "fields": {
         "fullName": "Nama penuh",
         "primaryEmail": "E-mel",
@@ -2096,7 +2127,7 @@
       "activate": "Aktifkan",
       "activating": "Mengaktifkan…",
       "activateNeeds": "Pengaktifan masih memerlukan:",
-      "discardReleasesTip": "Membuang draf mengembalikan ID Pekerja hanya jika ia yang terakhir dikeluarkan. Jika tidak, nombor itu kekal terpakai dan urutan akan melangkaunya.",
+      "discardReleasesTip": "Memadam Draf mengembalikan ID Pekerja hanya jika ia yang terakhir dikeluarkan. Jika tidak, nombor itu kekal terpakai dan urutan akan melangkaunya.",
       "tabs": {
         "profile": "Profil",
         "job": "Pekerjaan",
@@ -4427,6 +4458,7 @@
       "calibrationCode": "Kod"
     },
     "review": {
+    "typeLabel": "Jenis semakan",
       "backMyWorkspace": "Profil Saya",
       "backPerformance": "Prestasi",
       "reviewerLabel": "Penilai: {reviewer}",

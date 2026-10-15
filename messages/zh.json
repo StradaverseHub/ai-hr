@@ -847,6 +847,7 @@
         "partiallyApproved": "部分批准"
       },
       "epfContribTitle": "EPF（公积金）缴纳",
+      "epfStoredModeLabel": "公积金计算模式（已保存）",
       "epfMode": "EPF 类别",
       "epfCitizenship": "EPF 公民身份",
       "epfCitizenshipCitizen": "马来西亚公民",
@@ -1987,6 +1988,36 @@
       "registerRequiredCreate": "记录 ID 为空时必填。"
     },
     "wizard": {
+      "deleteRecord": "删除记录",
+      "deleteRecordTitle": "删除员工记录？",
+      "deleteRecordDescription": "删除 {name} 的草稿记录（员工编号：{code}）？该记录将从系统中移除，此操作无法撤销。",
+      "deleteRecordConfirm": "是，删除",
+      "deleteRecordCancel": "否，取消",
+      "deletingRecord": "正在删除…",
+      "deleteNoHeldCode": "尚未发放",
+      "deleteFailed": "无法确认删除结果。请先检查人事列表，再重试。",
+      "activationFailed": "无法确认启用结果。请先检查人事列表，再重试。",
+      "saveFailed": "无法保存您的更改。请重试。",
+      "failureReference": "参考编号：{reference}",
+      "validationFields": {
+        "details": "其他信息",
+        "employmentPeriods": "雇佣期限"
+      },
+      "activationValidation": {
+        "draft_unavailable": "此草稿已不可用。请返回人事列表并重新打开记录。",
+        "permission": "您已无权启用此草稿。",
+        "required_fields": "请填写必填信息，然后再次启用。",
+        "invalid_data": "请检查草稿信息并更正无效值。",
+        "company_changed": "此草稿的公司已更改。请重新加载记录后再继续。",
+        "company_unavailable": "此草稿的公司已不可用于启用操作。",
+        "reference_invalid": "所选组织或参考值已不可用。请选择可用的值。",
+        "employee_code_invalid": "请检查员工编号。编号须符合公司的编号规则，且尚未被占用。",
+        "employee_code_not_allowed": "此公司的编号规则不允许手动输入员工编号。",
+        "profile_invalid": "启用前请检查个人资料。",
+        "statutory_invalid": "启用前请检查银行与法定信息。",
+        "payroll_invalid": "启用前请检查薪资信息。",
+        "family_invalid": "启用前请检查家庭信息。"
+      },
       "fields": {
         "fullName": "全名",
         "primaryEmail": "邮箱",
@@ -2096,7 +2127,7 @@
       "activate": "启用",
       "activating": "正在启用…",
       "activateNeeds": "启用还需要：",
-      "discardReleasesTip": "只有当该员工编号是最近发出的一个时，放弃草稿才会把它退回。否则该编号仍算已用，序号将跳过它。",
+      "discardReleasesTip": "删除草稿时，只有当该员工编号是最近发出的一个时，才会将编号退回。否则该编号仍算已用，序号将跳过它。",
       "tabs": {
         "profile": "个人资料",
         "job": "任职信息",
@@ -4427,6 +4458,7 @@
       "calibrationCode": "编号"
     },
     "review": {
+    "typeLabel": "审核类型",
       "backMyWorkspace": "我的资料",
       "backPerformance": "绩效",
       "reviewerLabel": "评估人：{reviewer}",

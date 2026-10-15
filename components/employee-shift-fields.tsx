@@ -73,8 +73,8 @@ export function EmployeeShiftFields({
             <option value="roster">{t('shiftTypeRoster')}</option>
           </select>
         </PersonnelField>
-        <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.backupshiftcode">
-          <select {...personnelControl('attendance.work_location_and_shift_arrangement.backupshiftcode')} value={selectedShift} onChange={e=>setSelectedShift(e.target.value)} className={inputCls}>
+        <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.backupshiftid">
+          <select {...personnelControl('attendance.work_location_and_shift_arrangement.backupshiftid')} value={selectedShift} onChange={e=>setSelectedShift(e.target.value)} className={inputCls}>
             <option value="">{t('defaultShiftChoose')}</option>
             {options.map((sh) => (
               <option key={sh.id} value={sh.id} disabled={!!sh.archived||!!allowed&&!allowed.has(sh.id)}>

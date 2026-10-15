@@ -1,9 +1,12 @@
 'use client';
 
 import { formatQualifyingChildCount } from '@/localization/child-qualification';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatDmy } from '@/lib/date-display';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelInput, personnelCarry, personnelFormLabel } from '@/lib/personnel-form-contract';
+import { CHILD_RELIEF_CATEGORIES } from '@/lib/dependent-vocabulary';
 // 04b88724 (r340 fix pass) — the CLIENT-SAFE country-pack seam (ADR-0080 rung 5b, D4). This island prices
 // the child-relief grid the admin is typing into, and it now does so by calling the PACK's own
 // `childReliefFor` — the very function `pack.payroll.childReliefAmountFor` is built on — instead of
@@ -25,15 +28,6 @@ import {
 // Inlined design tokens (server module) so this stays a clean client island — same pattern as bank-info-card.tsx.
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 export type IdentityTaxDefaults = {
   taxNumber: string | null;
@@ -159,13 +153,30 @@ const fmtRM = (n: number) =>
 /** The five LHDN s.48 categories, in the canonical order the grid renders them. Kept as a literal here
  *  rather than imported from the server pack so this client island pulls no server module into the
  *  bundle; the list is pinned equal to the pack's CHILD_RELIEF_CATEGORY_KEYS by a test. */
-const CHILD_RELIEF_CATEGORY_KEYS = [
-  'under_18',
-  'study_preu',
-  'study_tertiary',
-  'disabled',
-  'disabled_study',
-] as const;
+const CHILD_RELIEF_CATEGORY_KEYS = CHILD_RELIEF_CATEGORIES;
+const CHILD_RELIEF_GRID_FIELDS = {
+  "under_18": {
+    "full": "bank_statutory.income_tax_pcb.childrelieftable_under_18_full",
+    "half": "bank_statutory.income_tax_pcb.childrelieftable_under_18_half"
+  },
+  "study_preu": {
+    "full": "bank_statutory.income_tax_pcb.childrelieftable_study_preu_full",
+    "half": "bank_statutory.income_tax_pcb.childrelieftable_study_preu_half"
+  },
+  "study_tertiary": {
+    "full": "bank_statutory.income_tax_pcb.childrelieftable_study_tertiary_full",
+    "half": "bank_statutory.income_tax_pcb.childrelieftable_study_tertiary_half"
+  },
+  "disabled": {
+    "full": "bank_statutory.income_tax_pcb.childrelieftable_disabled_full",
+    "half": "bank_statutory.income_tax_pcb.childrelieftable_disabled_half"
+  },
+  "disabled_study": {
+    "full": "bank_statutory.income_tax_pcb.childrelieftable_disabled_study_full",
+    "half": "bank_statutory.income_tax_pcb.childrelieftable_disabled_study_half"
+  }
+} as const;
+const gridField=(category:keyof typeof CHILD_RELIEF_GRID_FIELDS,share:'full'|'half')=>CHILD_RELIEF_GRID_FIELDS[category][share];
 
 /**
  * Identification & Tax card (item 8b5334db). Dedicated, visually-separated card with its OWN save (setTaxAction,
@@ -237,6 +248,7 @@ export function IdentityTaxCard({
   embedded?: boolean;
 }) {
   const t = useTranslations('people.detail');
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback);
   const [mode, setMode] = useState(
     defaults.childReliefMode === 'auto' || defaults.childReliefMode === 'auto_table'
       ? defaults.childReliefMode
@@ -496,9 +508,9 @@ export function IdentityTaxCard({
             {t('taxInfoLegend')}
           </legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t('taxNumber')}>
+            <PersonnelField fieldId="bank_statutory.income_tax_pcb.taxnumber">
               {/* Grey placeholder example; the sample seed value is no longer defaulted in (item 8b5334db). */}
-              <input name="taxNumber" defaultValue={defaults.taxNumber ?? ''} placeholder="IG1234567890" className={inputCls} />
+              <input {...personnelInput('bank_statutory.income_tax_pcb.taxnumber')} defaultValue={defaults.taxNumber ?? ''} placeholder="IG1234567890" className={inputCls} />
               {/* 7ee14bbc — SAME WARNING AS THE CP39 PREVIEW'S, HERE, where the number is typed. Under
                   the field rather than at the top of the card so it reads as being about this box, and
                   never disabled/blocking: the record may legitimately need to stay as keyed while the
@@ -508,18 +520,18 @@ export function IdentityTaxCard({
                   {t('taxNumberSharedTitle', { count: taxNumberSharedWith.length, names: taxNumberSharedWith.join(', ') })}
                 </span>
               )}
-            </Field>
+            </PersonnelField>
             {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
                 list and mapping are country-owned; the integer and detailed circumstance post separately. */}
             <input type="hidden" name="expectedTaxApplicabilityEpoch" value={defaults.taxApplicabilityEpoch??0}/><TaxCategoryField key={taxContextKey} mode="form" defaultValue={defaults.taxCategory} circumstance={defaults.taxCircumstance} onChange={onTaxCircumstance} />
-            <Field label={t('incomeTaxResident')}>
+            <PersonnelField fieldId="bank_statutory.income_tax_pcb.taxresidency">
               {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
-              {none&&<input type="hidden" name="taxResidency" value="none"/>}
+              {none&&<input {...personnelCarry('bank_statutory.income_tax_pcb.taxresidency')} value="none"/>}
               {/* r393 (685d2380 step 3b) — the SAME select the Create New Employee draft renders, in its
                   form branch (components/tax-residency-field.tsx); markup unchanged. */}
               <TaxResidencySelect key={taxContextKey} mode="form" none={none} value={taxResidency} onChange={setTaxResidency} />
               {taxSelection && <><span className="text-xs text-muted-foreground">{t('taxSelectionEmployer',{employer:taxSelection.companyName})}</span><span className="text-xs text-muted-foreground">{t('taxSelectionEligibilityHint')}</span>{taxSelection.confirmationRequired&&<span className="text-xs text-amber-700">{t('taxSelectionConfirmationRequired')}</span>}</>}
-            </Field>
+            </PersonnelField>
             {/* Item d64d0df4 — Disabled Individual and Disabled Spouse (OKU). Yes/No, defaulting to No,
                 so nobody's monthly tax moves until an admin makes the claim. Setting either to Yes DOES
                 move it: monthly tax is worked out from the year to date, so the month of the change
@@ -559,12 +571,9 @@ export function IdentityTaxCard({
                 column and it is not being repurposed. (r364 — still true, and true again: r359 moved EA
                 item 8 off this column for a day. On 'auto_table' the EA reads the keyed grid's head count
                 instead, which is the same number this read-only box displays.) */}
-            <Field label={t('childrenPhysical')}>
+            <PersonnelField fieldId="bank_statutory.income_tax_pcb.numchildren">
               <input
-                name="numChildren"
-                type="number"
-                min="0"
-                step="1"
+                {...personnelInput('bank_statutory.income_tax_pcb.numchildren')}
                 // d64d0df4 — 'auto_table' is read-only for the same reason 'auto' is: the head count is
                 // machine-maintained, here as the TOTAL of the grid below. Keeping num_children equal to
                 // the head count is what leaves Form E / CP8D and the EA statement untouched by this item.
@@ -607,7 +616,7 @@ export function IdentityTaxCard({
                   {t('childFamilyCountHint', { count: childRelief.familyChildren })}
                 </span>
               )}
-            </Field>
+            </PersonnelField>
             {/* 04b88724 — QUALIFYING CHILDREN (PCB): the figure the calculation uses. In the two derived
                 modes it is READ-ONLY, because the children's records decide it. In 'manual' it stays
                 EDITABLE and is labelled as entered: a manual-mode employee has nothing to derive from, so
@@ -616,12 +625,10 @@ export function IdentityTaxCard({
                 In 'manual' the two boxes are ONE stored number (the kernel prices `num_children ×
                 perChild`), and they are wired to the same state so typing in either moves both; only the
                 Physical box carries the `name`, so the form still posts exactly one `numChildren`. */}
-            <Field label={t('childrenQualifying')}>
+            <PersonnelField fieldId="bank_statutory.income_tax_pcb.qualifyingchildren">
               {mode === 'manual' && manualClaimAllowed ? (
                 <input
-                  type="number"
-                  min="0"
-                  step="1"
+                  {...personnelInput('bank_statutory.income_tax_pcb.qualifyingchildren','draft')}
                   value={numChildren}
                   onChange={(e) => setNumChildren(e.target.value)}
                   data-child-qualifying-input
@@ -672,7 +679,7 @@ export function IdentityTaxCard({
                   })}
                 </span>
               )}
-            </Field>
+            </PersonnelField>
           </div>
           {/* 99b2d6c0 (r336) — what the third mode IS, said before it is chosen rather than after. The
               grid below only appears once "Auto (from table)" is picked, so without this line the option
@@ -706,11 +713,8 @@ export function IdentityTaxCard({
                         {(['full', 'half'] as const).map((share) => (
                           <td key={share} className="py-1.5 pr-4">
                             <input
-                              name={`childRelief_${key}_${share}`}
-                              type="number"
-                              min="0"
-                              step="1"
-                              aria-label={`${t(`family.childReliefCat_${key}`)} — ${share === 'full' ? t('childReliefTableFullCol') : t('childReliefTableHalfCol')}`}
+                              {...personnelInput(gridField(key,share))}
+                              aria-label={label(gridField(key,share))}
                               value={grid[key][share]}
                               onChange={(e) =>
                                 setGrid((g) => ({ ...g, [key]: { ...g[key], [share]: e.target.value } }))
@@ -751,8 +755,8 @@ export function IdentityTaxCard({
                   : grid[key];
               return (
                 <span key={key} className="hidden">
-                  <input type="hidden" name={`childRelief_${key}_full`} value={String(cell.full)} />
-                  <input type="hidden" name={`childRelief_${key}_half`} value={String(cell.half)} />
+                  <input {...personnelCarry(gridField(key,'full'))} value={String(cell.full)} />
+                  <input {...personnelCarry(gridField(key,'half'))} value={String(cell.half)} />
                 </span>
               );
             })
@@ -988,12 +992,11 @@ export function IdentityTaxCard({
         <fieldset className="flex flex-col gap-2">
           <label className="flex items-center gap-2 text-sm" title={t('employerBearsTaxHint')}>
             <input
-              type="checkbox"
-              name="employerBearsTax"
+              {...personnelInput('bank_statutory.income_tax_pcb.employerbearstax')}
               defaultChecked={defaults.employerBearsTax}
               className="size-4 rounded"
             />
-            {t('employerBearsTax')}
+            {label('bank_statutory.income_tax_pcb.employerbearstax')}
           </label>
           <p className="text-xs text-muted-foreground">{t('employerBearsTaxHint')}</p>
         </fieldset>

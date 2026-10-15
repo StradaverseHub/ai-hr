@@ -1,4 +1,4 @@
-import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
+import {PERSONNEL_EMPLOYMENT_TYPES,PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 /**
@@ -70,12 +70,7 @@ export const roleEnum = pgEnum('role', [
   // Only ai_hr_owner (seed / by hand on a deployment) creates an operator grant.
   'operator',
 ]);
-export const employmentTypeEnum = pgEnum('employment_type', [
-  'full_time',
-  'part_time',
-  'contract',
-  'intern',
-]);
+export const employmentTypeEnum = pgEnum('employment_type', PERSONNEL_EMPLOYMENT_TYPES);
 /**
  * R46 79eb7151 (migration 0270) — how an employee is paid. Distinct from Pay Mode (payroll_policy.policy_type)
  * and Payment Term (PayrollPolicyConfig.frequency), which describe how pay is CALCULATED and how often, not

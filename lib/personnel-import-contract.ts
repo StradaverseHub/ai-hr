@@ -1,6 +1,8 @@
 import { ATTENDANCE_PHOTO_SETTINGS, ATTENDANCE_PHOTO_LABEL_KEYS } from './attendance-photo-setting';
 import { PAYMENT_METHODS } from './payment-methods';
 import { EMERGENCY_CONTACT_PRIORITIES } from './emergency-contact-vocabulary';
+import { PERSONNEL_EMPLOYMENT_TYPES } from './personnel-choice-vocabulary';
+import { EPF_UI_MODE_OPTIONS } from './epf-mode-map';
 import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS,PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES } from './personnel-choice-vocabulary';
 import { DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, CHILD_RELIEF_PERCENTAGES } from './dependent-vocabulary';
 import { EMPLOYMENT_PERIOD_UNITS } from './employment-period';
@@ -124,6 +126,9 @@ export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
   if(field.allowedValuesOwner==='employment.paymentMethod')return PAYMENT_METHODS.map(value=>({value,labelKey:`people.detail.paymentMethod_${value}`}));
   if(field.import.register && field.type==='boolean')return [{value:'true',labelKey:'people.import.registerYes'},{value:'false',labelKey:'people.import.registerNo'}];
   if(field.allowedValuesOwner==='emergency.priority')return EMERGENCY_CONTACT_PRIORITIES.map(value=>({value,labelKey:`people.detail.emergency.${{primary:'priorityPrimary',secondary:'prioritySecondary',other:'priorityOther'}[value]}`}));
+  if(field.allowedValuesOwner==='employment.type')return PERSONNEL_EMPLOYMENT_TYPES.map(value=>({value,labelKey:`people.detail.employmentInfo.employmentType_${value}`}));
+  if(field.allowedValuesOwner==='movement.blacklist')return [{value:'true',labelKey:'people.detail.movement.form.blacklistSet'},{value:'false',labelKey:'people.detail.movement.form.blacklistClear'}];
+  if(field.allowedValuesOwner==='statutory.epfUiMode')return EPF_UI_MODE_OPTIONS;
   if(field.allowedValuesOwner==='statutory.socsoCategory')return PERSONNEL_SOCSO_CATEGORIES.map(value=>({value,labelKey:`people.detail.socsoCategory${value[0].toUpperCase()+value.slice(1)}`}));
   if(field.allowedValuesOwner==='statutory.eisCategory')return PERSONNEL_EIS_CATEGORIES.map(value=>({value,labelKey:`people.detail.eisCategory${value[0].toUpperCase()+value.slice(1)}`}));
   if(field.allowedValuesOwner==='statutory.childReliefMode')return PERSONNEL_CHILD_RELIEF_MODES.map(value=>({value,labelKey:`people.detail.${{manual:'childReliefModeManual',auto:'childReliefModeAuto',auto_table:'childReliefModeAutoTable'}[value]}`}));

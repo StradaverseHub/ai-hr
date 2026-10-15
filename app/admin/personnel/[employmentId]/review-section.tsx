@@ -9,6 +9,7 @@ import { reviewDocumentsFor, reviewProfile, type ReviewType } from '@/core/emplo
 import { reviewsFor } from '@/core/employment-review';
 import type { SessionContext } from '@/db/client';
 import { DateField } from '@/components/ui/date-field';
+import { personnelInput, personnelControl, personnelFormLabel } from '@/lib/personnel-form-contract';
 import { formatDmy } from '@/lib/date-display';
 import { saveReviewLetterAction, setReviewEndDateAction, startReviewAction, uploadReviewDocumentAction } from './actions';
 
@@ -16,6 +17,7 @@ const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
 
 export async function ReviewSection({ s, employmentId }: { s: SessionContext; employmentId: string }) {
   const t = await getTranslations('review');
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>t.has(key.slice(7))?t(key.slice(7)):fallback);
   const profile = await reviewProfile(s, employmentId);
   if (!profile) return null;
   const history = await reviewsFor(s, employmentId);
@@ -62,8 +64,8 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
           <form action={setReviewEndDateAction} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="employmentId" value={employmentId} />
             <label className="text-xs text-muted-foreground">
-              {t('setEndDate')}
-              <select name="reviewType" defaultValue={profile.reviewType} className={`${inputCls} mt-1`}>
+              {label('others.probation_contract_internship_review.type')}
+              <select {...personnelControl('others.probation_contract_internship_review.type')} defaultValue={profile.reviewType} className={`${inputCls} mt-1`}>
                 {REVIEW_TYPES.map((rt) => (
                   <option key={rt} value={rt}>
                     {typeLabel(rt)}
@@ -71,7 +73,7 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
                 ))}
               </select>
             </label>
-            <DateField name="endDate" required className={inputCls} label={t('endDate')} />
+            <DateField {...personnelControl('others.probation_contract_internship_review.enddate','record')} className={inputCls} label={label('others.probation_contract_internship_review.enddate')} />
             <button className={btnPrimary}>{t('setEndDate')}</button>
           </form>
         ) : profile.reviewType ? (
@@ -136,12 +138,10 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
                           <input type="hidden" name="employmentId" value={employmentId} />
                           <input type="hidden" name="reviewId" value={r.id} />
                           <label className="text-muted-foreground">
-                            {t('uploadSignedLetter')}
+                            {label('others.probation_contract_internship_review.content')}
                             <input
-                              type="file"
-                              name="document"
+                              {...personnelInput('others.probation_contract_internship_review.content','record')}
                               accept="application/pdf,image/jpeg,image/png"
-                              required
                               className="ml-1.5 max-w-48 text-xs file:mr-1.5 file:rounded file:border file:border-border file:bg-muted/40 file:px-1.5 file:py-0.5"
                             />
                           </label>

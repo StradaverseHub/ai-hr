@@ -1,7 +1,7 @@
 /** Client-safe Personnel form presentation. Domain owners retain authorization and cross-field rules. */
 import { personnelField, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { personnelFieldChoices, personnelFieldLabel, personnelScalarIssue, type PersonnelLabelResolver } from './personnel-import-contract';
-export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean};
+export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean;movementEndDate?:boolean};
 export type PersonnelFormMode = 'create' | 'edit' | 'draft' | 'record';
 export function personnelFormField(id:string):PersonnelFieldDescriptor {
   const field=personnelField(id);
@@ -25,7 +25,7 @@ export function personnelControl(id:string,mode:PersonnelFormMode='edit',context
 export function personnelInput(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const field=personnelFormField(id);const widget=personnelFormWidget(id);
   if(!widget || !['text','email','date','month','number','checkbox','file'].includes(widget))throw new Error(`Personnel field needs its specialized renderer: ${id}`);
-  return {...personnelControl(id,mode,context),type:widget, ...(field.form!.min==null?{}:{min:field.form!.min}), ...(field.form!.step==null?{}:{step:field.form!.step})};
+  return {...personnelControl(id,mode,context),type:widget, ...(field.form!.min==null?{}:{min:field.form!.min}), ...(field.form!.max==null?{}:{max:field.form!.max}), ...(field.form!.step==null?{}:{step:field.form!.step})};
 }
 export function personnelFormChoices(id:string) {
   return personnelFieldChoices(personnelFormField(id));
@@ -74,4 +74,18 @@ export function personnelRadio(id:string,mode:PersonnelFormMode='edit') {return 
 export function personnelOwnedChoices<T>(id:string,owner:string,choices:readonly T[]) {
   if(personnelFormField(id).allowedValuesOwner!==owner)throw new Error(`Personnel choice owner does not match its descriptor: ${id}`);
   return choices;
+}
+
+/** A dedicated workflow may submit the same fact under its own explicitly declared action name. */
+export function personnelWorkflowControl(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+  const name=personnelFormField(id).form!.workflowNames?.[workflow];
+  if(!name)throw new Error(`Personnel workflow binding is missing: ${workflow}:${id}`);
+  return {...personnelControl(id,mode,context),name};
+}
+export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+  return {...personnelInput(id,mode,context),...personnelWorkflowControl(id,workflow,mode,context)};
+}
+
+export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd') {
+  return {...personnelWorkflowControl(id,workflow),type:'hidden',required:false};
 }

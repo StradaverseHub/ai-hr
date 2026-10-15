@@ -1,8 +1,8 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue} from '../lib/personnel-form-contract';
-import {personnelFieldChoices} from '../lib/personnel-import-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelWorkflowControl,personnelWorkflowCarry} from '../lib/personnel-form-contract';
+import {personnelFieldChoices,personnelFieldLabel} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
@@ -43,6 +43,40 @@ describe('Personnel shared form contract',()=>{
     expect(personnelFormName('attendance.work_location_and_shift_arrangement.locationid')).toBe('locationId');
     for(const id of ['employment.direct_superior_and_history.superioremploymentid','employment.approval_delegations.delegateemploymentid','attendance.work_location_and_shift_arrangement.locationid'])expect(PERSONNEL_FIELDS.find(field=>field.id===id)?.report.enabled).toBe(false);
     expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.draft_only_employment_fields.internshipenddate')).toMatchObject({ownerField:'provisionalEndOn',form:{draftPath:'employment.provisionalEndOn'}});
+  });
+  it('declares every relief grid count with a canonical composed label and exact owner cell',()=>{
+    const cells=PERSONNEL_FIELDS.filter(field=>field.childReliefCell);
+    expect(cells).toHaveLength(10);
+    expect(new Set(cells.map(field=>field.form!.name)).size).toBe(10);
+    for(const field of cells){
+      expect(field.ownerField).toBe('childReliefTable');
+      expect(field.report.enabled).toBe(true);
+      expect(field.import.disabledReason).toContain('tax election');
+      expect(field.form!.name).toBe('childRelief_'+field.childReliefCell!.category+'_'+field.childReliefCell!.share);
+      for(const locale of ['en','ms','ta','th','vi','zh']){
+        const messages=JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8'));
+        const label=personnelFieldLabel(field,(key)=>key.split('.').reduce((value,part)=>value[part],messages));
+        expect(label.split(' — ')).toHaveLength(2);expect(label).not.toContain('undefined');
+      }
+    }
+  });
+  it('separates offered EPF election categories from the persisted lawful enum',()=>{
+    const election='bank_statutory.epf_contribution.epfuimode';
+    expect(personnelFormChoices(election).map(choice=>choice.value)).toEqual(['auto','manual_percentage','semi_auto','manual_employee_amount','manual_employer_amount','manual_both_amount','none']);
+    expect(personnelFormName(election)).toBe('epfMode');
+    expect(()=>personnelInput('bank_statutory.epf_contribution.epfmode')).toThrow(/specialized/);
+    expect(personnelInput('bank_statutory.epf_contribution.epfemployeeamount','draft').required).toBe(false);
+    expect(personnelInput('bank_statutory.epf_contribution.epfemployeeamount','edit').required).toBe(true);
+  });
+  it('uses explicit specialist action aliases and canonical conditional Movement requirements',()=>{
+    const manager='employment.direct_superior_and_history.superioremploymentid';
+    expect(personnelWorkflowControl(manager,'movement').name).toBe('managerEmploymentId');
+    expect(personnelWorkflowControl(manager,'hireCorrection').name).toBe('managerEmploymentId');
+    expect(()=>personnelWorkflowControl('profile.personal_details.fullname','movement')).toThrow(/workflow binding/);
+    const lastDay='employment_history.event_information.lastworkingdate';
+    expect(personnelWorkflowControl(lastDay,'movement','edit',{movementEndDate:true}).required).toBe(true);
+    expect(personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')).toMatchObject({name:'endDate',type:'hidden',required:false});
+    expect(personnelFormChoices('employment.organisation_assignment.employmenttype').map(option=>option.value)).toEqual(['full_time','part_time','contract','intern']);
   });
   it('rejects a stale specialized override when canonical type changes',()=>{
     const field=structuredClone(PERSONNEL_FIELDS.find(field=>field.id==='profile.contact_and_permanent_address.personalemail')!);

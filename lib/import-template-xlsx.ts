@@ -1,3 +1,4 @@
+import { PERSONNEL_EMPLOYMENT_TYPES } from './personnel-choice-vocabulary';
 import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS } from './personnel-choice-vocabulary';
 /**
  * The EMPLOYEE Excel (.xlsx) import template — d8471481.
@@ -106,7 +107,7 @@ export function buildReferenceRows(heading: string, lists: ReferenceList[]): str
  *  too (core/import.ts) — these are code-level enums, not configuration, so there is no catalog to
  *  read them from and the drift risk is a source change in one file, caught by the test below. */
 export const EMPLOYEE_ENUM_VALUES = {
-  employment_type: ['full_time', 'part_time', 'contract', 'intern'],
+  employment_type: PERSONNEL_EMPLOYMENT_TYPES,
   pay_mode: PERSONNEL_PAY_MODES,
   payment_term: PERSONNEL_PAYMENT_TERMS,
   epf_citizenship: PERSONNEL_EPF_CITIZENSHIPS,
