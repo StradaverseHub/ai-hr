@@ -87,6 +87,12 @@ export async function canonicalOvertimePayrollInputTx(tx: Tx, ctx: SessionContex
   if (!permission[0]?.allowed) throw new OvertimeOwnerError('permission', 'The overtime source is outside your financial scope.');
   return readCanonicalInputsTx(tx, ctx, p);
 }
+/** TOIL's canonical owner already proves the election/decision authority. This reader retains
+ * subject RLS and never elevates salary access merely to verify price-independent duration. */
+export async function canonicalOvertimeToilInputTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
+  assertModuleGate(ctx, 'toil');
+  return readCanonicalInputsTx(tx, ctx, p);
+}
 async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string}): Promise<CanonicalOvertimeSnapshot> {
   if (!isCalendarDate(p.date) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.employmentId)) unavailable();
   const proof = (await provenCompanyDatesTx(tx, [p])).get(p.employmentId + '|' + p.date);
