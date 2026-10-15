@@ -50,6 +50,10 @@ describe('SMTP settings discovery and temporary demo testing',()=>{
   expect(m.read).not.toHaveBeenCalled();expect(m.guard).not.toHaveBeenCalled();expect(document.querySelector('input[name=revision]')).toBeNull();
   expect(screen.getByRole('button',{name:messages.identityEmail.testConnection})).toBeEnabled();expect(screen.queryByRole('button',{name:messages.identityEmail.saveDraft})).toBeNull();expect(screen.queryByText(messages.identityEmail.success.apply)).toBeNull();expect(screen.queryByDisplayValue('live.smtp.example.test')).toBeNull();
  });
+ it('keeps passwords out of native submission URLs before JavaScript handles the form',async()=>{
+  await page();const form=screen.getByLabelText(messages.identityEmail.password).closest('form')!;
+  expect(form).toHaveAttribute('method','post');
+ });
  it('tests the edited values, freezes the request and clears only the password, then invalidates success on edits',async()=>{
   let finish!:(result:any)=>void;m.test.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));await page();
   const field=(key:string)=>screen.getByLabelText((messages.identityEmail as any)[key]) as HTMLInputElement;
