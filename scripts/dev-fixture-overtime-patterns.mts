@@ -58,9 +58,9 @@ async function context(user:{id:string;tenantId:string;personId:string|null}):Pr
 }
 async function main() {
  // Actual connected roles, not just URL labels. App role must remain subject to RLS.
- const appProbe=createDb(process.env.DATABASE_URL!);
- try {const [role]=await appProbe.client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls)throw new Error('Application connection is not the restricted ai_hr_app role.');}
- finally {await appProbe.client.end();}
+ // createDb caches by connection string: a second wrapper would share this application pool.
+ // Keep it alive for canonical writers; the outer finally owns its single final cleanup.
+ const [role]=await client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;if(role?.name!=='ai_hr_app'||role.rolsuper||role.rolbypassrls)throw new Error('Application connection is not the restricted ai_hr_app role.');
  const [ownerRole]=await owner.client`select current_user as name`;if(ownerRole?.name!==decodeURIComponent(urls.MIGRATION_DATABASE_URL.username))throw new Error('Migration connection role differs from configured target.');
  const previousText=await fs.readFile(path.join(out,'fixture-manifest.json'),'utf8').catch(error=>{if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;});
  const previous=previousText?JSON.parse(previousText) as {root?:unknown;database?:unknown;namespace?:unknown;date?:unknown;tenantId?:unknown;foreignTenant?:{id?:unknown};patterns?:Record<string,unknown>}:null;
