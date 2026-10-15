@@ -12,6 +12,7 @@
  * The provider client is constructed PER CALL inside each adapter from the resolved key — never cached
  * at module scope (a singleton would serve one tenant's drafts with another tenant's key).
  */
+import { governed,textReservation } from './governance';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
@@ -62,6 +63,9 @@ function adapterFor(provider: AiProvider): AiAdapter {
  *  the provider returns no text (e.g. the whole budget was spent on thinking, or a safety block) so a
  *  caller never silently receives an empty draft. */
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
+  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens)},record=>generateDraftTransport(cfg,{...args,onUsage:record}));
+}
+async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   const adapter=adapterFor(cfg.provider);
   if(args.timeoutMs==null&&!args.signal){const text=await adapter.generate(cfg,args);if(!text)throw new AiGatewayError('No draft was produced — please try again.');return text;}
   const controller=new AbortController(),abort=()=>controller.abort(),timeoutMs=Math.min(22000,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:22000));
@@ -74,6 +78,10 @@ export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): 
 export function supportsImageReading(provider:AiProvider){return typeof ADAPTERS[provider]?.readImage==='function';}
 /** This operation never changes the existing text/conversation paths. Callers authorize the bytes before using it. */
 export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
+ if(!validImageBytes(args.data,args.mimeType)||!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
+ return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,args.data.length*2)+2500)},record=>readImageTransport(cfg,{...args,onUsage:record}));
+}
+async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
  if(!validImageBytes(args.data,args.mimeType))throw new AiImageReadError(false);
  const adapter=adapterFor(cfg.provider);if(!adapter.readImage)throw new AiImageReadError(false);
  const timeoutMs=Math.min(20000,Math.max(1,Number.isFinite(args.timeoutMs)?args.timeoutMs!:20000)),controller=new AbortController();
@@ -124,7 +132,8 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
   if (!adapter.converse) throw new AiGatewayError('This AI provider does not support the assistant.');
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
-  return adapter.converse(cfg, { ...args, maxTokens: args.maxTokens ?? 2048, timeoutMs: args.timeoutMs ?? 120_000 });
+  const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});record(result.usage);return result;});
 }
 
 /**

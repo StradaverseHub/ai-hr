@@ -5,10 +5,11 @@ import { Card } from '@/components/ui';
 import { refreshOrchestrationAction } from './orchestrator-actions';
 import { RefreshWorkButton } from './refresh-button';
 
-export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = false }: {
+export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = false, returnTo = '/control-tower' }: {
   view: Awaited<ReturnType<typeof orchestrationQueue>>;
   refresh?: string;
   canViewRuns?: boolean;
+  returnTo?: '/control-tower' | '/control-tower/agents';
 }) {
   const t = await getTranslations('controlTower.orchestrator');
   const corrections = await getTranslations('controlTower.corrections');
@@ -17,7 +18,7 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
   return <Card className="overflow-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3 p-5">
       <div><h2 className="text-lg font-semibold">{t('workTitle')}</h2><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('workDescription')}</p></div>
-      <form action={refreshOrchestrationAction}><RefreshWorkButton /></form>
+      <form action={refreshOrchestrationAction}><input type="hidden" name="returnTo" value={returnTo}/><RefreshWorkButton /></form>
     </div>
     {refresh === 'failed' && <p role="alert" className="px-5 pb-3 text-sm text-destructive">{t('refreshFailed')}</p>}
     {refresh === 'complete' && <p role="status" className="px-5 pb-3 text-sm">{t('refreshed')}</p>}

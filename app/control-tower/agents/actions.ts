@@ -7,6 +7,9 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { AI_AGENT_SETTINGS, TenantSettingError, setTenantSetting } from '@/core/tenant-settings';
 
+import { isAiFeature } from '@/lib/ai/features';
+import { AiControlError, parseAiAllowance, setAiAllowance, setAiFeature } from '@/core/ai-management';
+
 const PAGE = '/control-tower/agents';
 
 /**
@@ -38,4 +41,32 @@ export async function setAgentSwitchAction(formData: FormData) {
   revalidatePath(PAGE);
   revalidatePath('/control-tower/how-it-works');
   redirect(`${PAGE}?toast=${encodeURIComponent(on ? t('switchedOn') : t('switchedOff'))}`);
+}
+
+export async function setAiFeatureAction(formData: FormData) {
+  const s = await getSession();
+  const t = await getTranslations('aiManagement');
+  try {
+    const feature = formData.get('feature');
+    const enabled = formData.get('enabled');
+    if (!isAiFeature(feature) || !['true','false'].includes(String(enabled))) throw new AiControlError(t('invalid'));
+    await setAiFeature(s, feature, enabled === 'true');
+  } catch (e) { redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`); }
+  revalidatePath(PAGE);
+  revalidatePath('/admin/ai');
+  redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}`);
+}
+
+export async function setAiAllowanceAction(formData: FormData) {
+  const s = await getSession();
+  const t = await getTranslations('aiManagement');
+  try {
+    const kind = String(formData.get('kind'));
+    if (kind !== 'company' && kind !== 'user') throw new AiControlError(t('invalid'));
+    await setAiAllowance(s, {kind,subjectId:String(formData.get('subjectId')),enabled:formData.get('enabled')==='true',
+      dailyRequests:parseAiAllowance(String(formData.get('dailyRequests')??''),1000000),
+      monthlyTokens:parseAiAllowance(String(formData.get('monthlyTokens')??''),1000000000000)});
+  } catch (e) { redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`); }
+  revalidatePath(PAGE);
+  redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}`);
 }

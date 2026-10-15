@@ -31,7 +31,7 @@ export async function assessmentAiFeatureEnabledTx(tx: Tx, ctx: SessionContext, 
 export async function assessmentAiConfigTx(tx: Tx, ctx: SessionContext, feature?: AssessmentAiFeature) {
   const state = await assessmentAiAccessTx(tx, ctx);
   if (!state.moduleHeld || feature && !state.switches[feature]) return null;
-  return resolveActiveAiConfig(tx, ctx);
+  return resolveActiveAiConfig(tx, ctx, feature?`performance_${feature}`:'performance_assistant');
 }
 
 export async function assessmentAiStateTx(tx: Tx, ctx: SessionContext) {

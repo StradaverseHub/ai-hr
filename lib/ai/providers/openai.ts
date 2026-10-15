@@ -38,6 +38,7 @@ export const openaiAdapter: AiAdapter = {
   async readImage(cfg,args){
     try{
       const result=await new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).chat.completions.create({model:cfg.model,max_completion_tokens:2500,messages:[{role:'developer',content:imageReadInstruction},{role:'user',content:[{type:'image_url',image_url:{url:`data:${args.mimeType};base64,${Buffer.from(args.data).toString('base64')}`,detail:'high'}}]}]},{signal:args.signal});
+      if(result.usage)args.onUsage?.(usageFor(result.usage));
       if(result.choices[0]?.message.refusal)throw new AiImageReadError(false);
       return result.choices[0]?.message.content??'';
     }catch(error){throw imageReadError(error);}
@@ -53,6 +54,7 @@ export const openaiAdapter: AiAdapter = {
           { role: 'user', content: args.prompt },
         ],
       },args.signal?{signal:args.signal}:undefined);
+      if(completion.usage)args.onUsage?.(usageFor(completion.usage));
       if(args.signal&&(completion.choices[0]?.finish_reason==='length'||completion.choices[0]?.message.refusal))throw new AiGatewayError('No complete assessment was produced.');
       return (completion.choices[0]?.message?.content ?? '').trim();
     } catch (e) {

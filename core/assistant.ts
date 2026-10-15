@@ -244,7 +244,7 @@ export async function askAssistant(
       }
     }
 
-    const cfg = await resolveActiveAiConfig(tx, ctx);
+    const cfg = await resolveActiveAiConfig(tx, ctx, 'hr_assistant');
     if (!cfg) throw new AssistantError('not_configured');
     return { cfg, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
   });

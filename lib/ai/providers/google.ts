@@ -31,6 +31,7 @@ export const googleAdapter: AiAdapter = {
   async readImage(cfg,args){
     try{
       const result=await new GoogleGenAI({apiKey:cfg.apiKey}).models.generateContent({model:cfg.model,contents:[{role:'user',parts:[{inlineData:{mimeType:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}],config:{systemInstruction:imageReadInstruction,maxOutputTokens:2500,abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}});
+      if(result.usageMetadata)args.onUsage?.(usageFor(result.usageMetadata));
       if(result.promptFeedback?.blockReason||result.candidates?.some(candidate=>['SAFETY','IMAGE_SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??'')))throw new AiImageReadError(false);
       return result.text??'';
     }catch(error){throw imageReadError(error);}
@@ -43,6 +44,7 @@ export const googleAdapter: AiAdapter = {
         contents: args.prompt,
         config: { systemInstruction: args.system, maxOutputTokens: args.maxTokens ?? 2048,...(args.signal?{abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}:{}) },
       });
+      if(response.usageMetadata)args.onUsage?.(usageFor(response.usageMetadata));
       if(args.signal&&(response.promptFeedback?.blockReason||response.candidates?.some(candidate=>['MAX_TOKENS','SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??''))))throw new AiGatewayError('No complete assessment was produced.');
       return (response.text ?? '').trim();
     } catch (e) {

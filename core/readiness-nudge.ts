@@ -151,7 +151,7 @@ async function draftBody(
   gap: ReadinessGapId,
   audience: NudgeAudience,
 ): Promise<string> {
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).catch(() => null);
+  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'readiness_reminders')).catch(() => null);
   // No provider is not a failure — it is the ordinary state of a tenant that has not bought one, and the
   // deterministic body is a perfectly good chaser. Nothing is recorded, because nothing was proposed.
   if (!cfg) return fallbackBody(gap, audience);
