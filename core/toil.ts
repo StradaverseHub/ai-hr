@@ -3160,15 +3160,31 @@ export type EarnedLeaveCreditRow = {
 };
 
 /** One row per actual earned lot; its ledger and allocation events remain the audit authority. */
-export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:string[];employmentId?:string;status?:CreditRegisterStatus;from?:string;to?:string;today?:string;limit?:number}={}) {
-  const today=p.today??todayInKualaLumpur(),limit=Math.max(1,Math.min(500,p.limit??500));
-  return withTenant(ctx,async tx=>{
-    if(!isAdminCtx(ctx))throw new ToilSweepForbiddenError('Only HR administrators may view the earned credit register.');
+type CreditRegisterFilters = { status?:CreditRegisterStatus; from?:string; to?:string; today?:string };
+type CreditRegisterRead = CreditRegisterFilters & { companyIds?:string[]; employmentId?:string; limit?:number; offset?:number };
+
+/** HR and personal entry points share every accounting projection, but never share their authorization. */
+export async function listEarnedLeaveCredits(ctx:SessionContext,p:CreditRegisterRead={}) {
+  if(!isAdminCtx(ctx))throw new ToilSweepForbiddenError('Only HR administrators may view the earned credit register.');
+  return withTenant(ctx,tx=>earnedCreditRegisterTx(tx,ctx,p,'hr'));
+}
+
+export async function listOwnEarnedLeaveCredits(ctx:SessionContext,p:CreditRegisterFilters & {limit?:number;offset?:number}={}) {
+  // This entry point cannot be redirected to another subject, even by a manager or HR operator.
+  const allowed=new Set(['status','from','to','today','limit','offset']);
+  if(Object.keys(p).some(key=>!allowed.has(key)))throw new ToilSweepForbiddenError('A personal credit register cannot select another employee.');
+  return withTenant(ctx,tx=>earnedCreditRegisterTx(tx,ctx,p,'own'));
+}
+
+async function earnedCreditRegisterTx(tx:Tx,ctx:SessionContext,p:CreditRegisterRead,audience:'hr'|'own') {
+    const today=p.today??todayInKualaLumpur();
+    const limit=Math.max(1,Math.min(audience==='own'?2000:500,p.limit??500));
+    const offset=Number.isSafeInteger(p.offset)&&p.offset!>0?p.offset!:0;
     const empty={rows:[] as EarnedLeaveCreditRow[],matched:0,truncated:false,summary:{earned:0,used:0,expired:0,available:0}};
-    if(p.companyIds?.length===0)return empty;
+    if(p.companyIds?.length===0||(audience==='own'&&!ctx.personId))return empty;
     const accruals=await tx.select({lot:toilAccrual,name:person.fullName,code:employment.employeeCode})
       .from(toilAccrual).innerJoin(employment,eq(employment.id,toilAccrual.employmentId)).innerJoin(person,eq(person.id,employment.personId))
-      .where(and(sql`app.is_admin_for(${employment.companyId})`,p.companyIds?inArray(employment.companyId,p.companyIds):undefined,p.employmentId?eq(toilAccrual.employmentId,p.employmentId):undefined))
+      .where(and(audience==='own'?eq(employment.personId,ctx.personId!):sql`app.is_admin_for(${employment.companyId})`,p.companyIds?inArray(employment.companyId,p.companyIds):undefined,p.employmentId?eq(toilAccrual.employmentId,p.employmentId):undefined))
       .orderBy(asc(toilAccrual.workedDate),asc(toilAccrual.createdAt),asc(toilAccrual.id));
     if(!accruals.length)return empty;
     const lotIds=accruals.map(x=>x.lot.id),empIds=[...new Set(accruals.map(x=>x.lot.employmentId))];
@@ -3236,8 +3252,7 @@ export async function listEarnedLeaveCredits(ctx:SessionContext,p:{companyIds?:s
     const filtered=all.filter(row=>(!p.status||row.status===p.status)&&(!p.from||row.workedDate>=p.from)&&(!p.to||row.workedDate<=p.to));
     filtered.sort((a,b)=>b.workedDate.localeCompare(a.workedDate)||b.recordedAt.localeCompare(a.recordedAt)||b.accrualId.localeCompare(a.accrualId));
     const summary=filtered.reduce((sum,row)=>({earned:round2(sum.earned+row.earned),used:round2(sum.used+row.used),expired:round2(sum.expired+row.expired),available:round2(sum.available+row.available)}),empty.summary);
-    return {rows:filtered.slice(0,limit),matched:filtered.length,truncated:filtered.length>limit,summary};
-  });
+    return {rows:filtered.slice(offset,offset+limit),matched:filtered.length,truncated:filtered.length>offset+limit,summary};
 }
 
 // ─── expiry sweep (ADR-0033 33-4) ────────────────────────────────────────────────────────────────────

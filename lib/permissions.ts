@@ -100,6 +100,7 @@ export interface ScreenEntry {
  */
 export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]'],hasScopeNote:true},
+  {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
@@ -146,7 +147,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // r404 (42e55e2b) — '/leave/details' (My Leave › Leave Details) rides this column on the same argument:
     // the employee's own leave balances, same audience, same guard (`scopedSession`), self-scoped in the page
     // by `myEmployment(session)`. A second column would repeat the "My Absence" label.
-    routes: ['/leave', '/leave/history', '/leave/credit', '/leave/details'],
+    routes: ['/leave', '/leave/history', '/leave/credit', '/leave/credit-details', '/leave/details'],
     hasScopeNote: true,
   },
   {

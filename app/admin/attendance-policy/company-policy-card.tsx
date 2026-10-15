@@ -4,7 +4,7 @@ import type { AttendancePolicyView } from '@/core/attendance';
 import { Card, ErrorBanner } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { WorkScheduleForm } from './schedule/work-schedule-form';
-import { COMPANY_POLICY_ANCHOR, SCHEDULE, policyEditHref, policyViewHref } from './schedule-panel';
+import { COMPANY_POLICY_ANCHOR, COMPANY_POLICY, policyEditHref, policyViewHref } from './schedule-panel';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const DAY_KEY: Record<number, string> = {
@@ -155,7 +155,7 @@ export async function CompanyPolicyCard({
 }
 
 /** Close a policy panel: back to the plain General tab, on the card the panel was opened from. */
-const CLOSE_HREF = `${SCHEDULE}#${COMPANY_POLICY_ANCHOR}`;
+const CLOSE_HREF = `${COMPANY_POLICY}#${COMPANY_POLICY_ANCHOR}`;
 
 /**
  * VIEW — one company's setting, read-only. Every figure is the stored row (or the defaults the readers fall

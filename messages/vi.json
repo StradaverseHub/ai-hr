@@ -400,6 +400,7 @@
     "leaveOverview": "Đơn xin nghỉ phép",
     "leaveHistory": "Trạng thái đơn xin nghỉ phép",
     "leaveCreditHistory": "Trạng thái tín dụng nghỉ phép",
+    "leaveCreditDetails": "Chi tiết tín dụng nghỉ phép",
     "leaveDetails": "Chi tiết nghỉ phép",
     "myTeam": "Nhóm của tôi",
     "lifecycle": "Tiếp nhận & IT",
@@ -16748,6 +16749,9 @@
     }
   },
   "attendanceSettingsHub": {
+    "companyPolicy": {"title": "Cài đặt chính sách công ty", "desc": "Chính sách giờ làm và yêu cầu thiết bị đã đăng ký.", "cta": "Mở"},
+    "workScheduleOvertime": {"title": "Lịch làm việc và mức làm thêm", "desc": "Mức làm thêm và phạm vi ca dự phòng.", "cta": "Mở"},
+    "registeredDevices": {"title": "Thiết bị chấm công đã đăng ký", "desc": "Xem thiết bị và thu hồi đăng ký.", "cta": "Mở"},
     "title": "Cài đặt",
     "subtitle": "Các trang thiết lập chấm công ở một nơi. Mỗi thẻ mở trang bạn vẫn dùng trước đây.",
     "shift": {
@@ -18947,5 +18951,11 @@
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
     "reload": "Tải lại lịch hiện tại"
-  }
+  },
+  "leaveCreditDetails": {
+  "title": "Chi tiết tín dụng nghỉ phép",
+  "subtitle": "Lịch sử tín dụng nghỉ phép của bạn — số đã tích lũy, đã dùng cho nghỉ bù và số còn lại.",
+  "empty": "Không có tín dụng nghỉ phép đã tích lũy phù hợp với bộ lọc.",
+  "invalid": "Bộ lọc không hợp lệ. Trang này chỉ hiển thị tín dụng của bạn."
+}
 }

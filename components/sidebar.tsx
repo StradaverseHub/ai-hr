@@ -252,7 +252,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // keeps the pack's one spelling). Without it a tenant that has not bought Leave Credit would be offered a
   // row whose page only explains that the feature is off.
   ...(modulePackById('leave')!.navNodes ?? []).flatMap((n) =>
-    n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory').map((c) => [c.href, 'toil'] as const),
+    n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory' || c.labelKey === 'leaveCreditDetails').map((c) => [c.href, 'toil'] as const),
   ),
 ]);
 

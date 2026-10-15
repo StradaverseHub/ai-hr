@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
@@ -53,6 +54,7 @@ export function CompanySwitcher({
   companies: { id: string; name: string }[];
   selected: string[];
 }) {
+  const personalCredits = usePathname() === '/leave/credit-details';
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
@@ -67,7 +69,7 @@ export function CompanySwitcher({
     setSel(new Set(selectedKey ? selectedKey.split(',') : []));
   }, [selectedKey]);
 
-  if (companies.length === 0) return null;
+  if (companies.length === 0 || personalCredits) return null;
 
   const label = companyScopeLabel(t, companies, selected);
 

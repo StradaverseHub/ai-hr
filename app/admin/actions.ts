@@ -303,7 +303,7 @@ const HOLIDAY_GROUPS = '/admin/holidays/groups';
 // 'general?error=…' and `error` never parsed, so a REFUSED save showed no banner and looked as though it had
 // saved (r287 → r301). General is the default tab, so the plain path lands on it. Pinned by
 // test/r301-schedule-general.test.ts, which runs the action.
-const SCHEDULE_TAB = '/admin/attendance/schedule';
+const SCHEDULE_TAB = '/admin/attendance/settings/company-policy';
 // 296fc027 split this route in two. /admin/toil kept the balance LEDGER and the two settlement sweeps
 // (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to Leave Config.
 // 3fb1a611 (r299) — BOTH HALVES ARE ON LEAVE CONFIG › LEAVE CREDIT NOW: the sweeps and the ledger summary on

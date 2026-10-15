@@ -400,6 +400,7 @@
     "leaveOverview": "Permohonan Cuti",
     "leaveHistory": "Status Permohonan Cuti",
     "leaveCreditHistory": "Status Kredit Cuti",
+    "leaveCreditDetails": "Butiran Kredit Cuti",
     "leaveDetails": "Butiran Cuti",
     "myTeam": "Pasukan Saya",
     "lifecycle": "Orientasi & IT",
@@ -16748,6 +16749,9 @@
     }
   },
   "attendanceSettingsHub": {
+    "companyPolicy": {"title": "Tetapan Polisi Syarikat", "desc": "Polisi waktu kerja syarikat dan keperluan peranti berdaftar.", "cta": "Buka"},
+    "workScheduleOvertime": {"title": "Jadual Kerja & Kadar Kerja Lebih Masa", "desc": "Kadar kerja lebih masa dan liputan syif sandaran.", "cta": "Buka"},
+    "registeredDevices": {"title": "Peranti Kehadiran Berdaftar", "desc": "Lihat peranti berdaftar dan batalkan pendaftaran.", "cta": "Buka"},
     "title": "Tetapan",
     "subtitle": "Halaman persediaan kehadiran di satu tempat. Setiap kad membuka halaman yang anda gunakan sebelum ini.",
     "shift": {
@@ -18947,5 +18951,11 @@
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
     "reload": "Muat semula jadual semasa"
-  }
+  },
+  "leaveCreditDetails": {
+  "title": "Butiran Kredit Cuti",
+  "subtitle": "Sejarah kredit cuti anda — kredit diperoleh, digunakan untuk Cuti Gantian dan baki yang masih tersedia.",
+  "empty": "Tiada kredit cuti diperoleh yang sepadan dengan penapis ini.",
+  "invalid": "Penapis tidak sah. Halaman ini hanya menunjukkan kredit anda sendiri."
+}
 }

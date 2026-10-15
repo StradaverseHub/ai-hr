@@ -400,6 +400,7 @@
     "leaveOverview": "Leave Request",
     "leaveHistory": "Leave Request Status",
     "leaveCreditHistory": "Leave Credit Status",
+    "leaveCreditDetails": "Leave Credit Details",
     "leaveDetails": "Leave Details",
     "myTeam": "My Team",
     "lifecycle": "Onboarding & IT",
@@ -16748,6 +16749,9 @@
     }
   },
   "attendanceSettingsHub": {
+    "companyPolicy": {"title": "Company Policy Settings", "desc": "Company working-time policies and registered-device requirements.", "cta": "Open"},
+    "workScheduleOvertime": {"title": "Work Schedule & Overtime Rates", "desc": "Overtime rates and backup-shift coverage.", "cta": "Open"},
+    "registeredDevices": {"title": "Registered Clocking Devices", "desc": "View registered devices and revoke registrations.", "cta": "Open"},
     "title": "Settings",
     "subtitle": "The setup pages for attendance, in one place. Each card opens the page you used before.",
     "shift": {
@@ -18947,5 +18951,11 @@
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
     "reload": "Reload current schedule"
-  }
+  },
+  "leaveCreditDetails": {
+  "title": "Leave Credit Details",
+  "subtitle": "Your leave credit history — credits you earned, how much has been used for Replacement Leave, and what is still available.",
+  "empty": "No earned leave credits match these filters.",
+  "invalid": "The filters are invalid. This page can show only your own credits."
+}
 }

@@ -31,6 +31,9 @@
 
 /** The Schedule screen — the LIST of Schedule Groups since 665de026. */
 export const SCHEDULE = '/admin/attendance/schedule';
+export const COMPANY_POLICY = '/admin/attendance/settings/company-policy';
+export const WORK_SCHEDULE_OVERTIME = '/admin/attendance/settings/work-schedule-overtime';
+export const REGISTERED_DEVICES = '/admin/attendance/settings/registered-devices';
 
 /** Element ids of the cards the retired routes land on. Each is rendered exactly once. */
 export const SCHEDULE_GROUPS_ANCHOR = 'schedule-groups';
@@ -50,8 +53,8 @@ export const scheduleGroupNewPath = () => `${SCHEDULE}/new`;
 export const scheduleGroupViewPath = (ruleId: string) => `${SCHEDULE}/${encodeURIComponent(ruleId)}`;
 export const scheduleGroupEditPath = (ruleId: string) => `${scheduleGroupViewPath(ruleId)}/edit`;
 
-export const policyEditPath = (companyId: string) => `${SCHEDULE}?policy=${encodeURIComponent(companyId)}`;
-export const policyViewPath = (companyId: string) => `${SCHEDULE}?viewPolicy=${encodeURIComponent(companyId)}`;
+export const policyEditPath = (companyId: string) => `${COMPANY_POLICY}?policy=${encodeURIComponent(companyId)}`;
+export const policyViewPath = (companyId: string) => `${COMPANY_POLICY}?viewPolicy=${encodeURIComponent(companyId)}`;
 
 /** Links (not redirects) carry the panel's fragment, so a click lands on the panel rather than the page top. */
 export const policyEditHref = (companyId: string) => `${policyEditPath(companyId)}#${SCHEDULE_PANEL_ANCHOR}`;

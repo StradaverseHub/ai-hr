@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { SCHEDULE, WORK_SCHEDULE_OVERTIME_ANCHOR } from '../schedule-panel';
+import { WORK_SCHEDULE_OVERTIME, WORK_SCHEDULE_OVERTIME_ANCHOR } from '../schedule-panel';
 
 /**
  * 6d091cc0 (r301) — "Company work schedule & overtime rates" moved onto Attendance › Schedule › General. This
@@ -17,5 +17,5 @@ import { SCHEDULE, WORK_SCHEDULE_OVERTIME_ANCHOR } from '../schedule-panel';
  */
 export default async function AttendanceSchedulePage() {
   await requireAdmin();
-  redirect(`${SCHEDULE}#${WORK_SCHEDULE_OVERTIME_ANCHOR}`);
+  redirect(`${WORK_SCHEDULE_OVERTIME}#${WORK_SCHEDULE_OVERTIME_ANCHOR}`);
 }

@@ -1,3 +1,4 @@
+import { EarnedCreditCells } from '@/components/leave/earned-credit-cells';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { CREDIT_REGISTER_STATUSES, type CreditRegisterStatus } from '@/lib/leave-credit-register';
@@ -315,14 +316,7 @@ export default async function LeaveConfigLeaveCreditPage({
                   <th scope="col" className={thCls}>{t('col.expires')}</th><th scope="col" className={thCls}>{t('col.reason')}</th><th scope="col" className={thCls}>{tr('addedBy')}</th><th scope="col" className={thCls}>{t('col.status')}</th><th scope="col" className={thCls}>{t('col.action')}</th>
                 </tr></thead>
                 <tbody className={tbodyCls}>{register!.rows.length===0?<tr><td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">{t('empty')}</td></tr>:register!.rows.map(row=><tr key={row.accrualId} className="align-top">
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.workedDate)}{row.workedDayKind&&<span className="block text-xs text-muted-foreground">{KIND_LABEL[row.workedDayKind]}</span>}</td>
-                  <td className="px-3 py-2"><EmployeeName code={row.employeeCode} name={row.employeeName}/></td>
-                  <td className="px-3 py-2 tabular-nums">{formatDays(row.earned)}</td>
-                  <td className="px-3 py-2">{row.usage.length===0&&row.used===0?DAY_DASH:row.usage.map((use,i)=><div key={use.requestId+use.date+String(i)}>{tr('usageOn',{days:formatDays(use.days),date:fmtDate(use.date)})}</div>)}{row.unattributedUsed>0&&<p className="text-xs text-muted-foreground">{tr('legacyUsage',{days:formatDays(row.unattributedUsed)})}</p>}</td>
-                  <td className="px-3 py-2 tabular-nums">{formatDays(row.available)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.expiresOn)}</td><td className="px-3 py-2 text-muted-foreground">{row.reason??DAY_DASH}{row.reversalReason&&<p>{row.reversalReason}</p>}</td>
-                  <td className="px-3 py-2">{row.actorName??(row.actorIsSystem?t('bySystem'):DAY_DASH)}<span className="block text-xs text-muted-foreground">{fmtInstant(row.recordedAt)}</span></td>
-                  <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${row.status==='available'?'bg-emerald-50 text-emerald-700':row.status==='partially_used'?'bg-amber-50 text-amber-700':row.status==='expired'?'bg-rose-50 text-rose-700':'bg-muted text-muted-foreground'}`}>{registerLabels[row.status]}</span></td>
+                  <EarnedCreditCells row={row} includeEmployee/>
                   <td className="px-3 py-2">{row.reversible&&<LeaveCreditReverseDialog accrualId={row.accrualId} action={reverseLeaveCreditAction}/>}</td>
                 </tr>)}</tbody>
               </table>

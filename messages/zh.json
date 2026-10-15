@@ -400,6 +400,7 @@
     "leaveOverview": "休假申请",
     "leaveHistory": "休假申请状态",
     "leaveCreditHistory": "假期额度状态",
+    "leaveCreditDetails": "假期积分详情",
     "leaveDetails": "假期明细",
     "myTeam": "我的团队",
     "lifecycle": "入职与IT",
@@ -16748,6 +16749,9 @@
     }
   },
   "attendanceSettingsHub": {
+    "companyPolicy": {"title": "公司政策设置", "desc": "公司工作时间政策和设备注册要求。", "cta": "打开"},
+    "workScheduleOvertime": {"title": "工作安排与加班费率", "desc": "加班费率及备用班次覆盖情况。", "cta": "打开"},
+    "registeredDevices": {"title": "已注册打卡设备", "desc": "查看已注册设备并撤销注册。", "cta": "打开"},
     "title": "设置",
     "subtitle": "出勤的所有设置页面集中在这里。每张卡片打开你之前使用的页面。",
     "shift": {
@@ -18947,5 +18951,11 @@
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
     "reload": "重新加载当前排班"
-  }
+  },
+  "leaveCreditDetails": {
+  "title": "假期积分详情",
+  "subtitle": "您的假期积分记录：已获得的积分、补假已使用的积分及可用余额。",
+  "empty": "没有符合筛选条件的已获得假期积分。",
+  "invalid": "筛选条件无效。此页面仅显示您本人的积分。"
+}
 }
